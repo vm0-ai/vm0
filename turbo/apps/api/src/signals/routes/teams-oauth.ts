@@ -172,19 +172,30 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
 }
 
 /**
- * The Microsoft app registration holds the brand-projected final path. Project
- * here rather than in `getOAuthApiOrigin`, whose other caller builds the
- * built-in connector callback that is already registered with every provider.
+ * `api.vm0.ai` and `/api/zero/**` retire together, so the VM0 brand keeps the
+ * legacy path. Only the Okou brand moves to the canonical namespace. Both
+ * values are already registered in the Microsoft app registration, so this
+ * ships with no provider-console change.
+ *
+ * Project here rather than in `getOAuthApiOrigin`, whose other caller builds
+ * the built-in connector callback that is already registered with every
+ * provider.
  */
 function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
-  return `${apiUrlForPublicBrand(origin, publicBrand)}/api/integrations/teams/oauth/callback`;
+  return publicBrand === "okou"
+    ? `${apiUrlForPublicBrand(origin, "okou")}/api/integrations/teams/oauth/callback`
+    : `${apiUrlForPublicBrand(origin, "vm0")}/api/zero/teams/oauth/callback`;
 }
 
 /**
  * Rollout fallback for #28300. State written by the previous API build carries
- * no redirect URI, and that build sent this exact value. Microsoft rejects a
- * token request whose redirect_uri differs from the authorization request, so
- * an authorization started before this deploy can only be completed against it.
+ * no redirect URI, and that build sent this exact value for both brands: the
+ * unprojected origin plus the legacy path. Microsoft rejects a token request
+ * whose redirect_uri differs from the authorization request, so an
+ * authorization started before this deploy can only be completed against it.
+ *
+ * Only Okou-brand authorizations actually depend on this. The VM0 brand keeps
+ * emitting the legacy path above, so its old and new values are identical.
  *
  * Surface: a browser-held Microsoft consent page, so it is bounded by the old
  * web/app client window of ~2 days rather than by the API deploy gap. The

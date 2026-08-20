@@ -169,7 +169,7 @@ describe("Teams OAuth API routes", () => {
       "test-microsoft-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
     expect(redirectUrl.searchParams.get("scope")).toBe(
       "openid profile email User.Read",
@@ -183,7 +183,7 @@ describe("Teams OAuth API routes", () => {
     expect(state).toStrictEqual({
       orgId: "org_1",
       publicBrand: "vm0",
-      redirectUri: `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
+      redirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
       userId: "user_1",
     });
   });
@@ -200,7 +200,7 @@ describe("Teams OAuth API routes", () => {
       "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
   });
 
@@ -222,6 +222,30 @@ describe("Teams OAuth API routes", () => {
     expect(state).toMatchObject({
       publicBrand: "okou",
       redirectUri: `${OKOU_API_ORIGIN}/api/integrations/teams/oauth/callback`,
+    });
+  });
+
+  // api.vm0.ai and /api/zero/** retire together, so the VM0 brand never moves
+  // to the canonical namespace. Pin the exact registered value as a literal:
+  // a refactor that moves it off this string breaks Microsoft's allowlist.
+  it("leaves the VM0 brand authorization URI on the registered legacy value", async () => {
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = new URL(response.headers.get("location")!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+      readonly publicBrand: string;
+      readonly redirectUri: string;
+    };
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+      "https://api.vm0.ai/api/zero/teams/oauth/callback",
+    );
+    expect(state).toMatchObject({
+      publicBrand: "vm0",
+      redirectUri: "https://api.vm0.ai/api/zero/teams/oauth/callback",
     });
   });
 
