@@ -257,7 +257,9 @@ interface PinnedGridAgent {
 type PinnedDropSide = "before" | "after";
 
 /**
- * The drag handle shown above a pinned tile on hover. It is absolutely
+ * The drag handle shown above a pinned tile while a reorder drag is in flight.
+ * Hovering a tile leaves it untouched — the handle marks the reorderable slots
+ * once dragging starts, so browsing pinned agents stays quiet. It is absolutely
  * positioned so it costs no layout: the tile keeps its size and the avatar
  * never moves.
  *
@@ -270,7 +272,7 @@ function PinnedAgentDragHandle() {
     <span
       aria-hidden="true"
       data-testid="pinned-agent-drag-handle"
-      className="pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+      className="pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px]"
     >
       {[0, 1].map((row) => {
         return (
@@ -312,6 +314,7 @@ function PinnedAgentGridCard({
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
 
   const isDragging = draggingAgentId === agent.id;
+  const isDragInFlight = draggingAgentId !== null;
   const acceptsDrop =
     isReorderable && draggingAgentId !== null && draggingAgentId !== agent.id;
 
@@ -362,7 +365,9 @@ function PinnedAgentGridCard({
           : "text-sidebar-foreground hover:bg-state-hover"
       } ${isReorderable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      {isReorderable && !isDragging && <PinnedAgentDragHandle />}
+      {isReorderable && isDragInFlight && !isDragging && (
+        <PinnedAgentDragHandle />
+      )}
       {dropSide && (
         <span
           aria-hidden="true"
