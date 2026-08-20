@@ -9,6 +9,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
+import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 
 interface SlackChatThreadRouteKey {
   readonly connectionId: string;
@@ -105,6 +106,10 @@ export async function ensureCanonicalSlackChatThreadRoute(
       return existing;
     }
 
+    const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -117,6 +122,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
         lastMessageAt: args.currentTime,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
+        ...mediaModels,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -164,6 +170,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
+      ...mediaModels,
       createdAt: thread.createdAt,
     });
     return route;

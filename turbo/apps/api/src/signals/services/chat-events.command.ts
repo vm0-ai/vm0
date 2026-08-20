@@ -79,6 +79,7 @@ import {
   resolvePersistedChatThreadModel,
   type PersistedChatThreadModelResolutionPath,
 } from "./chat-thread-model.service";
+import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import {
   revokeChatEvent,
@@ -1311,6 +1312,10 @@ async function createChatThread(
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
+    const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
     if (args.clientThreadId) {
       const [thread] = await tx
         .insert(chatThreads)
@@ -1321,6 +1326,7 @@ async function createChatThread(
           title: null,
           ...chatThreadModelPinColumns(args.pin),
           codexServiceTier: args.codexServiceTier,
+          ...mediaModels,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1337,6 +1343,7 @@ async function createChatThread(
           serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
           computerUseHostId: null,
           cloudBrowserEnabled: false,
+          ...mediaModels,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1367,6 +1374,7 @@ async function createChatThread(
         title: null,
         ...chatThreadModelPinColumns(args.pin),
         codexServiceTier: args.codexServiceTier,
+        ...mediaModels,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -1384,6 +1392,7 @@ async function createChatThread(
       serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
       computerUseHostId: null,
       cloudBrowserEnabled: false,
+      ...mediaModels,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };

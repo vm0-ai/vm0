@@ -150,11 +150,13 @@ export async function insertChatThreadEventTransactionFixture(
 /**
  * Pins a thread's video model without a write endpoint. Lets the snapshot
  * compaction test prove the column survives the hand-written jsonb projection,
- * which a null-valued thread cannot show.
+ * which a null-valued thread cannot show. Null restores the pre-pin state that
+ * threads created before creation-time pinning still hold, which no route can
+ * produce any more.
  */
 export async function setChatThreadVideoModelFixture(
   chatThreadId: string,
-  selectedVideoModel: string,
+  selectedVideoModel: string | null,
 ): Promise<void> {
   await db()
     .update(chatThreads)

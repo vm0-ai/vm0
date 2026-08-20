@@ -5,6 +5,10 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
+import {
+  resolveNewChatThreadMediaModels,
+  type NewChatThreadMediaModels,
+} from "./chat-thread-media-model.service";
 import type { Tx } from "../../lib/db-types";
 
 interface AgentPhoneChatThreadRouteKey {
@@ -72,11 +76,21 @@ async function loadRoute(
   return route;
 }
 
+interface CreatedAgentPhoneChatThread {
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly mediaModels: NewChatThreadMediaModels;
+}
+
 async function createCanonicalAgentPhoneChatThread(
   tx: AgentPhoneChatThreadTransaction,
   args: AgentPhoneChatThreadCreateArgs,
   computerUseHostId: string | null = null,
-) {
+): Promise<CreatedAgentPhoneChatThread> {
+  const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await tx
     .insert(chatThreads)
     .values({
@@ -90,18 +104,19 @@ async function createCanonicalAgentPhoneChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
+      ...mediaModels,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
     throw new Error("Failed to create canonical AgentPhone chat thread");
   }
-  return thread;
+  return { ...thread, mediaModels };
 }
 
 async function appendCanonicalAgentPhoneChatThreadCreatedEvent(
   tx: AgentPhoneChatThreadTransaction,
   args: AgentPhoneChatThreadCreateArgs,
-  thread: { readonly id: string; readonly createdAt: Date },
+  thread: CreatedAgentPhoneChatThread,
   computerUseHostId: string | null | undefined,
 ): Promise<void> {
   await appendChatThreadEvent(tx, {
@@ -114,6 +129,7 @@ async function appendCanonicalAgentPhoneChatThreadCreatedEvent(
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
     computerUseHostId,
+    ...thread.mediaModels,
     createdAt: thread.createdAt,
   });
 }

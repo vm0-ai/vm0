@@ -5,6 +5,10 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
+import {
+  resolveNewChatThreadMediaModels,
+  type NewChatThreadMediaModels,
+} from "./chat-thread-media-model.service";
 import type { Tx } from "../../lib/db-types";
 
 export type TelegramOwnerLink =
@@ -93,11 +97,21 @@ async function loadRoute(
   return route;
 }
 
+interface CreatedTelegramChatThread {
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly mediaModels: NewChatThreadMediaModels;
+}
+
 async function createCanonicalTelegramChatThread(
   tx: TelegramChatThreadTransaction,
   args: TelegramChatThreadCreateArgs,
   computerUseHostId: string | null = null,
-) {
+): Promise<CreatedTelegramChatThread> {
+  const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await tx
     .insert(chatThreads)
     .values({
@@ -111,18 +125,19 @@ async function createCanonicalTelegramChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
+      ...mediaModels,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
     throw new Error("Failed to create canonical Telegram chat thread");
   }
-  return thread;
+  return { ...thread, mediaModels };
 }
 
 async function appendCanonicalTelegramChatThreadCreatedEvent(
   tx: TelegramChatThreadTransaction,
   args: TelegramChatThreadCreateArgs,
-  thread: { readonly id: string; readonly createdAt: Date },
+  thread: CreatedTelegramChatThread,
   computerUseHostId: string | null | undefined,
 ): Promise<void> {
   await appendChatThreadEvent(tx, {
@@ -135,6 +150,7 @@ async function appendCanonicalTelegramChatThreadCreatedEvent(
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
     computerUseHostId,
+    ...thread.mediaModels,
     createdAt: thread.createdAt,
   });
 }

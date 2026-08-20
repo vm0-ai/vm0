@@ -11686,31 +11686,44 @@ describe("CHAT-02: shared user message queue", () => {
 });
 
 describe("CHAT-02: run video model snapshot", () => {
-  it("resolves the thread pin, then the member default, then the catalog default", async () => {
+  it("pins a thread at creation and resolves later runs through that pin", async () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
       throw new Error("Expected an entitled chat actor to own an org");
     }
 
-    const unpinned = await sendChatRun(actor, {
+    const catalogDefault = await sendChatRun(actor, {
       agentId,
-      prompt: "video model falls back to the catalog default",
+      prompt: "a thread created with no member default takes the catalog one",
     });
-    await expect(readRunVideoModelFixture(unpinned.runId)).resolves.toBe(
+    await expect(readRunVideoModelFixture(catalogDefault.runId)).resolves.toBe(
       DEFAULT_VIDEO_MODEL,
     );
-    await cancelChatRun(actor, unpinned.runId);
+    await cancelChatRun(actor, catalogDefault.runId);
 
     await setOrgMemberVideoModelFixture({
       orgId,
       userId: actor.userId,
       selectedVideoModel: "MiniMax-H3",
     });
+
+    // The pin the thread already carries survives the new member default. A
+    // thread that followed the live default would answer "MiniMax-H3" here.
+    const afterDefaultChanged = await sendChatRun(actor, {
+      agentId,
+      threadId: catalogDefault.threadId,
+      prompt: "an existing thread keeps the model it was created with",
+    });
+    await expect(
+      readRunVideoModelFixture(afterDefaultChanged.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, afterDefaultChanged.runId);
+
+    // A thread created after the change does take the new member default.
     const memberDefault = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
-      prompt: "video model comes from the member default",
+      prompt: "a thread created later takes the member default",
     });
     await expect(readRunVideoModelFixture(memberDefault.runId)).resolves.toBe(
       "MiniMax-H3",
@@ -11718,12 +11731,12 @@ describe("CHAT-02: run video model snapshot", () => {
     await cancelChatRun(actor, memberDefault.runId);
 
     await setChatThreadVideoModelFixture(
-      unpinned.threadId,
+      catalogDefault.threadId,
       "fal-ai/veo3.1/fast",
     );
     const threadPinned = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
+      threadId: catalogDefault.threadId,
       prompt: "video model comes from the thread pin",
     });
     await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
@@ -11734,7 +11747,7 @@ describe("CHAT-02: run video model snapshot", () => {
     // the whole reason the model is snapshotted onto the run instead of being
     // read back off the thread when generation happens.
     await setChatThreadVideoModelFixture(
-      unpinned.threadId,
+      catalogDefault.threadId,
       "dreamina-seedance-2-5-260628",
     );
     await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
@@ -11745,13 +11758,46 @@ describe("CHAT-02: run video model snapshot", () => {
     // The next run does pick the re-pinned model up.
     const rePinned = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
+      threadId: catalogDefault.threadId,
       prompt: "the run after the re-pin uses the new thread pin",
     });
     await expect(readRunVideoModelFixture(rePinned.runId)).resolves.toBe(
       "dreamina-seedance-2-5-260628",
     );
     await cancelChatRun(actor, rePinned.runId);
+  }, 90_000);
+
+  it("still follows the member default for a thread that predates the pin", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an entitled chat actor to own an org");
+    }
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run that creates the thread",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    // Threads created before creation-time pinning still hold null and were
+    // deliberately left alone, so they keep reading the live member default.
+    await setChatThreadVideoModelFixture(anchor.threadId, null);
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+
+    const legacy = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "a thread with no pin follows the member default",
+    });
+    await expect(readRunVideoModelFixture(legacy.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, legacy.runId);
   }, 90_000);
 
   it("keeps falling back past video models the catalog no longer lists", async () => {
@@ -11940,10 +11986,22 @@ describe("CHAT-02: run image model snapshot", () => {
     await cancelChatRun(actor, globalDefault.runId);
 
     await chat.updateUserModelPreference(actor, null, "fal-ai/qwen-image");
-    const memberDefault = await sendChatRun(actor, {
+
+    // The thread was pinned when it was created, so the new member default
+    // does not reach back into it.
+    const afterDefaultChanged = await sendChatRun(actor, {
       agentId,
       threadId: globalDefault.threadId,
-      prompt: "image model comes from the member default",
+      prompt: "an existing thread keeps the image model it was created with",
+    });
+    await expect(
+      readRunImageModelSnapshotFixture(afterDefaultChanged.runId),
+    ).resolves.toBe(DEFAULT_IMAGE_MODEL);
+    await cancelChatRun(actor, afterDefaultChanged.runId);
+
+    const memberDefault = await sendChatRun(actor, {
+      agentId,
+      prompt: "a thread created later takes the member default",
     });
     await expect(
       readRunImageModelSnapshotFixture(memberDefault.runId),
