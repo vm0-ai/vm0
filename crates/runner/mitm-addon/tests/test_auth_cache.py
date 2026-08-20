@@ -643,13 +643,17 @@ class TestGetFirewallHeaders:
             pytest.param("123", 100.0, id="string"),
             pytest.param(float("inf"), 100.0, id="infinity"),
             pytest.param(float("nan"), 100.0, id="nan"),
+            pytest.param(10**400, 100.0, id="oversized-integer"),
             pytest.param(100.0, 100.0, id="exact-now"),
         ],
     )
     def test_expiry_validation_rejects_invalid_values(self, expiry, now):
         assert auth_cache._has_valid_expiry(expiry, now=now) is False
 
-    @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
+    @pytest.mark.parametrize(
+        "expiry",
+        [True, "123", float("inf"), float("nan"), 10**400],
+    )
     async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
         cache_key = auth_cache_key()
         set_cached_headers(
@@ -724,6 +728,7 @@ class TestGetFirewallHeaders:
             pytest.param("123", id="string"),
             pytest.param(float("inf"), id="infinity"),
             pytest.param(float("nan"), id="nan"),
+            pytest.param(10**400, id="oversized-integer"),
             pytest.param(0, id="expired"),
         ],
     )
