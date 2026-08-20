@@ -4,11 +4,15 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
-  SOCIAL_TRANSCRIPT_MAX_URL_CHARS,
+  MANAGED_SOCIALKIT_BILLING_CATEGORIES,
+  MANAGED_SOCIALKIT_OPERATIONS,
+  SOCIALKIT_MAX_REQUEST_BODY_BYTES,
   socialContract,
+  socialKitRequestSchema,
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -35,11 +39,13 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
-const SOCIALKIT_TRANSCRIPT_URL = "https://api.socialkit.dev/youtube/transcript";
+const SOCIALKIT_BASE = "https://api.socialkit.dev";
 const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
+const DEFAULT_CATEGORY = "youtube.transcripts.extract";
 
 const socialTestRoutes: readonly RouteEntry[] = [
   ...billingStatusRoutes,
@@ -92,7 +98,7 @@ async function rawSocialRequest(
     routes: socialTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
-  const request = new Request("http://api.test/api/zero/social/transcript", {
+  const request = new Request("http://api.test/api/okou/social/request", {
     method: "POST",
     headers: {
       ...authenticate(actor),
@@ -121,7 +127,19 @@ async function setActorCredits(
 
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
-  await setActorCredits(actor, 1000);
+  await setActorCredits(actor, 10_000);
+  await enableSocialKit(actor);
+}
+
+async function enableSocialKit(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Social test actor must belong to an organization");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: actor.userId, orgId: actor.orgId },
+    { [FeatureSwitchKey.ManagedSocialKit]: true },
+  );
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -139,23 +157,25 @@ function configureProvider(): void {
   mockEnv("ZERO_SOCIAL_SOCIALKIT_ACCESS_KEY", "test-socialkit-key");
 }
 
-function socialPricingKey(): UsagePricingKey {
+function socialPricingKey(category: string): UsagePricingKey {
   return {
     kind: "social",
     provider: "socialkit",
-    category: "youtube.transcript",
+    category,
   };
 }
 
-async function setupConfiguredPricing(): Promise<UsagePricingFixture> {
+async function setupConfiguredPricing(
+  categories: readonly string[] = [DEFAULT_CATEGORY],
+): Promise<UsagePricingFixture> {
   const fixture = await createUsagePricingFixture({
-    configured: [
-      {
-        ...socialPricingKey(),
+    configured: categories.map((category) => {
+      return {
+        ...socialPricingKey(category),
         unitPrice: 5,
         unitSize: 1,
-      },
-    ],
+      };
+    }),
   });
   onTestFinished(async () => {
     await fixture.cleanup();
@@ -163,9 +183,11 @@ async function setupConfiguredPricing(): Promise<UsagePricingFixture> {
   return fixture;
 }
 
-async function setupMissingPricing(): Promise<UsagePricingFixture> {
+async function setupMissingPricing(
+  category = DEFAULT_CATEGORY,
+): Promise<UsagePricingFixture> {
   const fixture = await createUsagePricingFixture({
-    missing: [socialPricingKey()],
+    missing: [socialPricingKey(category)],
   });
   onTestFinished(async () => {
     await fixture.cleanup();
@@ -173,38 +195,53 @@ async function setupMissingPricing(): Promise<UsagePricingFixture> {
   return fixture;
 }
 
-function providerResponse() {
-  return {
-    success: true,
-    message: "Transcript generated",
-    data: {
-      url: "https://www.youtube.com/watch?v=video123",
-      videoId: "provider-video-id",
-      transcript: "Welcome to the transcript.",
-      transcriptSegments: [
-        {
-          text: "Welcome to the transcript.",
-          start: 0,
-          duration: 1.5,
-          timestamp: "00:00",
-        },
-      ],
-      wordCount: 4,
-      segments: 1,
-      language: "en",
-    },
-  };
+function providerResponse(data: unknown = { value: "provider result" }) {
+  return { success: true, data };
 }
 
 function providerHandler(
+  method: "GET" | "POST",
+  path: string,
   response: () => Response = () => {
     return HttpResponse.json(providerResponse());
   },
 ) {
-  return http.get(SOCIALKIT_TRANSCRIPT_URL, response);
+  const url = `${SOCIALKIT_BASE}${path}`;
+  return method === "GET" ? http.get(url, response) : http.post(url, response);
 }
 
-describe("okou social transcript route", () => {
+describe("managed SocialKit route", () => {
+  it("pins the reviewed 93-operation and 40-category inventory", () => {
+    expect(MANAGED_SOCIALKIT_OPERATIONS).toHaveLength(93);
+    expect(MANAGED_SOCIALKIT_BILLING_CATEGORIES).toHaveLength(40);
+    expect(
+      new Set(
+        MANAGED_SOCIALKIT_OPERATIONS.map((operation) => {
+          return `${operation.method} ${operation.path}`;
+        }),
+      ).size,
+    ).toBe(93);
+    for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
+      const request = operation.bulk
+        ? {
+            method: operation.method,
+            path: operation.path,
+            body: { urls: ["https://example.com/video.mp4"] },
+          }
+        : { method: operation.method, path: operation.path };
+      expect(socialKitRequestSchema.safeParse(request).success).toBeTruthy();
+    }
+    for (const request of [
+      { method: "GET", path: "/youtube/download" },
+      { method: "POST", path: "/tiktok/download" },
+      { method: "GET", path: "/instagram/download" },
+      { method: "POST", path: "/v2/youtube/download" },
+      { method: "GET", path: "/v2/downloads/job-123" },
+    ]) {
+      expect(socialKitRequestSchema.safeParse(request).success).toBeFalsy();
+    }
+  });
+
   it("rejects zero tokens without social:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
@@ -223,9 +260,13 @@ describe("okou social transcript route", () => {
     });
 
     const response = await accept(
-      client()(socialContract).transcript({
+      client()(socialContract).request({
         headers: { authorization: `Bearer ${token}` },
-        body: { url: "https://youtu.be/video123" },
+        body: {
+          method: "GET",
+          path: "/youtube/transcript",
+          query: { url: "https://youtu.be/video123" },
+        },
       }),
       [403],
     );
@@ -234,6 +275,30 @@ describe("okou social transcript route", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: social:read",
     );
+  });
+
+  it("rejects valid requests while managed SocialKit is disabled", async () => {
+    const actor = createBddApi(context).user();
+    let providerRequests = 0;
+    configureProvider();
+    server.use(
+      providerHandler("GET", "/youtube/transcript", () => {
+        providerRequests += 1;
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client()(socialContract).request({
+        headers: authenticate(actor),
+        body: { method: "GET", path: "/youtube/transcript" },
+      }),
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(providerRequests).toBe(0);
   });
 
   it("accepts agent tokens and attributes usage to their run", async () => {
@@ -262,17 +327,21 @@ describe("okou social transcript route", () => {
     });
     const run = await api.createDirectRun(actor, {
       agentId: compose.composeId,
-      prompt: "Retrieve a public transcript",
+      prompt: "Retrieve public social data",
     });
     const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
       "social:read",
     ]);
-    server.use(providerHandler());
+    server.use(providerHandler("GET", "/youtube/transcript"));
 
     const response = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: { authorization: `Bearer ${token}` },
-        body: { url: "https://youtu.be/video123" },
+        body: {
+          method: "GET",
+          path: "/youtube/transcript",
+          query: { url: "https://youtu.be/video123" },
+        },
       }),
       [200],
     );
@@ -312,143 +381,257 @@ describe("okou social transcript route", () => {
     expect(usage.body.rows[0]?.credits).toBe(5);
   });
 
-  it("accepts supported YouTube forms and bills every success", async () => {
+  it("forwards representative GET operations with only managed auth", async () => {
     const actor = createBddApi(context).user();
+    const cases = [
+      ["/youtube/transcript", "youtube.transcripts.extract", "url"],
+      ["/tiktok/search", "tiktok.search", "query"],
+      ["/instagram/comments", "instagram.comments.extract", "url"],
+      ["/facebook/stats", "facebook.post-stats.extract", "url"],
+      ["/twitter/profile", "twitter.profiles.extract", "url"],
+      ["/linkedin/company", "linkedin.companies.extract", "url"],
+      ["/video/transcript", "video.transcripts.extract", "url"],
+    ] as const;
+    const observed: {
+      path: string;
+      queryName: string;
+      queryValue: string;
+      accessKey: string | null;
+    }[] = [];
     configureProvider();
-    const pricing = await setupConfiguredPricing();
     await fundActor(actor);
-    const beforeCredits = await credits(actor);
-    const providerUrls: string[] = [];
-    const providerQueryKeys: string[][] = [];
-    const accessKeys: (string | null)[] = [];
-    server.use(
-      http.get(SOCIALKIT_TRANSCRIPT_URL, ({ request }) => {
-        const providerUrl = new URL(request.url);
-        providerUrls.push(providerUrl.searchParams.get("url") ?? "");
-        providerQueryKeys.push([...providerUrl.searchParams.keys()]);
-        accessKeys.push(request.headers.get("x-access-key"));
-        return HttpResponse.json(providerResponse());
+    const pricing = await setupConfiguredPricing(
+      cases.map(([, category]) => {
+        return category;
       }),
     );
-    const urls = [
-      "https://youtube.com/watch?v=video123",
-      "https://www.youtube.com/shorts/video123",
-      "https://m.youtube.com/watch?v=video123",
-      "https://youtu.be/video123",
-    ];
+    for (const [path] of cases) {
+      server.use(
+        providerHandler("GET", path, () => {
+          return HttpResponse.json(providerResponse({ path }));
+        }),
+      );
+    }
+    server.use(
+      http.get(/^https:\/\/api\.socialkit\.dev\//u, ({ request }) => {
+        const url = new URL(request.url);
+        const query = [...url.searchParams.entries()];
+        observed.push({
+          path: url.pathname,
+          queryName: query[0]?.[0] ?? "",
+          queryValue: query[0]?.[1] ?? "",
+          accessKey: request.headers.get("x-access-key"),
+        });
+        return HttpResponse.json(providerResponse({ path: url.pathname }));
+      }),
+    );
+    const beforeCredits = await credits(actor);
 
-    for (const url of urls) {
+    for (const [path, category, queryName] of cases) {
       const response = await accept(
-        client(pricing.resolution)(socialContract).transcript({
+        client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: { url },
+          body: {
+            method: "GET",
+            path,
+            query: {
+              [queryName]:
+                queryName === "url"
+                  ? "https://example.com/public-content"
+                  : "public content",
+            },
+          },
         }),
         [200],
       );
-      expect(response.body.requestedUrl).toBe(url);
-      expect(response.body.creditsCharged).toBe(5);
+      expect(response.body).toMatchObject({
+        provider: "socialkit",
+        operation: { method: "GET", path },
+        billingCategory: category,
+        billingQuantity: 1,
+        creditsCharged: 5,
+        result: { path },
+      });
     }
-    const afterCredits = await credits(actor);
 
-    expect(providerUrls).toStrictEqual(urls);
-    expect(providerQueryKeys).toStrictEqual(
-      Array.from({ length: 4 }, () => {
-        return ["url"];
+    expect(observed).toStrictEqual(
+      cases.map(([path, , queryName]) => {
+        return {
+          path,
+          queryName,
+          queryValue:
+            queryName === "url"
+              ? "https://example.com/public-content"
+              : "public content",
+          accessKey: "test-socialkit-key",
+        };
       }),
     );
-    expect(accessKeys).toStrictEqual(
-      Array.from({ length: 4 }, () => {
-        return "test-socialkit-key";
-      }),
-    );
-    expect(beforeCredits - afterCredits).toBe(20);
+    expect(beforeCredits - (await credits(actor))).toBe(cases.length * 5);
   });
 
-  it("returns a normalized result without provider-only fields", async () => {
+  it("forwards POST JSON and bills bulk operations by URL count", async () => {
     const actor = createBddApi(context).user();
+    const category = "youtube.video-stats.extract";
+    const urls = [
+      "https://youtu.be/first",
+      "https://youtu.be/second",
+      "https://youtu.be/third",
+    ];
+    let observedBody: unknown;
+    let observedAccessKey: string | null = null;
     configureProvider();
-    const pricing = await setupConfiguredPricing();
     await fundActor(actor);
+    const pricing = await setupConfiguredPricing([category]);
     const beforeCredits = await credits(actor);
-    server.use(providerHandler());
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/youtube/stats/bulk`, async ({ request }) => {
+        observedBody = (await request.json()) as unknown;
+        observedAccessKey = request.headers.get("x-access-key");
+        return HttpResponse.json(providerResponse({ processed: urls.length }));
+      }),
+    );
 
     const response = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
         body: {
-          url: "https://www.youtube.com/watch?v=video123#captions",
+          method: "POST",
+          path: "/youtube/stats/bulk",
+          body: { urls },
         },
       }),
       [200],
     );
-    const afterCredits = await credits(actor);
 
-    expect(response.body).toStrictEqual({
-      requestedUrl: "https://www.youtube.com/watch?v=video123",
-      platform: "youtube",
-      provider: "socialkit",
-      billingCategory: "youtube.transcript",
-      billingQuantity: 1,
-      creditsCharged: 5,
-      result: {
-        transcript: "Welcome to the transcript.",
-        transcriptSegments: [
-          {
-            text: "Welcome to the transcript.",
-            start: 0,
-            duration: 1.5,
-            timestamp: "00:00",
-          },
-        ],
-        wordCount: 4,
-        language: "en",
-      },
+    expect(observedBody).toStrictEqual({ urls });
+    expect(observedAccessKey).toBe("test-socialkit-key");
+    expect(response.body).toMatchObject({
+      billingCategory: category,
+      billingQuantity: 3,
+      creditsCharged: 15,
+      result: { processed: 3 },
     });
-    expect(beforeCredits - afterCredits).toBe(5);
+    expect(beforeCredits - (await credits(actor))).toBe(15);
   });
 
   it.each([
     {
-      caseName: "an unsupported host",
-      url: "https://example.com/watch?v=video123",
+      caseName: "an unknown path",
+      body: { method: "GET", path: "/youtube/unknown" },
     },
     {
-      caseName: "a youtube lookalike host",
-      url: "https://evil.youtube.com/watch?v=video123",
+      caseName: "a download path",
+      body: { method: "GET", path: "/youtube/download" },
     },
     {
-      caseName: "an unsupported youtube path",
-      url: "https://youtube.com/embed/video123",
+      caseName: "an absolute provider URL",
+      body: {
+        method: "GET",
+        path: "https://api.socialkit.dev/youtube/transcript",
+      },
     },
     {
-      caseName: "a missing video id",
-      url: "https://youtube.com/watch",
+      caseName: "an auth query field",
+      body: {
+        method: "GET",
+        path: "/youtube/transcript",
+        query: { access_key: "caller-key" },
+      },
     },
     {
-      caseName: "multiple youtu.be path segments",
-      url: "https://youtu.be/one/two",
+      caseName: "a query field from another operation",
+      body: {
+        method: "GET",
+        path: "/youtube/transcript",
+        query: { query: "not a transcript input" },
+      },
     },
     {
-      caseName: "embedded credentials",
-      url: "https://user:password@youtube.com/watch?v=video123",
+      caseName: "an auth body field",
+      body: {
+        method: "POST",
+        path: "/youtube/transcript",
+        body: { access_key: "caller-key" },
+      },
     },
-    { caseName: "a non-http scheme", url: "file:///tmp/video" },
     {
-      caseName: "an overlong URL",
-      url: `https://youtu.be/${"x".repeat(SOCIAL_TRANSCRIPT_MAX_URL_CHARS)}`,
+      caseName: "a URL with embedded credentials",
+      body: {
+        method: "GET",
+        path: "/youtube/transcript",
+        query: { url: "https://user:password@youtube.com/watch?v=id" },
+      },
     },
-  ])("rejects $caseName before provider work", async ({ url }) => {
+    {
+      caseName: "a GET body",
+      body: {
+        method: "GET",
+        path: "/youtube/transcript",
+        body: { url: "https://youtu.be/id" },
+      },
+    },
+    {
+      caseName: "a bulk request without urls",
+      body: {
+        method: "POST",
+        path: "/youtube/stats/bulk",
+        body: { limit: 2 },
+      },
+    },
+    {
+      caseName: "urls on a single-item operation",
+      body: {
+        method: "POST",
+        path: "/youtube/stats",
+        body: { urls: ["https://youtu.be/id"] },
+      },
+    },
+    {
+      caseName: "extra bulk input",
+      body: {
+        method: "POST",
+        path: "/youtube/stats/bulk",
+        body: { urls: ["https://youtu.be/id"], limit: 1 },
+      },
+    },
+    {
+      caseName: "overlapping query and body input",
+      body: {
+        method: "POST",
+        path: "/youtube/transcript",
+        query: { url: "https://youtu.be/query" },
+        body: { url: "https://youtu.be/body" },
+      },
+    },
+    {
+      caseName: "an oversized body",
+      body: {
+        method: "POST",
+        path: "/youtube/transcript/bulk",
+        body: {
+          urls: [
+            `https://example.com/${"x".repeat(SOCIALKIT_MAX_REQUEST_BODY_BYTES)}`,
+          ],
+        },
+      },
+    },
+  ])("rejects $caseName before provider work", async ({ body }) => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     server.use(
-      providerHandler(() => {
+      http.get(/^https:\/\/api\.socialkit\.dev\//u, () => {
+        providerRequests += 1;
+        return HttpResponse.json(providerResponse());
+      }),
+      http.post(/^https:\/\/api\.socialkit\.dev\//u, () => {
         providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
     );
 
-    const response = await rawSocialRequest(actor, { url });
+    const response = await rawSocialRequest(actor, body);
 
     expect(response.status).toBe(400);
     expect(providerRequests).toBe(0);
@@ -456,13 +639,14 @@ describe("okou social transcript route", () => {
 
   it("rejects requests when SocialKit is not configured", async () => {
     const actor = createBddApi(context).user();
+    await enableSocialKit(actor);
     mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
     mockEnv("ZERO_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
 
     const response = await accept(
-      client()(socialContract).transcript({
+      client()(socialContract).request({
         headers: authenticate(actor),
-        body: { url: "https://youtu.be/video123" },
+        body: { method: "GET", path: "/youtube/transcript" },
       }),
       [503],
     );
@@ -478,16 +662,16 @@ describe("okou social transcript route", () => {
     await fundActor(actor);
     const pricing = await setupMissingPricing();
     server.use(
-      providerHandler(() => {
+      providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
     );
 
     const response = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: { url: "https://youtu.be/video123" },
+        body: { method: "GET", path: "/youtube/transcript" },
       }),
       [503],
     );
@@ -497,24 +681,36 @@ describe("okou social transcript route", () => {
     expect(providerRequests).toBe(0);
   });
 
-  it("returns insufficient credits before provider work", async () => {
+  it("returns insufficient bulk credits before provider work", async () => {
     const actor = createBddApi(context).user();
+    const category = "youtube.video-stats.extract";
     let providerRequests = 0;
     configureProvider();
-    const pricing = await setupConfiguredPricing();
+    const pricing = await setupConfiguredPricing([category]);
     await bootstrapOnboarding(actor);
-    await setActorCredits(actor, 0);
+    await setActorCredits(actor, 10);
+    await enableSocialKit(actor);
     server.use(
-      providerHandler(() => {
+      providerHandler("POST", "/youtube/stats/bulk", () => {
         providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
     );
 
     const response = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: { url: "https://youtu.be/video123" },
+        body: {
+          method: "POST",
+          path: "/youtube/stats/bulk",
+          body: {
+            urls: [
+              "https://youtu.be/first",
+              "https://youtu.be/second",
+              "https://youtu.be/third",
+            ],
+          },
+        },
       }),
       [402],
     );
@@ -531,7 +727,7 @@ describe("okou social transcript route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     const cases = [
-      [400, 400, "SOCIALKIT_INVALID_CONTENT"],
+      [400, 400, "SOCIALKIT_INVALID_INPUT"],
       [401, 502, "SOCIALKIT_AUTH_ERROR"],
       [403, 503, "SOCIALKIT_QUOTA_EXHAUSTED"],
       [404, 404, "SOCIALKIT_CONTENT_UNAVAILABLE"],
@@ -541,7 +737,7 @@ describe("okou social transcript route", () => {
 
     for (const [providerStatus, apiStatus, code] of cases) {
       server.use(
-        providerHandler(() => {
+        providerHandler("GET", "/youtube/transcript", () => {
           return HttpResponse.json(
             { message: "raw provider message must not escape" },
             { status: providerStatus },
@@ -550,7 +746,7 @@ describe("okou social transcript route", () => {
       );
       const response = await rawSocialRequest(
         actor,
-        { url: "https://youtu.be/video123" },
+        { method: "GET", path: "/youtube/transcript" },
         { usagePricingResolution: pricing.resolution },
       );
       const body: unknown = await response.json();
@@ -562,7 +758,7 @@ describe("okou social transcript route", () => {
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
-  it("rejects invalid successful responses without recording usage", async () => {
+  it("rejects invalid or credential-leaking successes without billing", async () => {
     const actor = createBddApi(context).user();
     configureProvider();
     const pricing = await setupConfiguredPricing();
@@ -576,30 +772,29 @@ describe("okou social transcript route", () => {
         return HttpResponse.json({ success: false, message: "unavailable" });
       },
       () => {
-        return HttpResponse.json({
-          success: true,
-          data: { transcript: "missing required fields" },
-        });
+        return HttpResponse.json({ success: true });
       },
       () => {
-        return HttpResponse.json({
-          ...providerResponse(),
-          data: { ...providerResponse().data, transcript: "\u001b" },
-        });
+        return HttpResponse.json(
+          providerResponse({ echoed: "test-socialkit-key" }),
+        );
       },
     ];
 
     for (const responseFactory of invalidResponses) {
-      server.use(providerHandler(responseFactory));
+      server.use(
+        providerHandler("GET", "/youtube/transcript", responseFactory),
+      );
       const response = await accept(
-        client(pricing.resolution)(socialContract).transcript({
+        client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: { url: "https://youtu.be/video123" },
+          body: { method: "GET", path: "/youtube/transcript" },
         }),
         [502],
       );
       expectApiError(response.body);
       expect(response.body.error.code).toBe("SOCIALKIT_INVALID_RESPONSE");
+      expect(JSON.stringify(response.body)).not.toContain("test-socialkit-key");
     }
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
@@ -635,18 +830,18 @@ describe("okou social transcript route", () => {
     ];
 
     for (const responseFactory of responses) {
-      server.use(providerHandler(responseFactory));
+      server.use(
+        providerHandler("GET", "/youtube/transcript", responseFactory),
+      );
       const response = await accept(
-        client(pricing.resolution)(socialContract).transcript({
+        client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: { url: "https://youtu.be/video123" },
+          body: { method: "GET", path: "/youtube/transcript" },
         }),
         [502],
       );
       expectApiError(response.body);
-      expect(response.body.error.code).toBe(
-        "SOCIAL_TRANSCRIPT_OUTPUT_TOO_LARGE",
-      );
+      expect(response.body.error.code).toBe("SOCIALKIT_OUTPUT_TOO_LARGE");
     }
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
@@ -659,7 +854,7 @@ describe("okou social transcript route", () => {
     const beforeCredits = await credits(actor);
 
     server.use(
-      providerHandler(() => {
+      providerHandler("GET", "/youtube/transcript", () => {
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             controller.error(new DOMException("timed out", "TimeoutError"));
@@ -669,24 +864,24 @@ describe("okou social transcript route", () => {
       }),
     );
     const timeout = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: { url: "https://youtu.be/video123" },
+        body: { method: "GET", path: "/youtube/transcript" },
       }),
       [502],
     );
     expectApiError(timeout.body);
-    expect(timeout.body.error.code).toBe("SOCIAL_TRANSCRIPT_TIMEOUT");
+    expect(timeout.body.error.code).toBe("SOCIALKIT_REQUEST_TIMEOUT");
 
     server.use(
-      providerHandler(() => {
+      providerHandler("GET", "/youtube/transcript", () => {
         return HttpResponse.error();
       }),
     );
     const network = await accept(
-      client(pricing.resolution)(socialContract).transcript({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: { url: "https://youtu.be/video123" },
+        body: { method: "GET", path: "/youtube/transcript" },
       }),
       [502],
     );
@@ -708,7 +903,7 @@ describe("okou social transcript route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
-      http.get(SOCIALKIT_TRANSCRIPT_URL, async ({ request }) => {
+      http.get(`${SOCIALKIT_BASE}/youtube/transcript`, async ({ request }) => {
         providerStarted.resolve(undefined);
         controller.abort(abortError);
         providerSignalAborted = request.signal.aborted;
@@ -719,7 +914,7 @@ describe("okou social transcript route", () => {
 
     const responsePromise = rawSocialRequest(
       actor,
-      { url: "https://youtu.be/video123" },
+      { method: "GET", path: "/youtube/transcript" },
       {
         requestSignal: controller.signal,
         usagePricingResolution: pricing.resolution,
@@ -734,53 +929,7 @@ describe("okou social transcript route", () => {
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
-  it("records usage when the client disconnects after provider success", async () => {
-    const actor = createBddApi(context).user();
-    const controller = new AbortController();
-    const abortError = new Error("client disconnected after provider success");
-    abortError.name = "AbortError";
-    configureProvider();
-    const pricing = await setupConfiguredPricing();
-    await fundActor(actor);
-    const beforeCredits = await credits(actor);
-    server.use(
-      providerHandler(() => {
-        const payload = new TextEncoder().encode(
-          JSON.stringify(providerResponse()),
-        );
-        let payloadSent = false;
-        const stream = new ReadableStream<Uint8Array>({
-          pull(streamController) {
-            if (!payloadSent) {
-              payloadSent = true;
-              streamController.enqueue(payload);
-              return;
-            }
-            streamController.close();
-            setImmediate(() => {
-              controller.abort(abortError);
-            });
-          },
-        });
-        return new HttpResponse(stream);
-      }),
-    );
-
-    const response = await rawSocialRequest(
-      actor,
-      { url: "https://youtu.be/video123" },
-      {
-        requestSignal: controller.signal,
-        usagePricingResolution: pricing.resolution,
-      },
-    );
-
-    expect(response.status).toBe(200);
-    expect(controller.signal.aborted).toBeTruthy();
-    expect(beforeCredits - (await credits(actor))).toBe(5);
-  });
-
-  it("records both concurrent successful transcripts", async () => {
+  it("records concurrent successful requests exactly once each", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
@@ -788,7 +937,7 @@ describe("okou social transcript route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
-      providerHandler(() => {
+      providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
@@ -797,16 +946,16 @@ describe("okou social transcript route", () => {
 
     const [first, second] = await Promise.all([
       accept(
-        socialClient.transcript({
+        socialClient.request({
           headers: authenticate(actor),
-          body: { url: "https://youtu.be/first" },
+          body: { method: "GET", path: "/youtube/transcript" },
         }),
         [200],
       ),
       accept(
-        socialClient.transcript({
+        socialClient.request({
           headers: authenticate(actor),
-          body: { url: "https://youtu.be/second" },
+          body: { method: "GET", path: "/youtube/transcript" },
         }),
         [200],
       ),

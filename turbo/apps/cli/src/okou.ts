@@ -544,7 +544,7 @@ export function buildHelpText(
     ),
     ...commandExampleIfVisible(
       "social",
-      "  Get a transcript?      okou social transcript https://youtu.be/dQw4w9WgXcQ --json",
+      "  Analyze social data?   okou social request /youtube/transcript --query url=https://youtu.be/dQw4w9WgXcQ --json",
       payload,
     ),
     ...commandExampleIfVisible(

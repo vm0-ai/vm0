@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
 import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { MANAGED_SOCIALKIT_BILLING_CATEGORIES } from "@okouai/api-contracts/contracts/social";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
   getSkillStorageName,
@@ -512,8 +513,14 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
-  // Managed SocialKit YouTube transcript product pricing, reviewed 2026-08-20.
-  ...usageGroup("social", "socialkit", [["youtube.transcript", usd(0.005), 1]]),
+  // Managed SocialKit data and analysis request pricing, reviewed 2026-08-20.
+  ...usageGroup(
+    "social",
+    "socialkit",
+    MANAGED_SOCIALKIT_BILLING_CATEGORIES.map((category): UsagePricingRow => {
+      return [category, usd(0.005), 1];
+    }),
+  ),
   // APIDojo Yahoo Finance — https://rapidapi.com/apidojo/api/yahoo-finance1/pricing
   // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
   ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),

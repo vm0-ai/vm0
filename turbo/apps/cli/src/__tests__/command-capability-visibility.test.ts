@@ -1013,10 +1013,10 @@ describe("registerCommands", () => {
     });
 
     expect(buildHelpText(decodeSandboxTokenPayload(visibleToken))).toContain(
-      "Get a transcript?",
+      "Analyze social data?",
     );
     expect(buildHelpText(decodeSandboxTokenPayload(hiddenToken))).not.toContain(
-      "Get a transcript?",
+      "Analyze social data?",
     );
   });
 

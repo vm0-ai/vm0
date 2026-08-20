@@ -1,14 +1,10 @@
 import {
-  SOCIAL_TRANSCRIPT_MAX_LANGUAGE_CHARS,
-  SOCIAL_TRANSCRIPT_MAX_SEGMENTS,
-  SOCIAL_TRANSCRIPT_MAX_TEXT_CHARS,
-  SOCIAL_TRANSCRIPT_MAX_TIMESTAMP_CHARS,
-  type SocialTranscriptRequest,
-  type SocialTranscriptResponse,
-  type SocialTranscriptResult,
+  findManagedSocialKitOperation,
+  type ManagedSocialKitOperation,
+  type SocialKitRequest,
+  type SocialKitResponse,
 } from "@okouai/api-contracts/contracts/social";
 import { command } from "ccstate";
-import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -23,49 +19,22 @@ import {
 
 const PROVIDER = "socialkit";
 const USAGE_KIND = "social";
-const BILLING_CATEGORY = "youtube.transcript";
-const SOCIALKIT_TRANSCRIPT_URL = "https://api.socialkit.dev/youtube/transcript";
+const SOCIALKIT_API_BASE = "https://api.socialkit.dev";
 const SOCIALKIT_TIMEOUT_MS = 240_000;
 const MAX_SOCIALKIT_RESPONSE_BYTES = 4 * 1024 * 1024;
-const L = logger("SocialTranscript");
+const L = logger("ManagedSocialKit");
 
 type ProviderFailureKind =
+  | "credential_leak"
   | "http_error"
   | "invalid_response"
   | "network"
   | "response_too_large"
   | "timeout";
 
-const socialKitSegmentSchema = z.object({
-  text: z.string().max(SOCIAL_TRANSCRIPT_MAX_TEXT_CHARS),
-  start: z.number().finite().nonnegative(),
-  duration: z.number().finite().nonnegative(),
-  timestamp: z
-    .string()
-    .max(SOCIAL_TRANSCRIPT_MAX_TIMESTAMP_CHARS)
-    .nullable()
-    .optional(),
-});
-
-const socialKitResponseSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    transcript: z.string().min(1).max(SOCIAL_TRANSCRIPT_MAX_TEXT_CHARS),
-    transcriptSegments: z
-      .array(socialKitSegmentSchema)
-      .max(SOCIAL_TRANSCRIPT_MAX_SEGMENTS),
-    wordCount: z.number().int().nonnegative(),
-    language: z
-      .string()
-      .max(SOCIAL_TRANSCRIPT_MAX_LANGUAGE_CHARS)
-      .nullable()
-      .optional(),
-  }),
-});
-
 type ErrorStatus = 400 | 404 | 502 | 503;
 
-interface SocialTranscriptErrorResponse {
+interface SocialKitErrorResponse {
   readonly status: ErrorStatus;
   readonly body: {
     readonly error: {
@@ -75,37 +44,39 @@ interface SocialTranscriptErrorResponse {
   };
 }
 
-interface SocialTranscriptErrorResult {
+interface SocialKitErrorResult {
   readonly kind: "error";
-  readonly error: SocialTranscriptErrorResponse;
+  readonly error: SocialKitErrorResponse;
 }
 
 type SocialKitBodyResult =
-  | SocialTranscriptErrorResult
+  | SocialKitErrorResult
   | { readonly kind: "body"; readonly body: unknown };
 
-type SocialKitResponseResult =
-  | SocialTranscriptErrorResult
+type SocialKitFetchResult =
+  | SocialKitErrorResult
   | {
       readonly kind: "response";
       readonly response: Response;
       readonly body: unknown;
     };
 
-interface AuthedSocialTranscriptArgs {
+interface AuthedSocialKitArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: SocialTranscriptRequest;
+  readonly body: SocialKitRequest;
 }
 
-interface CompleteSocialTranscriptArgs {
+interface CompleteSocialKitArgs {
   readonly accessKey: string;
-  readonly request: SocialTranscriptRequest;
+  readonly request: SocialKitRequest;
+  readonly operation: ManagedSocialKitOperation;
+  readonly quantity: number;
   readonly recordUsage: () => Promise<number>;
 }
 
-type SocialTranscriptCommandResponse =
-  | { readonly status: 200; readonly body: SocialTranscriptResponse }
-  | SocialTranscriptErrorResponse
+type SocialKitCommandResponse =
+  | { readonly status: 200; readonly body: SocialKitResponse }
+  | SocialKitErrorResponse
   | ManagedUsageErrorResponse;
 
 function errorBody(message: string, code: string) {
@@ -116,48 +87,44 @@ function errorResponse(
   status: ErrorStatus,
   message: string,
   code: string,
-): SocialTranscriptErrorResponse {
+): SocialKitErrorResponse {
   return { status, body: errorBody(message, code) };
 }
 
-function badGateway(
-  message: string,
-  code: string,
-): SocialTranscriptErrorResponse {
+function badGateway(message: string, code: string): SocialKitErrorResponse {
   return errorResponse(502, message, code);
 }
 
-function errorResult(
-  error: SocialTranscriptErrorResponse,
-): SocialTranscriptErrorResult {
+function errorResult(error: SocialKitErrorResponse): SocialKitErrorResult {
   return { kind: "error", error };
 }
 
-function invalidResponse(): SocialTranscriptErrorResponse {
+function invalidResponse(): SocialKitErrorResponse {
   return badGateway(
-    "SocialKit returned an invalid YouTube transcript response",
+    "SocialKit returned an invalid response",
     "SOCIALKIT_INVALID_RESPONSE",
   );
 }
 
 function logProviderFailure(
+  operation: ManagedSocialKitOperation,
   failureKind: ProviderFailureKind,
   httpStatus?: number,
 ): void {
-  L.warn("SocialKit transcript request failed", {
-    operation: BILLING_CATEGORY,
+  L.warn("Managed SocialKit request failed", {
+    operation: operation.category,
     failureKind,
     ...(httpStatus === undefined ? {} : { httpStatus }),
   });
 }
 
-function providerHttpError(status: number): SocialTranscriptErrorResponse {
+function providerHttpError(status: number): SocialKitErrorResponse {
   switch (status) {
     case 400: {
       return errorResponse(
         400,
-        "SocialKit rejected the YouTube content URL",
-        "SOCIALKIT_INVALID_CONTENT",
+        "SocialKit rejected the request input",
+        "SOCIALKIT_INVALID_INPUT",
       );
     }
     case 401: {
@@ -176,7 +143,7 @@ function providerHttpError(status: number): SocialTranscriptErrorResponse {
     case 404: {
       return errorResponse(
         404,
-        "The YouTube transcript is unavailable",
+        "The requested social content is unavailable",
         "SOCIALKIT_CONTENT_UNAVAILABLE",
       );
     }
@@ -187,106 +154,68 @@ function providerHttpError(status: number): SocialTranscriptErrorResponse {
       );
     }
     default: {
-      return badGateway(
-        "SocialKit YouTube transcript request failed",
-        "SOCIALKIT_UPSTREAM_ERROR",
-      );
+      return badGateway("SocialKit request failed", "SOCIALKIT_UPSTREAM_ERROR");
     }
   }
 }
 
-function sanitizeProviderText(value: string): string {
-  return Array.from(value, (character) => {
-    const codeUnit = character.charCodeAt(0);
-    const isUnsafeControl =
-      (codeUnit <= 0x1f &&
-        character !== "\n" &&
-        character !== "\r" &&
-        character !== "\t") ||
-      (codeUnit >= 0x7f && codeUnit <= 0x9f);
-    return isUnsafeControl ? " " : character;
-  }).join("");
+function providerUrl(request: SocialKitRequest): URL {
+  const url = new URL(request.path, SOCIALKIT_API_BASE);
+  for (const [name, value] of Object.entries(request.query ?? {})) {
+    url.searchParams.set(name, value);
+  }
+  return url;
 }
 
-function normalizedOptionalText(
-  value: string | null | undefined,
-): string | undefined {
-  const normalized = value ? sanitizeProviderText(value).trim() : "";
-  return normalized || undefined;
-}
-
-function normalizeSocialKitResponse(
-  body: unknown,
-): SocialTranscriptResult | SocialTranscriptErrorResponse {
-  const parsed = socialKitResponseSchema.safeParse(body);
-  if (!parsed.success) {
-    return invalidResponse();
-  }
-  const transcript = sanitizeProviderText(parsed.data.data.transcript).trim();
-  if (!transcript) {
-    return invalidResponse();
-  }
-  const language = normalizedOptionalText(parsed.data.data.language);
+function providerRequestInit(
+  accessKey: string,
+  request: SocialKitRequest,
+  signal: AbortSignal,
+): RequestInit {
+  const body = request.method === "POST" ? request.body : undefined;
   return {
-    transcript,
-    transcriptSegments: parsed.data.data.transcriptSegments.map((segment) => {
-      const timestamp = normalizedOptionalText(segment.timestamp);
-      return {
-        text: sanitizeProviderText(segment.text),
-        start: segment.start,
-        duration: segment.duration,
-        ...(timestamp ? { timestamp } : {}),
-      };
-    }),
-    wordCount: parsed.data.data.wordCount,
-    ...(language ? { language } : {}),
+    method: request.method,
+    headers: {
+      "x-access-key": accessKey,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(SOCIALKIT_TIMEOUT_MS),
+    ]),
   };
 }
 
-function isErrorResponse(
-  value: unknown,
-): value is SocialTranscriptErrorResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "body" in value
-  );
-}
-
-async function fetchSocialKitTranscript(
+async function fetchSocialKit(
   accessKey: string,
-  request: SocialTranscriptRequest,
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
   signal: AbortSignal,
 ): Promise<SocialKitBodyResult> {
   const settled = await settle(
-    (async (): Promise<SocialKitResponseResult> => {
-      const url = new URL(SOCIALKIT_TRANSCRIPT_URL);
-      url.searchParams.set("url", request.url);
-      const response = await fetch(url, {
-        headers: { "x-access-key": accessKey },
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(SOCIALKIT_TIMEOUT_MS),
-        ]),
-      });
+    (async (): Promise<SocialKitFetchResult> => {
+      const response = await fetch(
+        providerUrl(request),
+        providerRequestInit(accessKey, request, signal),
+      );
       const textResult = await readBoundedResponseText(
         response,
         MAX_SOCIALKIT_RESPONSE_BYTES,
       );
       if (textResult.kind === "too_large") {
-        logProviderFailure("response_too_large", response.status);
+        logProviderFailure(operation, "response_too_large", response.status);
         return errorResult(
           badGateway(
-            "SocialKit YouTube transcript response is too large",
-            "SOCIAL_TRANSCRIPT_OUTPUT_TOO_LARGE",
+            "SocialKit response is too large",
+            "SOCIALKIT_OUTPUT_TOO_LARGE",
           ),
         );
       }
       return {
         kind: "response",
         response,
-        body: textResult.text ? safeJsonParse(textResult.text) : null,
+        body: textResult.text ? safeJsonParse(textResult.text) : undefined,
       };
     })(),
   );
@@ -300,30 +229,66 @@ async function fetchSocialKitTranscript(
       error instanceof Error &&
       (error.name === "AbortError" || error.name === "TimeoutError")
     ) {
-      logProviderFailure("timeout");
+      logProviderFailure(operation, "timeout");
       return errorResult(
-        badGateway(
-          "SocialKit YouTube transcript request timed out",
-          "SOCIAL_TRANSCRIPT_TIMEOUT",
-        ),
+        badGateway("SocialKit request timed out", "SOCIALKIT_REQUEST_TIMEOUT"),
       );
     }
-    logProviderFailure("network");
+    logProviderFailure(operation, "network");
     return errorResult(
-      badGateway(
-        "SocialKit YouTube transcript request failed",
-        "SOCIALKIT_UPSTREAM_ERROR",
-      ),
+      badGateway("SocialKit request failed", "SOCIALKIT_UPSTREAM_ERROR"),
     );
   }
   if (settled.value.kind === "error") {
     return settled.value;
   }
   if (!settled.value.response.ok) {
-    logProviderFailure("http_error", settled.value.response.status);
+    logProviderFailure(operation, "http_error", settled.value.response.status);
     return errorResult(providerHttpError(settled.value.response.status));
   }
   return { kind: "body", body: settled.value.body };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function providerResult(
+  body: unknown,
+  accessKey: string,
+):
+  | { readonly ok: true; readonly result: unknown }
+  | { readonly ok: false; readonly credentialLeak: boolean } {
+  if (
+    !isRecord(body) ||
+    body.success !== true ||
+    !("data" in body) ||
+    body.data === undefined
+  ) {
+    return { ok: false, credentialLeak: false };
+  }
+  const serialized = JSON.stringify(body.data);
+  if (serialized === undefined) {
+    return { ok: false, credentialLeak: false };
+  }
+  if (serialized.includes(accessKey)) {
+    return { ok: false, credentialLeak: true };
+  }
+  return { ok: true, result: body.data };
+}
+
+function billingQuantity(
+  operation: ManagedSocialKitOperation,
+  request: SocialKitRequest,
+): number {
+  if (!operation.bulk) {
+    return 1;
+  }
+  const urls = request.body?.urls;
+  if (!Array.isArray(urls)) {
+    throw new Error("Validated SocialKit bulk request has no urls array");
+  }
+  return urls.length;
 }
 
 function runIdForUsage(auth: AuthContext): string | undefined {
@@ -332,44 +297,50 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-async function completeSocialTranscript(
-  args: CompleteSocialTranscriptArgs,
+async function completeSocialKitRequest(
+  args: CompleteSocialKitArgs,
   providerSignal: AbortSignal,
-): Promise<SocialTranscriptCommandResponse> {
-  const providerResult = await fetchSocialKitTranscript(
+): Promise<SocialKitCommandResponse> {
+  const providerResponse = await fetchSocialKit(
     args.accessKey,
     args.request,
+    args.operation,
     providerSignal,
   );
-  if (providerResult.kind === "error") {
-    return providerResult.error;
+  if (providerResponse.kind === "error") {
+    return providerResponse.error;
   }
-  const result = normalizeSocialKitResponse(providerResult.body);
-  if (isErrorResponse(result)) {
-    logProviderFailure("invalid_response");
-    return result;
+  const parsed = providerResult(providerResponse.body, args.accessKey);
+  if (!parsed.ok) {
+    const failureKind = parsed.credentialLeak
+      ? "credential_leak"
+      : "invalid_response";
+    logProviderFailure(args.operation, failureKind);
+    return invalidResponse();
   }
   const creditsCharged = await args.recordUsage();
   return {
     status: 200,
     body: {
-      requestedUrl: args.request.url,
-      platform: "youtube",
       provider: PROVIDER,
-      billingCategory: BILLING_CATEGORY,
-      billingQuantity: 1,
+      operation: {
+        method: args.operation.method,
+        path: args.operation.path,
+      },
+      billingCategory: args.operation.category,
+      billingQuantity: args.quantity,
       creditsCharged,
-      result,
+      result: parsed.result,
     },
   };
 }
 
-export const socialTranscript$ = command(
+export const socialKitRequest$ = command(
   async (
     { get, set },
-    args: AuthedSocialTranscriptArgs,
+    args: AuthedSocialKitArgs,
     signal: AbortSignal,
-  ): Promise<SocialTranscriptCommandResponse> => {
+  ): Promise<SocialKitCommandResponse> => {
     const accessKey = env("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY");
     if (!accessKey) {
       return errorResponse(
@@ -379,19 +350,29 @@ export const socialTranscript$ = command(
       );
     }
 
+    const operation = findManagedSocialKitOperation(
+      args.body.method,
+      args.body.path,
+    );
+    if (!operation) {
+      throw new Error("Validated SocialKit request has no reviewed operation");
+    }
+    const quantity = billingQuantity(operation, args.body);
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
+    const resource = {
+      kind: USAGE_KIND,
+      provider: PROVIDER,
+      category: operation.category,
+      quantity,
+    };
     const creditError = await set(
       checkManagedCredits$,
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
-        resource: {
-          kind: USAGE_KIND,
-          provider: PROVIDER,
-          category: BILLING_CATEGORY,
-        },
-        label: "Okou Social Transcript",
+        resource,
+        label: "Okou SocialKit",
       },
       requestSignal,
     );
@@ -402,10 +383,12 @@ export const socialTranscript$ = command(
     }
 
     const runId = runIdForUsage(args.auth);
-    return completeSocialTranscript(
+    return completeSocialKitRequest(
       {
         accessKey,
         request: args.body,
+        operation,
+        quantity,
         recordUsage: () => {
           return set(
             recordManagedUsage$,
@@ -415,12 +398,8 @@ export const socialTranscript$ = command(
                 userId: args.auth.userId,
                 ...(runId ? { runId } : {}),
               },
-              resource: {
-                kind: USAGE_KIND,
-                provider: PROVIDER,
-                category: BILLING_CATEGORY,
-              },
-              label: "social transcript",
+              resource,
+              label: "SocialKit request",
             },
             signal,
           );

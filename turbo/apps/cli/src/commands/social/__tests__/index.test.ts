@@ -3,7 +3,6 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import {
   afterAll,
@@ -30,24 +29,14 @@ vi.mock("os", async (importOriginal) => {
 });
 
 const responseBody = {
-  requestedUrl: "https://www.youtube.com/watch?v=video123",
-  platform: "youtube",
   provider: "socialkit",
-  billingCategory: "youtube.transcript",
+  operation: { method: "GET", path: "/youtube/comments" },
+  billingCategory: "youtube.comments.extract",
   billingQuantity: 1,
   creditsCharged: 5,
   result: {
     transcript: "Welcome to the complete transcript.",
-    transcriptSegments: [
-      {
-        text: "segment detail only",
-        start: 0,
-        duration: 1.5,
-        timestamp: "00:00",
-      },
-    ],
-    wordCount: 5,
-    language: "en",
+    transcriptSegments: [{ text: "segment detail", start: 0, duration: 1.5 }],
   },
 } as const;
 
@@ -67,10 +56,12 @@ describe("okou social command", () => {
 
   beforeEach(async () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
-    chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
     for (const command of socialCommand.commands) {
+      command.setOptionValue("method", "GET");
+      command.setOptionValue("query", undefined);
+      command.setOptionValue("body", undefined);
       command.setOptionValue("json", undefined);
     }
   });
@@ -105,13 +96,13 @@ describe("okou social command", () => {
       .join("\n");
   }
 
-  it("posts a normalized YouTube URL and prints complete JSON", async () => {
+  it("posts a reviewed GET operation and prints compact JSON", async () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/social/transcript",
+        "http://localhost:3000/api/okou/social/request",
         async ({ request }) => {
-          requestBody = await request.json();
+          requestBody = (await request.json()) as unknown;
           return HttpResponse.json(responseBody);
         },
       ),
@@ -120,72 +111,137 @@ describe("okou social command", () => {
     await socialCommand.parseAsync([
       "node",
       "cli",
-      "transcript",
-      "https://www.youtube.com/watch?v=video123#captions",
+      "request",
+      "/youtube/comments",
+      "--query",
+      "url=https://youtu.be/video123",
+      "--query",
+      "limit=10",
       "--json",
     ]);
 
     expect(requestBody).toStrictEqual({
-      url: "https://www.youtube.com/watch?v=video123",
+      method: "GET",
+      path: "/youtube/comments",
+      query: { url: "https://youtu.be/video123", limit: "10" },
     });
     expect(mockConsoleLog).toHaveBeenCalledWith(JSON.stringify(responseBody));
   });
 
-  it("renders transcript metadata without duplicating segments", async () => {
+  it("parses a POST bulk body and prints formatted JSON", async () => {
+    let requestBody: unknown;
+    const bulkResponse = {
+      ...responseBody,
+      operation: { method: "POST", path: "/youtube/stats/bulk" },
+      billingCategory: "youtube.video-stats.extract",
+      billingQuantity: 2,
+      creditsCharged: 10,
+      result: { processed: 2 },
+    } as const;
     server.use(
-      http.post("http://localhost:3000/api/okou/social/transcript", () => {
-        return HttpResponse.json(responseBody);
-      }),
+      http.post(
+        "http://localhost:3000/api/okou/social/request",
+        async ({ request }) => {
+          requestBody = (await request.json()) as unknown;
+          return HttpResponse.json(bulkResponse);
+        },
+      ),
     );
 
     await socialCommand.parseAsync([
       "node",
       "cli",
-      "transcript",
-      "https://youtu.be/video123",
+      "request",
+      "/youtube/stats/bulk",
+      "-X",
+      "post",
+      "--body",
+      '{"urls":["https://youtu.be/first","https://youtu.be/second"]}',
     ]);
 
-    expect(output()).toContain("Social transcript completed");
-    expect(output()).toContain("Platform: youtube");
-    expect(output()).toContain("Provider: socialkit");
-    expect(output()).toContain("Credits charged: 5");
-    expect(output()).toContain("Word count: 5");
-    expect(output()).toContain("Language: en");
-    expect(output()).toContain("Welcome to the complete transcript.");
-    expect(output()).not.toContain("segment detail only");
-    expect(output()).not.toContain("00:00");
+    expect(requestBody).toStrictEqual({
+      method: "POST",
+      path: "/youtube/stats/bulk",
+      body: {
+        urls: ["https://youtu.be/first", "https://youtu.be/second"],
+      },
+    });
+    expect(output()).toBe(JSON.stringify(bulkResponse, null, 2));
   });
 
   it.each([
-    "https://example.com/watch?v=video123",
-    "https://youtube.com/embed/video123",
-    "https://user:password@youtube.com/watch?v=video123",
-    "file:///tmp/video",
-  ])("rejects unsupported URL %s before calling the API", async (url) => {
+    {
+      caseName: "an unknown path",
+      args: ["request", "/youtube/unknown"],
+      message: "reviewed SocialKit operation",
+    },
+    {
+      caseName: "a download path",
+      args: ["request", "/youtube/download"],
+      message: "reviewed SocialKit operation",
+    },
+    {
+      caseName: "an authentication override",
+      args: [
+        "request",
+        "/youtube/transcript",
+        "--query",
+        "access_key=caller-key",
+      ],
+      message: "not reviewed for this operation",
+    },
+    {
+      caseName: "an invalid JSON body",
+      args: ["request", "/youtube/transcript", "-X", "POST", "--body", "{"],
+      message: "valid JSON",
+    },
+    {
+      caseName: "a missing bulk URL array",
+      args: ["request", "/youtube/stats/bulk", "-X", "POST"],
+      message: "urls array",
+    },
+  ])("rejects $caseName before calling the API", async ({ args, message }) => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/social/transcript", () => {
+      http.post("http://localhost:3000/api/okou/social/request", () => {
         apiRequests += 1;
         return HttpResponse.json(responseBody);
       }),
     );
 
     await expect(
-      socialCommand.parseAsync(["node", "cli", "transcript", url]),
+      socialCommand.parseAsync(["node", "cli", ...args]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain("supported public YouTube");
+    expect(errorOutput()).toContain(message);
     expect(mockExit).toHaveBeenCalledWith(1);
     expect(apiRequests).toBe(0);
   });
 
+  it("rejects duplicate query fields", async () => {
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "request",
+        "/youtube/search",
+        "--query",
+        "query=first",
+        "--query",
+        "query=second",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain("query is duplicated");
+  });
+
   it("prints API errors", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/social/transcript", () => {
+      http.post("http://localhost:3000/api/okou/social/request", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "The YouTube transcript is unavailable",
+              message: "The requested social content is unavailable",
               code: "SOCIALKIT_CONTENT_UNAVAILABLE",
             },
           },
@@ -195,23 +251,18 @@ describe("okou social command", () => {
     );
 
     await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "transcript",
-        "https://youtu.be/video123",
-      ]),
+      socialCommand.parseAsync(["node", "cli", "request", "/linkedin/profile"]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(
-      "404: The YouTube transcript is unavailable",
+      "404: The requested social content is unavailable",
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("documents timestamped JSON output", () => {
-    const transcript = socialCommand.commands.find((command) => {
-      return command.name() === "transcript";
+  it("documents broad coverage, billing, and security boundaries", () => {
+    const request = socialCommand.commands.find((command) => {
+      return command.name() === "request";
     });
     let socialHelp = "";
     socialCommand.configureOutput({
@@ -221,9 +272,11 @@ describe("okou social command", () => {
     });
     socialCommand.outputHelp();
 
-    expect(transcript?.helpInformation()).toContain("timestamped segments");
-    expect(transcript?.helpInformation()).toContain("--json");
-    expect(socialHelp).toContain("vm0 credits");
-    expect(socialHelp).toContain("submitted URL");
+    expect(request?.helpInformation()).toContain("--query");
+    expect(request?.helpInformation()).toContain("--body");
+    expect(request?.helpInformation()).toContain("--json");
+    expect(socialHelp).toContain("all 93 data and analysis");
+    expect(socialHelp).toContain("download operations are rejected");
+    expect(socialHelp).toContain("bulk operations are billed");
   });
 });
