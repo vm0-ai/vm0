@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { builtInGenerationRoutes } from "../built-in-generation";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -99,7 +101,7 @@ async function createRunningImageGeneration(
   return apiUuid(queued.body.generationId);
 }
 
-describe("GET /api/zero/built-in-generations/:generationId", () => {
+describe("GET /api/built-in-generations/:generationId", () => {
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -177,5 +179,28 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
       completedAt: null,
     });
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  // #28415 moved the contract to the neutral path, so both branded paths reach
+  // this handler only through `MIGRATED_BRANDED_PATHS`. A released CLI build
+  // still polls the `okou` form; 401 rather than 404 is what proves it still
+  // arrives.
+  it("still serves the branded paths released callers hold", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: builtInGenerationRoutes,
+    });
+    const generationId = randomUUID();
+
+    const statuses: number[] = [];
+    for (const path of [
+      `/api/okou/built-in-generations/${generationId}`,
+      `/api/zero/built-in-generations/${generationId}`,
+    ]) {
+      const response = await app.request(path);
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toStrictEqual([401, 401]);
   });
 });

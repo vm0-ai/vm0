@@ -116,6 +116,26 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// The two routes #28415 moved off `/api/okou/**`, with the branded paths their
+// released callers still hold. Written out rather than read from the contracts
+// or from `MIGRATED_BRANDED_PATHS`, so dropping a contract path or a table row
+// fails the test below instead of changing what it asserts.
+const MIGRATED_GENERATION_ROUTES = [
+  {
+    method: "GET",
+    neutral: "/api/built-in-generations/:generationId",
+    branded: [
+      "/api/okou/built-in-generations/:generationId",
+      "/api/zero/built-in-generations/:generationId",
+    ],
+  },
+  {
+    method: "POST",
+    neutral: "/api/image-io/generate",
+    branded: ["/api/okou/image-io/generate", "/api/zero/image-io/generate"],
+  },
+] as const;
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
@@ -265,19 +285,42 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
+  // The generation routes are a #28278 slice that fills the table (#28415).
+  // Their contracts declare the neutral paths, so the blanket expansion no
+  // longer derives a branded form for them and every branded path here exists
+  // only because of a table row.
+  it("serves the moved generation routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
     );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
 
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
+    function requireRoute(method: string, path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === method && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing registration for ${method} ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const route of MIGRATED_GENERATION_ROUTES) {
+      const neutral = requireRoute(route.method, route.neutral);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const brandedPath of route.branded) {
+        const branded = requireRoute(route.method, brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the

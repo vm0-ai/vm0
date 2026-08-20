@@ -262,7 +262,19 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // Empty until the first #28278 migration slice moves a contract path.
+  // #28415. Published CLI builds poll generation status and post image
+  // generations at the `okou` form — `getBuiltInGenerationStatus` and
+  // `generateWebImage` build those URLs by hand rather than from the contract,
+  // so they shipped independently of this path. The `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  "/api/built-in-generations/:generationId": [
+    "/api/okou/built-in-generations/:generationId",
+    "/api/zero/built-in-generations/:generationId",
+  ],
+  "/api/image-io/generate": [
+    "/api/okou/image-io/generate",
+    "/api/zero/image-io/generate",
+  ],
 };
 
 /**

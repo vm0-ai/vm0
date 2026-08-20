@@ -458,7 +458,7 @@ async function seedImageRun(
   return { runId };
 }
 
-describe("POST /api/zero/image-io/generate", () => {
+describe("POST /api/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
   beforeEach(() => {
@@ -484,7 +484,7 @@ describe("POST /api/zero/image-io/generate", () => {
 
   it("returns 401 when not authenticated", async () => {
     const app = createImageIoTestApp();
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       body: JSON.stringify({ prompt: "a cat" }),
     });
@@ -493,6 +493,28 @@ describe("POST /api/zero/image-io/generate", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
+  });
+
+  // #28415 moved the contract to the neutral path, so both branded paths reach
+  // this handler only through `MIGRATED_BRANDED_PATHS`. A released CLI build
+  // still posts to the `okou` form; 401 rather than 404 is what proves it
+  // still arrives.
+  it("still serves the branded paths released callers hold", async () => {
+    const app = createImageIoTestApp();
+
+    const statuses: number[] = [];
+    for (const path of [
+      "/api/okou/image-io/generate",
+      "/api/zero/image-io/generate",
+    ]) {
+      const response = await app.request(path, {
+        method: "POST",
+        body: JSON.stringify({ prompt: "a cat" }),
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toStrictEqual([401, 401]);
   });
 
   it("returns 403 when a zero token lacks file write capability", async () => {
@@ -504,7 +526,7 @@ describe("POST /api/zero/image-io/generate", () => {
     });
 
     const app = createImageIoTestApp();
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ prompt: "a cat" }),
@@ -534,7 +556,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "   " }),
@@ -560,7 +582,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp();
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -607,7 +629,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const prompts = ["omitted model prompt", "blank model prompt"];
 
     for (const [index, prompt] of prompts.entries()) {
-      const response = await app.request("/api/zero/image-io/generate", {
+      const response = await app.request("/api/image-io/generate", {
         method: "POST",
         headers: { authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -649,7 +671,7 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     const app = createImageIoTestApp(pricingFixture.resolution);
 
-    const explicitResponse = await app.request("/api/zero/image-io/generate", {
+    const explicitResponse = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -663,7 +685,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(gptCalls).toBe(1);
     expect(qwenCalls).toBe(0);
 
-    const invalidResponse = await app.request("/api/zero/image-io/generate", {
+    const invalidResponse = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -727,7 +749,7 @@ describe("POST /api/zero/image-io/generate", () => {
         orgId: fixture.orgId,
         runId,
       });
-      const response = await app.request("/api/zero/image-io/generate", {
+      const response = await app.request("/api/image-io/generate", {
         method: "POST",
         headers: { authorization: `Bearer ${token}` },
         body: JSON.stringify({ prompt: runCase.prompt }),
@@ -740,7 +762,7 @@ describe("POST /api/zero/image-io/generate", () => {
       [FeatureSwitchKey.ImageModelSelection]: true,
     });
     mocks.clerk.session(sessionFixture.userId, sessionFixture.orgId);
-    const sessionResponse = await app.request("/api/zero/image-io/generate", {
+    const sessionResponse = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "session request without a run" }),
@@ -766,7 +788,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a cat" }),
@@ -822,7 +844,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a cat covered by allowance" }),
@@ -860,7 +882,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -887,7 +909,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -948,7 +970,7 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     const app = createImageIoTestApp(pricingFixture.resolution);
     for (let submission = 0; submission < 3; submission++) {
-      const submitted = await app.request("/api/zero/image-io/generate", {
+      const submitted = await app.request("/api/image-io/generate", {
         method: "POST",
         headers: { authorization: `Bearer ${token}` },
         body: JSON.stringify({ prompt: `a pending run image ${submission}` }),
@@ -957,7 +979,7 @@ describe("POST /api/zero/image-io/generate", () => {
     }
     expect(falCalls).toBe(3);
 
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ prompt: "a limited run image" }),
@@ -1039,7 +1061,7 @@ describe("POST /api/zero/image-io/generate", () => {
       runId,
     });
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1085,7 +1107,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1234,7 +1256,7 @@ describe("POST /api/zero/image-io/generate", () => {
     mockNow(staleTime);
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a late image" }),
@@ -1261,7 +1283,7 @@ describe("POST /api/zero/image-io/generate", () => {
 
     mockNow(timeoutTime);
     const timeoutResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(timeoutResponse.status).toBe(200);
@@ -1290,7 +1312,7 @@ describe("POST /api/zero/image-io/generate", () => {
     releasePendingFalResponse = null;
 
     const finalStatusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(finalStatusResponse.status).toBe(200);
@@ -1342,7 +1364,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1360,7 +1382,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1403,7 +1425,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp();
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1467,7 +1489,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const lowResponse = await app.request("/api/zero/image-io/generate", {
+    const lowResponse = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1486,7 +1508,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const lowStatusResponse = await app.request(
-      `/api/zero/built-in-generations/${lowGenerationId}`,
+      `/api/built-in-generations/${lowGenerationId}`,
       { headers: authHeaders() },
     );
     const lowBody = readGenerationResult(await lowStatusResponse.json());
@@ -1506,7 +1528,7 @@ describe("POST /api/zero/image-io/generate", () => {
       SECOND_MOCKUP_IMAGE_URL,
       THIRD_MOCKUP_IMAGE_URL,
     ];
-    const highResponse = await app.request("/api/zero/image-io/generate", {
+    const highResponse = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1526,7 +1548,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const highStatusResponse = await app.request(
-      `/api/zero/built-in-generations/${highGenerationId}`,
+      `/api/built-in-generations/${highGenerationId}`,
       { headers: authHeaders() },
     );
     const highBody = readGenerationResult(await highStatusResponse.json());
@@ -1613,7 +1635,7 @@ describe("POST /api/zero/image-io/generate", () => {
       runId,
     });
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1647,7 +1669,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1731,7 +1753,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1765,7 +1787,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1831,7 +1853,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1866,7 +1888,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1933,7 +1955,7 @@ describe("POST /api/zero/image-io/generate", () => {
 
     const sourceImageUrls = [MOCKUP_IMAGE_URL, SECOND_MOCKUP_IMAGE_URL];
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1964,7 +1986,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -2026,7 +2048,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2060,7 +2082,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -2110,7 +2132,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2144,7 +2166,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -2183,7 +2205,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ model: "birefnet" }),
@@ -2222,7 +2244,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
+    const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a cat" }),
@@ -2260,7 +2282,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
