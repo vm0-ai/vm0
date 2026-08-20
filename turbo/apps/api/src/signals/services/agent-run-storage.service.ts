@@ -1,4 +1,5 @@
 import {
+  CANONICAL_CODEX_HOME_DIR,
   PI_AGENT_DIR,
   type StoredStorageMountEntry,
 } from "@okouai/api-contracts/contracts/runners";
@@ -972,7 +973,9 @@ function instructionsMountPath(framework: SupportedFramework | "pi"): string {
   if (framework === "pi") {
     return PI_AGENT_DIR;
   }
-  return framework === "codex" ? "/home/user/.codex" : "/home/user/.claude";
+  return framework === "codex"
+    ? CANONICAL_CODEX_HOME_DIR
+    : "/home/user/.claude";
 }
 
 function instructionsFilename(framework: SupportedFramework | "pi"): string {
