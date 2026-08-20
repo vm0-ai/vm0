@@ -319,7 +319,7 @@ async function completeChatRunOk(
     );
   }
   const historyHash = createHash("sha256")
-    .update(`chat run finished bdd session history ${runId}`)
+    .update(`bdd chat session history ${runId}`)
     .digest("hex");
   await webhooks.requestAgentCheckpoint(
     {
