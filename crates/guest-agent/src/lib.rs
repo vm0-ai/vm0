@@ -9,6 +9,165 @@
 //!
 //! Do not add process-global facade readers for run-scoped environment values
 //! or paths. Thread `GuestConfig` and `GuestPaths` through the caller instead.
+//!
+//! # Runner-only helper protocol
+//!
+//! The `guest-agent` executable has three runner-only helper commands. The
+//! handwritten dispatcher in `src/main.rs` handles these commands before the
+//! normal asynchronous guest-agent runtime starts. They are an internal
+//! protocol between the guest binary and `runner`, not general-purpose user
+//! CLI commands.
+//!
+//! The command name `guest-agent` below stands for the deployed guest-agent
+//! executable path. The shared contract crate is the source of truth for the
+//! JSON shapes, stable argument spellings, and exit-code constants linked from
+//! this section.
+//!
+//! ## Shared runtime-path rules
+//!
+//! When a command resolves its default runtime path, the non-empty absolute
+//! [`GUEST_RUNTIME_DIR_ENV`](guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV) override
+//! (`VM0_GUEST_RUNTIME_DIR`) wins. Without that override, the path is derived
+//! from [`RUN_ID_ENV`](guest_contracts::env::RUN_ID_ENV) (`OKOU_RUN_ID`) and `HOME` as
+//! [`run_dir_from_env`](guest_contracts::runtime_paths::run_dir_from_env) describes:
+//! `$HOME/.vm0/guest-agent/runs/<run-id>`. A relative override is invalid.
+//!
+//! ## `verify-session-history-identity`
+//!
+//! ### Invocation
+//!
+//! ```text
+//! guest-agent verify-session-history-identity
+//! guest-agent verify-session-history-identity <metadata-path>
+//! guest-agent verify-session-history-identity <metadata-path> <framework> <session-id-hash> <history-ref-kind> <history-hash> <history-size-bytes>
+//! ```
+//!
+//! With no arguments, the helper reads the final identity metadata file from
+//! the runtime path resolved from the process environment. With arguments, the
+//! first argument is always the metadata path. The optional remaining group is
+//! either absent or exactly five values. The framework and history-reference
+//! kind use the stable spellings accepted by
+//! [`SessionHistoryFramework::parse_cli_arg`](guest_contracts::session_history_identity::SessionHistoryFramework::parse_cli_arg)
+//! and
+//! [`SessionHistoryRefKind::parse_cli_arg`](guest_contracts::session_history_identity::SessionHistoryRefKind::parse_cli_arg).
+//! Supplying any other argument count returns
+//! [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS).
+//!
+//! The helper consumes no protocol stdin and emits no protocol payload on
+//! stdout or stderr. A zero exit status,
+//! [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS),
+//! means that the metadata and the current framework-owned session history
+//! match. Verification failures are represented by
+//! [`crate::session_history_identity::SessionHistoryIdentityVerifyError`] and
+//! the corresponding stable exit codes:
+//!
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE)
+//!   is the uncategorized fallback.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ)
+//!   means the metadata file could not be read.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA)
+//!   means the metadata failed shared-contract validation.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH)
+//!   means the declared framework and history source disagree.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH)
+//!   means the metadata does not match the five expected identity fields.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ)
+//!   means the framework-owned history could not be resolved or read.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH)
+//!   means the history size or hash differs from the metadata.
+//! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE)
+//!   means the history exceeds the guest verification budget.
+//!
+//! The runner caller is
+//! `crates/runner/src/executor/agent_run.rs::build_final_identity_verify_command`;
+//! its result consumer is the exit-code mapping in
+//! `read_final_session_history_identity`. Keep those source references in sync
+//! with the linked shared constants when changing this protocol.
+//!
+//! ## `export-session-history-sidecar`
+//!
+//! ### Invocation and streams
+//!
+//! ```text
+//! guest-agent export-session-history-sidecar <metadata-path> <export-path>
+//! ```
+//!
+//! Exactly two positional paths are required. The helper consumes no stdin.
+//! After verifying the identity and source history, it writes the selected
+//! sidecar representation to `export-path` and serializes
+//! [`SessionHistorySidecarExportMetadata`](guest_contracts::session_history_identity::SessionHistorySidecarExportMetadata)
+//! as one JSON value on stdout. The metadata records whether the output is
+//! [`SessionHistorySidecarRepresentation::Raw`](guest_contracts::session_history_identity::SessionHistorySidecarRepresentation::Raw)
+//! or [`SessionHistorySidecarRepresentation::CodexZstd`](guest_contracts::session_history_identity::SessionHistorySidecarRepresentation::CodexZstd)
+//! and records the exact encoded byte length. The runner
+//! supplies the runtime-directory environment when the source history needs
+//! the guest runtime path contract.
+//!
+//! A successful export returns
+//! [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS).
+//! Missing or extra arguments return
+//! [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS).
+//! Verification
+//! failures return the same session-history verification codes documented for
+//! [`crate::session_history_identity::SessionHistoryIdentityVerifyError`]. If
+//! creating or writing `export-path` fails, the helper returns
+//! [`SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE`](guest_contracts::session_history_identity::SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE)
+//! and emits the safe
+//! [`SessionHistorySidecarExportFailure`](guest_contracts::session_history_identity::SessionHistorySidecarExportFailure)
+//! JSON shape on stdout. The failure shape contains only the linked
+//! [`SessionHistorySidecarIoErrorClass`](guest_contracts::session_history_identity::SessionHistorySidecarIoErrorClass).
+//! The helper does not consume stdin or emit a protocol stderr payload. The
+//! write is not transactional, so callers consume the file only after a
+//! successful exit and valid metadata.
+//!
+//! The runner caller and consumer are
+//! `crates/runner/src/workspace_promotion.rs::export_session_history_sidecar`.
+//! That path parses the linked metadata, validates its encoded size, and
+//! cleans up the export when promotion cannot proceed.
+//!
+//! ## `prepare-for-reuse`
+//!
+//! ### Invocation and stdin
+//!
+//! ```text
+//! guest-agent prepare-for-reuse < request.json
+//! ```
+//!
+//! The command accepts no positional arguments. Any argument returns
+//! [`REUSE_PREPARATION_EXIT_INVALID_REQUEST`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_INVALID_REQUEST).
+//! The request is a serialized
+//! [`ReusePreparationRequest`](guest_contracts::reuse_preparation::ReusePreparationRequest) read from
+//! stdin, limited to 64 KiB. Its `currentRuntimeDir` is required and its
+//! `retainedRuntimeDir` is optional; both paths identify runtime directories
+//! that must remain available after cleanup.
+//!
+//! On success, the helper serializes
+//! [`ReusePreparationReport`](guest_contracts::reuse_preparation::ReusePreparationReport) to stdout.
+//! Its `before` and `after` values are
+//! [`RootFilesystemCapacity`](guest_contracts::reuse_preparation::RootFilesystemCapacity) records, and
+//! `removedEntries` reports the number of unprotected direct children removed.
+//! Helper failures are written to stderr and use these stable exit codes:
+//!
+//! - [`REUSE_PREPARATION_EXIT_SUCCESS`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_SUCCESS)
+//!   means a report was emitted.
+//! - [`REUSE_PREPARATION_EXIT_INVALID_REQUEST`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_INVALID_REQUEST)
+//!   means stdin, size, JSON, or protected-path validation failed.
+//! - [`REUSE_PREPARATION_EXIT_INSPECTION_FAILED`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_INSPECTION_FAILED)
+//!   means rootfs capacity could not be inspected.
+//! - [`REUSE_PREPARATION_EXIT_CLEANUP_FAILED`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+//!   means protected state or stale runtime state could not be safely handled.
+//! - [`REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+//!   means the supervised-exec containment invariant could not be proven.
+//!
+//! [`REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED`](guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_WORKSPACE_MOUNT_FAILED)
+//! is reserved for the composed runner workspace-mount wrapper; it is not a
+//! guest-helper failure. Cleanup is not transactional: a later failure can be
+//! returned after earlier stale entries have already been removed.
+//!
+//! The runner constructs the request and command in
+//! `crates/runner/src/idle_reuse_preparation.rs::IdleReusePreparation::new`,
+//! sends the linked request through `exec_request`, and validates the linked
+//! report in `validate_result`.
 
 pub mod active_input;
 mod active_input_receipts;
