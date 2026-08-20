@@ -9,14 +9,14 @@ import { eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 
-interface Vm0ModelRuntimeTarget {
+interface BuiltInModelRuntimeTarget {
   readonly selectedModel: string;
   readonly providerType: ModelProviderType;
   readonly upstreamModel: string;
   readonly vendor: string;
 }
 
-export interface Vm0ModelRuntimeRoute {
+export interface BuiltInModelRuntimeRoute {
   readonly selectedModel: string;
   readonly providerType: ModelProviderType;
   readonly upstreamModel: string;
@@ -29,9 +29,9 @@ export interface ModelRuntimeSessionRoute {
   readonly modelRuntimeModel: string | null;
 }
 
-export function vm0ModelRuntimeTarget(
+export function builtInModelRuntimeTarget(
   selectedModel: string,
-): Vm0ModelRuntimeTarget {
+): BuiltInModelRuntimeTarget {
   return {
     selectedModel,
     providerType: getVm0ConcreteProviderType(selectedModel),
@@ -40,11 +40,11 @@ export function vm0ModelRuntimeTarget(
   };
 }
 
-export async function resolveVm0ModelRuntimeRoute(
+export async function resolveBuiltInModelRuntimeRoute(
   db: Db,
   selectedModel: string,
-): Promise<Vm0ModelRuntimeRoute | null> {
-  const target = vm0ModelRuntimeTarget(selectedModel);
+): Promise<BuiltInModelRuntimeRoute | null> {
+  const target = builtInModelRuntimeTarget(selectedModel);
   const [key] = await db
     .select({ id: builtInModelKeys.id })
     .from(builtInModelKeys)
@@ -60,7 +60,7 @@ export async function resolveVm0ModelRuntimeRoute(
     : null;
 }
 
-export function hasIncompatibleVm0ModelRuntimeRoute(args: {
+export function hasIncompatibleBuiltInModelRuntimeRoute(args: {
   readonly previous: ModelRuntimeSessionRoute;
   readonly next: ModelRuntimeSessionRoute;
 }): boolean {
