@@ -4,7 +4,11 @@ import { Axiom } from "@axiomhq/js";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { startUntrackedBestEffortCleanup } from "../utils";
+import { now } from "../../lib/time";
+import {
+  settleIncludingAbort,
+  startUntrackedBestEffortCleanup,
+} from "../utils";
 import {
   getAxiomTokenEnvNameForApl,
   getAxiomTokenEnvNameForDataset,
@@ -14,6 +18,10 @@ const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
 const AXIOM_INGEST_FAILURE_DETAIL_LIMIT = 3;
 const AXIOM_INGEST_FAILURE_ERROR_MAX_LENGTH = 512;
+const AXIOM_TRANSPORT_ERROR_MESSAGES = {
+  timeout: "Axiom ingest timed out",
+  transport_error: "Axiom ingest transport failed",
+} as const;
 
 const L = logger("api:axiom");
 
@@ -111,10 +119,24 @@ type DirectAxiomIngestErrorOptions =
       readonly failureDetailsReturned: number;
       readonly failureDetails: readonly AxiomIngestFailure[];
       readonly failureDetailsOmitted: number;
+    }
+  | {
+      readonly reason: "timeout" | "transport_error";
+      readonly dataset: string;
+      readonly eventCount: number;
+      readonly requestBytes: number;
+      readonly timeoutMs: number;
+      readonly elapsedMs: number;
+      readonly cause: unknown;
     };
 
 class DirectAxiomIngestError extends Error {
-  readonly reason: "http_status" | "invalid_response" | "partial_ingest";
+  readonly reason:
+    | "http_status"
+    | "invalid_response"
+    | "partial_ingest"
+    | "timeout"
+    | "transport_error";
   readonly dataset: string;
   readonly status?: number;
   readonly expected?: number;
@@ -123,9 +145,18 @@ class DirectAxiomIngestError extends Error {
   readonly failureDetailsReturned?: number;
   readonly failureDetails?: readonly AxiomIngestFailure[];
   readonly failureDetailsOmitted?: number;
+  readonly eventCount?: number;
+  readonly requestBytes?: number;
+  readonly timeoutMs?: number;
+  readonly elapsedMs?: number;
 
   constructor(message: string, options: DirectAxiomIngestErrorOptions) {
-    super(message);
+    super(
+      message,
+      options.reason === "timeout" || options.reason === "transport_error"
+        ? { cause: options.cause }
+        : undefined,
+    );
     this.name = "DirectAxiomIngestError";
     this.reason = options.reason;
     this.dataset = options.dataset;
@@ -139,6 +170,12 @@ class DirectAxiomIngestError extends Error {
       this.failureDetailsReturned = options.failureDetailsReturned;
       this.failureDetails = options.failureDetails;
       this.failureDetailsOmitted = options.failureDetailsOmitted;
+    }
+    if (options.reason === "timeout" || options.reason === "transport_error") {
+      this.eventCount = options.eventCount;
+      this.requestBytes = options.requestBytes;
+      this.timeoutMs = options.timeoutMs;
+      this.elapsedMs = options.elapsedMs;
     }
   }
 }
@@ -190,6 +227,7 @@ function axiomIngestUrl(dataset: string): string {
 export async function ingestAxiomDirect(
   dataset: string,
   events: readonly Record<string, unknown>[],
+  timeoutMs: number,
   signal: AbortSignal,
 ): Promise<DirectAxiomIngestResult> {
   const tokenEnvName = getAxiomTokenEnvNameForDataset(dataset);
@@ -198,17 +236,50 @@ export async function ingestAxiomDirect(
     return { configured: false };
   }
 
-  const response = await fetch(axiomIngestUrl(dataset), {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(events),
-    signal,
-  });
+  const body = JSON.stringify(events);
+  const requestBytes = Buffer.byteLength(body, "utf8");
+  const startedAt = now();
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const requestSignal = AbortSignal.any([signal, timeoutSignal]);
+  const fetchResult = await settleIncludingAbort(
+    fetch(axiomIngestUrl(dataset), {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body,
+      signal: requestSignal,
+    }),
+  );
+  if (!fetchResult.ok) {
+    if (
+      signal.aborted &&
+      requestSignal.aborted &&
+      requestSignal.reason === signal.reason
+    ) {
+      throw fetchResult.error;
+    }
+
+    const reason =
+      timeoutSignal.aborted &&
+      requestSignal.aborted &&
+      requestSignal.reason === timeoutSignal.reason
+        ? "timeout"
+        : "transport_error";
+    throw new DirectAxiomIngestError(AXIOM_TRANSPORT_ERROR_MESSAGES[reason], {
+      reason,
+      dataset,
+      eventCount: events.length,
+      requestBytes,
+      timeoutMs,
+      elapsedMs: Math.max(0, now() - startedAt),
+      cause: fetchResult.error,
+    });
+  }
+  const response = fetchResult.value;
 
   if (!response.ok) {
     if (response.body) {
