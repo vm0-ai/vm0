@@ -62,18 +62,24 @@ fn send_rights(stream: &UnixStream, marker: u8, descriptors: &[RawFd]) -> io::Re
         );
     }
 
-    // SAFETY: message references live payload, iovec, and ancillary storage.
-    let sent = unsafe { libc::sendmsg(stream.as_raw_fd(), &message, libc::MSG_NOSIGNAL) };
-    if sent == 1 {
-        return Ok(());
+    loop {
+        // SAFETY: message references live payload, iovec, and ancillary storage.
+        let sent = unsafe { libc::sendmsg(stream.as_raw_fd(), &message, libc::MSG_NOSIGNAL) };
+        if sent == 1 {
+            return Ok(());
+        }
+        if sent < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::WriteZero,
+            "workload placement marker was not sent",
+        ));
     }
-    if sent < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Err(io::Error::new(
-        io::ErrorKind::WriteZero,
-        "workload placement marker was not sent",
-    ))
 }
 
 #[cfg(target_env = "musl")]
