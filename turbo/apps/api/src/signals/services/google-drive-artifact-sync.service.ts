@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { command, computed, type Computed } from "ccstate";
+import { command, computed, type Command, type Computed } from "ccstate";
 import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
@@ -23,7 +23,7 @@ import { ZipArchive } from "archiver";
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { isArtifactKeyV2 } from "../../lib/file-url";
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { downloadHostedSitesS3Buffer, downloadS3Buffer } from "../external/s3";
 import {
   createDeferredPromise,
@@ -83,6 +83,11 @@ interface ConnectorTokens {
   readonly connection: ConnectorCredentialConnection;
   readonly needsReconnect: boolean;
 }
+
+type DriveRefreshResult =
+  | { readonly type: "ok"; readonly accessToken: string }
+  | { readonly type: "reconnect-required" }
+  | { readonly type: "unavailable" };
 
 function artifactKey(runId: string, fileId: string): string {
   return `${runId}:${fileId}`;
@@ -171,9 +176,10 @@ async function refreshDriveAccessToken(
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly orgId: string;
     readonly userId: string;
+    readonly writeDb?: Db;
   },
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<DriveRefreshResult> {
   const refreshed = await refreshConnectorCredentialAccess(
     {
       connection: args.connection,
@@ -182,10 +188,16 @@ async function refreshDriveAccessToken(
       orgId: args.orgId,
       userId: args.userId,
       runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
+      ...(args.writeDb === undefined ? {} : { persist: { db: args.writeDb } }),
     },
     signal,
   );
-  return refreshed.kind === "ok" ? refreshed.accessToken : null;
+  if (refreshed.kind === "ok") {
+    return { type: "ok", accessToken: refreshed.accessToken };
+  }
+  return refreshed.kind === "reconnect-required"
+    ? { type: "reconnect-required" }
+    : { type: "unavailable" };
 }
 
 type DriveListResult =
@@ -235,9 +247,12 @@ async function listArtifactFilesWithRefresh(
     readonly tokens: ConnectorTokens;
     readonly threadId: string;
     readonly userId: string;
+    readonly writeDb: Db;
   },
   signal: AbortSignal,
-): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
+): Promise<
+  z.infer<typeof driveFileSchema>[] | "reconnect-required" | "unauthorized"
+> {
   const first = await listArtifactFiles(
     {
       accessToken: args.tokens.accessToken,
@@ -248,22 +263,26 @@ async function listArtifactFilesWithRefresh(
   if (first.type === "ok") {
     return first.files;
   }
-  const refreshedAccessToken = await refreshDriveAccessToken(
+  const refreshed = await refreshDriveAccessToken(
     {
       connection: args.tokens.connection,
       db: args.db,
       featureSwitchContext: args.featureSwitchContext,
       orgId: args.orgId,
       userId: args.userId,
+      writeDb: args.writeDb,
     },
     signal,
   );
-  if (!refreshedAccessToken) {
+  if (refreshed.type === "reconnect-required") {
+    return "reconnect-required";
+  }
+  if (refreshed.type === "unavailable") {
     return "unauthorized";
   }
   const second = await listArtifactFiles(
     {
-      accessToken: refreshedAccessToken,
+      accessToken: refreshed.accessToken,
       threadId: args.threadId,
     },
     signal,
@@ -332,41 +351,41 @@ export function applyGoogleDriveArtifactSyncStatuses(
 /**
  * Compute the Drive sync status lookup for a chat thread's artifacts.
  *
- * Token persistence is intentionally deferred. The selected runtime method is
- * still rechecked through the provider registry, but a successful refresh is
- * used only for this retry and is not written back to connector storage. This
- * keeps the route handler a read-only `computed`. Drive status check is a UI
- * poll, not a hot path; refresh tokens don't rotate (Google), so the cost is
- * one extra RTT per stale-token request.
- * Track in epic #12290 follow-up if telemetry shows this matters.
+ * The lookup persists a successful refresh so later polls use the current
+ * access token. A terminal OAuth failure persists reconnect state for the
+ * exact credential revision and immediately projects as disconnected.
  */
 export function googleDriveArtifactStatusLookup(args: {
   readonly threadId: string;
   readonly orgId: string | undefined;
   readonly userId: string;
-}): Computed<Promise<DriveStatusLookup>> {
-  return computed(async (get): Promise<DriveStatusLookup> => {
+}): Command<Promise<DriveStatusLookup>, [AbortSignal]> {
+  return command(async ({ get, set }, signal): Promise<DriveStatusLookup> => {
     if (!args.orgId) {
       return { type: "disconnected" };
     }
     const db = get(db$);
+    const writeDb = set(writeDb$);
     const authorized = await threadAllowsGoogleDriveArtifactSync(db, {
       orgId: args.orgId,
       userId: args.userId,
       threadId: args.threadId,
     });
+    signal.throwIfAborted();
     if (!authorized) {
       return { type: "disconnected" };
     }
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
+    signal.throwIfAborted();
     const featureSwitchContext = {
       orgId: args.orgId,
       userId: args.userId,
       overrides: featureSwitchOverrides,
     };
     const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const tokens = await loadDriveTokens(
       db,
       args.orgId,
@@ -374,13 +393,17 @@ export function googleDriveArtifactStatusLookup(args: {
       featureSwitchContext,
       snapshot,
     );
+    signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
     }
     // Schema-parse failure or transient network error — treat as "unknown"
-    // rather than failing the whole artifacts response. AbortError from the
-    // 2s timeout intentionally propagates under the project-wide ban on
-    // swallowing aborts.
+    // rather than failing the whole artifacts response. Request aborts still
+    // propagate; the status deadline remains an unknown provider outcome.
+    const providerSignal = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+    ]);
     const files = await tapError(
       listArtifactFilesWithRefresh(
         {
@@ -390,15 +413,20 @@ export function googleDriveArtifactStatusLookup(args: {
           tokens,
           threadId: args.threadId,
           userId: args.userId,
+          writeDb,
         },
-        AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+        providerSignal,
       ),
     );
+    signal.throwIfAborted();
     if (files === undefined) {
       return { type: "unknown" };
     }
     if (files === "unauthorized") {
       return { type: "unknown" };
+    }
+    if (files === "reconnect-required") {
+      return { type: "disconnected" };
     }
     return { type: "ready", syncedByKey: buildStatusMap(files) };
   });
@@ -1135,9 +1163,9 @@ export const syncArtifactToGoogleDrive$ = command(
         signal,
       );
       signal.throwIfAborted();
-      if (refreshed) {
+      if (refreshed.type === "ok") {
         result = await uploadArtifactWithToken({
-          accessToken: refreshed,
+          accessToken: refreshed.accessToken,
           publicBrand: args.publicBrand,
           threadId: args.threadId,
           runId: args.runId,

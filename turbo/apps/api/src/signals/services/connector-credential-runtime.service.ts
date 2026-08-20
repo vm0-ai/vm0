@@ -1,5 +1,7 @@
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
 import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@okouai/connectors/auth-providers";
+import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
 import { resolveConnectorAuthClient } from "@okouai/connectors/connector-auth-method";
 import { connectors } from "@okouai/db/schema/connector";
 import { secrets } from "@okouai/db/schema/secret";
@@ -77,7 +79,8 @@ type ConnectorCredentialRefreshResult =
         | "invalid-output"
         | "missing-input"
         | "not-refreshable"
-        | "provider-failed";
+        | "provider-failed"
+        | "reconnect-required";
     };
 
 interface ConnectorCredentialRefreshArgs {
@@ -98,6 +101,10 @@ type ConnectorRefreshTokenAccess = Extract<
   ConnectorRuntimeMethod["method"]["access"],
   { readonly kind: "refresh-token" }
 >;
+
+interface TerminalOAuthRefreshFailure {
+  readonly reconnectReason: ConnectorReconnectReason | null;
+}
 
 function parseOauthScopes(value: string | null): readonly string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
@@ -454,20 +461,25 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(
     readonly connection: ConnectorCredentialConnection;
     readonly db: Db;
     readonly orgId: string;
+    readonly reconnectReason: ConnectorReconnectReason | null;
     readonly userId: string;
   },
   signal: AbortSignal,
-): Promise<void> {
-  await args.db.transaction(async (tx) => {
+): Promise<boolean> {
+  const updated = await args.db.transaction(async (tx) => {
     await lockConnectorState(tx, {
       orgId: args.orgId,
       userId: args.userId,
       connectorSlug: args.connection.connectorSlug,
     });
     signal.throwIfAborted();
-    await tx
+    const [row] = await tx
       .update(connectors)
-      .set({ needsReconnect: true, updatedAt: sql`clock_timestamp()` })
+      .set({
+        needsReconnect: true,
+        reconnectReason: args.reconnectReason,
+        updatedAt: sql`clock_timestamp()`,
+      })
       .where(
         and(
           eq(connectors.id, args.connection.connectorId),
@@ -477,9 +489,57 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(
           eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
           eq(sql`${connectors.updatedAt}::text`, args.connection.stateRevision),
         ),
-      );
+      )
+      .returning({ id: connectors.id });
+    return row !== undefined;
   });
   signal.throwIfAborted();
+  return updated;
+}
+
+function terminalOAuthRefreshFailure(
+  error: unknown,
+): TerminalOAuthRefreshFailure | null {
+  if (
+    !isOAuthProviderHttpError(error) ||
+    error.oauthError !== "invalid_grant"
+  ) {
+    return null;
+  }
+  if (error.oauthErrorSubtype === "invalid_rapt") {
+    return { reconnectReason: "provider_session_expired" };
+  }
+  return {
+    reconnectReason: error.oauthErrorSubtype
+      ? null
+      : "authorization_expired_or_revoked",
+  };
+}
+
+async function terminalConnectorCredentialRefreshFailure(
+  args: ConnectorCredentialRefreshArgs,
+  error: unknown,
+  signal: AbortSignal,
+): Promise<ConnectorCredentialRefreshResult | null> {
+  const terminalFailure = terminalOAuthRefreshFailure(error);
+  if (terminalFailure === null) {
+    return null;
+  }
+  if (!args.persist) {
+    return { kind: "reconnect-required" };
+  }
+  const updated =
+    await markConnectorCredentialNeedsReconnectAfterRefreshFailure(
+      {
+        connection: args.connection,
+        db: args.persist.db,
+        orgId: args.orgId,
+        reconnectReason: terminalFailure.reconnectReason,
+        userId: args.userId,
+      },
+      signal,
+    );
+  return { kind: updated ? "reconnect-required" : "connection-changed" };
 }
 
 async function connectorCredentialRefreshFailure(
@@ -493,6 +553,7 @@ async function connectorCredentialRefreshFailure(
         connection: args.connection,
         db: args.persist.db,
         orgId: args.orgId,
+        reconnectReason: null,
         userId: args.userId,
       },
       signal,
@@ -600,6 +661,14 @@ export async function refreshConnectorCredentialAccess(
       authMethodId: args.connection.runtimeMethod.authMethodId,
       error: refreshed.error,
     });
+    const terminalFailure = await terminalConnectorCredentialRefreshFailure(
+      args,
+      refreshed.error,
+      signal,
+    );
+    if (terminalFailure !== null) {
+      return terminalFailure;
+    }
     return await connectorCredentialRefreshFailure(
       args,
       "provider-failed",
