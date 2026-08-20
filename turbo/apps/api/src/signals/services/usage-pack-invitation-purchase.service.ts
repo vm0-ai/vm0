@@ -190,6 +190,11 @@ interface PrepareUsagePackInvitationPurchaseArgs {
   readonly usagePackUsd: UsagePackUsd;
 }
 
+interface NewUsagePackInvitationPurchaseInput {
+  readonly email: string;
+  readonly stripePriceId: string;
+}
+
 type PrepareUsagePackInvitationPurchaseResult =
   | {
       readonly status: "ready";
@@ -516,10 +521,10 @@ async function prepareNewUsagePackInvitationPurchase(
   db: Db,
   subscription: UsagePackSubscriptionRow,
   args: PrepareUsagePackInvitationPurchaseArgs,
-  email: string,
-  stripePriceId: string,
+  input: NewUsagePackInvitationPurchaseInput,
   signal: AbortSignal,
 ): Promise<PrepareUsagePackInvitationPurchaseResult> {
+  const { email, stripePriceId } = input;
   const catalog = await loadUsagePackCatalog();
   const catalogItem = catalog.find((item) => {
     return item.usagePackUsd === args.usagePackUsd;
@@ -679,8 +684,7 @@ async function prepareUsagePackInvitationPurchase(
     db,
     subscription,
     args,
-    email,
-    stripePriceId,
+    { email, stripePriceId },
     signal,
   );
 }
