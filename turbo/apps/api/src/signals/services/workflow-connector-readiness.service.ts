@@ -3,6 +3,7 @@ import type {
   WorkflowConnectorReadinessResponse,
   WorkflowConnectorReadinessStatus,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -42,6 +43,7 @@ interface DetectWorkflowConnectorReadinessArgs {
   readonly workflowId: string;
   readonly workflow: WorkflowConnectorReadinessInput;
   readonly featureStates: FeatureStates;
+  readonly publicBrand: PublicBrand;
 }
 
 type DetectWorkflowConnectorReadinessResult =
@@ -308,6 +310,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       featureStates: args.featureStates,
       connectors: connectorState.connectors,
       referenceConnectorSlugs: [...automationDependencies.keys()],
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
     const statusCatalog = catalogRead.status;

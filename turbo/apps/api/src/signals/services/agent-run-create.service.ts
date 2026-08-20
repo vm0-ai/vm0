@@ -93,6 +93,7 @@ import {
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@okouai/core/github-url";
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
@@ -6211,6 +6212,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly includeZeroTokenSecret: boolean | undefined;
+  readonly zeroTokenPublicBrand: PublicBrand | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
@@ -6240,7 +6242,7 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
-    CLI_PKG_URL: env("CLI_PKG_URL"),
+    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.zeroTokenPublicBrand),
     [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
     ),
@@ -6580,6 +6582,12 @@ function billableFirewallsForPermissions(args: {
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
+}
+
+function cliPackageUrlForPublicBrand(
+  publicBrand: PublicBrand | undefined,
+): string {
+  return staticUrlForPublicBrand(env("CLI_PKG_URL"), publicBrand ?? "vm0");
 }
 
 function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {

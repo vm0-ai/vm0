@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getActiveOrg, getActiveToken, getApiUrl, getToken } from "../config";
+import {
+  getActiveOrg,
+  getActiveToken,
+  getApiUrl,
+  getCliPublicBrand,
+  getToken,
+} from "../config";
 
 function buildFakeZeroJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(
@@ -9,6 +15,24 @@ function buildFakeZeroJwt(payload: Record<string, unknown>): string {
   const signature = Buffer.from("fake-signature").toString("base64url");
   return `vm0_sandbox_${header}.${body}.${signature}`;
 }
+
+const STANDALONE_BRAND_CASES = [
+  { apiUrl: "https://api.vm0.ai", expectedBrand: "vm0" },
+  { apiUrl: "https://api.okou.ai", expectedBrand: "okou" },
+  { apiUrl: "http://localhost:3000", expectedBrand: "okou" },
+] satisfies readonly {
+  readonly apiUrl: string;
+  readonly expectedBrand: "vm0" | "okou";
+}[];
+
+const RUN_BRAND_CASES = [
+  { publicBrand: undefined, expectedBrand: "vm0" },
+  { publicBrand: "vm0", expectedBrand: "vm0" },
+  { publicBrand: "okou", expectedBrand: "okou" },
+] satisfies readonly {
+  readonly publicBrand: "vm0" | "okou" | undefined;
+  readonly expectedBrand: "vm0" | "okou";
+}[];
 
 describe("Okou configuration", () => {
   afterEach(() => {
@@ -110,4 +134,32 @@ describe("Okou configuration", () => {
   it("defaults routing to the production API", async () => {
     await expect(getApiUrl()).resolves.toBe("https://api.okou.ai");
   });
+
+  it.each(STANDALONE_BRAND_CASES)(
+    "derives the standalone public brand from $apiUrl",
+    ({ apiUrl, expectedBrand }) => {
+      vi.stubEnv("OKOU_TOKEN", undefined);
+      vi.stubEnv("OKOU_API_BACKEND_URL", apiUrl);
+
+      expect(getCliPublicBrand()).toBe(expectedBrand);
+    },
+  );
+
+  it.each(RUN_BRAND_CASES)(
+    "uses run publicBrand $publicBrand with the legacy VM0 fallback",
+    ({ publicBrand, expectedBrand }) => {
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildFakeZeroJwt({
+          scope: "okou",
+          orgId: "org-run-brand",
+          capabilities: [],
+          ...(publicBrand === undefined ? {} : { publicBrand }),
+        }),
+      );
+      vi.stubEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+
+      expect(getCliPublicBrand()).toBe(expectedBrand);
+    },
+  );
 });

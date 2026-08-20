@@ -13832,27 +13832,40 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     }
   });
 
-  it("uses the commit-addressed R2 Okou CLI distribution", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const r2Run = await api.createRun(actor, {
-      agentId,
-      prompt: "use the default Okou CLI",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const r2Claim = await api.claimRunnerJob(r2Run.runId);
-    expect(r2Claim.appendSystemPrompt ?? "").toContain(
-      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
-    );
-    expect(r2Claim.environment?.CLI_PKG_URL).toBe(
-      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-    );
-    expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-      "previous",
-    );
-    await api.requestCancelRun(actor, r2Run.runId, [200]);
-  });
+  it.each([
+    { publicBrand: "vm0", staticDomain: "static.vm0.io" },
+    { publicBrand: "okou", staticDomain: "static.okou.io" },
+  ] satisfies readonly {
+    readonly publicBrand: PublicBrand;
+    readonly staticDomain: string;
+  }[])(
+    "uses the $publicBrand commit-addressed Okou CLI distribution",
+    async ({ publicBrand, staticDomain }) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const r2Run = await api.createRun(
+        actor,
+        {
+          agentId,
+          prompt: "use the default Okou CLI",
+          modelProvider: "anthropic-api-key",
+        },
+        publicBrand,
+      );
+      await api.heartbeatRunner(runnerGroup);
+      const r2Claim = await api.claimRunnerJob(r2Run.runId);
+      expect(r2Claim.appendSystemPrompt ?? "").toContain(
+        `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
+      );
+      expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+        `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
+      );
+      expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+        "previous",
+      );
+      await api.requestCancelRun(actor, r2Run.runId, [200]);
+    },
+  );
 
   it("pins the latest Website template release into opted-in run contexts", async () => {
     const api = createRunsApi(context);

@@ -112,6 +112,8 @@ async function loadRuntimeSurfaces() {
     plausible,
     posthog,
     sentry,
+    staticAssets,
+    templateItems,
   ] = await Promise.all([
     import("../signals/api-base.ts"),
     import("../signals/auth.ts"),
@@ -121,6 +123,8 @@ async function loadRuntimeSurfaces() {
     import("../lib/plausible.ts"),
     import("../lib/posthog.ts"),
     import("../lib/sentry.ts"),
+    import("../lib/static-assets.ts"),
+    import("../lib/platform-template-items.ts"),
   ]);
 
   return {
@@ -132,6 +136,8 @@ async function loadRuntimeSurfaces() {
     plausible,
     posthog,
     sentry,
+    staticAssets,
+    templateItems,
   };
 }
 
@@ -166,10 +172,20 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
+    expect(runtime.staticAssets.platformStaticAssetUrl("icon.svg")).toBe(
+      "https://static.okou.io/platform/icon.svg",
+    );
+    expect(JSON.stringify(runtime.templateItems)).toContain(
+      "https://static.okou.io",
+    );
+    expect(JSON.stringify(runtime.templateItems)).not.toContain(
+      "https://static.vm0.io",
+    );
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
     plausibleController.abort();
@@ -201,7 +217,17 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       publicBrand: "vm0",
+      publicStaticAssetsBaseUrl: "https://static.vm0.io",
     });
+    expect(runtime.staticAssets.platformStaticAssetUrl("icon.svg")).toBe(
+      "https://static.vm0.io/platform/icon.svg",
+    );
+    expect(JSON.stringify(runtime.templateItems)).toContain(
+      "https://static.vm0.io",
+    );
+    expect(JSON.stringify(runtime.templateItems)).not.toContain(
+      "https://static.okou.io",
+    );
   });
 
   it.each([
@@ -312,9 +338,13 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
       publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
       clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });
+    expect(runtime.staticAssets.platformStaticAssetUrl("icon.svg")).toBe(
+      "https://static.okou.io/platform/icon.svg",
+    );
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",

@@ -10,8 +10,6 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const APP_IMAGE = "https://static.vm0.io/web/og-image.png";
-const SHARED_IMAGE = APP_IMAGE;
 
 const VM0_APP_METADATA = {
   brandName: "VM0",
@@ -20,6 +18,7 @@ const VM0_APP_METADATA = {
     "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
   documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
   openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
+  staticAssetsOrigin: "https://static.vm0.io",
   twitterDescription:
     "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
 };
@@ -32,6 +31,7 @@ const OKOU_APP_METADATA = {
   documentTitle:
     "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
   openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+  staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
 };
@@ -86,6 +86,45 @@ function removeElement() {
   };
 }
 
+function staticAssetUrl(metadata, path) {
+  return `${metadata.staticAssetsOrigin}/${path.replace(/^\/+/u, "")}`;
+}
+
+function rewriteStaticAssetAttribute(attributeName, staticAssetsOrigin) {
+  return {
+    element(element) {
+      const value = element.getAttribute(attributeName);
+      if (value === null) {
+        return;
+      }
+      const rewritten = value.replace(
+        /^https:\/\/static\.(?:vm0|okou)\.io(?=\/|$)/u,
+        staticAssetsOrigin,
+      );
+      if (rewritten !== value) {
+        element.setAttribute(attributeName, rewritten);
+      }
+    },
+  };
+}
+
+function addStaticAssetHandlers(rewriter, metadata) {
+  rewriter
+    .on(
+      'link[rel="icon"]',
+      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
+    )
+    .on(
+      'link[rel="preconnect"]',
+      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
+    )
+    .on(
+      'link[rel="apple-touch-icon"]',
+      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
+    )
+    .on("img", rewriteStaticAssetAttribute("src", metadata.staticAssetsOrigin));
+}
+
 function htmlResponse(indexHtml, assetResponse, status, cacheControl) {
   const headers = new Headers(assetResponse.headers);
   headers.delete("Content-Encoding");
@@ -128,7 +167,10 @@ function rewriteAppPage(response, metadata, productionApiOrigin) {
     .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
     .on('meta[property="og:title"]', setMetaContent(metadata.openGraphTitle))
     .on('meta[property="og:description"]', setMetaContent(metadata.description))
-    .on('meta[property="og:image"]', setMetaContent(APP_IMAGE))
+    .on(
+      'meta[property="og:image"]',
+      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+    )
     .on(
       'meta[property="og:image:alt"]',
       setMetaContent(metadata.openGraphTitle),
@@ -141,7 +183,10 @@ function rewriteAppPage(response, metadata, productionApiOrigin) {
       'meta[name="twitter:description"]',
       setMetaContent(metadata.twitterDescription),
     )
-    .on('meta[name="twitter:image"]', setMetaContent(APP_IMAGE))
+    .on(
+      'meta[name="twitter:image"]',
+      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+    )
     .on("head", {
       element(element) {
         element.append('<meta name="robots" content="noindex, nofollow" />', {
@@ -157,6 +202,7 @@ function rewriteAppPage(response, metadata, productionApiOrigin) {
         );
       },
     });
+  addStaticAssetHandlers(rewriter, metadata);
   if (productionApiOrigin) {
     rewriter.on(
       'meta[name="vm0-api-origin"]',
@@ -187,7 +233,7 @@ async function rewriteManifest(response, metadata) {
 
 function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
   const sharedDescription = `A conversation shared from ${metadata.brandName}`;
-  return new HTMLRewriter()
+  const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
@@ -205,11 +251,17 @@ function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
     .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
     .on('meta[property="og:title"]', setMetaContent(title))
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
-    .on('meta[property="og:image"]', setMetaContent(SHARED_IMAGE))
+    .on(
+      'meta[property="og:image"]',
+      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+    )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
-    .on('meta[name="twitter:image"]', setMetaContent(SHARED_IMAGE))
+    .on(
+      'meta[name="twitter:image"]',
+      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+    )
     .on("head", {
       element(element) {
         element.append('<meta name="robots" content="noindex, nofollow" />', {
@@ -219,12 +271,13 @@ function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
           html: true,
         });
       },
-    })
-    .transform(response);
+    });
+  addStaticAssetHandlers(rewriter, metadata);
+  return rewriter.transform(response);
 }
 
 function rewriteNotFound(response, metadata, apiOrigin) {
-  return new HTMLRewriter()
+  const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
@@ -247,8 +300,9 @@ function rewriteNotFound(response, metadata, apiOrigin) {
           html: true,
         });
       },
-    })
-    .transform(response);
+    });
+  addStaticAssetHandlers(rewriter, metadata);
+  return rewriter.transform(response);
 }
 
 function gatewayResponse(status) {

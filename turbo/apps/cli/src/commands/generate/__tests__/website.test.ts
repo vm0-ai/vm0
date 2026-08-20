@@ -14,6 +14,35 @@ import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-regi
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
+function buildRunToken(publicBrand?: "vm0" | "okou"): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const body = Buffer.from(
+    JSON.stringify({
+      userId: "user_test",
+      runId: "run_test",
+      orgId: "org_test",
+      scope: "okou",
+      capabilities: [],
+      ...(publicBrand === undefined ? {} : { publicBrand }),
+      iat: 1,
+      exp: 2,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${body}.test-signature`;
+}
+
+const RUN_BRAND_CASES = [
+  { label: "legacy VM0", publicBrand: undefined, domain: "static.vm0.io" },
+  { label: "VM0", publicBrand: "vm0", domain: "static.vm0.io" },
+  { label: "Okou", publicBrand: "okou", domain: "static.okou.io" },
+] satisfies readonly {
+  readonly label: string;
+  readonly publicBrand: "vm0" | "okou" | undefined;
+  readonly domain: string;
+}[];
+
 describe("okou generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -25,6 +54,7 @@ describe("okou generate website command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    vi.stubEnv("OKOU_TOKEN", undefined);
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   });
 
@@ -53,7 +83,7 @@ describe("okou generate website command", () => {
     expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
+      "https://static.okou.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
@@ -94,6 +124,24 @@ describe("okou generate website command", () => {
     );
   });
 
+  it.each(RUN_BRAND_CASES)(
+    "uses the $label run brand for resource URLs",
+    async (testCase) => {
+      vi.stubEnv("OKOU_TOKEN", buildRunToken(testCase.publicBrand));
+
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "website",
+        "--prompt",
+        "brand-aware site",
+      ]);
+
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(stdout).toContain(`https://${testCase.domain}/html-resources/`);
+    },
+  );
+
   it("should expose the latest independent registry inside the rollout", async () => {
     vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
 
@@ -107,7 +155,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+      "https://static.okou.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
     );
     expect(stdout).toContain("Built-in Website template release: latest");
     expect(stdout).toContain(
