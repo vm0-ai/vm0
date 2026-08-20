@@ -42,6 +42,7 @@ import {
   type RouteEntry,
   withApiNamespaceAliases,
   withFinalProviderConsolePaths,
+  withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
@@ -645,10 +646,18 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
+  // Console paths first, then the namespace expansion, then the branded paths
+  // migrated routes owe: each stage consumes the declared path, so the last one
+  // produces finished registrations rather than input to another derivation.
+  // Uniqueness over this composition is asserted against the production route
+  // table in `__tests__/migrated-branded-paths.test.ts`, not here — test apps
+  // deliberately compose overlapping route slices.
+  const registeredRoutes = withMigratedBrandedPaths(
+    withApiNamespaceAliases(withFinalProviderConsolePaths(routes)),
+  );
+
   const reportNamespaceAliasFallback = createNamespaceAliasFallbackReporter();
-  for (const entry of withApiNamespaceAliases(
-    withFinalProviderConsolePaths(routes),
-  )) {
+  for (const entry of registeredRoutes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(
       entry.handler,
