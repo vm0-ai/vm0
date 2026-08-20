@@ -577,12 +577,12 @@ describe("bootstrap locale", () => {
         return $.onboarding.workflows["watch-brand-mentions"].steps.three
           .description;
       }),
-    ).toBe("Zero veröffentlicht jede Erwähnung mit Link und Kontext.");
+    ).toBe("Zero speichert den Plan und veröffentlicht nie ohne Genehmigung.");
     expect(
       i18n.t(($) => {
         return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
       }),
-    ).toBe("Zero prüft und wartet auf CI");
+    ).toBe("Zero überprüft die Änderungen.");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
