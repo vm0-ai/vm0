@@ -192,6 +192,22 @@ export async function readUsagePackInvitationSchemaAvailable(
   return response.usage_pack_invitation_schema_available;
 }
 
+export async function readUsagePackPurchaseSerializationSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-usage-pack-purchase-serialization-schema-state",
+  });
+  if (
+    response.usage_pack_purchase_serialization_schema_available === undefined
+  ) {
+    throw new Error(
+      "readUsagePackPurchaseSerializationSchemaAvailable missing schema availability",
+    );
+  }
+  return response.usage_pack_purchase_serialization_schema_available;
+}
+
 export async function setCustomConnectorAuthTemplateFixture(
   context: TestContext,
   args: {

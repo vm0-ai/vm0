@@ -59,6 +59,9 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-usage-pack-invitation-schema-state"),
   }),
   z.object({
+    action: z.literal("read-usage-pack-purchase-serialization-schema-state"),
+  }),
+  z.object({
     action: z.literal("set-run-autonomy-budget"),
     run_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
@@ -239,6 +242,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
+  usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({

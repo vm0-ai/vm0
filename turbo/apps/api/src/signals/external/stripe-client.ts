@@ -23,6 +23,7 @@ export interface StripeProduct {
   readonly id: string;
   readonly name: string;
   readonly metadata: Record<string, string>;
+  readonly tax_code?: StripeRef;
 }
 
 export interface StripeDeletedProduct {
@@ -46,6 +47,7 @@ export interface StripePrice {
   readonly unit_amount: number | null;
   readonly metadata?: Record<string, string> | null;
   readonly recurring: StripePriceRecurring | null;
+  readonly tax_behavior?: "exclusive" | "inclusive" | "unspecified" | null;
   readonly product: StripeProductRef;
 }
 
@@ -286,6 +288,9 @@ export interface StripeInvoiceLine {
     | readonly {
         readonly amount: number;
         readonly tax_behavior: "exclusive" | "inclusive";
+        readonly tax_rate_details?: {
+          readonly tax_rate: string;
+        } | null;
       }[]
     | null;
   readonly period: { readonly start: number; readonly end: number };
@@ -311,6 +316,13 @@ export interface StripeInvoice {
   readonly hosted_invoice_url?: string | null;
   readonly customer: StripeRef;
   readonly metadata: Record<string, string> | null;
+  readonly automatic_tax?: {
+    readonly enabled: boolean;
+    readonly liability: {
+      readonly type: "account" | "self";
+      readonly account?: StripeRef;
+    } | null;
+  } | null;
   readonly amount_due: number;
   readonly currency: string;
   readonly status: "draft" | "open" | "paid" | "uncollectible" | "void" | null;
@@ -501,6 +513,7 @@ export interface StripeInvoicesApi {
     params: {
       customer: string;
       auto_advance?: boolean;
+      automatic_tax?: StripeInvoiceAutomaticTaxParam;
       default_payment_method?: string;
       default_source?: string;
       discounts?: "" | { readonly coupon: string }[];
@@ -586,12 +599,25 @@ export interface StripeInvoiceItemsApi {
       amount?: number;
       currency?: string;
       description?: string;
+      discountable?: boolean;
       metadata?: StripeMetadataParam;
+      period?: { readonly start: number; readonly end: number };
       pricing?: { readonly price: string };
       quantity?: number;
+      subscription?: string;
+      tax_behavior?: "exclusive" | "inclusive" | "unspecified";
+      tax_code?: string;
+      tax_rates?: string[];
     },
     options?: StripeRequestOptions,
   ): Promise<{ readonly id: string }>;
+}
+
+export interface StripeInvoiceAutomaticTaxParam {
+  readonly enabled: true;
+  readonly liability?:
+    | { readonly type: "self" }
+    | { readonly type: "account"; readonly account: string };
 }
 
 export interface StripeCheckoutSessionCreateParams {
