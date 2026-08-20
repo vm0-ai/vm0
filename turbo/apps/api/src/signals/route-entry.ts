@@ -262,7 +262,35 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // Empty until the first #28278 migration slice moves a contract path.
+  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
+  // the URL by hand rather than from the contract, so the path it holds shipped
+  // independently of this table — and the `zero` form was reachable through the
+  // blanket expansion until the contract moved. Both are owed.
+  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
+  "/api/maps/reverse-geocode": [
+    "/api/okou/maps/reverse-geocode",
+    "/api/zero/maps/reverse-geocode",
+  ],
+  "/api/maps/directions": [
+    "/api/okou/maps/directions",
+    "/api/zero/maps/directions",
+  ],
+  "/api/maps/places/search": [
+    "/api/okou/maps/places/search",
+    "/api/zero/maps/places/search",
+  ],
+  "/api/maps/places/details": [
+    "/api/okou/maps/places/details",
+    "/api/zero/maps/places/details",
+  ],
+  "/api/maps/osm/download": [
+    "/api/okou/maps/osm/download",
+    "/api/zero/maps/osm/download",
+  ],
+  "/api/maps/osm/render": [
+    "/api/okou/maps/osm/render",
+    "/api/zero/maps/osm/render",
+  ],
 };
 
 /**
