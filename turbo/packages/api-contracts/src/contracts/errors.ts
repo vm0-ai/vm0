@@ -170,6 +170,9 @@ const CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE =
 const CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE =
   "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.";
 
+const CLAUDE_CODE_TERMS_ACCEPTANCE_REQUIRED_MESSAGE =
+  "Claude Code requires acceptance of updated Consumer Terms and Privacy Policy. Sign in to https://claude.ai with the Claude account connected in Model Providers, accept the updated terms and policy, then retry.";
+
 const CLAUDE_PROVIDER_OVERLOADED_FALLBACK_MODEL = "Claude Model";
 const CLAUDE_PROVIDER_OVERLOADED_GUIDANCE =
   "is overloaded. Please wait a few minutes and try again, or switch to another model.";
@@ -230,6 +233,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CLAUDE_CODE_SUBSCRIPTION_RECONNECT_REQUIRED_MESSAGE,
   CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE,
   CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE,
+  CLAUDE_CODE_TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
 ] as const;
 
 type ClaudeCodeCredentialRecovery = {
@@ -448,10 +452,24 @@ export function isClaudeCodeAuthenticationCredentialsError(
   );
 }
 
+function isClaudeCodeTermsAcceptanceRequiredError(
+  errorMessage: string,
+): boolean {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    /api error:[\s:.-]*400(?![a-z0-9_-])/u.test(normalized) &&
+    normalized.includes("consumer terms") &&
+    normalized.includes("privacy policy") &&
+    normalized.includes("accept") &&
+    normalized.includes("claude.ai")
+  );
+}
+
 export function isActionableRunError(errorMessage: string): boolean {
   return (
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
     isClaudeCodeLimitError(errorMessage) ||
+    isClaudeCodeTermsAcceptanceRequiredError(errorMessage) ||
     hasActionableRunErrorSnippet(errorMessage)
   );
 }
@@ -532,6 +550,14 @@ export function formatRunErrorForExternalSurface(params: {
   });
   if (claudeOverloadedMessage !== undefined) {
     return claudeOverloadedMessage;
+  }
+
+  if (isClaudeCodeTermsAcceptanceRequiredError(errorMessage)) {
+    return withOptionalActionUrl(
+      CLAUDE_CODE_TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
+      "Open Model Providers",
+      params.claudeCodeCredentialRecovery?.modelProvidersUrl,
+    );
   }
 
   if (
