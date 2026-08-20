@@ -12,8 +12,8 @@ pub(crate) fn generate_session_id() -> String {
 
 /// Build the session history file path and create the directory.
 ///
-/// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
-fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
+/// Claude Code stores session history at: `{config_dir}/projects/-{path}/{session_id}.jsonl`
+fn build_session_history_path(session_id: &str, config_dir: &str) -> Option<String> {
     if !is_valid_cli_agent_session_id(session_id) {
         return None;
     }
@@ -21,8 +21,7 @@ fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
-    let session_dir = PathBuf::from(home)
-        .join(".claude")
+    let session_dir = PathBuf::from(config_dir)
         .join("projects")
         .join(format!("-{project_name}"));
 
@@ -38,10 +37,18 @@ fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
     )
 }
 
-/// Create session history using `$HOME` from the environment.
+/// Create session history using Claude Code's effective config directory.
 pub(crate) fn create_session_history(session_id: &str) -> Option<String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    build_session_history_path(session_id, &home)
+    let config_dir = std::env::var("CLAUDE_CONFIG_DIR")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string()))
+                .join(".claude")
+                .to_string_lossy()
+                .into_owned()
+        });
+    build_session_history_path(session_id, &config_dir)
 }
 
 #[derive(Default)]
@@ -168,30 +175,32 @@ mod tests {
     #[test]
     fn session_history_path_structure() {
         let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
+        let config_dir = dir.path().join("claude-config");
+        let config_dir = config_dir.to_str().unwrap();
 
-        let result = build_session_history_path("test-session-123", home);
+        let result = build_session_history_path("test-session-123", config_dir);
 
-        let expected =
-            format!("{home}/.claude/projects/-home-user-workspace/test-session-123.jsonl");
+        let expected = format!("{config_dir}/projects/-home-user-workspace/test-session-123.jsonl");
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn session_history_creates_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
+        let config_dir = dir.path().join("claude-config");
+        let config_dir_str = config_dir.to_str().unwrap();
 
-        let _ = build_session_history_path("test-session", home);
+        let _ = build_session_history_path("test-session", config_dir_str);
 
-        let expected_dir = dir.path().join(".claude/projects/-home-user-workspace");
+        let expected_dir = config_dir.join("projects/-home-user-workspace");
         assert!(expected_dir.exists());
     }
 
     #[test]
     fn session_history_path_rejects_non_contract_session_ids() {
         let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
+        let config_dir = dir.path().join("claude-config");
+        let config_dir_str = config_dir.to_str().unwrap();
 
         for session_id in [
             "",
@@ -206,11 +215,14 @@ mod tests {
             "session.with.dot",
             "é",
         ] {
-            assert_eq!(build_session_history_path(session_id, home), None);
+            assert_eq!(build_session_history_path(session_id, config_dir_str), None);
         }
         let overlong_id = "a".repeat(129);
-        assert_eq!(build_session_history_path(&overlong_id, home), None);
-        assert!(!dir.path().join(".claude").exists());
+        assert_eq!(
+            build_session_history_path(&overlong_id, config_dir_str),
+            None
+        );
+        assert!(!config_dir.exists());
     }
 
     #[test]

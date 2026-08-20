@@ -6,7 +6,8 @@ mod common;
 use guest_agent::cli;
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 
 #[tokio::test]
 async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
@@ -20,6 +21,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         .to_str()
         .ok_or("test user HOME path must be UTF-8")?
         .to_string();
+    let rejected_config_dir = tmp.path().join("rejected-claude-config");
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
@@ -53,6 +55,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "VM0_API_BACKEND_URL": "https://user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
+            "CLAUDE_CONFIG_DIR": rejected_config_dir,
             "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
         }))?,
     )?;
@@ -64,6 +67,18 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!user_env_path.exists());
     assert!(!user_env_dir.exists());
     assert_eq!(runtime.config.home_dir, user_home_str);
+    assert_eq!(
+        runtime.config.claude_config_dir,
+        tmp.path().join(".claude").to_string_lossy()
+    );
+    assert_eq!(
+        runtime
+            .config
+            .user_env
+            .get("CLAUDE_CONFIG_DIR")
+            .map(String::as_str),
+        rejected_config_dir.to_str()
+    );
 
     unsafe {
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
@@ -107,6 +122,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert_eq!(
         cli_env.get("HOME").map(String::as_str),
         Some(user_home_str.as_str())
+    );
+    assert_eq!(
+        cli_env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+        Some(runtime.config.claude_config_dir.as_str())
     );
     assert_eq!(
         cli_env.get("NODE_EXTRA_CA_CERTS").map(String::as_str),
@@ -161,5 +180,103 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             .contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
     );
 
+    let session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
+    let canonical_history = Path::new(&runtime.config.claude_config_dir)
+        .join("projects/-home-user-workspace")
+        .join(format!("{}.jsonl", session_id.trim()));
+    assert!(canonical_history.exists());
+    assert!(!common::claude_history_path_for_home(&user_home, session_id.trim()).exists());
+    assert!(
+        !rejected_config_dir
+            .join("projects/-home-user-workspace")
+            .join(format!("{}.jsonl", session_id.trim()))
+            .exists()
+    );
+
+    assert_home_value_reaches_claude(
+        &mock,
+        &tmp.path().join("relative-home-case"),
+        "relative-home",
+    )
+    .await?;
+    assert_home_value_reaches_claude(&mock, &tmp.path().join("empty-home-case"), "").await?;
+
+    Ok(())
+}
+
+async fn assert_home_value_reaches_claude(
+    mock: &Path,
+    workdir: &Path,
+    home: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let claude_config_dir = workdir.join(".claude");
+    let rejected_config_dir = workdir.join("rejected-claude-config");
+    let instructions_path = claude_config_dir.join("CLAUDE.md");
+    let skill_path = claude_config_dir.join("skills/test-skill/SKILL.md");
+    let memory_path = claude_config_dir
+        .join("projects/-home-user-workspace/memory")
+        .join("MEMORY.md");
+    for path in [&instructions_path, &skill_path, &memory_path] {
+        std::fs::create_dir_all(path.parent().ok_or("managed file must have a parent")?)?;
+        std::fs::write(path, "managed")?;
+    }
+
+    let observed_home = workdir.join("observed-home");
+    let observed_config_dir = workdir.join("observed-claude-config-dir");
+    let prompt = format!(
+        "test -f \"$CLAUDE_CONFIG_DIR/CLAUDE.md\" && test -f \"$CLAUDE_CONFIG_DIR/skills/test-skill/SKILL.md\" && test -f \"$CLAUDE_CONFIG_DIR/projects/-home-user-workspace/memory/MEMORY.md\" && printf '%s' \"$HOME\" > {} && printf '%s' \"$CLAUDE_CONFIG_DIR\" > {}",
+        observed_home.display(),
+        observed_config_dir.display(),
+    );
+
+    unsafe {
+        common::setup_env(mock, workdir, &prompt, 3, 1)?;
+    }
+    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
+    let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
+    let user_env = HashMap::from([
+        ("HOME".to_string(), home.to_string()),
+        (
+            "CLAUDE_CONFIG_DIR".to_string(),
+            rejected_config_dir.to_string_lossy().into_owned(),
+        ),
+    ]);
+    unsafe {
+        common::set_user_env_file_env_for_test(&runtime_dir, &user_env)?;
+    }
+
+    let runtime = GuestRuntime::from_process_env()?;
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
+        &runtime.config.run_id,
+        &runtime.config.prompt,
+    );
+    let result = cli::execute_cli_with_active_input_for_config(
+        &SecretMasker::from_raw(""),
+        common::spawn_dummy_heartbeat(),
+        runtime.http.clone(),
+        active_input.into_writer(),
+        &runtime.config,
+        &runtime.paths,
+    )
+    .await?;
+
+    assert_eq!(result.exit_code, common::CLEAN_EXIT);
+    assert_eq!(std::fs::read_to_string(observed_home)?, home);
+    assert_eq!(
+        std::fs::read_to_string(observed_config_dir)?,
+        claude_config_dir.to_string_lossy()
+    );
+
+    let session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
+    let history_path = claude_config_dir
+        .join("projects/-home-user-workspace")
+        .join(format!("{}.jsonl", session_id.trim()));
+    assert!(history_path.exists());
+    assert!(
+        !rejected_config_dir
+            .join("projects/-home-user-workspace")
+            .join(format!("{}.jsonl", session_id.trim()))
+            .exists()
+    );
     Ok(())
 }

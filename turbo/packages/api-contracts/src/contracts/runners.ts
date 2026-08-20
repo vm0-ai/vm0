@@ -20,13 +20,14 @@ const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
 export const CANONICAL_GUEST_HOME_DIR = "/home/user";
 export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
+export const CANONICAL_CLAUDE_CONFIG_DIR = `${CANONICAL_GUEST_HOME_DIR}/.claude`;
 export const CANONICAL_CODEX_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.codex`;
 export const CANONICAL_CODEX_SESSIONS_DIR = `${CANONICAL_CODEX_HOME_DIR}/sessions`;
 const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
   /^\//,
   "",
 ).replace(/\//g, "-");
-export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
+export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_CLAUDE_CONFIG_DIR}/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
 export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_CODEX_HOME_DIR}/memories`;
 export const PI_AGENT_DIR = `${CANONICAL_GUEST_HOME_DIR}/.pi/agent`;
 export const CANONICAL_PI_SESSION_DIR = `${PI_AGENT_DIR}/sessions/--home-user-workspace--`;

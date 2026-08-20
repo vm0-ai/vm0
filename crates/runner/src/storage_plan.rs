@@ -39,7 +39,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use api_contracts::generated::{
-    constants::runners::paths::CANONICAL_CODEX_HOME_DIR,
+    constants::runners::paths::{CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_CODEX_HOME_DIR},
     types::runners::storage::ArtifactEntryMissingRootPolicy,
 };
 use guest_contracts::storage_manifest as wire;
@@ -48,7 +48,6 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
 
-const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
 const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
 /// The semantic actions required to apply one canonical storage manifest.
@@ -576,7 +575,7 @@ fn record_removed_artifacts<'a>(
 }
 
 fn is_framework_home_path(path: &str) -> bool {
-    matches!(path, CANONICAL_CODEX_HOME_DIR | CLAUDE_FRAMEWORK_HOME)
+    matches!(path, CANONICAL_CLAUDE_CONFIG_DIR | CANONICAL_CODEX_HOME_DIR)
 }
 
 fn is_removed_framework_home_instruction(path: &str, fingerprint: &StorageFingerprint) -> bool {
