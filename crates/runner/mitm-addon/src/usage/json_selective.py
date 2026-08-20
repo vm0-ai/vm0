@@ -73,6 +73,7 @@ _DEFAULT_MAX_DEPTH = 256
 _SLOW_SCALAR_BYTES_PER_WORK_UNIT = 32
 _DISCARDED_ASCII_BYTES_PER_WORK_UNIT = 64 * 1024
 JSON_WORK_LIMIT_EXCEEDED = "work limit exceeded"
+JSON_INTEGER_VALUE_LIMIT_EXCEEDED = "integer value limit exceeded"
 _JSON_STRING_OR_CONTAINER_RE = re.compile(rb'"(?:\\.|[^"\\])*"|[{}\[\]]', re.DOTALL)
 
 
@@ -114,7 +115,8 @@ class ScalarField:
     """Selected scalar field configuration.
 
     ``kind`` must be ``"string"``, ``"int"``, or ``"bool"``. ``max_bytes``
-    limits selected string and integer tokens; booleans use fixed JSON literals.
+    limits selected string and integer tokens; ``max_int_value`` optionally
+    limits selected integer values; booleans use fixed JSON literals.
     ``overflow_policy`` defaults to ``"error"``, which fails extraction with
     ``"string limit exceeded"`` or ``"number limit exceeded"``. Selected
     strings may use ``"discard"`` to stop retaining an oversized optional
@@ -124,6 +126,7 @@ class ScalarField:
     kind: ScalarKind
     max_bytes: int = 4096
     overflow_policy: ScalarOverflowPolicy = "error"
+    max_int_value: int | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in ("string", "int", "bool"):
@@ -133,6 +136,10 @@ class ScalarField:
             raise ValueError("scalar field overflow_policy must be 'error' or 'discard'")
         if self.kind != "string" and self.overflow_policy == "discard":
             raise ValueError("scalar field overflow_policy 'discard' requires a string field")
+        if self.max_int_value is not None:
+            if self.kind != "int":
+                raise ValueError("scalar field max_int_value requires an integer field")
+            _validate_positive_int("scalar field max_int_value", self.max_int_value)
 
 
 @dataclass
@@ -1005,6 +1012,10 @@ class JsonSelectiveExtractor:
             self._error = "invalid number"
             return
         if state.selected and isinstance(value, int) and not isinstance(value, bool):
+            field = self.scalar_fields[state.path]
+            if field.max_int_value is not None and value > field.max_int_value:
+                self._error = JSON_INTEGER_VALUE_LIMIT_EXCEEDED
+                return
             self._record_scalar_consistency(state.path, value)
             self.values[state.path] = value
         self._value_complete()

@@ -5,13 +5,13 @@ JSON fallback.
 """
 
 from collections.abc import Callable
-from typing import TypeGuard
 
 import body_decoding
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
+from .quantities import MAX_USAGE_QUANTITY, is_usage_quantity
 from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
@@ -29,7 +29,11 @@ _MODEL_JSON_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
     **{
-        ("usage", field): ScalarField("int", max_bytes=64)
+        ("usage", field): ScalarField(
+            "int",
+            max_bytes=64,
+            max_int_value=MAX_USAGE_QUANTITY,
+        )
         for field in ANTHROPIC_USAGE_FIELD_CATEGORIES
     },
 }
@@ -40,18 +44,22 @@ _ANTHROPIC_SSE_SCALAR_FIELDS = {
     ("message", "id"): ScalarField("string", max_bytes=1024),
     ("message", "model"): ScalarField("string", max_bytes=1024),
     **{
-        ("message", "usage", field): ScalarField("int", max_bytes=64)
+        ("message", "usage", field): ScalarField(
+            "int",
+            max_bytes=64,
+            max_int_value=MAX_USAGE_QUANTITY,
+        )
         for field in ANTHROPIC_USAGE_FIELD_CATEGORIES
     },
     **{
-        ("usage", field): ScalarField("int", max_bytes=64)
+        ("usage", field): ScalarField(
+            "int",
+            max_bytes=64,
+            max_int_value=MAX_USAGE_QUANTITY,
+        )
         for field in ANTHROPIC_USAGE_FIELD_CATEGORIES
     },
 }
-
-
-def _is_usage_quantity(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, ...]) -> None:
@@ -63,7 +71,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
     """
     for raw_field, category in ANTHROPIC_USAGE_FIELD_CATEGORIES.items():
         value = values.get((*prefix, raw_field))
-        if _is_usage_quantity(value) and (value > 0 or category not in target):
+        if is_usage_quantity(value) and (value > 0 or category not in target):
             target[category] = value
 
 
