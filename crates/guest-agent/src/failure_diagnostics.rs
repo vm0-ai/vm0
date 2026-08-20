@@ -268,6 +268,11 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::InsufficientCredits);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_terms_acceptance_required_error(&normalized)
+    {
+        return Some(FailureReason::TermsAcceptanceRequired);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_invalid_credentials_error(&normalized)
     {
         return Some(FailureReason::InvalidCredentials);
@@ -368,6 +373,14 @@ fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
     normalized.contains("failed to authenticate")
         && normalized.contains("api error: 401 invalid authentication credentials")
+}
+
+fn is_claude_terms_acceptance_required_error(normalized: &str) -> bool {
+    has_claude_api_status(normalized, "400")
+        && normalized.contains("consumer terms")
+        && normalized.contains("privacy policy")
+        && normalized.contains("accept")
+        && normalized.contains("claude.ai")
 }
 
 fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
