@@ -731,6 +731,28 @@ wait
         );
     }
 
+    #[test]
+    fn rootfs_scripts_preserve_and_verify_real_bash_for_tool_launcher() {
+        assert!(
+            CUSTOMIZE_SCRIPT.contains("REAL_BASH_DEST=\"/bin/bash.vm0-real\""),
+            "customize-rootfs.sh should use the canonical preserved Bash path"
+        );
+        assert!(
+            CUSTOMIZE_SCRIPT
+                .contains("sudo chroot \"$MOUNT_DIR\" mv -- \"$bash_dest\" \"$real_bash_dest\""),
+            "customize-rootfs.sh should preserve Bash before installing the launcher"
+        );
+        assert!(
+            VERIFY_SCRIPT
+                .contains("check_required_executable \"$REAL_BASH_DEST\" \"preserved Bash\""),
+            "verify-rootfs.sh should require the preserved Bash executable"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains("if [[ \"$dest\" == \"$TOOL_SHELL_DEST\" ]]"),
+            "template verification should not classify distribution Bash as guest contamination"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn verify_script_resolves_rootfs_symlinks_without_host_paths() {

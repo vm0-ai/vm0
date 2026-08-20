@@ -101,21 +101,28 @@ touch "$marker/vm-reuse-marker"
 base=/sys/fs/cgroup/vm0-exec
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
 case "$relative" in
-  /vm0-exec/exec-*/workload) ;;
-  *) echo "agent CLI is outside workload cgroup: $relative" >&2; exit 1 ;;
+  /vm0-exec/exec-*/workload/tools/tool-*) ;;
+  *) echo "Bash tool is outside its tool cgroup: $relative" >&2; exit 1 ;;
 esac
-operation=${relative%/workload}
+tools=${relative%/*}
+workload=${tools%/tools}
+operation=${workload%/workload}
 parent="/sys/fs/cgroup$operation"
 test -d "$parent/control"
 test -d "$parent/workload"
+test -d "$parent/workload/runtime"
+test -d "$parent/workload/tools"
 for controller in cpu memory pids; do
   grep -qw "$controller" "$base/cgroup.subtree_control"
   grep -qw "$controller" "$parent/cgroup.subtree_control"
+  grep -qw "$controller" "$parent/workload/cgroup.subtree_control"
 done
 expected_control_memory_min=$((384 * 1024 * 1024))
 expected_workload_memory_reserve=$((128 * 1024 * 1024))
+expected_tools_memory_reserve=$((576 * 1024 * 1024))
 guest_memory_bytes=$(( $(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) ))
 expected_workload_memory_max=$((guest_memory_bytes - expected_workload_memory_reserve))
+expected_tools_memory_max=$((expected_workload_memory_max - expected_tools_memory_reserve))
 test "$(cat "$base/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
@@ -124,7 +131,12 @@ test "$(cat "$parent/workload/memory.high")" = max
 test "$(cat "$parent/workload/memory.max")" = "$expected_workload_memory_max"
 test "$(cat "$parent/workload/memory.oom.group")" = 0
 test "$(cat "$parent/workload/pids.max")" = max
+test "$(cat "$parent/workload/tools/memory.max")" = "$expected_tools_memory_max"
+test "$(cat "$parent/workload/tools/memory.oom.group")" = 0
+grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
+test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
+test -n "${VM0_TOOL_CGROUP_PROCS_ENDPOINT:-}"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
 if [ "$control_member_count" -ne 1 ]; then
   echo "control cgroup must contain only Guest Agent; members=$(tr '\n' ' ' < "$parent/control/cgroup.procs")" >&2
@@ -234,7 +246,7 @@ touch /tmp/vm0-process-containment/profile-executed
 for descriptor in /proc/self/fd/*; do
   target=$(readlink "$descriptor" 2>/dev/null || true)
   case "$target" in
-    */workload/cgroup.procs)
+    */workload/runtime/cgroup.procs)
       printf '%s\n' "$target" > /tmp/vm0-process-containment/profile-capability
       ;;
   esac
@@ -312,20 +324,25 @@ done
 
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
 case "$relative" in
-  /vm0-exec/exec-*/workload) ;;
+  /vm0-exec/exec-*/workload/tools/tool-*) ;;
   *) echo "unexpected current cgroup: $relative" >&2; exit 1 ;;
 esac
-operation=${relative%/workload}
+tools=${relative%/*}
+workload=${tools%/tools}
+operation=${workload%/workload}
 own_group=${operation##*/}
 test -n "$own_group"
 test -d "$base/$own_group"
 test -d "$base/$own_group/control"
 test -d "$base/$own_group/workload"
+test -d "$base/$own_group/workload/runtime"
+test -d "$base/$own_group/workload/tools"
 test -z "$(find "$base" -mindepth 1 -maxdepth 1 -type d ! -name "$own_group" -print -quit)"
 grep -q '^populated 1$' "$base/cgroup.events"
 for controller in cpu memory pids; do
   grep -qw "$controller" "$base/cgroup.subtree_control"
   grep -qw "$controller" "$base/$own_group/cgroup.subtree_control"
+  grep -qw "$controller" "$base/$own_group/workload/cgroup.subtree_control"
 done
 echo containment-turn-2
 PROMPT
@@ -674,80 +691,23 @@ read -r METRICS_COUNT METRICS_SPAN_SECS METRICS_MAX_GAP_SECS <<<"$METRICS_SUMMAR
 rm -f "$PRESSURE_SUBMIT_OUTPUT"
 PRESSURE_SUBMIT_OUTPUT=""
 
-echo "--- Pressure: kill a high-memory tool without terminating the run ---"
-# Reuse the pressure VM again to prove reclaim left it safe to park while
-# isolating workload OOM from the active-input provider session.
-MEMORY_CHAT_THREAD_ID="$PRESSURE_CHAT_THREAD_ID"
+echo "--- Pressure: group-kill only the high-memory Bash tool ---"
+# The mock CLI launches two Bash children directly from the managed runtime.
+# The launcher places them in distinct tool cgroups before either shell runs.
+# One tool exhausts the aggregate tools limit while the other remains alive.
+# Use a fresh VM so the preceding extreme balloon-reclaim scenario cannot
+# delay Guest Agent startup and obscure the tool-isolation assertion.
+MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 MEMORY_SESSION_ID="e2e-process-containment-memory"
-MEMORY_PROMPT=$(cat <<'PROMPT'
-set -eu
-test -f /tmp/vm0-process-containment/memory-reclaim-vm
-sudo -n python3 - <<'PY'
-import os
-import pathlib
-import signal
-import subprocess
-import time
-
-
-def read_events(path):
-    events = {}
-    for line in path.read_text().splitlines():
-        key, value = line.split()
-        events[key] = int(value)
-    return events
-
-
-relative = next(
-    line.removeprefix("0::").strip()
-    for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
-    if line.startswith("0::")
-)
-workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
-(workload / "memory.max").write_text(str(256 * 1024 * 1024))
-before = read_events(workload / "memory.events")
-
-pid = os.fork()
-if pid == 0:
-    chunk_size = 16 * 1024 * 1024
-    chunks = []
-    while True:
-        chunk = bytearray(chunk_size)
-        chunk[::4096] = b"\x01" * (chunk_size // 4096)
-        chunks.append(chunk)
-        time.sleep(0.05)
-
-_, status = os.waitpid(pid, 0)
-if not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGKILL:
-    raise RuntimeError(f"memory pressure child was not SIGKILLed: status={status}")
-
-after = read_events(workload / "memory.events")
-if after.get("oom_kill", 0) <= before.get("oom_kill", 0):
-    raise RuntimeError("memory pressure did not record an OOM-killed process")
-if after.get("oom_group_kill", 0) != before.get("oom_group_kill", 0):
-    raise RuntimeError("memory pressure triggered a group OOM kill")
-
-subprocess.run(["/bin/true"], check=True)
-pathlib.Path(
-    "/tmp/vm0-process-containment/memory-oom-runtime-survived"
-).write_text("ready\n")
-print(
-    "memory-oom-runtime-survived "
-    f"oom_kill={after.get('oom_kill', 0) - before.get('oom_kill', 0)} "
-    "oom_group_kill=0"
-)
-PY
-PROMPT
-)
 SECONDS=0
 MEMORY_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --timeout 30 \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt "$MEMORY_PROMPT" \
+  --prompt '@parallel-shell-tool-oom' \
   --active-input 'after=1s,text=memory-pressure-control') \
-  || fail "memory-pressure run did not recover after killing the tool process"
+  || fail "memory-pressure run did not recover after the offender tool group was killed"
 MEMORY_ELAPSED=$SECONDS
 printf '%s\n' "$MEMORY_RESULT"
 [ "$MEMORY_ELAPSED" -lt 20 ] \
@@ -756,22 +716,26 @@ MEMORY_RESULT_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_RESULT")
 MEMORY_RUN_ID=$(jq -r '.run_id // empty' <<<"$MEMORY_RESULT_JSON")
 [ -n "$MEMORY_RUN_ID" ] || fail "memory-pressure result omitted run ID"
 MEMORY_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${MEMORY_RUN_ID}.log"
-sudo grep -F -q 'memory-oom-runtime-survived oom_kill=' "$MEMORY_STREAM_LOG" \
-  || fail "memory-pressure runtime did not continue after the tool was killed"
+sudo grep -F -q 'parallel-shell-tool-oom-survived oom_group_kill=' "$MEMORY_STREAM_LOG" \
+  || fail "CLI or unrelated Bash tool did not survive the offender group OOM"
 sudo grep -F -q 'workload resource limit reached' "$MEMORY_STREAM_LOG" \
   || fail "memory-pressure resource event was not classified"
 sudo grep -E -q 'memory_oom_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
   || fail "memory-pressure diagnostics omitted the OOM event"
-sudo grep -F -q 'memory_oom_group_kill=0' "$MEMORY_STREAM_LOG" \
-  || fail "memory-pressure diagnostics reported a group OOM kill"
+sudo grep -E -q 'memory_oom_group_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
+  || fail "memory-pressure diagnostics omitted the group OOM event"
 
-echo "--- Pressure: prove individual OOM preserved VM reuse ---"
-sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+echo "--- Pressure: prove tool-group OOM preserved VM reuse ---"
+MEMORY_REUSE_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt 'test -f /tmp/vm0-process-containment/memory-oom-runtime-survived' \
+  --prompt 'true') \
   || fail "memory-pressure recovery did not preserve safe VM reuse"
+printf '%s\n' "$MEMORY_REUSE_RESULT"
+MEMORY_REUSE_RESULT_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_REUSE_RESULT")
+MEMORY_REUSE_RUN_ID=$(jq -r '.run_id // empty' <<<"$MEMORY_REUSE_RESULT_JSON")
+[ -n "$MEMORY_REUSE_RUN_ID" ] || fail "memory-pressure reuse result omitted run ID"
 
 echo "--- Pressure: exhaust workload PID capacity and reclaim descendants ---"
 PID_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
@@ -792,10 +756,13 @@ relative = next(
     for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
     if line.startswith("0::")
 )
-workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
+tool = pathlib.Path(f"/sys/fs/cgroup{relative}")
+if tool.parent.name != "tools" or tool.parent.parent.name != "workload":
+    raise RuntimeError(f"PID pressure is outside a Bash tool cgroup: {relative}")
+tools = tool.parent
 # Production leaves are uncapped until representative workload task counts are
 # calibrated. This operation-local ceiling keeps the enforcement smoke fast.
-(workload / "pids.max").write_text("64")
+(tools / "pids.max").write_text("64")
 children = []
 while True:
     try:
@@ -817,7 +784,7 @@ while True:
     children.append(pid)
 
 events = {}
-for line in (workload / "pids.events").read_text().splitlines():
+for line in (tools / "pids.events").read_text().splitlines():
     key, value = line.split()
     events[key] = int(value)
 if events.get("max", 0) == 0:
@@ -866,6 +833,12 @@ if printf '%s\n' "$LOGS" \
   | grep -F 'job execution failed' >/dev/null; then
   fail "memory-pressure run was reported as failed"
 fi
+printf '%s\n' "$LOGS" \
+  | grep -F "run_id=$MEMORY_REUSE_RUN_ID" \
+  | grep -F 'job finished' \
+  | grep -F 'reused=true' \
+  >/dev/null \
+  || fail "tool-group OOM follow-up did not reuse its sandbox"
 LEAK_LINE=$(printf '%s\n' "$LOGS" \
   | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=true' \
@@ -900,7 +873,7 @@ PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$PID_CLEANUP
 echo "PASS: detached user/root descendants were reclaimed"
 echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
 echo "PASS: compressed CPU pressure kept process control and ${METRICS_COUNT} metric samples live"
-echo "PASS: individual workload OOM preserved the run in ${MEMORY_ELAPSED}s and allowed reuse"
+echo "PASS: Bash tool group OOM preserved the CLI, unrelated tool, and reuse in ${MEMORY_ELAPSED}s"
 echo "PASS: pids.max cleanup reclaimed ${PID_INITIAL_MEMBERS} members in ${PID_CLEANUP_MS}ms"
 
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force

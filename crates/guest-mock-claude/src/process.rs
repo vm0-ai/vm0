@@ -126,6 +126,9 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
         MockScenario::WriteEnvJson(path) => {
             fixtures::run_write_env_json_scenario(output_format, path)
         }
+        MockScenario::ParallelShellToolOom => {
+            fixtures::run_parallel_shell_tool_oom_scenario(output_format)
+        }
         MockScenario::Shell => shell_execution::run(prompt, output_format),
     }
 }

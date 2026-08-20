@@ -9,9 +9,10 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::os::unix::net::UnixListener;
-use std::path::Path;
-use std::process::{Command, ExitCode};
-use std::time::Duration;
+use std::os::unix::process::ExitStatusExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitCode, Stdio};
+use std::time::{Duration, Instant};
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
@@ -22,6 +23,36 @@ const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_su
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
+const TOOL_OOM_MEMORY_MAX_BYTES: u64 = 192 * 1024 * 1024;
+const TOOL_OOM_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const TOOL_OOM_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const TOOL_OOM_SURVIVOR_CGROUP: &str = "/tmp/vm0-tool-oom-survivor.cgroup";
+const TOOL_OOM_OFFENDER_CGROUP: &str = "/tmp/vm0-tool-oom-offender.cgroup";
+const TOOL_OOM_SURVIVOR_RELEASE: &str = "/tmp/vm0-tool-oom-survivor.release";
+
+const TOOL_OOM_SURVIVOR_SCRIPT: &str = r#"
+set -eu
+awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup > /tmp/vm0-tool-oom-survivor.cgroup
+while [ ! -e /tmp/vm0-tool-oom-survivor.release ]; do
+  sleep 0.01
+done
+"#;
+
+const TOOL_OOM_OFFENDER_SCRIPT: &str = r#"
+set -eu
+awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup > /tmp/vm0-tool-oom-offender.cgroup
+(trap '' TERM; while :; do sleep 1; done) &
+python3 -c '
+import time
+
+chunks = []
+while True:
+    chunk = bytearray(16 * 1024 * 1024)
+    chunk[::4096] = b"\x01" * (len(chunk) // 4096)
+    chunks.append(chunk)
+    time.sleep(0.01)
+'
+"#;
 
 pub(super) fn run_fail_no_newline(msg: &str) -> ExitCode {
     eprint!("{msg}");
@@ -377,4 +408,316 @@ pub(super) fn run_write_env_json_scenario(output_format: &str, path: &str) -> Ex
 
     emit_post_result_pair();
     ExitCode::SUCCESS
+}
+
+pub(super) fn run_parallel_shell_tool_oom_scenario(output_format: &str) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    match verify_parallel_shell_tool_oom() {
+        Ok(summary) => {
+            emit_result_pair(false, &summary);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            let message = format!("parallel shell tool OOM fixture failed: {error}");
+            emit_result_pair(true, &message);
+            eprintln!("{message}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn verify_parallel_shell_tool_oom() -> Result<String, String> {
+    let runtime_relative = unified_cgroup_path(std::process::id())?;
+    let runtime_suffix = "/workload/runtime";
+    let operation_relative = runtime_relative
+        .strip_suffix(runtime_suffix)
+        .ok_or_else(|| {
+            format!("mock CLI is outside the managed runtime cgroup: {runtime_relative}")
+        })?;
+    let tools_relative = format!("{operation_relative}/workload/tools");
+    let tools_path = Path::new("/sys/fs/cgroup").join(tools_relative.trim_start_matches('/'));
+    let memory_max_path = tools_path.join("memory.max");
+    let original_memory_max = read_trimmed(&memory_max_path)?;
+    let before_events = read_cgroup_events(&tools_path.join("memory.events"))?;
+
+    for marker in [
+        TOOL_OOM_SURVIVOR_CGROUP,
+        TOOL_OOM_OFFENDER_CGROUP,
+        TOOL_OOM_SURVIVOR_RELEASE,
+    ] {
+        match std::fs::remove_file(marker) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("remove stale marker {marker}: {error}")),
+        }
+    }
+
+    write_cgroup_value_as_root(&memory_max_path, &TOOL_OOM_MEMORY_MAX_BYTES.to_string())?;
+    let mut fixture = ParallelToolOomFixture::new(memory_max_path, original_memory_max);
+
+    fixture.survivor = Some(spawn_bash_tool(TOOL_OOM_SURVIVOR_SCRIPT)?);
+    let survivor_relative = wait_for_tool_marker(
+        TOOL_OOM_SURVIVOR_CGROUP,
+        fixture
+            .survivor
+            .as_mut()
+            .ok_or_else(|| "survivor process is missing".to_string())?,
+    )?;
+
+    fixture.offender = Some(spawn_bash_tool(TOOL_OOM_OFFENDER_SCRIPT)?);
+    let offender_relative = wait_for_tool_marker(
+        TOOL_OOM_OFFENDER_CGROUP,
+        fixture
+            .offender
+            .as_mut()
+            .ok_or_else(|| "offender process is missing".to_string())?,
+    )?;
+
+    validate_tool_cgroup(&survivor_relative, &tools_relative)?;
+    validate_tool_cgroup(&offender_relative, &tools_relative)?;
+    if survivor_relative == offender_relative {
+        return Err("parallel Bash tools entered the same cgroup".to_string());
+    }
+
+    let offender_status = wait_for_child_exit(
+        fixture
+            .offender
+            .as_mut()
+            .ok_or_else(|| "offender process is missing".to_string())?,
+        TOOL_OOM_READY_TIMEOUT,
+        "offender Bash tool",
+    )?;
+    fixture.offender = None;
+    if offender_status.signal() != Some(libc::SIGKILL) {
+        return Err(format!(
+            "offender Bash tool was not killed as a group: {offender_status}"
+        ));
+    }
+
+    let survivor = fixture
+        .survivor
+        .as_mut()
+        .ok_or_else(|| "survivor process is missing".to_string())?;
+    if let Some(status) = survivor
+        .try_wait()
+        .map_err(|error| format!("inspect survivor Bash tool: {error}"))?
+    {
+        return Err(format!(
+            "unrelated Bash tool exited during offender OOM: {status}"
+        ));
+    }
+
+    std::fs::write(TOOL_OOM_SURVIVOR_RELEASE, b"release\n")
+        .map_err(|error| format!("release survivor Bash tool: {error}"))?;
+    let survivor_status =
+        wait_for_child_exit(survivor, TOOL_OOM_READY_TIMEOUT, "survivor Bash tool")?;
+    fixture.survivor = None;
+    if !survivor_status.success() {
+        return Err(format!(
+            "unrelated Bash tool did not finish successfully: {survivor_status}"
+        ));
+    }
+
+    let after_events = read_cgroup_events(&tools_path.join("memory.events"))?;
+    let oom_group_kills = event_delta(&before_events, &after_events, "oom_group_kill")?;
+    if oom_group_kills == 0 {
+        return Err("tools cgroup did not record an OOM group kill".to_string());
+    }
+
+    fixture.restore_memory_max()?;
+    Ok(format!(
+        "parallel-shell-tool-oom-survived oom_group_kill={oom_group_kills} offender={offender_relative} survivor={survivor_relative}"
+    ))
+}
+
+struct ParallelToolOomFixture {
+    memory_max_path: PathBuf,
+    original_memory_max: String,
+    memory_max_restored: bool,
+    survivor: Option<Child>,
+    offender: Option<Child>,
+}
+
+impl ParallelToolOomFixture {
+    fn new(memory_max_path: PathBuf, original_memory_max: String) -> Self {
+        Self {
+            memory_max_path,
+            original_memory_max,
+            memory_max_restored: false,
+            survivor: None,
+            offender: None,
+        }
+    }
+
+    fn restore_memory_max(&mut self) -> Result<(), String> {
+        write_cgroup_value_as_root(&self.memory_max_path, &self.original_memory_max)?;
+        self.memory_max_restored = true;
+        Ok(())
+    }
+}
+
+impl Drop for ParallelToolOomFixture {
+    fn drop(&mut self) {
+        for child in [&mut self.offender, &mut self.survivor]
+            .into_iter()
+            .flatten()
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if !self.memory_max_restored {
+            let _ = write_cgroup_value_as_root(&self.memory_max_path, &self.original_memory_max);
+        }
+    }
+}
+
+fn spawn_bash_tool(script: &str) -> Result<Child, String> {
+    Command::new("bash")
+        .args(["-c", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("spawn Bash tool: {error}"))
+}
+
+fn wait_for_tool_marker(path: &str, child: &mut Child) -> Result<String, String> {
+    let deadline = Instant::now() + TOOL_OOM_READY_TIMEOUT;
+    loop {
+        match std::fs::read_to_string(path) {
+            Ok(contents) if !contents.trim().is_empty() => return Ok(contents.trim().to_string()),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("read Bash tool cgroup marker {path}: {error}")),
+        }
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("inspect Bash tool before readiness: {error}"))?
+        {
+            return Err(format!(
+                "Bash tool exited before publishing cgroup marker {path}: {status}"
+            ));
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("Bash tool did not publish cgroup marker {path}"));
+        }
+        std::thread::sleep(TOOL_OOM_POLL_INTERVAL);
+    }
+}
+
+fn wait_for_child_exit(
+    child: &mut Child,
+    timeout: Duration,
+    description: &str,
+) -> Result<std::process::ExitStatus, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("wait for {description}: {error}"))?
+        {
+            return Ok(status);
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("{description} did not exit within {timeout:?}"));
+        }
+        std::thread::sleep(TOOL_OOM_POLL_INTERVAL);
+    }
+}
+
+fn validate_tool_cgroup(relative: &str, tools_relative: &str) -> Result<(), String> {
+    let prefix = format!("{tools_relative}/tool-");
+    if !relative.starts_with(&prefix)
+        || relative[prefix.len()..].is_empty()
+        || relative[prefix.len()..].contains('/')
+    {
+        return Err(format!("unexpected Bash tool cgroup: {relative}"));
+    }
+    let path = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+    if read_trimmed(&path.join("memory.oom.group"))? != "1" {
+        return Err(format!(
+            "Bash tool cgroup does not enable memory.oom.group: {relative}"
+        ));
+    }
+    Ok(())
+}
+
+fn unified_cgroup_path(pid: u32) -> Result<String, String> {
+    let contents = std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
+        .map_err(|error| format!("read process cgroup: {error}"))?;
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .map(str::to_string)
+        .ok_or_else(|| "unified cgroup path is missing".to_string())
+}
+
+fn read_trimmed(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path)
+        .map(|value| value.trim().to_string())
+        .map_err(|error| format!("read {}: {error}", path.display()))
+}
+
+fn write_cgroup_value_as_root(path: &Path, value: &str) -> Result<(), String> {
+    let mut child = Command::new("sudo")
+        .args(["-n", "tee"])
+        .arg(path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("start privileged write to {}: {error}", path.display()))?;
+    let stdin = child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| format!("open privileged write to {}", path.display()))?;
+    stdin
+        .write_all(value.as_bytes())
+        .map_err(|error| format!("write {}: {error}", path.display()))?;
+    drop(child.stdin.take());
+    let status = child
+        .wait()
+        .map_err(|error| format!("wait for privileged write to {}: {error}", path.display()))?;
+    if !status.success() {
+        return Err(format!(
+            "privileged write to {} failed: {status}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn read_cgroup_events(path: &Path) -> Result<BTreeMap<String, u64>, String> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    contents
+        .lines()
+        .map(|line| {
+            let (name, value) = line
+                .split_once(' ')
+                .ok_or_else(|| format!("invalid cgroup event line: {line}"))?;
+            let value = value
+                .parse::<u64>()
+                .map_err(|error| format!("invalid cgroup event value {value}: {error}"))?;
+            Ok((name.to_string(), value))
+        })
+        .collect()
+}
+
+fn event_delta(
+    before: &BTreeMap<String, u64>,
+    after: &BTreeMap<String, u64>,
+    name: &str,
+) -> Result<u64, String> {
+    let before = before
+        .get(name)
+        .ok_or_else(|| format!("cgroup event is missing before OOM: {name}"))?;
+    let after = after
+        .get(name)
+        .ok_or_else(|| format!("cgroup event is missing after OOM: {name}"))?;
+    after
+        .checked_sub(*before)
+        .ok_or_else(|| format!("cgroup event counter decreased: {name}"))
 }

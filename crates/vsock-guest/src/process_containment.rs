@@ -18,7 +18,9 @@ use guest_contracts::exec_terminal::{
 use guest_contracts::process_containment::{
     CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_CPU_WEIGHT, EXEC_CGROUP_BASE_PATH,
     EXEC_CGROUP_NAME_PREFIX, REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
-    WORKLOAD_CGROUP_NAME, WorkloadResourceEvents, WorkloadResourcePolicy,
+    RUNTIME_CGROUP_NAME, TOOL_CGROUP_NAME_PREFIX, TOOL_MEMORY_OOM_GROUP, TOOLS_CGROUP_NAME,
+    WORKLOAD_CGROUP_NAME, WORKLOAD_MEMORY_OOM_GROUP, WorkloadResourceEvents,
+    WorkloadResourcePolicy,
 };
 
 use crate::log::log;
@@ -40,7 +42,11 @@ const PIDS_MAX_FILE: &str = "pids.max";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const WORKLOAD_BOOTSTRAP_ACCEPT_POLL: Duration = Duration::from_millis(100);
 const WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX: &str = "-workload-placement";
+const TOOL_PLACEMENT_ENDPOINT_SUFFIX: &str = "-tool-placement";
+const TOOL_PLACEMENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const THREAD_WORKLOAD_BOOTSTRAP: &str = "vsock-workload-bootstrap";
+const THREAD_TOOL_PLACEMENT: &str = "vsock-tool-placement";
+const MEMORY_SUBTREE_CONTROL: &str = "+memory";
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -72,6 +78,7 @@ struct CgroupGuard {
     group_path: PathBuf,
     outer_placement: OwnedFd,
     workload_placement: Option<OwnedFd>,
+    tools_path: Option<PathBuf>,
     create_elapsed: Duration,
 }
 
@@ -96,26 +103,31 @@ impl PreparedProcessContainmentCommand {
 
 pub(crate) struct WorkloadPlacementBootstrap {
     endpoint: String,
+    tool_endpoint: String,
     cancel: Arc<AtomicBool>,
-    worker: Option<JoinHandle<()>>,
+    workers: Vec<JoinHandle<()>>,
 }
 
 impl WorkloadPlacementBootstrap {
     pub(crate) fn endpoint(&self) -> &str {
         &self.endpoint
     }
+
+    pub(crate) fn tool_endpoint(&self) -> &str {
+        &self.tool_endpoint
+    }
 }
 
 impl Drop for WorkloadPlacementBootstrap {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Release);
-        if let Some(worker) = self.worker.take()
-            && let Err(error) = worker.join()
-        {
-            log(
-                "WARN",
-                &format!("workload placement bootstrap worker panicked: {error:?}"),
-            );
+        for worker in self.workers.drain(..) {
+            if let Err(error) = worker.join() {
+                log(
+                    "WARN",
+                    &format!("process placement worker panicked: {error:?}"),
+                );
+            }
         }
     }
 }
@@ -279,40 +291,76 @@ impl CgroupGuard {
         fs::create_dir(&group_path)
             .map_err(|error| ProcessContainmentError::new("create cgroup", error))?;
 
-        let setup: Result<(OwnedFd, Option<OwnedFd>), ProcessContainmentError> = (|| {
-            enable_required_controllers(&group_path)?;
-            let control_path = group_path.join(CONTROL_CGROUP_NAME);
-            let workload_path = group_path.join(WORKLOAD_CGROUP_NAME);
-            fs::create_dir(&control_path)
-                .map_err(|error| ProcessContainmentError::new("create control cgroup", error))?;
-            fs::create_dir(&workload_path)
-                .map_err(|error| ProcessContainmentError::new("create workload cgroup", error))?;
-            configure_resource_policy(
-                &group_path,
-                &control_path,
-                &workload_path,
-                trusted_control,
-                policy,
-            )?;
-
-            let outer_path = if trusted_control {
-                &control_path
-            } else {
-                &workload_path
-            };
-            let outer_placement = open_placement(outer_path, "open outer cgroup.procs")?;
-            let workload_placement = if trusted_control {
-                Some(open_placement(
+        let setup: Result<(OwnedFd, Option<OwnedFd>, Option<PathBuf>), ProcessContainmentError> =
+            (|| {
+                enable_required_controllers(&group_path)?;
+                let control_path = group_path.join(CONTROL_CGROUP_NAME);
+                let workload_path = group_path.join(WORKLOAD_CGROUP_NAME);
+                fs::create_dir(&control_path).map_err(|error| {
+                    ProcessContainmentError::new("create control cgroup", error)
+                })?;
+                fs::create_dir(&workload_path).map_err(|error| {
+                    ProcessContainmentError::new("create workload cgroup", error)
+                })?;
+                configure_resource_policy(
+                    &group_path,
+                    &control_path,
                     &workload_path,
-                    "open workload cgroup.procs",
-                )?)
-            } else {
-                None
-            };
-            Ok((outer_placement, workload_placement))
-        })();
+                    trusted_control,
+                    policy,
+                )?;
 
-        let (outer_placement, workload_placement) = match setup {
+                let (workload_placement_path, tools_path) = if trusted_control {
+                    enable_required_controllers(&workload_path)?;
+                    let runtime_path = workload_path.join(RUNTIME_CGROUP_NAME);
+                    let tools_path = workload_path.join(TOOLS_CGROUP_NAME);
+                    fs::create_dir(&runtime_path).map_err(|error| {
+                        ProcessContainmentError::new("create runtime cgroup", error)
+                    })?;
+                    fs::create_dir(&tools_path).map_err(|error| {
+                        ProcessContainmentError::new("create tools cgroup", error)
+                    })?;
+                    write_cgroup_value(
+                        &tools_path,
+                        CGROUP_SUBTREE_CONTROL_FILE,
+                        MEMORY_SUBTREE_CONTROL,
+                        "enable tool memory controller",
+                    )?;
+                    write_cgroup_value(
+                        &tools_path,
+                        MEMORY_MAX_FILE,
+                        &policy.tools_memory_max_bytes.to_string(),
+                        "configure tools memory.max",
+                    )?;
+                    write_cgroup_value(
+                        &tools_path,
+                        MEMORY_OOM_GROUP_FILE,
+                        WORKLOAD_MEMORY_OOM_GROUP,
+                        "configure tools memory.oom.group",
+                    )?;
+                    (runtime_path, Some(tools_path))
+                } else {
+                    (workload_path.clone(), None)
+                };
+
+                let outer_path = if trusted_control {
+                    &control_path
+                } else {
+                    &workload_path
+                };
+                let outer_placement = open_placement(outer_path, "open outer cgroup.procs")?;
+                let workload_placement = if trusted_control {
+                    Some(open_placement(
+                        &workload_placement_path,
+                        "open workload cgroup.procs",
+                    )?)
+                } else {
+                    None
+                };
+                Ok((outer_placement, workload_placement, tools_path))
+            })();
+
+        let (outer_placement, workload_placement, tools_path) = match setup {
             Ok(placements) => placements,
             Err(original) => {
                 if let Err(rollback) = remove_cgroup_hierarchy(&group_path) {
@@ -333,6 +381,7 @@ impl CgroupGuard {
             group_path,
             outer_placement,
             workload_placement,
+            tools_path,
             create_elapsed: started.elapsed(),
         })
     }
@@ -373,10 +422,23 @@ impl CgroupGuard {
         let listener = process_control_ipc::bind_abstract_listener(&endpoint).map_err(|error| {
             ProcessContainmentError::new("bind workload placement bootstrap endpoint", error)
         })?;
+        let tool_endpoint = format!("{control_endpoint}{TOOL_PLACEMENT_ENDPOINT_SUFFIX}");
+        let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint)
+            .map_err(|error| ProcessContainmentError::new("bind tool placement endpoint", error))?;
         let expected_cgroup = self.group_path.join(CONTROL_CGROUP_NAME);
+        let expected_runtime_cgroup = self
+            .group_path
+            .join(WORKLOAD_CGROUP_NAME)
+            .join(RUNTIME_CGROUP_NAME);
+        let tools_path = self.tools_path.clone().ok_or_else(|| {
+            ProcessContainmentError::new(
+                "prepare tool placement broker",
+                io::Error::other("trusted control cgroup has no tools domain"),
+            )
+        })?;
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
-        let worker = thread::Builder::new()
+        let workload_worker = thread::Builder::new()
             .name(THREAD_WORKLOAD_BOOTSTRAP.to_owned())
             .spawn(move || {
                 serve_workload_placement(
@@ -390,10 +452,33 @@ impl CgroupGuard {
             .map_err(|error| {
                 ProcessContainmentError::new("start workload placement bootstrap worker", error)
             })?;
+        let tool_cancel = Arc::clone(&cancel);
+        let tool_worker = match thread::Builder::new()
+            .name(THREAD_TOOL_PLACEMENT.to_owned())
+            .spawn(move || {
+                serve_tool_placement(
+                    tool_listener,
+                    expected_uid,
+                    &expected_runtime_cgroup,
+                    &tools_path,
+                    &tool_cancel,
+                );
+            }) {
+            Ok(worker) => worker,
+            Err(error) => {
+                cancel.store(true, Ordering::Release);
+                let _ = workload_worker.join();
+                return Err(ProcessContainmentError::new(
+                    "start tool placement worker",
+                    error,
+                ));
+            }
+        };
         Ok(WorkloadPlacementBootstrap {
             endpoint,
+            tool_endpoint,
             cancel,
-            worker: Some(worker),
+            workers: vec![workload_worker, tool_worker],
         })
     }
 
@@ -404,6 +489,7 @@ impl CgroupGuard {
             group_path,
             outer_placement,
             workload_placement,
+            tools_path: _,
             create_elapsed,
         } = self;
         drop(outer_placement);
@@ -641,7 +727,20 @@ fn cleanup_cgroup(
     let mut graceful_errors = 0;
 
     if descendants_observed && mode == ProcessContainmentCleanupMode::Graceful {
-        for leaf_path in cgroup_leaf_paths(group_path) {
+        let leaf_paths = match cgroup_leaf_paths(group_path) {
+            Ok(paths) => paths,
+            Err(error) => {
+                graceful_errors += 1;
+                log(
+                    "WARN",
+                    &format!(
+                        "exec process containment graceful leaf enumeration failed error={error}"
+                    ),
+                );
+                Vec::new()
+            }
+        };
+        for leaf_path in leaf_paths {
             match read_member_pids(&leaf_path) {
                 Ok(pids) => {
                     initial_members += pids.len();
@@ -781,7 +880,123 @@ fn serve_workload_placement(
     }
 }
 
+fn serve_tool_placement(
+    listener: std::os::unix::net::UnixListener,
+    expected_uid: libc::uid_t,
+    expected_runtime_cgroup: &Path,
+    tools_path: &Path,
+    cancel: &AtomicBool,
+) {
+    let mut next_tool_id = 1_u64;
+    while !cancel.load(Ordering::Acquire) {
+        let stream = match process_control_ipc::accept_with_timeout(
+            &listener,
+            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
+        ) {
+            Ok(stream) => stream,
+            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
+            Err(error) => {
+                log("WARN", &format!("tool placement accept failed: {error}"));
+                return;
+            }
+        };
+        if let Err(error) = stream.set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+            log(
+                "WARN",
+                &format!("tool placement read timeout setup failed: {error}"),
+            );
+            continue;
+        }
+        if let Err(error) = stream.set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+            log(
+                "WARN",
+                &format!("tool placement write timeout setup failed: {error}"),
+            );
+            continue;
+        }
+
+        let placement = place_tool_peer(
+            &stream,
+            expected_uid,
+            expected_runtime_cgroup,
+            tools_path,
+            next_tool_id,
+        );
+        next_tool_id = next_tool_id.saturating_add(1);
+        if let Err(error) = placement {
+            log("WARN", &format!("tool placement rejected: {error}"));
+        }
+    }
+}
+
+fn place_tool_peer(
+    stream: &std::os::unix::net::UnixStream,
+    expected_uid: libc::uid_t,
+    expected_runtime_cgroup: &Path,
+    tools_path: &Path,
+    tool_id: u64,
+) -> io::Result<()> {
+    if !peer_matches(stream, expected_uid, expected_runtime_cgroup)? {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "peer is not in the operation runtime cgroup",
+        ));
+    }
+    reap_empty_tool_cgroups(tools_path)?;
+    let tool_path = tools_path.join(format!("{TOOL_CGROUP_NAME_PREFIX}{tool_id}"));
+    fs::create_dir(&tool_path)?;
+    let placement_result = (|| {
+        fs::write(
+            tool_path.join(MEMORY_OOM_GROUP_FILE),
+            TOOL_MEMORY_OOM_GROUP.as_bytes(),
+        )?;
+        let placement = OpenOptions::new()
+            .write(true)
+            .open(tool_path.join(CGROUP_PROCS_FILE))?;
+        process_control_ipc::send_tool_placement(stream, placement.as_fd())?;
+        process_control_ipc::read_tool_placement_confirmation(stream)?;
+        if !peer_matches(stream, expected_uid, &tool_path)? {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "peer did not enter the assigned tool cgroup",
+            ));
+        }
+        process_control_ipc::write_tool_placement_ack(stream)
+    })();
+    if placement_result.is_err() && matches!(read_populated(&tool_path), Ok(false)) {
+        let _ = fs::remove_dir(&tool_path);
+    }
+    placement_result
+}
+
+fn reap_empty_tool_cgroups(tools_path: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(tools_path)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir()
+            || !entry
+                .file_name()
+                .as_encoded_bytes()
+                .starts_with(TOOL_CGROUP_NAME_PREFIX.as_bytes())
+        {
+            continue;
+        }
+        let path = entry.path();
+        if matches!(read_populated(&path), Ok(false)) {
+            fs::remove_dir(path)?;
+        }
+    }
+    Ok(())
+}
+
 fn workload_bootstrap_peer_matches(
+    stream: &std::os::unix::net::UnixStream,
+    expected_uid: libc::uid_t,
+    expected_cgroup: &Path,
+) -> io::Result<bool> {
+    peer_matches(stream, expected_uid, expected_cgroup)
+}
+
+fn peer_matches(
     stream: &std::os::unix::net::UnixStream,
     expected_uid: libc::uid_t,
     expected_cgroup: &Path,
@@ -1014,36 +1229,79 @@ fn remove_empty_cgroup_until(
 #[cfg(test)]
 fn remove_test_cgroup_interface_files(group_path: &Path) {
     for filename in [
+        CGROUP_EVENTS_FILE,
+        CGROUP_KILL_FILE,
+        CGROUP_PROCS_FILE,
         CGROUP_SUBTREE_CONTROL_FILE,
         CPU_MAX_FILE,
+        CPU_STAT_FILE,
         CPU_WEIGHT_FILE,
+        MEMORY_EVENTS_FILE,
         MEMORY_HIGH_FILE,
         MEMORY_MAX_FILE,
         MEMORY_MIN_FILE,
         MEMORY_OOM_GROUP_FILE,
+        PIDS_EVENTS_FILE,
         PIDS_MAX_FILE,
     ] {
         let _ = fs::remove_file(group_path.join(filename));
     }
 }
 
-fn cgroup_leaf_paths(group_path: &Path) -> [PathBuf; 2] {
-    [
-        group_path.join(CONTROL_CGROUP_NAME),
-        group_path.join(WORKLOAD_CGROUP_NAME),
-    ]
+fn cgroup_leaf_paths(group_path: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut leaves = Vec::new();
+    collect_cgroup_leaves(group_path, &mut leaves)?;
+    Ok(leaves)
+}
+
+fn collect_cgroup_leaves(group_path: &Path, leaves: &mut Vec<PathBuf>) -> io::Result<()> {
+    let children = child_cgroup_paths(group_path)?;
+    if children.is_empty() {
+        leaves.push(group_path.to_path_buf());
+        return Ok(());
+    }
+    for child in children {
+        collect_cgroup_leaves(&child, leaves)?;
+    }
+    Ok(())
+}
+
+fn child_cgroup_paths(group_path: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut children = Vec::new();
+    for entry in fs::read_dir(group_path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            children.push(entry.path());
+        }
+    }
+    children.sort();
+    Ok(children)
 }
 
 fn remove_cgroup_hierarchy(group_path: &Path) -> Result<(), ProcessContainmentError> {
     let deadline = Instant::now() + EXEC_PROCESS_CONTAINMENT_REMOVE_TIMEOUT;
-    for leaf_path in cgroup_leaf_paths(group_path) {
-        match remove_empty_cgroup_until(&leaf_path, deadline) {
+    remove_cgroup_descendants(group_path, deadline)?;
+    remove_empty_cgroup_until(group_path, deadline)
+}
+
+fn remove_cgroup_descendants(
+    group_path: &Path,
+    deadline: Instant,
+) -> Result<(), ProcessContainmentError> {
+    let children = match child_cgroup_paths(group_path) {
+        Ok(children) => children,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(ProcessContainmentError::new("read child cgroups", error)),
+    };
+    for child in children {
+        remove_cgroup_descendants(&child, deadline)?;
+        match remove_empty_cgroup_until(&child, deadline) {
             Ok(()) => {}
             Err(error) if error.source.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
     }
-    remove_empty_cgroup_until(group_path, deadline)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1161,6 +1419,51 @@ mod tests {
             !workload_bootstrap_peer_matches(&peer, uid, &expected.join("not-the-peer-cgroup"))
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn discovers_nested_control_runtime_and_tool_leaves() {
+        let base = tempfile::tempdir().unwrap();
+        let operation = base.path().join("exec-nested");
+        let control = operation.join(CONTROL_CGROUP_NAME);
+        let runtime = operation
+            .join(WORKLOAD_CGROUP_NAME)
+            .join(RUNTIME_CGROUP_NAME);
+        let tool = operation
+            .join(WORKLOAD_CGROUP_NAME)
+            .join(TOOLS_CGROUP_NAME)
+            .join("tool-7");
+        fs::create_dir_all(&control).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&tool).unwrap();
+
+        let leaves = cgroup_leaf_paths(&operation).unwrap();
+
+        assert_eq!(leaves, vec![control, runtime, tool]);
+    }
+
+    #[test]
+    fn removes_nested_cgroup_hierarchy_bottom_up() {
+        let base = tempfile::tempdir().unwrap();
+        let operation = base.path().join("exec-nested");
+        fs::create_dir_all(
+            operation
+                .join(WORKLOAD_CGROUP_NAME)
+                .join(TOOLS_CGROUP_NAME)
+                .join("tool-9"),
+        )
+        .unwrap();
+        fs::create_dir_all(
+            operation
+                .join(WORKLOAD_CGROUP_NAME)
+                .join(RUNTIME_CGROUP_NAME),
+        )
+        .unwrap();
+        fs::create_dir_all(operation.join(CONTROL_CGROUP_NAME)).unwrap();
+
+        remove_cgroup_hierarchy(&operation).unwrap();
+
+        assert!(!operation.exists());
     }
 
     #[test]

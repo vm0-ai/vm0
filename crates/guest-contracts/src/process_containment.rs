@@ -1,10 +1,9 @@
 //! Shared guest process-containment and resource-policy contract.
 //!
 //! Each exec operation owns an empty parent cgroup with `control` and
-//! `workload` leaves. A process-control-enabled Guest Agent runs in `control`;
-//! every agent CLI and ordinary exec runs in `workload`. The parent remains
-//! empty so it can distribute cgroup v2 controllers and act as the recursive
-//! cleanup boundary.
+//! `workload` children. Ordinary execs run directly in `workload`. For an agent
+//! operation, `workload` is an empty domain containing a `runtime` leaf for the
+//! agent CLI and a `tools` domain with one child per shell invocation.
 
 use std::collections::HashMap;
 use std::io;
@@ -23,8 +22,17 @@ pub const EXEC_CGROUP_NAME_PREFIX: &str = "exec-";
 /// Leaf reserved for the trusted Guest Agent control process.
 pub const CONTROL_CGROUP_NAME: &str = "control";
 
-/// Leaf containing agent CLIs, tools, and ordinary exec processes.
+/// Workload leaf for ordinary execs and domain for agent operations.
 pub const WORKLOAD_CGROUP_NAME: &str = "workload";
+
+/// Leaf containing the agent CLI and its runtime helpers.
+pub const RUNTIME_CGROUP_NAME: &str = "runtime";
+
+/// Empty aggregate memory domain containing agent shell tools.
+pub const TOOLS_CGROUP_NAME: &str = "tools";
+
+/// Prefix for one shell invocation cgroup below [`TOOLS_CGROUP_NAME`].
+pub const TOOL_CGROUP_NAME_PREFIX: &str = "tool-";
 
 /// Cgroup v2 controllers required for workload resource isolation.
 pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
@@ -40,6 +48,10 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// from the matching operation `control` cgroup. Guest Agent consumes this
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
+
+/// Runner-owned endpoint used by the VM0 shell launcher to request a unique
+/// tool cgroup before it executes user code.
+pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count validated for workload containment.
 pub const MIN_PROFILE_VCPU: u32 = 1;
@@ -73,15 +85,25 @@ pub const CONTROL_MEMORY_MIN_BYTES: u64 = 384 * 1024 * 1024;
 /// before the workload reaches its local hard limit.
 pub const WORKLOAD_MEMORY_RESERVE_BYTES: u64 = 128 * 1024 * 1024;
 
+/// Fixed workload capacity kept outside the aggregate tool OOM domain.
+///
+/// At the smallest supported 1 GiB profile, the existing workload limit is
+/// 896 MiB and this reserve leaves 320 MiB for shell tools. The reserve covers
+/// the agent runtime and headroom between the child and parent hard limits.
+pub const TOOLS_MEMORY_RESERVE_BYTES: u64 = 576 * 1024 * 1024;
+
 /// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
 pub const WORKLOAD_MEMORY_HIGH: &str = "max";
 
-/// Value written to workload `memory.oom.group` for per-process OOM selection.
+/// Value written to the workload domain's `memory.oom.group`.
 ///
-/// The agent runtime and its tool descendants share the workload cgroup. Keeping
-/// group OOM disabled lets the kernel kill an individual high-memory process
-/// without unconditionally terminating the entire agent runtime.
+/// Keeping group OOM disabled prevents a parent-limit OOM from unconditionally
+/// terminating the entire operation. Managed shell-tool leaves opt into group
+/// OOM independently through [`TOOL_MEMORY_OOM_GROUP`].
 pub const WORKLOAD_MEMORY_OOM_GROUP: &str = "0";
+
+/// Value written to each individual tool's `memory.oom.group`.
+pub const TOOL_MEMORY_OOM_GROUP: &str = "1";
 
 /// Value written to workload `pids.max` while no production ceiling is calibrated.
 ///
@@ -191,7 +213,7 @@ fn value_or_zero(values: &HashMap<&str, u64>, key: &str) -> u64 {
     values.get(key).copied().unwrap_or(0)
 }
 
-/// Calibrated cgroup v2 resource policy for one workload leaf.
+/// Calibrated cgroup v2 resource policy for one operation workload domain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorkloadResourcePolicy {
     /// Workload CPU quota in microseconds per [`Self::cpu_period_us`].
@@ -202,6 +224,8 @@ pub struct WorkloadResourcePolicy {
     pub memory_high: &'static str,
     /// Workload hard memory limit in bytes.
     pub memory_max_bytes: u64,
+    /// Aggregate hard memory limit for all shell tool cgroups.
+    pub tools_memory_max_bytes: u64,
     /// Value written to the workload `memory.oom.group` cgroup file.
     pub memory_oom_group: &'static str,
     /// Protected Guest Agent memory in bytes.
@@ -256,11 +280,16 @@ impl WorkloadResourcePolicy {
             .checked_sub(WORKLOAD_MEMORY_RESERVE_BYTES)
             .filter(|limit| *limit > 0)
             .ok_or("guest memory capacity cannot preserve workload memory reserve")?;
+        let tools_memory_max_bytes = memory_max_bytes
+            .checked_sub(TOOLS_MEMORY_RESERVE_BYTES)
+            .filter(|limit| *limit > 0)
+            .ok_or("guest memory capacity cannot preserve tool runtime reserve")?;
         Ok(Self {
             cpu_quota_us,
             cpu_period_us: WORKLOAD_CPU_PERIOD_US,
             memory_high: WORKLOAD_MEMORY_HIGH,
             memory_max_bytes,
+            tools_memory_max_bytes,
             memory_oom_group: WORKLOAD_MEMORY_OOM_GROUP,
             control_memory_min_bytes: CONTROL_MEMORY_MIN_BYTES,
             pids_max: WORKLOAD_PIDS_MAX,
@@ -282,6 +311,7 @@ mod tests {
         assert_eq!(policy.cpu_period_us, 100_000);
         assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 3968 * 1024 * 1024);
+        assert_eq!(policy.tools_memory_max_bytes, 3392 * 1024 * 1024);
         assert_eq!(policy.memory_oom_group, "0");
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
         assert_eq!(policy.pids_max, "max");
@@ -296,6 +326,16 @@ mod tests {
             error,
             "guest memory capacity cannot preserve control memory minimum"
         );
+    }
+
+    #[test]
+    fn derives_minimum_profile_tool_budget_without_rejecting_it() {
+        let policy =
+            WorkloadResourcePolicy::for_guest_capacity(1, u64::from(1024_u32) * 1024 * 1024)
+                .unwrap();
+
+        assert_eq!(policy.memory_max_bytes, 896 * 1024 * 1024);
+        assert_eq!(policy.tools_memory_max_bytes, 320 * 1024 * 1024);
     }
 
     #[test]

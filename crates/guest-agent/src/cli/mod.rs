@@ -968,6 +968,10 @@ async fn execute_cli_inner(
         ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
         ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
     ]);
+    if let Some(workload_containment) = workload_containment {
+        let (key, value) = workload_containment.tool_placement_env();
+        child_env_values.push((key.to_string(), value));
+    }
     let child_env_values = child_env::normalize_values(child_env_values);
     exec_boundary::validate_process_argv_env(
         "CLI child argv/env too large",

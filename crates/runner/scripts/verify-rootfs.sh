@@ -66,6 +66,8 @@ fi
 # Enforced by the `ca_constants_in_sync_across_scripts`
 # test in cmd/build.rs at compile time.
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+TOOL_SHELL_DEST="/bin/bash"
+REAL_BASH_DEST="/bin/bash.vm0-real"
 
 # ---------------------------------------------------------------------------
 # Cleanup
@@ -244,9 +246,13 @@ if [[ "$MODE" == "rootfs" ]]; then
   for dest in "${GUEST_DESTINATIONS[@]}"; do
     check_required_executable "$dest" "$dest"
   done
+  check_required_executable "$REAL_BASH_DEST" "preserved Bash"
 else
   guest_contamination=0
   for dest in "${GUEST_DESTINATIONS[@]}"; do
+    if [[ "$dest" == "$TOOL_SHELL_DEST" ]]; then
+      continue
+    fi
     if [[ -e "${MOUNT_DIR}${dest}" || -L "${MOUNT_DIR}${dest}" ]]; then
       errors+=("template contains rootfs-only guest binary: ${dest}")
       guest_contamination=1

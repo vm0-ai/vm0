@@ -69,7 +69,9 @@ pub use codec::{
 };
 pub use transport::{
     accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name,
-    receive_workload_placement, send_workload_placement,
+    read_tool_placement_ack, read_tool_placement_confirmation, receive_tool_placement,
+    receive_workload_placement, send_tool_placement, send_workload_placement,
+    write_tool_placement_ack, write_tool_placement_confirmation,
 };
 
 /// Environment variable carrying the operation-control abstract socket name.

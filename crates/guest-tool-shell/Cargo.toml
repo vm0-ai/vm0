@@ -1,0 +1,16 @@
+[package]
+name = "guest-tool-shell"
+version = "0.1.0"
+edition.workspace = true
+description = "Transparent Bash launcher for per-tool cgroup placement in VM0 guests"
+
+[dependencies]
+guest-contracts.workspace = true
+libc.workspace = true
+process-control-ipc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

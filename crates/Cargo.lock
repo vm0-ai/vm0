@@ -1380,6 +1380,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-tool-shell"
+version = "0.1.0"
+dependencies = [
+ "guest-contracts",
+ "libc",
+ "process-control-ipc",
+ "tempfile",
+]
+
+[[package]]
 name = "guest-write-file"
 version = "0.1.78"
 dependencies = [
@@ -2602,6 +2612,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
+ "guest-tool-shell",
  "guest-write-file",
  "hex",
  "http-body 1.1.0",
