@@ -1,4 +1,4 @@
-import { command, type Command } from "ccstate";
+import { command } from "ccstate";
 import {
   billingCheckoutContract,
   billingUsagePackCatalogContract,
@@ -18,8 +18,8 @@ import { eq } from "drizzle-orm";
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { logger } from "../../lib/log";
-import { now, nowDate } from "../../lib/time";
-import { onRejection, settle } from "../utils";
+import { nowDate } from "../../lib/time";
+import { settle } from "../utils";
 import {
   badRequestMessage,
   conflict,
@@ -28,19 +28,9 @@ import {
 } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { requestSignal$, setResHeader$ } from "../context/hono";
+import { requestSignal$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import {
-  clerk$,
-  clerkRateLimit,
-  createClerkReadRetryBudget,
-  retryClerkRead,
-  type ClerkClient,
-} from "../external/clerk";
-import {
-  listAllOrganizationMemberships,
-  listAllPendingOrganizationInvitations,
-} from "../external/clerk-organization-lists";
+import { clerk$, type ClerkClient } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import {
@@ -90,6 +80,10 @@ import {
   type UsagePackMigrationOwner,
 } from "../services/usage-pack-subscription-migration.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
+import {
+  loadBillingOrganizationDirectory,
+  loadBillingOrganizationMemberships,
+} from "../services/billing-clerk-directory.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { reconcilePaidStripeInvoice$ } from "../services/webhooks-stripe.service";
 import {
@@ -97,6 +91,7 @@ import {
   parseStoredSignupAttribution,
 } from "../services/acquisition-attribution.service";
 import type { RouteEntry } from "../route-entry";
+import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -132,116 +127,6 @@ const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
 const USAGE_PACK_PLAN_ENDING_MESSAGE =
   "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
 const log = logger("api:zero:billing-checkout");
-
-const billingClerkUnavailable$ = command(
-  ({ set }, retryAfterSeconds: number) => {
-    set(setResHeader$, "Retry-After", String(retryAfterSeconds));
-    set(setResHeader$, "Cache-Control", "no-store");
-    return providerUnavailable(
-      "Billing organization members are temporarily unavailable",
-    );
-  },
-);
-
-class BillingClerkReadRateLimitError extends Error {
-  constructor(
-    readonly retryAfterSeconds: number,
-    cause: unknown,
-  ) {
-    super("Billing Clerk read rate limit exhausted", { cause });
-    this.name = "BillingClerkReadRateLimitError";
-  }
-}
-
-async function billingClerkRead<T>(
-  read: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  const result = await settle(read, signal);
-  if (result.ok) {
-    return result.value;
-  }
-  const rateLimit = clerkRateLimit(result.error);
-  if (!rateLimit) {
-    throw result.error;
-  }
-  throw new BillingClerkReadRateLimitError(
-    rateLimit.retryAfterSeconds,
-    result.error,
-  );
-}
-
-function withBillingClerkRateLimit<T>(
-  handler$: Command<Promise<T>, [AbortSignal]>,
-): Command<Promise<T | ReturnType<typeof providerUnavailable>>, [AbortSignal]> {
-  return command(async ({ set }, signal: AbortSignal) => {
-    const result = await settle(set(handler$, signal), signal);
-    if (result.ok) {
-      return result.value;
-    }
-    if (!(result.error instanceof BillingClerkReadRateLimitError)) {
-      throw result.error;
-    }
-    return set(billingClerkUnavailable$, result.error.retryAfterSeconds);
-  });
-}
-
-type BillingOrganizationMemberships = Awaited<
-  ReturnType<typeof listAllOrganizationMemberships>
->;
-type BillingOrganizationInvitations = Awaited<
-  ReturnType<typeof listAllPendingOrganizationInvitations>
->;
-
-interface BillingOrganizationDirectory {
-  readonly memberships: BillingOrganizationMemberships;
-  readonly invitations: BillingOrganizationInvitations;
-}
-
-async function loadBillingOrganizationDirectory(
-  clerk: ClerkClient,
-  orgId: string,
-  signal: AbortSignal,
-): Promise<BillingOrganizationDirectory> {
-  const retryBudget = createClerkReadRetryBudget(now);
-  const controller = new AbortController();
-  const readSignal = AbortSignal.any([signal, controller.signal]);
-  const [memberships, invitations] = await billingClerkRead(
-    onRejection(
-      Promise.all([
-        retryClerkRead(
-          () => {
-            return listAllOrganizationMemberships(
-              clerk.organizations,
-              orgId,
-              readSignal,
-            );
-          },
-          readSignal,
-          retryBudget,
-        ),
-        retryClerkRead(
-          () => {
-            return listAllPendingOrganizationInvitations(
-              clerk.organizations,
-              orgId,
-              readSignal,
-            );
-          },
-          readSignal,
-          retryBudget,
-        ),
-      ]),
-      () => {
-        controller.abort();
-      },
-    ),
-    signal,
-  );
-  controller.abort();
-  signal.throwIfAborted();
-  return { memberships, invitations };
-}
 
 type UsagePackSubscriptionChangePreviewResult = Awaited<
   ReturnType<typeof previewUsagePackSubscriptionChange>
@@ -362,19 +247,9 @@ async function validateUsagePackSubscriptionMembers(
   if (!args.memberAdditionSchemaAvailable) {
     return "member_additions_unavailable";
   }
-  const retryBudget = createClerkReadRetryBudget(now);
-  const memberships = await billingClerkRead(
-    retryClerkRead(
-      () => {
-        return listAllOrganizationMemberships(
-          args.clerk.organizations,
-          args.orgId,
-          signal,
-        );
-      },
-      signal,
-      retryBudget,
-    ),
+  const memberships = await loadBillingOrganizationMemberships(
+    args.clerk,
+    args.orgId,
     signal,
   );
   signal.throwIfAborted();
