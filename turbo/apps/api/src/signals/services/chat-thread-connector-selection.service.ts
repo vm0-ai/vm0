@@ -59,11 +59,17 @@ type ResolveChatThreadConnectorSelectionsResult =
     }
   | { readonly kind: "invalid"; readonly message: string };
 
-function targetFromRow(row: ConnectorSelectionRow): ConnectorAccountTarget {
+function targetFromRow(
+  row: ConnectorSelectionRow,
+): ConnectorAccountTarget | undefined {
   if (row.connectorSlug !== null && row.customConnectorId === null) {
+    const connectorSlug = connectorSlugSchema.safeParse(row.connectorSlug);
+    if (!connectorSlug.success) {
+      return undefined;
+    }
     return {
       kind: "builtin",
-      connectorSlug: connectorSlugSchema.parse(row.connectorSlug),
+      connectorSlug: connectorSlug.data,
     };
   }
   if (row.customConnectorId !== null && row.connectorSlug === null) {
@@ -74,10 +80,14 @@ function targetFromRow(row: ConnectorSelectionRow): ConnectorAccountTarget {
 
 function selectionFromRow(
   row: ConnectorSelectionRow,
-): ConnectorAccountSelection {
+): ConnectorAccountSelection | undefined {
+  const target = targetFromRow(row);
+  if (!target) {
+    return undefined;
+  }
   return {
     connectionId: row.connectorId,
-    target: targetFromRow(row),
+    target,
   };
 }
 
@@ -184,7 +194,10 @@ export async function listChatThreadConnectorSelections(
     return null;
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
-  return rows.map(selectionFromRow);
+  return rows.flatMap((row) => {
+    const selection = selectionFromRow(row);
+    return selection ? [selection] : [];
+  });
 }
 
 export async function prepareChatThreadConnectorSelections(
@@ -270,8 +283,6 @@ async function upsertSelection(
           })
           .returning({
             connectorId: chatThreadConnectorSelections.connectorId,
-            connectorSlug: chatThreadConnectorSelections.connectorSlug,
-            customConnectorId: chatThreadConnectorSelections.customConnectorId,
           })
       : await tx
           .insert(chatThreadConnectorSelections)
@@ -288,13 +299,11 @@ async function upsertSelection(
           })
           .returning({
             connectorId: chatThreadConnectorSelections.connectorId,
-            connectorSlug: chatThreadConnectorSelections.connectorSlug,
-            customConnectorId: chatThreadConnectorSelections.customConnectorId,
           });
   if (!row) {
     throw new Error("Failed to persist chat thread connector selection");
   }
-  return selectionFromRow(row);
+  return selection;
 }
 
 export async function updateChatThreadConnectorSelection(
@@ -407,7 +416,7 @@ export async function resolveChatThreadConnectorSelections(
   const activeSelections = new Map<string, ConnectorAccountSelection>();
   for (const row of rows) {
     const selection = selectionFromRow(row);
-    if (targetIsAuthorized(args.scope, selection.target)) {
+    if (selection && targetIsAuthorized(args.scope, selection.target)) {
       activeSelections.set(
         connectorAccountTargetKey(selection.target),
         selection,

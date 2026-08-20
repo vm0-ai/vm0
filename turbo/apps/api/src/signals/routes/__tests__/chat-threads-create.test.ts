@@ -20,7 +20,11 @@ import {
   createConnectorBddApi,
   manualHttpCustomConnectorCreateBody,
 } from "./helpers/api-bdd-connectors";
-import { readCustomConnectorCredentialStorageParent } from "./helpers/connector-credential-storage-state";
+import {
+  readCustomConnectorCredentialStorageParent,
+  seedBuiltinThreadConnectorSelection,
+  seedConnectorStorageRow,
+} from "./helpers/connector-credential-storage-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedRun$ } from "./helpers/usage-state";
@@ -421,6 +425,49 @@ describe("POST /api/zero/chat-threads", () => {
       }),
       [404],
     );
+  });
+
+  it("ignores malformed external built-in connector identities", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const created = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    const connectorId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "invalid external slug",
+      authMethod: "api-token",
+      storageVersion: 1,
+    });
+    await seedBuiltinThreadConnectorSelection(context, {
+      chatThreadId: created.body.id,
+      connectorId,
+      connectorSlug: "invalid external slug",
+    });
+
+    const selections = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
   });
 
   it("creates exact custom HTTP and MCP connector selections", async () => {

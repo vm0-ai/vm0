@@ -20,6 +20,9 @@ surface; the index does not replace their detailed rules.
 - [Testing](./testing.md): testing strategy, patterns, and anti-patterns.
 - [Deployment compatibility](./deployment-compatibility.md): compatibility
   requirements for independently deployed components and persisted state.
+- [External data boundaries](./external-data.md): validation and fail-closed
+  behavior for externally owned catalogs, entities, payloads, and persisted
+  references without turning one invalid item into an internal server error.
 
 ## Specialized Guidance
 
