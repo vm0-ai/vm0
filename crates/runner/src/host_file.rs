@@ -1,4 +1,30 @@
-//! Low-level host filesystem primitives for runner-owned state hardening.
+//! Low-level host filesystem primitives for hardening runner-owned host state.
+//!
+//! Directory walks are relative to directory file descriptors and use
+//! no-follow opens. Paths are checked lexically before any component is opened
+//! or created, so parent-directory (`..`) components are rejected before
+//! mutation. Every component must be a directory owned by root or the runner
+//! effective uid. Group/other-writable intermediate components are accepted
+//! only when they have the sticky bit. Final-component rules are mode-specific:
+//! [`DirMode::Private`] normalizes a runner-owned final directory to `0700`,
+//! while the trusted and shared modes reject group/other-writable final
+//! directories.
+//!
+//! [`DirMode`] selects the final-directory policy and the mode used for
+//! missing components. The caller should choose the policy that matches the
+//! state being protected rather than relying on the mode name alone:
+//!
+//! - Use [`DirMode::Private`] for runner-exclusive state such as logs, queue
+//!   state, caches, and live-runner records.
+//! - Use [`DirMode::TrustedParent`] for a trusted existing parent, such as a
+//!   lock-file parent, when missing components should be private and an
+//!   existing safe final mode should be preserved.
+//! - Use [`DirMode::SharedTrustedParent`] for a shared parent such as a local
+//!   queue group directory when missing components should be shared but an
+//!   existing safe final mode should be preserved.
+//! - Use [`DirMode::SharedTrusted`] for a shared directory such as setup state
+//!   when a runner-owned final directory should be normalized to `0755`.
+//!
 //! Keep policy-specific entry points in caller modules.
 
 use std::ffi::{CString, OsStr};
@@ -21,12 +47,45 @@ const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
 
 #[derive(Clone, Copy)]
+/// Trust and permission policy for a directory walk.
+///
+/// All modes share the traversal and trust checks documented at the module
+/// level. In particular, intermediate directories may be group/other-writable
+/// only when they have the sticky bit. For the final directory, `Private`
+/// requires runner ownership and normalizes its permission bits, while the
+/// other modes accept root or runner ownership but reject group/other writes.
+/// The mode also determines the permissions used for missing components and
+/// whether a runner-owned final directory is normalized.
 pub(crate) enum DirMode {
+    /// Protect runner-exclusive state with a private final directory.
+    ///
+    /// The final directory must be owned by the runner effective uid. Missing
+    /// components are created as `0700`, and an existing runner-owned final
+    /// directory is normalized to `0700` when necessary, regardless of its
+    /// previous permission bits. A root-owned final directory is not accepted
+    /// by this mode.
     Private,
+    /// Trust an existing final directory while creating missing components
+    /// privately.
+    ///
+    /// The final directory must be root-owned or runner-owned and must not be
+    /// group/other-writable. Missing components are created as `0700`.
+    /// Existing safe final permissions are preserved; this mode does not
+    /// normalize an existing final directory.
     TrustedParent,
-    /// Create missing directories as shared/trusted, but only validate existing ones.
+    /// Trust a shared existing parent while preserving its safe final mode.
+    ///
+    /// The final directory must be root-owned or runner-owned and must not be
+    /// group/other-writable. Missing components are created as `0755`.
+    /// Existing safe final permissions are preserved, including for a
+    /// runner-owned final directory.
     SharedTrustedParent,
-    /// Create missing directories as shared/trusted and normalize the owned final directory.
+    /// Trust a shared directory and normalize its runner-owned final mode.
+    ///
+    /// The final directory must be root-owned or runner-owned and must not be
+    /// group/other-writable. Missing components are created as `0755`. An
+    /// existing runner-owned final directory is normalized to `0755`; a
+    /// root-owned final directory remains unchanged when it is already safe.
     SharedTrusted,
 }
 
@@ -38,10 +97,23 @@ struct DirWalk<'a> {
     create_missing: bool,
 }
 
+/// Create and validate a trusted directory path.
+///
+/// Missing components are created with the mode selected by [`DirMode`]. The
+/// same ownership and permission checks used by [`validate_dir`] are applied
+/// to every component. Depending on the mode, an existing runner-owned final
+/// directory may also be normalized to `0700` or `0755`.
 pub(crate) fn ensure_dir(path: &Path, mode: DirMode, context: &str) -> io::Result<()> {
     open_dir_components(path, mode, context, true).map(|_| ())
 }
 
+/// Validate a trusted directory path without creating missing components.
+///
+/// This applies the same ownership, path, symlink, and permission checks as
+/// [`ensure_dir`]. It is not necessarily read-only: [`DirMode::Private`] and
+/// [`DirMode::SharedTrusted`] can normalize an existing runner-owned final
+/// directory to their required mode. No component is created when a path is
+/// missing.
 pub(crate) fn validate_dir(path: &Path, mode: DirMode, context: &str) -> io::Result<()> {
     open_dir_components(path, mode, context, false).map(|_| ())
 }
