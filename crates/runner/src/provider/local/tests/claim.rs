@@ -189,6 +189,51 @@ async fn claim_handles_poison_job_json() {
 }
 
 #[tokio::test]
+async fn claim_terminally_fails_oversized_sparse_job() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let run_id = RunId::new_v4();
+    let profile = crate::profile::DEFAULT_PROFILE;
+    let job_path = local_queue::job_path(dir.path(), profile, run_id).unwrap();
+    local_queue::ensure_profile_jobs_dir(dir.path(), profile).unwrap();
+    local_queue::write_private_file(&job_path, b"", "oversized sparse test job").unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&job_path)
+        .unwrap()
+        .set_len((local_queue::LOCAL_JOB_MAX_BYTES as u64) * 64)
+        .unwrap();
+
+    let candidate = provider.discover().await.unwrap();
+    assert_eq!(candidate.run_id(), run_id);
+    assert_eq!(candidate.reuse_key(), None);
+    assert!(provider.claim(candidate).await.is_none());
+
+    assert!(!job_path.exists(), "oversized job file must be removed");
+    assert!(
+        !local_queue::claim_path(dir.path(), run_id).exists(),
+        "claim marker must be released after terminal failure"
+    );
+    let result = read_result(dir.path(), run_id);
+    assert_ne!(result.exit_code, 0);
+    assert!(
+        result
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains(&format!(
+                "exceeds {} bytes",
+                local_queue::LOCAL_JOB_MAX_BYTES
+            ))),
+        "oversized job result must report the protocol limit, got: {:?}",
+        result.error
+    );
+    assert!(
+        provider.find_unclaimed_job().is_none(),
+        "terminal result must prevent oversized job rediscovery"
+    );
+}
+
+#[tokio::test]
 async fn claim_failure_removes_duplicate_job_files_across_profiles() {
     let dir = tempfile::tempdir().unwrap();
     let provider = provider_with_profiles(

@@ -128,6 +128,60 @@ pub(crate) fn read_private_file(path: &Path, context: &str) -> io::Result<Vec<u8
     Ok(bytes)
 }
 
+pub(crate) fn read_private_file_with_max(
+    path: &Path,
+    context: &str,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
+    let file = open_private_read_file(path, context)?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| io::Error::new(e.kind(), format!("stat {context} {}: {e}", path.display())))?;
+    if metadata.len() > max_bytes as u64 {
+        return Err(private_file_too_large(
+            path,
+            context,
+            metadata.len(),
+            max_bytes,
+        ));
+    }
+
+    let read_limit = max_bytes.checked_add(1).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("read limit for {context} {} is too large", path.display()),
+        )
+    })?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(read_limit as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| io::Error::new(e.kind(), format!("read {context} {}: {e}", path.display())))?;
+    if bytes.len() > max_bytes {
+        return Err(private_file_too_large(
+            path,
+            context,
+            bytes.len() as u64,
+            max_bytes,
+        ));
+    }
+    Ok(bytes)
+}
+
+fn private_file_too_large(
+    path: &Path,
+    context: &str,
+    observed_bytes: u64,
+    max_bytes: usize,
+) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "{context} {} exceeds {max_bytes} bytes (observed at least {observed_bytes} bytes)",
+            path.display()
+        ),
+    )
+}
+
 pub(crate) fn private_file_has_content(path: &Path, context: &str) -> io::Result<bool> {
     let file = match open_private_read_file(path, context) {
         Ok(file) => file,

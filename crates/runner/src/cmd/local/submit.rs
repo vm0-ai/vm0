@@ -410,6 +410,13 @@ impl SubmitPlan {
 
         let request_json = serde_json::to_vec(&request)
             .map_err(|e| RunnerError::Internal(format!("serialize request: {e}")))?;
+        if request_json.len() > local_queue::LOCAL_JOB_MAX_BYTES {
+            return Err(RunnerError::Config(format!(
+                "serialized local job request exceeds {} bytes (got {} bytes)",
+                local_queue::LOCAL_JOB_MAX_BYTES,
+                request_json.len()
+            )));
+        }
         let queue = SubmitQueueEntry::for_job(&group_dir, &profile, job_id)?;
 
         Ok(Self {
