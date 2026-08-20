@@ -296,6 +296,7 @@ checkImporters(resolve(sourceRoot, "signals/route.ts"), [
   "src/production-bootstrap.ts",
   "src/__tests__/api-namespace-compatibility.test.ts",
   "src/__tests__/migrated-branded-paths.test.ts",
+  "src/__tests__/migrated-paths-browsers-finance-seo.test.ts",
   "src/__tests__/provider-console-paths.test.ts",
   "src/__tests__/vercel-crons.test.ts",
 ]);
