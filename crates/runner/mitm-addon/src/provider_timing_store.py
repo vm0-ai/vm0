@@ -2,8 +2,9 @@
 
 Each provider timing module owns one store keyed by ``run_id``. Provider observers must coordinate
 their state transitions through ``locked()``; the map is LRU-bounded independently for Codex and
-Claude. The store retains only fixed timing operations, their observation timestamps, and minimal
-platform reporting context, never provider content.
+Claude. The retained delivery data is limited to fixed timing operations, their observation
+timestamps, and minimal platform reporting context; provider-specific state is timing metadata and
+never provider content.
 
 Pending operations are not admitted until a complete reporting context is available, and no lease
 is acquired for incomplete context. Once a buffered-report lease is acquired, saturated webhook
@@ -86,8 +87,9 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
     def get_locked(self, run_id: str) -> StateT | None:
         """Return a run's state without changing its LRU recency.
 
-        The caller must hold ``locked()``. Unlike ``state_for_run_locked()`` and ``touch_locked()``,
-        this lookup does not move a tracked run to the newest position and does not create state.
+        The caller must hold ``locked()``. It returns ``None`` when the run is not tracked. Unlike
+        ``state_for_run_locked()`` and ``touch_locked()``, this lookup does not move a tracked run
+        to the newest position and does not create state.
         """
         return self._run_states.get(run_id)
 
@@ -171,9 +173,9 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
     def retry_all_pending(self) -> None:
         """Retry retained reports in current LRU order until admission is saturated.
 
-        This entry point acquires the store lock internally. Each successful admission clears its
-        retained state; the first rejected admission leaves that run and all later runs for a future
-        retry. This sweep does not touch LRU order.
+        This entry point acquires the store lock internally. Each successful admission clears that
+        run's retained operations, context, and buffered lease; the first rejected admission leaves
+        that run and all later runs for a future retry. This sweep does not touch LRU order.
         """
         with self._lock:
             for run_id, state in self._run_states.items():
