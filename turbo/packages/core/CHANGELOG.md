@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.573.1](https://github.com/vm0-ai/vm0/compare/core-v8.573.0...core-v8.573.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **composer:** stop redundant feedback note dom writes during composition ([#28168](https://github.com/vm0-ai/vm0/issues/28168)) ([88b7464](https://github.com/vm0-ai/vm0/commit/88b74647cb42dce28d5032761654f31b8f78977a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.1
+
 ## [8.573.0](https://github.com/vm0-ai/vm0/compare/core-v8.572.1...core-v8.573.0) (2026-08-20)
 
 

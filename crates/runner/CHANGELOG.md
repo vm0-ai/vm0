@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.169.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.14...runner-rs-v0.169.15) (2026-08-20)
+
+
+### Bug Fixes
+
+* **guest:** isolate managed codex home from user home ([#28264](https://github.com/vm0-ai/vm0/issues/28264)) ([d4274c2](https://github.com/vm0-ai/vm0/commit/d4274c2ab1236f0be82390a7598798961b6b0a57))
+* **python:** bound iana tld updater response reads ([#28268](https://github.com/vm0-ai/vm0/issues/28268)) ([3b01513](https://github.com/vm0-ai/vm0/commit/3b01513fa02e4b9732c29d5a843d70350ee49c29))
+
+
+### Documentation
+
+* **python:** correct Anthropic SSE skip recovery test description ([#28263](https://github.com/vm0-ai/vm0/issues/28263)) ([9290f71](https://github.com/vm0-ai/vm0/commit/9290f71c711b58cb28341f696890e3bc1ecde7c4))
+
+
+### Performance Improvements
+
+* **runner:** reuse serialized firewall auth request ([#28247](https://github.com/vm0-ai/vm0/issues/28247)) ([3143d58](https://github.com/vm0-ai/vm0/commit/3143d58ad457f9ff2b7f58eb32d609a7732f3e94))
+* **runner:** share network log path ownership ([#28267](https://github.com/vm0-ai/vm0/issues/28267)) ([437dbb7](https://github.com/vm0-ai/vm0/commit/437dbb7bc47850a00b387fe59debca5ebe91433d))
+
 ## [0.169.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.13...runner-rs-v0.169.14) (2026-08-20)
 
 
