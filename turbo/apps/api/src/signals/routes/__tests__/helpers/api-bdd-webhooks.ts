@@ -732,14 +732,14 @@ export function createWebhookCallbackApi(context: TestContext) {
       body: AgentTelemetryBody,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      signal?: AbortSignal,
     ) {
       return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookTelemetryContract,
-        ).send({
-          headers,
-          body,
-        }),
+        setupApp({
+          context,
+          routes: webhooksAgentHealthUsageTelemetryRoutes,
+          signal,
+        })(webhookTelemetryContract).send({ headers, body }),
         statuses,
       );
     },

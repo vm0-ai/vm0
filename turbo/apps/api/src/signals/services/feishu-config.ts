@@ -62,9 +62,16 @@ export async function loadFeishuInstallationConfig(
   };
 }
 
+/**
+ * The event subscription URL an operator registers in their own Feishu Open
+ * Platform app. #28278 step 3 switches this producer to the final path; the
+ * branded paths stay routable, so installations that already hold the old URL
+ * keep delivering events. The endpoint is not brand-scoped, so the origin stays
+ * FEISHU_CALLBACK_BASE_URL with no brand projection.
+ */
 export function feishuCallbackUrl(installationId: string): string {
   return new URL(
-    `/api/okou/feishu/events/${encodeURIComponent(installationId)}`,
+    `/api/webhooks/feishu/events/${encodeURIComponent(installationId)}`,
     env("FEISHU_CALLBACK_BASE_URL"),
   ).toString();
 }

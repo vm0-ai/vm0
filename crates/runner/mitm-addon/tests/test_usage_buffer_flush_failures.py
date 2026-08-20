@@ -17,6 +17,7 @@ from tests.usage_buffer_helpers import (
     event,
     observation,
 )
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
@@ -76,6 +77,37 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
         reports=0,
         flush_request_id="enqueue-drained",
     )
+
+
+def test_segmented_aggregate_retry_preserves_payload_and_idempotency_keys(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(source_key="source-1", quantity=MAX_USAGE_QUANTITY),
+            event(source_key="source-2", quantity=1),
+        ],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+    enqueue.assert_called_once()
+    retained_payload = enqueue.last_call.payload
+    assert [flushed_event["quantity"] for flushed_event in retained_payload["events"]] == [
+        MAX_USAGE_QUANTITY,
+        1,
+    ]
+
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload == retained_payload
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_success(tmp_path):

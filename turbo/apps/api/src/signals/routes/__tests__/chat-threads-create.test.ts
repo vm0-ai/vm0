@@ -5,6 +5,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -17,9 +18,11 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedRun$ } from "./helpers/usage-state";
+import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { chatThreadGetRoutes } from "../chat-threads-get";
+import { userModelPreferenceRoutes } from "../user-model-preference";
 
 const context = testContext();
 const store = createStore();
@@ -33,6 +36,8 @@ const EXPLICIT_VIDEO_MODEL = "fal-ai/veo3.1/fast";
 const INHERITED_VIDEO_MODEL = "MiniMax-H3";
 const EXPLICIT_IMAGE_MODEL = "fal-ai/qwen-image";
 const INHERITED_IMAGE_MODEL = "gpt-image-2";
+const MEMBER_VIDEO_MODEL = "seedance-1-5-pro-251215";
+const MEMBER_IMAGE_MODEL = "fal-ai/flux-pro/v1.1";
 
 interface AgentFixture {
   readonly userId: string;
@@ -118,6 +123,29 @@ function threadsClient() {
 function metadataClient() {
   return setupApp({ context, routes: chatThreadGetRoutes })(
     chatThreadMetadataContract,
+  );
+}
+
+function preferenceClient() {
+  return setupApp({ context, routes: userModelPreferenceRoutes })(
+    userModelPreferenceContract,
+  );
+}
+
+/** The preference route only accepts a session, so zero tokens cannot seed it. */
+async function setMemberMediaDefaults(fixture: AgentFixture): Promise<void> {
+  createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    preferenceClient().update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        selectedModel: null,
+        serviceTier: null,
+        selectedVideoModel: MEMBER_VIDEO_MODEL,
+        selectedImageModel: MEMBER_IMAGE_MODEL,
+      },
+    }),
+    [200],
   );
 }
 
@@ -283,6 +311,105 @@ describe("POST /api/zero/chat-threads", () => {
     ).resolves.toMatchObject({
       selectedVideoModel: INHERITED_VIDEO_MODEL,
       selectedImageModel: INHERITED_IMAGE_MODEL,
+    });
+  });
+
+  it("leaves media models unpinned while neither picker is enabled", async () => {
+    const fixture = await seedAgent();
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "No media pickers enabled",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    // A member who cannot reach either picker has no choice worth freezing, so
+    // the thread keeps following the live defaults. A written pin would also
+    // outlive a revert of this behavior.
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: null,
+      selectedImageModel: null,
+    });
+  });
+
+  it("pins each media model whose picker is enabled", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Video picker only",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    // Each switch gates its own pin: the video default freezes, the image one
+    // stays null until its picker ships.
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: MEMBER_VIDEO_MODEL,
+      selectedImageModel: null,
+    });
+  });
+
+  it("pins the member media defaults when the request omits them", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+      [FeatureSwitchKey.ImageModelSelection]: true,
+    });
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Member media defaults",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: MEMBER_VIDEO_MODEL,
+      selectedImageModel: MEMBER_IMAGE_MODEL,
     });
   });
 

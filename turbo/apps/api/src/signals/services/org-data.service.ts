@@ -22,9 +22,8 @@ import { usagePackUsdSchema } from "@okouai/api-contracts/contracts/billing";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   clerk$,
-  createClerkReadRetryBudget,
-  retryClerkRead,
-  type ClerkReadRetryBudget,
+  createClerkReadContext,
+  type ClerkReadContext,
   type ClerkUser,
 } from "../external/clerk";
 import {
@@ -640,8 +639,8 @@ async function fetchUserProfileMap(
   db: Db,
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
+  context: ClerkReadContext,
   signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget,
 ): Promise<Map<string, ClerkUserProfile>> {
   const map = new Map<string, ClerkUserProfile>();
   const uniqueUserIds = [...new Set(userIds)];
@@ -687,18 +686,16 @@ async function fetchUserProfileMap(
     offset < userIdsToFetch.length;
     offset += CLERK_USER_LIST_BATCH_SIZE
   ) {
-    const users = await retryClerkRead(
-      () => {
-        return client.users.getUserList({
-          userId: userIdsToFetch.slice(
-            offset,
-            offset + CLERK_USER_LIST_BATCH_SIZE,
-          ),
-          limit: CLERK_USER_LIST_BATCH_SIZE,
-        });
+    const users = await client.users.getUserList(
+      {
+        userId: userIdsToFetch.slice(
+          offset,
+          offset + CLERK_USER_LIST_BATCH_SIZE,
+        ),
+        limit: CLERK_USER_LIST_BATCH_SIZE,
       },
+      context,
       signal,
-      retryBudget,
     );
     for (const user of users.data) {
       const email = userPrimaryEmail(user);
@@ -740,43 +737,31 @@ async function fetchUserProfileMap(
 async function fetchOrgMemberDirectory(
   client: ReturnType<typeof clerk$.read>,
   orgId: string,
+  context: ClerkReadContext,
   signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget,
 ) {
   const controller = new AbortController();
   const readSignal = AbortSignal.any([signal, controller.signal]);
   const [organization, memberships, invitations] = await onRejection(
     Promise.all([
-      retryClerkRead(
-        () => {
-          return client.organizations.getOrganization({
-            organizationId: orgId,
-          });
+      client.organizations.getOrganization(
+        {
+          organizationId: orgId,
         },
+        context,
         readSignal,
-        retryBudget,
       ),
-      retryClerkRead(
-        () => {
-          return listAllOrganizationMemberships(
-            client.organizations,
-            orgId,
-            readSignal,
-          );
-        },
+      listAllOrganizationMemberships(
+        client.organizations,
+        orgId,
+        context,
         readSignal,
-        retryBudget,
       ),
-      retryClerkRead(
-        () => {
-          return listAllPendingOrganizationInvitations(
-            client.organizations,
-            orgId,
-            readSignal,
-          );
-        },
+      listAllPendingOrganizationInvitations(
+        client.organizations,
+        orgId,
+        context,
         readSignal,
-        retryBudget,
       ),
     ]),
     () => {
@@ -792,15 +777,13 @@ async function fetchOrgMembershipRequests(
   db: Db,
   client: ReturnType<typeof clerk$.read>,
   orgId: string,
+  context: ClerkReadContext,
   signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget,
 ): Promise<NonNullable<OrgMembersResponse["membershipRequests"]>> {
-  const requestsData = await retryClerkRead(
-    () => {
-      return fetchClerkMembershipRequests(orgId, signal);
-    },
+  const requestsData = await fetchClerkMembershipRequests(
+    orgId,
+    context,
     signal,
-    retryBudget,
   );
   const requestProfiles = await fetchUserProfileMap(
     db,
@@ -808,8 +791,8 @@ async function fetchOrgMembershipRequests(
     requestsData.map((request) => {
       return request.public_user_data.user_id;
     }),
+    context,
     signal,
-    retryBudget,
   );
   return requestsData.map((request) => {
     const userId = request.public_user_data.user_id;
@@ -834,10 +817,11 @@ export const orgMembersList$ = command(
   ): Promise<OrgMembersResponse> => {
     const client = get(clerk$);
     const db = get(db$) as Db;
-    const retryBudget = createClerkReadRetryBudget(now);
+    const readContext = createClerkReadContext(now);
 
     const { organization, memberships, invitations } =
-      await fetchOrgMemberDirectory(client, args.orgId, signal, retryBudget);
+      await fetchOrgMemberDirectory(client, args.orgId, readContext, signal);
+    signal.throwIfAborted();
 
     const membersWithUserIds = memberships.map((membership) => {
       return {
@@ -853,9 +837,10 @@ export const orgMembersList$ = command(
       membersWithUserIds.map((member) => {
         return member.userId;
       }),
+      readContext,
       signal,
-      retryBudget,
     );
+    signal.throwIfAborted();
 
     const memberList: OrgMember[] = membersWithUserIds.map((member) => {
       const profile = memberProfiles.get(member.userId);
@@ -929,8 +914,8 @@ export const orgMembersList$ = command(
             db,
             client,
             args.orgId,
+            readContext,
             signal,
-            retryBudget,
           )
         : [];
 

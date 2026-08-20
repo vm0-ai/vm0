@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML preview",
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} illustration preview",
+      "importDeck": "Import your own deck",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "Multi-accent",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
@@ -681,7 +683,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Access is not allowed.",
-      "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact support@vm0.ai."
+      "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Sign in",

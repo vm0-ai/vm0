@@ -61,6 +61,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   video: null,
   host: ["host:read", "host:write"],
+  "presentation-template": "presentation-template:write",
   maps: "maps:read",
   weather: "weather:read",
   scrape: "scrape:read",
@@ -282,6 +283,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description: "Publish static sites and clone owned hosted site files",
     load: async () => {
       return (await import("./commands/host")).hostCommand;
+    },
+  },
+  {
+    name: "presentation-template",
+    description: "Publish presentation templates extracted from a deck",
+    load: async () => {
+      return (await import("./commands/presentation-template"))
+        .presentationTemplateCommand;
     },
   },
   {

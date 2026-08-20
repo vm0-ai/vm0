@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML पूर्वावलोकन",
       "illustration": "चित्रण",
       "illustrationPreview": "{{title}} चित्रण पूर्वावलोकन",
+      "importDeck": "अपना डेक इंपोर्ट करें",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "बहु-उच्चारण",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
@@ -681,7 +683,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "प्रवेश की अनुमति नहीं है।",
-      "userBanned": "खाता पहुंच निलंबित कर दी गई क्योंकि इस खाते पर गतिविधि ने {{brandName}} उपयोग की शर्तों का उल्लंघन किया। यदि आपके कोई प्रश्न हैं, तो support@vm0.ai से संपर्क करें।"
+      "userBanned": "खाता पहुंच निलंबित कर दी गई क्योंकि इस खाते पर गतिविधि ने {{brandName}} उपयोग की शर्तों का उल्लंघन किया। यदि आपके कोई प्रश्न हैं, तो {{supportEmail}} से संपर्क करें।"
     },
     "documentTitles": {
       "signIn": "दाखिल करना",

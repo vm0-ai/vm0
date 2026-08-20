@@ -1030,6 +1030,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         process_control_ipc::BOOTSTRAP_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
+        "VM0_TEST_CLAUDE_CONFIG_DIR",
         "VM0_TEST_CODEX_HOME_DIR",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
@@ -1271,10 +1272,11 @@ pub unsafe fn setup_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         // Redirect HOME so the mock's session-history write
-        // (`$HOME/.claude/projects/.../<session>.jsonl`) stays inside
+        // (`$CLAUDE_CONFIG_DIR/projects/.../<session>.jsonl`) stays inside
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
+        std::env::set_var("VM0_TEST_CLAUDE_CONFIG_DIR", workdir.join(".claude"));
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     ensure_canonical_workspace_for_test()?;

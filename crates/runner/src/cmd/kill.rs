@@ -32,8 +32,8 @@ mod test_support;
 
 use orphan::{OrphanExitFailure, Outcome as OrphanOutcome};
 use target::{
-    KillTarget, discover_and_resolve_target, rediscover_same_sandbox_process,
-    rediscover_same_target,
+    KillTarget, RediscoverTargetError, ResolvedKillTarget, discover_and_resolve_target,
+    rediscover_same_sandbox_process, rediscover_same_target,
 };
 
 const RUN_ORPHAN_FALLBACK_REFUSAL: &str =
@@ -178,28 +178,77 @@ async fn kill_current_target(
     is_orphan: bool,
     control: &dyn SandboxControl,
 ) -> KillOutcome {
+    let rediscovery_target = current.clone();
+    kill_current_target_with_orphan_fallback(
+        current,
+        is_orphan,
+        control,
+        move || async move { rediscover_same_sandbox_process(&rediscovery_target).await },
+        process::discover_all_with_status,
+    )
+    .await
+}
+
+async fn kill_current_target_with_orphan_fallback<
+    Rediscover,
+    RediscoverFuture,
+    Discover,
+    DiscoverFuture,
+>(
+    current: KillTarget,
+    is_orphan: bool,
+    control: &dyn SandboxControl,
+    rediscover: Rediscover,
+    discover: Discover,
+) -> KillOutcome
+where
+    Rediscover: FnOnce() -> RediscoverFuture,
+    RediscoverFuture:
+        std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
+{
     match control.kill_remote(current.control_target()).await {
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
-        Err(error) => retry_as_orphan_if_owner_disappeared(&current, error, is_orphan).await,
+        Err(error) => {
+            retry_as_orphan_if_owner_disappeared(&current, error, is_orphan, rediscover, discover)
+                .await
+        }
     }
 }
 
-async fn retry_as_orphan_if_owner_disappeared(
+async fn retry_as_orphan_if_owner_disappeared<
+    Rediscover,
+    RediscoverFuture,
+    Discover,
+    DiscoverFuture,
+>(
     expected: &KillTarget,
     owner_error: SandboxControlError,
     was_orphan: bool,
-) -> KillOutcome {
-    let refreshed = match rediscover_same_sandbox_process(expected).await {
+    rediscover: Rediscover,
+    discover: Discover,
+) -> KillOutcome
+where
+    Rediscover: FnOnce() -> RediscoverFuture,
+    RediscoverFuture:
+        std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
+{
+    let refreshed = match rediscover().await {
         Ok(refreshed) => refreshed,
         Err(error) => {
             if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
                 return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
             }
             if was_orphan && error.allows_disappeared_orphan_cleanup() {
-                let outcome = orphan::confirmed_disappeared_outcome(expected, was_orphan)
-                    .await
-                    .unwrap_or_else(|| OrphanOutcome::AlreadyExitedOrChanged(expected.clone()));
+                let outcome = orphan::confirmed_disappeared_outcome_with_discovery(
+                    expected, was_orphan, discover,
+                )
+                .await
+                .unwrap_or_else(|| OrphanOutcome::AlreadyExitedOrChanged(expected.clone()));
                 return KillOutcome::from(outcome);
             }
             return KillOutcome::RefusedTargetChanged(error.to_string());
@@ -418,8 +467,15 @@ mod tests {
     use sandbox::SandboxControlTarget;
     use sandbox_mock::MockSandboxControl;
 
-    use super::test_support::make_target;
+    use super::test_support::{discovered_with_firecrackers, make_target};
     use super::*;
+
+    fn empty_process_discovery(proc_scan_complete: bool) -> process::ProcessDiscovery {
+        process::ProcessDiscovery {
+            processes: discovered_with_firecrackers(vec![]),
+            proc_scan_complete,
+        }
+    }
 
     fn make_target_at_base(pid: u32, sandbox_id: &str, base_dir: &Path) -> KillTarget {
         let mut target = make_target(pid, sandbox_id);
@@ -511,11 +567,47 @@ mod tests {
         control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
         let current = make_target(u32::MAX - 2_000, "sbox-123");
 
-        let outcome = kill_current_target(current.clone(), true, &control).await;
+        let outcome = kill_current_target_with_orphan_fallback(
+            current.clone(),
+            true,
+            &control,
+            || {
+                std::future::ready(Err(RediscoverTargetError::Resolve(
+                    "sandbox disappeared".into(),
+                )))
+            },
+            || std::future::ready(empty_process_discovery(true)),
+        )
+        .await;
 
         match outcome {
             KillOutcome::OrphanAlreadyExited(target) => assert_eq!(target, current),
             other => panic!("expected current target to be reported gone, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn orphan_target_refuses_incomplete_discovery() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
+        let current = make_target(u32::MAX - 2_000, "sbox-123");
+
+        let outcome = kill_current_target_with_orphan_fallback(
+            current.clone(),
+            true,
+            &control,
+            || {
+                std::future::ready(Err(RediscoverTargetError::Resolve(
+                    "sandbox disappeared".into(),
+                )))
+            },
+            || std::future::ready(empty_process_discovery(false)),
+        )
+        .await;
+
+        match outcome {
+            KillOutcome::AlreadyExitedOrChanged(target) => assert_eq!(target, current),
+            other => panic!("expected incomplete discovery to be refused, got {other:?}"),
         }
     }
 

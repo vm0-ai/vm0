@@ -43,8 +43,6 @@ export async function sendUserPushNotifications(args: {
     return;
   }
 
-  webpush.setVapidDetails("mailto:contact@vm0.ai", publicKey, privateKey);
-
   const subscriptions = await args.db
     .select()
     .from(pushSubscriptions)
@@ -72,6 +70,13 @@ export async function sendUserPushNotifications(args: {
             },
           },
           payload,
+          {
+            vapidDetails: {
+              subject: `mailto:${publicBrandPresentation(subscription.publicBrand).contactEmail}`,
+              publicKey,
+              privateKey,
+            },
+          },
         ),
       );
       if (result.ok) {

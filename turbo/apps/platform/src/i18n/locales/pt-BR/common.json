@@ -632,6 +632,8 @@
       "htmlPreview": "Visualização HTML de {{title}}",
       "illustration": "Ilustração",
       "illustrationPreview": "Visualização da ilustração {{title}}",
+      "importDeck": "Importe sua própria apresentação",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "Várias cores de destaque",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
@@ -698,7 +700,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Acesso não permitido.",
-      "userBanned": "Acesso à conta suspenso porque a atividade nesta conta violou os Termos de Uso do {{brandName}}. Se você tiver dúvidas, entre em contato pelo support@vm0.ai."
+      "userBanned": "Acesso à conta suspenso porque a atividade nesta conta violou os Termos de Uso do {{brandName}}. Se você tiver dúvidas, entre em contato pelo {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Entrar",

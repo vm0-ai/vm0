@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML-Vorschau",
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} Illustrationsvorschau",
+      "importDeck": "Eigenes Deck importieren",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "Multi-Akzent",
       "nextSlide": "Vorschau der nächsten Folie",
       "noMatches": "Keine Übereinstimmungen",
@@ -681,7 +683,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Zugriff nicht gestattet.",
-      "userBanned": "Der Kontozugriff wurde gesperrt, da die Aktivität auf diesem Konto gegen die Nutzungsbedingungen von {{brandName}} verstößt. Wenn Sie Fragen haben, wenden Sie sich an support@vm0.ai."
+      "userBanned": "Der Kontozugriff wurde gesperrt, da die Aktivität auf diesem Konto gegen die Nutzungsbedingungen von {{brandName}} verstößt. Wenn Sie Fragen haben, wenden Sie sich an {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Anmelden",

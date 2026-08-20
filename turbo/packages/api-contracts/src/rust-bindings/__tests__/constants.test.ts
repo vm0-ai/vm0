@@ -27,6 +27,7 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_SESSIONS_DIR,
   CANONICAL_GUEST_HOME_DIR,
@@ -56,6 +57,11 @@ const codexOauthPlaceholders =
 const canonicalGuestHomeDirDoc = [
   "Canonical home directory path expected for the sandbox user inside runner guests.",
   "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+] as const;
+
+const canonicalClaudeConfigDirDoc = [
+  "Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+  "Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.",
 ] as const;
 
 const canonicalCodexHomeDirDoc = [
@@ -314,6 +320,12 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_CLAUDE_CONFIG_DIR",
+    value: rustString(CANONICAL_CLAUDE_CONFIG_DIR),
+    rustDoc: canonicalClaudeConfigDirDoc,
+  },
+  {
+    rustModulePath: ["runners", "paths"],
     rustConstName: "CANONICAL_CODEX_HOME_DIR",
     value: rustString(CANONICAL_CODEX_HOME_DIR),
     rustDoc: canonicalCodexHomeDirDoc,
@@ -498,6 +510,12 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_GUEST_HOME_DIR: &str = "${CANONICAL_GUEST_HOME_DIR}";`,
+    );
+    expect(firstRender).toContain(
+      "/// Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+    );
+    expect(firstRender).toContain(
+      `pub const CANONICAL_CLAUDE_CONFIG_DIR: &str = "${CANONICAL_CLAUDE_CONFIG_DIR}";`,
     );
     expect(firstRender).toContain(
       "/// Canonical directory for VM0-managed Codex state inside runner guests.",

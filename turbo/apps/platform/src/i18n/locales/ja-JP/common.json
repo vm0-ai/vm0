@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML プレビュー",
       "illustration": "イラストレーション",
       "illustrationPreview": "{{title}} イラストのプレビュー",
+      "importDeck": "自分のデッキをインポート",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "マルチアクセント",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
@@ -681,7 +683,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "アクセスは許可されていません。",
-      "userBanned": "このアカウントでのアクティビティが {{brandName}} 利用規約に違反したため、アカウントへのアクセスが停止されました。ご質問がある場合は、support@vm0.ai までお問い合わせください。"
+      "userBanned": "このアカウントでのアクティビティが {{brandName}} 利用規約に違反したため、アカウントへのアクセスが停止されました。ご質問がある場合は、{{supportEmail}} までお問い合わせください。"
     },
     "documentTitles": {
       "signIn": "サインイン",

@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML 미리보기",
       "illustration": "일러스트레이션",
       "illustrationPreview": "{{title}} 일러스트레이션 미리보기",
+      "importDeck": "내 덱 가져오기",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "다중 악센트",
       "nextSlide": "다음 슬라이드 미리보기",
       "noMatches": "일치하는 항목 없음",
@@ -681,7 +683,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "접근이 허용되지 않습니다.",
-      "userBanned": "이 계정의 활동이 {{brandName}} 이용 약관을 위반하여 계정 접근이 중단되었습니다. 문의 사항은 support@vm0.ai로 연락해 주세요."
+      "userBanned": "이 계정의 활동이 {{brandName}} 이용 약관을 위반하여 계정 접근이 중단되었습니다. 문의 사항은 {{supportEmail}}로 연락해 주세요."
     },
     "documentTitles": {
       "signIn": "로그인",
