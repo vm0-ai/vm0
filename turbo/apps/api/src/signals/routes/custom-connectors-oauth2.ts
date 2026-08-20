@@ -43,6 +43,7 @@ import {
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
+import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 
@@ -222,7 +223,9 @@ async function persistCustomConnectorOAuth2Connection(
     >;
   },
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<
+  { readonly ok: true } | { readonly ok: false; readonly message: string }
+> {
   const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
   const result = await commitConnectorRuntimeMutation(connectionStorage, () => {
     return {
@@ -232,10 +235,30 @@ async function persistCustomConnectorOAuth2Connection(
     };
   });
   if (result.kind !== "stored") {
-    return false;
+    const status =
+      result.kind === "missing"
+        ? "accountNotFound"
+        : result.kind === "ambiguous"
+          ? "accountAmbiguous"
+          : "siblingDisabled";
+    return {
+      ok: false,
+      message: connectorConnectionWriteFailureMessage(status),
+    };
   }
   await publishCustomUserInvalidation(args.userId, signal);
-  return true;
+  return { ok: true };
+}
+
+function customConnectorOAuthPersistenceFailure(
+  result:
+    | Awaited<ReturnType<typeof persistCustomConnectorOAuth2Connection>>
+    | undefined,
+): string | null {
+  if (!result) {
+    return "OAuth token exchange failed - please try again";
+  }
+  return result.ok ? null : result.message;
 }
 
 async function codeLessCustomOAuthCallbackResponse(
@@ -363,11 +386,10 @@ const completeOAuth2Callback$ = command(
       })(),
     );
     signal.throwIfAborted();
-    if (!completed) {
-      return callbackError(
-        origin,
-        "OAuth token exchange failed - please try again",
-      );
+    const persistenceFailure =
+      customConnectorOAuthPersistenceFailure(completed);
+    if (persistenceFailure) {
+      return callbackError(origin, persistenceFailure);
     }
     const authorizationError = await authorizeCustomConnectorAgent(
       {

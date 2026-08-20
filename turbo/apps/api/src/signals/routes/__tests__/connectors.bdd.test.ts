@@ -879,7 +879,25 @@ describe("CONN-02: OAuth device authorization", () => {
       poll.connector.id,
     );
 
+    const removedReconnect = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: poll.connector.id },
+    );
     await connectorsApi.deleteConnectorBySlug(actor, "test-oauth-device");
+    const rejectedReconnect = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      removedReconnect.sessionId,
+      removedReconnect.sessionToken,
+    );
+    expect(rejectedReconnect).toStrictEqual({
+      status: "error",
+      errorCode: "connector_account_rejected",
+      errorMessage: "Connector account not found",
+    });
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -2288,7 +2306,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({ connected: true });
 
+    const removedReconnectUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+      undefined,
+      {
+        intent: "reconnect",
+        connectionId: initialStorage.connector.id,
+      },
+    );
     await connectorsApi.disconnectCustomConnector(member, created.id);
+    const removedReconnect =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "bdd-custom-oauth-removed-reconnect-code",
+        state: stateFromAuthorizationUrl(removedReconnectUrl),
+      });
+    expect(removedReconnect.body).toStrictEqual({
+      status: "error",
+      message: "Connector account not found",
+    });
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(member),
@@ -2320,8 +2356,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       code: "bdd-custom-oauth-reconnect-code",
       state: stateFromAuthorizationUrl(reconnectUrl),
     });
-    expect(provider.tokenBodies).toHaveLength(3);
-    expect(provider.tokenBodies[2]?.get("code")).toBe(
+    expect(provider.tokenBodies).toHaveLength(4);
+    expect(provider.tokenBodies[3]?.get("code")).toBe(
       "bdd-custom-oauth-reconnect-code",
     );
     await expect(
