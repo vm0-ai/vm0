@@ -8,6 +8,7 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::config::SnapshotConfig;
+use crate::firecracker_process::spawn_firecracker;
 use crate::process::kill_process_group;
 use crate::process_log::{
     PROCESS_LOG_RECORD_MAX_BYTES, PROCESS_LOG_RECORD_TRUNCATED, ProcessLogRecord,
@@ -83,7 +84,7 @@ impl Default for SnapshotProcess {
 
 impl SnapshotProcess {
     pub(super) fn spawn(&mut self, spawn: SnapshotProcessSpawn<'_>) -> std::io::Result<()> {
-        let mut child = build_command(
+        let command = build_command(
             SnapshotMountMode::Creation {
                 rootfs: BindMount::new(spawn.cow_device_path, spawn.drive_bind),
                 workspace: BindMount::new(spawn.workspace_image, spawn.workspace_drive_bind),
@@ -91,14 +92,8 @@ impl SnapshotProcess {
             spawn.network_name,
             spawn.binary_path,
             spawn.api_sock,
-        )
-        .current_dir(spawn.current_dir)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .process_group(0)
-        .kill_on_drop(true)
-        .spawn()?;
+        );
+        let mut child = spawn_firecracker(command, spawn.current_dir)?;
 
         // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
         // Stderr is also retained in a bounded ring buffer so that an early
