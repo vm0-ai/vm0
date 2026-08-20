@@ -87,7 +87,7 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "browser.close": [],
   "goal.open": [],
   "goal.close": [],
-  "usage.recorded": [],
+  "usage.recorded": ["usage.recorded"],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
 
 const CHAT_RUN_FOLD_STATES = {

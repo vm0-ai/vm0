@@ -326,7 +326,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows the latest immutable run usage settlement", async () => {
+  it("shows the replacement run usage settlement", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000005",
       chatEvents: [
@@ -368,10 +368,11 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-usage-settlement",
+          revokesEventId: "msg-usage-settlement-first",
           usage: {
             version: 1,
             totalCredits: 108,
-            settledAt: "2026-06-09T10:00:05Z",
+            settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
                 kind: "model/gpt-5.5/tokens.output",
