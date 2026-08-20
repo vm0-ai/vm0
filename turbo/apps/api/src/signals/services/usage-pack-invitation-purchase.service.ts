@@ -67,7 +67,6 @@ import {
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
-const STRUCTURED_INVOICE_VERSION = 2;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const MIN_CHECKOUT_DURATION_SECONDS = 30 * 60;
 const MAX_CHECKOUT_DURATION_SECONDS = 24 * 60 * 60;
@@ -414,7 +413,6 @@ async function insertPendingInvitationPurchase(
         currentPeriodStart: args.preview.currentPeriodStart,
         currentPeriodEnd: args.preview.currentPeriodEnd,
         prorationTimestamp: args.preview.prorationTimestamp,
-        invoiceVersion: STRUCTURED_INVOICE_VERSION,
         unitAmountCents: args.unitAmountCents,
         expectedAmountCents: args.preview.amountCents,
         currency: args.preview.currency,
@@ -1428,20 +1426,13 @@ async function createInvitationPurchaseInvoice(
   },
   signal: AbortSignal,
 ): Promise<InvitationPurchaseInvoiceCreation> {
-  let structuredCharge: StructuredInvitationCharge | null = null;
-  if (purchase.invoiceVersion === STRUCTURED_INVOICE_VERSION) {
-    structuredCharge = await loadStructuredInvitationCharge(
-      db,
-      purchase,
-      signal,
-    );
-    if (!structuredCharge) {
-      return { status: "conflict" };
-    }
-  } else if (purchase.invoiceVersion !== 1) {
-    throw new Error(
-      `Unsupported usage pack invitation invoice version ${purchase.invoiceVersion}`,
-    );
+  const structuredCharge = await loadStructuredInvitationCharge(
+    db,
+    purchase,
+    signal,
+  );
+  if (!structuredCharge) {
+    return { status: "conflict" };
   }
   const invoice = await stripe.invoices.create(
     {
@@ -1451,44 +1442,25 @@ async function createInvitationPurchaseInvoice(
         ? stripeBillingPurchasePaymentParams(args.paymentMethod)
         : {}),
       metadata: checkoutMetadata(purchase.id),
-      ...(structuredCharge
-        ? {
-            discounts: "" as const,
-            ...(structuredCharge.preview.automaticTax
-              ? { automatic_tax: structuredCharge.preview.automaticTax }
-              : {}),
-          }
+      discounts: "",
+      ...(structuredCharge.preview.automaticTax
+        ? { automatic_tax: structuredCharge.preview.automaticTax }
         : {}),
     },
     { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },
   );
   signal.throwIfAborted();
-  if (structuredCharge) {
-    await createStructuredInvitationInvoiceItems(
-      stripe,
-      {
-        invoiceId: invoice.id,
-        customerId: args.customerId,
-        subscriptionId: args.subscriptionId,
-        purchase,
-        charge: structuredCharge,
-      },
-      signal,
-    );
-  } else {
-    // Version 1 purchases retain their original Stripe parameters so a retry
-    // cannot conflict with idempotency records created before this migration.
-    await stripe.invoiceItems.create(
-      {
-        invoice: invoice.id,
-        customer: args.customerId,
-        amount: purchase.expectedAmountCents,
-        currency: purchase.currency,
-        description: `Member usage pack for ${purchase.normalizedEmail}`,
-      },
-      { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice-item` },
-    );
-  }
+  await createStructuredInvitationInvoiceItems(
+    stripe,
+    {
+      invoiceId: invoice.id,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      purchase,
+      charge: structuredCharge,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   return { status: "created", invoice };
 }
