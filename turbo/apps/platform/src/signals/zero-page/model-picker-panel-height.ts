@@ -47,7 +47,10 @@ export const modelPickerPanelHeightRef$ = onRef(
   command((_visitor, popup: HTMLElement, signal: AbortSignal) => {
     const list = popup.querySelector<HTMLElement>(SELECT_LIST_SELECTOR);
     if (!list) {
-      return;
+      // `SelectContent` always renders the list this ref is attached above, so
+      // a miss means the slot was renamed or the popup restructured. Fail
+      // loudly instead of silently dropping the animation.
+      throw new Error(`Select popup has no ${SELECT_LIST_SELECTOR}`);
     }
 
     const win = popup.ownerDocument.defaultView;

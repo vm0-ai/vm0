@@ -887,7 +887,19 @@ async function expectRightAlignedDivider(label: Locator): Promise<void> {
   ).toBeLessThan(tolerance);
 }
 
-async function expectFastActionRightmost(page: Page): Promise<void> {
+/** `right-2` on the checkmark, measured from the row's right edge. */
+const MODEL_ROW_CHECK_INSET = 8;
+/** `right-8 w-8` on the fast toggle: the column left of the check. */
+const MODEL_ROW_FAST_INSET = 32;
+
+/**
+ * Every model row ends with the same checkmark column, and a row that offers
+ * Codex fast mode reserves a second fixed column beside it for the toggle.
+ * Both columns are reserved whether or not the row is selected, so selecting a
+ * model must not move the check: it used to shift 32px left and land on the
+ * far side of the toggle.
+ */
+async function expectModelRowColumns(page: Page): Promise<void> {
   const standardOption = page.getByRole("option", {
     name: "GPT 5.6 Sol",
     exact: true,
@@ -897,29 +909,36 @@ async function expectFastActionRightmost(page: Page): Promise<void> {
     exact: true,
   });
   const selectedCheck = standardOption.locator("svg.lucide-check");
+  const priceTier = standardOption.getByText(/^\$+$/);
   const row = standardOption.locator("..");
   await expect(standardOption).toBeVisible();
   await expect(fastOption).toBeVisible();
   await expect(selectedCheck).toBeVisible();
-  const [standardBox, fastBox, checkBox, rowBox] = await Promise.all([
-    standardOption.boundingBox(),
+  const [fastBox, checkBox, priceTierBox, rowBox] = await Promise.all([
     fastOption.boundingBox(),
     selectedCheck.boundingBox(),
+    priceTier.boundingBox(),
     row.boundingBox(),
   ]);
-  if (!standardBox || !fastBox || !checkBox || !rowBox) {
+  if (!fastBox || !checkBox || !priceTierBox || !rowBox) {
     throw new Error("Model picker option geometry unavailable");
   }
   const tolerance = 1;
-  expect(standardBox.x + standardBox.width).toBeLessThanOrEqual(
+  const rowRight = rowBox.x + rowBox.width;
+  const checkRight = checkBox.x + checkBox.width;
+  const fastRight = fastBox.x + fastBox.width;
+  // The checkmark is the element closest to the row's right edge.
+  expect(rowRight - checkRight).toBeGreaterThan(0);
+  expect(rowRight - checkRight).toBeLessThanOrEqual(MODEL_ROW_CHECK_INSET);
+  // The fast toggle holds the next column in and never covers the check.
+  expect(Math.abs(rowRight - fastRight - MODEL_ROW_FAST_INSET)).toBeLessThan(
+    tolerance,
+  );
+  expect(fastRight).toBeLessThanOrEqual(checkBox.x + tolerance);
+  // Row content stops before both columns rather than running under them.
+  expect(priceTierBox.x + priceTierBox.width).toBeLessThanOrEqual(
     fastBox.x + tolerance,
   );
-  expect(checkBox.x + checkBox.width).toBeLessThanOrEqual(
-    fastBox.x + tolerance,
-  );
-  expect(
-    Math.abs(fastBox.x + fastBox.width - (rowBox.x + rowBox.width)),
-  ).toBeLessThan(tolerance);
 }
 
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
@@ -1087,7 +1106,7 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
-test("Fast action stays rightmost across selection states and previews deactivation", async ({
+test("checkmark keeps its column across selection states and previews deactivation", async ({
   page,
 }) => {
   await mockSelectedFastModel(page);
@@ -1097,7 +1116,7 @@ test("Fast action stays rightmost across selection states and previews deactivat
   await page
     .getByRole("combobox", { name: "GPT 5.6 Sol Fast", exact: true })
     .click();
-  await expectFastActionRightmost(page);
+  await expectModelRowColumns(page);
   const fastOption = page.getByRole("option", {
     name: "GPT 5.6 Sol Fast",
     exact: true,
@@ -1112,7 +1131,7 @@ test("Fast action stays rightmost across selection states and previews deactivat
   await page
     .getByRole("combobox", { name: "GPT 5.6 Sol", exact: true })
     .click();
-  await expectFastActionRightmost(page);
+  await expectModelRowColumns(page);
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
