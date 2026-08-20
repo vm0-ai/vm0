@@ -1,3 +1,4 @@
+import { brandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { computed } from "ccstate";
 import { z } from "zod";
@@ -16,9 +17,10 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
-// empty, so no real route can exercise the mechanism yet, and a fixture keeps a
-// later migration slice from quietly changing what these tests assert.
+// Synthetic contracts rather than real ones, so that a #28278 slice adding or
+// removing rows in `MIGRATED_BRANDED_PATHS` cannot quietly change what these
+// tests assert. What each slice owes its own paths is asserted where those
+// paths are listed literally, not here.
 const migrationContract = c.router({
   // The shape a migrated contract has: the neutral path it declares after
   // #28278 moves it off `/api/okou/**`.
@@ -265,19 +267,35 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
+  // Held trivially while the table shipped empty. Now that #28278 slices have
+  // filled it in, the shape is what stays true: the table only ever adds
+  // branded registrations, and never rewrites, reorders, or drops one the
+  // composition already produced.
+  it("only adds branded registrations to the shipped route table", () => {
     const beforeTable = withApiNamespaceAliases(
       withFinalProviderConsolePaths(ROUTES),
     );
     const afterTable = withMigratedBrandedPaths(beforeTable);
 
-    expect(afterTable).toHaveLength(beforeTable.length);
+    const kept = afterTable.filter((entry) => {
+      return beforeTable.includes(entry);
+    });
+    expect(kept).toHaveLength(beforeTable.length);
     expect(
-      afterTable.filter((entry, index) => {
+      kept.filter((entry, index) => {
         return entry !== beforeTable[index];
       }),
     ).toStrictEqual([]);
+
+    const added = afterTable.filter((entry) => {
+      return !beforeTable.includes(entry);
+    });
+    expect(
+      added.filter((entry) => {
+        return brandedApiNamespace(entry.route.path) === undefined;
+      }),
+    ).toStrictEqual([]);
+    expect(added.length).toBeGreaterThan(0);
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the

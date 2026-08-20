@@ -38,7 +38,7 @@ describe("okou goal command", () => {
 
   it("creates a goal and prints the JSON response", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/goal", async ({ request }) => {
+      http.post("http://localhost:3000/api/goal", async ({ request }) => {
         expect(request.headers.get("authorization")).toBe(
           "Bearer test-okou-token",
         );
@@ -69,7 +69,7 @@ describe("okou goal command", () => {
       status: "active",
     };
     server.use(
-      http.patch("http://localhost:3000/api/okou/goal", async ({ request }) => {
+      http.patch("http://localhost:3000/api/goal", async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows v2",
         });
@@ -92,7 +92,7 @@ describe("okou goal command", () => {
 
   it("gets the current goal", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/goal", () => {
+      http.get("http://localhost:3000/api/goal", () => {
         return HttpResponse.json(ACTIVE_GOAL);
       }),
     );
@@ -107,12 +107,12 @@ describe("okou goal command", () => {
   it.each([
     [
       "complete",
-      "/api/okou/goal/complete",
+      "/api/goal/complete",
       { ...ACTIVE_GOAL, status: "complete" },
     ],
-    ["block", "/api/okou/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
-    ["pause", "/api/okou/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
-    ["resume", "/api/okou/goal/resume", ACTIVE_GOAL],
+    ["block", "/api/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
+    ["pause", "/api/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
+    ["resume", "/api/goal/resume", ACTIVE_GOAL],
   ] as const)(
     "runs %s and prints the JSON response",
     async (command, path, body) => {
@@ -132,7 +132,7 @@ describe("okou goal command", () => {
 
   it("clears the current goal", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/okou/goal", () => {
+      http.delete("http://localhost:3000/api/goal", () => {
         return HttpResponse.json({ cleared: true });
       }),
     );

@@ -130,9 +130,15 @@ function requireBrandedRoute(): RouteEntry {
 // them.
 describe("API namespace compatibility", () => {
   const registeredRoutes = withApiNamespaceAliases(ROUTES);
+  // Composed the way production registers routes, for the assertions about the
+  // listed compatibility paths. A #28278 slice moves a listed contract to its
+  // neutral path and names the two branded paths in the migrated-branded table,
+  // so from here on the alias expansion is no longer the only thing that can
+  // serve a listed path — which mechanism serves it is not the point.
+  const compatibilityRoutes = withMigratedBrandedPaths(registeredRoutes);
 
   function registrationsFor(path: string): readonly RouteEntry[] {
-    return registeredRoutes.filter((entry) => {
+    return compatibilityRoutes.filter((entry) => {
       return entry.route.path === path;
     });
   }
@@ -225,7 +231,7 @@ describe("API namespace compatibility", () => {
 
       for (const source of sources) {
         const key = `${source.route.method} ${legacy}`;
-        const matches = registeredRoutes.filter((entry) => {
+        const matches = compatibilityRoutes.filter((entry) => {
           return routeKey(entry) === key;
         });
         expect(matches, `Missing registration for ${key}`).toHaveLength(1);
@@ -290,16 +296,20 @@ describe("API namespace compatibility", () => {
     );
   });
 
-  it("keeps every listed legacy path backed by a declared contract", () => {
-    const declaredCanonicalPaths = new Set(
-      ROUTES.map(({ route }) => {
+  // A listed row must have something behind it. A contract declaring the
+  // canonical path is one way; after a #28278 slice moves that contract off the
+  // brand namespace, a row in the migrated-branded table is the other. A row
+  // left behind by a deleted contract has neither and fails here.
+  it("keeps every listed legacy path backed by a serving route", () => {
+    const servedCanonicalPaths = new Set(
+      compatibilityRoutes.map(({ route }) => {
         return canonicalPath(route.path);
       }),
     );
 
     expect(
       Object.keys(LEGACY_ZERO_PATHS).filter((path) => {
-        return !declaredCanonicalPaths.has(path);
+        return !servedCanonicalPaths.has(path);
       }),
     ).toStrictEqual([]);
   });
