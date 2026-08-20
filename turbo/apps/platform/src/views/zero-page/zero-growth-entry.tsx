@@ -1,5 +1,12 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useState } from "react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@okouai/core";
 import {
   Check,
   ChevronDown,
@@ -20,6 +27,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import {
@@ -27,6 +35,7 @@ import {
   usagePackCreditsAsync$,
 } from "../../signals/zero-page/billing.ts";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 
 const slackIconImg = settingsIconAssetUrl("slack");
@@ -61,8 +70,15 @@ function useSlackInstalled(): boolean {
   return loadable.data.isInstalled || loadable.data.isConnected;
 }
 
-/** Org credits plus any usage-pack credits, the same sum the account menu shows. */
-function useCreditLabel(): string | null {
+/** Organization credits without usage-pack credits. */
+function useOrganizationCreditLabel(): string | null {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const orgCredits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  return orgCredits === null ? null : formatLocalizedNumber(orgCredits);
+}
+
+function useCombinedCreditLabel(): string | null {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const usagePackLoadable = useLastLoadable(usagePackCreditsAsync$);
   const orgCredits =
@@ -75,6 +91,76 @@ function useCreditLabel(): string | null {
     return null;
   }
   return formatLocalizedNumber(orgCredits + (packCredits ?? 0));
+}
+
+function CreditMenuItem({
+  creditLabel,
+  openCredits,
+}: {
+  creditLabel: string | null;
+  openCredits: () => void;
+}) {
+  const { t } = useTranslation();
+  if (creditLabel === null) {
+    return null;
+  }
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuModalItem
+        className="gap-3 px-3 py-2.5"
+        onModalSelect={openCredits}
+        data-testid="growth-credits"
+      >
+        <Coins className="text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate">
+          {t(($) => {
+            return $.chat.agentPage.growth.credits;
+          })}
+        </span>
+        <span className="shrink-0 font-semibold tabular-nums">
+          {creditLabel}
+        </span>
+      </DropdownMenuModalItem>
+    </>
+  );
+}
+
+function OrganizationCreditMenuItem({
+  openCredits,
+}: {
+  openCredits: () => void;
+}) {
+  const creditLabel = useOrganizationCreditLabel();
+  return (
+    <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />
+  );
+}
+
+function CombinedCreditMenuItem({
+  openCredits,
+}: {
+  openCredits: () => void;
+}) {
+  const creditLabel = useCombinedCreditLabel();
+  return (
+    <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />
+  );
+}
+
+function GrowthCreditMenuItem({
+  openCredits,
+}: {
+  openCredits: () => void;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const usagePackPlansEnabled =
+    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
+  return usagePackPlansEnabled ? (
+    <CombinedCreditMenuItem openCredits={openCredits} />
+  ) : (
+    <OrganizationCreditMenuItem openCredits={openCredits} />
+  );
 }
 
 function useGrowthActions() {
@@ -102,24 +188,23 @@ function useGrowthActions() {
  * finished; inviting never finishes, so it is the resting state and the entry
  * always has something to say.
  */
-export function GrowthEntry() {
+function GrowthEntry() {
+  const [creditsRequested, setCreditsRequested] = useState(false);
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
-  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
-  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
   const slackInstalled = useSlackInstalled();
-  const creditLabel = useCreditLabel();
   const { openWorks, openInvite, openCredits } = useGrowthActions();
-
-  // Same gate as the button this replaces: everything behind it is admin-only.
-  if (!isAdmin) {
-    return null;
-  }
 
   const leadIsSlack = !slackInstalled;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) {
+          setCreditsRequested(true);
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -201,9 +286,9 @@ export function GrowthEntry() {
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem
+        <DropdownMenuModalItem
           className="gap-3 px-3 py-2.5"
-          onClick={openInvite}
+          onModalSelect={openInvite}
           data-testid="growth-invite"
         >
           <PlusCircle className="text-muted-foreground" />
@@ -212,29 +297,27 @@ export function GrowthEntry() {
               return $.chat.agentPage.growth.inviteMember;
             })}
           </span>
-        </DropdownMenuItem>
+        </DropdownMenuModalItem>
 
-        {creditLabel !== null && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="gap-3 px-3 py-2.5"
-              onClick={openCredits}
-              data-testid="growth-credits"
-            >
-              <Coins className="text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">
-                {t(($) => {
-                  return $.chat.agentPage.growth.credits;
-                })}
-              </span>
-              <span className="shrink-0 font-semibold tabular-nums">
-                {creditLabel}
-              </span>
-            </DropdownMenuItem>
-          </>
-        )}
+        {creditsRequested ? (
+          <GrowthCreditMenuItem openCredits={openCredits} />
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+export function GrowthEntryHeader() {
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
+  if (!isAdmin) {
+    return null;
+  }
+  return (
+    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
+      <div className="mx-auto flex w-full max-w-[900px] items-center justify-end gap-2">
+        <GrowthEntry />
+      </div>
+    </header>
   );
 }
