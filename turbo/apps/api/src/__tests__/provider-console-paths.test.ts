@@ -91,6 +91,11 @@ function requireRegistration(
   return match;
 }
 
+// Per-endpoint behaviour is covered through the endpoints themselves in
+// routes/__tests__/provider-console-paths.test.ts. This file asserts the one
+// property no endpoint can express: over the whole route table, exactly these
+// eight registrations are added and none of the other product routes gains a
+// second path.
 describe("final provider console paths", () => {
   const registeredRoutes = withApiNamespaceAliases(
     withFinalProviderConsolePaths(ROUTES),
