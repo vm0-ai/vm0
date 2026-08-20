@@ -19,6 +19,10 @@
 //! 5. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
 //!    parent, revalidate each protected identity, and measure capacity again.
 //!
+//! Codex startup reconciliation establishes the current Codex run's auth mode, but it cannot
+//! replace this final scrub: idle sandbox reuse is not scoped to a CLI framework, so a non-Codex
+//! successor would not run Codex setup before gaining workload access.
+//!
 //! Runtime paths are opened component by component without following symlinks, and child opens and
 //! deletions are descriptor-relative. Recursive removal refuses to cross filesystem or mount
 //! boundaries, and protected entries are checked by both name and identity so replacement races
