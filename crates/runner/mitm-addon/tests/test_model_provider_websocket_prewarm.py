@@ -167,7 +167,6 @@ class TestModelProviderWebSocketPrewarmUsage:
                 json.dumps({"type": "response.create", "generate": False}).encode(),
             )
             feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-second"))
-            feed_websocket_server_message(flow, first_usage)
             feed_websocket_server_message(
                 flow,
                 openai_websocket_usage_frame(
@@ -176,6 +175,7 @@ class TestModelProviderWebSocketPrewarmUsage:
                     output_tokens=0,
                 ),
             )
+            feed_websocket_server_message(flow, first_usage)
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
@@ -191,6 +191,64 @@ class TestModelProviderWebSocketPrewarmUsage:
             "warm-second",
         ]
         assert not _correlation_entries(flow)
+
+    def test_model_websocket_ignored_response_cap_fails_open(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            for index in range(100):
+                response_id = f"warm-retained-{index}"
+                feed_websocket_client_message(
+                    flow,
+                    json.dumps({"type": "response.create", "generate": False}).encode(),
+                )
+                feed_websocket_server_message(
+                    flow,
+                    _openai_websocket_created_frame(response_id),
+                )
+                feed_websocket_server_message(
+                    flow,
+                    json.dumps(
+                        {
+                            "type": "response.completed",
+                            "response": {"id": response_id},
+                        }
+                    ).encode(),
+                )
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-over-cap"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "warm-over-cap",
+                    input_tokens=9,
+                    output_tokens=0,
+                ),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 9)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        [correlation_entry] = _correlation_entries(flow)
+        assert correlation_entry["reason"] == "correlation_cap"
 
     def test_model_websocket_ignores_bound_prewarm_and_reports_normal_input_only_turn(
         self,
@@ -350,7 +408,7 @@ class TestModelProviderWebSocketPrewarmUsage:
         )
         assert not _correlation_entries(flow)
 
-    def test_model_websocket_reused_ignored_id_fails_open(self, tmp_path, real_flow):
+    def test_model_websocket_reused_older_ignored_id_fails_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
 
@@ -363,6 +421,16 @@ class TestModelProviderWebSocketPrewarmUsage:
             feed_websocket_server_message(
                 flow,
                 openai_websocket_usage_frame("reused-id", input_tokens=5, output_tokens=0),
+            )
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("later-warm"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame("later-warm", input_tokens=6, output_tokens=0),
             )
 
             feed_websocket_client_message(
@@ -388,7 +456,10 @@ class TestModelProviderWebSocketPrewarmUsage:
         ignored_entries = [
             entry for entry in source_entries if entry.get("disposition") == "ignored"
         ]
-        assert len(ignored_entries) == 1
+        assert [entry["provider_response_id"] for entry in ignored_entries] == [
+            "reused-id",
+            "later-warm",
+        ]
         reported_entries = [
             entry
             for entry in source_entries
