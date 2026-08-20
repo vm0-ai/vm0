@@ -75,6 +75,12 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import {
+  API_TEST_CONNECTOR_CATALOG,
+  apiTestConnectorCatalogValidationAuthority,
+  installApiTestConnectorCatalog,
+  replaceApiTestConnectorCatalogStoredBytes,
+} from "../../../test-fixtures/connector-catalog";
+import {
   readRunChatThreadIdFixture,
   readRunVideoModelFixture,
   setOrgMemberVideoModelFixture,
@@ -1471,6 +1477,69 @@ describe("CHAT-02: thread connector account selection", () => {
       target: { kind: "custom", customConnectorId: customConnector.id },
     });
     await cancelChatRun(actor, fallback.runId, claimed.sandboxHeaders);
+  });
+
+  it("starts the run when the runtime catalog no longer contains the selected built-in", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "retired-thread-openai-key" },
+      agentId,
+    );
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Retired catalog connector thread",
+    });
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [200],
+    );
+
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+    });
+    const catalogVersion = `api-test-without-openai-${randomUUID()}`;
+    const catalogWithoutOpenAi = {
+      ...API_TEST_CONNECTOR_CATALOG,
+      catalogVersion,
+      connectors: API_TEST_CONNECTOR_CATALOG.connectors.filter((connector) => {
+        return connector.slug !== "openai";
+      }),
+    };
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion,
+      rawBytes: Buffer.from(`${JSON.stringify(catalogWithoutOpenAi)}\n`),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Continue after the selected connector leaves the catalog",
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toBeUndefined();
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 });
 

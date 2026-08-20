@@ -8892,11 +8892,13 @@ async function prepareRunRuntimeContext(
   if (isRouteError(threadConnectorSelectionIds)) {
     return threadConnectorSelectionIds;
   }
-  const connectorScope = preparedRuntimeConnectorScope({
-    connectorScope: args.connectorScope,
-    connectorCatalogSelection,
-    threadConnectorSelectionIds,
-  });
+  const connectorScope =
+    connectorCatalogSelection.kind === "scoped"
+      ? connectorScopeForRuntimeSnapshot(
+          args.connectorScope,
+          connectorCatalogSelection.selection,
+        )
+      : args.connectorScope;
   const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
@@ -9028,36 +9030,6 @@ async function materializePreparedConnectorContext(args: {
       args.timing,
     ),
     permissionManifest,
-  };
-}
-
-function preparedRuntimeConnectorScope(args: {
-  readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
-  readonly threadConnectorSelectionIds: ThreadConnectorSelectionIds | undefined;
-}): EffectiveConnectorScope {
-  if (args.connectorCatalogSelection.kind !== "scoped") {
-    return args.connectorScope;
-  }
-  const filtered = connectorScopeForRuntimeSnapshot(
-    args.connectorScope,
-    args.connectorCatalogSelection.selection,
-  );
-  if (args.threadConnectorSelectionIds === undefined) {
-    return filtered;
-  }
-  return {
-    ...filtered,
-    allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs.filter(
-      (connectorSlug) => {
-        return (
-          filtered.allowedConnectorSlugs.includes(connectorSlug) ||
-          args.threadConnectorSelectionIds?.connectorIdCandidatesBySlug.has(
-            connectorSlug,
-          )
-        );
-      },
-    ),
   };
 }
 
