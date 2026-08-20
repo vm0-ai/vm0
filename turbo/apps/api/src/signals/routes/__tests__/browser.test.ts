@@ -2278,7 +2278,7 @@ describe("okou browser route", () => {
     );
     const firstScreenshotUrl = afterFirstCapture.body.browser.screenshotUrl;
     expect(firstScreenshotUrl).toMatch(
-      /^https:\/\/cdn\.okou\.test\/artifacts\/.+\.webp$/u,
+      /^https:\/\/cdn\.okou\.io\/artifacts\/.+\.webp$/u,
     );
     if (!firstScreenshotUrl) {
       throw new Error("Expected the first browser screenshot URL");
