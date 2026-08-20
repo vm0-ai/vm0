@@ -223,10 +223,6 @@ export function resolvePublicArtifactsBaseUrl():
   return resolvePlatformRuntimeConfig().publicArtifactsBaseUrl;
 }
 
-export function resolveZeroHostDomain(): "sites.vm0.io" | "sites.vm7.io" {
-  return resolvePlatformRuntimeConfig().zeroHostDomain;
-}
-
 export function resolveHostedSiteDomains(): readonly (
   | "sites.vm0.io"
   | "okou.app"
