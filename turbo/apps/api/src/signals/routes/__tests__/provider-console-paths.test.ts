@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -18,7 +18,9 @@ const context = testContext();
 const REQUEST_ORIGIN = "http://api.test";
 const APP_ORIGIN = "https://app.vm0.test";
 const WEB_ORIGIN = "https://www.vm0.test";
-const SLACK_SIGNING_SECRET = "provider-console-slack-signing-secret";
+// Generated rather than written as a literal so this file does not add another
+// hardcoded HMAC key, which the diff-aware Semgrep scan rejects outright.
+const SLACK_SIGNING_SECRET = randomBytes(32).toString("hex");
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
 interface ResponseSnapshot {
