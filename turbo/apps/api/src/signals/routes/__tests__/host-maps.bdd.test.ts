@@ -60,6 +60,7 @@ function geocodeOkHandler(requests: URL[]) {
 
 describe("FILE-01: hosted-site deployments through host APIs", () => {
   it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
+    mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou-public-sites.test");
     mockEnv("OKOU_HOST_DOMAIN", "okou-sites.test");
     mockEnv("ZERO_HOST_DOMAIN", "zero-sites.test");
     mockEnv("OKOU_HOST_SCHEME", "http");
@@ -88,7 +89,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(first.publicSlug).toBe(site);
     expect(second.publicSlug).toBe(site);
     expect(first.url).toBe(second.url);
-    expect(first.url).toBe(`http://${site}.okou-sites.test`);
+    expect(first.url).toBe(`https://${site}.zero-sites.test`);
     expect(first.aliasUrl).toBe(first.url);
     expect(second.aliasUrl).toBe(second.url);
     expect(first.deploymentVersion).toBe(1);
@@ -216,6 +217,123 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         deploymentVersion: 3,
       }),
     ]);
+  });
+
+  it("uses the creation brand for hosted-site URLs and isolates Okou pointers [HOST-A]", async () => {
+    mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
+    mockEnv("OKOU_HOST_DOMAIN", "legacy-sites.test");
+    mockEnv("ZERO_HOST_DOMAIN", "sites.vm0.io");
+    mockEnv("OKOU_HOST_SCHEME", "https");
+    mockEnv("ZERO_HOST_SCHEME", "https");
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected branded host actor to have an org");
+    }
+    const capture = api.captureHostedSitesS3();
+    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
+
+    const vm0Site = `bdd-vm0-brand-${randomUUID().slice(0, 8)}`;
+    const vm0Body = {
+      site: vm0Site,
+      artifactKind: "hosted-site" as const,
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>VM0 site</main>")],
+    };
+    const createdOnVm0 = await api.prepareHostedSite(actor, vm0Body, "vm0");
+    const redeployedFromOkou = await api.prepareHostedSite(
+      actor,
+      vm0Body,
+      "okou",
+    );
+
+    expect(createdOnVm0.url).toBe(`https://${vm0Site}.sites.vm0.io`);
+    expect(redeployedFromOkou).toMatchObject({
+      siteId: createdOnVm0.siteId,
+      url: createdOnVm0.url,
+      deploymentVersion: 2,
+    });
+
+    const browserOkouSite = `bdd-browser-okou-${randomUUID().slice(0, 8)}`;
+    const createdOnOkou = await api.prepareHostedSite(
+      actor,
+      {
+        ...vm0Body,
+        site: browserOkouSite,
+      },
+      "okou",
+    );
+    expect(createdOnOkou.url).toBe(`https://${browserOkouSite}.okou.app`);
+
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: actor.orgId },
+          role: "org:admin",
+        },
+      ],
+    });
+    const okouToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      randomUUID(),
+      ["host:write"],
+      "okou",
+    );
+    const okouSite = `bdd-okou-brand-${randomUUID().slice(0, 8)}`;
+    const createdWithOkouToken = await api.prepareHostedSite(
+      { bearerToken: okouToken },
+      {
+        site: okouSite,
+        artifactKind: "hosted-site",
+        spaFallback: false,
+        files: [hostedTextFile("/index.html", "<main>Okou site</main>")],
+      },
+      "vm0",
+    );
+    expect(createdWithOkouToken.url).toBe(`https://${okouSite}.okou.app`);
+    expect(createdWithOkouToken.artifactUrl).toBe(
+      `https://dpl-${createdWithOkouToken.deploymentId}.okou.app`,
+    );
+
+    await api.completeHostedSite(
+      { bearerToken: okouToken },
+      createdWithOkouToken.deploymentId,
+    );
+    const okouPointerKey = `sites/brands/okou/${okouSite}/active.json`;
+    const okouDeploymentPointerKey = `sites/brands/okou/deployments/${createdWithOkouToken.deploymentId}.json`;
+    const okouPointer = capture.puts.find((put) => {
+      return put.key === okouPointerKey;
+    });
+    expect(okouPointer).toBeDefined();
+    expect(JSON.parse(okouPointer?.body ?? "{}")).toMatchObject({
+      publicBrand: "okou",
+      publicSlug: okouSite,
+      deploymentId: createdWithOkouToken.deploymentId,
+    });
+    expect(
+      capture.puts.some((put) => {
+        return put.key === okouDeploymentPointerKey;
+      }),
+    ).toBeTruthy();
+    const okouManifest = capture.puts.find((put) => {
+      return put.key.endsWith("/manifest.json") && put.body.includes(okouSite);
+    });
+    expect(JSON.parse(okouManifest?.body ?? "{}")).toMatchObject({
+      publicBrand: "okou",
+      publicSlug: okouSite,
+      deploymentId: createdWithOkouToken.deploymentId,
+    });
+    expect(
+      capture.puts.some((put) => {
+        return (
+          put.key === `sites/${okouSite}/active.json` ||
+          put.key ===
+            `sites/deployments/${createdWithOkouToken.deploymentId}.json`
+        );
+      }),
+    ).toBeFalsy();
   });
 
   it("adds a four-character hash only when the simple alias is already occupied [HOST-A]", async () => {

@@ -94,6 +94,7 @@ const SCHEMA = {
   R2_HOSTED_SITES_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
+  OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1).optional(),
   OKOU_HOST_DOMAIN: z.string().min(1).optional(),
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
   OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),

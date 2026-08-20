@@ -123,14 +123,19 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
-  const hostDomain = env("OKOU_HOST_DOMAIN");
+  const hostDomains = [
+    env("ZERO_HOST_DOMAIN"),
+    env("OKOU_PUBLIC_HOST_DOMAIN") ??
+      env("OKOU_HOST_DOMAIN") ??
+      env("ZERO_HOST_DOMAIN"),
+  ];
   if (
     previewUrl.protocol !== "https:" ||
-    !previewUrl.hostname.endsWith(`.${hostDomain}`)
+    !hostDomains.some((hostDomain) => {
+      return previewUrl.hostname.endsWith(`.${hostDomain}`);
+    })
   ) {
-    throw new Error(
-      `artifact preview URL must be a subdomain of ${hostDomain}`,
-    );
+    throw new Error("artifact preview URL must use a hosted-site domain");
   }
 
   const accountId = env("R2_ACCOUNT_ID");
