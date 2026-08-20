@@ -25,6 +25,8 @@ const OKOU_ROOT_DOMAINS = [
   OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
+const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
+const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
@@ -221,6 +223,12 @@ export function resolvePublicArtifactsBaseUrl():
   return resolvePlatformRuntimeConfig().publicArtifactsBaseUrl;
 }
 
-export function resolveZeroHostDomain(): "sites.vm0.io" | "sites.vm7.io" {
-  return resolvePlatformRuntimeConfig().zeroHostDomain;
+export function resolveHostedSiteDomains(): readonly (
+  | "sites.vm0.io"
+  | "okou.app"
+  | "sites.vm7.io"
+)[] {
+  return resolvePlatformEnvironment() === "production"
+    ? PRODUCTION_HOSTED_SITE_DOMAINS
+    : PREVIEW_HOSTED_SITE_DOMAINS;
 }

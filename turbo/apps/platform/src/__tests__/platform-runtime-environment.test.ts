@@ -170,7 +170,6 @@ describe("portable platform runtime environment", () => {
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
-
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
     plausibleController.abort();
