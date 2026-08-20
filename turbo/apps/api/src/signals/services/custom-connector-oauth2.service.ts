@@ -62,10 +62,7 @@ import {
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
-import {
-  normalizeConnectorAccountMutation,
-  serializeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -590,7 +587,7 @@ export const startCustomConnectorOAuth2$ = command(
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),
-        accountMutation: serializeConnectorAccountMutation(args.account),
+        accountMutation: args.account ?? null,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return resolution;

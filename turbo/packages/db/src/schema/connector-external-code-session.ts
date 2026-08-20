@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -9,6 +10,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 
 export const connectorExternalCodeSessionStatusEnum = pgEnum(
   "connector_external_code_session_status",
@@ -30,7 +32,8 @@ export const connectorExternalCodeSessions = pgTable(
       .notNull(),
     sessionTokenHash: varchar("session_token_hash", { length: 128 }).notNull(),
     encryptedProviderState: text("encrypted_provider_state").notNull(),
-    accountMutation: text("account_mutation"),
+    accountMutation:
+      jsonb("account_mutation").$type<StoredConnectorAccountMutation>(),
     authorizationUrl: text("authorization_url").notNull(),
     errorCode: varchar("error_code", { length: 255 }),
     errorMessage: text("error_message"),

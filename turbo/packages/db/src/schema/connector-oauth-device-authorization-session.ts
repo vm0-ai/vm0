@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -10,6 +11,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 
 export const connectorOauthDeviceAuthorizationSessionStatusEnum = pgEnum(
   "connector_oauth_device_authorization_session_status",
@@ -38,7 +40,8 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       .notNull(),
     sessionTokenHash: varchar("session_token_hash", { length: 128 }).notNull(),
     encryptedProviderState: text("encrypted_provider_state").notNull(),
-    accountMutation: text("account_mutation"),
+    accountMutation:
+      jsonb("account_mutation").$type<StoredConnectorAccountMutation>(),
     userCode: varchar("user_code", { length: 255 }).notNull(),
     verificationUri: text("verification_uri").notNull(),
     verificationUriComplete: text("verification_uri_complete"),

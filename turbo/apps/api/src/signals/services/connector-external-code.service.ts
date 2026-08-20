@@ -58,7 +58,6 @@ import {
 import {
   normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
-  serializeConnectorAccountMutation,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
@@ -866,7 +865,7 @@ async function createExternalCodeSession(
         status: "pending",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        accountMutation: serializeConnectorAccountMutation(args.account),
+        accountMutation: args.account ?? null,
         authorizationUrl: args.authorizationUrl,
         createdAt: args.now,
         updatedAt: args.now,

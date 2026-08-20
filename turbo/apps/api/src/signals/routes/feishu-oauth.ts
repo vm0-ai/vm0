@@ -4,6 +4,7 @@ import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oaut
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
@@ -77,7 +78,7 @@ interface FeishuConnectionState {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly accountMutation?: string | null;
+  readonly accountMutation?: StoredConnectorAccountMutation | null;
 }
 
 interface FeishuInstallationOAuthRow {

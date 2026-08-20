@@ -61,7 +61,6 @@ import {
 import {
   normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
-  serializeConnectorAccountMutation,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
@@ -1047,7 +1046,7 @@ async function createDeviceAuthSession(
         status: "awaiting_user_authorization",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        accountMutation: serializeConnectorAccountMutation(args.account),
+        accountMutation: args.account ?? null,
         userCode: args.userCode,
         verificationUri: args.verificationUri,
         verificationUriComplete: args.verificationUriComplete,

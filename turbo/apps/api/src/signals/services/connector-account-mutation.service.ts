@@ -2,8 +2,7 @@ import {
   connectorAccountMutationIntentSchema,
   type ConnectorAccountMutationIntent,
 } from "@okouai/api-contracts/contracts/connector-accounts";
-
-import { safeJsonParse } from "../utils";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 
 export type ConnectorAccountMutation =
   | { readonly intent: "legacy-singleton" }
@@ -15,18 +14,12 @@ export function normalizeConnectorAccountMutation(
   return intent ?? { intent: "legacy-singleton" };
 }
 
-export function serializeConnectorAccountMutation(
-  intent: ConnectorAccountMutationIntent | undefined,
-): string | null {
-  return intent === undefined ? null : JSON.stringify(intent);
-}
-
 export function parseStoredConnectorAccountMutationIntent(
-  value: string | null,
+  value: StoredConnectorAccountMutation | null,
 ): ConnectorAccountMutationIntent | undefined {
   const mutation: ConnectorAccountMutation =
     value === null
       ? { intent: "legacy-singleton" }
-      : connectorAccountMutationIntentSchema.parse(safeJsonParse(value));
+      : connectorAccountMutationIntentSchema.parse(value);
   return mutation.intent === "legacy-singleton" ? undefined : mutation;
 }

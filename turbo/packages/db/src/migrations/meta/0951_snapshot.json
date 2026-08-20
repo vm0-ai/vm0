@@ -1,5 +1,5 @@
 {
-  "id": "cf0d7f90-b96a-40f3-b5ab-3c1ac0f0abfb",
+  "id": "a108edee-4057-47bc-b4d1-e536e4e0dca0",
   "prevId": "a564f8b1-3ced-4550-837e-0a268aaf595a",
   "version": "7",
   "dialect": "postgresql",
@@ -8530,7 +8530,7 @@
         },
         "account_mutation": {
           "name": "account_mutation",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -8733,7 +8733,7 @@
         },
         "account_mutation": {
           "name": "account_mutation",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -8976,7 +8976,7 @@
         },
         "account_mutation": {
           "name": "account_mutation",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
