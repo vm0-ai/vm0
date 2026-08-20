@@ -3,7 +3,11 @@ import type {
   BrowserSuspensionReason,
 } from "@okouai/api-contracts/contracts/browser";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { browserSessions } from "@okouai/db/schema/browser-session";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import {
+  browserSessionInstances,
+  browserSessions,
+} from "@okouai/db/schema/browser-session";
 import { eq, sql } from "drizzle-orm";
 import {
   integer,
@@ -61,6 +65,35 @@ export const browserSessionPublicBrandSelection = sql`
   to_jsonb(${browserSessions}) ->> 'public_brand'
 `.mapWith(nullableDriverValueDecoder(pgTextDecoder));
 
+/**
+ * Chat run callbacks predate browser public-brand persistence and already
+ * carry the exact brand embedded in the run token. A new API can therefore
+ * recover browser creation identity while migration 0956 is still pending.
+ * Missing callback metadata belongs to legacy VM0 runs. Remove after the
+ * migration backfill and rollback window tracked by #28449 have drained.
+ */
+export const browserSessionCreationPublicBrandSelection = sql`
+  (
+    SELECT ${agentRunCallbacks.payload} ->> 'publicBrand'
+    FROM ${agentRunCallbacks}
+    WHERE ${agentRunCallbacks.runId} = COALESCE(
+      (
+        SELECT ${browserSessionInstances.runId}
+        FROM ${browserSessionInstances}
+        WHERE ${browserSessionInstances.chatThreadId} = ${browserSessions.chatThreadId}
+          AND ${browserSessionInstances.createdAt} >= ${browserSessions.createdAt}
+        ORDER BY ${browserSessionInstances.createdAt}, ${browserSessionInstances.providerSessionId}
+        LIMIT 1
+      ),
+      ${browserSessions.runId}
+    )
+      AND ${agentRunCallbacks.internalKind} = 'chat'
+      AND ${agentRunCallbacks.payload} ->> 'publicBrand' IN ('vm0', 'okou')
+    ORDER BY ${agentRunCallbacks.createdAt}, ${agentRunCallbacks.id}
+    LIMIT 1
+  )
+`.mapWith(nullableDriverValueDecoder(pgTextDecoder));
+
 export function browserSessionPublicBrand(value: unknown): PublicBrand {
   if (value === null || value === undefined) {
     return "vm0";
@@ -69,6 +102,28 @@ export function browserSessionPublicBrand(value: unknown): PublicBrand {
     return value;
   }
   throw new Error(`Invalid browser session public brand: ${String(value)}`);
+}
+
+function browserSessionCreationPublicBrand(value: unknown): PublicBrand | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value === "vm0" || value === "okou") {
+    return value;
+  }
+  throw new Error(
+    `Invalid browser session creation public brand: ${String(value)}`,
+  );
+}
+
+export function effectiveBrowserSessionPublicBrand(
+  storedValue: unknown,
+  creationValue: unknown,
+): PublicBrand {
+  return (
+    browserSessionCreationPublicBrand(creationValue) ??
+    browserSessionPublicBrand(storedValue)
+  );
 }
 
 export async function browserPublicBrandSchemaAvailable(

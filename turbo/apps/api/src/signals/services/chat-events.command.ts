@@ -821,6 +821,7 @@ const resolveIncomingAttachFileMetadata$ = command(
               contentType: file.contentType,
               size: object.size,
               objectKey: object.key,
+              publicBrand: object.publicBrand,
             });
           }
         }
@@ -1650,7 +1651,6 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
-        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
       if (params.touchThreadSort) {
@@ -1772,7 +1772,6 @@ async function appendAssociatedUserMessage(params: {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
-        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
     }
@@ -2959,7 +2958,6 @@ async function appendInsufficientCreditsEvents(params: {
         chatThreadId: params.prepared.thread.threadId,
         userId: params.userId,
         orgId: params.orgId,
-        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
     }

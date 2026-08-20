@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   BROWSER_IDLE_LEASE_MINUTES,
   BROWSER_INITIAL_SCREEN_HEIGHT,
@@ -69,9 +68,10 @@ import {
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { browserScreenshotSchemaAvailable } from "./browser-screenshot-schema.service";
 import {
-  browserSessionPublicBrand,
+  browserSessionCreationPublicBrandSelection,
   browserSessionPublicBrandSelection,
   browserSessionsBeforePublicBrandMigration,
+  effectiveBrowserSessionPublicBrand,
   persistBrowserPublicBrandIfAvailable,
 } from "./browser-public-brand-schema.service";
 import {
@@ -92,7 +92,6 @@ const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
 const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
 const BROWSER_TAB_SNAPSHOT_TIMEOUT_MS = 10_000;
 const BROWSER_SCREENSHOT_CAPTURE_TIMEOUT_MS = 30_000;
-const BROWSER_PUBLIC_BRAND_SCHEMA_RETRY_MS = 5000;
 const BROWSER_SCREENSHOT_CONTENT_TYPE = "image/webp";
 const BROWSER_SCREENSHOT_FILENAME = "browser-screenshot.webp";
 const STRANDED_START_GRACE_MS = 60_000;
@@ -122,6 +121,7 @@ const BROWSER_SESSION_SELECTION = {
   orgId: browserSessions.orgId,
   userId: browserSessions.userId,
   publicBrand: browserSessionPublicBrandSelection,
+  creationPublicBrand: browserSessionCreationPublicBrandSelection,
   name: browserSessions.name,
   browserProfileId: browserSessions.browserProfileId,
   browserThreadProfileId: browserSessions.browserThreadProfileId,
@@ -137,6 +137,7 @@ const BROWSER_SESSION_SELECTION = {
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type RawBrowserSessionRow = Omit<BrowserSessionRow, "publicBrand"> & {
   readonly publicBrand: unknown;
+  readonly creationPublicBrand: unknown;
 };
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
 type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
@@ -146,9 +147,13 @@ type InactiveBrowserStatus = (typeof INACTIVE_BROWSER_STATUSES)[number];
 function resolvedBrowserSessionRow(
   row: RawBrowserSessionRow,
 ): BrowserSessionRow {
+  const { creationPublicBrand, ...browser } = row;
   return {
-    ...row,
-    publicBrand: browserSessionPublicBrand(row.publicBrand),
+    ...browser,
+    publicBrand: effectiveBrowserSessionPublicBrand(
+      row.publicBrand,
+      creationPublicBrand,
+    ),
   };
 }
 
@@ -841,55 +846,6 @@ async function lockBrowserThread(
   );
 }
 
-const persistBrowserPublicBrandAfterSchemaRollout$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly publicBrand: PublicBrand;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await delay(BROWSER_PUBLIC_BRAND_SCHEMA_RETRY_MS, undefined, { signal });
-    const db = set(writeDb$);
-    const persisted = await persistBrowserPublicBrandIfAvailable(db, args);
-    signal.throwIfAborted();
-    if (!persisted) {
-      throw new Error("Browser public-brand schema is still unavailable");
-    }
-  },
-);
-
-// A browser created during the nominal migration/API gap keeps its in-memory
-// creation brand while this retry persists it after migration 0956 appears.
-// Remove with the pre-migration write model after the observed ~102-minute
-// rollout/rollback window closes; tracked by #28449.
-const scheduleBrowserPublicBrandPersistence$ = command(
-  (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly publicBrand: PublicBrand;
-    },
-  ): void => {
-    waitUntil(
-      tapError(
-        set(
-          persistBrowserPublicBrandAfterSchemaRollout$,
-          args,
-          AbortSignal.timeout(BROWSER_PUBLIC_BRAND_SCHEMA_RETRY_MS + 30_000),
-        ),
-        (error) => {
-          L.warn("Managed browser public-brand rollout persistence failed", {
-            chatThreadId: args.chatThreadId,
-            error,
-          });
-        },
-      ),
-    );
-  },
-);
-
 const captureAndStoreBrowserScreenshot$ = command(
   async (
     { get, set },
@@ -1574,10 +1530,6 @@ async function claimStartedProviderInstance(
     readonly screenHeight: number;
   },
 ) {
-  await persistBrowserPublicBrandIfAvailable(db, {
-    chatThreadId: args.browser.chatThreadId,
-    publicBrand: args.browser.publicBrand,
-  });
   const claimed = await db.transaction(async (tx) => {
     await lockBrowserThread(tx, args.context.chatThreadId);
     const [rawCurrent] = await tx
@@ -1646,6 +1598,13 @@ async function claimStartedProviderInstance(
     };
   });
   if (claimed.kind === "cleanup" || claimed.kind === "active") {
+    // Persist only after the immutable first provider-instance run is
+    // available to recover the logical browser's creation brand. This keeps a
+    // later resume run from replacing it during the schema rollout.
+    await persistBrowserPublicBrandIfAvailable(db, {
+      chatThreadId: claimed.browser.chatThreadId,
+      publicBrand: claimed.browser.publicBrand,
+    });
     await publishBrowserSessionChangedSafely(args.browser.userId, {
       threadId: args.browser.chatThreadId,
     });
@@ -1899,20 +1858,15 @@ const createBrowserForContext$ = command(
     if (claimed.kind === "error") {
       return claimed;
     }
-    const publicBrandPersisted = await persistBrowserPublicBrandIfAvailable(
-      db,
-      {
-        chatThreadId: claimed.value.chatThreadId,
-        publicBrand: claimed.value.publicBrand,
-      },
-    );
+    // Before migration 0956, the chat callback is the durable creation-brand
+    // source used by reads and by the migration backfill. Once the column is
+    // present this writes it directly, including the ALTER/INSERT race where
+    // the old statement shape receives the VM0 database default.
+    await persistBrowserPublicBrandIfAvailable(db, {
+      chatThreadId: claimed.value.chatThreadId,
+      publicBrand: claimed.value.publicBrand,
+    });
     signal.throwIfAborted();
-    if (!publicBrandPersisted) {
-      set(scheduleBrowserPublicBrandPersistence$, {
-        chatThreadId: claimed.value.chatThreadId,
-        publicBrand: claimed.value.publicBrand,
-      });
-    }
 
     const connection = await set(
       startProviderInstance$,

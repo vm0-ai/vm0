@@ -40,6 +40,7 @@ describe("browser screenshot rollout compatibility", () => {
       previousApiPublicBrand: "vm0",
       newApiPublicBrandPersisted: true,
       newApiPublicBrand: "okou",
+      newApiPublicBrandAfterSchemaArrival: "okou",
     });
 
     const preMigrationUrl = preMigrationDatabaseUrl();
@@ -52,7 +53,8 @@ describe("browser screenshot rollout compatibility", () => {
       schemaAvailable: false,
       previousApiPublicBrand: "vm0",
       newApiPublicBrandPersisted: false,
-      newApiPublicBrand: "vm0",
+      newApiPublicBrand: "okou",
+      newApiPublicBrandAfterSchemaArrival: "okou",
     });
   });
 });

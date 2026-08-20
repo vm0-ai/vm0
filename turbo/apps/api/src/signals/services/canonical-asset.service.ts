@@ -703,7 +703,6 @@ export async function registerCanonicalWebInputAssets(
     readonly chatThreadId: string;
     readonly userId: string;
     readonly orgId: string;
-    readonly publicBrand: PublicBrand;
     readonly files: readonly ChatEventAttachFileMetadata[];
   },
 ): Promise<void> {
@@ -720,8 +719,8 @@ export async function registerCanonicalWebInputAssets(
         filename: file.filename,
         contentType: file.contentType,
         sizeBytes: file.size,
-        url: buildFileUrlFromKey(file.objectKey, args.publicBrand),
-        metadata: { publicBrand: args.publicBrand },
+        url: buildFileUrlFromKey(file.objectKey, file.publicBrand),
+        metadata: { publicBrand: file.publicBrand },
         assetVersion: CANONICAL_ASSET_VERSION,
         classification: "input",
         accessLevel: "private",

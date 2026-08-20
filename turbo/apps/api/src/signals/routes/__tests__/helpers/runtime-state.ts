@@ -185,6 +185,7 @@ export async function validateBrowserPublicBrandRollout(
   readonly previousApiPublicBrand: "vm0" | "okou" | undefined;
   readonly newApiPublicBrandPersisted: boolean;
   readonly newApiPublicBrand: "vm0" | "okou" | undefined;
+  readonly newApiPublicBrandAfterSchemaArrival: "vm0" | "okou" | undefined;
 }> {
   const response = await postAction(context, {
     action: "validate-browser-public-brand-rollout",
@@ -200,6 +201,8 @@ export async function validateBrowserPublicBrandRollout(
     newApiPublicBrandPersisted:
       response.new_api_browser_public_brand_persisted ?? false,
     newApiPublicBrand: response.new_api_browser_public_brand,
+    newApiPublicBrandAfterSchemaArrival:
+      response.new_api_browser_public_brand_after_schema_arrival,
   };
 }
 

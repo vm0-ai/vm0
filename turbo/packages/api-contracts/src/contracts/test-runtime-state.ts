@@ -248,6 +248,9 @@ export const testRuntimeStateActionResponseSchema = z.object({
   previous_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
   new_api_browser_public_brand_persisted: z.boolean().optional(),
   new_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
+  new_api_browser_public_brand_after_schema_arrival: z
+    .enum(["vm0", "okou"])
+    .optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
