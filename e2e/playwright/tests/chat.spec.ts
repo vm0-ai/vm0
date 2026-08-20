@@ -313,7 +313,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/user-model-preference", async (route) => {
+  await page.route("**/api/user-model-preference", async (route) => {
     const request = route.request();
     if (request.method() === "PUT") {
       const update: unknown = request.postDataJSON();
@@ -383,7 +383,7 @@ async function mockModelPickerBoundary(page: Page): Promise<{
       },
     });
   });
-  await page.route("**/api/okou/user-model-preference", async (route) => {
+  await page.route("**/api/user-model-preference", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;

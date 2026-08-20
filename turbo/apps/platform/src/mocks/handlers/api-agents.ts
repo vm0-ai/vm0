@@ -105,7 +105,7 @@ function mockCustomConnectorGrantUpdateResponse(
 }
 
 export const apiAgentsHandlers = [
-  // GET /api/okou/team
+  // GET /api/team
   mockApi(teamContract.list, ({ respond }) => {
     return respond(200, mockTeam);
   }),

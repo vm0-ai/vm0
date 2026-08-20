@@ -77,7 +77,7 @@ export type UpdateUserPreferencesRequest = z.infer<
 >;
 
 /**
- * User preferences contract for /api/okou/user-preferences
+ * User preferences contract for /api/user-preferences
  *
  * GET: Get current user's preferences
  * POST: Update user preferences
@@ -85,7 +85,7 @@ export type UpdateUserPreferencesRequest = z.infer<
 export const userPreferencesContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/user-preferences",
+    path: "/api/user-preferences",
     headers: authHeadersSchema,
     responses: {
       200: userPreferencesResponseSchema,
@@ -96,7 +96,7 @@ export const userPreferencesContract = c.router({
   },
   update: {
     method: "POST",
-    path: "/api/okou/user-preferences",
+    path: "/api/user-preferences",
     headers: authHeadersSchema,
     body: updateUserPreferencesRequestSchema,
     responses: {
