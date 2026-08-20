@@ -235,3 +235,64 @@ export function withApiNamespaceAliases(
     });
   });
 }
+
+/**
+ * The branded paths a migrated route still answers on, keyed by the neutral
+ * canonical path its contract now declares.
+ *
+ * `LEGACY_ZERO_PATHS` cannot express this, which is why this is a second table
+ * rather than more rows in that one. That table classifies which of the
+ * `/api/zero/**` registrations the expansion above already produced are
+ * intentional; this one decides which branded registrations exist at all.
+ * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
+ * moves a contract off `/api/okou/**` the expansion produces no branded path
+ * for it and neither branded path is registered any more — published CLI builds
+ * still calling the branded path would get a 404 with nothing in either table
+ * able to say otherwise.
+ *
+ * A migrated route generally owes both branded forms, so a value is a list
+ * rather than a single path.
+ *
+ * The table ships empty. Each #28278 slice adds the rows for the paths it
+ * moves, so a move and the compatibility it owes land in one commit.
+ *
+ * Every row is compatibility debt under the same removal gate as
+ * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
+ * request log retains about three days, which by itself cannot prove a row is
+ * drained — it cannot tell a caller that left from one that calls weekly.
+ */
+type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
+
+const MIGRATED_BRANDED_PATHS: MigratedBrandedPathTable = {
+  // Empty until the first #28278 migration slice moves a contract path.
+};
+
+/**
+ * Registers the branded paths named in `MIGRATED_BRANDED_PATHS`, so a contract
+ * that has moved to its neutral path keeps serving the branded paths released
+ * callers still hold.
+ *
+ * Applied after `withApiNamespaceAliases` and never before it: these paths are
+ * finished registrations, and passing them back through the blanket expansion
+ * would derive each one's sibling namespace a second time and register it
+ * twice. Nothing produced here is marked `viaNamespaceAliasFallback` — a row is
+ * a declared commitment rather than a gap the compatibility table missed, so it
+ * must not reach the fallback report in `createAppWithRoutes`.
+ */
+export function withMigratedBrandedPaths(
+  routes: readonly RouteEntry[],
+  brandedPaths: MigratedBrandedPathTable = MIGRATED_BRANDED_PATHS,
+): readonly RouteEntry[] {
+  return routes.flatMap((entry) => {
+    const migrated = brandedPaths[entry.route.path];
+    if (migrated === undefined) {
+      return [entry];
+    }
+    return [
+      entry,
+      ...migrated.map((path) => {
+        return routeEntryWithPath(entry, path);
+      }),
+    ];
+  });
+}

@@ -39,9 +39,11 @@ import {
   ingestToAxiom,
 } from "./signals/external/axiom";
 import {
+  assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
   withFinalProviderConsolePaths,
+  withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
@@ -645,10 +647,18 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
+  // Hono keeps every registration for a path and answers with the first, so a
+  // duplicate would shadow a handler instead of failing. The compatibility
+  // tables in `route-entry.ts` are hand-edited, so assert here: a row that
+  // collides with a declared path stops the app at startup rather than silently
+  // taking that path over.
+  const registeredRoutes = withMigratedBrandedPaths(
+    withApiNamespaceAliases(withFinalProviderConsolePaths(routes)),
+  );
+  assertUniqueRouteRegistrations(registeredRoutes);
+
   const reportNamespaceAliasFallback = createNamespaceAliasFallbackReporter();
-  for (const entry of withApiNamespaceAliases(
-    withFinalProviderConsolePaths(routes),
-  )) {
+  for (const entry of registeredRoutes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(
       entry.handler,
