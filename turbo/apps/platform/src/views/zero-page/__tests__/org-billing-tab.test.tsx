@@ -498,15 +498,17 @@ describe("organization billing settings", () => {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team names only what it adds, in terms of what a workspace can do with
-       it. Repeating Pro's list here is what made the two columns twice as long
-       as the choice between them needs. */
+    /* Team leads with the scale upgrades, then makes the built-in APIs concrete
+       enough to show what a team can put those ten concurrent runs to work on. */
     expect(
-      within(teamPlan).getByText("Everything in Pro, plus"),
+      within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
     for (const item of [
       "Add more concurrency any time",
-      "Trigger agents from your own systems",
+      "Trigger agents from any system via webhook",
+      "Built-in SEO research",
+      "Built-in lead generation",
+      "Built-in web and market data",
       "Voice input, 500 a day",
       "Priority support",
     ]) {

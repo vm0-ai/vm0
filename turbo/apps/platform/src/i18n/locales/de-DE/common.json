@@ -930,14 +930,17 @@
         "agents": "{{shared}} geteilte Agents, unbegrenzt private",
         "agentsAtOnce": "Agents gleichzeitig",
         "automations": "Zeit- und ereignisgesteuerte Automationen",
-        "everythingInPlus": "Alles aus {{plan}}, plus",
+        "builtInLeadGeneration": "Integrierte Leadgenerierung",
+        "builtInSeoResearch": "Integrierte SEO-Recherche",
+        "builtInWebMarketData": "Integrierte Web- und Marktdaten",
+        "everythingInBuiltForTeams": "Alles aus {{plan}}, gemacht für Teams",
         "included": "Enthalten",
         "models": "Jedes Modell, oder eigene Schlüssel",
         "supportEmail": "E-Mail-Support",
         "supportPriority": "Priorisierter Support",
         "videoGeneration": "Video- und Avatar-Generierung",
         "voiceInput": "Spracheingabe, {{requests}} pro Tag",
-        "webhookAutomations": "Agents aus den eigenen Systemen auslösen"
+        "webhookAutomations": "Agents per Webhook aus jedem System starten"
       },
       "legacy": "Legacy",
       "limitedFree": {

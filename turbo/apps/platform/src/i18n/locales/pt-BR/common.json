@@ -951,14 +951,17 @@
         "agents": "{{shared}} agentes compartilhados, privados ilimitados",
         "agentsAtOnce": "agentes ao mesmo tempo",
         "automations": "Automações agendadas e por eventos",
-        "everythingInPlus": "Tudo do {{plan}}, e mais",
+        "builtInLeadGeneration": "Geração de leads integrada",
+        "builtInSeoResearch": "Pesquisa de SEO integrada",
+        "builtInWebMarketData": "Dados web e de mercado integrados",
+        "everythingInBuiltForTeams": "Tudo do {{plan}}, feito para equipes",
         "included": "Incluído",
         "models": "Todos os modelos, ou suas próprias chaves",
         "supportEmail": "Suporte por e-mail",
         "supportPriority": "Suporte prioritário",
         "videoGeneration": "Geração de vídeo e avatares",
         "voiceInput": "Entrada de voz, {{requests}} por dia",
-        "webhookAutomations": "Dispare agentes a partir dos seus sistemas"
+        "webhookAutomations": "Acione agentes de qualquer sistema via webhook"
       },
       "legacy": "Legado",
       "limitedFree": {

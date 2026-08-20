@@ -930,14 +930,17 @@
         "agents": "{{shared}} agen bersama, privat tanpa batas",
         "agentsAtOnce": "agen sekaligus",
         "automations": "Otomatisasi terjadwal dan berbasis event",
-        "everythingInPlus": "Semua di {{plan}}, plus",
+        "builtInLeadGeneration": "Perolehan lead bawaan",
+        "builtInSeoResearch": "Riset SEO bawaan",
+        "builtInWebMarketData": "Data web dan pasar bawaan",
+        "everythingInBuiltForTeams": "Semua di {{plan}}, dibuat untuk tim",
         "included": "Termasuk",
         "models": "Semua model, atau pakai kunci sendiri",
         "supportEmail": "Dukungan email",
         "supportPriority": "Dukungan prioritas",
         "videoGeneration": "Pembuatan video dan avatar",
         "voiceInput": "Input suara, {{requests}} per hari",
-        "webhookAutomations": "Picu agen dari sistem Anda sendiri"
+        "webhookAutomations": "Picu agen dari sistem apa pun via webhook"
       },
       "legacy": "Lama",
       "limitedFree": {

@@ -801,15 +801,14 @@ function PlanConcurrencyStat({ tier }: { readonly tier: UsagePackPlanTier }) {
   );
 }
 
-/* Pro carries the whole list; Team names only what it adds on top. Spelling
-   both columns out in full meant six of the twelve lines said the same thing
-   twice, and lifting those six into a band under the columns only moved the
-   repetition somewhere else -- either way the reader pays for words that do
-   not help them choose. "Everything in Pro, plus" is what removes them.
+/* Pro carries the everyday baseline. Team keeps that baseline implicit, then
+   spells out the scale upgrades and the built-in data capabilities a team can
+   put to work. Those APIs also exist on Pro, so the label says "built for
+   teams" rather than claiming every line after it is a Team-only entitlement.
 
-   Team's lines name what the plan lets a workspace do, not the setting that
-   does it: "Trigger agents from your own systems" is the same entitlement as
-   "Webhook automations" and is the reason someone pays for it. */
+   Team's webhook line names both the mechanism and the outcome. "Trigger
+   agents from any system via webhook" makes its difference from scheduled and
+   app-event automations visible without exposing an internal entitlement key. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const voiceInput = i18n.t(
     ($) => {
@@ -824,6 +823,15 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
       }),
       i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInSeoResearch;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInLeadGeneration;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInWebMarketData;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -858,7 +866,7 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
   return tier === "team"
     ? i18n.t(
         ($) => {
-          return $.billing.plans.highlights.everythingInPlus;
+          return $.billing.plans.highlights.everythingInBuiltForTeams;
         },
         { plan: planName("pro") },
       )
@@ -1177,7 +1185,7 @@ function PricingStepDialog({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(42rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[min(44rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share
