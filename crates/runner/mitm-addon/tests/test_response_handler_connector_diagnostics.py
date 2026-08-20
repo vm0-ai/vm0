@@ -3,6 +3,7 @@
 import json
 import urllib.parse
 
+import pytest
 from mitmproxy.test import tutils
 
 import connector_diagnostics
@@ -36,7 +37,13 @@ def _drain_connector_diagnostic_response_stream(flow, *, upstream_chunk: bytes =
     return diagnostic_body
 
 
-async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, mitm_ctx):
+@pytest.mark.parametrize("upstream_status", [401, 403])
+async def test_replaces_unauthenticated_connector_auth_error_body(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    upstream_status,
+):
     reg_path = write_connector_diagnostic_capture_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -47,19 +54,21 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        record_connector_diagnostic_requestheaders_context(flow)
+        await mitm_addon.request(flow)
+        assert flow.response is None
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
         flow.metadata[metadata_keys.ORIGINAL_URL] = (
             "https://fal.run/fal-ai/nano-banana-pro?debug=secret#fragment"
         )
         flow.response = tutils.tresp(
-            status_code=401,
+            status_code=upstream_status,
             headers=header_map({"content-type": "text/plain", "content-length": "8"}),
             content=b"upstream",
         )
         flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] = {"total_bytes": 8}
         mitm_addon.response(flow)
 
-    assert flow.response.status_code == 401
+    assert flow.response.status_code == upstream_status
     assert flow.response.headers["content-type"] == "application/json"
     content = flow.response.content
     assert content is not None
@@ -74,11 +83,11 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
         ),
         "envNames": ["FAL_TOKEN"],
         "base": "https://fal.run",
-        "upstreamStatus": 401,
+        "upstreamStatus": upstream_status,
     }
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["action"] == "ALLOW"
-    assert entry["status"] == 401
+    assert entry["status"] == upstream_status
     assert entry["firewall_error"] == "connector_not_configured_for_run"
     assert entry["connector_diagnostic_slug"] == "fal"
     assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
@@ -89,7 +98,7 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     proxy_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"
-    assert proxy_entry["upstream_status"] == 401
+    assert proxy_entry["upstream_status"] == upstream_status
     assert proxy_entry["url"] == "https://fal.run/fal-ai/nano-banana-pro"
     assert proxy_entry["message"].endswith(f": {proxy_entry['url']}")
     serialized_proxy_entry = json.dumps(proxy_entry)
@@ -323,6 +332,181 @@ def test_responseheaders_preserves_upstream_for_query_over_inspection_limit(
     assert flow.response.content == b"upstream"
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert "firewall_error" not in entry
+
+
+@pytest.mark.parametrize(
+    ("query", "expect_diagnostic"),
+    [
+        (
+            "&".join(["x"] * connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS),
+            True,
+        ),
+        (
+            "&".join(["x"] * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS + 1)),
+            False,
+        ),
+        (
+            "noise="
+            + "x"
+            * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=")),
+            True,
+        ),
+        (
+            "noise="
+            + "x"
+            * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=") + 1),
+            False,
+        ),
+    ],
+    ids=["field-limit", "over-field-limit", "character-limit", "over-character-limit"],
+)
+async def test_query_inspection_boundaries_control_connector_401_diagnostic(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    query,
+    expect_diagnostic,
+):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path=f"/fal-ai/nano-banana-pro?{query}",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        assert flow.response is None
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"upstream",
+        )
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    content = flow.response.content
+    assert content is not None
+    if expect_diagnostic:
+        assert json.loads(content)["error"] == "connector_not_configured_for_run"
+        assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
+    else:
+        assert content == b"upstream"
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "API%5fKEY=user+token",
+        "api_key=&noise=x&api_key=user-token",
+        "api_key=user=token",
+        "api_key=%ZZ",
+        "api_key=user-token&"
+        + "&".join(["x"] * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS + 1)),
+    ],
+    ids=["percent-plus", "duplicate", "first-equals", "invalid-percent", "auth-before-limit"],
+)
+async def test_encoded_query_auth_preserves_connector_401(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    query,
+):
+    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path=f"/fal-ai/nano-banana-pro?{query}",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        assert flow.response is None
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"upstream auth error",
+        )
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    assert flow.response.content == b"upstream auth error"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    ("path", "request_header_pairs"),
+    [
+        ("/items", [("X-Workspace-Session", "user-provided")]),
+        ("/items?workspace_session=user-provided", []),
+        ("/items?WORKSPACE%5FSESSION=user+provided", []),
+    ],
+    ids=["configured-header", "configured-query", "encoded-configured-query"],
+)
+async def test_configured_auth_preserves_connector_401(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    path,
+    request_header_pairs,
+):
+    write_connector_diagnostic_catalog_cache(
+        tmp_path,
+        firewalls={
+            "configured-auth": {
+                "name": "configured-auth",
+                "apis": [
+                    {
+                        "base": "https://configured.example.com",
+                        "hostPolicy": {
+                            "kind": "providerOwned",
+                            "exactHosts": ["configured.example.com"],
+                        },
+                        "auth": {
+                            "headers": {
+                                "X-Workspace-Session": "${{ secrets.WORKSPACE_TOKEN }}",
+                            },
+                            "query": {
+                                "workspace_session": "${{ secrets.WORKSPACE_TOKEN }}",
+                            },
+                        },
+                        "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                    }
+                ],
+            }
+        },
+    )
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="configured.example.com",
+        path=path,
+        request_headers=headers(
+            ("Host", "configured.example.com"),
+            *request_header_pairs,
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        assert flow.response is None
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"upstream auth error",
+        )
+        mitm_addon.response(flow)
+
+    assert flow.response.status_code == 401
+    assert flow.response.content == b"upstream auth error"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_restores_connector_diagnostic_body_when_headers_end_stream(
@@ -983,7 +1167,14 @@ async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
     assert "firewall_error" not in entry
 
 
-async def test_preserves_successful_connector_response_body(tmp_path, real_flow, mitm_ctx, headers):
+@pytest.mark.parametrize("status_code", [200, 404, 500])
+async def test_preserves_non_auth_connector_response(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    status_code,
+):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
@@ -991,24 +1182,33 @@ async def test_preserves_successful_connector_response_body(tmp_path, real_flow,
         host="fal.run",
         path="/fal-ai/nano-banana-pro",
         method="POST",
-        request_headers=headers(
-            ("Host", "fal.run"),
-            ("Authorization", "Key user-provided"),
-        ),
     )
+    upstream_body = f"upstream-{status_code}".encode()
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        assert flow.response is None
         flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-            content=b'{"ok":true}',
+            status_code=status_code,
+            headers=header_map(
+                {
+                    "content-type": "text/plain",
+                    "x-upstream-result": "preserved",
+                }
+            ),
+            content=upstream_body,
         )
         mitm_addon.response(flow)
 
-    assert flow.response.content == b'{"ok":true}'
+    assert flow.response.status_code == status_code
+    assert flow.response.content == upstream_body
+    assert flow.response.headers["x-upstream-result"] == "preserved"
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert entry["status"] == 200
+    assert entry["status"] == status_code
+    assert "firewall_error" not in entry
+    assert "connector_diagnostic_slug" not in entry
 
 
 async def test_preserves_browser_403_body_for_connector_candidate(
