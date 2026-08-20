@@ -261,6 +261,9 @@ dry_run_input = manual_dispatch.fetch("inputs").fetch("dry-run")
 unless dry_run_input.fetch("type") == "boolean" && dry_run_input.fetch("default") == false
   raise "manual stale Clerk cleanup must expose a disabled boolean dry-run input"
 end
+unless scheduled_clerk.dig("env", "DRY_RUN") == "${{ inputs.dry-run || false }}"
+  raise "stale Clerk cleanup must forward the manual dry-run input"
+end
 scheduled_concurrency = scheduled_clerk.fetch("concurrency")
 unless scheduled_concurrency.fetch("group") == "cleanup-clerk-test-resources" &&
     scheduled_concurrency.fetch("cancel-in-progress") == false
@@ -283,10 +286,13 @@ unless stale_checkout.dig("with", "ref") == "${{ github.event.repository.default
     stale_checkout.dig("with", "persist-credentials") == false
   raise "stale Clerk cleanup must execute credential-free default-branch code"
 end
-stale_step = scheduled_cleanup.fetch("steps").find do |step|
-  step["name"] == "Delete stale Clerk test resources"
+stale_steps = scheduled_cleanup.fetch("steps").select do |step|
+  step.fetch("run", "").include?("clerk-test-resources.ts cleanup-stale")
 end
-raise "missing unified stale Clerk cleanup command" unless stale_step
+unless stale_steps.length == 1
+  raise "stale Clerk cleanup must use one inventory pass"
+end
+stale_step = stale_steps.fetch(0)
 expected_roles = "browser,playwright,paid-onboarding,runner,runner-real-codex,runner-real-claude,runner-mock-claude"
 unless stale_step.fetch("run").include?(
     "cleanup-stale #{expected_roles} --older-than-hours 0.5",
