@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { getConnectorAuthProviderRegistrationCapabilities } from "../auth-providers/connector-auth";
 import { isConnectorDirectOkouOauthCallbackReady } from "../app-oauth-callback";
 
 const DIRECT_OKOU_READY_CONNECTORS = [
@@ -23,6 +24,25 @@ const DIRECT_OKOU_READY_CONNECTORS = [
 ] as const;
 
 describe("direct Okou OAuth callback readiness", () => {
+  it("contains exactly the ready executable auth-code connectors", () => {
+    const directReadyConnectors = new Set(
+      getConnectorAuthProviderRegistrationCapabilities()
+        .filter((capability) => {
+          return (
+            capability.contract.grant.kind === "auth-code" &&
+            isConnectorDirectOkouOauthCallbackReady(capability.connectorSlug)
+          );
+        })
+        .map((capability) => {
+          return capability.connectorSlug;
+        }),
+    );
+
+    expect(directReadyConnectors).toStrictEqual(
+      new Set(DIRECT_OKOU_READY_CONNECTORS),
+    );
+  });
+
   it.each(DIRECT_OKOU_READY_CONNECTORS)(
     "marks %s as direct-ready",
     (connectorSlug) => {

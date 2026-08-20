@@ -4,7 +4,8 @@ export const CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY =
 
 const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set(["slack"]);
 
-// Add a connector only after its provider accepts the direct Okou App callback.
+// Provider allowlists roll out independently of the API. Until #28381 confirms
+// every provider is ready, unlisted connectors must keep their VM0 App callback.
 const DIRECT_OKOU_OAUTH_CALLBACK_READY_CONNECTOR_SLUGS: ReadonlySet<string> =
   new Set([
     "gmail",
