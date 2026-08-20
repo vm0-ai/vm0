@@ -4863,8 +4863,8 @@ function PptImportCard({
         />
       </span>
       <span className={TEMPLATE_TILE_CAPTION}>
-        <span className={TEMPLATE_TILE_NAME}>
-          {label}
+        <span className={TEMPLATE_TILE_NAME}>{label}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
           {t(($) => {
             return $.artifacts.templates.importDeckHint;
           })}
