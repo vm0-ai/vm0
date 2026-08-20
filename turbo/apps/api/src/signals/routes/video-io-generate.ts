@@ -18,6 +18,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
@@ -423,6 +424,8 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const runVideoModel = await loadDefaultRunVideoModel(
     db,
     auth.orgId,
@@ -507,6 +510,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         videoRequestRecord(options),
         {
           admissionId: admission?.id,
+          publicBrand,
         },
       ),
     },

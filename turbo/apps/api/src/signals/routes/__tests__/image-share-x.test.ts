@@ -21,6 +21,8 @@ const context = testContext();
 const routeMocks = createRouteMocks(context);
 const X_ACCESS_TOKEN = "x-access-token";
 const IMAGE_URL = "https://cdn.vm7.io/artifacts/user-image/share.png";
+const OKOU_IMAGE_URL =
+  "https://cdn.okou.test/artifacts/user-image/share.png";
 const IMAGE_BYTES = [137, 80, 78, 71] as const;
 const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const X_MEDIA_UPLOAD_URL = "https://api.x.com/2/media/upload";
@@ -68,6 +70,7 @@ function mockXImageShareProvider(options?: {
   readonly contentLength?: string | null;
   readonly imageBody?: ReadableStream<Uint8Array> | Uint8Array;
   readonly imageBytes?: Uint8Array;
+  readonly imageUrl?: string;
 }): {
   readonly mediaUploadBodies: unknown[];
   readonly createPostBodies: unknown[];
@@ -82,7 +85,7 @@ function mockXImageShareProvider(options?: {
       : options.contentLength;
 
   server.use(
-    http.get(IMAGE_URL, () => {
+    http.get(options?.imageUrl ?? IMAGE_URL, () => {
       return new HttpResponse(imageBody, {
         headers: {
           ...(contentLength === null
@@ -135,7 +138,7 @@ describe("POST /api/zero/image-share/x", () => {
       configured: X_IMAGE_SHARE_PRICING_ROWS,
     });
     onTestFinished(pricing.cleanup);
-    const provider = mockXImageShareProvider();
+    const provider = mockXImageShareProvider({ imageUrl: OKOU_IMAGE_URL });
 
     const response = await accept(
       client(pricing.resolution).post({
@@ -143,7 +146,7 @@ describe("POST /api/zero/image-share/x", () => {
         extraHeaders: { origin: "https://app.okou.ai" },
         body: {
           caption: "Edited with Zero",
-          imageUrl: IMAGE_URL,
+          imageUrl: OKOU_IMAGE_URL,
         },
       }),
       [200],

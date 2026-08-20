@@ -204,6 +204,7 @@ async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   runId: string,
+  publicBrand: PublicBrand = "vm0",
 ) {
   await flushWaitUntilForTest();
   const claim = await runs.claimRunnerJob(runId);
@@ -212,7 +213,7 @@ async function claimChatRun(
     throw new Error("Expected the runner claim to include OKOU_TOKEN");
   }
   return {
-    browserHeaders: browserHeadersForRun(runs, actor, runId),
+    browserHeaders: browserHeadersForRun(runs, actor, runId, publicBrand),
     sandboxHeaders: {
       authorization: `Bearer ${claim.sandboxToken}`,
     },
@@ -272,6 +273,7 @@ async function createClaimedChatRun(
   actor: ApiTestUser,
   agentId: string,
   prompt: string,
+  publicBrand: PublicBrand = "vm0",
 ) {
   const sent = await chat.requestSendEvent(
     actor,
@@ -281,6 +283,8 @@ async function createClaimedChatRun(
       cloudBrowserEnabled: true,
     },
     [201],
+    undefined,
+    publicBrand,
   );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected a chat run");
@@ -289,7 +293,7 @@ async function createClaimedChatRun(
     sent,
     runId: sent.body.runId,
     threadId: sent.body.threadId,
-    claim: await claimChatRun(runs, actor, sent.body.runId),
+    claim: await claimChatRun(runs, actor, sent.body.runId, publicBrand),
   };
 }
 
@@ -2124,6 +2128,7 @@ describe("okou browser route", () => {
       actor,
       agent.agentId,
       "Open a managed browser for screenshot capture",
+      "okou",
     );
     const providerId = randomUUID();
     acceptBrowserUseCdpSessions([providerId]);
@@ -2270,12 +2275,22 @@ describe("okou browser route", () => {
     );
     const firstScreenshotUrl = afterFirstCapture.body.browser.screenshotUrl;
     expect(firstScreenshotUrl).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/.+\.webp$/u,
+      /^https:\/\/cdn\.okou\.test\/artifacts\/.+\.webp$/u,
     );
     if (!firstScreenshotUrl) {
       throw new Error("Expected the first browser screenshot URL");
     }
     const firstScreenshotKey = new URL(firstScreenshotUrl).pathname.slice(1);
+    const screenshotPut = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return commandInput(command);
+      })
+      .find((input) => {
+        return input.ContentType === "image/webp";
+      });
+    expect(screenshotPut?.Metadata).toMatchObject({
+      "public-brand": "okou",
+    });
 
     const secondLease = await accept(
       client().leaseByThread({

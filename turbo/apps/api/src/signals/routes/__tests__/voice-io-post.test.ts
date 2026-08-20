@@ -1265,6 +1265,7 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),
+      "public-brand": "vm0",
       "user-id": encodeURIComponent(fixture.userId),
     });
     expect(putInput.ContentType).toBe(SPEECH_CONTENT_TYPE);

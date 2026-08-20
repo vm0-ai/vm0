@@ -833,6 +833,7 @@ const captureAndStoreBrowserScreenshot$ = command(
       {
         userId: browser.userId,
         filename: BROWSER_SCREENSHOT_FILENAME,
+        publicBrand: browser.publicBrand,
       },
       signal,
     );
@@ -1759,6 +1760,7 @@ async function claimFreshBrowser(
         runId: context.runId,
         orgId: context.orgId,
         userId: context.userId,
+        publicBrand: context.publicBrand,
         name: args.name,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,

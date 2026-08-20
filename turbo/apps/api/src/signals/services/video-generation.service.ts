@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import {
@@ -1995,6 +1996,7 @@ export const recordGeneratedVideo$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string | undefined;
+      readonly publicBrand: PublicBrand;
       readonly pricing: VideoPricing;
       readonly generation: ParsedVideoGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
@@ -2010,6 +2012,7 @@ export const recordGeneratedVideo$ = command(
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,
         contentType: params.generation.contentType,
+        publicBrand: params.publicBrand,
       },
       signal,
     );

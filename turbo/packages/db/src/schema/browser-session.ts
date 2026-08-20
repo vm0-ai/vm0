@@ -13,6 +13,7 @@ import type {
   BrowserStatus,
   BrowserSuspensionReason,
 } from "@okouai/api-contracts/contracts/browser";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
@@ -82,6 +83,10 @@ export const browserSessions = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     // Nullable compatibility references let the current API omit legacy
     // profile identity while preserving the previous API's statement shapes.

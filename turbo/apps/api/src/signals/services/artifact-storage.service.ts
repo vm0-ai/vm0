@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { env } from "../../lib/env";
 import {
@@ -24,6 +25,7 @@ const MAX_ARTIFACT_KEY_ATTEMPTS = 5;
 const ARTIFACT_ID_METADATA_KEY = "artifact-id";
 const ARTIFACT_FILENAME_METADATA_KEY = "filename";
 const ARTIFACT_USER_ID_METADATA_KEY = "user-id";
+const ARTIFACT_PUBLIC_BRAND_METADATA_KEY = "public-brand";
 
 export interface ArtifactObjectLocation {
   readonly id: string;
@@ -51,7 +53,6 @@ export interface ResolvedArtifactObject {
 
 interface ResolvedArtifactMultipartUpload {
   readonly key: string;
-  readonly url: string;
   readonly parts: readonly {
     readonly partNumber: number;
     readonly etag: string;
@@ -62,12 +63,22 @@ export function artifactObjectMetadata(
   userId: string,
   id: string,
   filename: string,
+  publicBrand: PublicBrand,
 ): Readonly<Record<string, string>> {
   return {
     [ARTIFACT_ID_METADATA_KEY]: id,
     [ARTIFACT_FILENAME_METADATA_KEY]: encodeURIComponent(filename),
     [ARTIFACT_USER_ID_METADATA_KEY]: encodeURIComponent(userId),
+    [ARTIFACT_PUBLIC_BRAND_METADATA_KEY]: publicBrand,
   };
+}
+
+function publicBrandFromMetadata(
+  metadata: Readonly<Record<string, string>>,
+): PublicBrand {
+  return metadata[ARTIFACT_PUBLIC_BRAND_METADATA_KEY] === "okou"
+    ? "okou"
+    : "vm0";
 }
 
 function filenameFromMetadata(
@@ -94,6 +105,7 @@ export const allocateArtifactObject$ = command(
     args: {
       readonly userId: string;
       readonly filename: string;
+      readonly publicBrand: PublicBrand;
       readonly id?: string;
       readonly variant?: string;
     },
@@ -119,8 +131,13 @@ export const allocateArtifactObject$ = command(
         return {
           id,
           key,
-          url: buildFileUrlFromKey(key),
-          metadata: artifactObjectMetadata(args.userId, id, args.filename),
+          url: buildFileUrlFromKey(key, args.publicBrand),
+          metadata: artifactObjectMetadata(
+            args.userId,
+            id,
+            args.filename,
+            args.publicBrand,
+          ),
         };
       }
 
@@ -138,11 +155,17 @@ export const allocateArtifactObject$ = command(
               encodeURIComponent(args.userId) &&
             filenameFromMetadata(head.metadata) === args.filename
           ) {
+            const publicBrand = publicBrandFromMetadata(head.metadata);
             return {
               id,
               key,
-              url: buildFileUrlFromKey(key),
-              metadata: artifactObjectMetadata(args.userId, id, args.filename),
+              url: buildFileUrlFromKey(key, publicBrand),
+              metadata: artifactObjectMetadata(
+                args.userId,
+                id,
+                args.filename,
+                publicBrand,
+              ),
             };
           }
         }
@@ -162,6 +185,7 @@ export const storeGeneratedArtifactObject$ = command(
       readonly extension: string;
       readonly body: Buffer;
       readonly contentType: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<StoredGeneratedArtifactObject> => {
@@ -176,11 +200,17 @@ export const storeGeneratedArtifactObject$ = command(
         userId: args.userId,
         id: proposedId,
         filename: filenameFor(proposedId),
+        publicBrand: args.publicBrand,
       },
       signal,
     );
     const filename = filenameFor(artifact.id);
-    const metadata = artifactObjectMetadata(args.userId, artifact.id, filename);
+    const metadata = artifactObjectMetadata(
+      args.userId,
+      artifact.id,
+      filename,
+      args.publicBrand,
+    );
     await get(
       putS3Object(
         env("R2_USER_ARTIFACTS_BUCKET_NAME"),
@@ -217,7 +247,10 @@ function resolveV2ArtifactObject(
         filenameFromLegacyKey(object.key);
       return {
         key: object.key,
-        url: buildFileUrlFromKey(object.key),
+        url: buildFileUrlFromKey(
+          object.key,
+          publicBrandFromMetadata(head.metadata),
+        ),
         filename,
         contentType: head.contentType ?? inferMimetype(filename),
         size: head.contentLength ?? object.size,
@@ -244,7 +277,7 @@ function resolveV1ArtifactObject(
     const filename = filenameFromLegacyKey(object.key);
     return {
       key: object.key,
-      url: buildFileUrlFromKey(object.key),
+      url: buildFileUrlFromKey(object.key, "vm0"),
       filename,
       contentType: inferMimetype(filename),
       size: object.size,
@@ -304,7 +337,7 @@ export const resolveArtifactMultipartUpload$ = command(
       );
       signal.throwIfAborted();
       if (parts !== null) {
-        return { key, url: buildFileUrlFromKey(key), parts };
+        return { key, parts };
       }
     }
     return null;

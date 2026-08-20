@@ -147,6 +147,7 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       orgId: slackOrgInstallations.orgId,
       encryptedBotToken: slackOrgInstallations.encryptedBotToken,
       botUserId: slackOrgInstallations.botUserId,
+      publicBrand: slackOrgInstallations.publicBrand,
     })
     .from(slackChatIngress)
     .innerJoin(
@@ -441,6 +442,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
         workspaceId: ingress.workspaceId,
         channelId: ingress.channelId,
         messageTs: event.ts,
+        publicBrand: ingress.publicBrand,
         botToken,
         files: event.files ?? [],
       },

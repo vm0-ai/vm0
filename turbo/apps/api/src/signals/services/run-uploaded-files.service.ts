@@ -9,6 +9,7 @@ import {
 } from "@okouai/db/schema/run-uploaded-file";
 
 import { logger } from "../../lib/log";
+import { publicBrandFromArtifactUrl } from "../../lib/file-url";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { type Db, writeDb$ } from "../external/db";
 import { settle } from "../utils";
@@ -127,6 +128,7 @@ function videoArtifactPreviewArgs(
     orgId: args.orgId,
     url: args.url,
     contentType: args.contentType,
+    publicBrand: publicBrandFromArtifactUrl(args.url),
   };
 }
 

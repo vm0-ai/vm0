@@ -7,6 +7,7 @@ import {
   type BuiltInGenerationType,
 } from "@okouai/db/schema/built-in-generation-job";
 import type { BuiltInGenerationResponse } from "@okouai/api-contracts/contracts/built-in-generation";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
@@ -39,6 +40,7 @@ interface CreateBuiltInGenerationJobArgs {
 
 interface BuiltInGenerationRequestInternal {
   readonly admissionId?: string;
+  readonly publicBrand?: PublicBrand;
   readonly provider?: "openai" | "fal" | "byteplus" | "minimax" | "joggai";
   readonly providerJobId?: string;
   readonly providerStatusUrl?: string;
@@ -97,6 +99,7 @@ export function builtInGenerationRequestWithInternal(
     ...request,
     [BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY]: compactObject({
       admissionId: internal.admissionId,
+      publicBrand: internal.publicBrand,
       provider: internal.provider,
       providerJobId: internal.providerJobId,
       providerStatusUrl: internal.providerStatusUrl,
@@ -120,6 +123,10 @@ export function readBuiltInGenerationRequestInternal(
   return {
     admissionId:
       typeof value.admissionId === "string" ? value.admissionId : undefined,
+    publicBrand:
+      value.publicBrand === "vm0" || value.publicBrand === "okou"
+        ? value.publicBrand
+        : undefined,
     provider:
       value.provider === "openai" ||
       value.provider === "fal" ||
@@ -142,6 +149,10 @@ export function readBuiltInGenerationRequestInternal(
       typeof value.providerTask === "string" ? value.providerTask : undefined,
     presentation: value.presentation,
   };
+}
+
+export function builtInGenerationPublicBrand(request: unknown): PublicBrand {
+  return readBuiltInGenerationRequestInternal(request).publicBrand ?? "vm0";
 }
 
 function serializeBuiltInGenerationJob(

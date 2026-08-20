@@ -6,6 +6,7 @@ import {
   type AvatarVideoAvatarsQuery,
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
@@ -737,6 +738,7 @@ export const recordGeneratedAvatarVideo$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string | undefined;
+      readonly publicBrand: PublicBrand;
       readonly pricing: AvatarVideoPricingRow;
       readonly generation: ParsedAvatarVideoGeneration;
       readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
@@ -752,6 +754,7 @@ export const recordGeneratedAvatarVideo$ = command(
         extension: extensionForContentType(params.generation.contentType),
         body: params.generation.videoBytes,
         contentType: params.generation.contentType,
+        publicBrand: params.publicBrand,
       },
       signal,
     );

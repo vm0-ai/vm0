@@ -1016,6 +1016,13 @@
       "when": 1787213828984,
       "tag": "0952_dark_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 953,
+      "version": "7",
+      "when": 1787221900073,
+      "tag": "0953_add_browser_session_public_brand",
+      "breakpoints": true
     }
   ]
 }

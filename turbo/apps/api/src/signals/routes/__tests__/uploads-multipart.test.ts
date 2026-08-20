@@ -5,6 +5,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   ListPartsCommand,
 } from "@aws-sdk/client-s3";
@@ -111,6 +112,7 @@ describe("multipart user artifact uploads", () => {
       Metadata: {
         "artifact-id": response.body.id,
         filename: "recording.mp4",
+        "public-brand": "vm0",
         "user-id": encodeURIComponent(userId),
       },
     });
@@ -143,6 +145,7 @@ describe("multipart user artifact uploads", () => {
       uploadHeaders: {
         "x-amz-meta-artifact-id": response.body.id,
         "x-amz-meta-filename": "small.mp4",
+        "x-amz-meta-public-brand": "vm0",
         "x-amz-meta-user-id": encodeURIComponent(userId),
       },
     });
@@ -204,14 +207,36 @@ describe("multipart user artifact uploads", () => {
   it("lists uploaded parts and completes the multipart upload", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
+    const artifactId = "3a513aef-a376-49c4-8f15-61f7e8e40526";
+    let objectKey: string | undefined;
     mocks.clerk.session(userId, orgId);
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (command instanceof ListPartsCommand) {
+        objectKey = command.input.Key;
         return Promise.resolve({
           Parts: [
             { PartNumber: 1, ETag: '"etag-1"' },
             { PartNumber: 2, ETag: '"etag-2"' },
           ],
+        });
+      }
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({
+          Contents: objectKey
+            ? [{ Key: objectKey, Size: 20 * 1024 * 1024 }]
+            : [],
+        });
+      }
+      if (command instanceof HeadObjectCommand) {
+        return Promise.resolve({
+          ContentLength: 20 * 1024 * 1024,
+          ContentType: "video/mp4",
+          Metadata: {
+            "artifact-id": artifactId,
+            filename: "my recording.mp4",
+            "public-brand": "vm0",
+            "user-id": encodeURIComponent(userId),
+          },
         });
       }
       return Promise.resolve({});
@@ -220,7 +245,7 @@ describe("multipart user artifact uploads", () => {
     const response = await accept(
       apiClient().completeMultipart({
         body: {
-          id: "3a513aef-a376-49c4-8f15-61f7e8e40526",
+          id: artifactId,
           filename: "my recording.mp4",
           uploadId: "multipart-upload-1",
           partCount: 2,
@@ -231,7 +256,7 @@ describe("multipart user artifact uploads", () => {
     );
 
     expect(response.body).toStrictEqual({
-      id: "3a513aef-a376-49c4-8f15-61f7e8e40526",
+      id: artifactId,
       url: expect.stringMatching(
         /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
       ),

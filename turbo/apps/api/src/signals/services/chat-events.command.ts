@@ -1630,6 +1630,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
+        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
       if (params.touchThreadSort) {
@@ -1724,6 +1725,7 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly appendQueueMarker: boolean;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -1750,6 +1752,7 @@ async function appendAssociatedUserMessage(params: {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
+        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
     }
@@ -2621,6 +2624,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
 }): void {
   waitUntil(
     (async () => {
@@ -2639,6 +2643,7 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         appendQueueMarker: params.appendQueueMarker,
         triggerSource: params.triggerSource,
+        publicBrand: params.publicBrand,
         clearDraft: true,
       });
       if (inserted) {
@@ -2677,6 +2682,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -2720,6 +2726,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
     triggerSource: params.triggerSource,
+    publicBrand: params.publicBrand,
   });
 }
 
@@ -2928,6 +2935,7 @@ async function appendInsufficientCreditsEvents(params: {
         chatThreadId: params.prepared.thread.threadId,
         userId: params.userId,
         orgId: params.orgId,
+        publicBrand: params.publicBrand,
         files: fileMetadata ?? [],
       });
     }
@@ -3167,6 +3175,7 @@ function scheduleNormalChatRunSideEffects(params: {
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
+    publicBrand: params.args.publicBrand,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },
