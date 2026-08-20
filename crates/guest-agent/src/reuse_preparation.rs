@@ -77,7 +77,7 @@ pub enum ReusePreparationError {
     InvalidRequest(io::Error),
     /// Rootfs capacity could not be inspected.
     Inspection(io::Error),
-    /// Stale runtime entries could not be safely removed.
+    /// Runner-owned runtime state could not be safely removed.
     Cleanup(io::Error),
     /// Exec process containment could not be proven ready for reuse.
     Containment(io::Error),
@@ -134,10 +134,10 @@ struct ProtectedRuntime {
 ///
 /// # Cleanup
 ///
-/// After proving process containment, this function protects the current and optional retained
-/// runtime directories and recursively removes every other direct child of their common parent.
-/// Traversal does not follow symlinks or cross mount boundaries, and the protected directory
-/// identities are revalidated after cleanup.
+/// After proving process containment, this function removes managed Codex authentication, protects
+/// the current and optional retained runtime directories, and recursively removes every other
+/// direct child of their common parent. Traversal does not follow symlinks or cross mount
+/// boundaries, and the protected directory identities are revalidated after cleanup.
 ///
 /// # Returns
 ///
@@ -148,9 +148,9 @@ struct ProtectedRuntime {
 ///
 /// Returns [`ReusePreparationError::InvalidRequest`] for stdin, size, JSON, or protected-path
 /// validation failures; [`ReusePreparationError::Containment`] when the supervised-exec invariant
-/// cannot be proven; [`ReusePreparationError::Cleanup`] when protected state cannot be opened or
-/// revalidated or stale state cannot be safely removed; and [`ReusePreparationError::Inspection`]
-/// when rootfs capacity cannot be read.
+/// cannot be proven; [`ReusePreparationError::Cleanup`] when managed authentication or protected
+/// runtime state cannot be opened, removed, or revalidated; and
+/// [`ReusePreparationError::Inspection`] when rootfs capacity cannot be read.
 ///
 /// Cleanup is not transactional. After removal begins, an error can be returned even though
 /// earlier stale entries were already removed.
