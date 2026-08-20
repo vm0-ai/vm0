@@ -965,7 +965,7 @@ export type BillingUsagePackMigrationContract =
 export const billingConcurrencyCheckoutContract = c.router({
   preview: {
     method: "POST",
-    path: "/api/zero/billing/concurrency-checkout/preview",
+    path: "/api/okou/billing/concurrency-checkout/preview",
     headers: authHeadersSchema,
     body: concurrencyCheckoutPreviewRequestSchema,
     responses: {
