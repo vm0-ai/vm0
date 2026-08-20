@@ -645,17 +645,62 @@ async fn disconnected_event_is_not_delayed_by_transport_close() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-/// ably-js always reconnects on mid-session DISCONNECTED regardless of
-/// retriability — the server may send 429 or 401 but still expect the
-/// client to backoff-and-retry. Only connection-level ERROR is fatal.
 #[tokio::test]
-async fn non_retriable_disconnected_triggers_reconnect() {
+async fn token_expired_disconnected_refreshes_token_and_resumes() {
+    struct ReconnectUriCapture(tokio::sync::oneshot::Sender<String>);
+
+    impl tungstenite::handshake::server::Callback for ReconnectUriCapture {
+        fn on_request(
+            self,
+            request: &tungstenite::handshake::server::Request,
+            response: tungstenite::handshake::server::Response,
+        ) -> Result<
+            tungstenite::handshake::server::Response,
+            tungstenite::handshake::server::ErrorResponse,
+        > {
+            self.0.send(request.uri().to_string()).unwrap();
+            Ok(response)
+        }
+    }
+
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
-    mock_token_endpoint(&http, "testKey.testId");
+
+    let now = now_ms();
+    let initial_body = serde_json::to_vec(&serde_json::json!({
+        "token": "expired-token",
+        "expires": now + 3_600_000,
+        "issued": now,
+    }))
+    .unwrap();
+    let refreshed_body = serde_json::to_vec(&serde_json::json!({
+        "token": "refreshed-token",
+        "expires": now + 3_600_000,
+        "issued": now,
+    }))
+    .unwrap();
+    let call_count = std::sync::Mutex::new(0u32);
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/testKey.testId/requestToken");
+        then.respond_with(move |_request: &HttpMockRequest| {
+            let mut count = call_count.lock().unwrap();
+            let body = if *count == 0 {
+                &initial_body
+            } else {
+                &refreshed_body
+            };
+            *count += 1;
+            HttpMockResponse::builder()
+                .status(201)
+                .header("content-type", "application/json")
+                .body(body.clone())
+                .build()
+        });
+    });
 
     let ws_port = ws.port;
     let (after_reconnect_seen_tx, after_reconnect_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let (reconnect_uri_tx, reconnect_uri_rx) = tokio::sync::oneshot::channel::<String>();
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
@@ -676,21 +721,58 @@ async fn non_retriable_disconnected_triggers_reconnect() {
         .unwrap();
         expect_websocket_close_frame(&mut conn).await.unwrap();
 
-        // Client should reconnect (fresh connect with new token)
-        let mut conn2 = ws.accept_and_handshake("ch", "conn-2").await.unwrap();
+        let (tcp, _) = ws.listener.accept().await.unwrap();
+        let mut conn2 =
+            tokio_tungstenite::accept_hdr_async(tcp, ReconnectUriCapture(reconnect_uri_tx))
+                .await
+                .unwrap();
+
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-1".into()),
+            connection_key: Some("conn-1!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-1!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&connected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let attach = expect_protocol_msg(&mut conn2, "ATTACH after token refresh")
+            .await
+            .unwrap();
+        assert_eq!(attach.action, action::ATTACH);
+        assert_eq!(attach.channel.as_deref(), Some("ch"));
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-0".into()),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&attached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
         send_message(
             &mut conn2,
             "ch",
-            "after-non-retriable-disconnect",
+            "after-token-refresh",
             serde_json::json!("ok"),
         )
         .await
         .unwrap();
-        wait_for_test_observation(
-            after_reconnect_seen_rx,
-            "after-non-retriable-disconnect message",
-        )
-        .await;
+        wait_for_test_observation(after_reconnect_seen_rx, "after-token-refresh message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -723,12 +805,25 @@ async fn non_retriable_disconnected_triggers_reconnect() {
     let event = expect_event(&mut sub, "message").await.unwrap();
     match event {
         Event::Message(msg) => {
-            assert_eq!(msg.name.as_deref(), Some("after-non-retriable-disconnect"));
+            assert_eq!(msg.name.as_deref(), Some("after-token-refresh"));
             after_reconnect_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
 
+    let reconnect_uri = reconnect_uri_rx.await.unwrap();
+    let reconnect_url = url::Url::parse(&format!("ws://localhost{reconnect_uri}")).unwrap();
+    let access_token = reconnect_url
+        .query_pairs()
+        .find(|(name, _)| name == "access_token")
+        .map(|(_, value)| value.into_owned());
+    let resume = reconnect_url
+        .query_pairs()
+        .find(|(name, _)| name == "resume")
+        .map(|(_, value)| value.into_owned());
+    assert_eq!(access_token.as_deref(), Some("refreshed-token"));
+    assert_eq!(resume.as_deref(), Some("conn-1!key"));
+    token_mock.assert_calls(2);
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
