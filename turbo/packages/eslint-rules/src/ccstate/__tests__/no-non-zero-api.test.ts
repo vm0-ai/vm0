@@ -35,6 +35,23 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: 'const url = "http://example.com/api/something"',
     },
+    // Neutral paths #28278 has already moved off the brand namespace, in the
+    // forms the platform writes them: the request itself and the MSW pattern
+    // its test registers.
+    {
+      code: 'fetchFn("/api/push-subscriptions")',
+    },
+    {
+      code: 'context.mocks.http.post("*/api/push-subscriptions", handler)',
+    },
+    // A migrated route reached below its listed prefix, including the template
+    // form with the parameter already substituted.
+    {
+      code: 'fetchFn("/api/artifacts/catalog?kind=avatar")',
+    },
+    {
+      code: "fetchFn(`/api/runs/${runId}/context`)",
+    },
   ],
   invalid: [
     {
@@ -59,6 +76,17 @@ ruleTester.run("no-non-zero-api", rule, {
     },
     {
       code: 'const path = "/api/okou-internal/agents"',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A longer sibling of a migrated path is not itself migrated, so the allow
+    // list must not match it by prefix.
+    {
+      code: 'fetchFn("/api/push-subscriptions-legacy")',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A neutral path whose contract has not moved yet stays a violation.
+    {
+      code: 'fetchFn("/api/chat-threads/snapshot")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],
