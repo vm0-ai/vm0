@@ -124,7 +124,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       return;
     }
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.okou\.test\/artifacts\/[0-9a-z]{10}\.txt$/u,
+      /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
     );
     expect(response.body).toMatchObject({
       uploadHeaders: { "x-amz-meta-public-brand": "okou" },
@@ -149,7 +149,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       return;
     }
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.okou\.test\/artifacts\/[0-9a-z]{10}\.txt$/u,
+      /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
     );
     expect(response.body).toMatchObject({
       uploadHeaders: { "x-amz-meta-public-brand": "okou" },
