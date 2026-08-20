@@ -243,6 +243,57 @@ function stripeInputMetadata(input: unknown): Readonly<Record<string, string>> {
   return Object.fromEntries(metadata) as Readonly<Record<string, string>>;
 }
 
+type UsagePackCheckoutSessionState = "open" | "expired";
+
+function mockStatefulUsagePackCheckoutSessions(): Map<
+  string,
+  UsagePackCheckoutSessionState
+> {
+  const sessionStates = new Map<string, UsagePackCheckoutSessionState>();
+  let createdCount = 0;
+  context.mocks.stripe.checkout.sessions.create.mockReset();
+  context.mocks.stripe.checkout.sessions.create.mockImplementation(() => {
+    createdCount += 1;
+    const id = `cs_concurrent_${createdCount}_${randomUUID().slice(0, 8)}`;
+    sessionStates.set(id, "open");
+    return Promise.resolve({
+      id,
+      url: `https://checkout.stripe.test/${id}`,
+    });
+  });
+  context.mocks.stripe.checkout.sessions.retrieve.mockReset();
+  context.mocks.stripe.checkout.sessions.retrieve.mockImplementation(
+    (sessionId) => {
+      if (typeof sessionId !== "string") {
+        throw new Error("Expected a Checkout Session ID");
+      }
+      const status = sessionStates.get(sessionId);
+      if (!status) {
+        throw new Error(`Unexpected Checkout Session ${sessionId}`);
+      }
+      return Promise.resolve({
+        id: sessionId,
+        status,
+        url: `https://checkout.stripe.test/${sessionId}`,
+      });
+    },
+  );
+  context.mocks.stripe.checkout.sessions.expire.mockReset();
+  context.mocks.stripe.checkout.sessions.expire.mockImplementation(
+    (sessionId) => {
+      if (typeof sessionId !== "string") {
+        throw new Error("Expected a Checkout Session ID");
+      }
+      if (!sessionStates.has(sessionId)) {
+        throw new Error(`Unexpected Checkout Session ${sessionId}`);
+      }
+      sessionStates.set(sessionId, "expired");
+      return Promise.resolve({ id: sessionId, status: "expired" });
+    },
+  );
+  return sessionStates;
+}
+
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -353,6 +404,71 @@ async function createStripeCustomerOrgForFixture(
     }),
     [200],
   );
+}
+
+async function prepareUsagePackCheckoutOrg(
+  fixture: BillingOrgFixture,
+  customerId: string,
+): Promise<void> {
+  await createStripeCustomerOrgForFixture(fixture, customerId);
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.UsagePackPlans]: true,
+  });
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+    {
+      data: [
+        {
+          role: "org:admin",
+          publicUserData: { userId: fixture.userId },
+          createdAt: now(),
+        },
+      ],
+    },
+  );
+  context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+    { data: [] },
+  );
+}
+
+async function seedPreviousUsagePackCheckoutWriter(
+  fixture: BillingOrgFixture,
+  customerId: string,
+): Promise<string> {
+  const seeded = await usagePackStateAction({
+    action: "seed",
+    orgId: fixture.orgId,
+    tier: "pro",
+    stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+    stripeCustomerId: customerId,
+    stripeCheckoutSessionId: null,
+    allocations: [
+      {
+        userId: fixture.userId,
+        invitationId: null,
+        usagePackUsd: 20,
+        stripePriceId: TEST_PRICE_USAGE_PACK_20,
+      },
+    ],
+  });
+  if (seeded.action !== "seeded") {
+    throw new Error("Failed to seed the previous writer snapshot");
+  }
+  return seeded.usagePackSubscriptionId;
+}
+
+function cleanupUsagePackSnapshotOnTestFinished(
+  fixture: BillingOrgFixture,
+  usagePackSubscriptionId: string,
+): void {
+  onTestFinished(async () => {
+    await usagePackStateAction({
+      action: "cleanup",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId,
+      deleteGrants: false,
+      deleteOrgMetadata: false,
+    });
+  });
 }
 
 async function createSubscriptionOrg(args: {
@@ -2790,44 +2906,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
       { data: [] },
     );
-    context.mocks.stripe.checkout.sessions.create.mockReset();
-    const sessionStates = new Map<string, "open" | "expired">();
-    context.mocks.stripe.checkout.sessions.create.mockImplementation(() => {
-      const id = `cs_concurrent_${sessionStates.size + 1}`;
-      sessionStates.set(id, "open");
-      return Promise.resolve({
-        id,
-        url: `https://checkout.stripe.test/${id}`,
-      });
-    });
-    context.mocks.stripe.checkout.sessions.retrieve.mockImplementation(
-      (sessionId) => {
-        if (typeof sessionId !== "string") {
-          throw new Error("Expected a Checkout Session ID");
-        }
-        const status = sessionStates.get(sessionId);
-        if (!status) {
-          throw new Error(`Unexpected Checkout Session ${sessionId}`);
-        }
-        return Promise.resolve({
-          id: sessionId,
-          status,
-          url: `https://checkout.stripe.test/${sessionId}`,
-        });
-      },
-    );
-    context.mocks.stripe.checkout.sessions.expire.mockImplementation(
-      (sessionId) => {
-        if (typeof sessionId !== "string") {
-          throw new Error("Expected a Checkout Session ID");
-        }
-        if (!sessionStates.has(sessionId)) {
-          throw new Error(`Unexpected Checkout Session ${sessionId}`);
-        }
-        sessionStates.set(sessionId, "expired");
-        return Promise.resolve({ id: sessionId, status: "expired" });
-      },
-    );
+    const sessionStates = mockStatefulUsagePackCheckoutSessions();
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
       billingUsagePackCheckoutContract,
     );
@@ -2903,6 +2982,98 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         });
       });
     }
+  });
+
+  it("waits for the previous writer before replacing its Checkout", async () => {
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    await prepareUsagePackCheckoutOrg(fixture, customerId);
+    const sessionStates = mockStatefulUsagePackCheckoutSessions();
+    const legacySessionId = `cs_legacy_${randomUUID()}`;
+    // The previous API has created this payable Session but is paused before
+    // its unconditional snapshot correlation.
+    sessionStates.set(legacySessionId, "open");
+    const legacySnapshotId = await seedPreviousUsagePackCheckoutWriter(
+      fixture,
+      customerId,
+    );
+    cleanupUsagePackSnapshotOnTestFinished(fixture, legacySnapshotId);
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackCheckoutContract,
+    );
+    const request = () => {
+      return client.create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [
+            { memberId: fixture.userId, usagePackUsd: 50 },
+          ],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+    };
+    const blocked = await accept(request(), [409]);
+
+    expect(blocked.body).toStrictEqual({
+      error: {
+        message: "Another usage pack purchase is still being prepared",
+        code: "CONFLICT",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+    expect(sessionStates.get(legacySessionId)).toBe("open");
+    const blockedState = await readUsagePackState(
+      fixture.orgId,
+      legacySnapshotId,
+    );
+    expect(blockedState.subscriptionCount).toBe(1);
+    expect(blockedState.subscription).toMatchObject({
+      stripeCheckoutSessionId: null,
+      subscriptionStatus: "checkout_pending",
+    });
+
+    await usagePackStateAction({
+      action: "correlate-legacy-checkout-session",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId: legacySnapshotId,
+      stripeCheckoutSessionId: legacySessionId,
+      updatedAt: new Date(now()).toISOString(),
+    });
+    const replaced = await accept(request(), [200]);
+
+    expect(replaced.body).toStrictEqual({
+      url: expect.stringMatching(/^https:\/\/checkout\.stripe\.test\//),
+    });
+    expect(sessionStates.get(legacySessionId)).toBe("expired");
+    expect(
+      [...sessionStates.values()].filter((status) => {
+        return status === "open";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(context.mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith(
+      legacySessionId,
+    );
+    expect(
+      (await readUsagePackState(fixture.orgId, legacySnapshotId)).subscription,
+    ).toMatchObject({
+      stripeCheckoutSessionId: legacySessionId,
+      subscriptionStatus: "checkout_expired",
+    });
+    const [createInput] = context.mocks.stripe.checkout.sessions.create.mock
+      .calls[0] ?? [undefined];
+    const replacementSnapshotId =
+      stripeInputMetadata(createInput).usagePackSubscriptionId;
+    if (!replacementSnapshotId) {
+      throw new Error("Replacement Checkout did not expose its snapshot ID");
+    }
+    cleanupUsagePackSnapshotOnTestFinished(fixture, replacementSnapshotId);
   });
 
   it("keeps a reused purchase preview snapshot until its latest token expires", async () => {

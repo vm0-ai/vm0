@@ -144,6 +144,7 @@ interface StartUsagePackPurchaseArgs extends CreateUsagePackCheckoutSessionArgs 
 
 type StartUsagePackPurchaseResult =
   | { readonly status: "checkout"; readonly url: string }
+  | { readonly status: "purchase_in_progress" }
   | {
       readonly status: "preview";
       readonly preview: UsagePackPurchasePreviewResponse;
@@ -636,9 +637,26 @@ async function retireUsagePackCheckout(
 
 type PendingUsagePackCheckoutResolution =
   | { readonly kind: "create" }
+  | { readonly kind: "previous_writer_pending" }
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "retry" }
   | { readonly kind: "reuse"; readonly usagePackSubscriptionId: string };
+
+function previousUsagePackCheckoutWriterPending(
+  snapshot: UsagePackContext,
+  at: Date,
+): boolean {
+  const { createdAt, updatedAt } = snapshot.subscription;
+  // Previous API versions leave both timestamps equal while creating the
+  // Stripe Session outside the organization lock. During the backend rollout
+  // window (up to ~102 minutes observed), preserve each such writer for the
+  // 15-minute snapshot TTL. Remove after the old API and its final snapshots
+  // are outside the rollback/drain window: #28372.
+  return (
+    createdAt.getTime() === updatedAt.getTime() &&
+    updatedAt.getTime() > at.getTime() - USAGE_PACK_PENDING_SNAPSHOT_STALE_MS
+  );
+}
 
 async function resolvePendingUsagePackSnapshots(
   tx: WriteTx,
@@ -705,6 +723,14 @@ async function resolvePendingUsagePackCheckout(
   const snapshots = contexts.filter((context) => {
     return !context.subscription.stripeCheckoutSessionId;
   });
+  const at = nowDate();
+  if (
+    snapshots.some((snapshot) => {
+      return previousUsagePackCheckoutWriterPending(snapshot, at);
+    })
+  ) {
+    return { kind: "previous_writer_pending" };
+  }
   const resolved: {
     readonly context: UsagePackContext;
     readonly session: UsagePackCheckoutSessionInput;
@@ -783,6 +809,7 @@ async function insertUsagePackPurchaseSnapshot(
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
 ): Promise<string> {
+  const createdAt = nowDate();
   const [subscription] = await tx
     .insert(usagePackSubscriptions)
     .values({
@@ -790,6 +817,11 @@ async function insertUsagePackPurchaseSnapshot(
       tier: args.tier,
       stripePlanPriceId: args.planPriceId,
       stripeCustomerId: customerId,
+      createdAt,
+      // A one-millisecond distinction marks snapshots owned by the serialized
+      // writer so mixed-version readers do not confuse them with legacy
+      // lock-free writers. Remove with the compatibility branch in #28372.
+      updatedAt: new Date(createdAt.getTime() + 1),
     })
     .returning({ id: usagePackSubscriptions.id });
   if (!subscription) {
@@ -812,6 +844,7 @@ async function insertUsagePackPurchaseSnapshot(
 }
 
 type PreparedUsagePackPurchaseSnapshot =
+  | { readonly kind: "previous_writer_pending" }
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "snapshot"; readonly usagePackSubscriptionId: string };
 
@@ -831,7 +864,10 @@ async function prepareUsagePackPurchaseSnapshot(
       undefined,
       signal,
     );
-    if (resolution.kind === "redirect") {
+    if (
+      resolution.kind === "redirect" ||
+      resolution.kind === "previous_writer_pending"
+    ) {
       return resolution;
     }
     if (resolution.kind === "retry") {
@@ -909,7 +945,7 @@ async function createSerializedUsagePackCheckout(
   customerId: string,
   initialSnapshotId: string,
   signal: AbortSignal,
-): Promise<string> {
+): Promise<StartUsagePackPurchaseResult> {
   let preferredSnapshotId = initialSnapshotId;
   while (true) {
     const attempt = await db.transaction(async (lockTx) => {
@@ -925,6 +961,9 @@ async function createSerializedUsagePackCheckout(
       if (resolution.kind === "redirect") {
         return { kind: "complete" as const, url: resolution.url };
       }
+      if (resolution.kind === "previous_writer_pending") {
+        return { kind: "previous_writer_pending" as const };
+      }
       if (resolution.kind !== "reuse") {
         return { kind: "retry" as const };
       }
@@ -939,8 +978,11 @@ async function createSerializedUsagePackCheckout(
         }),
       };
     });
+    if (attempt.kind === "previous_writer_pending") {
+      return { status: "purchase_in_progress" };
+    }
     if (attempt.kind === "complete") {
-      return attempt.url;
+      return { status: "checkout", url: attempt.url };
     }
     const prepared = await prepareUsagePackPurchaseSnapshot(
       db,
@@ -949,7 +991,10 @@ async function createSerializedUsagePackCheckout(
       signal,
     );
     if (prepared.kind === "redirect") {
-      return prepared.url;
+      return { status: "checkout", url: prepared.url };
+    }
+    if (prepared.kind === "previous_writer_pending") {
+      return { status: "purchase_in_progress" };
     }
     preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
@@ -960,7 +1005,7 @@ const createUsagePackCheckoutSession$ = command(
     { set },
     args: CreateUsagePackCheckoutSessionArgs,
     signal: AbortSignal,
-  ): Promise<string> => {
+  ): Promise<StartUsagePackPurchaseResult> => {
     if (args.allocations.length === 0) {
       throw new Error("Usage pack checkout requires at least one allocation");
     }
@@ -983,7 +1028,10 @@ const createUsagePackCheckoutSession$ = command(
       signal,
     );
     if (prepared.kind === "redirect") {
-      return prepared.url;
+      return { status: "checkout", url: prepared.url };
+    }
+    if (prepared.kind === "previous_writer_pending") {
+      return { status: "purchase_in_progress" };
     }
     return await createSerializedUsagePackCheckout(
       db,
@@ -1044,6 +1092,12 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
       return {
         kind: "complete",
         result: { status: "checkout", url: resolution.url },
+      };
+    }
+    if (resolution.kind === "previous_writer_pending") {
+      return {
+        kind: "complete",
+        result: { status: "purchase_in_progress" },
       };
     }
     if (resolution.kind !== "reuse") {
@@ -1155,6 +1209,9 @@ async function createSerializedUsagePackPurchasePreview(
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
     }
+    if (prepared.kind === "previous_writer_pending") {
+      return { status: "purchase_in_progress" };
+    }
     preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
 }
@@ -1166,10 +1223,7 @@ export const startUsagePackPurchase$ = command(
     signal: AbortSignal,
   ): Promise<StartUsagePackPurchaseResult> => {
     if (!args.supportsInAppPreview) {
-      return {
-        status: "checkout",
-        url: await set(createUsagePackCheckoutSession$, args, signal),
-      };
+      return await set(createUsagePackCheckoutSession$, args, signal);
     }
     if (args.allocations.length === 0) {
       throw new Error("Usage pack checkout requires at least one allocation");
@@ -1205,17 +1259,17 @@ export const startUsagePackPurchase$ = command(
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
     }
+    if (prepared.kind === "previous_writer_pending") {
+      return { status: "purchase_in_progress" };
+    }
     if (route.kind === "checkout") {
-      return {
-        status: "checkout",
-        url: await createSerializedUsagePackCheckout(
-          db,
-          args,
-          customerId,
-          prepared.usagePackSubscriptionId,
-          signal,
-        ),
-      };
+      return await createSerializedUsagePackCheckout(
+        db,
+        args,
+        customerId,
+        prepared.usagePackSubscriptionId,
+        signal,
+      );
     }
     return await createSerializedUsagePackPurchasePreview(
       {
