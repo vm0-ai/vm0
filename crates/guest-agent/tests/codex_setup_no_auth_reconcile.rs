@@ -13,7 +13,8 @@ async fn codex_setup_no_auth_removes_stale_auth_json() -> TestResult {
     let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
     let run_payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let run_payload_path = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
-    let codex_home = tmp.path().join(".codex");
+    let child_home = tmp.path().join("child-home");
+    let codex_home = tmp.path().join("codex-home");
     let auth_path = codex_home.join("auth.json");
 
     std::fs::create_dir_all(&user_env_dir)?;
@@ -29,15 +30,16 @@ async fn codex_setup_no_auth_removes_stale_auth_json() -> TestResult {
         r#"{"auth_mode":"apikey","OPENAI_API_KEY":"stale"}"#,
     )?;
 
-    let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+    let mut config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id: "codex-setup-no-auth".to_string(),
         cli_agent_type: "codex".to_string(),
         user_env_file: user_env_path.to_string_lossy().into_owned(),
         run_payload_file: run_payload_path.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(runtime_dir),
-        home: Some(tmp.path().to_string_lossy().into_owned()),
+        home: Some(child_home.to_string_lossy().into_owned()),
         ..Default::default()
     })?;
+    config.codex_home_dir = codex_home.to_string_lossy().into_owned();
 
     let masker = SecretMasker::from_raw("");
     tokio::time::timeout(
@@ -49,6 +51,7 @@ async fn codex_setup_no_auth_removes_stale_auth_json() -> TestResult {
 
     let err = std::fs::symlink_metadata(&auth_path).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(!child_home.join(".codex").exists());
 
     Ok(())
 }

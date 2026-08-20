@@ -2,6 +2,10 @@ use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, Sandbox};
 use shell_quote::quote_shell_arg;
 use tracing::info;
 
+use api_contracts::generated::constants::runners::paths::{
+    CANONICAL_CODEX_HOME_DIR, CANONICAL_CODEX_SESSIONS_DIR,
+};
+
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::types::ExecutionContext;
@@ -9,8 +13,6 @@ use crate::types::ExecutionContext;
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::codex_thread_id::CodexThreadId;
 
-const CODEX_HOME: &str = "/home/user/.codex";
-const CODEX_SESSIONS_ROOT: &str = "/home/user/.codex/sessions";
 const CODEX_SESSION_CLEANUP_SCRIPT: &str =
     include_str!("../../../scripts/codex-session-cleanup.sh");
 const INVALID_CODEX_CLEANUP_OUTPUT: &str = "invalid codex session cleanup output";
@@ -20,7 +22,7 @@ fn codex_restore_logical_rollout_path(
     timestamp: chrono::DateTime<chrono::Utc>,
 ) -> String {
     format!(
-        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
+        "{CANONICAL_CODEX_SESSIONS_DIR}/{}/{}/{}/rollout-{}-{session_id}.jsonl",
         timestamp.format("%Y"),
         timestamp.format("%m"),
         timestamp.format("%d"),
@@ -95,7 +97,7 @@ async fn cleanup_existing_codex_session_files(
     session_filename_key: &str,
     fallback_logical_path: &str,
 ) -> RunnerResult<Option<String>> {
-    let cleanup_cmd = codex_session_cleanup_command(CODEX_HOME);
+    let cleanup_cmd = codex_session_cleanup_command(CANONICAL_CODEX_HOME_DIR);
     let env = [
         ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
         (
@@ -156,7 +158,7 @@ fn parse_codex_cleanup_output(
 
 fn is_canonical_codex_logical_path(path: &str, session_id: &str) -> bool {
     let Some(relative) = path
-        .strip_prefix(CODEX_SESSIONS_ROOT)
+        .strip_prefix(CANONICAL_CODEX_SESSIONS_DIR)
         .and_then(|path| path.strip_prefix('/'))
     else {
         return false;
@@ -370,7 +372,7 @@ mod tests {
         let day = date_components.next().unwrap();
         assert!(date_components.next().is_none());
         format!(
-            "{CODEX_SESSIONS_ROOT}/{year}/{month}/{day}/rollout-{date}T{time}-{SESSION_ID}.jsonl"
+            "{CANONICAL_CODEX_SESSIONS_DIR}/{year}/{month}/{day}/rollout-{date}T{time}-{SESSION_ID}.jsonl"
         )
     }
 
@@ -449,7 +451,7 @@ mod tests {
             (
                 "extra path component is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/06/04/extra/rollout-2026-06-04T07-18-08-{SESSION_ID}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/06/04/extra/rollout-2026-06-04T07-18-08-{SESSION_ID}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -458,7 +460,7 @@ mod tests {
             (
                 "mismatched session id is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-18-08-{different_session_id}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/06/04/rollout-2026-06-04T07-18-08-{different_session_id}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -467,7 +469,7 @@ mod tests {
             (
                 "invalid calendar date is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/02/31/rollout-2026-02-31T07-18-08-{SESSION_ID}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/02/31/rollout-2026-02-31T07-18-08-{SESSION_ID}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -476,7 +478,7 @@ mod tests {
             (
                 "out-of-range hour is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T24-01-04-{SESSION_ID}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/06/04/rollout-2026-06-04T24-01-04-{SESSION_ID}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -485,7 +487,7 @@ mod tests {
             (
                 "out-of-range minute is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-60-04-{SESSION_ID}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/06/04/rollout-2026-06-04T07-60-04-{SESSION_ID}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -494,7 +496,7 @@ mod tests {
             (
                 "out-of-range second is rejected",
                 format!(
-                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-18-60-{SESSION_ID}.jsonl\n"
+                    "{CANONICAL_CODEX_SESSIONS_DIR}/2026/06/04/rollout-2026-06-04T07-18-60-{SESSION_ID}.jsonl\n"
                 )
                 .into_bytes(),
                 false,
@@ -530,7 +532,7 @@ mod tests {
 
     #[test]
     fn cleanup_command_uses_fixed_codex_home_prelude() {
-        let command = codex_session_cleanup_command(CODEX_HOME);
+        let command = codex_session_cleanup_command(CANONICAL_CODEX_HOME_DIR);
 
         assert!(command.contains("codex_home='/home/user/.codex'"));
         assert!(command.contains("root=\"$codex_home/sessions\""));

@@ -154,6 +154,13 @@ pub mod runners {
 
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
+        /// Canonical directory for VM0-managed Codex state inside runner guests.
+        /// Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.
+        pub const CANONICAL_CODEX_HOME_DIR: &str = "/home/user/.codex";
+
+        /// Canonical directory for Codex session histories inside runner guests.
+        pub const CANONICAL_CODEX_SESSIONS_DIR: &str = "/home/user/.codex/sessions";
+
         /// Canonical home directory path expected for the sandbox user inside runner guests.
         /// Rust and TypeScript components use this shared contract value when building runner guest paths.
         pub const CANONICAL_GUEST_HOME_DIR: &str = "/home/user";

@@ -1,5 +1,8 @@
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
-import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
+import {
+  CANONICAL_CODEX_HOME_DIR,
+  CANONICAL_WORKING_DIR,
+} from "@okouai/api-contracts/contracts/runners";
 import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
@@ -402,7 +405,7 @@ function buildAgentToolsPrompt(args: {
     "- Multiple access actions: do not use callback commands or URLs when the turn needs multiple connector or permission actions. Return all generated links in one response, one link per line, using only ordinary non-callback links, and wait for the user to finish all of them.",
     "- Inspect yourself: `okou whoami` for identity and permissions, `okou agent view $OKOU_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `okou agent edit --help`.",
-    "- Manage workflows with `okou workflow --help`. Create or update a durable workflow with `okou workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`; its `SKILL.md` is synthesized from the name, description, and instruction. `--dir <path>` uploads supplementary files only and must not contain a `SKILL.md` (it is rejected). Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs.",
+    `- Manage workflows with \`okou workflow --help\`. Create or update a durable workflow with \`okou workflow create|edit <name>\`, passing the workflow body via \`--instruction <text>\` or \`--instruction-file <path>\`; its \`SKILL.md\` is synthesized from the name, description, and instruction. \`--dir <path>\` uploads supplementary files only and must not contain a \`SKILL.md\` (it is rejected). Local changes or newly-created workflow folders under \`${CANONICAL_CODEX_HOME_DIR}/skills\` or \`/home/user/.claude/skills\` are runtime-only and will not persist, sync back, or affect future runs.`,
   ].join("\n");
 }
 

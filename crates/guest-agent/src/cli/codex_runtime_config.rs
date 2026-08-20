@@ -67,14 +67,14 @@ fn is_env_var_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
-pub(super) fn write_model_catalog_from_raw(home_dir: &str, raw: &str) -> Result<(), AgentError> {
+pub(super) fn write_model_catalog_from_raw(
+    codex_home_dir: &str,
+    raw: &str,
+) -> Result<(), AgentError> {
     let Some(config) = parse_raw(raw)? else {
         return Ok(());
     };
-    write_model_catalog(
-        &crate::codex_auth::codex_home_path(Path::new(home_dir)),
-        &config,
-    )
+    write_model_catalog(Path::new(codex_home_dir), &config)
 }
 
 pub(super) fn model_catalog_path(codex_home: &Path) -> PathBuf {

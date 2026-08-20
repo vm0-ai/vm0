@@ -40,6 +40,7 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
         run: |
           set -euo pipefail
+          database_resolution_failure='{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v7","status":"failed","failureGates":["probe.database_resolution"],"probe":{"failurePhase":"configuration","phaseDurationsMs":{"configuration":0,"repositoryInventory":0,"databaseConnection":0,"transactionStart":0,"transactionConfiguration":0,"capabilities":0,"danglingStart":0,"identity":0,"agentExecutionPlans":0,"versions":0,"heads":0,"runs":0,"checkpointInventory":0,"checkpointStorageReferences":0,"conversations":0,"catalogDependencies":0,"danglingEnd":0,"transactionCleanup":0,"classification":0}}}'
           if ! database_url=$(
             neonctl connection-string production \
               --project-id "$NEON_PROJECT_ID" \
@@ -49,7 +50,7 @@ jobs:
               --ssl verify-full \
               2>/dev/null
           ); then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v7","status":"failed","failureGates":["probe.database_resolution"]}'
+            printf '%s\n' "$database_resolution_failure"
             exit 1
           fi
           if [[ -z "$database_url" ||
@@ -57,7 +58,7 @@ jobs:
                 "$database_url" == *$'\r'* ||
                 ( "$database_url" != postgres://* &&
                   "$database_url" != postgresql://* ) ]]; then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v7","status":"failed","failureGates":["probe.database_resolution"]}'
+            printf '%s\n' "$database_resolution_failure"
             exit 1
           fi
           WORKFLOW_COMMAND_DATA="${database_url//%/%25}"

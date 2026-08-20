@@ -237,7 +237,7 @@ fn read_codex_session_history_events(
     runtime: &guest_agent::run_context::GuestRuntime,
     thread_id: &str,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let root = std::path::Path::new(&runtime.config.home_dir).join(".codex/sessions");
+    let root = std::path::Path::new(&runtime.config.codex_home_dir).join("sessions");
     let filename_key = thread_id.replace('-', "");
     let history_path = find_file(&root, &|name| {
         name.replace('-', "").contains(&filename_key)

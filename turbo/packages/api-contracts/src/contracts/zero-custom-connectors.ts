@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { connectorOauthCallbackResultSchema } from "./connectors-slug-callback";
+import { connectorAccountMutationIntentSchema } from "./connector-accounts";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -283,6 +284,7 @@ export type UpdateCustomConnectorBody = z.infer<
 export const startCustomConnectorOAuth2BodySchema = z
   .object({
     agentId: z.string().uuid().optional(),
+    account: connectorAccountMutationIntentSchema.optional(),
   })
   .strict();
 
@@ -301,6 +303,7 @@ export type CustomConnectorValueInput = z.infer<
 
 export const setCustomConnectorValuesBodySchema = z.object({
   values: z.array(customConnectorValueInputSchema),
+  account: connectorAccountMutationIntentSchema.optional(),
 });
 export type SetCustomConnectorValuesBody = z.infer<
   typeof setCustomConnectorValuesBodySchema
@@ -472,6 +475,7 @@ export const zeroCustomConnectorValuesContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Set the calling user's values for a custom connector",
@@ -493,6 +497,7 @@ export const zeroCustomConnectorOAuth2Contract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Start OAuth 2.0 for a custom connector",

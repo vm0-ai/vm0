@@ -101,7 +101,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, _) = write_prunable_codex_history(session_id).unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, history_dir.path());
     let source_size = std::fs::metadata(&history_path).unwrap().len();
 
     let prepare_mock = server.mock(|when, then| {

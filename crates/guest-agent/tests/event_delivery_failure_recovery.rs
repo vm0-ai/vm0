@@ -152,6 +152,7 @@ async fn run_event_failure_case(
             )
             .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
+            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
             .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)

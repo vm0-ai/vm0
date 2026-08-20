@@ -37,6 +37,49 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
+ * Final paths that the Feishu, Slack, and Microsoft consoles hold after #28278
+ * Stage 0, keyed by the branded path that serves them today. OAuth callbacks
+ * join `/api/integrations/**` beside the IM connect routes, and inbound
+ * webhooks join `/api/webhooks/**` beside the other providers.
+ *
+ * Step 1 only makes these paths routable: each one adds a second way to reach
+ * the handler that already serves its branded path. Producers switch one at a
+ * time in #28278 step 3, once the provider console holds the final URL; the
+ * Teams OAuth callback switched in #28300.
+ */
+const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
+  "GET /api/okou/slack/oauth/callback":
+    "/api/integrations/slack/oauth/callback",
+  "GET /api/okou/teams/oauth/callback":
+    "/api/integrations/teams/oauth/callback",
+  "GET /api/okou/feishu/oauth/callback":
+    "/api/integrations/feishu/oauth/callback",
+  "POST /api/okou/slack/events": "/api/webhooks/slack/events",
+  "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
+  "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
+  "POST /api/okou/teams/bot": "/api/webhooks/teams/bot",
+  "POST /api/okou/feishu/events/:installationId":
+    "/api/webhooks/feishu/events/:installationId",
+};
+
+/**
+ * Adds the eight final provider console paths. Unlike the namespace aliases
+ * below, this expands an explicit list and never derives a path, so no other
+ * route gains a second registration.
+ */
+export function withFinalProviderConsolePaths(
+  routes: readonly RouteEntry[],
+): readonly RouteEntry[] {
+  return routes.flatMap((entry) => {
+    const finalPath = FINAL_PROVIDER_CONSOLE_PATHS[routeRegistrationKey(entry)];
+    if (finalPath === undefined) {
+      return [entry];
+    }
+    return [entry, routeEntryWithPath(entry, finalPath)];
+  });
+}
+
+/**
  * Phase A compatibility for #26487. Remove only in a separately authorized
  * cleanup after legacy Platform, CLI, runner, Desktop, and stored callback
  * callers have drained, production telemetry confirms no Zero dependency,

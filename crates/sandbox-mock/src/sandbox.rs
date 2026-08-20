@@ -359,27 +359,6 @@ fn apply_exec_output_limits(mut result: ExecResult, limits: ExecOutputLimits) ->
     result
 }
 
-fn validate_start_process_output(output: ProcessOutputMode) -> Result<()> {
-    match output {
-        ProcessOutputMode::Stream {
-            chunk_limit_bytes: 0,
-            ..
-        } => Err(SandboxError::Operation {
-            operation: SandboxOperation::StartProcess,
-            reason: SandboxOperationReason::Other,
-            message: "process stream chunk limit must be positive".to_string(),
-        }),
-        ProcessOutputMode::Stream {
-            queue_capacity: 0, ..
-        } => Err(SandboxError::Operation {
-            operation: SandboxOperation::StartProcess,
-            reason: SandboxOperationReason::Other,
-            message: "process stream queue capacity must be positive".to_string(),
-        }),
-        ProcessOutputMode::Buffered { .. } | ProcessOutputMode::Stream { .. } => Ok(()),
-    }
-}
-
 #[async_trait]
 impl Sandbox for MockSandbox {
     fn id(&self) -> &str {
@@ -871,7 +850,7 @@ impl Sandbox for MockSandbox {
             wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
         }
         validate_mock_exec_env_keys(SandboxOperation::StartProcess, request.env)?;
-        validate_start_process_output(request.output)?;
+        request.output.validate()?;
         if let Some(overrides) = &self.overrides {
             overrides
                 .process

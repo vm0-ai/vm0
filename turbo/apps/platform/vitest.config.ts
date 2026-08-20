@@ -3,7 +3,6 @@ import { defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
-  assetsInclude: ["**/*.pptx"],
   plugins: [react()],
   resolve: {
     alias: {

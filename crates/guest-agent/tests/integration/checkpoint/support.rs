@@ -69,8 +69,8 @@ pub(super) fn checkpoint_session_metadata(
         ),
         guest_agent::env::Framework::Codex => Some(
             guest_contracts::session_history_identity::SessionHistorySourceRef::Codex {
-                sessions_dir: std::path::Path::new(&runtime.config.home_dir)
-                    .join(".codex/sessions")
+                sessions_dir: std::path::Path::new(&runtime.config.codex_home_dir)
+                    .join("sessions")
                     .to_string_lossy()
                     .into_owned(),
                 thread_id: session_id.clone(),
@@ -87,6 +87,13 @@ pub(super) fn checkpoint_session_metadata(
         ),
     };
     guest_agent::session_metadata::CapturedSessionMetadata::for_test(session_id, source)
+}
+
+pub(super) fn use_test_codex_home(
+    runtime: &mut guest_agent::run_context::GuestRuntime,
+    parent: &std::path::Path,
+) {
+    runtime.config.codex_home_dir = parent.join(".codex").to_string_lossy().into_owned();
 }
 
 pub(super) fn session_id_file() -> String {
