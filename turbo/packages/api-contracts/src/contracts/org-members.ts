@@ -101,7 +101,7 @@ export const previewOrgInvitationPurchaseRequestSchema =
 export const orgInvitationPurchasePreviewResponseSchema = z.object({
   purchaseId: z.uuid(),
   usagePackUsd: usagePackUsdSchema,
-  immediateAmountCents: z.number().int().positive(),
+  immediateAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
   purchasedCredits: z.number().int().nonnegative(),
   bonusCredits: z.number().int().nonnegative(),

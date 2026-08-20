@@ -200,7 +200,7 @@ function legacyInvitationPurchaseId(idempotencyKey: string): string | null {
 async function inferLegacyRefundSource(
   db: Pick<Db, "select">,
   grant: UsagePackCreditGrantRow,
-): Promise<UsagePackCreditRefundSource> {
+): Promise<UsagePackCreditRefundSource | null> {
   const invitationPurchaseId = legacyInvitationPurchaseId(grant.idempotencyKey);
   if (invitationPurchaseId) {
     const [purchase] = await db
@@ -217,10 +217,16 @@ async function inferLegacyRefundSource(
     if (
       !purchase ||
       purchase.orgId !== grant.orgId ||
-      purchase.acceptedUserId !== grant.userId ||
-      !purchase.amountPaidCents ||
-      !purchase.stripePaymentIntentId
+      purchase.acceptedUserId !== grant.userId
     ) {
+      throw new Error(
+        `Usage pack grant ${grant.id} has no refundable invitation payment`,
+      );
+    }
+    if (purchase.amountPaidCents === 0) {
+      return null;
+    }
+    if (purchase.amountPaidCents === null || !purchase.stripePaymentIntentId) {
       throw new Error(
         `Usage pack grant ${grant.id} has no refundable invitation payment`,
       );
@@ -245,7 +251,7 @@ async function inferLegacyRefundSource(
 async function loadRefundSource(
   db: CreditRefundStore,
   grant: UsagePackCreditGrantRow,
-): Promise<UsagePackCreditRefundRow> {
+): Promise<UsagePackCreditRefundRow | null> {
   const [existing] = await db
     .select()
     .from(usagePackCreditRefunds)
@@ -255,6 +261,9 @@ async function loadRefundSource(
     return existing;
   }
   const source = await inferLegacyRefundSource(db, grant);
+  if (!source) {
+    return null;
+  }
   await ensureUsagePackCreditRefundSource(db, {
     creditGrantId: grant.id,
     orgId: grant.orgId,
@@ -290,7 +299,7 @@ export async function prepareUsagePackMemberCreditRefunds(
   let prepared = 0;
   for (const grant of grants) {
     const source = await loadRefundSource(db, grant);
-    if (source.status !== "available") {
+    if (!source || source.status !== "available") {
       continue;
     }
     const requestedAmountCents = Math.floor(
@@ -356,6 +365,25 @@ async function markRefundSucceeded(
       status: "succeeded",
       stripeRefundId,
       refundedAmountCents,
+      failureReason: null,
+      refundedAt: at,
+      updatedAt: at,
+    })
+    .where(eq(usagePackCreditRefunds.creditGrantId, row.creditGrantId));
+}
+
+async function markRefundNotRequired(
+  db: Pick<Db, "update">,
+  row: UsagePackCreditRefundRow,
+): Promise<void> {
+  const at = nowDate();
+  await db
+    .update(usagePackCreditRefunds)
+    .set({
+      status: "succeeded",
+      stripeCreditNoteId: null,
+      stripeRefundId: null,
+      refundedAmountCents: 0,
       failureReason: null,
       refundedAt: at,
       updatedAt: at,
@@ -459,7 +487,7 @@ async function processPaymentIntentRefund(
 async function loadOrCreateCreditNote(
   db: Pick<Db, "update">,
   row: UsagePackCreditRefundRow,
-): Promise<StripeCreditNote> {
+): Promise<StripeCreditNote | null> {
   const stripe = getStripeClient();
   if (row.stripeCreditNoteId) {
     return await stripe.creditNotes.retrieve(row.stripeCreditNoteId);
@@ -483,8 +511,16 @@ async function loadOrCreateCreditNote(
     },
   };
   let refundAmountCents = row.refundedAmountCents;
+  if (refundAmountCents === 0) {
+    await markRefundNotRequired(db, row);
+    return null;
+  }
   if (refundAmountCents === null) {
     const preview = await stripe.creditNotes.preview(commonParams);
+    if (preview.pre_payment_amount === 0 && preview.post_payment_amount === 0) {
+      await markRefundNotRequired(db, row);
+      return null;
+    }
     if (preview.pre_payment_amount !== 0 || preview.post_payment_amount <= 0) {
       throw new Error(
         `Usage pack refund ${row.creditGrantId} credit note is not fully refundable`,
@@ -509,6 +545,9 @@ async function processInvoiceRefund(
   row: UsagePackCreditRefundRow,
 ): Promise<void> {
   const creditNote = await loadOrCreateCreditNote(db, row);
+  if (!creditNote) {
+    return;
+  }
   if (creditNote.status !== "issued" || creditNote.post_payment_amount <= 0) {
     throw new Error(
       `Usage pack refund ${row.creditGrantId} has an invalid credit note`,

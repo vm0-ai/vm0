@@ -95,12 +95,6 @@ const INVITATION_PURCHASE_ERRORS = {
     code: "INVITATION_PURCHASE_INVITEE_UNAVAILABLE",
     message: "This person is already a member or has a pending invitation.",
   },
-  no_amount_due: {
-    status: 409,
-    code: "INVITATION_PURCHASE_NO_AMOUNT_DUE",
-    message:
-      "This member package has no charge to collect right now. Try again after your billing period renews.",
-  },
   no_credits: {
     status: 409,
     code: "INVITATION_PURCHASE_NO_CREDITS",
