@@ -105,11 +105,7 @@ describe("okou goal command", () => {
   });
 
   it.each([
-    [
-      "complete",
-      "/api/goal/complete",
-      { ...ACTIVE_GOAL, status: "complete" },
-    ],
+    ["complete", "/api/goal/complete", { ...ACTIVE_GOAL, status: "complete" }],
     ["block", "/api/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
     ["pause", "/api/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
     ["resume", "/api/goal/resume", ACTIVE_GOAL],
