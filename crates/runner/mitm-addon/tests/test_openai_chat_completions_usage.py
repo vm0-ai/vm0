@@ -17,6 +17,7 @@ from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_flow
 from tests.stream_buffer_helpers import set_response_stream_buffer
 from tests.usage_helpers import compact_observation_quantities
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 def _chat_completions_flow(
@@ -262,6 +263,50 @@ class TestOpenAIChatCompletionsUsage:
         assert warnings[0]["usage_protocol"] == "openai_chat_completions_sse"
         assert warnings[0]["event"] == "eventless"
         assert warnings[0]["error"] == "incomplete json"
+
+    @pytest.mark.parametrize(
+        "input_tokens",
+        [MAX_USAGE_QUANTITY + 1, int("9" * 64)],
+        ids=("above-safe-integer", "maximum-width-integer"),
+    )
+    def test_out_of_range_sse_quantity_fails_closed_with_bounded_diagnostic(
+        self,
+        tmp_path,
+        real_flow,
+        input_tokens,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="text/event-stream",
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"data: "
+            + _chat_payload(
+                usage_payload={
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": 5,
+                }
+            )
+            + b"\n\ndata: [DONE]\n\n"
+        )
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        warnings = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("message") == "Model provider SSE usage extraction failed"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0]["usage_protocol"] == "openai_chat_completions_sse"
+        assert warnings[0]["event"] == "eventless"
+        assert warnings[0]["error"] == "integer value limit exceeded"
 
     def test_malformed_sse_clears_prior_usage_before_terminal_reporting(
         self,

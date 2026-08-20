@@ -52,6 +52,7 @@ from ..model_tokens import (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
+from ..quantities import is_usage_quantity
 from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
@@ -884,11 +885,11 @@ def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
 
 
 def _is_positive_int(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return is_usage_quantity(value) and value > 0
 
 
 def _is_non_negative_int(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return is_usage_quantity(value)
 
 
 def _positive_int_or_zero(value: object) -> int:

@@ -25,6 +25,7 @@ from tests.model_provider_websocket_helpers import (
     set_websocket_message,
 )
 from tests.usage_helpers import assert_usage_event_rows
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 @pytest.fixture(autouse=True)
@@ -282,6 +283,38 @@ class TestModelProviderWebSocketSourceReporting:
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
+
+    def test_model_websocket_out_of_range_quantity_warns_without_correlation_failure(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_out_of_range",
+                    input_tokens=MAX_USAGE_QUANTITY + 1,
+                    output_tokens=3,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.request_count == 0
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+        assert model_provider_usage_sources(flow) == {}
+        proxy_entries = read_jsonl_entries_after_flush(proxy_log)
+        [warning] = [
+            entry
+            for entry in proxy_entries
+            if entry.get("message") == "Model provider WebSocket usage extraction failed"
+        ]
+        assert warning["error"] == "integer value limit exceeded"
+        assert not any(entry.get("type") == "model_usage_correlation" for entry in proxy_entries)
 
     def test_model_websocket_text_frame_reports_usage(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
