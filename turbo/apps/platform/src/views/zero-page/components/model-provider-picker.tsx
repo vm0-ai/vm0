@@ -1257,7 +1257,7 @@ function ModelFirstModelPickerContentLayout({
             // category strip so the list itself keeps its former room. The
             // max-width only bites below a 348px viewport, where 332px would
             // otherwise run past the screen edge.
-            "max-h-[320px] min-w-[332px] max-w-[calc(100vw-1rem)]"
+            "max-h-[294px] min-w-[332px] max-w-[calc(100vw-1rem)]"
           : "max-h-[280px] min-w-[260px]",
       )}
     >
