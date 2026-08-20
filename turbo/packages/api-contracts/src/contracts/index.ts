@@ -658,6 +658,7 @@ export {
   storedExecutionContextSchema,
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CODEX_SESSIONS_DIR,

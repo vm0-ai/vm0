@@ -1050,6 +1050,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
         api_token: "test-token-abc123".to_string(),
         cli_agent_type: "claude-code".to_string(),
         home: Some(home_dir.to_string_lossy().into_owned()),
+        test_claude_config_dir: Some(home_dir.join(".claude")),
         run_payload_file: run_payload_file.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(runtime_dir.clone()),
         ..guest_agent::env::GuestConfigRaw::default()
