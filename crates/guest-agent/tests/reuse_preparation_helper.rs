@@ -19,6 +19,92 @@ use guest_contracts::reuse_preparation::{
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[test]
+fn prepare_for_reuse_removes_managed_codex_auth() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let home = tempfile::tempdir()?;
+    let codex_home = home.path().join(".codex");
+    let auth_path = codex_home.join("auth.json");
+    std::fs::create_dir(&codex_home)?;
+    std::fs::write(
+        &auth_path,
+        r#"{"auth_mode":"apikey","OPENAI_API_KEY":"sk-managed"}"#,
+    )?;
+
+    let output = run_helper_with_codex_home(&request, &codex_home)?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!auth_path.exists());
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_symlinked_managed_codex_auth() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let home = tempfile::tempdir()?;
+    let codex_home = home.path().join(".codex");
+    let auth_path = codex_home.join("auth.json");
+    let target = home.path().join("target-auth.json");
+    std::fs::create_dir(&codex_home)?;
+    std::fs::write(&target, b"keep")?;
+    symlink(&target, &auth_path)?;
+
+    let output = run_helper_with_codex_home(&request, &codex_home)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+    );
+    assert_eq!(std::fs::read(&target)?, b"keep");
+    assert!(auth_path.symlink_metadata()?.file_type().is_symlink());
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_symlinked_managed_codex_home() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let home = tempfile::tempdir()?;
+    let target = home.path().join("target-codex-home");
+    let codex_home = home.path().join(".codex");
+    let target_auth = target.join("auth.json");
+    std::fs::create_dir(&target)?;
+    std::fs::write(&target_auth, b"keep")?;
+    symlink(&target, &codex_home)?;
+
+    let output = run_helper_with_codex_home(&request, &codex_home)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+    );
+    assert_eq!(std::fs::read(&target_auth)?, b"keep");
+    assert!(codex_home.symlink_metadata()?.file_type().is_symlink());
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_non_regular_managed_codex_auth() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let home = tempfile::tempdir()?;
+    let codex_home = home.path().join(".codex");
+    let auth_path = codex_home.join("auth.json");
+    std::fs::create_dir_all(&auth_path)?;
+
+    let output = run_helper_with_codex_home(&request, &codex_home)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+    );
+    assert!(auth_path.is_dir());
+    Ok(())
+}
+
+#[test]
 fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
@@ -612,10 +698,39 @@ fn run_helper_with_current_group(
     containment: &ContainmentFixture,
     current_group: &str,
 ) -> Result<Output, Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    run_helper_with_current_group_and_codex_home(
+        request,
+        containment,
+        current_group,
+        &home.path().join(".codex"),
+    )
+}
+
+fn run_helper_with_codex_home(
+    request: &ReusePreparationRequest,
+    codex_home: &Path,
+) -> Result<Output, Box<dyn std::error::Error>> {
+    let containment = ContainmentFixture::new()?;
+    run_helper_with_current_group_and_codex_home(
+        request,
+        &containment,
+        "/vm0-exec/exec-current/workload",
+        codex_home,
+    )
+}
+
+fn run_helper_with_current_group_and_codex_home(
+    request: &ReusePreparationRequest,
+    containment: &ContainmentFixture,
+    current_group: &str,
+    codex_home: &Path,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
         .env_clear()
         .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env("VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
+        .env("VM0_TEST_CODEX_HOME_DIR", codex_home)
         .arg("prepare-for-reuse")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -635,6 +750,7 @@ fn run_helper_with_bind_mount(
     mount_target: &Path,
 ) -> Result<Output, Box<dyn std::error::Error>> {
     let containment = ContainmentFixture::new()?;
+    let home = tempfile::tempdir()?;
     let mut child = Command::new("/usr/bin/unshare")
         .env_clear()
         .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
@@ -642,6 +758,7 @@ fn run_helper_with_bind_mount(
             "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
             "/vm0-exec/exec-current/workload",
         )
+        .env("VM0_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
         .env("VM0_MOUNT_SOURCE", mount_source)
         .env("VM0_MOUNT_TARGET", mount_target)
         .env("VM0_HELPER", env!("CARGO_BIN_EXE_guest-agent"))

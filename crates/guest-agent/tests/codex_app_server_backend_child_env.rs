@@ -89,7 +89,7 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
     let stored_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert!(!stored_session_id.trim().is_empty());
     assert!(
-        session_jsonl_files(&Path::new(&runtime.config.home_dir).join(".codex/sessions"))?
+        session_jsonl_files(&Path::new(&runtime.config.codex_home_dir).join("sessions"))?
             .iter()
             .any(|path| path.to_string_lossy().contains(stored_session_id.trim())),
         "Codex should write history below the launch-owned sessions root"
@@ -100,7 +100,7 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
     )?;
     assert!(!Path::new(stale_paths.session_id_file()).exists());
 
-    let input_event = find_mock_input_event(&Path::new(&runtime.config.home_dir).join(".codex"))?;
+    let input_event = find_mock_input_event(Path::new(&runtime.config.codex_home_dir))?;
     assert_eq!(
         input_event.get("text").and_then(Value::as_str),
         Some(prompt.as_str())

@@ -4,11 +4,13 @@ import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oaut
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
+import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 import { logger } from "../../lib/log";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -76,6 +78,7 @@ interface FeishuConnectionState {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly accountMutation?: StoredConnectorAccountMutation | null;
 }
 
 interface FeishuInstallationOAuthRow {
@@ -271,6 +274,7 @@ async function upsertFeishuConnection(
   | {
       readonly connected: true;
       readonly connectionId: string;
+      readonly memberConnectorId: string | null;
       readonly shouldNotify: boolean;
     }
 > {
@@ -279,6 +283,7 @@ async function upsertFeishuConnection(
       id: feishuOrgConnections.id,
       userId: feishuOrgConnections.userId,
       dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
+      connectorId: feishuOrgConnections.connectorId,
     })
     .from(feishuOrgConnections)
     .where(
@@ -294,6 +299,7 @@ async function upsertFeishuConnection(
   }
 
   let connectionId: string;
+  let memberConnectorId: string | null;
   let shouldNotify: boolean;
   if (existing) {
     await args.db
@@ -304,6 +310,7 @@ async function upsertFeishuConnection(
       })
       .where(eq(feishuOrgConnections.id, existing.id));
     connectionId = existing.id;
+    memberConnectorId = existing.connectorId;
     shouldNotify = !existing.dmWelcomeSent;
   } else {
     const [inserted] = await args.db
@@ -329,6 +336,7 @@ async function upsertFeishuConnection(
       return { connected: false };
     }
     connectionId = inserted.id;
+    memberConnectorId = null;
     shouldNotify = !inserted.dmWelcomeSent;
   }
 
@@ -342,7 +350,7 @@ async function upsertFeishuConnection(
       ),
     );
   signal.throwIfAborted();
-  return { connected: true, connectionId, shouldNotify };
+  return { connected: true, connectionId, memberConnectorId, shouldNotify };
 }
 
 async function loadInstallationForConnector(args: {
@@ -424,7 +432,7 @@ async function persistFeishuOAuthConnection(
     if (!connection.connected) {
       return connection;
     }
-    const memberConnectorId = await storeCustomConnectorOAuth2Connection(
+    const storedConnection = await storeCustomConnectorOAuth2Connection(
       {
         db: tx,
         orgId: args.state.orgId,
@@ -433,9 +441,21 @@ async function persistFeishuOAuthConnection(
         storageVersion: args.connector.storageVersion,
         token: args.token,
         featureContext: args.featureContext,
+        account: connection.memberConnectorId
+          ? {
+              intent: "reconnect",
+              connectionId: connection.memberConnectorId,
+            }
+          : parseStoredConnectorAccountMutationIntent(
+              args.state.accountMutation ?? null,
+            ),
       },
       signal,
     );
+    if (storedConnection.kind !== "stored") {
+      throw new Error("Feishu connector account could not be selected");
+    }
+    const memberConnectorId = storedConnection.connectionId;
     signal.throwIfAborted();
     await tx
       .update(feishuOrgConnections)
@@ -862,6 +882,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
       installationId: installation.installationId,
       orgId: args.state.orgId,
       userId: args.state.userId,
+      accountMutation: args.state.accountMutation,
     };
     const completed = await finishFeishuOAuthConnection(
       {

@@ -50,19 +50,26 @@ impl CodexResumeLogFixture {
             },
         )
         .map_err(std::io::Error::other)?;
-        let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
-            run_id: self.run_id.clone(),
-            api_url: "http://127.0.0.1:1".to_string(),
-            api_token: "".to_string(),
-            sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
-            sandbox_reuse_result: "reused".to_string(),
-            cli_agent_type: "codex".to_string(),
-            home: Some(self.home.path().to_string_lossy().into_owned()),
-            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
-            guest_runtime_dir: Some(self.runtime_dir.clone()),
-            ..Default::default()
-        })
-        .map_err(std::io::Error::other)?;
+        let mut config =
+            guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+                run_id: self.run_id.clone(),
+                api_url: "http://127.0.0.1:1".to_string(),
+                api_token: "".to_string(),
+                sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
+                sandbox_reuse_result: "reused".to_string(),
+                cli_agent_type: "codex".to_string(),
+                home: Some(self.home.path().to_string_lossy().into_owned()),
+                run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+                guest_runtime_dir: Some(self.runtime_dir.clone()),
+                ..Default::default()
+            })
+            .map_err(std::io::Error::other)?;
+        config.codex_home_dir = self
+            .home
+            .path()
+            .join("codex-home")
+            .to_string_lossy()
+            .into_owned();
         Ok(config)
     }
 

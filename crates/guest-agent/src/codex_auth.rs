@@ -1,4 +1,4 @@
-//! Reconcile Codex `~/.codex/auth.json` before launching the CLI.
+//! Reconcile Codex `auth.json` in VM0's canonical Codex home before launching the CLI.
 //!
 //! The guest-agent owns the complete local Codex auth state because sandboxes
 //! can be reused across runs. Each run must therefore write the desired auth
@@ -22,7 +22,7 @@
 //!
 //! See issue #11877 and parent Epic #11872 for full context.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use api_contracts::generated::constants::codex_oauth_token::placeholders::{
     CHATGPT_ACCOUNT_ID as PLACEHOLDER_CHATGPT_ACCOUNT_ID,
@@ -71,10 +71,6 @@ pub(crate) enum DesiredCodexAuth<'a> {
     ChatGpt { now: DateTime<Utc> },
     ApiKey { api_key: &'a str },
     None,
-}
-
-pub(crate) fn codex_home_path(home_dir: &Path) -> PathBuf {
-    home_dir.join(".codex")
 }
 
 // ---------------------------------------------------------------------------
@@ -174,15 +170,14 @@ fn build_api_key_auth_json(api_key: &str) -> Value {
     })
 }
 
-fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
+fn prepare_codex_home(codex_home: &Path) -> Result<(), AgentError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let codex_home = codex_home_path(home_dir);
-    let metadata = match std::fs::symlink_metadata(&codex_home) {
+    let metadata = match std::fs::symlink_metadata(codex_home) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::create_dir_all(&codex_home)?;
-            std::fs::symlink_metadata(&codex_home)?
+            std::fs::create_dir_all(codex_home)?;
+            std::fs::symlink_metadata(codex_home)?
         }
         Err(error) => return Err(error.into()),
     };
@@ -199,12 +194,9 @@ fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
         )));
     }
 
-    std::fs::set_permissions(
-        &codex_home,
-        std::fs::Permissions::from_mode(CODEX_HOME_MODE),
-    )?;
+    std::fs::set_permissions(codex_home, std::fs::Permissions::from_mode(CODEX_HOME_MODE))?;
 
-    Ok(codex_home)
+    Ok(())
 }
 
 fn remove_auth_json(codex_home: &Path) -> Result<(), AgentError> {
@@ -245,23 +237,23 @@ fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), Age
 // ---------------------------------------------------------------------------
 
 pub(crate) fn reconcile_codex_auth_state(
-    home_dir: &Path,
+    codex_home: &Path,
     desired: DesiredCodexAuth<'_>,
 ) -> Result<(), AgentError> {
-    let codex_home = prepare_codex_home(home_dir)?;
+    prepare_codex_home(codex_home)?;
 
     match desired {
         DesiredCodexAuth::ChatGpt { now } => {
             let auth_json = build_chatgpt_auth_json(now)?;
             let serialized = serde_json::to_string(&auth_json)?;
-            write_auth_json_atomic(&codex_home, &serialized)
+            write_auth_json_atomic(codex_home, &serialized)
         }
         DesiredCodexAuth::ApiKey { api_key } => {
             let auth_json = build_api_key_auth_json(api_key);
             let serialized = serde_json::to_string(&auth_json)?;
-            write_auth_json_atomic(&codex_home, &serialized)
+            write_auth_json_atomic(codex_home, &serialized)
         }
-        DesiredCodexAuth::None => remove_auth_json(&codex_home),
+        DesiredCodexAuth::None => remove_auth_json(codex_home),
     }
 }
 
@@ -297,17 +289,18 @@ mod tests {
     }
 
     fn reconcile_chatgpt_auth(
-        home_dir: &std::path::Path,
+        codex_home: &std::path::Path,
         now: DateTime<Utc>,
     ) -> Result<(), AgentError> {
-        reconcile_codex_auth_state(home_dir, DesiredCodexAuth::ChatGpt { now })
+        reconcile_codex_auth_state(codex_home, DesiredCodexAuth::ChatGpt { now })
     }
 
     /// Reconcile ChatGPT auth against a temp dir and return the
     /// parsed `auth.json` plus the path it was written to.
     fn run_setup_and_parse(tmp: &TempDir, now: DateTime<Utc>) -> (Value, std::path::PathBuf) {
-        reconcile_chatgpt_auth(tmp.path(), now).unwrap();
-        let auth_path = tmp.path().join(".codex").join("auth.json");
+        let codex_home = tmp.path().join(".codex");
+        reconcile_chatgpt_auth(&codex_home, now).unwrap();
+        let auth_path = codex_home.join("auth.json");
         let body = std::fs::read_to_string(&auth_path).unwrap();
         let parsed: Value = serde_json::from_str(&body).unwrap();
         (parsed, auth_path)
@@ -317,11 +310,6 @@ mod tests {
         let auth_path = tmp.path().join(".codex").join("auth.json");
         let body = std::fs::read_to_string(auth_path).unwrap();
         serde_json::from_str(&body).unwrap()
-    }
-
-    #[test]
-    fn codex_home_path_handles_empty_home_consistently() {
-        assert_eq!(codex_home_path(Path::new("")), PathBuf::from(".codex"));
     }
 
     /// Asserts the three independent ChatGPT-mode signals, the placeholder
@@ -449,7 +437,7 @@ mod tests {
         let auth_path = codex_home.join("auth.json");
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
 
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
 
         let body = std::fs::read_to_string(&auth_path).unwrap();
         assert!(
@@ -465,7 +453,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         reconcile_codex_auth_state(
-            tmp.path(),
+            &tmp.path().join(".codex"),
             DesiredCodexAuth::ApiKey {
                 api_key: "sk-test-local",
             },
@@ -484,10 +472,10 @@ mod tests {
     #[test]
     fn reconcile_codex_auth_state_api_key_overwrites_chatgpt_auth_json() {
         let tmp = TempDir::new().unwrap();
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
 
         reconcile_codex_auth_state(
-            tmp.path(),
+            &tmp.path().join(".codex"),
             DesiredCodexAuth::ApiKey {
                 api_key: "sk-test-next-run",
             },
@@ -506,10 +494,10 @@ mod tests {
     #[test]
     fn reconcile_codex_auth_state_no_auth_removes_existing_auth_json() {
         let tmp = TempDir::new().unwrap();
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
         let auth_path = tmp.path().join(".codex").join("auth.json");
 
-        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+        reconcile_codex_auth_state(&tmp.path().join(".codex"), DesiredCodexAuth::None).unwrap();
 
         let err = std::fs::symlink_metadata(&auth_path).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
@@ -525,7 +513,7 @@ mod tests {
         std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
         symlink(&symlink_target, &auth_path).unwrap();
 
-        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+        reconcile_codex_auth_state(&tmp.path().join(".codex"), DesiredCodexAuth::None).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(&symlink_target).unwrap(),
@@ -540,7 +528,7 @@ mod tests {
     fn reconcile_codex_auth_state_no_auth_succeeds_when_auth_json_missing() {
         let tmp = TempDir::new().unwrap();
 
-        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+        reconcile_codex_auth_state(&tmp.path().join(".codex"), DesiredCodexAuth::None).unwrap();
 
         let codex_home = tmp.path().join(".codex");
         assert!(
@@ -557,7 +545,8 @@ mod tests {
         let auth_path = tmp.path().join(".codex").join("auth.json");
         std::fs::create_dir_all(&auth_path).unwrap();
 
-        let err = reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap_err();
+        let err = reconcile_codex_auth_state(&tmp.path().join(".codex"), DesiredCodexAuth::None)
+            .unwrap_err();
 
         assert!(
             err.to_string().contains("auth.json"),
@@ -575,7 +564,7 @@ mod tests {
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
         std::fs::set_permissions(&auth_path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&auth_path).unwrap().permissions().mode();
         assert_eq!(
@@ -602,7 +591,7 @@ mod tests {
         std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
         symlink(&symlink_target, &auth_path).unwrap();
 
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(&symlink_target).unwrap(),
@@ -630,7 +619,7 @@ mod tests {
         std::fs::create_dir_all(&codex_home).unwrap();
         std::fs::set_permissions(&codex_home, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&codex_home).unwrap().permissions().mode();
         assert_eq!(
@@ -647,7 +636,7 @@ mod tests {
         std::fs::create_dir_all(&target).unwrap();
         symlink(&target, tmp.path().join(".codex")).unwrap();
 
-        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains("symlinked directory"),
             "unexpected error: {err}"
@@ -660,7 +649,7 @@ mod tests {
         let codex_home = tmp.path().join(".codex");
         std::fs::write(&codex_home, b"not a directory").unwrap();
 
-        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains(".codex"),
             "unexpected error: {err}"
@@ -679,7 +668,7 @@ mod tests {
         let auth_path = codex_home.join("auth.json");
         std::fs::create_dir_all(&auth_path).unwrap();
 
-        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(&tmp.path().join(".codex"), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains("auth.json"),
             "unexpected error: {err}"

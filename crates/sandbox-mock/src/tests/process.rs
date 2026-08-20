@@ -290,26 +290,40 @@ async fn structured_process_control_distinguishes_timeout_write_state() {
 }
 
 #[tokio::test]
-async fn start_process_rejects_invalid_stream_configuration() {
-    let runtime = MockSandboxRuntime::new();
-    let factory = runtime.create_factory(test_factory_config()).await.unwrap();
-    let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+async fn start_process_validates_stream_configuration() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
 
-    for output in [
-        ProcessOutputMode::Stream {
-            stream_limit_bytes: 1024,
-            chunk_limit_bytes: 0,
-            queue_capacity: 1,
-            stderr_capture_limit_bytes: None,
-        },
-        ProcessOutputMode::Stream {
-            stream_limit_bytes: 1024,
-            chunk_limit_bytes: 16,
-            queue_capacity: 0,
-            stderr_capture_limit_bytes: None,
-        },
+    for (output, expected_message) in [
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 0,
+                queue_capacity: 1,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream chunk limit must be positive",
+        ),
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+                queue_capacity: 0,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream queue capacity must be positive",
+        ),
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+                queue_capacity: ProcessOutputMode::MAX_QUEUE_CAPACITY + 1,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream queue capacity must be at most 8192",
+        ),
     ] {
-        match sandbox
+        let error = match sandbox
             .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
@@ -321,15 +335,39 @@ async fn start_process_rejects_invalid_stream_configuration() {
             .await
         {
             Ok(_) => panic!("invalid stream configuration should be rejected"),
-            Err(SandboxError::Operation {
-                operation, reason, ..
-            }) => {
-                assert_eq!(operation, SandboxOperation::StartProcess);
-                assert_eq!(reason, SandboxOperationReason::Other);
-            }
-            Err(other) => panic!("expected start_process operation error, got {other:?}"),
-        }
+            Err(error) => error,
+        };
+        assert_operation_error(
+            error,
+            SandboxOperation::StartProcess,
+            SandboxOperationReason::Other,
+            expected_message,
+        );
     }
+    assert!(overrides.start_process_calls().is_empty());
+
+    let output = ProcessOutputMode::Stream {
+        stream_limit_bytes: 0,
+        chunk_limit_bytes: 16,
+        queue_capacity: ProcessOutputMode::MAX_QUEUE_CAPACITY,
+        stderr_capture_limit_bytes: None,
+    };
+    let handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output,
+            control: ProcessControlMode::None,
+        })
+        .await
+        .unwrap();
+
+    assert!(handle.has_stdout_receiver());
+    let calls = overrides.start_process_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls.first().unwrap().output, output);
 }
 
 #[tokio::test]

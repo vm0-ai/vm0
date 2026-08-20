@@ -449,7 +449,27 @@ describe("CONN-02: external-code session lifecycle", () => {
     });
     expect(provider.tokenRequests).toHaveLength(1);
 
+    const removedReconnect = await connectorsApi.startExternalCode(
+      actor,
+      "aws",
+      "cli",
+      { intent: "reconnect", connectionId: complete.connector.id },
+    );
     await connectorsApi.deleteConnectorBySlug(actor, "aws");
+    const rejectedReconnect = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "aws",
+      {
+        sessionId: removedReconnect.sessionId,
+        sessionToken: removedReconnect.sessionToken,
+        code: awsVerificationCode(removedReconnect.authorizationUrl),
+      },
+      [409],
+    );
+    expectApiError(rejectedReconnect.body);
+    expect(rejectedReconnect.body.error.message).toBe(
+      "Connector account not found",
+    );
     const afterDelete = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "aws",

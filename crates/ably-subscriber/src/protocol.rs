@@ -28,6 +28,7 @@ pub mod action {
 }
 
 pub mod error_code {
+    pub const TOKEN_EXPIRED: i32 = 40142;
     pub const FAILED: i32 = 80000;
     pub const TIMEOUT: i32 = 80014;
     pub const CHANNEL_OPERATION_FAILED: i32 = 90000;

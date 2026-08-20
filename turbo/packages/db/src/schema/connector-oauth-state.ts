@@ -4,6 +4,7 @@ import {
   check,
   foreignKey,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -12,6 +13,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 
 import { orgCustomConnectors } from "./org-custom-connector";
 
@@ -32,6 +34,8 @@ export const connectorOauthStates = pgTable(
     authorizationUrl: text("authorization_url"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
+    accountMutation:
+      jsonb("account_mutation").$type<StoredConnectorAccountMutation>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     consumedAt: timestamp("consumed_at"),
