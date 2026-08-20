@@ -3252,6 +3252,25 @@
         },
         "title": "Datei Sentry bricht als GitHub-Issues auf"
       },
+      "find-creator-leads-x": {
+        "description": "Creator-Leads auf X finden und qualifizieren.",
+        "scenario": "Outbound stockt, wenn die Liste veraltet ist. {{assistantName}} findet Creator und Interessenten auf X, die zum Zielprofil passen, qualifiziert sie mit der integrierten Personensuche und Firecrawl und liefert eine priorisierte Outreach-Liste.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} durchsucht X nach Konten, die zum Zielprofil passen.",
+            "title": "Kandidaten werden auf X gefunden"
+          },
+          "three": {
+            "description": "{{assistantName}} bewertet die Passung, entwirft eine Ansprache und speichert Leads optional in HubSpot.",
+            "title": "Die Outreach-Liste wird priorisiert"
+          },
+          "two": {
+            "description": "{{assistantName}} prüft Rolle, Unternehmen und Reichweite mit integrierter Recherche.",
+            "title": "Jeder Lead wird qualifiziert"
+          }
+        },
+        "title": "Creator-Leads auf X finden"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Wandeln Sie bestätigte GitHub-Fixes in wiederverwendbare Notion-Beratungen um.",
         "scenario": "Die gleiche Support-Frage kehrt zurück, wenn die Lösung nicht dokumentiert ist. {{assistantName}} liest gelöste GitHub-Aufgaben und wandelt die genehmigte Lösung in eine klare Notion-Hilfe-Artikel um.",
@@ -3489,7 +3508,7 @@
             "title": "Neue Korrespondierende werden identifiziert"
           },
           "three": {
-            "description": "{{assistantName}} erstellt oder verfeinert HubSpot und optional Google-Kontakte.",
+            "description": "{{assistantName}} erstellt oder verfeinert den HubSpot-Datensatz.",
             "title": "Das Kontaktobjekt wird aktualisiert"
           },
           "two": {
@@ -3588,7 +3607,7 @@
             "title": "Die Besprechungsunterlagen werden vorbereitet"
           },
           "two": {
-            "description": "{{assistantName}} überprüft Google-Kontakte und HubSpot, wenn verbunden.",
+            "description": "{{assistantName}} überprüft HubSpot, wenn verbunden.",
             "title": "Teilnehmer-Kontext wird gesammelt"
           }
         },

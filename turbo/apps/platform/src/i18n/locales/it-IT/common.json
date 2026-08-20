@@ -3296,6 +3296,25 @@
         },
         "title": "File Sentry crashano come problemi di GitHub"
       },
+      "find-creator-leads-x": {
+        "description": "Trova e qualifica lead di creator su X.",
+        "scenario": "L'outbound si blocca quando la lista è obsoleta. {{assistantName}} trova su X creator e potenziali clienti in linea con il profilo target, li qualifica con la ricerca di persone integrata e Firecrawl e restituisce una lista di contatto prioritizzata.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} cerca su X gli account in linea con il profilo target.",
+            "title": "I candidati vengono trovati su X"
+          },
+          "three": {
+            "description": "{{assistantName}} valuta l'affinità, redige un primo messaggio e salva i lead in HubSpot se richiesto.",
+            "title": "La lista di contatto viene prioritizzata"
+          },
+          "two": {
+            "description": "{{assistantName}} verifica ruolo, azienda e portata con la ricerca integrata.",
+            "title": "Ogni lead viene qualificato"
+          }
+        },
+        "title": "Trova lead di creator su X"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Converte i fix approvati su GitHub in guida di aiuto Notion riutilizzabile.",
         "scenario": "La stessa domanda di supporto torna quando il fix non è mai documentato. {{assistantName}} legge le issue di GitHub risolte e trasforma la risoluzione approvata in una chiara guida di aiuto Notion.",
@@ -3533,7 +3552,7 @@
             "title": "Sono identificati nuovi corrispondenti\\n"
           },
           "three": {
-            "description": "{{assistantName}} crea o raffina i record di HubSpot e opzionalmente Google Contacts.\\n",
+            "description": "{{assistantName}} crea o arricchisce il record di HubSpot.\n",
             "title": "Il contatto viene aggiornato\\n"
           },
           "two": {
@@ -3632,7 +3651,7 @@
             "title": "La riunione viene preparata\\n"
           },
           "two": {
-            "description": "{{assistantName}} controlla Google Contacts e HubSpot quando sono collegati.\\n",
+            "description": "{{assistantName}} controlla HubSpot quando è collegato.\n",
             "title": "Si raccolgono contesti degli attendee\\n"
           }
         },

@@ -197,16 +197,21 @@ export const ONBOARDING_WORKFLOW_SPECS = {
     {
       id: "new-gmail-contacts-hubspot",
       prompt:
-        "Create a workflow that detects relevant new Gmail correspondents, checks for an existing HubSpot record, and creates or enriches the contact. Use Google Contacts only when the user wants their address book synchronized too.",
+        "Create a workflow that detects relevant new Gmail correspondents, checks for an existing HubSpot record, and creates or enriches the contact.",
       requiredConnectorSlugs: ["gmail", "hubspot"],
-      optionalConnectorSlugs: ["google-contacts"],
     },
     {
       id: "research-new-signups-apollo",
       prompt:
-        "Create a workflow that researches newly added HubSpot leads with built-in public web research, summarizes company and role context, and optionally cross-checks Google Contacts. Do not request a separate research connector.",
+        "Create a workflow that researches newly added HubSpot leads with built-in public web research, summarizes company and role context, and writes the summary back to the lead. Do not request a separate research connector.",
       requiredConnectorSlugs: ["hubspot"],
-      optionalConnectorSlugs: ["google-contacts"],
+    },
+    {
+      id: "find-creator-leads-x",
+      prompt:
+        "Create a lead-generation workflow that finds creators and prospects on X who match the user's target profile, then qualifies each candidate with the built-in Perplexity people search and Firecrawl capabilities to confirm role, company, audience, and recent work. Score fit, return a ranked outreach list with a personalized opening message for human review, and optionally save qualified leads to HubSpot. Do not request a separate research or enrichment connector, and never send outreach automatically.",
+      requiredConnectorSlugs: ["x"],
+      optionalConnectorSlugs: ["hubspot"],
     },
     {
       id: "gmail-followups-auto",
@@ -218,9 +223,9 @@ export const ONBOARDING_WORKFLOW_SPECS = {
     {
       id: "prep-google-calendar-meetings",
       prompt:
-        "Create a pre-meeting workflow that reviews upcoming Google Calendar events, enriches attendee context from Google Contacts and HubSpot when available, and produces a short briefing in the automation thread.",
+        "Create a pre-meeting workflow that reviews upcoming Google Calendar events, enriches attendee context from HubSpot when available, and produces a short briefing in the automation thread.",
       requiredConnectorSlugs: ["google-calendar"],
-      optionalConnectorSlugs: ["google-contacts", "hubspot"],
+      optionalConnectorSlugs: ["hubspot"],
     },
     {
       id: "log-gong-calls-hubspot",

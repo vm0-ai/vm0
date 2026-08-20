@@ -3296,6 +3296,25 @@
         },
         "title": "Sentry envoie des incidents comme des problèmes GitHub"
       },
+      "find-creator-leads-x": {
+        "description": "Trouvez et qualifiez des leads créateurs sur X.",
+        "scenario": "La prospection s'essouffle quand la liste est obsolète. {{assistantName}} trouve sur X les créateurs et prospects correspondant au profil cible, les qualifie avec la recherche de personnes intégrée et Firecrawl, puis renvoie une liste de contact priorisée.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} recherche sur X les comptes correspondant au profil cible.",
+            "title": "Des candidats sont trouvés sur X"
+          },
+          "three": {
+            "description": "{{assistantName}} évalue l'adéquation, rédige un premier message et enregistre éventuellement les leads dans HubSpot.",
+            "title": "La liste de contact est priorisée"
+          },
+          "two": {
+            "description": "{{assistantName}} vérifie le rôle, l'entreprise et l'audience avec la recherche intégrée.",
+            "title": "Chaque lead est qualifié"
+          }
+        },
+        "title": "Trouver des leads créateurs sur X"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Convertissez les corrections GitHub confirmées en guidance Notion réutilisable.",
         "scenario": "La même question de support revient lorsque la correction n'est jamais documentée. {{assistantName}} lit les corrections GitHub résolues et transforme la résolution approuvée en un article de aide Notion clair.",
@@ -3533,7 +3552,7 @@
             "title": "Des correspondants nouveaux sont identifiés"
           },
           "three": {
-            "description": "{{assistantName}} crée ou enrichit HubSpot et, optionnellement, Google Contacts.",
+            "description": "{{assistantName}} crée ou enrichit la fiche HubSpot.",
             "title": "Le contact est mis à jour"
           },
           "two": {
@@ -3632,7 +3651,7 @@
             "title": "Un résumé est préparé"
           },
           "two": {
-            "description": "{{assistantName}} vérifie Google Contacts et HubSpot lorsque cela est possible.",
+            "description": "{{assistantName}} vérifie HubSpot lorsque cela est possible.",
             "title": "Un contexte de participants est rassemblé"
           }
         },

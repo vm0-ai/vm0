@@ -333,9 +333,9 @@ function representativeCategoryConnectors(
 }
 
 const CATEGORY_CONNECTOR_TILE_CLASSES = [
-  "-right-2.5 top-2.5 rotate-[7deg] opacity-40",
-  "right-6 top-6 -rotate-[5deg] opacity-30",
-  "right-14 top-2 rotate-[3deg] opacity-20",
+  "-right-2.5 top-2.5 rotate-[7deg] opacity-[0.22]",
+  "right-6 top-6 -rotate-[5deg] opacity-[0.15]",
+  "right-14 top-2 rotate-[3deg] opacity-[0.1]",
 ] as const;
 
 function CategoryConnectorBackground({
@@ -367,7 +367,7 @@ function CategoryConnectorBackground({
           <span
             key={connectorSlug}
             className={cn(
-              "absolute inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-gray-50/80 shadow-[0_8px_22px_hsl(220_12%_20%/0.045)] dark:bg-gray-50/10",
+              "absolute inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/35 bg-gray-50/40 shadow-[0_6px_18px_hsl(220_12%_20%/0.02)] dark:bg-gray-50/[0.06]",
               CATEGORY_CONNECTOR_TILE_CLASSES[index],
             )}
           >

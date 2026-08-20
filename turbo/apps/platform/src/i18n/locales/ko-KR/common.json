@@ -3251,6 +3251,25 @@
         },
         "title": "파일 세ｎｔｒｙ가 GitHub 이슈로 변합니다"
       },
+      "find-creator-leads-x": {
+        "description": "X에서 크리에이터 리드를 찾아 검증합니다.",
+        "scenario": "리스트가 오래되면 아웃바운드가 멈춥니다. {{assistantName}}은 목표 프로필에 맞는 크리에이터와 잠재 고객을 X에서 찾고, 내장 인물 검색과 Firecrawl로 검증한 뒤 우선순위가 매겨진 아웃리치 목록을 반환합니다.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}}은 목표 프로필에 맞는 계정을 X에서 검색합니다.",
+            "title": "X에서 후보를 찾습니다"
+          },
+          "three": {
+            "description": "{{assistantName}}은 적합도를 평가하고 첫 메시지를 작성하며 필요 시 HubSpot에 저장합니다.",
+            "title": "아웃리치 목록의 우선순위를 정합니다"
+          },
+          "two": {
+            "description": "{{assistantName}}은 내장 리서치로 역할, 회사, 영향력을 확인합니다.",
+            "title": "각 리드를 검증합니다"
+          }
+        },
+        "title": "X에서 크리에이터 리드 찾기"
+      },
       "fixes-to-notion-help-docs": {
         "description": "승인된 깃허브 수정 사항을 재사용 가능한 노션 가이드로 변환하기.",
         "scenario": "수정 사항이 문서화되지 않은 경우 동일한 지원 질문이 다시 발생합니다. {{assistantName}}은 해결된 깃허브 이슈를 읽고 승인된 해결 방법을 명확한 노션 도움말 문서로 변환합니다.",
@@ -3488,7 +3507,7 @@
             "title": "신규 대화 상대가 식별됩니다"
           },
           "three": {
-            "description": "{{assistantName}}은 HubSpot과 옵션적으로 Google Contacts를 생성하거나 풍부하게 합니다.",
+            "description": "{{assistantName}}은 HubSpot 레코드를 생성하거나 보강합니다.",
             "title": "연락처가 업데이트됩니다"
           },
           "two": {
@@ -3587,7 +3606,7 @@
             "title": "보고서가 준비됩니다"
           },
           "two": {
-            "description": "{{assistantName}}은 연결되어 있을 때 Google Contacts와 HubSpot을 확인합니다.",
+            "description": "{{assistantName}}은 연결되어 있을 때 HubSpot을 확인합니다.",
             "title": "참석자 맥락이 수집됩니다"
           }
         },

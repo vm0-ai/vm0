@@ -3252,6 +3252,25 @@
         },
         "title": "File Sentry crashes as GitHub issues"
       },
+      "find-creator-leads-x": {
+        "description": "Find and qualify creator leads from X.",
+        "scenario": "Outbound stalls when the list is stale. {{assistantName}} finds creators and prospects on X that match the target profile, qualifies each one with built-in people search and Firecrawl, and returns a ranked outreach list.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} searches X for accounts that match the target profile.",
+            "title": "Candidates are found on X"
+          },
+          "three": {
+            "description": "{{assistantName}} scores fit, drafts an opener, and optionally saves leads to HubSpot.",
+            "title": "The outreach list is ranked"
+          },
+          "two": {
+            "description": "{{assistantName}} verifies role, company, and reach with built-in research.",
+            "title": "Each lead is qualified"
+          }
+        },
+        "title": "Find creator leads on X"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Convert confirmed GitHub fixes into reusable Notion guidance.",
         "scenario": "The same support question returns when the fix is never documented. {{assistantName}} reads resolved GitHub issues and turns the approved resolution into a clear Notion help article.",
@@ -3489,7 +3508,7 @@
             "title": "New correspondents are identified"
           },
           "three": {
-            "description": "{{assistantName}} creates or enriches HubSpot and optionally Google Contacts.",
+            "description": "{{assistantName}} creates or enriches the HubSpot record.",
             "title": "The contact is updated"
           },
           "two": {
@@ -3588,7 +3607,7 @@
             "title": "The briefing is prepared"
           },
           "two": {
-            "description": "{{assistantName}} checks Google Contacts and HubSpot when connected.",
+            "description": "{{assistantName}} checks HubSpot when connected.",
             "title": "Attendee context is gathered"
           }
         },

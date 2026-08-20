@@ -3296,6 +3296,25 @@
         },
         "title": "Arquivos do Sentry caem como issues do GitHub"
       },
+      "find-creator-leads-x": {
+        "description": "Encontre e qualifique leads de criadores no X.",
+        "scenario": "A prospecção trava quando a lista fica desatualizada. {{assistantName}} encontra criadores e prospects no X que combinam com o perfil-alvo, qualifica cada um com a busca de pessoas integrada e o Firecrawl e devolve uma lista de contato priorizada.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} busca no X contas que combinam com o perfil-alvo.",
+            "title": "Candidatos são encontrados no X"
+          },
+          "three": {
+            "description": "{{assistantName}} avalia a aderência, redige a mensagem inicial e opcionalmente salva os leads no HubSpot.",
+            "title": "A lista de contato é priorizada"
+          },
+          "two": {
+            "description": "{{assistantName}} verifica cargo, empresa e alcance com a pesquisa integrada.",
+            "title": "Cada lead é qualificado"
+          }
+        },
+        "title": "Encontrar leads de criadores no X"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Converta soluções confirmadas no GitHub em orientação Notion reutilizável.",
         "scenario": "A mesma pergunta de suporte retorna quando a solução não é documentada. {{assistantName}} lê issues do GitHub resolvidas e transforma a resolução aprovada em um artigo de ajuda Notion claro.",
@@ -3533,7 +3552,7 @@
             "title": "Novos correspondentes são identificados"
           },
           "three": {
-            "description": "{{assistantName}} cria ou enriquece o HubSpot e, opcionalmente, os contatos do Google.",
+            "description": "{{assistantName}} cria ou enriquece o registro do HubSpot.",
             "title": "O contato é atualizado"
           },
           "two": {
@@ -3632,7 +3651,7 @@
             "title": "O briefing é preparado"
           },
           "two": {
-            "description": "{{assistantName}} verifica os contatos do Google Contacts e o HubSpot quando conectado.",
+            "description": "{{assistantName}} verifica o HubSpot quando conectado.",
             "title": "Contexto dos participantes é coletado"
           }
         },

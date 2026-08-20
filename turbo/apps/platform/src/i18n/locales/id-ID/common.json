@@ -3251,6 +3251,25 @@
         },
         "title": "File Sentry crash menjadi masalah GitHub"
       },
+      "find-creator-leads-x": {
+        "description": "Temukan dan kualifikasi lead kreator dari X.",
+        "scenario": "Outbound melambat ketika daftarnya usang. {{assistantName}} menemukan kreator dan prospek di X yang cocok dengan profil target, mengualifikasi setiap kandidat dengan pencarian orang bawaan dan Firecrawl, lalu mengembalikan daftar outreach yang diperingkat.",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}} mencari akun di X yang cocok dengan profil target.",
+            "title": "Kandidat ditemukan di X"
+          },
+          "three": {
+            "description": "{{assistantName}} menilai kecocokan, menyusun pesan pembuka, dan opsional menyimpan lead ke HubSpot.",
+            "title": "Daftar outreach diperingkat"
+          },
+          "two": {
+            "description": "{{assistantName}} memverifikasi peran, perusahaan, dan jangkauan dengan riset bawaan.",
+            "title": "Setiap lead dikualifikasi"
+          }
+        },
+        "title": "Temukan lead kreator di X"
+      },
       "fixes-to-notion-help-docs": {
         "description": "Konversikan penyelesaian GitHub yang terkonfirmasi menjadi panduan Notion yang dapat digunakan.",
         "scenario": "Pertanyaan dukungan yang sama kembali ketika penyelesaian tidak pernah didokumentasikan. {{assistantName}} membaca isu GitHub yang terpecahkan dan mengubah penyelesaian yang disetujui menjadi artikel panduan Notion yang jelas.",
@@ -3488,7 +3507,7 @@
             "title": "Kontak baru diidentifikasi"
           },
           "three": {
-            "description": "{{assistantName}} membuat atau kayakan data kontak di HubSpot dan pilihan Google Contacts.",
+            "description": "{{assistantName}} membuat atau memperkaya data kontak di HubSpot.",
             "title": "Kontak diperbarui"
           },
           "two": {
@@ -3587,7 +3606,7 @@
             "title": "Ringkasan disiapkan"
           },
           "two": {
-            "description": "{{assistantName}} memeriksa Google Contacts dan HubSpot ketika terhubung.",
+            "description": "{{assistantName}} memeriksa HubSpot ketika terhubung.",
             "title": "Konteks peserta dikumpulkan"
           }
         },

@@ -3251,6 +3251,25 @@
         },
         "title": "SentryでファイルがGitHubの問題としてクラッシュする"
       },
+      "find-creator-leads-x": {
+        "description": "Xからクリエイターのリードを見つけて選別します。",
+        "scenario": "リストが古くなるとアウトバウンドは停滞します。{{assistantName}}はターゲット像に合うクリエイターや見込み客をXで見つけ、組み込みの人物検索とFirecrawlで選別し、優先順位を付けたアプローチリストを返します。",
+        "steps": {
+          "one": {
+            "description": "{{assistantName}}はターゲット像に合うアカウントをXで検索します。",
+            "title": "Xで候補が見つかる"
+          },
+          "three": {
+            "description": "{{assistantName}}は適合度を評価し、初回メッセージを作成し、必要に応じてHubSpotに保存します。",
+            "title": "アプローチリストが順位付けされる"
+          },
+          "two": {
+            "description": "{{assistantName}}は組み込みのリサーチで役割、会社、影響力を確認します。",
+            "title": "各リードが選別される"
+          }
+        },
+        "title": "Xでクリエイターのリードを見つける"
+      },
       "fixes-to-notion-help-docs": {
         "description": "承認されたGitHubの修正を再利用可能なNotionのガイダンスに変換する。",
         "scenario": "同じサポート質問が修正が記録されていない場合、同じサポート質問が再発します。{{assistantName}}は解決済みのGitHubのissueと修正を読み、承認された解決策を明確なNotionのヘルプ記事に変換します。",
@@ -3488,7 +3507,7 @@
             "title": "新しい相手が特定されます"
           },
           "three": {
-            "description": "{{assistantName}}はHubSpotおよびオプションでGoogle連絡先を作成または充実させる。",
+            "description": "{{assistantName}}はHubSpotのレコードを作成または充実させます。",
             "title": "連絡先は更新されます"
           },
           "two": {
@@ -3587,7 +3606,7 @@
             "title": "議事録が準備されます"
           },
           "two": {
-            "description": "{{assistantName}}は連絡先とHubSpotが接続されている場合、Google連絡先とHubSpotを確認します。",
+            "description": "{{assistantName}}は接続されている場合にHubSpotを確認します。",
             "title": "出席者のコンテキストが集められます"
           }
         },
