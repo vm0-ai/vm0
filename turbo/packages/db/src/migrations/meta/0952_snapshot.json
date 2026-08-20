@@ -12740,32 +12740,20 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "idx_hosted_sites_id_public_brand": {
-          "name": "idx_hosted_sites_id_public_brand",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "public_brand",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "idx_hosted_sites_id_public_brand": {
+          "name": "idx_hosted_sites_id_public_brand",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "public_brand"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

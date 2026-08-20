@@ -210,20 +210,17 @@ function hostedR2Config(): HostedR2ConfigResult {
 }
 
 function publicHostDomain(publicBrand: PublicBrand): string {
-  // Rollout compatibility: older deployment config has only
-  // OKOU_HOST_DOMAIN. Remove both fallbacks after every supported API
-  // environment provides OKOU_PUBLIC_HOST_DOMAIN and the prior API release is
-  // outside the rollback window.
+  // API/config rollout fallback (bounded by the ~102-minute API rollout
+  // exposure): older deployment config has only OKOU_HOST_DOMAIN. Remove after
+  // every supported API environment provides OKOU_PUBLIC_HOST_DOMAIN; #27750.
   return publicBrand === "okou"
-    ? (env("OKOU_PUBLIC_HOST_DOMAIN") ??
-        env("OKOU_HOST_DOMAIN") ??
-        env("ZERO_HOST_DOMAIN"))
+    ? (env("OKOU_PUBLIC_HOST_DOMAIN") ?? env("OKOU_HOST_DOMAIN"))
     : env("ZERO_HOST_DOMAIN");
 }
 
 function publicHostScheme(publicBrand: PublicBrand): string {
   return publicBrand === "okou"
-    ? (env("OKOU_HOST_SCHEME") ?? env("ZERO_HOST_SCHEME"))
+    ? env("OKOU_HOST_SCHEME")
     : env("ZERO_HOST_SCHEME");
 }
 

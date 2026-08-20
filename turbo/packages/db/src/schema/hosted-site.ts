@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
@@ -39,9 +40,9 @@ export const hostedSites = pgTable(
     // versions that still identify sites by (org_id, slug).
     slug: varchar("slug", { length: 64 }).notNull(),
     requestedSlug: varchar("requested_slug", { length: 64 }),
-    // Existing rows and writes from the previous API release are VM0. Remove
-    // this default after that release is outside the rollback window; new API
-    // writes set the creation brand explicitly.
+    // DB/API rollout fallback (observed maximum: ~102 minutes): existing rows
+    // and writes from the previous API release are VM0. Remove this default
+    // after that release is outside the rollback window; tracked by #27750.
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
       .default("vm0")
@@ -75,7 +76,7 @@ export const hostedSites = pgTable(
           sql`${table.chatThreadId} IS NULL AND ${table.requestedSlug} IS NOT NULL`,
         ),
       uniqueIndex("idx_hosted_sites_public_slug").on(table.publicSlug),
-      uniqueIndex("idx_hosted_sites_id_public_brand").on(
+      unique("idx_hosted_sites_id_public_brand").on(
         table.id,
         table.publicBrand,
       ),
@@ -98,9 +99,9 @@ export const hostedDeployments = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     runId: text("run_id"),
-    // The previous API omits this field and therefore writes VM0. The
-    // composite foreign key below makes that fallback fail closed for Okou
-    // sites. Remove the default after the previous release cannot return.
+    // DB/API rollout fallback (observed maximum: ~102 minutes): the previous
+    // API omits this field and writes VM0. The composite foreign key below
+    // fails closed for Okou sites. Remove after that API cannot return; #27750.
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
       .default("vm0")

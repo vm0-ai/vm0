@@ -209,6 +209,7 @@ const OKOU_ENV_FALLBACKS = {
 } as const satisfies Partial<Record<EnvName, EnvName>>;
 
 type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;
+type RequiredOkouEnvName = "OKOU_HOST_DOMAIN" | "OKOU_HOST_SCHEME";
 
 const {
   get: getOverrideEnv,
@@ -238,6 +239,10 @@ function isOkouEnvName(name: EnvName): name is OkouEnvName {
   return Object.prototype.hasOwnProperty.call(OKOU_ENV_FALLBACKS, name);
 }
 
+export function env<K extends RequiredOkouEnvName>(
+  name: K,
+): NonNullable<EnvShape[K]>;
+export function env<K extends EnvName>(name: K): EnvShape[K];
 export function env<K extends EnvName>(name: K): EnvShape[K] {
   const value = readEnv(name);
   if (value !== undefined || !isOkouEnvName(name)) {

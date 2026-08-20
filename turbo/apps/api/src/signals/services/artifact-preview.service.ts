@@ -123,11 +123,12 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
+  // API/config rollout fallback (bounded by the ~102-minute API rollout
+  // exposure): accept the legacy Okou host setting until every supported API
+  // environment provides OKOU_PUBLIC_HOST_DOMAIN; remove under #27750.
   const hostDomains = [
     env("ZERO_HOST_DOMAIN"),
-    env("OKOU_PUBLIC_HOST_DOMAIN") ??
-      env("OKOU_HOST_DOMAIN") ??
-      env("ZERO_HOST_DOMAIN"),
+    env("OKOU_PUBLIC_HOST_DOMAIN") ?? env("OKOU_HOST_DOMAIN"),
   ];
   if (
     previewUrl.protocol !== "https:" ||
