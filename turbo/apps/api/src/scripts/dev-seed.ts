@@ -2,9 +2,9 @@
 
 import { pathToFileURL } from "node:url";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { VM0_MODEL_TO_PROVIDER } from "@okouai/api-contracts/contracts/model-providers";
+import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
   getSkillStorageName,
@@ -23,6 +23,7 @@ import { optionalEnv } from "../lib/env";
 import { nowDate } from "../lib/time";
 import { reconcileConnectorCatalogCompatibility$ } from "../signals/services/connector-catalog-compatibility.service";
 import { syncConnectorCatalog$ } from "../signals/services/connector-catalog-sync.service";
+import { upsertManagedModelKey } from "../signals/services/managed-model-key.service";
 import { onRejection } from "../signals/utils";
 import rawDevSeedSkillVolumes from "./dev-seed-skill-volumes.json";
 
@@ -677,21 +678,15 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from VM0_MODEL_TO_PROVIDER so new providers are
+ * Vendors are derived from all VM0 managed candidates so new providers are
  * automatically picked up.
  */
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
-  const vendors = new Set(
-    Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
-      return vendor;
-    }),
-  );
-
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of vendors) {
+  for (const vendor of getVm0ManagedRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
@@ -731,13 +726,28 @@ async function devSeed() {
     });
   writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
-  // --- vm0_api_keys (transactional replace) ---
+  // --- vm0_api_keys (revision-aware reconciliation) ---
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    await tx.delete(builtInModelKeys);
-    if (apiKeys.length > 0) {
-      await tx.insert(builtInModelKeys).values(apiKeys);
+    if (apiKeys.length === 0) {
+      await tx.delete(builtInModelKeys);
+    } else {
+      await tx.delete(builtInModelKeys).where(
+        notInArray(
+          builtInModelKeys.vendor,
+          apiKeys.map((key) => {
+            return key.vendor;
+          }),
+        ),
+      );
+      for (const key of apiKeys) {
+        await upsertManagedModelKey(tx, {
+          vendor: key.vendor,
+          apiKey: key.apiKey,
+          label: key.label ?? null,
+        });
+      }
     }
   });
   for (const k of apiKeys) {

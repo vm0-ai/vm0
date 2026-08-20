@@ -5481,6 +5481,12 @@ describe("CHAT-02: run-level model overrides", () => {
       modelRuntimeProvider: "anthropic-api-key",
       modelRuntimeModel: selectedModel,
       vm0ModelKeyId: expect.any(String),
+      vm0ModelKeyRevision: expect.any(Number),
+      vm0CredentialHealthGeneration: null,
+      vm0CandidateHealthGeneration: null,
+      vm0CredentialProbe: null,
+      vm0CandidateProbe: null,
+      vm0ProbeLeaseId: null,
       modelKeyVendor: "anthropic",
     });
 

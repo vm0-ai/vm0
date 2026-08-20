@@ -17,6 +17,12 @@ type StoredRunMetadataValues = Pick<
   | "modelRuntimeProvider"
   | "modelRuntimeModel"
   | "vm0ModelKeyId"
+  | "vm0ModelKeyRevision"
+  | "vm0CredentialHealthGeneration"
+  | "vm0CandidateHealthGeneration"
+  | "vm0CredentialProbe"
+  | "vm0CandidateProbe"
+  | "vm0ProbeLeaseId"
   | "codexServiceTier"
   | "selectedVideoModel"
   | "selectedImageModel"
@@ -43,6 +49,17 @@ type RunMetadataInput = Readonly<
     Partial<Omit<RunMetadataValues, "triggerSource">>
 >;
 
+type Vm0RunMetadataValues = Pick<
+  RunMetadataValues,
+  | "vm0ModelKeyId"
+  | "vm0ModelKeyRevision"
+  | "vm0CredentialHealthGeneration"
+  | "vm0CandidateHealthGeneration"
+  | "vm0CredentialProbe"
+  | "vm0CandidateProbe"
+  | "vm0ProbeLeaseId"
+>;
+
 type RunMetadataPatch = {
   [Key in keyof RunMetadataValues]: Readonly<
     Pick<RunMetadataValues, Key> & Partial<RunMetadataValues>
@@ -59,6 +76,20 @@ interface RunMetadataRow {
   readonly apiStartedAt: Date | null;
 }
 
+function normalizeVm0RunMetadata(
+  input: RunMetadataInput,
+): Vm0RunMetadataValues {
+  return {
+    vm0ModelKeyId: input.vm0ModelKeyId ?? null,
+    vm0ModelKeyRevision: input.vm0ModelKeyRevision ?? null,
+    vm0CredentialHealthGeneration: input.vm0CredentialHealthGeneration ?? null,
+    vm0CandidateHealthGeneration: input.vm0CandidateHealthGeneration ?? null,
+    vm0CredentialProbe: input.vm0CredentialProbe ?? null,
+    vm0CandidateProbe: input.vm0CandidateProbe ?? null,
+    vm0ProbeLeaseId: input.vm0ProbeLeaseId ?? null,
+  };
+}
+
 export function normalizeRunMetadata(
   input: RunMetadataInput,
 ): RunMetadataValues {
@@ -73,7 +104,7 @@ export function normalizeRunMetadata(
     selectedModel: input.selectedModel ?? null,
     modelRuntimeProvider: input.modelRuntimeProvider ?? null,
     modelRuntimeModel: input.modelRuntimeModel ?? null,
-    vm0ModelKeyId: input.vm0ModelKeyId ?? null,
+    ...normalizeVm0RunMetadata(input),
     codexServiceTier: input.codexServiceTier ?? null,
     selectedVideoModel: input.selectedVideoModel ?? null,
     selectedImageModel: input.selectedImageModel ?? null,

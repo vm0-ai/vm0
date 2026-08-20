@@ -1501,6 +1501,7 @@ export const chatEventsContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
       429: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Append a chat event and dispatch input when applicable",
   },

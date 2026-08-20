@@ -24,6 +24,9 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ManagedModelProviderFallback, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {

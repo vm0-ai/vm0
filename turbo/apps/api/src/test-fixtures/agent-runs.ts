@@ -245,6 +245,12 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
       modelRuntimeProvider: agentRuns.modelRuntimeProvider,
       modelRuntimeModel: agentRuns.modelRuntimeModel,
       vm0ModelKeyId: agentRuns.vm0ModelKeyId,
+      vm0ModelKeyRevision: agentRuns.vm0ModelKeyRevision,
+      vm0CredentialHealthGeneration: agentRuns.vm0CredentialHealthGeneration,
+      vm0CandidateHealthGeneration: agentRuns.vm0CandidateHealthGeneration,
+      vm0CredentialProbe: agentRuns.vm0CredentialProbe,
+      vm0CandidateProbe: agentRuns.vm0CandidateProbe,
+      vm0ProbeLeaseId: agentRuns.vm0ProbeLeaseId,
       modelKeyVendor: builtInModelKeys.vendor,
     })
     .from(agentRuns)

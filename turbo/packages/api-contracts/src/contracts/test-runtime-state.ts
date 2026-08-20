@@ -9,6 +9,42 @@ export const testRuntimeStateErrorSchema = z.object({
   error: z.string(),
 });
 
+const managedModelRuntimeHealthSnapshotSchema = z.object({
+  credential_generation: z.int().nonnegative(),
+  candidate_generation: z.int().nonnegative(),
+  credential_probe: z.boolean(),
+  candidate_probe: z.boolean(),
+  probe_lease_id: z.uuid().nullable(),
+});
+
+const managedModelRuntimeRouteSchema = z.object({
+  selected_model: z.string(),
+  provider_type: z.string(),
+  upstream_model: z.string(),
+  model_key_id: z.uuid(),
+  model_key_revision: z.int().positive(),
+  health: managedModelRuntimeHealthSnapshotSchema.nullable(),
+});
+
+const managedModelRuntimeOutcomeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("success") }),
+  z.object({
+    kind: z.literal("credential_failure"),
+    failure_kind: z.enum(["authentication", "billing"]),
+  }),
+  z.object({
+    kind: z.literal("candidate_failure"),
+    failure_kind: z.enum([
+      "rate_limit",
+      "unavailable",
+      "overload",
+      "server_failure",
+      "timeout",
+    ]),
+    retry_after_seconds: z.number().optional(),
+  }),
+]);
+
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-vm0-managed-default-model-key"),
@@ -22,6 +58,35 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("delete-vm0-managed-model-key"),
     fixture_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("seed-vm0-managed-model-candidate-keys"),
+    fixture_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("resolve-vm0-managed-model-route"),
+    selected_model: z.string(),
+    fallback_enabled: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("clear-vm0-managed-model-health"),
+  }),
+  z.object({
+    action: z.literal("apply-vm0-managed-model-outcome"),
+    route: managedModelRuntimeRouteSchema,
+    outcome: managedModelRuntimeOutcomeSchema,
+    fallback_enabled: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("upsert-vm0-managed-model-key"),
+    vendor: z.string().min(1).max(50),
+    api_key: z.string().min(1),
+    label: z.string().nullable(),
+  }),
+  z.object({
+    action: z.literal("delete-vm0-managed-model-key-by-id"),
+    model_key_id: z.uuid(),
   }),
   z.object({
     action: z.literal("read-browser-screenshot-schema-state"),
@@ -207,6 +272,14 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
+  managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
+  managed_model_key: z
+    .object({
+      id: z.uuid(),
+      vendor: z.string(),
+      revision: z.int().positive(),
+    })
+    .optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),

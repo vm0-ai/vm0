@@ -29,6 +29,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -2310,18 +2311,37 @@ async function vm0ModelProviderEnvironment(
     return null;
   }
   let route: BuiltInModelRuntimeRoute;
-  let key: { readonly id: string; readonly apiKey: string } | undefined;
+  let key:
+    | {
+        readonly id: string;
+        readonly apiKey: string;
+        readonly revision: number;
+      }
+    | undefined;
   if (resolvedRoute) {
     [key] = await db
-      .select({ id: builtInModelKeys.id, apiKey: builtInModelKeys.apiKey })
+      .select({
+        id: builtInModelKeys.id,
+        apiKey: builtInModelKeys.apiKey,
+        revision: builtInModelKeys.revision,
+      })
       .from(builtInModelKeys)
-      .where(eq(builtInModelKeys.id, resolvedRoute.modelKeyId))
+      .where(
+        and(
+          eq(builtInModelKeys.id, resolvedRoute.modelKeyId),
+          eq(builtInModelKeys.revision, resolvedRoute.modelKeyRevision),
+        ),
+      )
       .limit(1);
     route = resolvedRoute;
   } else {
     const target = builtInModelRuntimeTarget(selectedModel);
     [key] = await db
-      .select({ id: builtInModelKeys.id, apiKey: builtInModelKeys.apiKey })
+      .select({
+        id: builtInModelKeys.id,
+        apiKey: builtInModelKeys.apiKey,
+        revision: builtInModelKeys.revision,
+      })
       .from(builtInModelKeys)
       .where(eq(builtInModelKeys.vendor, target.vendor))
       .limit(1);
@@ -2333,6 +2353,8 @@ async function vm0ModelProviderEnvironment(
       providerType: target.providerType,
       upstreamModel: target.upstreamModel,
       modelKeyId: key.id,
+      modelKeyRevision: key.revision,
+      health: null,
     };
   }
   if (!key?.apiKey) {
@@ -2342,20 +2364,45 @@ async function vm0ModelProviderEnvironment(
   if (!secretName) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
+  const environment = providerEnvironmentFromSecretRefs(
+    route.providerType,
+    secretName,
+    key.apiKey,
+    route.upstreamModel,
+  );
+  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
     route.providerType,
   );
+  if (!codexRuntimeConfig) {
+    const modelCatalog = getModelProviderCodexCatalogForModel(
+      selectedModel,
+      route.upstreamModel,
+    );
+    if (modelCatalog) {
+      const baseUrl = environment.OPENAI_BASE_URL;
+      if (!baseUrl) {
+        throw new Error(
+          `Missing OPENAI_BASE_URL for VM0 Codex provider ${route.providerType}`,
+        );
+      }
+      codexRuntimeConfig = {
+        providerId: route.providerType,
+        name: MODEL_PROVIDER_TYPES[route.providerType].label,
+        baseUrl,
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog,
+      };
+    }
+  }
 
   return {
     id: null,
     type: "vm0",
     concreteType: route.providerType,
-    environment: providerEnvironmentFromSecretRefs(
-      route.providerType,
-      secretName,
-      key.apiKey,
-      route.upstreamModel,
-    ),
+    environment,
     secrets: { [secretName]: key.apiKey },
     selectedModel,
     builtInModelRuntimeRoute: route,
@@ -6017,31 +6064,105 @@ function launchRunValues(
   };
 }
 
+type Vm0LaunchMetadataValues = Pick<
+  RunMetadataValues,
+  | "modelRuntimeProvider"
+  | "modelRuntimeModel"
+  | "vm0ModelKeyId"
+  | "vm0ModelKeyRevision"
+  | "vm0CredentialHealthGeneration"
+  | "vm0CandidateHealthGeneration"
+  | "vm0CredentialProbe"
+  | "vm0CandidateProbe"
+  | "vm0ProbeLeaseId"
+>;
+
+type Vm0LaunchHealthMetadataValues = Pick<
+  Vm0LaunchMetadataValues,
+  | "vm0CredentialHealthGeneration"
+  | "vm0CandidateHealthGeneration"
+  | "vm0CredentialProbe"
+  | "vm0CandidateProbe"
+  | "vm0ProbeLeaseId"
+>;
+
+function vm0LaunchHealthMetadataValues(
+  health: BuiltInModelRuntimeRoute["health"],
+): Vm0LaunchHealthMetadataValues {
+  if (!health) {
+    return {
+      vm0CredentialHealthGeneration: null,
+      vm0CandidateHealthGeneration: null,
+      vm0CredentialProbe: null,
+      vm0CandidateProbe: null,
+      vm0ProbeLeaseId: null,
+    };
+  }
+  return {
+    vm0CredentialHealthGeneration: health.credentialGeneration,
+    vm0CandidateHealthGeneration: health.candidateGeneration,
+    vm0CredentialProbe: health.credentialProbe,
+    vm0CandidateProbe: health.candidateProbe,
+    vm0ProbeLeaseId: health.probeLeaseId,
+  };
+}
+
+function vm0LaunchMetadataValues(
+  modelProvider: ResolvedModelProviderEnvironment | null,
+): Vm0LaunchMetadataValues {
+  const runtimeRoute = modelProvider?.builtInModelRuntimeRoute;
+  if (!runtimeRoute) {
+    return {
+      modelRuntimeProvider: null,
+      modelRuntimeModel: null,
+      vm0ModelKeyId: null,
+      vm0ModelKeyRevision: null,
+      ...vm0LaunchHealthMetadataValues(null),
+    };
+  }
+  return {
+    modelRuntimeProvider: runtimeRoute.providerType,
+    modelRuntimeModel: runtimeRoute.upstreamModel,
+    vm0ModelKeyId: runtimeRoute.modelKeyId,
+    vm0ModelKeyRevision: runtimeRoute.modelKeyRevision,
+    ...vm0LaunchHealthMetadataValues(runtimeRoute.health),
+  };
+}
+
+function zeroRunLaunchMetadataInput(metadata: ZeroRunMetadata): {
+  readonly autonomyBudget: number | undefined;
+  readonly workflowAutomationId: string | null;
+  readonly goalId: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+  readonly triggerBrief: string | null;
+} {
+  return {
+    autonomyBudget: metadata.autonomyBudget,
+    workflowAutomationId: metadata.workflowAutomationId ?? null,
+    goalId: metadata.goalId ?? null,
+    codexServiceTier: metadata.codexServiceTier ?? null,
+    triggerBrief: metadata.triggerBrief ?? null,
+  };
+}
+
 function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   const modelPin =
     args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
-  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
   return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
-    autonomyBudget: metadata.autonomyBudget,
-    workflowAutomationId: metadata.workflowAutomationId ?? null,
-    goalId: metadata.goalId ?? null,
+    ...zeroRunLaunchMetadataInput(metadata),
     modelProvider: modelPin.modelProvider,
     modelProviderId: modelPin.modelProviderId,
     modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
     selectedModel: modelPin.selectedModel,
-    modelRuntimeProvider: runtimeRoute?.providerType ?? null,
-    modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
-    vm0ModelKeyId: runtimeRoute?.modelKeyId ?? null,
-    codexServiceTier: metadata.codexServiceTier ?? null,
+    ...vm0LaunchMetadataValues(args.modelProvider),
     selectedVideoModel: args.selectedVideoModel,
     selectedImageModel: args.selectedImageModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
     firstAssistantEventAcknowledgedAt: null,
     summary: null,
-    triggerBrief: metadata.triggerBrief ?? null,
   });
 }
 

@@ -108,6 +108,91 @@ export async function seedVm0ManagedModelKey(
   return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
+export async function seedVm0ManagedModelCandidateKeys(
+  context: TestContext,
+  selectedModel: string,
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
+  const response = await postAction(context, {
+    action: "seed-vm0-managed-model-candidate-keys",
+    fixture_id: fixtureId,
+    selected_model: selectedModel,
+  });
+  if (!response.selected_model) {
+    throw new Error("seedVm0ManagedModelCandidateKeys missing selected_model");
+  }
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+}
+
+type ManagedModelRuntimeRouteFixture = NonNullable<
+  TestRuntimeStateActionResponse["managed_model_route"]
+>;
+
+export async function resolveVm0ManagedModelRouteFixture(
+  context: TestContext,
+  selectedModel: string,
+  fallbackEnabled: boolean,
+): Promise<ManagedModelRuntimeRouteFixture | null> {
+  const response = await postAction(context, {
+    action: "resolve-vm0-managed-model-route",
+    selected_model: selectedModel,
+    fallback_enabled: fallbackEnabled,
+  });
+  return response.managed_model_route ?? null;
+}
+
+export async function clearVm0ManagedModelHealthFixture(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "clear-vm0-managed-model-health" });
+}
+
+type ManagedModelOutcomeFixture = Extract<
+  TestRuntimeStateActionBody,
+  { action: "apply-vm0-managed-model-outcome" }
+>["outcome"];
+
+export async function applyVm0ManagedModelOutcomeFixture(
+  context: TestContext,
+  route: ManagedModelRuntimeRouteFixture,
+  outcome: ManagedModelOutcomeFixture,
+  fallbackEnabled = true,
+): Promise<void> {
+  await postAction(context, {
+    action: "apply-vm0-managed-model-outcome",
+    route,
+    outcome,
+    fallback_enabled: fallbackEnabled,
+  });
+}
+
+export async function upsertVm0ManagedModelKeyFixture(
+  context: TestContext,
+  args: {
+    readonly vendor: string;
+    readonly apiKey: string;
+    readonly label: string | null;
+  },
+) {
+  const response = await postAction(context, {
+    action: "upsert-vm0-managed-model-key",
+    vendor: args.vendor,
+    api_key: args.apiKey,
+    label: args.label,
+  });
+  const key = response.managed_model_key;
+  if (!key) {
+    throw new Error("upsertVm0ManagedModelKeyFixture missing key identity");
+  }
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-model-key-by-id",
+      model_key_id: key.id,
+    });
+  });
+  return key;
+}
+
 export async function readBrowserScreenshotSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {

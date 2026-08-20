@@ -1,4 +1,6 @@
 import { command } from "ccstate";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { logger } from "../../lib/log";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
@@ -23,6 +25,7 @@ import {
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type { ModelFirstPin } from "./model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import {
@@ -258,9 +261,22 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.goal.orgId,
+    args.goal.userId,
+  );
+  const fallbackEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ManagedModelProviderFallback,
+    featureSwitchContext,
+  );
   const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
+      ? await resolveBuiltInModelRuntimeRoute(
+          args.db,
+          selectedModel,
+          fallbackEnabled,
+        )
       : undefined;
   signal.throwIfAborted();
   if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
@@ -272,9 +288,12 @@ async function resolveModelContext(
           status: 503,
           body: {
             error: {
-              code: "PROVIDER_UNAVAILABLE",
-              message:
-                "No model provider configured: no VM0 managed model key is configured",
+              code: fallbackEnabled
+                ? "MODEL_PROVIDER_UNAVAILABLE"
+                : "PROVIDER_UNAVAILABLE",
+              message: fallbackEnabled
+                ? "Every managed route for this model is temporarily unavailable"
+                : "No model provider configured: no VM0 managed model key is configured",
             },
           },
         },
