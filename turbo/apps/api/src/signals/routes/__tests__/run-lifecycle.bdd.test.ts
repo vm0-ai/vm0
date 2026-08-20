@@ -6248,6 +6248,49 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 
+  it("does not serialize an empty org queue drain with run admission", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization for queue drain admission");
+    }
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel without an organization queue entry",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    onTestFinished(async () => {
+      const cleanupResults = await Promise.allSettled([
+        releaseOrgAdmissionLock(context),
+        admissionLockRequest,
+      ]);
+      const cleanupFailure = cleanupResults.find((result) => {
+        return result.status === "rejected";
+      });
+      if (cleanupFailure?.status === "rejected") {
+        throw cleanupFailure.reason;
+      }
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await expect(readOrgAdmissionLockState(context)).resolves.toStrictEqual({
+      held: true,
+      waiting: false,
+    });
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+  });
+
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
