@@ -1,6 +1,7 @@
 use std::io;
 use std::mem::{MaybeUninit, size_of};
 use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 
 use process_control_ipc::receive_workload_placement;
@@ -89,6 +90,20 @@ fn open_descriptor_count() -> io::Result<usize> {
     Ok(std::fs::read_dir("/proc/self/fd")?.count())
 }
 
+fn assert_raw_rights_sender_round_trips() -> io::Result<()> {
+    let placement = std::fs::File::open("/dev/null")?;
+    let expected = placement.metadata()?;
+    let (sender, receiver) = UnixStream::pair()?;
+
+    send_rights(&sender, WORKLOAD_PLACEMENT_MARKER, &[placement.as_raw_fd()])?;
+    let received = std::fs::File::from(receive_workload_placement(&receiver)?);
+    let actual = received.metadata()?;
+
+    assert_eq!(actual.dev(), expected.dev());
+    assert_eq!(actual.ino(), expected.ino());
+    Ok(())
+}
+
 fn assert_rejected_without_descriptor_leak(
     case: &str,
     marker: u8,
@@ -119,6 +134,9 @@ fn malformed_workload_placement_messages_close_received_descriptors() -> io::Res
     // no parallel test in this process can perturb /proc/self/fd.
     let receiver_control_len = size_of::<[usize; RECEIVER_ANCILLARY_BUFFER_WORDS]>();
 
+    // Prove the raw fixture transfers a real descriptor before using it to
+    // construct malformed messages.
+    assert_raw_rights_sender_round_trips()?;
     assert_rejected_without_descriptor_leak("wrong marker", 0, 1)?;
     assert!(rights_control_len(2)? <= receiver_control_len);
     assert_rejected_without_descriptor_leak("multiple descriptors", WORKLOAD_PLACEMENT_MARKER, 2)?;
