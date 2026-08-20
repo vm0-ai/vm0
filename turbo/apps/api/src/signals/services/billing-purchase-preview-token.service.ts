@@ -68,9 +68,7 @@ export function parseBillingPreviewToken<T>(
 }
 
 export function billingPreviewExpiresAt(at = nowDate()): string {
-  return new Date(
-    at.getTime() + BILLING_PURCHASE_PREVIEW_TTL_MS,
-  ).toISOString();
+  return new Date(at.getTime() + BILLING_PURCHASE_PREVIEW_TTL_MS).toISOString();
 }
 
 export function createBillingPaymentMethodPreviewToken(

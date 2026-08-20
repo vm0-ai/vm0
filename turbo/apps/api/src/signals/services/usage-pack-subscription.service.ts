@@ -846,15 +846,13 @@ async function prepareUsagePackPurchaseSnapshot(
   });
 }
 
-async function createUsagePackCheckoutForSnapshot(
-  args: {
-    readonly db: Pick<Db, "update">;
-    readonly stripe: StripeClient;
-    readonly purchase: CreateUsagePackCheckoutSessionArgs;
-    readonly customerId: string;
-    readonly usagePackSubscriptionId: string;
-  },
-): Promise<string> {
+async function createUsagePackCheckoutForSnapshot(args: {
+  readonly db: Pick<Db, "update">;
+  readonly stripe: StripeClient;
+  readonly purchase: CreateUsagePackCheckoutSessionArgs;
+  readonly customerId: string;
+  readonly usagePackSubscriptionId: string;
+}): Promise<string> {
   const metadata = usagePackCheckoutMetadata({
     orgId: args.purchase.orgId,
     tier: args.purchase.tier,
@@ -932,15 +930,13 @@ async function createSerializedUsagePackCheckout(
       }
       return {
         kind: "complete" as const,
-        url: await createUsagePackCheckoutForSnapshot(
-          {
-            db: lockTx,
-            stripe: getStripeClient(),
-            purchase: args,
-            customerId,
-            usagePackSubscriptionId: resolution.usagePackSubscriptionId,
-          },
-        ),
+        url: await createUsagePackCheckoutForSnapshot({
+          db: lockTx,
+          stripe: getStripeClient(),
+          purchase: args,
+          customerId,
+          usagePackSubscriptionId: resolution.usagePackSubscriptionId,
+        }),
       };
     });
     if (attempt.kind === "complete") {
@@ -1090,10 +1086,7 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
       .set({ updatedAt: issuedAt })
       .where(
         and(
-          eq(
-            usagePackSubscriptions.id,
-            resolution.usagePackSubscriptionId,
-          ),
+          eq(usagePackSubscriptions.id, resolution.usagePackSubscriptionId),
           eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
           isNull(usagePackSubscriptions.stripeCheckoutSessionId),
           isNull(usagePackSubscriptions.stripeSubscriptionId),
@@ -1525,15 +1518,13 @@ async function confirmUsagePackPurchaseSnapshot(
       status: "confirmed",
       response: {
         status: "checkout_required",
-        checkoutUrl: await createUsagePackCheckoutForSnapshot(
-          {
-            db,
-            stripe,
-            purchase,
-            customerId: preview.customerId,
-            usagePackSubscriptionId: preview.usagePackSubscriptionId,
-          },
-        ),
+        checkoutUrl: await createUsagePackCheckoutForSnapshot({
+          db,
+          stripe,
+          purchase,
+          customerId: preview.customerId,
+          usagePackSubscriptionId: preview.usagePackSubscriptionId,
+        }),
       },
       paidInvoice: null,
     };
@@ -3426,10 +3417,7 @@ export async function reconcileUsagePackSubscriptions(
             isNull(usagePackSubscriptions.stripeSubscriptionId),
             isNull(usagePackSubscriptions.stripeCheckoutSessionId),
             eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
-            lte(
-              usagePackSubscriptions.updatedAt,
-              pendingSnapshotStaleBefore,
-            ),
+            lte(usagePackSubscriptions.updatedAt, pendingSnapshotStaleBefore),
           ),
           and(
             isNull(usagePackSubscriptions.stripeSubscriptionId),

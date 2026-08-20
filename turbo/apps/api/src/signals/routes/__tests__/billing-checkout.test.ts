@@ -3162,7 +3162,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       ).toISOString(),
     });
 
-    let reconciliationPromise: Promise<void> | undefined;
+    const reconciliationPromises: Promise<void>[] = [];
     const holdPromise = usagePackStateAction({
       action: "hold-billing-purchase-lock",
       orgId: fixture.orgId,
@@ -3175,16 +3175,17 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         action: "read-billing-purchase-lock-state",
         orgId: fixture.orgId,
       });
-      if (lockState.action === "billing-purchase-lock-state" && lockState.held) {
+      if (
+        lockState.action === "billing-purchase-lock-state" &&
+        lockState.held
+      ) {
         await usagePackStateAction({
           action: "release-billing-purchase-lock",
           orgId: fixture.orgId,
         });
       }
       await Promise.allSettled([holdPromise]);
-      if (reconciliationPromise) {
-        await Promise.allSettled([reconciliationPromise]);
-      }
+      await Promise.allSettled(reconciliationPromises);
     });
     await expect
       .poll(
@@ -3199,7 +3200,8 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       )
       .toBeTruthy();
 
-    reconciliationPromise = reconcileBillingOrganization(fixture.orgId);
+    const reconciliationPromise = reconcileBillingOrganization(fixture.orgId);
+    reconciliationPromises.push(reconciliationPromise);
     await expect
       .poll(
         async () => {
@@ -3328,7 +3330,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       stripeSubscriptionId: null,
       subscriptionStatus: "checkout_pending",
     });
-    expect(context.mocks.stripe.checkout.sessions.expire).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.expire,
+    ).not.toHaveBeenCalled();
 
     context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
       id: checkoutSessionId,
@@ -3337,9 +3341,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     });
     mockNow(new Date(startedAt.getTime() + 16 * 60 * 1000));
     await reconcileBillingOrganization(fixture.orgId);
-    expect(context.mocks.stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
-      checkoutSessionId,
-    );
+    expect(
+      context.mocks.stripe.checkout.sessions.retrieve,
+    ).toHaveBeenCalledWith(checkoutSessionId);
     expect(
       (
         await readUsagePackState(
@@ -12135,6 +12139,10 @@ describe("usage pack allocation management", () => {
 
   it("previews and confirms an invitation with the saved payment method", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
+    mockNow(new Date("2035-05-15T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
