@@ -265,9 +265,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28420. Every caller of these five derives its URL from the contract, so
   // nothing in this repository still asks for a branded form. Released builds
   // do: a browser tab holding already-loaded platform code keeps calling the
-  // `okou` path it was built against until it navigates or reloads, and the
+  // `okou` path it was built against until it navigates or reloads, which is
+  // the ~2 day old-web-client window in `docs/fallback.md` section 7. The
   // `zero` form was reachable through the blanket expansion until the contract
-  // moved. Both are owed.
+  // moved. Both are owed, and both are removable only under #26701's evidence
+  // rules, like every other row in this table.
   "/api/attribution/signup": [
     "/api/okou/attribution/signup",
     "/api/zero/attribution/signup",
