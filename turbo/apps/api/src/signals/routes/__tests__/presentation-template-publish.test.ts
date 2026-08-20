@@ -7,6 +7,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import {
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_BYTES,
   PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   presentationTemplatesContract,
@@ -267,7 +268,7 @@ function guidance(): readonly { path: string; content: string }[] {
 async function uploadInputs(
   actor: ApiTestUser,
   fixture: Fixture,
-  packageFiles: readonly { path: string; content: string }[],
+  archive: Buffer,
 ): Promise<{
   readonly sourceFileId: string;
   readonly pageFileIds: string[];
@@ -300,7 +301,7 @@ async function uploadInputs(
       filename: "package.tar.gz",
       contentType: PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
     },
-    tarGz(packageFiles),
+    archive,
   );
   return { sourceFileId, pageFileIds, packageFileId };
 }
@@ -314,7 +315,7 @@ describe("presentation template publish", () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
-    const inputs = await uploadInputs(actor, fixture, guidance());
+    const inputs = await uploadInputs(actor, fixture, tarGz(guidance()));
 
     mocks.clerk.session(actor.userId, actor.orgId);
     const published = await accept(
@@ -361,9 +362,11 @@ describe("presentation template publish", () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
-    const inputs = await uploadInputs(actor, fixture, [
-      { path: "SKILL.md", content: "# Only half of it\n" },
-    ]);
+    const inputs = await uploadInputs(
+      actor,
+      fixture,
+      tarGz([{ path: "SKILL.md", content: "# Only half of it\n" }]),
+    );
 
     mocks.clerk.session(actor.userId, actor.orgId);
     const rejected = await accept(
@@ -387,10 +390,11 @@ describe("presentation template publish", () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
-    const inputs = await uploadInputs(actor, fixture, [
-      ...guidance(),
-      { path: "../escaped.md", content: "nope\n" },
-    ]);
+    const inputs = await uploadInputs(
+      actor,
+      fixture,
+      tarGz([...guidance(), { path: "../escaped.md", content: "nope\n" }]),
+    );
 
     mocks.clerk.session(actor.userId, actor.orgId);
     const rejected = await accept(
@@ -403,13 +407,42 @@ describe("presentation template publish", () => {
     expect(rejected.body.error.message).toContain("Unsafe package path");
   });
 
+  it("refuses a package that unpacks past the size cap", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    // Compresses to a few hundred kilobytes, so the stored object clears every
+    // size check that reads the upload's own size. Only a cap on the
+    // decompressed output can reject it.
+    const bomb = gzipSync(
+      Buffer.alloc(MAX_PRESENTATION_TEMPLATE_PACKAGE_BYTES + 1),
+    );
+    const inputs = await uploadInputs(actor, fixture, bomb);
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const rejected = await accept(
+      templateClient().publish({
+        headers: webHeaders(),
+        body: { title: "Zip bomb", ...inputs },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toContain("must unpack to");
+
+    const listed = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([]);
+  });
+
   it("refuses uploads that belong to someone else", async () => {
     const owner = bdd.user();
     const stranger = bdd.user();
     await enablePresentationTemplates(owner);
     await enablePresentationTemplates(stranger);
     const fixture = installS3Fixture();
-    const inputs = await uploadInputs(owner, fixture, guidance());
+    const inputs = await uploadInputs(owner, fixture, tarGz(guidance()));
 
     mocks.clerk.session(stranger.userId, stranger.orgId);
     const rejected = await accept(
