@@ -4,14 +4,12 @@ import json
 
 import pytest
 
-import connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 import request_streaming
 import upstream_destination_binding
 from tests.connector_diagnostic_helpers import (
-    write_connector_diagnostic_capture_registry,
     write_connector_diagnostic_catalog_cache,
     write_shared_base_diagnostic_catalog,
 )
@@ -21,35 +19,6 @@ from tests.request_handler_helpers import (
     _vm_without_firewalls,
     _write_registry,
 )
-
-
-def _assert_fal_local_connector_diagnostic(flow):
-    assert flow.response is not None
-    assert flow.response.status_code == 424
-    content = flow.response.content
-    assert content is not None
-    body = json.loads(content)
-    assert body == {
-        "error": "connector_not_configured_for_run",
-        "connector": "fal",
-        "reason": "not_configured_for_run",
-        "message": (
-            "fal is not configured for this run. FAL_TOKEN is unavailable, "
-            "so credentials cannot be injected."
-        ),
-        "envNames": ["FAL_TOKEN"],
-        "base": "https://fal.run",
-        "upstreamStatus": 0,
-    }
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://fal.run"
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
-    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == "not_configured_for_run"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
 
 
 def _write_shared_base_active_firewall_registry(
@@ -410,7 +379,7 @@ async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
-async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
+async def test_inactive_builtin_connector_url_without_auth_allows_upstream(
     tmp_path, real_flow, mitm_ctx
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
@@ -421,159 +390,8 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
         host="fal.run",
         path="/fal-ai/nano-banana-pro",
         method="POST",
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-        mitm_addon.response(flow)
-
-    _assert_fal_local_connector_diagnostic(flow)
-    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert entry["action"] == "ALLOW"
-    assert entry["status"] == 424
-    assert entry["firewall_error"] == "connector_not_configured_for_run"
-    assert entry["connector_diagnostic_slug"] == "fal"
-    [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
-    assert proxy_entry["type"] == "connector_diagnostic"
-    assert proxy_entry["connector"] == "fal"
-    assert proxy_entry["upstream_status"] == 0
-    assert http_error_entry["type"] == "http_error"
-    assert http_error_entry["status"] == 424
-
-
-async def test_inactive_builtin_connector_head_diagnostic_is_bodyless(
-    tmp_path, real_flow, mitm_ctx
-):
-    reg_path = write_connector_diagnostic_capture_registry(tmp_path)
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path="/fal-ai/nano-banana-pro",
-        method="HEAD",
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-        mitm_addon.response(flow)
-
-    assert flow.response is not None
-    assert flow.response.status_code == 424
-    assert flow.response.raw_content == b""
-    assert flow.response.headers["Content-Type"] == "application/json"
-    assert flow.response.headers.get_all("Content-Length") == []
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
-    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert network_entry["response_size"] == 0
-    assert "response_body" not in network_entry
-    [connector_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
-    assert connector_entry["type"] == "connector_diagnostic"
-    assert http_error_entry["type"] == "http_error"
-
-
-@pytest.mark.parametrize(
-    ("path", "request_header_pairs"),
-    [
-        ("/fal-ai/nano-banana-pro", [("Authorization", "Bearer ")]),
-        ("/fal-ai/nano-banana-pro", [("Authorization", "Key ")]),
-        ("/fal-ai/nano-banana-pro", [("Proxy-Authorization", "Basic proxy-secret")]),
-        ("/fal-ai/nano-banana-pro?api_key=", []),
-        ("/fal-ai/nano-banana-pro?&&api_key&api_key=+&&", []),
-    ],
-)
-async def test_inactive_builtin_connector_url_with_empty_auth_gets_local_diagnostic(
-    tmp_path, real_flow, mitm_ctx, headers, path, request_header_pairs
-):
-    write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path=path,
-        method="POST",
-        request_headers=headers(
-            ("Host", "fal.run"),
-            *request_header_pairs,
-        ),
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-
-    _assert_fal_local_connector_diagnostic(flow)
-
-
-@pytest.mark.parametrize(
-    ("query", "expect_diagnostic"),
-    [
-        (
-            "&".join(["x"] * connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS),
-            True,
-        ),
-        (
-            "&".join(["x"] * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS + 1)),
-            False,
-        ),
-        (
-            "noise="
-            + "x"
-            * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=")),
-            True,
-        ),
-        (
-            "noise="
-            + "x"
-            * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=") + 1),
-            False,
-        ),
-    ],
-    ids=["field-limit", "over-field-limit", "character-limit", "over-character-limit"],
-)
-async def test_inactive_builtin_connector_query_inspection_boundaries(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    query,
-    expect_diagnostic,
-):
-    write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path=f"/fal-ai/nano-banana-pro?{query}",
-        method="POST",
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-
-    if expect_diagnostic:
-        _assert_fal_local_connector_diagnostic(flow)
-    else:
-        assert flow.response is None
-        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
-
-
-async def test_inactive_builtin_connector_stops_at_auth_before_field_limit(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-):
-    write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    trailing_query = "&".join(
-        ["x"] * (connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS + 1)
-    )
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path=f"/fal-ai/nano-banana-pro?api_key=user-token&{trailing_query}",
-        method="POST",
+        request_body=b'{"prompt":"original"}',
+        request_content_type="application/json",
     )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
@@ -581,129 +399,11 @@ async def test_inactive_builtin_connector_stops_at_auth_before_field_limit(
 
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
-
-
-@pytest.mark.parametrize(
-    "query",
-    [
-        "API%5fKEY=user+token",
-        "api_key=&noise=x&api_key=user-token",
-        "api_key=user=token",
-        "api_key=%ZZ",
-    ],
-    ids=["percent-plus", "duplicate", "first-equals", "invalid-percent"],
-)
-async def test_inactive_builtin_connector_encoded_query_auth_allows_upstream(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    query,
-):
-    write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path=f"/fal-ai/nano-banana-pro?{query}",
-        method="POST",
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-
-    assert flow.response is None
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
-
-
-async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
-    tmp_path, real_flow, mitm_ctx, headers
-):
-    write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="fal.run",
-        path="/fal-ai/nano-banana-pro",
-        method="POST",
-        request_headers=headers(
-            ("Host", "fal.run"),
-            ("Authorization", "Key user-provided"),
-        ),
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-
-    assert flow.response is None
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert metadata_keys.FIREWALL_BASE not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
-
-
-@pytest.mark.parametrize(
-    ("path", "request_header_pairs"),
-    [
-        ("/items", [("X-Workspace-Session", "user-provided")]),
-        ("/items?workspace_session=user-provided", []),
-        ("/items?WORKSPACE%5FSESSION=user+provided", []),
-    ],
-    ids=["configured-header", "configured-query", "encoded-configured-query"],
-)
-async def test_inactive_connector_url_with_configured_auth_allows_upstream(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    headers,
-    path,
-    request_header_pairs,
-):
-    write_connector_diagnostic_catalog_cache(
-        tmp_path,
-        firewalls={
-            "configured-auth": {
-                "name": "configured-auth",
-                "apis": [
-                    {
-                        "base": "https://configured.example.com",
-                        "hostPolicy": {
-                            "kind": "providerOwned",
-                            "exactHosts": ["configured.example.com"],
-                        },
-                        "auth": {
-                            "headers": {
-                                "X-Workspace-Session": "${{ secrets.WORKSPACE_TOKEN }}",
-                            },
-                            "query": {
-                                "workspace_session": "${{ secrets.WORKSPACE_TOKEN }}",
-                            },
-                        },
-                        "permissions": [{"name": "read", "rules": ["GET /items"]}],
-                    }
-                ],
-            }
-        },
-    )
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="configured.example.com",
-        path=path,
-        request_headers=headers(
-            ("Host", "configured.example.com"),
-            *request_header_pairs,
-        ),
-    )
-
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-
-    assert flow.response is None
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.method == "POST"
+    assert flow.request.host == "fal.run"
+    assert flow.request.path == "/fal-ai/nano-banana-pro"
+    assert flow.request.raw_content == b'{"prompt":"original"}'
+    assert "Authorization" not in flow.request.headers
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
