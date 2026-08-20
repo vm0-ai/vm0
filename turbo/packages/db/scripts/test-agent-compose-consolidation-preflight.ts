@@ -52,6 +52,7 @@ import {
 import { validateCheckpointAgentComposeSnapshotNullableStatic } from "./test-checkpoint-agent-compose-snapshot-nullable";
 import {
   PREFLIGHT_OUTPUT_ALLOWLIST,
+  PREFLIGHT_PHASES,
   SanitizedPreflightError,
   assertPreflightOutputShape,
   classifyPreflightInventory,
@@ -572,6 +573,7 @@ function testSchemaV4OutputContractRemainsByteStable(): void {
   const acceptedV4Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
       !outputPath.startsWith("checkpoints.transition.") &&
+      !outputPath.startsWith("probe.") &&
       !outputPath.includes(".historicalProductBuilderOrigin.") &&
       !outputPath.includes(".applicationHistoricalProductBuilderEnvironment.")
     );
@@ -603,6 +605,7 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
   const acceptedV5Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
       !outputPath.startsWith("checkpoints.transition.") &&
+      !outputPath.startsWith("probe.") &&
       !v6Markers.some((marker) => {
         return outputPath.includes(marker);
       })
@@ -624,7 +627,10 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
 /** Transition-only #28080 contract test; removed by #26938 Stage 8. */
 function testSchemaV6OutputContractRemainsByteStable(): void {
   const acceptedV6Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
-    return !outputPath.startsWith("checkpoints.transition.");
+    return (
+      !outputPath.startsWith("checkpoints.transition.") &&
+      !outputPath.startsWith("probe.")
+    );
   });
   assert.deepEqual(
     fingerprintSortedSet(
@@ -3100,6 +3106,7 @@ function testOutputRedaction(): void {
     "danglingHeads",
     "dependencies",
     "launchSnapshots",
+    "probe",
   ]);
   assert.deepEqual(outputPaths(result), [...PREFLIGHT_OUTPUT_ALLOWLIST]);
   assertSafeAggregateValues(result);
@@ -3117,11 +3124,23 @@ function testOutputRedaction(): void {
     },
     (error: unknown) => {
       assert.ok(error instanceof SanitizedPreflightError);
-      assert.deepEqual(sanitizedFailureResult(error), {
-        schemaVersion: "vm0.agent-compose-consolidation-preflight.v7",
-        status: "failed",
-        failureGates: ["probe.output_shape"],
-      });
+      const sanitized = sanitizedFailureResult(error);
+      assert.equal(
+        sanitized.schemaVersion,
+        "vm0.agent-compose-consolidation-preflight.v7",
+      );
+      assert.equal(sanitized.status, "failed");
+      assert.deepEqual(sanitized.failureGates, ["probe.output_shape"]);
+      assert.equal(sanitized.probe.failurePhase, "unknown");
+      assert.deepEqual(Object.keys(sanitized.probe.phaseDurationsMs), [
+        ...PREFLIGHT_PHASES,
+      ]);
+      assert.deepEqual(
+        Object.values(sanitized.probe.phaseDurationsMs),
+        PREFLIGHT_PHASES.map(() => {
+          return 0;
+        }),
+      );
       assert.equal(
         JSON.stringify(sanitizedFailureResult(error)).includes(
           "never-emit-invalid-output-value",
@@ -3152,6 +3171,9 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
   }
   if (typeof value === "number") {
     assert.equal(Number.isSafeInteger(value) && value >= 0, true);
+    if (pathPrefix.startsWith("probe.phaseDurationsMs.")) {
+      assert.ok(value <= 30_000);
+    }
     return;
   }
   if (typeof value === "boolean") return;
@@ -3169,6 +3191,9 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     "stable",
     "supported",
     "repeatable read",
+    "none",
+    "unknown",
+    ...PREFLIGHT_PHASES,
   ]);
   assert.equal(allowedClassifications.has(value as string), true);
 }
@@ -3625,7 +3650,12 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.ok(inventoryStart >= 0 && inventoryEnd > inventoryStart);
   const inventorySource = preflightSource.slice(inventoryStart, inventoryEnd);
-  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 10);
+  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 11);
+  assert.match(inventorySource, /"checkpointStorageReferences"/u);
+  assert.match(
+    inventorySource,
+    /WITH "invalidCheckpointStorageReferences" AS \([\s\S]*CROSS JOIN LATERAL jsonb_array_elements/u,
+  );
 
   const historicalClassifierPath = path.join(
     repositoryRoot,
@@ -3824,7 +3854,17 @@ async function testDatabaseBoundariesForTimeZone(
         classification: executionOptions,
       });
       assert.equal(first.status, "passed");
-      assert.deepEqual(second, first);
+      const { probe: firstProbe, ...firstWithoutProbe } = first;
+      const { probe: secondProbe, ...secondWithoutProbe } = second;
+      assert.deepEqual(secondWithoutProbe, firstWithoutProbe);
+      assert.equal(firstProbe.failurePhase, "none");
+      assert.equal(secondProbe.failurePhase, "none");
+      assert.deepEqual(Object.keys(firstProbe.phaseDurationsMs), [
+        ...PREFLIGHT_PHASES,
+      ]);
+      assert.deepEqual(Object.keys(secondProbe.phaseDurationsMs), [
+        ...PREFLIGHT_PHASES,
+      ]);
 
       await withReadOnlySnapshot(client, {}, async () => {
         await assert.rejects(
@@ -4114,15 +4154,18 @@ async function testDatabaseBoundariesForTimeZone(
           readonly checkpointId: string;
         },
         checkpointCreatedAt: string,
+        createSession = true,
       ): Promise<void> => {
-        await client.query(
-          `INSERT INTO "agent_sessions" (
-             "id", "user_id", "org_id", "agent_compose_id"
-           ) VALUES (
-             $1, 'exercising-agent-user', 'exercising-agent-org', $2
-           )`,
-          [ids.sessionId, exercisingAgentId],
-        );
+        if (createSession) {
+          await client.query(
+            `INSERT INTO "agent_sessions" (
+               "id", "user_id", "org_id", "agent_compose_id"
+             ) VALUES (
+               $1, 'exercising-agent-user', 'exercising-agent-org', $2
+             )`,
+            [ids.sessionId, exercisingAgentId],
+          );
+        }
         await client.query(
           `INSERT INTO "agent_runs" (
              "id", "user_id", "org_id", "session_id", "status", "prompt",
@@ -4289,6 +4332,227 @@ async function testDatabaseBoundariesForTimeZone(
          WHERE "id" = $2`,
         [sharedVersionId, lineageSurvivor.checkpointId],
       );
+
+      const continuationSessionId = "00000000-0000-4000-8000-000000027643";
+      const earlierContinuation = {
+        sessionId: continuationSessionId,
+        runId: "00000000-0000-4000-8000-000000027644",
+        conversationId: "00000000-0000-4000-8000-000000027645",
+        checkpointId: "00000000-0000-4000-8000-000000027646",
+      } as const;
+      const latestContinuation = {
+        sessionId: continuationSessionId,
+        runId: "00000000-0000-4000-8000-000000027647",
+        conversationId: "00000000-0000-4000-8000-000000027648",
+        checkpointId: "00000000-0000-4000-8000-000000027649",
+      } as const;
+      await insertCheckpointLineageRun(
+        earlierContinuation,
+        "2026-08-19 01:00:02.000000",
+      );
+      await insertCheckpointLineageRun(
+        latestContinuation,
+        "2026-08-19 01:00:03.000000",
+        false,
+      );
+      const multiContinuation = await executeAgentComposeConsolidationPreflight(
+        {
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        },
+      );
+      assert.equal(
+        multiContinuation.checkpoints.transition.sessionReferenceClosure
+          .classification,
+        "exact",
+      );
+      assert.equal(
+        multiContinuation.checkpoints.transition.conversationReferenceClosure
+          .classification,
+        "exact",
+      );
+      assert.equal(
+        multiContinuation.checkpoints.transition.legacySnapshotLineage
+          .classification,
+        "exact",
+      );
+
+      await client.query(
+        `UPDATE "checkpoints" SET "conversation_id" = $1 WHERE "id" = $2`,
+        [latestContinuation.conversationId, earlierContinuation.checkpointId],
+      );
+      const mismatchedConversation =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      gatePresent(mismatchedConversation, "checkpoints.conversation_reference");
+      assert.equal(
+        mismatchedConversation.checkpoints.transition.sessionReferenceClosure
+          .classification,
+        "exact",
+      );
+      await client.query(
+        `UPDATE "checkpoints" SET "conversation_id" = $1 WHERE "id" = $2`,
+        [earlierContinuation.conversationId, earlierContinuation.checkpointId],
+      );
+
+      // Normal Session deletion cascades through Runs and checkpoints. Bypass
+      // those FK triggers only in this isolated database to prove that a
+      // catalog-corrupt dangling Run still fails the Session closure.
+      await client.query(`SET session_replication_role = 'replica'`);
+      try {
+        const deletedSession = await client.query(
+          `DELETE FROM "agent_sessions" WHERE "id" = $1`,
+          [continuationSessionId],
+        );
+        assert.equal(deletedSession.rowCount, 1);
+      } finally {
+        await client.query(`RESET session_replication_role`);
+      }
+      const missingSession = await executeAgentComposeConsolidationPreflight({
+        connectionString: testUrl,
+        repositoryRoot,
+        classification: {
+          ...executionOptions,
+          expectedDanglingHeadCount: 1,
+        },
+      });
+      gatePresent(missingSession, "checkpoints.session_reference");
+      assert.equal(
+        missingSession.checkpoints.transition.conversationReferenceClosure
+          .classification,
+        "exact",
+      );
+      await client.query(
+        `INSERT INTO "agent_sessions" (
+           "id", "user_id", "org_id", "agent_compose_id", "conversation_id"
+         ) VALUES (
+           $1, 'exercising-agent-user', 'exercising-agent-org', $2, $3
+         )`,
+        [
+          continuationSessionId,
+          exercisingAgentId,
+          latestContinuation.conversationId,
+        ],
+      );
+
+      const storageId = "00000000-0000-4000-8000-000000027650";
+      const storageVersionId = "e".repeat(64);
+      const storageMount = {
+        orgId: "exercising-agent-org",
+        userId: "exercising-agent-user",
+        name: "checkpoint-storage",
+        storageId,
+        version: storageVersionId,
+        mountPath: "/home/oai/share/checkpoint-storage",
+      } as const;
+      await client.query(
+        `INSERT INTO "storages" (
+           "id", "user_id", "name", "org_id", "s3_prefix"
+         ) VALUES ($1, $2, $3, $4, 'checkpoint-storage-prefix')`,
+        [storageId, storageMount.userId, storageMount.name, storageMount.orgId],
+      );
+      await client.query(
+        `INSERT INTO "storage_versions" (
+           "id", "storage_id", "s3_key", "archive_size", "created_by"
+         ) VALUES ($1, $2, 'checkpoint-storage-key', 0, $3)`,
+        [storageVersionId, storageId, storageMount.userId],
+      );
+      await client.query(
+        `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
+         WHERE "id" = $2`,
+        [JSON.stringify([storageMount]), latestContinuation.checkpointId],
+      );
+      const validStorageReference =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      assert.equal(
+        validStorageReference.checkpoints.transition.storageReferenceClosure
+          .classification,
+        "exact",
+      );
+
+      await client.query(
+        `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
+         WHERE "id" = $2`,
+        [
+          JSON.stringify([{ ...storageMount, version: "f".repeat(64) }]),
+          latestContinuation.checkpointId,
+        ],
+      );
+      const missingStorageVersion =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      gatePresent(missingStorageVersion, "checkpoints.storage_reference");
+      await client.query(
+        `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
+         WHERE "id" = $2`,
+        [JSON.stringify([storageMount]), latestContinuation.checkpointId],
+      );
+
+      await writer.query("BEGIN");
+      try {
+        await writer.query(`LOCK TABLE "storages" IN ACCESS EXCLUSIVE MODE`);
+        await assert.rejects(
+          executeAgentComposeConsolidationPreflight({
+            connectionString: testUrl,
+            repositoryRoot,
+            classification: {
+              ...executionOptions,
+              expectedDanglingHeadCount: 1,
+            },
+            statementTimeoutMs: 250,
+          }),
+          (error: unknown) => {
+            const failure = sanitizedFailureResult(error);
+            assert.deepEqual(failure.failureGates, ["probe.statement_timeout"]);
+            assert.equal(
+              failure.probe.failurePhase,
+              "checkpointStorageReferences",
+            );
+            assert.ok(
+              failure.probe.phaseDurationsMs.checkpointStorageReferences > 0,
+            );
+            assert.equal(failure.probe.phaseDurationsMs.conversations, 0);
+            const serializedFailure = JSON.stringify(failure);
+            for (const forbidden of [
+              storageId,
+              latestContinuation.runId,
+              latestContinuation.conversationId,
+              latestContinuation.checkpointId,
+              "checkpoint-storage",
+              "postgresql://",
+              "2026-08-19",
+            ]) {
+              assert.equal(serializedFailure.includes(forbidden), false);
+            }
+            return true;
+          },
+        );
+      } finally {
+        await writer.query("ROLLBACK");
+      }
 
       const baselineCatalog = await catalogRows(client);
       for (const kind of CATALOG_DEPENDENCY_KINDS) {
