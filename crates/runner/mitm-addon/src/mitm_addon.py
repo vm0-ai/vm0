@@ -109,17 +109,17 @@ from request_authority import AuthorityValidationError, TrustedAuthority, get_tr
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
-_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _HTTP_OWS_CHARS = " \t"
-_MAX_REQUEST_HEADER_NAME_BYTES = 4096
 
 # Request-header phase state.
 # Creator: requestheaders() and header-phase stream/auth helpers.
 # Consumer: request() and terminal cleanup.
 # Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
+_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+_MAX_REQUEST_HEADER_NAME_BYTES = 4096
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
 _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (

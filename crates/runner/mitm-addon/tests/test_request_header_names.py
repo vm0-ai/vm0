@@ -100,4 +100,6 @@ async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_
     assert connector_intent.from_flow(flow) == connector_intent.ConnectorIntent(
         "present", "primary"
     )
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert flow.metadata["_codex_model_catalog_prefetch_request"] is True
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
