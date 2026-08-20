@@ -11007,7 +11007,149 @@ describe("usage pack allocation management", () => {
       [404],
     );
 
-    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.code).toBe(
+      "INVITATION_PURCHASE_SUBSCRIPTION_NOT_FOUND",
+    );
+  });
+
+  it("explains when an invitation purchase targets an existing member", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const existingMemberEmail = `existing-${randomUUID()}@example.test`;
+    await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: existingMemberEmail,
+            },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: existingMemberEmail,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_INVITEE_UNAVAILABLE",
+      message: "This person is already a member or has a pending invitation.",
+    });
+  });
+
+  it("explains when an invitation package has no prorated amount due", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: `${existingMemberUserId}@example.test`,
+            },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    mockUsagePackChangePreviews(0, 2000);
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: `zero-proration-${randomUUID()}@example.test`,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_NO_AMOUNT_DUE",
+      message:
+        "This member package has no charge to collect right now. Try again after your billing period renews.",
+    });
+  });
+
+  it("asks the buyer to restore a canceling subscription before inviting", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    const endingSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      endingSubscription,
+    );
+    await postManagedUsagePackEvent(
+      "customer.subscription.updated",
+      endingSubscription,
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: `canceling-${randomUUID()}@example.test`,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_SUBSCRIPTION_CANCELING",
+      message: "Restore your subscription before purchasing a member package.",
+    });
   });
 
   it.each([
@@ -11664,7 +11806,11 @@ describe("usage pack allocation management", () => {
       }),
       [409],
     );
-    expect(supersededConfirmation.body.error.code).toBe("CONFLICT");
+    expect(supersededConfirmation.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_INACTIVE",
+      message:
+        "This invitation purchase is no longer active. Review the invitation again.",
+    });
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
 
     const metadata = {
@@ -11840,6 +11986,28 @@ describe("usage pack allocation management", () => {
         usagePackUsd: 20,
       }),
     ]);
+  });
+
+  it("rejects an invalid invitation payment preview with a stable error", async () => {
+    const purchase = await beginInvitationPurchase();
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: purchase.purchaseId },
+        body: { paymentMethodPreviewToken: "invalid-preview-token" },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_PREVIEW_INVALID",
+      message:
+        "This invitation purchase preview is no longer valid. Review the invitation again.",
+    });
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
   });
 
   it("returns a hosted invoice for a pending invitation payment to an older client", async () => {

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.15"
+version = "1.0.16"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.74.14"
+version = "0.74.15"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1338,7 +1338,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.68"
+version = "0.21.69"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.169.14"
+version = "0.169.15"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2773,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.47"
+version = "0.19.48"
 dependencies = [
  "async-trait",
  "serde",
@@ -2785,7 +2785,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.229"
+version = "0.37.230"
 dependencies = [
  "async-trait",
  "clap",
@@ -2816,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.84"
+version = "0.17.85"
 dependencies = [
  "nix",
  "sandbox",
@@ -3753,7 +3753,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.220"
+version = "0.9.221"
 dependencies = [
  "guest-write-file",
  "libc",

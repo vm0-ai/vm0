@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.16](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.15...ably-subscriber-v1.0.16) (2026-08-20)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** refresh expired token before reconnect ([#28272](https://github.com/vm0-ai/vm0/issues/28272)) ([d63324b](https://github.com/vm0-ai/vm0/commit/d63324bf7ce7242f3b3a48df4b344ed8b62c73ed))
+
 ## [1.0.15](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.14...ably-subscriber-v1.0.15) (2026-08-07)
 
 
