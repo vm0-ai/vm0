@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 
 import { mockOptionalEnv } from "../../../../lib/env";
@@ -217,8 +218,10 @@ export function createChatCallbacksApi(context: TestContext) {
     });
   }
 
-  function pushSubscriptionsClient() {
+  function pushSubscriptionsClient(publicBrand: PublicBrand) {
     return setupAppWithRoutes({
+      baseUrl:
+        publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
       context,
       routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);
@@ -250,10 +253,13 @@ export function createChatCallbacksApi(context: TestContext) {
       };
     },
 
-    async registerPushSubscription(actor: ApiTestUser): Promise<string> {
+    async registerPushSubscription(
+      actor: ApiTestUser,
+      publicBrand: PublicBrand = "vm0",
+    ): Promise<string> {
       const endpoint = `https://push.example.test/send/${randomUUID()}`;
       await accept(
-        pushSubscriptionsClient().register({
+        pushSubscriptionsClient(publicBrand).register({
           headers: authenticate(context, actor),
           body: {
             endpoint,

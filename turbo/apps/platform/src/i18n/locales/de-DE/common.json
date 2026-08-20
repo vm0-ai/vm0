@@ -681,7 +681,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Zugriff nicht gestattet.",
-      "userBanned": "Der Kontozugriff wurde gesperrt, da die Aktivität auf diesem Konto gegen die Nutzungsbedingungen von {{brandName}} verstößt. Wenn Sie Fragen haben, wenden Sie sich an support@vm0.ai."
+      "userBanned": "Der Kontozugriff wurde gesperrt, da die Aktivität auf diesem Konto gegen die Nutzungsbedingungen von {{brandName}} verstößt. Wenn Sie Fragen haben, wenden Sie sich an {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Anmelden",

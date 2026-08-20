@@ -681,7 +681,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Access is not allowed.",
-      "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact support@vm0.ai."
+      "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Sign in",

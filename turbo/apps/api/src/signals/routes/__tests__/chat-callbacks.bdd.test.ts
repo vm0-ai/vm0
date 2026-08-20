@@ -5226,6 +5226,60 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 });
 
 describe("CHAT-02: push notification gating", () => {
+  it("uses each subscription's public brand for the VAPID contact identity", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+    const vm0Endpoint = await chatCallbacks.registerPushSubscription(
+      actor,
+      "vm0",
+    );
+    const okouEndpoint = await chatCallbacks.registerPushSubscription(
+      actor,
+      "okou",
+    );
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "verify branded VAPID contacts",
+    });
+    chatCallbacks.mockChatOutputEvents([]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(2);
+    await flushWaitUntilForTest();
+
+    const vm0Call = context.mocks.webpush.sendNotification.mock.calls.find(
+      (call) => {
+        return isRecord(call[0]) && call[0].endpoint === vm0Endpoint;
+      },
+    );
+    const okouCall = context.mocks.webpush.sendNotification.mock.calls.find(
+      (call) => {
+        return isRecord(call[0]) && call[0].endpoint === okouEndpoint;
+      },
+    );
+    expect(vm0Call?.[2]).toStrictEqual({
+      vapidDetails: {
+        subject: "mailto:contact@vm0.ai",
+        publicKey: "bdd-vapid-public-key",
+        privateKey: "bdd-vapid-private-key",
+      },
+    });
+    expect(okouCall?.[2]).toStrictEqual({
+      vapidDetails: {
+        subject: "mailto:contact@okou.ai",
+        publicKey: "bdd-vapid-public-key",
+        privateKey: "bdd-vapid-private-key",
+      },
+    });
+  }, 60_000);
+
   it("suppresses completed run pushes while the thread has an active goal", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
