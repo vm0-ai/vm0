@@ -45,6 +45,32 @@ type _UsageFlushPhase = Literal["started", "enqueued", "failed", "retained", "dr
 
 _RETRY_BUDGET_EXHAUSTED_REASON = "retry_budget_exhausted"
 _SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON = "shutdown_retained_without_retry"
+_USAGE_QUANTITY_OUT_OF_RANGE_REASON = "usage_quantity_out_of_range"
+
+
+def _log_rejected_usage_quantity(
+    proxy_log_path: str,
+    run_id: str,
+    log_type: str,
+) -> None:
+    if log_type == "model_usage_observation":
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Model usage observation rejected outside exact-integer range",
+            type=log_type,
+            reason=_USAGE_QUANTITY_OUT_OF_RANGE_REASON,
+            run_id=run_id,
+        )
+        return
+    log_usage_underbilling(
+        proxy_log_path,
+        "Usage event rejected outside exact-integer range",
+        _USAGE_QUANTITY_OUT_OF_RANGE_REASON,
+        "confirmed",
+        run_id=run_id,
+        log_type=log_type,
+    )
 
 
 def _log_dropped_batches(

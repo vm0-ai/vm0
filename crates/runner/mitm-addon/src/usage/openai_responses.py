@@ -33,6 +33,7 @@ from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
 from .json_selective import (
+    JSON_INTEGER_VALUE_LIMIT_EXCEEDED,
     JSON_WORK_LIMIT_EXCEEDED,
     JsonExtractionResult,
     JsonSelectiveExtractor,
@@ -47,6 +48,7 @@ from .model_tokens import (
 )
 from .openai_tokens import is_usage_quantity as _is_usage_quantity
 from .openai_tokens import partition_input_tokens as _partition_input_tokens
+from .quantities import MAX_USAGE_QUANTITY
 from .sse import SseUsageScanner
 
 # Terminal Responses events whose Response object may carry usage. WebSocket
@@ -138,7 +140,7 @@ _RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
 # Bound dense syntax and slow scalar inspection while retaining the selective
 # parser's bulk-scan path for ordinary large content strings.
 _RESPONSES_MAX_WORK_UNITS = 65_536
-_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
+OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 _RESPONSES_CREATE_EVENT = "response.create"
 _RESPONSES_CREATED_EVENT = "response.created"
 _RESPONSES_ERROR_EVENT = "error"
@@ -209,10 +211,14 @@ _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
     ("service_tier",): ScalarField("string", max_bytes=1024),
-    ("usage", "input_tokens"): ScalarField("int", max_bytes=64),
-    ("usage", "output_tokens"): ScalarField("int", max_bytes=64),
-    ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
-    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField("int", max_bytes=64),
+    ("usage", "input_tokens"): ScalarField("int", max_bytes=64, max_int_value=MAX_USAGE_QUANTITY),
+    ("usage", "output_tokens"): ScalarField("int", max_bytes=64, max_int_value=MAX_USAGE_QUANTITY),
+    ("usage", "input_tokens_details", "cached_tokens"): ScalarField(
+        "int", max_bytes=64, max_int_value=MAX_USAGE_QUANTITY
+    ),
+    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField(
+        "int", max_bytes=64, max_int_value=MAX_USAGE_QUANTITY
+    ),
 }
 
 _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
@@ -327,10 +333,12 @@ def _usage_from_extraction(
 ) -> tuple[dict | None, str | None]:
     if not result.complete:
         error = (
-            _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR
+            OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR
             if result.error == JSON_WORK_LIMIT_EXCEEDED
             else None
         )
+        if result.error == JSON_INTEGER_VALUE_LIMIT_EXCEEDED:
+            error = result.error
         return None, error
 
     extracted_usage: dict = {}
@@ -984,9 +992,10 @@ def extract_openai_responses_usage_from_event(
     top-level ``type`` independently of ``event.event_type``.
 
     Returns ``(usage, None)`` when usage is extracted. Exhausting the selective
-    parser's work budget returns ``(None, "work_limit_exceeded")``; no other
-    inspection failure is surfaced. Known non-usage events, other incomplete or
-    malformed frames, and frames without extractable usage return ``(None, None)``.
+    parser's work budget returns ``(None, "work_limit_exceeded")`` and an
+    out-of-range selected usage integer returns the bounded parser error. Known
+    non-usage events, other incomplete or malformed frames, and frames without
+    extractable usage return ``(None, None)``.
     """
     inspection = inspect_openai_responses_server_event(event, include_lifecycle=False)
     return inspection.usage, inspection.usage_error

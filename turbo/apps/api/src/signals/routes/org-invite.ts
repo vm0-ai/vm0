@@ -18,7 +18,7 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
+import { publicBrand$, requestSignal$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -40,6 +40,7 @@ import {
   type BillingPurchasePaymentMethod,
 } from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
+import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
 
 const log = logger("api:zero:org-invite");
 
@@ -371,6 +372,7 @@ const purchasePreviewInner$ = command(
         "returnUrl must match the platform origin for in-app billing",
       );
     }
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const result = await createUsagePackInvitationPreview(
       set(writeDb$),
       get(clerk$),
@@ -382,8 +384,10 @@ const purchasePreviewInner$ = command(
         usagePackUsd: body.data.usagePackUsd,
         publicBrand: get(publicBrand$),
       },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
+    readSignal.throwIfAborted();
     if (result.status === "not_found") {
       return invitationPurchaseError({
         phase: "preview",
@@ -552,12 +556,15 @@ const purchaseConfirmInner$ = command(
       }
       paymentMethod = revalidated.paymentMethod;
     }
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const result = await confirmUsagePackInvitationPurchase(
       set(writeDb$),
       get(clerk$),
       { orgId: auth.orgId, purchaseId, paymentMethod },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
+    readSignal.throwIfAborted();
     if (result.status === "not_found") {
       return invitationPurchaseError({
         phase: "confirm",
@@ -618,14 +625,14 @@ export const orgInviteRoutes: readonly RouteEntry[] = [
     route: orgInviteContract.previewPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      purchasePreviewInner$,
+      withBillingClerkRateLimit(purchasePreviewInner$),
     ),
   },
   {
     route: orgInviteContract.confirmPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      purchaseConfirmInner$,
+      withBillingClerkRateLimit(purchaseConfirmInner$),
     ),
   },
 ];

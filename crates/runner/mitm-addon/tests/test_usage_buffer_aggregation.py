@@ -4,8 +4,10 @@ import uuid
 
 import usage
 import usage.buffer as usage_buffer
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_current_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event, observation
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
@@ -42,6 +44,184 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     ]
     uuid.UUID(payload["events"][0]["idempotencyKey"])
     assert enqueue.last_call.proxy_log_path == proxy_log_path
+
+
+def test_flush_segments_aggregate_before_quantity_exceeds_exact_integer_range(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(source_key="source-1", quantity=MAX_USAGE_QUANTITY),
+            event(source_key="source-2", quantity=1),
+        ],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    enqueue.assert_called_once()
+    events = enqueue.last_call.payload["events"]
+    assert [flushed_event["quantity"] for flushed_event in events] == [
+        MAX_USAGE_QUANTITY,
+        1,
+    ]
+    assert len({flushed_event["idempotencyKey"] for flushed_event in events}) == 2
+
+
+def test_flush_keeps_model_observation_source_vector_in_one_safe_segment(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [
+            observation(
+                source_key="source-1",
+                input_tokens=MAX_USAGE_QUANTITY,
+                output_tokens=3,
+            ),
+            observation(
+                source_key="source-2",
+                input_tokens=1,
+                output_tokens=4,
+            ),
+        ],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    enqueue.assert_called_once()
+    events = enqueue.last_call.payload["events"]
+    assert [
+        (flushed_event["inputTokens"], flushed_event["outputTokens"]) for flushed_event in events
+    ] == [(MAX_USAGE_QUANTITY, 3), (1, 4)]
+    assert len({flushed_event["idempotencyKey"] for flushed_event in events}) == 2
+
+
+def test_rejects_out_of_range_source_quantity_before_recording_idempotency(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    accepted_source_keys: set[str] = set()
+
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1", quantity=MAX_USAGE_QUANTITY + 1)],
+            str(proxy_log_path),
+            accepted_source_keys=accepted_source_keys,
+        )
+        == 0
+    )
+    assert accepted_source_keys == set()
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1", quantity=1)],
+            str(proxy_log_path),
+            accepted_source_keys=accepted_source_keys,
+        )
+        == 1
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 1
+    [warning] = [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log_path)
+        if entry.get("reason") == "usage_quantity_out_of_range"
+    ]
+    assert warning["type"] == "usage_underbilling"
+    assert warning["underbilling_class"] == "confirmed"
+    assert "quantity" not in warning
+
+
+def test_out_of_range_atomic_group_rejects_every_member_before_idempotency(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    source_events = [
+        event(source_key="source-input", quantity=10),
+        event(
+            source_key="source-cache-read",
+            category="tokens.cache_read",
+            quantity=MAX_USAGE_QUANTITY + 1,
+        ),
+    ]
+
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            source_events,
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 0
+    )
+    source_events[1]["quantity"] = 4
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            source_events,
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 2
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert [flushed_event["quantity"] for flushed_event in enqueue.last_call.payload["events"]] == [
+        10,
+        4,
+    ]
+
+
+def test_rejects_out_of_range_model_observation_before_recording_idempotency(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    accepted_source_keys: set[str] = set()
+
+    assert (
+        usage.buffer_source_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "run-1",
+            [
+                observation(
+                    source_key="source-1",
+                    cache_creation_input_tokens=MAX_USAGE_QUANTITY + 1,
+                )
+            ],
+            str(proxy_log_path),
+            accepted_source_keys=accepted_source_keys,
+        )
+        == 0
+    )
+    assert accepted_source_keys == set()
+    assert usage.flush_usage_events(trigger="test") == 0
+    enqueue.assert_not_called()
+    [warning] = [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log_path)
+        if entry.get("reason") == "usage_quantity_out_of_range"
+    ]
+    assert warning["type"] == "model_usage_observation"
+    assert warning["level"] == "warn"
+    assert "quantity" not in warning
 
 
 def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
@@ -494,6 +674,32 @@ def test_flushes_when_aggregate_bucket_count_reaches_exact_bound(tmp_path):
     payload = enqueue.last_call.payload
     assert payload["runId"] == "run-1"
     assert len(payload["events"]) == usage_buffer.MAX_AGGREGATE_BUCKETS
+
+
+def test_flushes_when_safe_quantity_segments_reach_aggregate_bucket_bound(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    accepted = usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(
+                source_key=f"source-{index}",
+                quantity=MAX_USAGE_QUANTITY,
+            )
+            for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)
+        ],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert accepted == usage_buffer.MAX_AGGREGATE_BUCKETS
+    enqueue.assert_called_once()
+    events = enqueue.last_call.payload["events"]
+    assert len(events) == usage_buffer.MAX_AGGREGATE_BUCKETS
+    assert all(flushed_event["quantity"] == MAX_USAGE_QUANTITY for flushed_event in events)
+    assert len({flushed_event["idempotencyKey"] for flushed_event in events}) == len(events)
 
 
 def test_flushes_when_model_observation_bucket_count_reaches_exact_bound(tmp_path):

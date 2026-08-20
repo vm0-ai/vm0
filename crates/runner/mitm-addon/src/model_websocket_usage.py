@@ -248,7 +248,9 @@ def feed_usage(
     usage_result = inspection.usage
     inspection_error = inspection.usage_error
     if inspection_error is not None:
-        if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
+        if inspection_error == usage.OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR and isinstance(
+            prewarm_state, _OpenAIResponsesPrewarmState
+        ):
             _mark_correlation_ambiguous(flow, prewarm_state, "correlation_cap")
         log_proxy_entry(
             flow_metadata.proxy_log_path(flow.metadata),
