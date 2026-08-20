@@ -341,7 +341,7 @@ export const socialKitRequest$ = command(
     args: AuthedSocialKitArgs,
     signal: AbortSignal,
   ): Promise<SocialKitCommandResponse> => {
-    const accessKey = env("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY");
+    const accessKey = env("OKOU_SOCIAL_SOCIALKIT_TOKEN");
     if (!accessKey) {
       return errorResponse(
         503,

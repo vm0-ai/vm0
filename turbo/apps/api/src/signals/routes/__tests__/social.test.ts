@@ -228,7 +228,7 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProvider(): void {
-  mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", "test-socialkit-key");
+  mockEnv("OKOU_SOCIAL_SOCIALKIT_TOKEN", "test-socialkit-key");
 }
 
 function socialPricingKey(category: string): UsagePricingKey {
@@ -738,7 +738,7 @@ describe("managed SocialKit route", () => {
   it("rejects requests when SocialKit is not configured", async () => {
     const actor = createBddApi(context).user();
     await enableSocialKit(actor);
-    mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
+    mockEnv("OKOU_SOCIAL_SOCIALKIT_TOKEN", undefined);
 
     const response = await accept(
       client()(socialContract).request({
