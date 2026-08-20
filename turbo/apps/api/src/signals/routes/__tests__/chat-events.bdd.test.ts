@@ -20,6 +20,7 @@ import {
 import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
+  chatThreadConnectorSelectionContract,
   chatThreadsContract,
   resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
@@ -98,6 +99,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
@@ -119,6 +121,10 @@ import {
 import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
+import {
+  readCustomConnectorCredentialStorageParent,
+  setCustomConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { verifyZeroToken } from "../../auth/tokens";
@@ -1038,6 +1044,12 @@ function chatThreadsClient() {
   return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
     await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
@@ -1057,6 +1069,265 @@ describe("CHAT-02: thread run admission invariant", () => {
     await expect(
       createUnassociatedThreadBoundAgentRunFixture(""),
     ).rejects.toThrow("Thread-bound run requires a queue-first association");
+  });
+});
+
+describe("CHAT-02: thread connector account selection", () => {
+  it("pins and materializes the default connector account on first use", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "thread-selected-openai-key" },
+      agentId,
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Use my OpenAI connector account",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+      sourceId: connection.id,
+    });
+
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connection.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
+
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+    await api.enableAgentConnectors(actor, agentId, []);
+    const unauthorizedResponse = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "Continue while OpenAI is unauthorized",
+      },
+      [201],
+    );
+    if (unauthorizedResponse.status !== 201) {
+      throw new Error("Expected the unauthorized-connector send to succeed");
+    }
+    if (!unauthorizedResponse.body.runId) {
+      throw new Error("Expected the unauthorized-connector run to start");
+    }
+    const unauthorized = {
+      runId: unauthorizedResponse.body.runId,
+      threadId: unauthorizedResponse.body.threadId,
+    };
+    const unauthorizedClaim = await claimChatRun(
+      runnerGroup,
+      unauthorized.runId,
+    );
+    expect(
+      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toBeUndefined();
+    await completeChatRunOk(
+      unauthorized.runId,
+      unauthorizedClaim.sandboxHeaders,
+    );
+    await flushWaitUntilForTest();
+
+    await api.enableAgentConnectors(actor, agentId, ["openai"]);
+    const reauthorized = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "Continue after OpenAI is authorized again",
+    });
+    const reauthorizedClaim = await claimChatRun(
+      runnerGroup,
+      reauthorized.runId,
+    );
+    expect(
+      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: connection.id });
+    await cancelChatRun(actor, reauthorized.runId);
+  });
+
+  it("pins and materializes an exact custom MCP account on first use", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+      },
+    );
+    const customConnector = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      slug: `_thread-mcp-runtime-${randomUUID()}`,
+      displayName: "Thread MCP runtime connector",
+      endpoint: "https://thread-mcp-runtime.example.test/server",
+      transport: "streamable-http",
+      fields: [
+        {
+          key: "secret",
+          label: "API token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      customConnector.id,
+      "thread-mcp-runtime-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      customConnector.id,
+    ]);
+    const connection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: customConnector.id,
+      },
+    );
+    const connectorId = connection.connector?.id;
+    if (!connectorId) {
+      throw new Error("Expected a custom MCP connector account");
+    }
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Use my selected MCP connector account",
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(claimed.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: customConnector.id,
+      baseUrlVars: {},
+      sourceId: connectorId,
+    });
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connectorId,
+        target: {
+          kind: "custom",
+          customConnectorId: customConnector.id,
+        },
+      },
+    ]);
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  });
+
+  it("rejects an unavailable selected custom connector without fallback", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const customConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_thread-runtime-${randomUUID()}`,
+        displayName: "Thread runtime connector",
+        prefixTemplates: ["https://thread-runtime.example.test/v1/"],
+      }),
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      customConnector.id,
+      "thread-runtime-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      customConnector.id,
+    ]);
+    const connection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: customConnector.id,
+      },
+    );
+    const connectorId = connection.connector?.id;
+    const storageVersion = connection.connector?.storage_version;
+    if (!connectorId || storageVersion === undefined) {
+      throw new Error("Expected a custom connector account");
+    }
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "Pin my custom connector account",
+    });
+    await cancelChatRun(actor, first.runId);
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId,
+      userId: actor.userId,
+      customConnectorId: customConnector.id,
+      authMethod: "manual",
+      storageVersion,
+      needsReconnect: true,
+    });
+
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "Do not switch to another custom connector account",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain(
+      "Selected custom connector account",
+    );
   });
 });
 

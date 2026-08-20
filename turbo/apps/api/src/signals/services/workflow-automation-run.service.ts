@@ -1,7 +1,10 @@
 import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
-import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
+import {
+  publishChatThreadDetailChangedSafely,
+  publishChatThreadMessageCreatedSafely,
+} from "../external/realtime";
 import { admitWorkflowAutomationEvent } from "./workflow-chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
@@ -57,6 +60,7 @@ export const runWorkflowAutomationNow$ = command(
               args.automationContext.event,
             ),
           chatThreadId,
+          connectorSourceId: args.connectorSourceId,
           triggerSource: args.triggerSource ?? "automation-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
@@ -65,6 +69,18 @@ export const runWorkflowAutomationNow$ = command(
       },
     );
     signal.throwIfAborted();
+
+    if (admission.kind === "conflict") {
+      return admission;
+    }
+
+    if (admission.kind === "inserted" && admission.connectorSelectionPinned) {
+      await publishChatThreadDetailChangedSafely(
+        automation.ownerUserId,
+        chatThreadId,
+      );
+      signal.throwIfAborted();
+    }
 
     if (admission.kind === "inserted") {
       await publishChatThreadMessageCreatedSafely(

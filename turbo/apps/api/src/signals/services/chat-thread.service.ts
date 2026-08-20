@@ -63,6 +63,10 @@ import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 import { disableThreadBoundWorkflowAutomations } from "./workflow-user-automation-thread.service";
+import {
+  insertInitialChatThreadConnectorSelections,
+  type PreparedChatThreadConnectorSelection,
+} from "./chat-thread-connector-selection.service";
 
 type ChatThreadRow = {
   readonly id: string;
@@ -637,6 +641,7 @@ export const createChatThread$ = command(
       readonly codexServiceTier: CodexServiceTier | null;
       readonly selectedVideoModel: string | null;
       readonly selectedImageModel: ImageModelId | null;
+      readonly connectorSelections?: readonly PreparedChatThreadConnectorSelection[];
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -664,6 +669,10 @@ export const createChatThread$ = command(
       if (!createdThread) {
         return undefined;
       }
+      await insertInitialChatThreadConnectorSelections(tx, {
+        chatThreadId: createdThread.id,
+        selections: args.connectorSelections ?? [],
+      });
       await appendChatThreadEvent(tx, {
         kind: "created",
         userId: args.userId,

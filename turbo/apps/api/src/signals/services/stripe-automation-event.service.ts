@@ -1356,6 +1356,7 @@ async function processClaimedDelivery(
           delivery: args.delivery,
           target,
         }),
+        connectorSourceId: args.delivery.connectorId,
         apiStartTime: now(),
         triggerSource: "automation-event",
         triggerBrief: `Stripe invoice paid: ${args.delivery.snapshot.invoice.id}`,
@@ -1375,9 +1376,29 @@ async function processClaimedDelivery(
     ),
     signal,
   );
+  if (started.ok && started.value.kind === "conflict") {
+    const skipped = await finishDelivery(
+      {
+        db: args.db,
+        delivery: args.delivery,
+        status: "skipped",
+        reason: "connector_account_conflict",
+      },
+      signal,
+    );
+    if (skipped) {
+      logDeliveryOutcome({
+        delivery: args.delivery,
+        status: "skipped",
+        reasonCategory: "connector_account_conflict",
+      });
+      return "skipped";
+    }
+    return "lost";
+  }
   if (started.ok) {
-    // A conflict or immediate run error is observed only after durable queue
-    // admission, where persistDeliveryAdmission already marked this delivery.
+    // Immediate run errors are observed only after durable queue admission,
+    // where persistDeliveryAdmission already marked this delivery.
     logDeliveryOutcome({
       delivery: args.delivery,
       status: "delivered",

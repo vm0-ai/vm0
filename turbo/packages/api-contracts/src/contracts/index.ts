@@ -588,6 +588,7 @@ export {
   chatThreadMarkAgentReadContract,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
+  chatThreadConnectorSelectionContract,
   chatThreadComputerUseHostContract,
   chatEventsContract,
   chatThreadEventsContract,

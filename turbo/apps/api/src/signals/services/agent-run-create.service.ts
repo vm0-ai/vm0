@@ -168,6 +168,7 @@ import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypas
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
+import { publishChatThreadDetailChangedSafely } from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
@@ -259,6 +260,7 @@ import {
   connectorAccountTargetKey,
   resolveConnectorAccounts,
 } from "./connector-account-resolution.service";
+import { resolveAndPinChatThreadConnectorSelections } from "./chat-thread-connector-selection.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -612,6 +614,11 @@ interface EffectiveConnectorScope {
   readonly source: ConnectorScopeSource;
 }
 
+interface ThreadConnectorSelectionIds {
+  readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string>;
+  readonly connectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
+}
+
 export type RunConnectorCatalogSelection =
   | { readonly kind: "empty" }
   | {
@@ -934,6 +941,8 @@ type CreateRunErrorResult = Exclude<
   CreateRunRouteResult,
   { readonly status: 201 }
 >;
+
+class ConnectorSelectionAdmissionError extends Error {}
 
 export type DispatchFailedRunCallbacks = (
   db: Db,
@@ -3784,6 +3793,7 @@ async function loadStoredConnectorMaterializationPlan(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string> | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
@@ -3801,6 +3811,7 @@ async function loadStoredConnectorMaterializationPlan(
       orgId: args.orgId,
       userId: args.userId,
       allowedConnectorSlugs,
+      connectorIdsBySlug: args.connectorIdsBySlug,
       scopeSource: args.scopeSource,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
@@ -4060,6 +4071,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string> | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
@@ -4071,11 +4083,20 @@ async function loadStoredConnectorMaterializationSnapshot(
   const accountResolutions = await resolveConnectorAccounts(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: args.allowedConnectorSlugs.map((connectorSlug) => {
-      return {
-        target: { kind: "builtin" as const, connectorSlug },
-        selection: { kind: "default" as const },
-      };
+    requests: args.allowedConnectorSlugs.flatMap((connectorSlug) => {
+      const connectorId = args.connectorIdsBySlug?.get(connectorSlug);
+      if (args.connectorIdsBySlug !== undefined && connectorId === undefined) {
+        return [];
+      }
+      return [
+        {
+          target: { kind: "builtin" as const, connectorSlug },
+          selection:
+            connectorId === undefined
+              ? ({ kind: "default" } as const)
+              : ({ kind: "exact", sourceId: connectorId } as const),
+        },
+      ];
     }),
   });
   const connectorIds = args.allowedConnectorSlugs.flatMap((connectorSlug) => {
@@ -4087,6 +4108,16 @@ async function loadStoredConnectorMaterializationSnapshot(
       : [];
   });
   if (connectorIds.length === 0) {
+    if (
+      args.connectorIdsBySlug !== undefined &&
+      args.allowedConnectorSlugs.some((connectorSlug) => {
+        return args.connectorIdsBySlug?.has(connectorSlug);
+      })
+    ) {
+      throw new ConnectorSelectionAdmissionError(
+        "Selected connector account is no longer available",
+      );
+    }
     return null;
   }
   const rows = await loadStoredConnectorSnapshotRows(
@@ -4100,10 +4131,15 @@ async function loadStoredConnectorMaterializationSnapshot(
     timing,
   );
   if (rows.length === 0) {
+    if (args.connectorIdsBySlug !== undefined) {
+      throw new ConnectorSelectionAdmissionError(
+        "Selected connector account is no longer available",
+      );
+    }
     return null;
   }
 
-  return materializeStoredConnectorSnapshotRows(
+  const snapshot = await materializeStoredConnectorSnapshotRows(
     {
       rows,
       allowedConnectorSlugs: args.allowedConnectorSlugs,
@@ -4112,6 +4148,25 @@ async function loadStoredConnectorMaterializationSnapshot(
     },
     timing,
   );
+  if (args.connectorIdsBySlug !== undefined) {
+    const materializedConnectorIds = new Set(
+      (snapshot?.allowedConnectorRows ?? []).map((row) => {
+        return row.access.connectorId;
+      }),
+    );
+    for (const connectorSlug of args.allowedConnectorSlugs) {
+      const connectorId = args.connectorIdsBySlug.get(connectorSlug);
+      if (
+        connectorId !== undefined &&
+        !materializedConnectorIds.has(connectorId)
+      ) {
+        throw new ConnectorSelectionAdmissionError(
+          `Selected ${connectorSlug} account is unavailable`,
+        );
+      }
+    }
+  }
+  return snapshot;
 }
 
 export type CustomConnectorRuntimeDataRows = Awaited<
@@ -4766,6 +4821,9 @@ async function loadCustomConnectorContext(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedCustomConnectorIds: readonly string[];
+    readonly connectorIdsByCustomConnectorId:
+      | ReadonlyMap<string, string>
+      | undefined;
     readonly customConnectorGrants:
       | readonly AgentCustomConnectorGrant[]
       | undefined;
@@ -4782,11 +4840,24 @@ async function loadCustomConnectorContext(
   const accountResolutions = await resolveConnectorAccounts(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
-      return {
-        target: { kind: "custom" as const, customConnectorId },
-        selection: { kind: "default" as const },
-      };
+    requests: args.allowedCustomConnectorIds.flatMap((customConnectorId) => {
+      const connectorId =
+        args.connectorIdsByCustomConnectorId?.get(customConnectorId);
+      if (
+        args.connectorIdsByCustomConnectorId !== undefined &&
+        connectorId === undefined
+      ) {
+        return [];
+      }
+      return [
+        {
+          target: { kind: "custom" as const, customConnectorId },
+          selection:
+            connectorId === undefined
+              ? ({ kind: "default" } as const)
+              : ({ kind: "exact", sourceId: connectorId } as const),
+        },
+      ];
     }),
   });
   const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
@@ -4820,6 +4891,16 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
+    if (
+      args.connectorIdsByCustomConnectorId !== undefined &&
+      args.allowedCustomConnectorIds.some((customConnectorId) => {
+        return args.connectorIdsByCustomConnectorId?.has(customConnectorId);
+      })
+    ) {
+      throw new ConnectorSelectionAdmissionError(
+        "Selected custom connector account is no longer available",
+      );
+    }
     return emptyCustomConnectorRuntimeContext();
   }
   signal.throwIfAborted();
@@ -4832,7 +4913,7 @@ async function loadCustomConnectorContext(
       )
     );
   });
-  return await measureApiDispatchTiming(
+  const context = await measureApiDispatchTiming(
     timing,
     "api_dispatch_prepare_context_build_custom_connector_firewalls",
     "nested",
@@ -4846,6 +4927,38 @@ async function loadCustomConnectorContext(
       });
     },
   );
+  assertSelectedCustomConnectorAccountsMaterialized({
+    context,
+    allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    connectorIdsByCustomConnectorId: args.connectorIdsByCustomConnectorId,
+  });
+  return context;
+}
+
+function assertSelectedCustomConnectorAccountsMaterialized(args: {
+  readonly context: CustomConnectorRuntimeContext;
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly connectorIdsByCustomConnectorId:
+    | ReadonlyMap<string, string>
+    | undefined;
+}): void {
+  if (args.connectorIdsByCustomConnectorId === undefined) {
+    return;
+  }
+  const materializedSourceIds = new Set(
+    args.context.targets.flatMap((target) => {
+      return target.sourceId === undefined ? [] : [target.sourceId];
+    }),
+  );
+  for (const customConnectorId of args.allowedCustomConnectorIds) {
+    const connectorId =
+      args.connectorIdsByCustomConnectorId.get(customConnectorId);
+    if (connectorId !== undefined && !materializedSourceIds.has(connectorId)) {
+      throw new ConnectorSelectionAdmissionError(
+        "Selected custom connector account is unavailable or incompatible",
+      );
+    }
+  }
 }
 
 function collectPermissionNames(
@@ -8123,6 +8236,9 @@ async function loadRunConnectorContexts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
+    readonly threadConnectorSelectionIds:
+      | ThreadConnectorSelectionIds
+      | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing: ApiDispatchTimingCollector | undefined;
@@ -8145,6 +8261,8 @@ async function loadRunConnectorContexts(
             orgId: args.orgId,
             userId: args.userId,
             allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+            connectorIdsBySlug:
+              args.threadConnectorSelectionIds?.connectorIdsBySlug,
             scopeSource: args.connectorScope.source,
             connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           },
@@ -8167,6 +8285,8 @@ async function loadRunConnectorContexts(
             userId: args.userId,
             allowedCustomConnectorIds:
               args.connectorScope.allowedCustomConnectorIds,
+            connectorIdsByCustomConnectorId:
+              args.threadConnectorSelectionIds?.connectorIdsByCustomConnectorId,
             customConnectorGrants: args.connectorScope.customConnectorGrants,
             featureSwitchContext: args.featureSwitchContext,
             connectorCatalogSnapshot: args.connectorCatalogSnapshot,
@@ -8358,6 +8478,11 @@ interface PreparedRuntimeContext {
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
 }
 
+interface PreparedConnectorContext {
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly permissionManifest: PermissionManifest | undefined;
+}
+
 function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
   snapshot: ConnectorRuntimeSelection,
@@ -8533,6 +8658,9 @@ async function prepareRunConnectorContexts(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
+    readonly threadConnectorSelectionIds:
+      | ThreadConnectorSelectionIds
+      | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
     readonly timing: ApiDispatchTimingCollector;
@@ -8581,6 +8709,7 @@ async function prepareRunConnectorContexts(
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
+            threadConnectorSelectionIds: args.threadConnectorSelectionIds,
             connectorCatalogSnapshot: args.connectorCatalogSelection.selection,
             featureSwitchContext: args.featureSwitchContext,
             timing: args.timing,
@@ -8595,6 +8724,9 @@ async function prepareRunConnectorContexts(
   );
   if (result.ok) {
     return result.value;
+  }
+  if (result.error instanceof ConnectorSelectionAdmissionError) {
+    return badRequestMessage(result.error.message);
   }
   throw result.error;
 }
@@ -8628,6 +8760,52 @@ async function resolvePreparedRunModelProvider(
   );
 }
 
+async function resolvePreparedThreadConnectorSelections(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly connectorScope: EffectiveConnectorScope;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (
+    chatThreadId === undefined ||
+    !isFeatureEnabled(
+      FeatureSwitchKey.ConnectorAccounts,
+      args.featureSwitchContext,
+    )
+  ) {
+    return undefined;
+  }
+  const resolved = await resolveAndPinChatThreadConnectorSelections(args.db, {
+    orgId: args.createArgs.orgId,
+    userId: args.createArgs.userId,
+    chatThreadId,
+    scope: {
+      allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+      allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+      customConnectorGrants: args.connectorScope.customConnectorGrants ?? [],
+    },
+  });
+  signal.throwIfAborted();
+  if (resolved.kind === "invalid") {
+    return badRequestMessage(resolved.message);
+  }
+  if (resolved.pinned) {
+    await publishChatThreadDetailChangedSafely(
+      args.createArgs.userId,
+      chatThreadId,
+    );
+    signal.throwIfAborted();
+  }
+  return {
+    connectorIdsBySlug: resolved.connectorIdsBySlug,
+    connectorIdsByCustomConnectorId: resolved.connectorIdsByCustomConnectorId,
+  };
+}
+
 async function prepareRunRuntimeContext(
   args: {
     readonly db: Db;
@@ -8643,13 +8821,24 @@ async function prepareRunRuntimeContext(
     args.bodyContext;
   const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
   signal.throwIfAborted();
-  const connectorScope =
-    connectorCatalogSelection.kind === "scoped"
-      ? connectorScopeForRuntimeSnapshot(
-          args.connectorScope,
-          connectorCatalogSelection.selection,
-        )
-      : args.connectorScope;
+  const threadConnectorSelectionIds =
+    await resolvePreparedThreadConnectorSelections(
+      {
+        db: args.db,
+        createArgs: args.createArgs,
+        connectorScope: args.connectorScope,
+        featureSwitchContext,
+      },
+      signal,
+    );
+  if (isRouteError(threadConnectorSelectionIds)) {
+    return threadConnectorSelectionIds;
+  }
+  const connectorScope = preparedRuntimeConnectorScope({
+    connectorScope: args.connectorScope,
+    connectorCatalogSelection,
+    threadConnectorSelectionIds,
+  });
   const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
@@ -8661,6 +8850,7 @@ async function prepareRunRuntimeContext(
     {
       ...args,
       connectorScope,
+      threadConnectorSelectionIds,
       featureSwitchContext,
       connectorCatalogSelection,
     },
@@ -8675,64 +8865,24 @@ async function prepareRunRuntimeContext(
     customConnectorContext,
   } = connectorContexts;
   signal.throwIfAborted();
-
-  const storedConnectorTiming = storedConnectorTimingDimensions({
-    scopeSource: connectorScope.source,
-    connectorCount: storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
+  const preparedConnectorContext = await materializePreparedConnectorContext({
+    db: args.db,
+    connectorScope,
+    connectorCatalogSelection,
+    body,
+    content: resolved.content,
+    modelProvider,
+    storedConnectorSnapshot,
+    storedConnectorMetadataContext,
+    customConnectorContext,
+    featureSwitchContext,
+    timing: args.timing,
   });
-  const overriddenConnectorSecretAliases = overriddenRuntimeSecretAliases([
-    modelProvider?.secrets,
-    modelProvider?.secretConnectorMap,
-    body.secrets,
-  ]);
-  const connectorContextPromise = materializeStoredConnectorContext(
-    storedConnectorSnapshot,
-    {
-      overriddenSecretAliases: overriddenConnectorSecretAliases,
-      timingDimensions: storedConnectorTiming,
-    },
-    args.timing,
-  );
-  const permissionManifestPromise = args.timing.measure(
-    "api_dispatch_prepare_context_build_permission_manifest",
-    "nested",
-    async () => {
-      return await buildPreparedPermissionManifest({
-        connectorCatalogSelection,
-        body,
-        modelProvider,
-        storedConnectorMetadataContext,
-        customConnectorContext,
-        timing: args.timing,
-      });
-    },
-  );
-  const [connectorContext, permissionManifest] = await Promise.all([
-    connectorContextPromise,
-    permissionManifestPromise,
-  ]);
   signal.throwIfAborted();
-  if (isRouteError(permissionManifest)) {
-    return permissionManifest;
+  if (isRouteError(preparedConnectorContext)) {
+    return preparedConnectorContext;
   }
-  const finalConnectorContext = await materializeEagerStoredConnectorSecrets(
-    args.db,
-    storedConnectorSnapshot,
-    connectorContext,
-    {
-      featureSwitchContext,
-      ...eagerStoredConnectorSecretInputs({
-        content: resolved.content,
-        modelProvider,
-        connectorContext,
-      }),
-      environmentSecretPlaceholders:
-        permissionManifest?.environmentSecretPlaceholders,
-      overriddenSecretAliases: overriddenConnectorSecretAliases,
-      timingDimensions: storedConnectorTiming,
-    },
-    args.timing,
-  );
+  const { connectorContext, permissionManifest } = preparedConnectorContext;
   const modelUsageContext = prepareModelUsageContext({
     modelProvider,
     permissionManifest,
@@ -8743,7 +8893,7 @@ async function prepareRunRuntimeContext(
   return {
     framework,
     modelProvider,
-    connectorContext: finalConnectorContext,
+    connectorContext,
     customConnectorContext,
     permissionManifest,
     billableFirewalls: modelUsageContext.billableFirewalls,
@@ -8751,6 +8901,90 @@ async function prepareRunRuntimeContext(
     connectorScope,
     connectorCatalogSelection,
   };
+}
+
+async function materializePreparedConnectorContext(args: {
+  readonly db: Db;
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
+  readonly body: CreateRunBody;
+  readonly content: AgentComposeContent;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly storedConnectorSnapshot: StoredConnectorMaterializationSnapshot | null;
+  readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<PreparedConnectorContext | CreateRunErrorResult> {
+  const timingDimensions = storedConnectorTimingDimensions({
+    scopeSource: args.connectorScope.source,
+    connectorCount:
+      args.storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
+  });
+  const overriddenSecretAliases = overriddenRuntimeSecretAliases([
+    args.modelProvider?.secrets,
+    args.modelProvider?.secretConnectorMap,
+    args.body.secrets,
+  ]);
+  const [connectorContext, permissionManifest] = await Promise.all([
+    materializeStoredConnectorContext(
+      args.storedConnectorSnapshot,
+      { overriddenSecretAliases, timingDimensions },
+      args.timing,
+    ),
+    args.timing.measure(
+      "api_dispatch_prepare_context_build_permission_manifest",
+      "nested",
+      async () => {
+        return await buildPreparedPermissionManifest({
+          connectorCatalogSelection: args.connectorCatalogSelection,
+          body: args.body,
+          modelProvider: args.modelProvider,
+          storedConnectorMetadataContext: args.storedConnectorMetadataContext,
+          customConnectorContext: args.customConnectorContext,
+          timing: args.timing,
+        });
+      },
+    ),
+  ]);
+  if (isRouteError(permissionManifest)) {
+    return permissionManifest;
+  }
+  return {
+    connectorContext: await materializeEagerStoredConnectorSecrets(
+      args.db,
+      args.storedConnectorSnapshot,
+      connectorContext,
+      {
+        featureSwitchContext: args.featureSwitchContext,
+        ...eagerStoredConnectorSecretInputs({
+          content: args.content,
+          modelProvider: args.modelProvider,
+          connectorContext,
+        }),
+        environmentSecretPlaceholders:
+          permissionManifest?.environmentSecretPlaceholders,
+        overriddenSecretAliases,
+        timingDimensions,
+      },
+      args.timing,
+    ),
+    permissionManifest,
+  };
+}
+
+function preparedRuntimeConnectorScope(args: {
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
+  readonly threadConnectorSelectionIds: ThreadConnectorSelectionIds | undefined;
+}): EffectiveConnectorScope {
+  return args.threadConnectorSelectionIds === undefined &&
+    args.connectorCatalogSelection.kind === "scoped"
+    ? connectorScopeForRuntimeSnapshot(
+        args.connectorScope,
+        args.connectorCatalogSelection.selection,
+      )
+    : args.connectorScope;
 }
 
 async function connectorCatalogSelectionForRun(args: {

@@ -89,6 +89,8 @@ export interface RunWorkflowAutomationNowArgs {
   readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
+  /** Exact member connector that durably delivered this provider event. */
+  readonly connectorSourceId?: string;
   // Display-only trigger summary used by workflow annotations and run history.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;

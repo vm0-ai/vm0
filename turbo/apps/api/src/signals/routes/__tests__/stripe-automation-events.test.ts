@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -25,6 +26,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import { createRouteMocks } from "./helpers/route-test";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { chatThreadRoutes } from "../chat-threads";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
@@ -76,6 +78,12 @@ function workflowAutomationExecutionClient() {
     context,
     routes: testWorkflowAutomationExecutionRoutes,
   })(testWorkflowAutomationExecutionContract);
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
 }
 
 async function connectStripeOAuth(
@@ -562,6 +570,38 @@ describe("Stripe automation event webhook", () => {
       'Stripe invoice "in_workflow_once" was paid.',
     );
     expect(context.mocks.stripe.invoices.list).not.toHaveBeenCalled();
+  });
+
+  it("pins the exact Stripe account that triggered the workflow", async () => {
+    const scenario = await setupScenario();
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: "evt_thread_connector_selection" }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+
+    mocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: scenario.connector.id,
+        target: { kind: "builtin", connectorSlug: "stripe" },
+      },
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${scenario.chatThreadId}`,
+      null,
+    );
   });
 
   it("queues every embedded line and current relationship identities without Stripe enrichment", async () => {

@@ -353,6 +353,7 @@ async function persistCanonicalFeishuIngress(
   });
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
+    connectorSourceId: args.connection.connectorId,
     chatId: args.message.chatId,
     threadId: routeThreadId,
     userId: args.connection.userId,
