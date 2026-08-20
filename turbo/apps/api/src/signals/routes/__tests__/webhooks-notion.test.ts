@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -13,6 +14,7 @@ import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createWorkflowsBddApi,
@@ -24,6 +26,7 @@ import {
 } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksNotionRoutes } from "../webhooks-notion";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -37,6 +40,7 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
+const connectors = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const WORKFLOW_NAME = "notion-webhook-workflow";
 const NOTION_WEBHOOK_TOKEN = "notion-webhook-verification-token";
@@ -96,6 +100,12 @@ function automationsClient() {
   );
 }
 
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 function workflowAutomationExecutionClient() {
   return setupApp({
     context,
@@ -108,6 +118,7 @@ async function enableNotionWorkflowAutomations(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+    [FeatureSwitchKey.ConnectorAccounts]: true,
   });
 }
 
@@ -848,6 +859,10 @@ describe("POST /api/webhooks/notion", () => {
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
+    const connector = await connectors.readConnectorBySlug(
+      scenario.actor,
+      "notion",
+    );
     configureNotionChildPageMock(entities);
 
     const created = await accept(
@@ -934,6 +949,19 @@ describe("POST /api/webhooks/notion", () => {
     expect(chatEventDisplayText(workflowMessage)).toBe(
       'Notion page "Launch notes v2" was updated.',
     );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connector.id,
+        target: { kind: "builtin", connectorSlug: "notion" },
+      },
+    ]);
 
     // The runner claim exposes the persisted event context: latest page
     // title, properties, and no page body/content.

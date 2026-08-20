@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -12,6 +14,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -19,7 +22,9 @@ import {
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
 
@@ -31,6 +36,7 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
@@ -69,6 +75,12 @@ function authHeaders() {
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -373,7 +385,14 @@ describe("POST /api/webhooks/google-calendar", () => {
 
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
     await connectGoogleCalendar(scenario);
+    const connector = await connectorsApi.readConnectorBySlug(
+      scenario.actor,
+      "google-calendar",
+    );
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -407,6 +426,19 @@ describe("POST /api/webhooks/google-calendar", () => {
       created.body.chatThreadId,
       'Google Calendar event "Planning" was created.',
     );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connector.id,
+        target: { kind: "builtin", connectorSlug: "google-calendar" },
+      },
+    ]);
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));

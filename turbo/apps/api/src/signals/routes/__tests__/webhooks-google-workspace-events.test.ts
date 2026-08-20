@@ -1,7 +1,9 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, sign as signData } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -13,7 +15,9 @@ import { server } from "../../../mocks/server";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
@@ -42,6 +46,12 @@ function authHeaders() {
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -186,7 +196,16 @@ describe("POST /api/webhooks/google-workspace-events", () => {
       agentId: agent.agentId,
       name: "google-meet-transcript-workflow",
     });
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
     await connectGoogleMeet(actor);
+    const connector = await connectors.readConnectorBySlug(
+      actor,
+      "google-meet",
+    );
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
     const created = await accept(
@@ -236,5 +255,18 @@ describe("POST /api/webhooks/google-workspace-events", () => {
     expect(chatEventDisplayText(visibleEvent)).toBe(
       "A Google Meet transcript is ready.",
     );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connector.id,
+        target: { kind: "builtin", connectorSlug: "google-meet" },
+      },
+    ]);
   });
 });
