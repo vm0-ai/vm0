@@ -512,6 +512,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
+  // Managed SocialKit YouTube transcript product pricing, reviewed 2026-08-20.
+  ...usageGroup("social", "socialkit", [["youtube.transcript", usd(0.005), 1]]),
   // APIDojo Yahoo Finance — https://rapidapi.com/apidojo/api/yahoo-finance1/pricing
   // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
   ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),

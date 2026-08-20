@@ -130,6 +130,7 @@ import { meModelProvidersUpsertRoutes } from "./routes/me-model-providers-upsert
 import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
+import { socialRoutes } from "./routes/social";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
@@ -300,6 +301,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...scrapeRoutes,
   ...peopleSearchRoutes,
   ...webSearchRoutes,
+  ...socialRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,

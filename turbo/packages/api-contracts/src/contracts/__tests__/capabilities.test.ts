@@ -77,6 +77,10 @@ describe("CAPABILITIES", () => {
     expect(CAPABILITIES).toContain("people-search:read");
   });
 
+  it("should include managed social read capability", () => {
+    expect(CAPABILITIES).toContain("social:read");
+  });
+
   it("should include managed image recognition capability", () => {
     expect(CAPABILITIES).toContain("image-recognition:write");
   });

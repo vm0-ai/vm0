@@ -1425,6 +1425,24 @@ export {
   type WebSearchResult,
 } from "./web-search";
 export {
+  SOCIAL_TRANSCRIPT_MAX_LANGUAGE_CHARS,
+  SOCIAL_TRANSCRIPT_MAX_SEGMENTS,
+  SOCIAL_TRANSCRIPT_MAX_TEXT_CHARS,
+  SOCIAL_TRANSCRIPT_MAX_TIMESTAMP_CHARS,
+  SOCIAL_TRANSCRIPT_MAX_URL_CHARS,
+  socialContract,
+  socialTranscriptRequestSchema,
+  socialTranscriptResponseSchema,
+  socialTranscriptResultSchema,
+  socialTranscriptSegmentSchema,
+  socialTranscriptUrlSchema,
+  type SocialContract,
+  type SocialTranscriptRequest,
+  type SocialTranscriptResponse,
+  type SocialTranscriptResult,
+  type SocialTranscriptSegment,
+} from "./social";
+export {
   usageMembersContract,
   type UsageMembersContract,
   // Inferred types

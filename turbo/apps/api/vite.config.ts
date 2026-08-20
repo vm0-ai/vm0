@@ -26,6 +26,9 @@ export default defineConfig({
         },
       ],
       vercel: {
+        function: {
+          maxDuration: 300,
+        },
         config: {
           crons: vercelConfig.crons,
         },
