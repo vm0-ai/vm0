@@ -29,10 +29,10 @@ import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import {
-  listAllOrganizationMemberships,
-  listAllPendingOrganizationInvitations,
-} from "../external/clerk-organization-lists";
-import type { ClerkClient } from "../external/clerk";
+  createClerkReadContext,
+  type ClerkClient,
+  type ClerkReadContext,
+} from "../external/clerk";
 import type { Db } from "../external/db";
 import {
   getStripeClient,
@@ -64,6 +64,13 @@ import {
   stripeBillingPurchasePaymentParams,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
+import {
+  BillingClerkReadRateLimitError,
+  loadBillingOrganizationDirectory,
+  loadBillingOrganizationMemberships,
+  loadBillingOrganizationPendingInvitations,
+} from "./billing-clerk-directory.service";
+import { onRejection } from "../utils";
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
@@ -392,11 +399,13 @@ async function emailAlreadyBelongsToOrg(
   clerk: ClerkClient,
   orgId: string,
   email: string,
+  signal: AbortSignal,
 ): Promise<boolean> {
-  const [memberships, invitations] = await Promise.all([
-    listAllOrganizationMemberships(clerk.organizations, orgId),
-    listAllPendingOrganizationInvitations(clerk.organizations, orgId),
-  ]);
+  const { memberships, invitations } = await loadBillingOrganizationDirectory(
+    clerk,
+    orgId,
+    signal,
+  );
   return (
     memberships.some((membership) => {
       return clerkMembershipIdentity(membership)?.email === email;
@@ -647,7 +656,7 @@ async function prepareUsagePackInvitationPurchase(
     };
   }
   const email = normalizedEmail(args.email);
-  if (await emailAlreadyBelongsToOrg(clerk, args.orgId, email)) {
+  if (await emailAlreadyBelongsToOrg(clerk, args.orgId, email, signal)) {
     return {
       status: "conflict",
       reason: "invitee_unavailable",
@@ -964,17 +973,51 @@ async function persistInvitation(
   });
 }
 
+async function releaseInvitationCreationClaimAfterReadLimit(
+  db: Db,
+  purchaseId: string,
+  error: unknown,
+): Promise<void> {
+  if (!(error instanceof BillingClerkReadRateLimitError)) {
+    return;
+  }
+  await db
+    .update(usagePackInvitationPurchases)
+    .set({ status: "payment_succeeded", updatedAt: nowDate() })
+    .where(
+      and(
+        eq(usagePackInvitationPurchases.id, purchaseId),
+        eq(usagePackInvitationPurchases.status, "creating_invitation"),
+        isNull(usagePackInvitationPurchases.clerkInvitationId),
+        isNull(usagePackInvitationPurchases.allocationId),
+      ),
+    );
+}
+
 async function ensurePaidInvitationCreated(
   db: Db,
   clerk: ClerkClient,
   purchaseId: string,
   allowRecovery: boolean,
+  signal: AbortSignal,
 ): Promise<void> {
+  signal.throwIfAborted();
   const purchase = await claimInvitationCreation(db, purchaseId, allowRecovery);
   if (!purchase) {
     return;
   }
-  const membership = await membershipForPurchase(clerk, purchase);
+  signal.throwIfAborted();
+  const readContext = createClerkReadContext();
+  const membership = await onRejection(
+    membershipForPurchase(clerk, purchase, readContext, signal),
+    async (error) => {
+      await releaseInvitationCreationClaimAfterReadLimit(
+        db,
+        purchase.id,
+        error,
+      );
+    },
+  );
   if (membership) {
     await handleUsagePackInvitationAccepted(db, {
       orgId: purchase.orgId,
@@ -988,9 +1031,20 @@ async function ensurePaidInvitationCreated(
     });
     return;
   }
-  const pending = await listAllPendingOrganizationInvitations(
-    clerk.organizations,
-    purchase.orgId,
+  const pending = await onRejection(
+    loadBillingOrganizationPendingInvitations(
+      clerk,
+      purchase.orgId,
+      readContext,
+      signal,
+    ),
+    async (error) => {
+      await releaseInvitationCreationClaimAfterReadLimit(
+        db,
+        purchase.id,
+        error,
+      );
+    },
   );
   const existing = pending.find((invitation) => {
     return clerkInvitationPurchaseId(invitation) === purchase.id;
@@ -1212,12 +1266,13 @@ async function handleRecordedPayment(
   db: Db,
   clerk: ClerkClient,
   purchase: UsagePackInvitationPurchaseRow,
+  signal: AbortSignal,
 ): Promise<void> {
   if (purchase.status === "refund_pending") {
     await refundPurchase(db, purchase.id, false);
     return;
   }
-  await ensurePaidInvitationCreated(db, clerk, purchase.id, false);
+  await ensurePaidInvitationCreated(db, clerk, purchase.id, false, signal);
 }
 
 export async function handleUsagePackInvitationCheckoutPaid(
@@ -1225,6 +1280,7 @@ export async function handleUsagePackInvitationCheckoutPaid(
   clerk: ClerkClient,
   session: UsagePackInvitationCheckoutSessionInput,
   paidAt: Date,
+  signal: AbortSignal,
 ): Promise<{ readonly handled: boolean; readonly orgId: string | null }> {
   const purchaseId = purchaseIdFromMetadata(session.metadata);
   if (!purchaseId) {
@@ -1255,7 +1311,7 @@ export async function handleUsagePackInvitationCheckoutPaid(
     currency: session.currency,
     paidAt,
   });
-  await handleRecordedPayment(db, clerk, purchase);
+  await handleRecordedPayment(db, clerk, purchase, signal);
   return { handled: true, orgId: purchase.orgId };
 }
 
@@ -1264,6 +1320,7 @@ export async function handleUsagePackInvitationPaymentIntentSucceeded(
   clerk: ClerkClient,
   paymentIntent: StripePaymentIntent,
   paidAt: Date,
+  signal: AbortSignal,
 ): Promise<{ readonly handled: boolean; readonly orgId: string | null }> {
   const purchaseId = purchaseIdFromMetadata(paymentIntent.metadata);
   if (!purchaseId) {
@@ -1284,7 +1341,7 @@ export async function handleUsagePackInvitationPaymentIntentSucceeded(
     currency: paymentIntent.currency,
     paidAt,
   });
-  await handleRecordedPayment(db, clerk, purchase);
+  await handleRecordedPayment(db, clerk, purchase, signal);
   return { handled: true, orgId: purchase.orgId };
 }
 
@@ -1315,6 +1372,7 @@ export async function handleUsagePackInvitationInvoicePaid(
   db: Db,
   clerk: ClerkClient,
   invoiceInput: Pick<StripeInvoice, "id" | "metadata">,
+  signal: AbortSignal,
 ): Promise<{ readonly handled: boolean; readonly orgId: string | null }> {
   const purchaseId = purchaseIdFromMetadata(invoiceInput.metadata);
   if (!purchaseId) {
@@ -1347,7 +1405,7 @@ export async function handleUsagePackInvitationInvoicePaid(
     currency: invoice.currency,
     paidAt,
   });
-  await handleRecordedPayment(db, clerk, purchase);
+  await handleRecordedPayment(db, clerk, purchase, signal);
   return { handled: true, orgId: purchase.orgId };
 }
 
@@ -1362,12 +1420,18 @@ function invitationPurchaseConfirmState(
   | {
       readonly status: "complete";
       readonly result: ConfirmUsagePackInvitationPurchaseResult;
+    }
+  | {
+      readonly status: "resume_invitation";
+      readonly purchase: UsagePackInvitationPurchaseRow;
     } {
   if (!purchase || purchase.orgId !== orgId) {
     return { status: "complete", result: { status: "not_found" } };
   }
+  if (purchase.status === "payment_succeeded") {
+    return { status: "resume_invitation", purchase };
+  }
   if (
-    purchase.status === "payment_succeeded" ||
     purchase.status === "creating_invitation" ||
     purchase.status === "invitation_pending" ||
     ACCEPTED_PURCHASE_STATUSES.has(purchase.status)
@@ -1668,6 +1732,70 @@ function invitationPurchasePaymentMethodConflict(
   };
 }
 
+interface BillUsagePackInvitationPurchaseArgs {
+  readonly purchase: UsagePackInvitationPurchaseRow;
+  readonly subscription: UsagePackSubscriptionRow;
+  readonly stripeSubscriptionId: string;
+  readonly paymentMethod: BillingPurchasePaymentMethod | undefined;
+}
+
+async function billUsagePackInvitationPurchase(
+  db: Db,
+  clerk: ClerkClient,
+  args: BillUsagePackInvitationPurchaseArgs,
+  signal: AbortSignal,
+): Promise<ConfirmUsagePackInvitationPurchaseResult> {
+  const { purchase, subscription, stripeSubscriptionId, paymentMethod } =
+    args;
+  const stripe = getStripeClient();
+  const invoiceCreation = await createInvitationPurchaseInvoice(
+    db,
+    stripe,
+    purchase,
+    {
+      customerId: subscription.stripeCustomerId,
+      subscriptionId: stripeSubscriptionId,
+      paymentMethod,
+    },
+    signal,
+  );
+  if (invoiceCreation.status === "conflict") {
+    return invoiceCreation;
+  }
+  const { invoice } = invoiceCreation;
+  const payment = await completeBillingOperationInvoice(
+    stripe,
+    invoice,
+    `usage-pack-invitation:${purchase.id}`,
+    signal,
+    { payOpenInvoice: true },
+  );
+  if (payment.status === "pending_payment") {
+    return payment;
+  }
+  const handled = await handleUsagePackInvitationInvoicePaid(
+    db,
+    clerk,
+    {
+      id: invoice.id,
+      metadata: invoice.metadata,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (!handled.handled) {
+    throw new Error("Invitation invoice payment was not recorded");
+  }
+  if (!handled.orgId) {
+    return {
+      status: "conflict",
+      reason: "billing_state_changed",
+      diagnostics: {},
+    };
+  }
+  return { status: "confirmed" };
+}
+
 export async function confirmUsagePackInvitationPurchase(
   db: Db,
   clerk: ClerkClient,
@@ -1685,6 +1813,17 @@ export async function confirmUsagePackInvitationPurchase(
   if (purchaseState.status === "complete") {
     return purchaseState.result;
   }
+  if (purchaseState.status === "resume_invitation") {
+    await ensurePaidInvitationCreated(
+      db,
+      clerk,
+      purchaseState.purchase.id,
+      false,
+      signal,
+    );
+    signal.throwIfAborted();
+    return { status: "confirmed" };
+  }
   const { purchase } = purchaseState;
   if (await expireInvitationPurchasePreviewIfNeeded(db, purchase)) {
     return { status: "expired" };
@@ -1694,6 +1833,7 @@ export async function confirmUsagePackInvitationPurchase(
       clerk,
       purchase.orgId,
       purchase.normalizedEmail,
+      signal,
     )
   ) {
     return {
@@ -1735,47 +1875,17 @@ export async function confirmUsagePackInvitationPurchase(
   }
   const paymentMethod =
     args.paymentMethod ?? (route.kind === "preview" ? route : undefined);
-  const invoiceCreation = await createInvitationPurchaseInvoice(
+  return await billUsagePackInvitationPurchase(
     db,
-    stripe,
-    purchase,
+    clerk,
     {
-      customerId: activeSubscription.stripeCustomerId,
-      subscriptionId: stripeSubscriptionId,
+      purchase,
+      subscription: activeSubscription,
+      stripeSubscriptionId,
       paymentMethod,
     },
     signal,
   );
-  if (invoiceCreation.status === "conflict") {
-    return invoiceCreation;
-  }
-  const { invoice } = invoiceCreation;
-  const payment = await completeBillingOperationInvoice(
-    stripe,
-    invoice,
-    `usage-pack-invitation:${purchase.id}`,
-    signal,
-    { payOpenInvoice: true },
-  );
-  if (payment.status === "pending_payment") {
-    return payment;
-  }
-  const handled = await handleUsagePackInvitationInvoicePaid(db, clerk, {
-    id: invoice.id,
-    metadata: invoice.metadata,
-  });
-  signal.throwIfAborted();
-  if (!handled.handled) {
-    throw new Error("Invitation invoice payment was not recorded");
-  }
-  if (!handled.orgId) {
-    return {
-      status: "conflict",
-      reason: "billing_state_changed",
-      diagnostics: {},
-    };
-  }
-  return { status: "confirmed" };
 }
 
 export async function handleUsagePackInvitationCheckoutFailed(
@@ -2092,10 +2202,14 @@ export async function handleUsagePackInvitationAccepted(
 async function membershipForPurchase(
   clerk: ClerkClient,
   purchase: UsagePackInvitationPurchaseRow,
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<ClerkMembershipIdentity | null> {
-  const memberships = await listAllOrganizationMemberships(
-    clerk.organizations,
+  const memberships = await loadBillingOrganizationMemberships(
+    clerk,
     purchase.orgId,
+    context,
+    signal,
   );
   return (
     memberships.map(clerkMembershipIdentity).find((identity) => {
@@ -2108,10 +2222,16 @@ async function revokeAndRefundPurchase(
   db: Db,
   clerk: ClerkClient,
   purchase: UsagePackInvitationPurchaseRow,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal,
 ): Promise<"accepted" | "revoked"> {
-  const membership = await membershipForPurchase(clerk, purchase);
-  signal?.throwIfAborted();
+  const readContext = createClerkReadContext();
+  const membership = await membershipForPurchase(
+    clerk,
+    purchase,
+    readContext,
+    signal,
+  );
+  signal.throwIfAborted();
   if (membership) {
     await handleUsagePackInvitationAccepted(
       db,
@@ -2133,11 +2253,13 @@ async function revokeAndRefundPurchase(
       : "accepted";
   }
   if (purchase.clerkInvitationId) {
-    const pending = await listAllPendingOrganizationInvitations(
-      clerk.organizations,
+    const pending = await loadBillingOrganizationPendingInvitations(
+      clerk,
       purchase.orgId,
+      readContext,
+      signal,
     );
-    signal?.throwIfAborted();
+    signal.throwIfAborted();
     if (
       pending.some((invitation) => {
         return invitation.id === purchase.clerkInvitationId;
@@ -2147,7 +2269,7 @@ async function revokeAndRefundPurchase(
         organizationId: purchase.orgId,
         invitationId: purchase.clerkInvitationId,
       });
-      signal?.throwIfAborted();
+      signal.throwIfAborted();
     }
   }
   const [markedForRefund] = await db
@@ -2258,7 +2380,7 @@ export async function reconcileUsagePackInvitationPurchases(
     switch (purchase.status) {
       case "payment_succeeded":
       case "creating_invitation": {
-        await ensurePaidInvitationCreated(db, clerk, purchase.id, true);
+        await ensurePaidInvitationCreated(db, clerk, purchase.id, true, signal);
         reconciled += 1;
         break;
       }
@@ -2268,7 +2390,12 @@ export async function reconcileUsagePackInvitationPurchases(
           reconciled += 1;
           break;
         }
-        const membership = await membershipForPurchase(clerk, purchase);
+        const membership = await membershipForPurchase(
+          clerk,
+          purchase,
+          createClerkReadContext(),
+          signal,
+        );
         signal.throwIfAborted();
         if (membership && purchase.clerkInvitationId) {
           await handleUsagePackInvitationAccepted(

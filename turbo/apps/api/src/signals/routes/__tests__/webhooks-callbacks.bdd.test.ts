@@ -9,7 +9,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now, nowDate } from "../../../lib/time";
+import { mockNow, now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1609,9 +1609,15 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     const { runId, headers } = await createEventWebhookRun(
       "best-effort Axiom deadline",
     );
+    const submittedPayloadValue = `private-timeout-value-${randomUUID()}`;
+    const axiomToken = `xaat-timeout-${randomUUID()}`;
+    mockOptionalEnv("AXIOM_TOKEN_SESSIONS", axiomToken);
+    const startedAt = now();
+    mockNow(startedAt);
     const ingestStarted = createDeferredPromise<void>(context.signal);
     const releaseIngest = createDeferredPromise<void>(context.signal);
     const axiomDeadline = new AbortController();
+    let submittedBody = "";
     context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
       return milliseconds === 10_000 ? axiomDeadline.signal : undefined;
     });
@@ -1623,7 +1629,8 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     server.use(
       http.post(
         "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
-        async () => {
+        async ({ request }) => {
+          submittedBody = await request.text();
           ingestStarted.resolve(undefined);
           await releaseIngest.promise;
           return HttpResponse.json(successfulAxiomIngestStatus(1));
@@ -1637,7 +1644,7 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
           {
             type: "result",
             sequenceNumber: 0,
-            result: "DB-backed callback output",
+            result: submittedPayloadValue,
           },
         ],
       },
@@ -1650,23 +1657,112 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
       lastSequence: 0,
     });
     await ingestStarted.promise;
+    mockNow(startedAt + 2345);
     axiomDeadline.abort(
       new DOMException("Axiom ingest deadline", "TimeoutError"),
     );
 
     releaseIngest.resolve(undefined);
     await flushWaitUntilForTest();
-    expect(
-      context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
+    const logFields = context.mocks.axiomLogging.error.mock.calls.find(
+      ([message, fields]) => {
         return (
           message === "Optional Axiom trace delivery failed" &&
-          typeof fields === "object" &&
-          fields !== null &&
-          "runId" in fields &&
+          isUnknownRecord(fields) &&
           fields.runId === runId
         );
-      }),
-    ).toBeTruthy();
+      },
+    )?.[1];
+    if (!isUnknownRecord(logFields) || !isUnknownRecord(logFields.error)) {
+      throw new Error("Expected structured Axiom timeout log fields");
+    }
+    expect(logFields.error).toMatchObject({
+      name: "DirectAxiomIngestError",
+      message: "Axiom ingest timed out",
+      reason: "timeout",
+      dataset: "agent-run-events",
+      eventCount: 1,
+      requestBytes: Buffer.byteLength(submittedBody, "utf8"),
+      timeoutMs: 10_000,
+      elapsedMs: 2345,
+      cause: {
+        name: "TimeoutError",
+        message: "Axiom ingest deadline",
+      },
+    });
+    expect(logFields.error.requestBytes).toBeGreaterThan(0);
+    const serializedLogFields = JSON.stringify(logFields);
+    expect(serializedLogFields).not.toContain(submittedPayloadValue);
+    expect(serializedLogFields).not.toContain(axiomToken);
+  });
+
+  it("logs safe dimensions for a non-parent Axiom transport failure", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "best-effort Axiom transport failure",
+    );
+    const submittedPayloadValue = `private-transport-value-${randomUUID()}`;
+    const axiomToken = `xaat-transport-${randomUUID()}`;
+    mockOptionalEnv("AXIOM_TOKEN_SESSIONS", axiomToken);
+    let submittedBody = "";
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          submittedBody = await request.text();
+          return HttpResponse.error();
+        },
+      ),
+    );
+
+    const response = await api.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: submittedPayloadValue,
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const logFields = context.mocks.axiomLogging.error.mock.calls.find(
+      ([message, fields]) => {
+        return (
+          message === "Optional Axiom trace delivery failed" &&
+          isUnknownRecord(fields) &&
+          fields.runId === runId
+        );
+      },
+    )?.[1];
+    if (!isUnknownRecord(logFields) || !isUnknownRecord(logFields.error)) {
+      throw new Error("Expected structured Axiom transport log fields");
+    }
+    expect(logFields.error).toMatchObject({
+      name: "DirectAxiomIngestError",
+      message: "Axiom ingest transport failed",
+      reason: "transport_error",
+      dataset: "agent-run-events",
+      eventCount: 1,
+      requestBytes: Buffer.byteLength(submittedBody, "utf8"),
+      timeoutMs: 10_000,
+      elapsedMs: expect.any(Number),
+      cause: { name: "TypeError" },
+    });
+    expect(logFields.error.requestBytes).toBeGreaterThan(0);
+    expect(logFields.error.elapsedMs).toBeGreaterThanOrEqual(0);
+    const serializedLogFields = JSON.stringify(logFields);
+    expect(serializedLogFields).not.toContain(submittedPayloadValue);
+    expect(serializedLogFields).not.toContain(axiomToken);
   });
 
   it("logs bounded Axiom partial-ingest details without event payload values", async () => {
@@ -1872,6 +1968,141 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
 });
 
 describe("WHCB-05: sandbox agent webhook boundaries", () => {
+  it("returns 500 with structured diagnostics when telemetry ingest times out", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "required Axiom telemetry deadline",
+    );
+    const submittedHost = `${randomUUID()}.timeout.example.test`;
+    const axiomToken = `xaat-telemetry-timeout-${randomUUID()}`;
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", axiomToken);
+    const startedAt = now();
+    mockNow(startedAt);
+    const ingestStarted = createDeferredPromise<void>(context.signal);
+    const releaseIngest = createDeferredPromise<void>(context.signal);
+    const axiomDeadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 10_000 ? axiomDeadline.signal : undefined;
+    });
+    onTestFinished(() => {
+      if (!releaseIngest.settled()) {
+        releaseIngest.resolve(undefined);
+      }
+    });
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-network/ingest",
+        async () => {
+          ingestStarted.resolve(undefined);
+          await releaseIngest.promise;
+          return HttpResponse.json(successfulAxiomIngestStatus(1));
+        },
+      ),
+    );
+
+    const pendingResponse = api.requestAgentTelemetry(
+      {
+        runId,
+        networkLogs: [
+          { timestamp: nowDate().toISOString(), host: submittedHost },
+        ],
+      },
+      headers,
+      [500],
+    );
+    await ingestStarted.promise;
+    mockNow(startedAt + 3456);
+    axiomDeadline.abort(
+      new DOMException("Axiom telemetry deadline", "TimeoutError"),
+    );
+    releaseIngest.resolve(undefined);
+
+    const response = await pendingResponse;
+    expect(response.status).toBe(500);
+    const logFields = context.mocks.axiomLogging.error.mock.calls.find(
+      ([, fields]) => {
+        return (
+          isUnknownRecord(fields) &&
+          fields.type === "unhandled_request_error" &&
+          isUnknownRecord(fields.error) &&
+          fields.error.reason === "timeout"
+        );
+      },
+    )?.[1];
+    if (!isUnknownRecord(logFields) || !isUnknownRecord(logFields.error)) {
+      throw new Error("Expected structured telemetry timeout log fields");
+    }
+    expect(logFields.error).toMatchObject({
+      name: "DirectAxiomIngestError",
+      reason: "timeout",
+      dataset: "sandbox-telemetry-network",
+      eventCount: 1,
+      timeoutMs: 10_000,
+      elapsedMs: 3456,
+      cause: {
+        name: "TimeoutError",
+        message: "Axiom telemetry deadline",
+      },
+    });
+    const serializedLogFields = JSON.stringify(logFields);
+    expect(serializedLogFields).not.toContain(submittedHost);
+    expect(serializedLogFields).not.toContain(axiomToken);
+  });
+
+  it("preserves parent cancellation at the telemetry request boundary", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "parent-cancelled Axiom telemetry",
+    );
+    const ingestStarted = createDeferredPromise<void>(context.signal);
+    const releaseIngest = createDeferredPromise<void>(context.signal);
+    const parentController = new AbortController();
+    onTestFinished(() => {
+      if (!releaseIngest.settled()) {
+        releaseIngest.resolve(undefined);
+      }
+    });
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-network/ingest",
+        async () => {
+          ingestStarted.resolve(undefined);
+          await releaseIngest.promise;
+          return HttpResponse.json(successfulAxiomIngestStatus(1));
+        },
+      ),
+    );
+
+    const pendingResponse = api.requestAgentTelemetry(
+      {
+        runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: `${randomUUID()}.parent-abort.example.test`,
+          },
+        ],
+      },
+      headers,
+      [500],
+      parentController.signal,
+    );
+    await ingestStarted.promise;
+    const parentAbort = new Error("Parent request cancelled");
+    parentAbort.name = "AbortError";
+    parentController.abort(parentAbort);
+    releaseIngest.resolve(undefined);
+
+    const response = await pendingResponse;
+    expect(response.status).toBe(500);
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    expect(
+      context.mocks.axiomLogging.error.mock.calls.some(([, fields]) => {
+        return (
+          isUnknownRecord(fields) && fields.type === "unhandled_request_error"
+        );
+      }),
+    ).toBeFalsy();
+  });
+
   it("attributes sandbox operation telemetry to the optional runner name", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,

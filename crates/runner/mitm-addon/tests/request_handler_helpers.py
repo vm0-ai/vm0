@@ -11,7 +11,9 @@ def _write_registry(
     vm_info: dict[str, object],
 ) -> Path:
     path = tmp_path / "registry.json"
-    path.write_text(json.dumps({"vms": {client_ip: vm_info}}))
+    replacement_path = tmp_path / "registry.next.json"
+    replacement_path.write_text(json.dumps({"vms": {client_ip: vm_info}}))
+    replacement_path.replace(path)
     return path
 
 
