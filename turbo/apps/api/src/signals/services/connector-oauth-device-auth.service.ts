@@ -61,6 +61,8 @@ import {
 import {
   normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
+  storedConnectorAccountMutationSelection,
+  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
@@ -87,7 +89,9 @@ const deviceAuthSessionSelection = Object.freeze({
   sessionTokenHash: connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
   encryptedProviderState:
     connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
-  accountMutation: connectorOauthDeviceAuthorizationSessions.accountMutation,
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorOauthDeviceAuthorizationSessions,
+  ),
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
   verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
   verificationUriComplete:
@@ -1046,7 +1050,7 @@ async function createDeviceAuthSession(
         status: "awaiting_user_authorization",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        accountMutation: args.account ?? null,
+        ...storedConnectorAccountMutationWrite(args.account),
         userCode: args.userCode,
         verificationUri: args.verificationUri,
         verificationUriComplete: args.verificationUriComplete,

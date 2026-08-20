@@ -6,6 +6,7 @@ import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { publicBrandFromConnectorOAuthState } from "../../lib/connector-oauth-state";
 import type { Db, ReadonlyDb } from "../external/db";
+import { storedConnectorAccountMutationSelection } from "./connector-account-mutation.service";
 
 const storedOAuthStateSelection = Object.freeze({
   id: connectorOauthStates.id,
@@ -22,7 +23,8 @@ const storedOAuthStateSelection = Object.freeze({
   authorizationUrl: connectorOauthStates.authorizationUrl,
   codeVerifier: connectorOauthStates.codeVerifier,
   oauthContext: connectorOauthStates.oauthContext,
-  accountMutation: connectorOauthStates.accountMutation,
+  accountMutation:
+    storedConnectorAccountMutationSelection(connectorOauthStates),
   createdAt: connectorOauthStates.createdAt,
   expiresAt: connectorOauthStates.expiresAt,
   consumedAt: connectorOauthStates.consumedAt,

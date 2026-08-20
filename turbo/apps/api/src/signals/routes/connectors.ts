@@ -58,7 +58,10 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import { normalizeConnectorAccountMutation } from "../services/connector-account-mutation.service";
+import {
+  normalizeConnectorAccountMutation,
+  storedConnectorAccountMutationWrite,
+} from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 
 const connectorReadAuth = {
@@ -550,7 +553,7 @@ const startConnectorOauthInner$ = command(
         authorizationUrl: authResult.url,
         codeVerifier: authResult.codeVerifier,
         oauthContext: authResult.oauthContext,
-        accountMutation: bodyResult.data.account ?? null,
+        ...storedConnectorAccountMutationWrite(bodyResult.data.account),
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return resolution;
@@ -666,7 +669,7 @@ const startConnectorOpenIdInner$ = command(
         redirectUri: prepared.expectedReturnTo,
         codeVerifier: authResult.codeVerifier,
         oauthContext: JSON.stringify({ realm: prepared.realm }),
-        accountMutation: bodyResult.data.account ?? null,
+        ...storedConnectorAccountMutationWrite(bodyResult.data.account),
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return resolution;

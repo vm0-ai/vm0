@@ -58,6 +58,8 @@ import {
 import {
   normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
+  storedConnectorAccountMutationSelection,
+  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
@@ -79,7 +81,9 @@ const externalCodeSessionSelection = Object.freeze({
   status: connectorExternalCodeSessions.status,
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
   encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
-  accountMutation: connectorExternalCodeSessions.accountMutation,
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorExternalCodeSessions,
+  ),
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
   errorCode: connectorExternalCodeSessions.errorCode,
   errorMessage: connectorExternalCodeSessions.errorMessage,
@@ -865,7 +869,7 @@ async function createExternalCodeSession(
         status: "pending",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        accountMutation: args.account ?? null,
+        ...storedConnectorAccountMutationWrite(args.account),
         authorizationUrl: args.authorizationUrl,
         createdAt: args.now,
         updatedAt: args.now,
