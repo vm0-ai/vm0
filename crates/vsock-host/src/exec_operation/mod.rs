@@ -39,7 +39,7 @@ const DEFAULT_EXEC_STREAM_CAPACITY: usize = 32;
 // Provides 64 MiB of headroom at the guest drainer's 8 KiB read granularity.
 // Larger bounded copies rely on concurrent draining and fail explicitly if
 // the queue overflows rather than reserving unbounded memory.
-pub(crate) const MAX_EXEC_STREAM_CAPACITY: usize = 8192;
+pub(crate) const MAX_EXEC_STREAM_CAPACITY: usize = sandbox::ProcessOutputMode::MAX_QUEUE_CAPACITY;
 const EXEC_OPERATION_LABEL_LOG_PREFIX_MAX_BYTES: usize = 100;
 const EXEC_OPERATION_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);

@@ -3734,6 +3734,7 @@ name = "vsock-host"
 version = "0.17.84"
 dependencies = [
  "nix",
+ "sandbox",
  "shell-quote",
  "tokio",
  "tracing",

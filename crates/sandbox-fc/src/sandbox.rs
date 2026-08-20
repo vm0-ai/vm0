@@ -2490,6 +2490,7 @@ impl Sandbox for FirecrackerSandbox {
         let operation = SandboxOperation::StartProcess;
         let vsock = self.begin_guest_operation(operation).await?;
         Self::validate_exec_env_keys(operation, request.env)?;
+        request.output.validate()?;
 
         let start_future = async move {
             vsock
