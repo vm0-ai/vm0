@@ -1,3 +1,4 @@
+import { now } from "../lib/time.ts";
 import { currentLocale } from "./index.ts";
 
 export function resolvedAppLocale(): string {
@@ -45,4 +46,43 @@ export function formatChatTimestamp(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+/**
+ * Coarse "how long ago" label for list rows, where the exact minute is noise
+ * and only the rough age helps the reader rank results. Intl supplies every
+ * locale's wording, so this adds no translation keys.
+ *
+ * Anything a month or older falls through to {@link formatChatTimestamp}: past
+ * that point a relative phrase ("2 months ago") is less useful than the date.
+ */
+export function formatRelativeTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const elapsedMs = now() - date.getTime();
+  if (elapsedMs >= 30 * DAY_MS || elapsedMs < 0) {
+    return formatChatTimestamp(value);
+  }
+
+  const format = new Intl.RelativeTimeFormat(resolvedAppLocale(), {
+    numeric: "auto",
+  });
+  if (elapsedMs < HOUR_MS) {
+    return format.format(-Math.floor(elapsedMs / MINUTE_MS), "minute");
+  }
+  if (elapsedMs < DAY_MS) {
+    return format.format(-Math.floor(elapsedMs / HOUR_MS), "hour");
+  }
+  if (elapsedMs < WEEK_MS) {
+    return format.format(-Math.floor(elapsedMs / DAY_MS), "day");
+  }
+  return format.format(-Math.floor(elapsedMs / WEEK_MS), "week");
 }
