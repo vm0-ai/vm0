@@ -28,12 +28,13 @@ import {
 } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { requestSignal$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { clerk$, type ClerkClient } from "../external/clerk";
 import {
-  listAllOrganizationMemberships,
-  listAllPendingOrganizationInvitations,
-} from "../external/clerk-organization-lists";
+  clerk$,
+  createClerkReadContext,
+  type ClerkClient,
+} from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import {
@@ -83,6 +84,10 @@ import {
   type UsagePackMigrationOwner,
 } from "../services/usage-pack-subscription-migration.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
+import {
+  loadBillingOrganizationDirectory,
+  loadBillingOrganizationMemberships,
+} from "../services/billing-clerk-directory.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { reconcilePaidStripeInvoice$ } from "../services/webhooks-stripe.service";
 import {
@@ -90,6 +95,7 @@ import {
   parseStoredSignupAttribution,
 } from "../services/acquisition-attribution.service";
 import type { RouteEntry } from "../route-entry";
+import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -159,10 +165,14 @@ async function signupAttributionForUser(
 ): Promise<ReturnType<typeof adAttributionMetadataSchema.parse> | undefined> {
   const usersResult = await settle(
     Promise.resolve(
-      clerk.users.getUserList({
-        userId: [userId],
-        limit: 1,
-      }),
+      clerk.users.getUserList(
+        {
+          userId: [userId],
+          limit: 1,
+        },
+        undefined,
+        signal,
+      ),
     ),
     signal,
   );
@@ -245,9 +255,11 @@ async function validateUsagePackSubscriptionMembers(
   if (!args.memberAdditionSchemaAvailable) {
     return "member_additions_unavailable";
   }
-  const memberships = await listAllOrganizationMemberships(
-    args.clerk.organizations,
+  const memberships = await loadBillingOrganizationMemberships(
+    args.clerk,
     args.orgId,
+    createClerkReadContext(),
+    signal,
   );
   signal.throwIfAborted();
   const activeMemberIds = memberships.map((membership) => {
@@ -414,10 +426,11 @@ async function loadUsagePackCheckoutAllocations(
 ): Promise<readonly UsagePackCheckoutAllocation[] | null> {
   const catalog = await loadUsagePackCatalog();
   signal.throwIfAborted();
-  const [memberships, invitations] = await Promise.all([
-    listAllOrganizationMemberships(args.clerk.organizations, args.orgId),
-    listAllPendingOrganizationInvitations(args.clerk.organizations, args.orgId),
-  ]);
+  const { memberships, invitations } = await loadBillingOrganizationDirectory(
+    args.clerk,
+    args.orgId,
+    signal,
+  );
   signal.throwIfAborted();
   return usagePackCheckoutAllocations(
     args.selections,
@@ -774,14 +787,16 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const allocations = await loadUsagePackCheckoutAllocations(
       {
         clerk,
         orgId: auth.orgId,
         selections: body.memberUsagePacks,
       },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
     if (!allocations) {
       return badRequestMessage(
         "Organization members changed; refresh billing and try again",
@@ -890,7 +905,7 @@ const usagePackCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   return await set(
     authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      usagePackCheckoutAuthed$,
+      withBillingClerkRateLimit(usagePackCheckoutAuthed$),
     ),
     signal,
   );
@@ -1210,13 +1225,12 @@ const usagePackMigrationPreviewAuthed$ = command(
       return providerUnavailable("Usage pack migration is not ready");
     }
     const clerk = get(clerk$);
-    const [memberships, invitations] = await Promise.all([
-      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
-      listAllPendingOrganizationInvitations(
-        clerk.organizations,
-        access.auth.orgId,
-      ),
-    ]);
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
+    const { memberships, invitations } = await loadBillingOrganizationDirectory(
+      clerk,
+      access.auth.orgId,
+      readSignal,
+    );
     signal.throwIfAborted();
     const result = await previewUsagePackSubscriptionMigration(
       db,
@@ -1268,13 +1282,12 @@ const usagePackMigrationConfirmAuthed$ = command(
       return providerUnavailable("Usage pack migration is not ready");
     }
     const clerk = get(clerk$);
-    const [memberships, invitations] = await Promise.all([
-      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
-      listAllPendingOrganizationInvitations(
-        clerk.organizations,
-        access.auth.orgId,
-      ),
-    ]);
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
+    const { memberships, invitations } = await loadBillingOrganizationDirectory(
+      clerk,
+      access.auth.orgId,
+      readSignal,
+    );
     signal.throwIfAborted();
     const ownerIds = usagePackMigrationOwners(
       memberships,
@@ -1331,13 +1344,12 @@ const usagePackMigrationRevisionPreviewAuthed$ = command(
       return providerUnavailable("Usage pack migration is not ready");
     }
     const clerk = get(clerk$);
-    const [memberships, invitations] = await Promise.all([
-      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
-      listAllPendingOrganizationInvitations(
-        clerk.organizations,
-        access.auth.orgId,
-      ),
-    ]);
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
+    const { memberships, invitations } = await loadBillingOrganizationDirectory(
+      clerk,
+      access.auth.orgId,
+      readSignal,
+    );
     signal.throwIfAborted();
     const result = await previewUsagePackSubscriptionMigrationRevision(
       db,
@@ -1393,13 +1405,12 @@ const usagePackMigrationRevisionConfirmAuthed$ = command(
       return providerUnavailable("Usage pack migration is not ready");
     }
     const clerk = get(clerk$);
-    const [memberships, invitations] = await Promise.all([
-      listAllOrganizationMemberships(clerk.organizations, access.auth.orgId),
-      listAllPendingOrganizationInvitations(
-        clerk.organizations,
-        access.auth.orgId,
-      ),
-    ]);
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
+    const { memberships, invitations } = await loadBillingOrganizationDirectory(
+      clerk,
+      access.auth.orgId,
+      readSignal,
+    );
     signal.throwIfAborted();
     const result = await confirmUsagePackSubscriptionMigrationRevision(
       db,
@@ -1536,6 +1547,7 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!management) {
       return notFound("Usage pack subscription not found");
     }
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const memberValidation = await validateUsagePackSubscriptionMembers(
       {
         clerk: get(clerk$),
@@ -1546,8 +1558,9 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
         }),
         memberAdditionSchemaAvailable: memberAdditionSchema,
       },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
     if (memberValidation === "member_additions_unavailable") {
       return providerUnavailable("Usage pack member additions are not ready");
     }
@@ -1704,7 +1717,7 @@ const usagePackSubscriptionChangePreview$ = command(
     return await set(
       authRoute(
         { requireOrganization: true, missingOrganizationStatus: 401 },
-        usagePackSubscriptionChangePreviewAuthed$,
+        withBillingClerkRateLimit(usagePackSubscriptionChangePreviewAuthed$),
       ),
       signal,
     );
@@ -1732,7 +1745,7 @@ const usagePackMigrationPreview$ = command(
     return await set(
       authRoute(
         { requireOrganization: true, missingOrganizationStatus: 401 },
-        usagePackMigrationPreviewAuthed$,
+        withBillingClerkRateLimit(usagePackMigrationPreviewAuthed$),
       ),
       signal,
     );
@@ -1747,7 +1760,7 @@ const usagePackMigrationConfirm$ = command(
     return await set(
       authRoute(
         { requireOrganization: true, missingOrganizationStatus: 401 },
-        usagePackMigrationConfirmAuthed$,
+        withBillingClerkRateLimit(usagePackMigrationConfirmAuthed$),
       ),
       signal,
     );
@@ -1762,7 +1775,7 @@ const usagePackMigrationRevisionPreview$ = command(
     return await set(
       authRoute(
         { requireOrganization: true, missingOrganizationStatus: 401 },
-        usagePackMigrationRevisionPreviewAuthed$,
+        withBillingClerkRateLimit(usagePackMigrationRevisionPreviewAuthed$),
       ),
       signal,
     );
@@ -1777,7 +1790,7 @@ const usagePackMigrationRevisionConfirm$ = command(
     return await set(
       authRoute(
         { requireOrganization: true, missingOrganizationStatus: 401 },
-        usagePackMigrationRevisionConfirmAuthed$,
+        withBillingClerkRateLimit(usagePackMigrationRevisionConfirmAuthed$),
       ),
       signal,
     );

@@ -77,17 +77,25 @@ export type ClerkOrganizationInvitationStatus =
   | "expired";
 
 export interface ClerkUsersApi {
-  getUserList(params?: {
-    userId?: string[];
-    emailAddress?: string[];
-    limit?: number;
-    offset?: number;
-  }): Promise<ClerkPaginated<ClerkUser>>;
-  getOrganizationMembershipList(params: {
-    userId: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<ClerkPaginated<ClerkOrganizationMembership>>;
+  getUserList(
+    params?: {
+      userId?: string[];
+      emailAddress?: string[];
+      limit?: number;
+      offset?: number;
+    },
+    context?: ClerkReadContext,
+    signal?: AbortSignal,
+  ): Promise<ClerkPaginated<ClerkUser>>;
+  getOrganizationMembershipList(
+    params: {
+      userId: string;
+      limit?: number;
+      offset?: number;
+    },
+    context?: ClerkReadContext,
+    signal?: AbortSignal,
+  ): Promise<ClerkPaginated<ClerkOrganizationMembership>>;
   updateUserMetadata(
     userId: string,
     params: {
@@ -98,20 +106,32 @@ export interface ClerkUsersApi {
 }
 
 export interface ClerkOrganizationsApi {
-  getOrganization(params: {
-    organizationId: string;
-  }): Promise<ClerkOrganization>;
-  getOrganizationMembershipList(params: {
-    organizationId: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<ClerkPaginated<ClerkOrganizationMembership>>;
-  getOrganizationInvitationList(params: {
-    organizationId: string;
-    status?: ClerkOrganizationInvitationStatus[];
-    limit?: number;
-    offset?: number;
-  }): Promise<ClerkPaginated<ClerkOrganizationInvitation>>;
+  getOrganization(
+    params: {
+      organizationId: string;
+    },
+    context?: ClerkReadContext,
+    signal?: AbortSignal,
+  ): Promise<ClerkOrganization>;
+  getOrganizationMembershipList(
+    params: {
+      organizationId: string;
+      limit?: number;
+      offset?: number;
+    },
+    context?: ClerkReadContext,
+    signal?: AbortSignal,
+  ): Promise<ClerkPaginated<ClerkOrganizationMembership>>;
+  getOrganizationInvitationList(
+    params: {
+      organizationId: string;
+      status?: ClerkOrganizationInvitationStatus[];
+      limit?: number;
+      offset?: number;
+    },
+    context?: ClerkReadContext,
+    signal?: AbortSignal,
+  ): Promise<ClerkPaginated<ClerkOrganizationInvitation>>;
   createOrganizationInvitation(params: {
     organizationId: string;
     emailAddress: string;
@@ -186,13 +206,13 @@ const CLERK_READ_MAX_ATTEMPTS = 3;
 const CLERK_READ_MAX_TOTAL_DELAY_MS = 15_000;
 const CLERK_READ_MAX_JITTER_MS = 250;
 
-export interface ClerkReadRetryBudget {
+export interface ClerkReadContext {
   readonly remainingDelayMs: () => number;
 }
 
-export function createClerkReadRetryBudget(
-  currentTimeMs: () => number,
-): ClerkReadRetryBudget {
+export function createClerkReadContext(
+  currentTimeMs: () => number = Date.now,
+): ClerkReadContext {
   const deadlineAtMs = currentTimeMs() + CLERK_READ_MAX_TOTAL_DELAY_MS;
   return {
     remainingDelayMs: () => {
@@ -219,11 +239,11 @@ export function clerkRateLimit(error: unknown): ClerkRateLimit | null {
   };
 }
 
-/** Retry a Clerk operation only after the caller has identified it as a read. */
+/** Apply the shared 429 policy inside a Clerk external read adapter. */
 export async function retryClerkRead<T>(
   read: () => Promise<T>,
-  signal: AbortSignal,
-  budget: ClerkReadRetryBudget,
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<T> {
   let totalDelayMs = 0;
   for (let attempt = 1; ; attempt += 1) {
@@ -241,7 +261,7 @@ export async function retryClerkRead<T>(
     const retryAfterMs = rateLimit.retryAfterSeconds * 1000;
     const remainingDelayMs = Math.min(
       CLERK_READ_MAX_TOTAL_DELAY_MS - totalDelayMs,
-      budget.remainingDelayMs(),
+      context.remainingDelayMs(),
     );
     if (retryAfterMs > remainingDelayMs) {
       throw result.error;
@@ -277,8 +297,109 @@ const clerkSdk = singleton(() => {
   });
 });
 
+function clerkRead<T>(
+  read: () => Promise<T>,
+  context: ClerkReadContext | undefined,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  return retryClerkRead(
+    read,
+    context ?? createClerkReadContext(),
+    signal ?? new AbortController().signal,
+  );
+}
+
+const clerkClient = singleton((): ClerkClient => {
+  const sdk = clerkSdk();
+  return {
+    users: {
+      getUserList: (params, context, signal) => {
+        return clerkRead(
+          () => {
+            return sdk.users.getUserList(params);
+          },
+          context,
+          signal,
+        );
+      },
+      getOrganizationMembershipList: (params, context, signal) => {
+        return clerkRead(
+          () => {
+            return sdk.users.getOrganizationMembershipList(params);
+          },
+          context,
+          signal,
+        );
+      },
+      updateUserMetadata: (userId, params) => {
+        return sdk.users.updateUserMetadata(userId, params);
+      },
+    },
+    organizations: {
+      getOrganization: (params, context, signal) => {
+        return clerkRead(
+          () => {
+            return sdk.organizations.getOrganization(params);
+          },
+          context,
+          signal,
+        );
+      },
+      getOrganizationMembershipList: (params, context, signal) => {
+        return clerkRead(
+          () => {
+            return sdk.organizations.getOrganizationMembershipList(params);
+          },
+          context,
+          signal,
+        );
+      },
+      getOrganizationInvitationList: (params, context, signal) => {
+        return clerkRead(
+          () => {
+            return sdk.organizations.getOrganizationInvitationList(params);
+          },
+          context,
+          signal,
+        );
+      },
+      createOrganizationInvitation: (params) => {
+        return sdk.organizations.createOrganizationInvitation(params);
+      },
+      revokeOrganizationInvitation: (params) => {
+        return sdk.organizations.revokeOrganizationInvitation(params);
+      },
+      updateOrganizationMembership: (params) => {
+        return sdk.organizations.updateOrganizationMembership(params);
+      },
+      deleteOrganizationMembership: (params) => {
+        return sdk.organizations.deleteOrganizationMembership(params);
+      },
+      updateOrganization: (organizationId, params) => {
+        return sdk.organizations.updateOrganization(organizationId, params);
+      },
+      updateOrganizationLogo: (organizationId, params) => {
+        return sdk.organizations.updateOrganizationLogo(organizationId, params);
+      },
+      deleteOrganization: (organizationId) => {
+        return sdk.organizations.deleteOrganization(organizationId);
+      },
+    },
+    signInTokens: {
+      createSignInToken: (params) => {
+        return sdk.signInTokens.createSignInToken(params);
+      },
+    },
+    m2m: {
+      createToken: (params) => {
+        return sdk.m2m.createToken(params);
+      },
+    },
+  };
+});
+
 export const clerk$: Computed<ClerkClient> = computed((): ClerkClient => {
-  return clerkSdk();
+  return clerkClient();
 });
 
 export type OrganizationMembershipList =
