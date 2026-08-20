@@ -10,7 +10,8 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -1198,7 +1199,7 @@ impl ApiClient {
         .await?;
 
         let status = resp.status();
-        let max_bytes = crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+        let max_bytes = BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
         let content_length = resp.content_length();
         if content_length.is_some_and(|length| length > max_bytes) {
             return Err(RunnerError::Api(format!(
@@ -1768,7 +1769,7 @@ mod tests {
 
     #[tokio::test]
     async fn api_client_bounds_builtin_firewall_catalog_response_body() {
-        let max_bytes = crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+        let max_bytes = BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
         let max_bytes_usize = usize::try_from(max_bytes).unwrap();
         let expected_error =
             format!("builtin firewall catalog resolve response body exceeds {max_bytes} bytes");
