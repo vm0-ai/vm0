@@ -231,6 +231,12 @@ pub struct EventDeliveryCompletedAttemptDiagnostic {
     /// HTTP response status, when a response was received.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
+    /// Whether Reqwest identified the response-less failure as timeout-related.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_observed: Option<bool>,
+    /// Whether Reqwest identified the response-less failure as connection-related.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_observed: Option<bool>,
 }
 
 /// Delivery state captured when the global drain deadline expires.
@@ -1451,6 +1457,17 @@ mod tests {
             elapsed_ms: 30_000,
             failure_kind: EventDeliveryAttemptFailureKind::HttpStatus,
             http_status: Some(500),
+            timeout_observed: None,
+            connect_observed: None,
+        };
+        let combined_transport_attempt = EventDeliveryCompletedAttemptDiagnostic {
+            attempt: 1,
+            client_request_id: "33333333-3333-4333-8333-333333333333".to_string(),
+            elapsed_ms: 10_000,
+            failure_kind: EventDeliveryAttemptFailureKind::Timeout,
+            http_status: None,
+            timeout_observed: Some(true),
+            connect_observed: Some(true),
         };
         let active_attempt = EventDeliveryActiveAttemptDiagnostic {
             attempt: 2,
@@ -1480,7 +1497,7 @@ mod tests {
                     last_sequence: 39,
                     event_count: 24,
                     conservative_bytes: 8_192,
-                    completed_attempts: vec![first_attempt],
+                    completed_attempts: vec![combined_transport_attempt],
                     active_attempt: Some(active_attempt),
                     outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
                 }),
@@ -1504,6 +1521,14 @@ mod tests {
             "http_status"
         );
         assert_eq!(
+            json["eventDelivery"]["drainTimeout"]["activeBatch"]["completedAttempts"][0]["timeoutObserved"],
+            true
+        );
+        assert_eq!(
+            json["eventDelivery"]["drainTimeout"]["activeBatch"]["completedAttempts"][0]["connectObserved"],
+            true
+        );
+        assert_eq!(
             json["eventDelivery"]["drainTimeout"]["activeBatch"]["outcome"],
             "outcome_unknown"
         );
@@ -1518,6 +1543,21 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn completed_event_attempt_deserializes_without_transport_observations() {
+        let attempt: EventDeliveryCompletedAttemptDiagnostic =
+            serde_json::from_value(serde_json::json!({
+                "attempt": 3,
+                "clientRequestId": "11111111-1111-4111-8111-111111111111",
+                "elapsedMs": 12_000,
+                "failureKind": "timeout"
+            }))
+            .unwrap();
+
+        assert_eq!(attempt.timeout_observed, None);
+        assert_eq!(attempt.connect_observed, None);
     }
 
     #[test]

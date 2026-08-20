@@ -1,6 +1,8 @@
 use guest_contracts::diagnostics::{
-    AgentFramework, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
-    PromptMetadata, SessionHistoryStatus,
+    AgentFramework, EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+    EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
+    EventDeliveryFailedBatchDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic,
+    FailureReason, PromptMetadata, SessionHistoryStatus,
 };
 use sandbox_mock::MockSandbox;
 
@@ -154,6 +156,47 @@ async fn read_guest_failure_diagnostic_file_accepts_unknown_schema_field() {
     );
     let mut json = serde_json::to_value(&diagnostic).unwrap();
     json["schemaVersion"] = serde_json::json!(999);
+    sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&json).unwrap())));
+
+    let read = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+    assert_eq!(read, Some(diagnostic));
+}
+
+#[tokio::test]
+async fn read_guest_failure_diagnostic_file_accepts_unknown_event_attempt_field() {
+    let sandbox = MockSandbox::new("test");
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::EventUploadFailed,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("continue"),
+    )
+    .with_event_delivery(EventDeliveryDiagnostic {
+        total_events: 1,
+        total_batches: 1,
+        failed_batches: 1,
+        last_acknowledged_sequence: None,
+        first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+            first_sequence: 0,
+            last_sequence: 0,
+            event_count: 1,
+            conservative_bytes: 128,
+            outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+            attempts: vec![EventDeliveryCompletedAttemptDiagnostic {
+                attempt: 1,
+                client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                elapsed_ms: 10_000,
+                failure_kind: EventDeliveryAttemptFailureKind::Timeout,
+                http_status: None,
+                timeout_observed: None,
+                connect_observed: None,
+            }],
+        }),
+        drain_timeout: None,
+    });
+    let mut json = serde_json::to_value(&diagnostic).unwrap();
+    json["eventDelivery"]["firstFailedBatch"]["attempts"][0]["futureTransportObservation"] =
+        serde_json::json!(true);
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&json).unwrap())));
 
     let read = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
