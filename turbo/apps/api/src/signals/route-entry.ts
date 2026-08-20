@@ -267,6 +267,13 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // `generateWebImage` build those URLs by hand rather than from the contract,
   // so they shipped independently of this path. The `zero` form was reachable
   // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: a run context holding an older commit-addressed CLI package.
+  // `CLI_PKG_URL` is chosen from the API's environment when the run is created,
+  // so a run queued before this deploy keeps calling the branded path for the
+  // queue lifetime plus its claimed execution, bounded by the runner's
+  // `JOB_TIMEOUT` of 2 hours. Removable under #26701's evidence rules, the same
+  // gate as `LEGACY_ZERO_PATHS` above.
   "/api/built-in-generations/:generationId": [
     "/api/okou/built-in-generations/:generationId",
     "/api/zero/built-in-generations/:generationId",
