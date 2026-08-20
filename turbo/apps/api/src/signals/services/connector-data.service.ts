@@ -1913,7 +1913,7 @@ async function commitConnectorTokenConnection(
       signal,
     );
 
-  if (existingConnector !== null && mutation.intent === "legacy-singleton") {
+  if (existingConnector !== null) {
     await reconcileConnectorAccountState(
       args.db,
       {
