@@ -43,8 +43,9 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  * webhooks join `/api/webhooks/**` beside the other providers.
  *
  * Step 1 only makes these paths routable: each one adds a second way to reach
- * the handler that already serves its branded path. No producer emits a final
- * URL yet, so switching them is #28278 step 3, after the consoles are updated.
+ * the handler that already serves its branded path. Producers switch one at a
+ * time in #28278 step 3, once the provider console holds the final URL; the
+ * Teams OAuth callback switched in #28300.
  */
 const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
   "GET /api/okou/slack/oauth/callback":

@@ -1,7 +1,10 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { teamsOauthContract } from "@okouai/api-contracts/contracts/teams-oauth";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -168,8 +171,13 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   };
 }
 
-function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/teams/oauth/callback`;
+/**
+ * The Microsoft app registration holds the brand-projected final path. Project
+ * here rather than in `getOAuthApiOrigin`, whose other caller builds the
+ * built-in connector callback that is already registered with every provider.
+ */
+function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
+  return `${apiUrlForPublicBrand(origin, publicBrand)}/api/integrations/teams/oauth/callback`;
 }
 
 /**
@@ -343,7 +351,7 @@ const connectOauth$ = command(({ get }) => {
 
   // Record the redirect URI this authorization actually sends, so the token
   // exchange can repeat it instead of recomputing a value that may have moved.
-  const redirectUri = callbackRedirectUri(origin);
+  const redirectUri = callbackRedirectUri(origin, publicBrand);
   const stateObj: {
     orgId: string;
     userId: string;
