@@ -348,6 +348,40 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
     expect(missing.body.error.message).toBe("Connector account not found");
 
+    seedFixture();
+    const wrongOwner = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: { apiKey: "sk-wrong-owner" },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(wrongOwner.body.error.message).toBe("Connector account not found");
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const wrongTarget = await accept(
+      client.connect({
+        params: { connectorSlug: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: {
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(wrongTarget.body.error.message).toBe("Connector account not found");
+
     const stored = await readConnector(fixture, "openai");
     expect(stored.body.id).toBe(added.body.id);
   });
