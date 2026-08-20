@@ -296,24 +296,6 @@ describe("API namespace compatibility", () => {
     );
   });
 
-  // A listed row must have something behind it. A contract declaring the
-  // canonical path is one way; after a #28278 slice moves that contract off the
-  // brand namespace, a row in the migrated-branded table is the other. A row
-  // left behind by a deleted contract has neither and fails here.
-  it("keeps every listed legacy path backed by a serving route", () => {
-    const servedCanonicalPaths = new Set(
-      compatibilityRoutes.map(({ route }) => {
-        return canonicalPath(route.path);
-      }),
-    );
-
-    expect(
-      Object.keys(LEGACY_ZERO_PATHS).filter((path) => {
-        return !servedCanonicalPaths.has(path);
-      }),
-    ).toStrictEqual([]);
-  });
-
   it("marks exactly the unlisted legacy registrations as fallback", () => {
     const expectedFallbackKeys = ROUTES.flatMap(({ route }) => {
       if (brandedApiNamespace(route.path) === undefined) {

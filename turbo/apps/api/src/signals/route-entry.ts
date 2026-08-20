@@ -263,6 +263,12 @@ type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28419 moved the goal and hosted-site contracts off the brand namespace.
+  // Surface: released CLI packages, which are commit-addressed and pinned by
+  // the execution context that selected them, plus the runners and sandboxes
+  // draining those runs — up to about 2 hours, and longer for a context queued
+  // before this deploy. Removable under #26701's evidence rules, like every
+  // other row here.
+  //
   // A key holds a path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
   "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
