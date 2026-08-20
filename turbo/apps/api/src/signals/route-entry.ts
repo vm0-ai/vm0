@@ -266,6 +266,15 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // the URL by hand rather than from the contract, so the path it holds shipped
   // independently of this table — and the `zero` form was reachable through the
   // blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages, not web clients. A run execution
+  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
+  // a later API deploy, so the exposure is the context drain described in
+  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
+  // claimed execution and finalization lifetime, with execution bounded by the
+  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
+  // drain is the floor for removal, not the condition: these rows retire under
+  // #26701's evidence rules like every other row in this file.
   "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
   "/api/maps/reverse-geocode": [
     "/api/okou/maps/reverse-geocode",
