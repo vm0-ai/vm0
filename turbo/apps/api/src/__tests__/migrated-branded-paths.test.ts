@@ -2,6 +2,7 @@ import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { computed } from "ccstate";
 import { z } from "zod";
 
+import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
 import {
   assertUniqueRouteRegistrations,
@@ -10,8 +11,10 @@ import {
   withFinalProviderConsolePaths,
   withMigratedBrandedPaths,
 } from "../signals/route-entry";
+import { testContext } from "./test-context";
 
 const c = initContract();
+const REQUEST_ORIGIN = "http://api.test";
 
 // Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
 // empty, so no real route can exercise the mechanism yet, and a fixture keeps a
@@ -147,6 +150,8 @@ function missingBrandedPaths(
 // that gives them back: what it registers, what it must not touch, and the
 // migration mistake it exists to make loud.
 describe("branded paths for migrated neutral routes", () => {
+  const context = testContext();
+
   it("registers the neutral path and every branded path a row names", () => {
     const registered = withMigratedBrandedPaths(
       withApiNamespaceAliases([NEUTRAL_ROUTE]),
@@ -273,5 +278,45 @@ describe("branded paths for migrated neutral routes", () => {
         return entry !== beforeTable[index];
       }),
     ).toStrictEqual([]);
+  });
+
+  // Hono keeps both registrations for a duplicated path and answers with the
+  // first, so a colliding row would take a handler over instead of failing.
+  // Asserted through `createAppWithRoutes` rather than through
+  // `assertUniqueRouteRegistrations` alone: dropping the call from the app
+  // factory has to fail a test, or the guard protects nothing.
+  it("refuses to build an app whose registrations collide", () => {
+    expect(() => {
+      createAppWithRoutes({
+        signal: context.signal,
+        routes: [BRANDED_ROUTE, BRANDED_ROUTE],
+      });
+    }).toThrow(
+      "Duplicate API route registration: POST /api/okou/synthetic/thing",
+    );
+  });
+
+  it("builds an app that serves every path it registers", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: [NEUTRAL_ROUTE, BRANDED_ROUTE],
+    });
+
+    const paths = [
+      "/api/synthetic/thing",
+      "/api/okou/synthetic/thing",
+      "/api/zero/synthetic/thing",
+    ];
+    const statuses: number[] = [];
+    for (const path of paths) {
+      const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toStrictEqual([200, 200, 200]);
   });
 });
