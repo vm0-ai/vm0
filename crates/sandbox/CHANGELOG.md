@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.49](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.48...sandbox-v0.19.49) (2026-08-20)
+
+
+### Documentation
+
+* **sandbox:** document firecracker snapshot id constraints ([#28325](https://github.com/vm0-ai/vm0/issues/28325)) ([3f5ff12](https://github.com/vm0-ai/vm0/commit/3f5ff12c79dd4702d50bcb1b6f761ae2631c94d2))
+
 ## [0.19.48](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.47...sandbox-v0.19.48) (2026-08-20)
 
 

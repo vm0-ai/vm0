@@ -101,6 +101,8 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
     assert!(failed_batch.attempts.iter().all(|attempt| {
         attempt.failure_kind == EventDeliveryAttemptFailureKind::Timeout
             && attempt.http_status.is_none()
+            && attempt.timeout_observed == Some(true)
+            && attempt.connect_observed == Some(false)
     }));
     let drain = delivery
         .drain_timeout

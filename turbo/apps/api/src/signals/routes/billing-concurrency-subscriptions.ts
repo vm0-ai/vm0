@@ -114,7 +114,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before reducing concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -255,7 +255,7 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before reducing concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -346,7 +346,7 @@ const reduceConcurrencySubscriptionAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before reducing concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -409,7 +409,7 @@ const cancelConcurrencySubscriptionAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before canceling concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -464,11 +464,21 @@ const restoreConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return result.reason === "not_found"
-        ? notFound("Concurrency subscription not found")
-        : conflict(
+      switch (result.reason) {
+        case "not_found": {
+          return notFound("Concurrency subscription not found");
+        }
+        case "plan_ending": {
+          return conflict(
+            "Restore your Plan to keep concurrency active while a Plan downgrade or cancellation is scheduled.",
+          );
+        }
+        case "pending_update": {
+          return conflict(
             "Complete the pending subscription update before restoring concurrency",
           );
+        }
+      }
     }
 
     return {

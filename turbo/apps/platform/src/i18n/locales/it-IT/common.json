@@ -688,7 +688,325 @@
       "useThisTemplate": "Usa questo modello",
       "website": "Sito web",
       "websitePreview": "{{title}} anteprima del modello di sito web",
-      "workflow": "Flusso di lavoro"
+      "workflow": "Flusso di lavoro",
+      "workflowCatalog": {
+        "alert-metric-moves-slack": {
+          "description": "Tieni d'occhio i tuoi parametri chiave e avvisa Slack quando si verifica un movimento brusco.",
+          "shortDescription": "Avvisa Slack se una metrica chiave si muove molto.",
+          "title": "Avvisa quando una metrica si sposta"
+        },
+        "auto-inbox-label": {
+          "description": "Crea un flusso che parte quando applichi un'etichetta Gmail e gestisce il messaggio etichettato.",
+          "shortDescription": "Avvia un flusso quando applichi un'etichetta Gmail.",
+          "title": "Etichetta automatica della posta"
+        },
+        "auto-merge-github-prs": {
+          "description": "Esamina i PR etichettati come pronti per l'unione, attendi il CI, quindi unisci e pubblica su Slack.",
+          "shortDescription": "Unisce le PR pronte quando la CI è verde.",
+          "title": "Unisci automaticamente GitHub PR"
+        },
+        "blog-posts-to-x": {
+          "description": "Trasforma ogni nuovo articolo del blog in varianti social in coda su Buffer.",
+          "shortDescription": "Trasforma ogni nuovo articolo in post social.",
+          "title": "Trasforma i post del blog in post social"
+        },
+        "build-weekly-deck-gamma": {
+          "description": "Trasforma le metriche della settimana in una presentazione pronta in Gamma.",
+          "shortDescription": "Trasforma i dati della settimana in un deck Gamma.",
+          "title": "Crea la presentazione settimanale in Gamma"
+        },
+        "business-review-gamma": {
+          "description": "Trasforma le metriche del mese in un resoconto aziendale in Gamma.",
+          "shortDescription": "Trasforma i dati del mese in un deck di review.",
+          "title": "Costruisci la revisione aziendale in Gamma"
+        },
+        "catch-calendar-conflicts": {
+          "description": "Scansiona il tuo calendario per eventuali doppie prenotazioni e avvisati in anticipo.",
+          "shortDescription": "Scopre in anticipo le doppie prenotazioni.",
+          "title": "Rileva Google conflitti di calendario"
+        },
+        "catch-leads-gmail": {
+          "description": "Individua i segnali di acquisto nelle nuove email e registra i lead qualificati.",
+          "shortDescription": "Individua i segnali d'acquisto e registra i lead.",
+          "title": "Cattura contatti da Gmail"
+        },
+        "chase-overdue-asana-tasks": {
+          "description": "Trova le attività Asana scadute e invita i loro proprietari su Slack.",
+          "shortDescription": "Sollecita i responsabili delle attività Asana scadute.",
+          "title": "Insegui i compiti Asana scaduti"
+        },
+        "check-posthog-signup-funnel": {
+          "description": "Tieni traccia della canalizzazione di registrazione e pubblica il calo più grande su Slack.",
+          "shortDescription": "Pubblica il punto di maggiore abbandono nel funnel.",
+          "title": "Controlla la canalizzazione di registrazione di PostHog"
+        },
+        "clickup-slack-standup": {
+          "description": "Raccogli ogni mattina le attività ClickUp e pubblica su Slack lo standup del team.",
+          "shortDescription": "Pubblica lo standup del mattino dalle attività ClickUp.",
+          "title": "Standup ClickUp su Slack"
+        },
+        "compare-google-ads-last-month": {
+          "description": "Confronta spesa pubblicitaria e ROAS con il mese scorso e segnala le anomalie su Slack.",
+          "shortDescription": "Confronta spesa e ROAS con il mese scorso.",
+          "title": "Confronta gli annunci Google con quelli del mese scorso"
+        },
+        "competitive-intel-monitor": {
+          "description": "Monitora prezzi e funzionalità dei concorrenti, salva quanto trovi su Notion e avvisa Slack.",
+          "shortDescription": "Registra su Notion i cambi di prezzo dei concorrenti.",
+          "title": "Monitoraggio della concorrenza"
+        },
+        "daily-company-brief-slack": {
+          "description": "Inserisci prodotto, crescita ed entrate in un brief quotidiano su Slack.",
+          "shortDescription": "Unisce prodotto, crescita e ricavi in un brief.",
+          "title": "Pubblica un brief aziendale quotidiano su Slack"
+        },
+        "daily-industry-news-slack": {
+          "description": "Raccogli le notizie di settore rilevanti del giorno in un Slack brief.",
+          "shortDescription": "Raccoglie per Slack le notizie del settore.",
+          "title": "Pubblica notizie quotidiane del settore su Slack"
+        },
+        "daily-standup-report": {
+          "description": "Raccogli ogni mattina i segnali di prodotto e ingegneria, crea un breve report e pubblicalo su Slack.",
+          "shortDescription": "Pubblica ogni mattina un brief di prodotto e sviluppo.",
+          "title": "Report giornaliero di standup"
+        },
+        "draft-github-release-notes-notion": {
+          "description": "Trasforma i PR uniti dall'ultima versione in note pulite in Notion.",
+          "shortDescription": "Trasforma le PR unite in note di rilascio su Notion.",
+          "title": "Bozza delle note sulla versione di GitHub in Notion"
+        },
+        "draft-newsletter-mailchimp": {
+          "description": "Raccogli gli ultimi aggiornamenti in una bozza di newsletter su Mailchimp.",
+          "shortDescription": "Raccoglie gli aggiornamenti recenti in una newsletter.",
+          "title": "Redigere la newsletter in Mailchimp"
+        },
+        "draft-replies-notion-faq": {
+          "description": "Bozze di risposte ai ticket basate sulle Notion Domande frequenti.",
+          "shortDescription": "Scrive le risposte partendo dalla tua FAQ su Notion.",
+          "title": "Bozze di risposte dalle tue Notion Domande frequenti"
+        },
+        "feedback-router": {
+          "description": "Osserva un canale Slack e porta i feedback di prodotto su Notion con etichette e responsabili.",
+          "shortDescription": "Porta i feedback di prodotto da Slack a Notion.",
+          "title": "Smistamento dei feedback"
+        },
+        "file-gmail-invoices-drive": {
+          "description": "Archivia le email di fatturazione su Drive e registra ciascuna di esse in un foglio.",
+          "shortDescription": "Archivia le fatture su Drive e le registra.",
+          "title": "Archivia le fatture Gmail su Google Drive"
+        },
+        "file-sentry-crashes-github": {
+          "description": "Classifica i nuovi errori Sentry in base all'impatto sull'utente e archivia i peggiori come issue GitHub.",
+          "shortDescription": "Apre issue GitHub per gli errori Sentry peggiori.",
+          "title": "Il file Sentry si blocca a causa di issue GitHub"
+        },
+        "flag-figma-designs-no-task": {
+          "description": "Segnala i progetti Figma che non hanno ancora un'attività lineare collegata.",
+          "shortDescription": "Segnala i design Figma senza attività su Linear.",
+          "title": "Segnala i disegni Figma senza alcuna attività"
+        },
+        "flagged-gmail-todoist-tasks": {
+          "description": "Trasforma automaticamente le email che contrassegni in attività di Todoist.",
+          "shortDescription": "Trasforma le email segnate in attività Todoist.",
+          "title": "Trasforma Gmail contrassegnato nelle attività di Todoist"
+        },
+        "github-idea-to-notion-spec": {
+          "description": "Espandi un problema etichettato GitHub in una specifica di prodotto strutturata in Notion.",
+          "shortDescription": "Espande una issue GitHub in una spec su Notion.",
+          "title": "Trasforma un'idea GitHub in una specifica Notion"
+        },
+        "github-pr-summarizer": {
+          "description": "Raccogli le pull request unite, salva un report strutturato su Notion e se vuoi pubblicalo su Slack.",
+          "shortDescription": "Raccoglie le pull request unite in un report.",
+          "title": "Riepilogo delle PR di GitHub"
+        },
+        "gmail-followups-auto": {
+          "description": "Trova i contatti che non hanno risposto e redige il successivo follow-up.",
+          "shortDescription": "Scrive solleciti per i contatti che non hanno risposto.",
+          "title": "Invia Gmail follow-up automaticamente"
+        },
+        "gmail-reconnect-reminders": {
+          "description": "Mostra contatti importanti a cui non invii email da un po'.",
+          "shortDescription": "Mostra i contatti che non senti da tempo.",
+          "title": "Ricevi Gmail promemoria di riconnessione"
+        },
+        "highlight-key-emails-gmail": {
+          "description": "Fai emergere le poche e-mail che effettivamente richiedono la tua attenzione.",
+          "shortDescription": "Mette in evidenza le email che ti aspettano.",
+          "title": "Evidenzia le email chiave in Gmail"
+        },
+        "investor-update-google-docs": {
+          "description": "Raccogli metriche e punti salienti in un aggiornamento per gli investitori su Google Docs.",
+          "shortDescription": "Unisce le metriche in un update per gli investitori.",
+          "title": "Redigere l'aggiornamento per gli investitori in Google Docs"
+        },
+        "log-gong-calls-hubspot": {
+          "description": "Inserisci note e passaggi successivi da una chiamata Gong all'accordo HubSpot.",
+          "shortDescription": "Porta le note delle call Gong nella trattativa HubSpot.",
+          "title": "Registra le chiamate Gong su HubSpot"
+        },
+        "meeting-notes-asana-tasks": {
+          "description": "Trasforma gli appunti della riunione in attività assegnate e con scadenza in Asana.",
+          "shortDescription": "Trasforma le note delle riunioni in attività Asana.",
+          "title": "Trasforma gli appunti della riunione in attività Asana"
+        },
+        "meeting-recaps-slack": {
+          "description": "Condividi un riepilogo con decisioni e azioni dopo ogni riunione.",
+          "shortDescription": "Condivide decisioni e azioni dopo le riunioni.",
+          "title": "Ricevi i riepiloghi delle riunioni in Slack"
+        },
+        "morning-brief": {
+          "description": "Trasforma gli aggiornamenti di Gmail, Calendar e Notion in un breve piano quotidiano su Slack.",
+          "shortDescription": "Trasforma email e riunioni in un breve piano del giorno.",
+          "title": "Brief del mattino"
+        },
+        "new-gmail-contacts-hubspot": {
+          "description": "Aggiungi e arricchisci mittenti e-mail sconosciuti come contatti HubSpot.",
+          "shortDescription": "Aggiunge a HubSpot i mittenti sconosciuti.",
+          "title": "Aggiungi nuovi Gmail contatti a HubSpot"
+        },
+        "onboard-new-hires-asana": {
+          "description": "Crea l'elenco di controllo delle attività di onboarding per ogni nuovo assunto in Asana.",
+          "shortDescription": "Crea una checklist di inserimento per ogni assunzione.",
+          "title": "Integrazione dei nuovi assunti ad Asana"
+        },
+        "personal-weekly-digest": {
+          "description": "Riassumi l'attività di GitHub, Gmail e Calendar in un aggiornamento settimanale su Slack.",
+          "shortDescription": "Riassume la tua settimana su GitHub e Gmail.",
+          "title": "Riepilogo settimanale personale"
+        },
+        "post-daily-metrics-slack": {
+          "description": "Pubblica visitatori giornalieri, iscrizioni e numeri di attivazione su Slack.",
+          "shortDescription": "Pubblica visitatori e iscrizioni del giorno su Slack.",
+          "title": "Pubblica metriche giornaliere su Slack"
+        },
+        "post-release-notes-slack": {
+          "description": "Crea un registro delle modifiche dal lavoro inviato di recente e pubblicalo su Slack.",
+          "shortDescription": "Scrive un changelog e lo pubblica su Slack.",
+          "title": "Pubblica note di rilascio su Slack"
+        },
+        "prep-google-calendar-meetings": {
+          "description": "Effettua ricerche sui partecipanti esterni e invia un brief di preparazione prima delle riunioni.",
+          "shortDescription": "Invia un brief prima delle riunioni esterne.",
+          "title": "Preparati per le riunioni del calendario Google"
+        },
+        "publish-scheduled-posts-buffer": {
+          "description": "Pubblica i contenuti programmati per la giornata e metti in coda i post social.",
+          "shortDescription": "Pubblica i post social programmati per oggi.",
+          "title": "Pubblica post programmati su Buffer"
+        },
+        "research-calendar-meetings": {
+          "description": "Ricerca le persone che incontrerai prima di ogni evento del calendario.",
+          "shortDescription": "Studia le persone che incontri prima di ogni evento.",
+          "title": "Ricerca le riunioni del tuo calendario"
+        },
+        "research-new-signups-apollo": {
+          "description": "Ricerca ogni nuova registrazione e pubblica una rapida istantanea.",
+          "shortDescription": "Studia ogni nuova iscrizione e ne pubblica il profilo.",
+          "title": "Ricerca nuove iscrizioni"
+        },
+        "revenuecat-subscription-digest": {
+          "description": "Tieni traccia degli abbonamenti in Sheets e avvisa Slack quando cambiano churn o disdette.",
+          "shortDescription": "Segue gli abbonamenti e avvisa Slack sul churn.",
+          "title": "Riepilogo abbonamenti RevenueCat"
+        },
+        "run-daily-query-sheets": {
+          "description": "Esegui il tuo SQL salvato in base a una pianificazione e aggiungi i risultati a un foglio.",
+          "shortDescription": "Esegue SQL salvato e aggiunge i dati a un foglio.",
+          "title": "Esegui una query giornaliera in Google Sheets"
+        },
+        "salesforce-pipeline-digest": {
+          "description": "Riepiloga ogni settimana su Slack i cambiamenti delle opportunità Salesforce e i rischi sulle date di chiusura.",
+          "shortDescription": "Riepiloga ogni settimana i rischi della pipeline.",
+          "title": "Riepilogo della pipeline Salesforce"
+        },
+        "send-bugs-github-slack": {
+          "description": "Archivia le segnalazioni contrassegnate da bug come issue GitHub e avvisa il team su Slack.",
+          "shortDescription": "Apre le segnalazioni di bug come issue GitHub.",
+          "title": "Invia bug a GitHub e Slack"
+        },
+        "sentry-issue-digest": {
+          "description": "Invia su Slack un riepilogo giornaliero dei problemi Sentry critici e gravi.",
+          "shortDescription": "Invia ogni giorno i problemi Sentry critici.",
+          "title": "Riepilogo dei problemi Sentry"
+        },
+        "sort-gmail-draft-replies": {
+          "description": "Ordina la tua casella di posta e crea bozze di risposta alle email che ne hanno bisogno.",
+          "shortDescription": "Ordina la posta e prepara le risposte.",
+          "title": "Ordina Gmail e bozza delle risposte"
+        },
+        "spot-churn-risk-stripe-zendesk": {
+          "description": "Contrassegna gli account a rischio di abbandono e redige un'e-mail di recupero.",
+          "shortDescription": "Segnala il rischio churn e scrive un'email.",
+          "title": "Individua il rischio di abbandono in Stripe e Zendesk"
+        },
+        "summarize-gmail-newsletters": {
+          "description": "Riassumi le newsletter nella tua casella di posta in un breve riepilogo.",
+          "shortDescription": "Condensa le tue newsletter in un unico riassunto.",
+          "title": "Riepiloga le Gmail newsletter"
+        },
+        "summarize-zendesk-tickets-daily": {
+          "description": "Riepiloga l'ultimo giorno dei ticket Zendesk e pubblicalo su Slack.",
+          "shortDescription": "Pubblica ogni giorno un riassunto dei ticket.",
+          "title": "Riepiloga i biglietti Zendesk ogni giorno"
+        },
+        "support-ticket-router": {
+          "description": "Classifica le email di supporto, crea le schede su Notion e avvisa Slack per i ticket critici.",
+          "shortDescription": "Classifica le email di supporto e segnala le urgenze.",
+          "title": "Smistamento dei ticket di supporto"
+        },
+        "sync-asana-projects-notion": {
+          "description": "Riunisci lo stato del progetto Asana in un'unica scheda in Notion.",
+          "shortDescription": "Riunisce su Notion lo stato dei progetti Asana.",
+          "title": "Sincronizza i progetti Asana su Notion"
+        },
+        "sync-linear-roadmap-notion": {
+          "description": "Mantieni una roadmap Notion sincronizzata con lo stato del problema Linear.",
+          "shortDescription": "Tiene la roadmap Notion allineata a Linear.",
+          "title": "Sincronizza la roadmap lineare su Notion"
+        },
+        "track-feature-usage-posthog": {
+          "description": "Scopri i maggiori cambiamenti settimanali nell'utilizzo delle funzionalità di PostHog.",
+          "shortDescription": "Mostra i maggiori cambi di utilizzo della settimana.",
+          "title": "Tieni traccia dell'utilizzo delle funzionalità con PostHog"
+        },
+        "track-keyword-ranks-ahrefs": {
+          "description": "Segui il posizionamento delle parole chiave su Ahrefs e riporta su Notion i movimenti maggiori.",
+          "shortDescription": "Riporta i movimenti di posizione della settimana.",
+          "title": "Tieni traccia del posizionamento delle parole chiave con Ahrefs"
+        },
+        "track-signup-sources-sheets": {
+          "description": "Attribuisci ogni nuova registrazione alla sua fonte in un foglio di monitoraggio.",
+          "shortDescription": "Attribuisce ogni iscrizione alla sua fonte in un foglio.",
+          "title": "Monitora le origini delle registrazioni in Google Sheets"
+        },
+        "vercel-deploy-digest": {
+          "description": "Monitora i deploy di Vercel, collegali ai commit GitHub e segnala gli errori su Slack.",
+          "shortDescription": "Avvisa Slack quando un deploy Vercel fallisce.",
+          "title": "Riepilogo dei deploy Vercel"
+        },
+        "x-brand-monitor": {
+          "description": "Segui le menzioni del brand su X, salva i post rilevanti su Notion e avvisa Slack su quelle importanti.",
+          "shortDescription": "Avvisa Slack sulle menzioni forti del brand su X.",
+          "title": "Monitoraggio del brand su X"
+        },
+        "zendesk-knowledge-base": {
+          "description": "Trova le domande ricorrenti su Zendesk, scrivi le voci della FAQ e salvale su Notion.",
+          "shortDescription": "Trasforma le domande ricorrenti in voci di FAQ.",
+          "title": "Knowledge base Zendesk"
+        }
+      },
+      "workflowCategories": {
+        "CEO": "CEO",
+        "Data": "Dati",
+        "Engineering": "Ingegneria",
+        "Everyone": "Tutti",
+        "Marketing": "Marketing",
+        "Operations": "Operazioni",
+        "Product": "Prodotto",
+        "Sales": "Vendite",
+        "Support": "Supporto"
+      }
     },
     "title": "Artefatti",
     "toasts": {
@@ -845,8 +1163,9 @@
       "paidAddOn": "componente aggiuntivo a pagamento",
       "payAndAddSlots": "Paga e aggiungi slot",
       "payAndUpdate": "Paga e aggiorna",
-      "restoreDescription": "Questo riprende il rinnovo per questa sottoscrizione simultanea.",
-      "restoreSubscription": "Ripristina l'abbonamento",
+      "restoreConcurrency": "Ripristina concorrenza",
+      "restoreQuantityDescription": "Questo ripristina il rinnovo della concorrenza a pagamento ({{quantity}}). Il tuo piano non cambierà.",
+      "restoreTeamPlan": "Ripristina il piano Team",
       "restoreTitle": "Ripristinare la sottoscrizione di concorrenza?",
       "reviewChange": "Rivedi modifica",
       "reviewDescription": "Controlla l'importo da pagare ora e l'abbonamento mensile aggiornato.",
@@ -884,6 +1203,8 @@
     "downgrade": {
       "cancelSubscription": "Annulla l'abbonamento",
       "chooseTarget": "Scegli a quale piano effettuare il downgrade.",
+      "concurrencyEndsDate": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva fino al {{date}}, quindi terminerà insieme al tuo piano Team. Tutti gli slot aggiunti prima di allora termineranno nella stessa data.",
+      "concurrencyEndsPeriod": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva fino alla fine del periodo di fatturazione, quindi terminerà insieme al tuo piano Team. Tutti gli slot aggiunti prima di allora termineranno nello stesso momento.",
       "confirmProCancellation": "Sei sicuro di voler annullare il tuo piano Pro?",
       "confirmTarget": "Downgrade a {{plan}}?",
       "inProgress": "Declassamento...",
@@ -917,21 +1238,6 @@
       "changeAnytime": "Aggiorna o esegui il downgrade in qualsiasi momento.",
       "compare": "Confronta i piani",
       "compareAll": "Confronta tutti i piani",
-      "comparison": {
-        "addOnConcurrency": "Concorrenza aggiuntiva",
-        "available": "Disponibile",
-        "concurrentRuns": "Esecuzioni simultanee",
-        "included": "Sì",
-        "ownLlmKeys": "Le tue chiavi LLM",
-        "privateAgents": "Agenti privati",
-        "sharedAgents": "Agenti condivisi",
-        "support": "Assistenza",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritaria",
-        "unlimited": "Illimitati",
-        "voiceInput": "Input vocale",
-        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min"
-      },
       "currentPlan": "Piano attuale",
       "custom": {
         "name": "Personalizzato"
@@ -963,6 +1269,23 @@
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
+      "highlights": {
+        "addOnConcurrency": "Aggiungi concorrenza quando vuoi",
+        "agents": "{{shared}} agenti condivisi, privati illimitati",
+        "automations": "Automazioni pianificate e su evento",
+        "builtInLeadGeneration": "Generazione di lead integrata",
+        "builtInSeoResearch": "Ricerca SEO integrata",
+        "builtInWebMarketData": "Dati web e di mercato integrati",
+        "concurrentAgents": "{{slots}} agenti in parallelo",
+        "everythingInBuiltForTeams": "Tutto di {{plan}}, pensato per i team",
+        "included": "Incluso",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Assistenza via e-mail",
+        "supportPriority": "Assistenza prioritaria",
+        "videoGeneration": "Generazione di video e avatar",
+        "voiceInput": "Input vocale, {{requests}} al giorno",
+        "webhookAutomations": "Attiva gli agenti da qualsiasi sistema via webhook"
+      },
       "legacy": "Precedente",
       "limitedFree": {
         "name": "Gratuito limitato"
@@ -979,7 +1302,8 @@
       "popular": "Popolare",
       "pricePerMonth": "{{price}}/mese",
       "pro": {
-        "description": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
+        "description": "Lavoro quotidiano con gli agenti, al prezzo per membro.",
+        "legacyDescription": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
         "name": "Pro"
       },
       "renews": "Rinnova {{date}}",
@@ -987,7 +1311,8 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
+        "description": "Per un team che tiene gli agenti attivi tutto il giorno.",
+        "legacyDescription": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },
       "upgrade": "Aggiorna",
@@ -1059,6 +1384,7 @@
     "restore": {
       "cancellationDescription": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}.",
       "cancellationDescriptionDate": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}, che si rinnoverà il {{date}}.",
+      "concurrencyContinues": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva e continuerà a rinnovarsi insieme al tuo piano.",
       "downgradeDescription": "Questa operazione annullerà il passaggio programmato a {{target}}. Il piano {{plan}} continuerà a rinnovarsi.",
       "inProgress": "Ripristino...",
       "title": "Ripristinare il piano {{plan}}?"

@@ -54,11 +54,14 @@ import {
   CHECKPOINT_STORAGE_REFERENCE_QUERY,
   PREFLIGHT_OUTPUT_ALLOWLIST,
   PREFLIGHT_PHASES,
+  STORAGE_REFERENCE_IDENTITY_QUERY,
+  STORAGE_REFERENCE_VERSION_QUERY,
   SanitizedPreflightError,
   assertPreflightOutputShape,
   classifyPreflightInventory,
   executeAgentComposeConsolidationPreflight,
   sanitizedFailureResult,
+  validateCheckpointStorageReferences,
   withReadOnlySnapshot,
   type AgentExecutionPlanInventoryRow,
   type DanglingInventoryRow,
@@ -77,19 +80,26 @@ const repositoryRoot = path.resolve(dirname, "../../../..");
 const testDatabase = "agent_compose_consolidation_preflight_test";
 const storagePlanTestDatabase =
   "agent_compose_consolidation_preflight_storage_plan_test";
-const STORAGE_PLAN_MOUNT_COUNT = 12_000;
+const STORAGE_PLAN_CHECKPOINT_COUNT = 139_811;
+const STORAGE_PLAN_MOUNTS_PER_CHECKPOINT = 2;
+const STORAGE_PLAN_EXPANDED_MOUNT_COUNT =
+  STORAGE_PLAN_CHECKPOINT_COUNT * STORAGE_PLAN_MOUNTS_PER_CHECKPOINT;
+const STORAGE_PLAN_STORAGE_COUNT = 12_730;
+const STORAGE_PLAN_VERSION_COUNT = 23_717;
+const STORAGE_PLAN_MAX_OLD_SPACE_MIB = 256;
+const STORAGE_PLAN_MAX_HEAP_GROWTH_BYTES = 192 * 1024 * 1024;
 const ACTIVITY_TIME_ZONES = ["UTC", "Asia/Shanghai"] as const;
 
-// The second profile makes the former direct-join shape rescan or point-probe
-// each catalog for every mount. The materialized lookup shape must retain one
-// underlying relation scan in both profiles.
+// The second profile removes every join strategy that the former relational
+// query depended on. The streamed one-relation statements must retain the same
+// single-scan plan because their structure contains no join choice.
 const STORAGE_PLAN_PROFILES = [
   {
     name: "catalog-scans",
     settings: ["SET LOCAL max_parallel_workers_per_gather = 0"],
   },
   {
-    name: "nested-loop-pressure",
+    name: "join-planner-pressure",
     settings: [
       "SET LOCAL max_parallel_workers_per_gather = 0",
       "SET LOCAL enable_hashjoin = off",
@@ -105,16 +115,142 @@ type StoragePlanProfile = (typeof STORAGE_PLAN_PROFILES)[number];
 const STORAGE_PLAN_IDS = {
   agent: "00000000-0000-4000-8000-000000028301",
   session: "00000000-0000-4000-8000-000000028302",
-  run: "00000000-0000-4000-8000-000000028303",
-  conversation: "00000000-0000-4000-8000-000000028304",
-  checkpoint: "00000000-0000-4000-8000-000000028305",
 } as const;
+
+// Frozen predicates from #28317. The adversarial database fixtures require the
+// streamed validator to classify every target checkpoint identically before
+// this prior production query is removed from the protected path.
+const PRIOR_CHECKPOINT_STORAGE_REFERENCE_QUERY = `
+WITH
+"storageCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage"."id"::text,
+      jsonb_build_object(
+        'orgId', "storage"."org_id",
+        'userId', "storage"."user_id",
+        'name', "storage"."name"
+      )
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storages" AS "storage"
+),
+"storageVersionCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage_version"."id",
+      to_jsonb("storage_version"."storage_id"::text)
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storage_versions" AS "storage_version"
+),
+"invalidCheckpointStorageReferences" AS (
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  WHERE
+    "checkpoint"."storage_mounts" IS NOT NULL AND
+    jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
+  UNION
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
+        THEN "checkpoint"."storage_mounts"
+      ELSE '[]'::jsonb
+    END
+  ) AS "entry"("mount")
+  CROSS JOIN "storageCatalog"
+  CROSS JOIN "storageVersionCatalog"
+  WHERE
+    jsonb_typeof("entry"."mount") <> 'object' OR
+    NOT (
+      "entry"."mount" ?& ARRAY[
+        'orgId',
+        'userId',
+        'name',
+        'storageId',
+        'version',
+        'mountPath'
+      ]
+    ) OR
+    (
+      "entry"."mount" -
+      'orgId' -
+      'userId' -
+      'name' -
+      'storageId' -
+      'version' -
+      'mountPath' -
+      'optional' -
+      'writeback' -
+      'instructionsTargetFilename' -
+      'missingRootPolicy'
+    ) <> '{}'::jsonb OR
+    jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
+    (
+      "entry"."mount" ? 'optional' AND
+      jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'writeback' AND
+      jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'instructionsTargetFilename' AND
+      jsonb_typeof(
+        "entry"."mount" -> 'instructionsTargetFilename'
+      ) <> 'string'
+    ) OR
+    (
+      "entry"."mount" ? 'missingRootPolicy' AND
+      (
+        jsonb_typeof(
+          "entry"."mount" -> 'missingRootPolicy'
+        ) <> 'string' OR
+        "entry"."mount" ->> 'missingRootPolicy' NOT IN (
+          'fail',
+          'preserveParentVersion'
+        )
+      )
+    ) OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'orgId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'orgId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'userId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'userId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'name'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'name' OR
+    (
+      "storageVersionCatalog"."entries" ->>
+      ("entry"."mount" ->> 'version')
+    ) IS DISTINCT FROM "entry"."mount" ->> 'storageId'
+)
+SELECT "invalid"."id"::text AS "id"
+FROM "invalidCheckpointStorageReferences" AS "invalid"
+ORDER BY "invalid"."id"
+`;
 
 interface ExplainRow extends QueryResultRow {
   readonly "QUERY PLAN": unknown;
 }
 
-interface InvalidStorageReferenceRow extends QueryResultRow {
+interface PriorInvalidStorageReferenceRow extends QueryResultRow {
   readonly id: string;
 }
 
@@ -3721,11 +3857,11 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.ok(inventoryStart >= 0 && inventoryEnd > inventoryStart);
   const inventorySource = preflightSource.slice(inventoryStart, inventoryEnd);
-  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 11);
+  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 10);
   assert.match(inventorySource, /"checkpointStorageReferences"/u);
-  assert.match(inventorySource, /CHECKPOINT_STORAGE_REFERENCE_QUERY/u);
+  assert.match(inventorySource, /validateCheckpointStorageReferences/u);
   const storageReferenceQueryStart = preflightSource.indexOf(
-    "export const CHECKPOINT_STORAGE_REFERENCE_QUERY =",
+    "export const STORAGE_REFERENCE_IDENTITY_QUERY =",
   );
   assert.ok(
     storageReferenceQueryStart >= 0 &&
@@ -3737,21 +3873,39 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.match(
     storageReferenceQuerySource,
-    /"invalidCheckpointStorageReferences" AS \([\s\S]*CROSS JOIN LATERAL jsonb_array_elements/u,
+    /STORAGE_REFERENCE_IDENTITY_QUERY[\s\S]*FROM "storages" AS "storage"/u,
   );
   assert.match(
     storageReferenceQuerySource,
-    /"storageCatalog" AS MATERIALIZED \([\s\S]*jsonb_object_agg/u,
+    /STORAGE_REFERENCE_VERSION_QUERY[\s\S]*FROM "storage_versions" AS "storage_version"/u,
   );
   assert.match(
     storageReferenceQuerySource,
-    /"storageVersionCatalog" AS MATERIALIZED \([\s\S]*jsonb_object_agg/u,
+    /CHECKPOINT_STORAGE_REFERENCE_QUERY[\s\S]*FROM "checkpoints" AS "checkpoint"/u,
   );
   assert.equal(
-    /(?:LEFT|RIGHT|FULL|INNER) JOIN "storage(?:s|_versions)"/u.test(
+    /jsonb_(?:array_elements|object_agg)|\bJOIN\b|\bLIMIT\b|\bOFFSET\b/iu.test(
       storageReferenceQuerySource,
     ),
     false,
+  );
+  assert.match(
+    storageReferenceQuerySource,
+    /const STORAGE_REFERENCE_CURSOR_BATCH_SIZE = 512;/u,
+  );
+  assert.match(storageReferenceQuerySource, /DECLARE .* NO SCROLL CURSOR FOR/u);
+  assert.match(
+    storageReferenceQuerySource,
+    /FETCH FORWARD \$\{STORAGE_REFERENCE_CURSOR_BATCH_SIZE\} FROM/u,
+  );
+  assert.match(storageReferenceQuerySource, /CLOSE /u);
+  assert.match(
+    storageReferenceQuerySource,
+    /assertNotAborted\(signal\)[\s\S]*for \(const row of result\.rows\)[\s\S]*consume\(row\)/u,
+  );
+  assert.equal(
+    storageReferenceQuerySource.match(/streamCursorRows</gu)?.length,
+    4,
   );
 
   const historicalClassifierPath = path.join(
@@ -4586,19 +4740,53 @@ async function testDatabaseBoundariesForTimeZone(
 
       const storageReferenceIsValid = async (
         storageMounts: unknown,
+        writeSqlNull = false,
       ): Promise<boolean> => {
         await client.query(
-          `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
-           WHERE "id" = $2`,
-          [JSON.stringify(storageMounts), latestContinuation.checkpointId],
+          `UPDATE "checkpoints"
+           SET "storage_mounts" = CASE
+             WHEN $1::boolean THEN NULL
+             ELSE $2::jsonb
+           END
+           WHERE "id" = $3`,
+          [
+            writeSqlNull,
+            JSON.stringify(storageMounts),
+            latestContinuation.checkpointId,
+          ],
         );
-        const invalidReferences =
-          await client.query<InvalidStorageReferenceRow>(
-            CHECKPOINT_STORAGE_REFERENCE_QUERY,
+        await client.query(
+          "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        try {
+          const checkpointRows = await client.query<{ readonly id: string }>(
+            `SELECT "id"::text AS "id" FROM "checkpoints"`,
           );
-        return !invalidReferences.rows.some((row) => {
-          return row.id === latestContinuation.checkpointId;
-        });
+          const expectedCheckpointIds = new Set(
+            checkpointRows.rows.map((row) => {
+              return row.id;
+            }),
+          );
+          const priorInvalidReferences =
+            await client.query<PriorInvalidStorageReferenceRow>(
+              PRIOR_CHECKPOINT_STORAGE_REFERENCE_QUERY,
+            );
+          const validation = await validateCheckpointStorageReferences(
+            client,
+            undefined,
+            expectedCheckpointIds,
+          );
+          const priorValid = !priorInvalidReferences.rows.some((row) => {
+            return row.id === latestContinuation.checkpointId;
+          });
+          const streamedValid = !validation.invalidCheckpointIds.has(
+            latestContinuation.checkpointId,
+          );
+          assert.equal(streamedValid, priorValid);
+          return streamedValid;
+        } finally {
+          await client.query("ROLLBACK");
+        }
       };
       for (const validMounts of [
         [],
@@ -4624,7 +4812,9 @@ async function testDatabaseBoundariesForTimeZone(
       ]) {
         assert.equal(await storageReferenceIsValid(validMounts), true);
       }
+      assert.equal(await storageReferenceIsValid(null, true), true);
       assert.equal(await storageReferenceIsValid({}), false);
+      assert.equal(await storageReferenceIsValid(null), false);
       assert.equal(await storageReferenceIsValid([null]), false);
 
       const requiredStorageMountKeys = [
@@ -4979,6 +5169,83 @@ function explainExecutionTimeMs(plan: unknown): number {
   return executionTime;
 }
 
+function explainActualRows(plan: unknown): number {
+  assert.ok(Array.isArray(plan));
+  const root: unknown = plan[0];
+  assert.ok(root !== null && typeof root === "object");
+  const rootRecord = root as Readonly<Record<string, unknown>>;
+  const rootPlan = rootRecord.Plan;
+  assert.ok(rootPlan !== null && typeof rootPlan === "object");
+  const actualRows = (rootPlan as Readonly<Record<string, unknown>>)[
+    "Actual Rows"
+  ];
+  if (typeof actualRows !== "number") {
+    throw new TypeError("Expected numeric plan row count");
+  }
+  return actualRows;
+}
+
+function planNodeTypes(plan: unknown): ReadonlySet<string> {
+  const nodeTypes = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+    const record = value as Readonly<Record<string, unknown>>;
+    const nodeType = record["Node Type"];
+    if (typeof nodeType === "string") nodeTypes.add(nodeType);
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(plan);
+  return nodeTypes;
+}
+
+function storagePlanCheckpointId(ordinal: number): string {
+  return `22000000-0000-4000-8000-${ordinal.toString().padStart(12, "0")}`;
+}
+
+function storagePlanExpectedCheckpointIds(): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (
+    let ordinal = 1;
+    ordinal <= STORAGE_PLAN_CHECKPOINT_COUNT;
+    ordinal += 1
+  ) {
+    ids.add(storagePlanCheckpointId(ordinal));
+  }
+  return ids;
+}
+
+async function measurePeakHeapGrowth<Value>(
+  operation: () => Promise<Value>,
+): Promise<{
+  readonly value: Value;
+  readonly baselineHeapBytes: number;
+  readonly peakHeapBytes: number;
+  readonly peakGrowthBytes: number;
+}> {
+  const baseline = process.memoryUsage().heapUsed;
+  let peak = baseline;
+  const sample = (): void => {
+    peak = Math.max(peak, process.memoryUsage().heapUsed);
+  };
+  const interval = setInterval(sample, 1);
+  try {
+    const value = await operation();
+    sample();
+    return {
+      value,
+      baselineHeapBytes: baseline,
+      peakHeapBytes: peak,
+      peakGrowthBytes: Math.max(0, peak - baseline),
+    };
+  } finally {
+    clearInterval(interval);
+  }
+}
+
 async function seedStoragePlanOwnershipFixture(client: Client): Promise<void> {
   await client.query(
     `INSERT INTO "agent_composes" (
@@ -4993,20 +5260,43 @@ async function seedStoragePlanOwnershipFixture(client: Client): Promise<void> {
      ) VALUES ($1, 'storage-plan-user', 'storage-plan-org', $2)`,
     [STORAGE_PLAN_IDS.session, STORAGE_PLAN_IDS.agent],
   );
+}
+
+async function seedStoragePlanCheckpointOwners(client: Client): Promise<void> {
   await client.query(
     `INSERT INTO "agent_runs" (
        "id", "user_id", "org_id", "session_id", "status", "prompt"
-     ) VALUES (
-       $1, 'storage-plan-user', 'storage-plan-org', $2,
-       'completed', 'storage plan fixture'
-     )`,
-    [STORAGE_PLAN_IDS.run, STORAGE_PLAN_IDS.session],
+     )
+     SELECT
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       'storage-plan-user',
+       'storage-plan-org',
+       $1,
+       'completed',
+       'storage plan fixture'
+     FROM generate_series(1, $2::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_IDS.session, STORAGE_PLAN_CHECKPOINT_COUNT],
   );
   await client.query(
     `INSERT INTO "conversations" (
        "id", "run_id", "cli_agent_type", "cli_agent_session_id"
-     ) VALUES ($1, $2, 'claude-code', 'storage-plan-conversation')`,
-    [STORAGE_PLAN_IDS.conversation, STORAGE_PLAN_IDS.run],
+     )
+     SELECT
+       format(
+         '21000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       'claude-code',
+       'storage-plan-conversation-' || "fixture"."ordinal"
+     FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_CHECKPOINT_COUNT],
   );
 }
 
@@ -5025,7 +5315,7 @@ async function seedStoragePlanCatalogs(client: Client): Promise<void> {
        'storage-plan-org',
        'storage-plan-prefix-' || "fixture"."ordinal"
      FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
-    [STORAGE_PLAN_MOUNT_COUNT],
+    [STORAGE_PLAN_STORAGE_COUNT],
   );
   await client.query(
     `INSERT INTO "storage_versions" (
@@ -5035,53 +5325,89 @@ async function seedStoragePlanCatalogs(client: Client): Promise<void> {
        lpad(to_hex("fixture"."ordinal"), 64, '0'),
        format(
          '10000000-0000-4000-8000-%s',
-         lpad("fixture"."ordinal"::text, 12, '0')
+         lpad(
+           ((("fixture"."ordinal" - 1) % $2::integer) + 1)::text,
+           12,
+           '0'
+         )
        )::uuid,
        'storage-plan-key-' || "fixture"."ordinal",
        0,
        'storage-plan-user'
      FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
-    [STORAGE_PLAN_MOUNT_COUNT],
+    [STORAGE_PLAN_VERSION_COUNT, STORAGE_PLAN_STORAGE_COUNT],
   );
 }
 
-async function seedStoragePlanCheckpoint(client: Client): Promise<void> {
+async function seedStoragePlanCheckpoints(client: Client): Promise<void> {
   await client.query(
     `INSERT INTO "checkpoints" (
        "id", "run_id", "conversation_id", "storage_mounts"
      )
      SELECT
-       $1,
-       $2,
-       $3,
+       format(
+         '22000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '21000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
        jsonb_agg(
          jsonb_build_object(
            'orgId', 'storage-plan-org',
            'userId', 'storage-plan-user',
-           'name', 'storage-plan-' || "fixture"."ordinal",
+           'name', 'storage-plan-' || "mount"."storageOrdinal",
            'storageId', format(
              '10000000-0000-4000-8000-%s',
-             lpad("fixture"."ordinal"::text, 12, '0')
+             lpad("mount"."storageOrdinal"::text, 12, '0')
            ),
-           'version', lpad(to_hex("fixture"."ordinal"), 64, '0'),
-           'mountPath', '/home/oai/share/storage-plan-' || "fixture"."ordinal",
-           'optional', "fixture"."ordinal" % 2 = 0,
-           'writeback', "fixture"."ordinal" % 3 = 0,
+           'version', lpad(to_hex("mount"."versionOrdinal"), 64, '0'),
+           'mountPath',
+             '/home/oai/share/storage-plan-' || "mount"."storageOrdinal",
+           'optional', "mount"."ordinal" % 2 = 0,
+           'writeback', "mount"."ordinal" % 3 = 0,
            'instructionsTargetFilename', 'AGENTS.md',
            'missingRootPolicy', CASE
-             WHEN "fixture"."ordinal" % 2 = 0
+             WHEN "mount"."ordinal" % 2 = 0
                THEN 'preserveParentVersion'
              ELSE 'fail'
            END
          )
-         ORDER BY "fixture"."ordinal"
+         ORDER BY "mount"."ordinal"
        )
-     FROM generate_series(1, $4::integer) AS "fixture"("ordinal")`,
+     FROM generate_series(1, $1::integer) AS "checkpoint"("ordinal")
+     CROSS JOIN LATERAL (
+       SELECT
+         "fixture"."ordinal",
+         (
+           (
+             (
+               ("checkpoint"."ordinal" - 1) * $2::integer +
+               "fixture"."ordinal" - 1
+             ) % $3::integer
+           ) + 1
+         )::integer AS "versionOrdinal"
+       FROM generate_series(1, $2::integer) AS "fixture"("ordinal")
+     ) AS "expanded"
+     CROSS JOIN LATERAL (
+       SELECT
+         "expanded"."ordinal",
+         "expanded"."versionOrdinal",
+         (
+           (("expanded"."versionOrdinal" - 1) % $4::integer) + 1
+         )::integer AS "storageOrdinal"
+     ) AS "mount"
+     GROUP BY "checkpoint"."ordinal"`,
     [
-      STORAGE_PLAN_IDS.checkpoint,
-      STORAGE_PLAN_IDS.run,
-      STORAGE_PLAN_IDS.conversation,
-      STORAGE_PLAN_MOUNT_COUNT,
+      STORAGE_PLAN_CHECKPOINT_COUNT,
+      STORAGE_PLAN_MOUNTS_PER_CHECKPOINT,
+      STORAGE_PLAN_VERSION_COUNT,
+      STORAGE_PLAN_STORAGE_COUNT,
     ],
   );
 }
@@ -5100,28 +5426,92 @@ async function assertStoragePlanProfile(
          set_config('statement_timeout', '30s', true)`,
     );
     for (const setting of profile.settings) await client.query(setting);
-    const invalid = await client.query<InvalidStorageReferenceRow>(
-      CHECKPOINT_STORAGE_REFERENCE_QUERY,
+    const startedAt = performance.now();
+    const measured = await measurePeakHeapGrowth(async () => {
+      const expectedCheckpointIds = storagePlanExpectedCheckpointIds();
+      return validateCheckpointStorageReferences(
+        client,
+        undefined,
+        expectedCheckpointIds,
+      );
+    });
+    const elapsedMs = performance.now() - startedAt;
+    assert.equal(measured.value.checkpointCount, STORAGE_PLAN_CHECKPOINT_COUNT);
+    assert.equal(
+      measured.value.expandedMountCount,
+      STORAGE_PLAN_EXPANDED_MOUNT_COUNT,
     );
-    assert.deepEqual(invalid.rows, []);
-    const explained = await client.query<ExplainRow>(
-      `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-       ${CHECKPOINT_STORAGE_REFERENCE_QUERY}`,
-    );
-    const plan = explained.rows[0]?.["QUERY PLAN"];
-    assert.deepEqual(
-      relationScanLoops(plan, "storages"),
-      [1],
-      `${profile.name} must scan the Storage catalog once`,
-    );
-    assert.deepEqual(
-      relationScanLoops(plan, "storage_versions"),
-      [1],
-      `${profile.name} must scan the Storage version catalog once`,
+    assert.deepEqual([...measured.value.invalidCheckpointIds], []);
+    assert.ok(
+      elapsedMs < 30_000,
+      `${profile.name} must complete the full streamed closure within 30s`,
     );
     assert.ok(
-      explainExecutionTimeMs(plan) < 30_000,
-      `${profile.name} must remain inside the production statement bound`,
+      measured.peakGrowthBytes < STORAGE_PLAN_MAX_HEAP_GROWTH_BYTES,
+      `${profile.name} must keep streamed validation heap growth bounded`,
+    );
+    assert.ok(
+      measured.peakHeapBytes < STORAGE_PLAN_MAX_OLD_SPACE_MIB * 1024 * 1024,
+      `${profile.name} must remain within the fixed scale-process heap bound`,
+    );
+
+    let planExecutionTimeMs = 0;
+    const queryPlans = [
+      {
+        query: STORAGE_REFERENCE_IDENTITY_QUERY,
+        relation: "storages",
+        expectedRows: STORAGE_PLAN_STORAGE_COUNT,
+      },
+      {
+        query: STORAGE_REFERENCE_VERSION_QUERY,
+        relation: "storage_versions",
+        expectedRows: STORAGE_PLAN_VERSION_COUNT,
+      },
+      {
+        query: CHECKPOINT_STORAGE_REFERENCE_QUERY,
+        relation: "checkpoints",
+        expectedRows: STORAGE_PLAN_CHECKPOINT_COUNT,
+      },
+    ] as const;
+    for (const queryPlan of queryPlans) {
+      const explained = await client.query<ExplainRow>(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${queryPlan.query}`,
+      );
+      const plan = explained.rows[0]?.["QUERY PLAN"];
+      assert.deepEqual(
+        relationScanLoops(plan, queryPlan.relation),
+        [1],
+        `${profile.name} must scan ${queryPlan.relation} exactly once`,
+      );
+      assert.equal(explainActualRows(plan), queryPlan.expectedRows);
+      for (const forbiddenNodeType of [
+        "CTE Scan",
+        "Function Scan",
+        "Hash Join",
+        "Merge Join",
+        "Nested Loop",
+      ]) {
+        assert.equal(planNodeTypes(plan).has(forbiddenNodeType), false);
+      }
+      planExecutionTimeMs += explainExecutionTimeMs(plan);
+      assert.ok(
+        explainExecutionTimeMs(plan) < 30_000,
+        `${profile.name} ${queryPlan.relation} scan must remain within 30s`,
+      );
+    }
+    console.log(
+      JSON.stringify({
+        checkpointStorageReferenceScale: {
+          profile: profile.name,
+          checkpointCount: measured.value.checkpointCount,
+          expandedMountCount: measured.value.expandedMountCount,
+          elapsedMs: Math.ceil(elapsedMs),
+          baselineHeapBytes: measured.baselineHeapBytes,
+          peakHeapBytes: measured.peakHeapBytes,
+          peakHeapGrowthBytes: measured.peakGrowthBytes,
+          planExecutionTimeMs: Math.ceil(planExecutionTimeMs),
+        },
+      }),
     );
   } finally {
     await client.query("ROLLBACK");
@@ -5152,14 +5542,31 @@ async function testCheckpointStorageReferencePlans(
     await client.connect();
     try {
       await seedStoragePlanOwnershipFixture(client);
+      await seedStoragePlanCheckpointOwners(client);
       await seedStoragePlanCatalogs(client);
-      await seedStoragePlanCheckpoint(client);
-      for (const profile of STORAGE_PLAN_PROFILES) {
-        await assertStoragePlanProfile(client, profile);
-      }
+      await seedStoragePlanCheckpoints(client);
+      await client.query('ANALYZE "checkpoints"');
+      await client.query('ANALYZE "storages"');
+      await client.query('ANALYZE "storage_versions"');
     } finally {
       await client.end();
     }
+    const scaleOutput = execFileSync(
+      process.execPath,
+      [
+        `--max-old-space-size=${STORAGE_PLAN_MAX_OLD_SPACE_MIB}`,
+        "--import",
+        "tsx",
+        path.join(dirname, "test-agent-compose-consolidation-preflight.ts"),
+        "--checkpoint-storage-scale",
+      ],
+      {
+        cwd: packageDirectory,
+        encoding: "utf8",
+        env: { ...process.env, DATABASE_URL: testUrl },
+      },
+    );
+    process.stdout.write(scaleOutput);
   } finally {
     await admin.query(
       `DROP DATABASE IF EXISTS "${storagePlanTestDatabase}" WITH (FORCE)`,
@@ -5229,6 +5636,20 @@ export async function validateAgentComposeConsolidationPreflight(): Promise<void
 }
 
 async function runFromCommandLine(): Promise<void> {
+  if (process.argv[2] === "--checkpoint-storage-scale") {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    try {
+      for (const profile of STORAGE_PLAN_PROFILES) {
+        await assertStoragePlanProfile(client, profile);
+      }
+    } finally {
+      await client.end();
+    }
+    return;
+  }
   if (process.argv[2] === "--checkpoint-lineage-time-zone") {
     const timeZone = process.argv[3];
     if (timeZone !== "UTC" && timeZone !== "Asia/Shanghai") {

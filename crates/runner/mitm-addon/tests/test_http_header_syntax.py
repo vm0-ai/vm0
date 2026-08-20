@@ -89,3 +89,68 @@ def test_has_forbidden_header_value_control_rejects_control_values(value: str) -
 
 def test_has_forbidden_header_value_control_accepts_non_ascii_value() -> None:
     assert http_header_syntax.has_forbidden_header_value_control("\u00e9") is False
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_token", "contains_token"),
+    [
+        pytest.param((), "upgrade", False, id="empty-values"),
+        pytest.param(
+            ("keep-alive", "websocket"),
+            "websocket",
+            True,
+            id="repeated-upgrade-values",
+        ),
+        pytest.param(
+            ("keep-alive,\tUpGrAdE ",),
+            "upgrade",
+            True,
+            id="connection-list-case-and-ows",
+        ),
+        pytest.param(
+            ("h2c, websocket\u2028",),
+            "websocket",
+            False,
+            id="trailing-unicode-whitespace",
+        ),
+        pytest.param(
+            ("\u2028upgrade",),
+            "upgrade",
+            False,
+            id="leading-unicode-whitespace",
+        ),
+        pytest.param(("upgraded",), "upgrade", False, id="nonmatching-token"),
+    ],
+)
+def test_header_values_contain_token(
+    values: tuple[str, ...],
+    expected_token: str,
+    *,
+    contains_token: bool,
+) -> None:
+    assert http_header_syntax.header_values_contain_token(values, expected_token) is contains_token
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_value"),
+    [
+        pytest.param((), None, id="missing-value"),
+        pytest.param(
+            (" \tdGhlIHNhbXBsZSBub25jZQ==\t ",),
+            "dGhlIHNhbXBsZSBub25jZQ==",
+            id="websocket-key-ows",
+        ),
+        pytest.param(("13\u2028",), "13\u2028", id="version-unicode-whitespace"),
+        pytest.param((" \t",), "", id="blank-singleton"),
+        pytest.param(
+            ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "duplicate"),
+            None,
+            id="duplicate-websocket-accept",
+        ),
+    ],
+)
+def test_single_header_value(
+    values: tuple[str, ...],
+    expected_value: str | None,
+) -> None:
+    assert http_header_syntax.single_header_value(values) == expected_value

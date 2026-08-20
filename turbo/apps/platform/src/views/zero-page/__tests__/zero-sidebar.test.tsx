@@ -39,6 +39,8 @@ import {
   holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
+import { emptySearchImg } from "../platform-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
@@ -83,6 +85,8 @@ interface SidebarThread {
   readonly updatedAt: string;
   readonly pinnedAt?: string | null;
   readonly renamedAt?: string | null;
+  /** Overrides the ordering-derived `sortAt` when a test asserts on its age. */
+  readonly sortAt?: string;
 }
 
 function prepareDefaultAgent(): void {
@@ -228,10 +232,12 @@ function mockChatThreadSnapshot(
           id: thread.id,
           agentId: thread.agent.id,
           title: thread.title,
-          sortAt: new Date(
-            Date.parse("2026-03-10T00:00:00Z") +
-              (snapshotThreads.length - index) * 1000,
-          ).toISOString(),
+          sortAt:
+            thread.sortAt ??
+            new Date(
+              Date.parse("2026-03-10T00:00:00Z") +
+                (snapshotThreads.length - index) * 1000,
+            ).toISOString(),
           createdAt: thread.createdAt,
           updatedAt: thread.updatedAt,
           pinnedAt: thread.pinnedAt ?? null,
@@ -3493,6 +3499,84 @@ describe("zero sidebar", () => {
         }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("ages spotlight rows and illustrates the empty result set", async () => {
+    mockNow(context.signal);
+    prepareAgentTeam();
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Minutes old", {
+        sortAt: isoFromNowMs(-5 * 60 * 1000),
+      }),
+      createThread(INCIDENT_THREAD_ID, "Hours old", {
+        sortAt: isoFromNowMs(-3 * 60 * 60 * 1000),
+      }),
+      createThread(AUTOMATION_THREAD_ID, "Days old", {
+        sortAt: isoFromNowMs(-2 * 24 * 60 * 60 * 1000),
+      }),
+      createThread(ARCHIVED_THREAD_ID, "Older than a month", {
+        sortAt: isoFromNowMs(-60 * 24 * 60 * 60 * 1000),
+      }),
+    ]);
+    context.mocks.api(chatSearchContract.search, ({ respond }) => {
+      return respond(200, { results: [], hasMore: false });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("Search conversations"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats and messages...",
+    });
+
+    const rowFor = async (title: string): Promise<HTMLElement> => {
+      const row = (await within(dialog).findByText(title)).closest(
+        "[cmdk-item]",
+      );
+      if (!(row instanceof HTMLElement)) {
+        throw new Error(`no spotlight row for ${title}`);
+      }
+      return row;
+    };
+
+    const minutesRow = await rowFor("Minutes old");
+    expect(minutesRow).toHaveTextContent("5 minutes ago");
+    const hoursRow = await rowFor("Hours old");
+    expect(hoursRow).toHaveTextContent("3 hours ago");
+    const daysRow = await rowFor("Days old");
+    expect(daysRow).toHaveTextContent("2 days ago");
+
+    // Past a month a relative phrase stops helping, so the row shows the
+    // absolute date instead. Assert the shape rather than an exact string so
+    // the expectation does not depend on the runner's timezone.
+    const archived = await rowFor("Older than a month");
+    expect(archived).not.toHaveTextContent("ago");
+    expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
+
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "nothing matches this",
+    );
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
+    });
+    expect(within(dialog).queryByText("Minutes old")).not.toBeInTheDocument();
+    const emptyState = within(dialog)
+      .getByText("No results found")
+      .closest("div");
+    expect(emptyState?.querySelector("img")).toHaveAttribute(
+      "src",
+      emptySearchImg,
+    );
   });
 
   it("opens horizontal pinned agent actions from context interactions", async () => {

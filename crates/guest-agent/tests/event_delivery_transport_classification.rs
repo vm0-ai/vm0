@@ -9,18 +9,27 @@ use guest_contracts::diagnostics::{
 };
 use serde_json::json;
 use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[tokio::test]
 async fn response_less_failures_have_stable_classifications()
 -> Result<(), Box<dyn std::error::Error>> {
     let connect_delivery = run_connect_failure().await?;
-    assert_failed_attempts(&connect_delivery, EventDeliveryAttemptFailureKind::Connect)?;
+    assert_failed_attempts(
+        &connect_delivery,
+        EventDeliveryAttemptFailureKind::Connect,
+        false,
+        true,
+    )?;
 
     let (transport_delivery, on_wire_request_ids) = run_transport_failure().await?;
     let transport_attempts = assert_failed_attempts(
         &transport_delivery,
         EventDeliveryAttemptFailureKind::Transport,
+        false,
+        false,
     )?;
     assert_eq!(
         transport_attempts
@@ -29,6 +38,14 @@ async fn response_less_failures_have_stable_classifications()
             .collect::<Vec<_>>(),
         on_wire_request_ids
     );
+
+    let connect_timeout_delivery = run_connect_timeout_failure().await?;
+    assert_failed_attempts(
+        &connect_timeout_delivery,
+        EventDeliveryAttemptFailureKind::Timeout,
+        true,
+        true,
+    )?;
 
     Ok(())
 }
@@ -136,9 +153,86 @@ async fn run_transport_failure()
     Ok((delivery, request_ids))
 }
 
+async fn run_connect_timeout_failure() -> Result<EventDeliveryDiagnostic, Box<dyn std::error::Error>>
+{
+    let mock_cli = common::build_and_locate_mock()?;
+    let tmp = tempfile::tempdir()?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let base_url = format!("https://{}", listener.local_addr()?);
+    let accepted_count = Arc::new(AtomicUsize::new(0));
+    let server_accepted_count = Arc::clone(&accepted_count);
+    let server = tokio::spawn(async move {
+        let mut connections = Vec::new();
+        while let Ok((connection, _)) = listener.accept().await {
+            server_accepted_count.fetch_add(1, Ordering::SeqCst);
+            connections.push(connection);
+        }
+    });
+    let prompt = format!(
+        "@ECHO@\n{}",
+        json!({ "type": "result", "marker": "connect-timeout" })
+    );
+
+    unsafe {
+        common::setup_env(&mock_cli, tmp.path(), &prompt, 3, 1)?;
+        std::env::set_var("VM0_API_BACKEND_URL", &base_url);
+        std::env::set_var("VM0_API_TOKEN", "test-token");
+    }
+    let mut runtime = common::guest_runtime_from_process_env()?;
+    let run_id = runtime.config.run_id.clone();
+    runtime.http = guest_agent::http::HttpClient::with_api_config(
+        &base_url,
+        "test-token",
+        "",
+        run_id,
+        Duration::ZERO,
+    )?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+    let execution = tokio::spawn(async move {
+        common::execute_cli_for_runtime(
+            &runtime,
+            &SecretMasker::from_raw(""),
+            common::spawn_dummy_heartbeat(),
+        )
+        .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while accepted_count.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .map_err(|_| io::Error::other("connect-timeout server accepted no request"))?;
+
+    tokio::time::pause();
+    for _ in 0..35 {
+        if execution.is_finished() {
+            break;
+        }
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        execution.is_finished(),
+        "connect-timeout delivery should exhaust three attempts"
+    );
+    assert_eq!(accepted_count.load(Ordering::SeqCst), 3);
+    let joined = execution.await;
+    tokio::time::resume();
+    server.abort();
+    let result = joined??;
+
+    result
+        .event_delivery
+        .ok_or_else(|| io::Error::other("connect timeout omitted delivery diagnostic").into())
+}
+
 fn assert_failed_attempts(
     delivery: &EventDeliveryDiagnostic,
     expected_kind: EventDeliveryAttemptFailureKind,
+    timeout_observed: bool,
+    connect_observed: bool,
 ) -> Result<
     &[guest_contracts::diagnostics::EventDeliveryCompletedAttemptDiagnostic],
     Box<dyn std::error::Error>,
@@ -148,11 +242,12 @@ fn assert_failed_attempts(
         .as_ref()
         .ok_or_else(|| io::Error::other("delivery diagnostic omitted first failed batch"))?;
     assert_eq!(failed_batch.attempts.len(), 3);
-    assert!(
-        failed_batch.attempts.iter().all(|attempt| {
-            attempt.failure_kind == expected_kind && attempt.http_status.is_none()
-        })
-    );
+    assert!(failed_batch.attempts.iter().all(|attempt| {
+        attempt.failure_kind == expected_kind
+            && attempt.http_status.is_none()
+            && attempt.timeout_observed == Some(timeout_observed)
+            && attempt.connect_observed == Some(connect_observed)
+    }));
     assert_eq!(
         failed_batch.outcome,
         EventDeliveryAcceptanceOutcome::OutcomeUnknown

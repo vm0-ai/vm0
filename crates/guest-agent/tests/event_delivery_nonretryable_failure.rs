@@ -116,6 +116,8 @@ async fn nonretryable_client_rejection_records_one_attempt()
         EventDeliveryAttemptFailureKind::HttpStatus
     );
     assert_eq!(failed_batch.attempts[0].http_status, Some(400));
+    assert_eq!(failed_batch.attempts[0].timeout_observed, None);
+    assert_eq!(failed_batch.attempts[0].connect_observed, None);
     assert_eq!(
         failed_batch.outcome,
         EventDeliveryAcceptanceOutcome::ConfirmedRejection

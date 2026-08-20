@@ -1581,6 +1581,42 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // The guide is not a mounted skill, so the prompt is the only thing that
+    // tells a run where to find it. Off, it must stay out of every run.
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "vm0-ai/Template-artifact",
+    );
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationTemplates]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("vm0-ai/Template-artifact");
+    expect(appendSystemPrompt).toContain("reverse-template");
+    expect(appendSystemPrompt).toContain("feat/reverse-template-skill");
+  });
+
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
