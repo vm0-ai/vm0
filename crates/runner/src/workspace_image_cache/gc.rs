@@ -110,7 +110,6 @@ impl WorkspaceImageCache {
 
         let freed_bytes = self.gc_locked(false).await?;
         capacity_lock.write_all(b"\0")?;
-        capacity_lock.set_times(std::fs::FileTimes::new().set_modified(SystemTime::now()))?;
         Ok(Some(freed_bytes))
     }
 
