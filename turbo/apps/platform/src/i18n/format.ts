@@ -60,14 +60,15 @@ const WEEK_MS = 7 * DAY_MS;
  *
  * Anything a month or older falls through to {@link formatChatTimestamp}: past
  * that point a relative phrase ("2 months ago") is less useful than the date.
+ *
+ * `value` must parse as a date. Every caller passes a server-issued ISO
+ * timestamp, so an unparseable value is a data bug and is left to throw rather
+ * than rendered as an empty cell that hides it.
  */
 export function formatRelativeTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const elapsedMs = now() - date.getTime();
+  const elapsedMs = now() - new Date(value).getTime();
+  // A timestamp in the future means the client clock trails the server's, which
+  // no relative phrase describes usefully; show the absolute date instead.
   if (elapsedMs >= 30 * DAY_MS || elapsedMs < 0) {
     return formatChatTimestamp(value);
   }
