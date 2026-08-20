@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -42,7 +42,7 @@ pub(super) struct WriterPool {
 }
 
 struct PathWriteBatch {
-    path: PathBuf,
+    path: Arc<Path>,
     lines: Vec<String>,
 }
 
@@ -171,8 +171,9 @@ async fn write_path_batch(
 
     let path = batch.path;
     let count = batch.lines.len();
-    let write_path = path.clone();
-    let result = tokio::task::spawn_blocking(move || append_lines(&write_path, &batch.lines)).await;
+    let write_path = Arc::clone(&path);
+    let result =
+        tokio::task::spawn_blocking(move || append_lines(write_path.as_ref(), &batch.lines)).await;
 
     match result {
         Ok(Ok(())) => {}
