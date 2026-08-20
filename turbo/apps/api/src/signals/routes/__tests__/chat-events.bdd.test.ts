@@ -1281,7 +1281,7 @@ describe("CHAT-02: thread connector account selection", () => {
     await cancelChatRun(actor, activeRunId, claimed.sandboxHeaders);
   });
 
-  it("pins and materializes an exact custom MCP account on first use", async () => {
+  it("pins and materializes exact custom HTTP and MCP accounts on first use", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -1295,7 +1295,15 @@ describe("CHAT-02: thread connector account selection", () => {
         [FeatureSwitchKey.CustomConnectorMcp]: true,
       },
     );
-    const customConnector = await connectors.createCustomConnector(actor, {
+    const httpConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_thread-http-runtime-${randomUUID()}`,
+        displayName: "Thread HTTP runtime connector",
+        prefixTemplates: ["https://thread-http-runtime.example.test/v1/"],
+      }),
+    );
+    const mcpConnector = await connectors.createCustomConnector(actor, {
       kind: "mcp",
       slug: `_thread-mcp-runtime-${randomUUID()}`,
       displayName: "Thread MCP runtime connector",
@@ -1320,35 +1328,56 @@ describe("CHAT-02: thread connector account selection", () => {
     });
     await connectors.setCustomConnectorSecret(
       actor,
-      customConnector.id,
+      httpConnector.id,
+      "thread-http-runtime-secret",
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      mcpConnector.id,
       "thread-mcp-runtime-secret",
     );
     await connectors.updateAgentCustomConnectors(actor, agentId, [
-      customConnector.id,
+      httpConnector.id,
+      mcpConnector.id,
     ]);
-    const connection = await readCustomConnectorCredentialStorageParent(
+    const httpConnection = await readCustomConnectorCredentialStorageParent(
       context,
       {
         orgId,
         userId: actor.userId,
-        customConnectorId: customConnector.id,
+        customConnectorId: httpConnector.id,
       },
     );
-    const connectorId = connection.connector?.id;
-    if (!connectorId) {
-      throw new Error("Expected a custom MCP connector account");
+    const mcpConnection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: mcpConnector.id,
+      },
+    );
+    const httpConnectorId = httpConnection.connector?.id;
+    const mcpConnectorId = mcpConnection.connector?.id;
+    if (!httpConnectorId || !mcpConnectorId) {
+      throw new Error("Expected custom HTTP and MCP connector accounts");
     }
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "Use my selected MCP connector account",
+      prompt: "Use my selected HTTP and MCP connector accounts",
     });
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
-      customConnectorId: customConnector.id,
+      customConnectorId: httpConnector.id,
       baseUrlVars: {},
-      sourceId: connectorId,
+      sourceId: httpConnectorId,
+    });
+    expect(claimed.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: mcpConnector.id,
+      baseUrlVars: {},
+      sourceId: mcpConnectorId,
     });
     const selections = await accept(
       chatThreadConnectorSelectionsClient().get({
@@ -1357,15 +1386,25 @@ describe("CHAT-02: thread connector account selection", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connectorId,
-        target: {
-          kind: "custom",
-          customConnectorId: customConnector.id,
+    expect(selections.body.selections).toHaveLength(2);
+    expect(selections.body.selections).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectionId: httpConnectorId,
+          target: {
+            kind: "custom",
+            customConnectorId: httpConnector.id,
+          },
         },
-      },
-    ]);
+        {
+          connectionId: mcpConnectorId,
+          target: {
+            kind: "custom",
+            customConnectorId: mcpConnector.id,
+          },
+        },
+      ]),
+    );
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 
