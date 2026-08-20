@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.466.0](https://github.com/vm0-ai/vm0/compare/api-v1.465.0...api-v1.466.0) (2026-08-20)
+
+
+### Features
+
+* **api:** pin chat thread media models at creation ([#28291](https://github.com/vm0-ai/vm0/issues/28291)) ([3b8a560](https://github.com/vm0-ai/vm0/commit/3b8a5602cdcd899bdb80f7a8176b784296eb2300))
+* **api:** publish an analysed deck as a presentation template ([#28298](https://github.com/vm0-ai/vm0/issues/28298)) ([2080670](https://github.com/vm0-ai/vm0/commit/20806707e9adbcd9bd87043976d8327dc36a4f69))
+* point runs at the deck reverse-engineering guide ([#28362](https://github.com/vm0-ai/vm0/issues/28362)) ([8022cb6](https://github.com/vm0-ai/vm0/commit/8022cb61be52befefacfd44e1d758bd1a54f7584))
+
+
+### Bug Fixes
+
+* **api:** attribute direct axiom ingest failures ([#28321](https://github.com/vm0-ai/vm0/issues/28321)) ([84f2574](https://github.com/vm0-ai/vm0/commit/84f25749ee37387489a1a72b02324ef07c13e38c))
+* **api:** centralize clerk backend api read retries ([#28282](https://github.com/vm0-ai/vm0/issues/28282)) ([fa029e5](https://github.com/vm0-ai/vm0/commit/fa029e5286f7d28e8f9d6be234b9c5468847b6b5))
+* **api:** share clerk read context across pagination ([#28375](https://github.com/vm0-ai/vm0/issues/28375)) ([7b4ddaf](https://github.com/vm0-ai/vm0/commit/7b4ddaf58a670d8183e5cf7f8e1fc10dbfab43df))
+* **billing:** support fully discounted usage pack purchases ([#28392](https://github.com/vm0-ai/vm0/issues/28392)) ([618645c](https://github.com/vm0-ai/vm0/commit/618645c51eae8aa9df3ac3766f770a45d94d3390))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* project support and VAPID contacts by public brand ([#28312](https://github.com/vm0-ai/vm0/issues/28312)) ([4d3848a](https://github.com/vm0-ai/vm0/commit/4d3848ad76a64ddc0c52d9497fb4886b94854fe9))
+* **usage:** bound model usage quantities ([#28351](https://github.com/vm0-ai/vm0/issues/28351)) ([d91265c](https://github.com/vm0-ai/vm0/commit/d91265c8761b3c40eb7e91a8ac6bcfaa0bdad4f8))
+
+
+### Refactoring
+
+* **api:** replace the blanket zero alias with an explicit compatibility table ([#28361](https://github.com/vm0-ai/vm0/issues/28361)) ([483d891](https://github.com/vm0-ai/vm0/commit/483d891afd08db289fe3a357cda62ee6f908b103))
+* **env:** drop the drained capability token fallbacks ([#28367](https://github.com/vm0-ai/vm0/issues/28367)) ([178b4dd](https://github.com/vm0-ai/vm0/commit/178b4dd144ce2d11c6d28ea467b18a6d25ed2439)), closes [#28365](https://github.com/vm0-ai/vm0/issues/28365)
+* **feishu:** emit the final webhook events path ([#28341](https://github.com/vm0-ai/vm0/issues/28341)) ([bc50564](https://github.com/vm0-ai/vm0/commit/bc50564204d21893361d05ee23468b6de3a99fef)), closes [#28338](https://github.com/vm0-ai/vm0/issues/28338)
+* **github:** remove the dead oauth connect callback route ([#28352](https://github.com/vm0-ai/vm0/issues/28352)) ([a998483](https://github.com/vm0-ai/vm0/commit/a998483595a415683f079a4a97d718c256237652))
+
+
+### Performance Improvements
+
+* **api:** attribute accepted catalog cache misses ([#28305](https://github.com/vm0-ai/vm0/issues/28305)) ([6abd8d7](https://github.com/vm0-ai/vm0/commit/6abd8d747f7d8b101d6be8ee2cf28ba532a97dc4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.343.0
+    * @okouai/core bumped to 8.574.0
+    * @okouai/db bumped to 1.210.0
+
 ## [1.465.0](https://github.com/vm0-ai/vm0/compare/api-v1.464.0...api-v1.465.0) (2026-08-20)
 
 

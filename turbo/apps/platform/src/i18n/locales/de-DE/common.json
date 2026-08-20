@@ -1143,8 +1143,9 @@
       "paidAddOn": "kostenpflichtiges Add-on",
       "payAndAddSlots": "Bezahlen und Slots hinzufügen",
       "payAndUpdate": "Bezahlen und aktualisieren",
-      "restoreDescription": "Dadurch wird die Verlängerung für dieses Parallelitätsabonnement fortgesetzt.",
-      "restoreSubscription": "Abonnement wiederherstellen",
+      "restoreConcurrency": "Parallelität wiederherstellen",
+      "restoreQuantityDescription": "Dadurch wird die Verlängerung Ihrer kostenpflichtigen Parallelität ({{quantity}}) wiederhergestellt. Ihr Plan ändert sich nicht.",
+      "restoreTeamPlan": "Team-Plan wiederherstellen",
       "restoreTitle": "Parallelitätsabonnement wiederherstellen?",
       "reviewChange": "Änderung prüfen",
       "reviewDescription": "Prüfen Sie den jetzt fälligen Betrag und Ihr aktualisiertes Monatsabonnement.",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "Abo kündigen",
       "chooseTarget": "Wählen Sie den Plan aus, auf den Sie ein Downgrade durchführen möchten.",
+      "concurrencyEndsDate": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt bis zum {{date}} aktiv und endet dann zusammen mit Ihrem Team-Plan. Alle bis dahin hinzugefügten Slots enden am selben Datum.",
+      "concurrencyEndsPeriod": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt bis zum Ende des Abrechnungszeitraums aktiv und endet dann zusammen mit Ihrem Team-Plan. Alle bis dahin hinzugefügten Slots enden zum selben Zeitpunkt.",
       "confirmProCancellation": "Sind Sie sicher, dass Sie Ihren Pro-Plan kündigen möchten?",
       "confirmTarget": "Downgrade auf {{plan}}?",
       "inProgress": "Herabstufung...",
@@ -1214,21 +1217,6 @@
       "changeAnytime": "Upgrade oder Downgrade jederzeit möglich.",
       "compare": "Tarife vergleichen",
       "compareAll": "Vergleichen Sie alle Pläne",
-      "comparison": {
-        "addOnConcurrency": "Zusätzliche Parallelität",
-        "available": "Verfügbar",
-        "concurrentRuns": "Parallele Läufe",
-        "included": "Ja",
-        "ownLlmKeys": "Eigene LLM-Schlüssel",
-        "privateAgents": "Private Agents",
-        "sharedAgents": "Geteilte Agents",
-        "support": "Support",
-        "supportEmail": "E-Mail",
-        "supportPriority": "Priorität",
-        "unlimited": "Unbegrenzt",
-        "voiceInput": "Spracheingabe",
-        "voiceInputValue": "{{requests}}/Tag · {{minutes}} Min."
-      },
       "currentPlan": "Aktueller Plan",
       "custom": {
         "name": "Benutzerdefiniert"
@@ -1260,6 +1248,23 @@
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
+      "highlights": {
+        "addOnConcurrency": "Parallelität jederzeit aufstocken",
+        "agents": "{{shared}} geteilte Agents, unbegrenzt private",
+        "automations": "Zeit- und ereignisgesteuerte Automationen",
+        "builtInLeadGeneration": "Integrierte Leadgenerierung",
+        "builtInSeoResearch": "Integrierte SEO-Recherche",
+        "builtInWebMarketData": "Integrierte Web- und Marktdaten",
+        "concurrentAgents": "{{slots}} Agents gleichzeitig",
+        "everythingInBuiltForTeams": "Alles aus {{plan}}, gemacht für Teams",
+        "included": "Enthalten",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "E-Mail-Support",
+        "supportPriority": "Priorisierter Support",
+        "videoGeneration": "Video- und Avatar-Generierung",
+        "voiceInput": "Spracheingabe, {{requests}} pro Tag",
+        "webhookAutomations": "Agents per Webhook aus jedem System starten"
+      },
       "legacy": "Legacy",
       "limitedFree": {
         "name": "Begrenzt kostenlos"
@@ -1276,7 +1281,8 @@
       "popular": "Beliebt",
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
-        "description": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
+        "description": "Tägliche Agent-Arbeit, pro Mitglied abgerechnet.",
+        "legacyDescription": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
         "name": "Pro"
       },
       "renews": "Erneuert {{date}}",
@@ -1284,7 +1290,8 @@
       "sectionTitle": "Planen",
       "selectedPlan": "den ausgewählten Plan",
       "team": {
-        "description": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
+        "description": "Für ein Team, das Agents den ganzen Tag laufen lässt.",
+        "legacyDescription": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
@@ -1356,6 +1363,7 @@
     "restore": {
       "cancellationDescription": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht.",
       "cancellationDescriptionDate": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht. Es wird am {{date}} erneuert.",
+      "concurrencyContinues": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt aktiv und wird zusammen mit Ihrem Plan weiter verlängert.",
       "downgradeDescription": "Dadurch wird das geplante Downgrade auf {{target}} abgebrochen. Ihr {{plan}}-Plan wird weiterhin verlängert.",
       "inProgress": "Wiederherstellung...",
       "title": "{{plan}}-Plan wiederherstellen?"

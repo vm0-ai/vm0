@@ -1163,8 +1163,9 @@
       "paidAddOn": "adicional pago",
       "payAndAddSlots": "Pagar e adicionar vagas",
       "payAndUpdate": "Pagar e atualizar",
-      "restoreDescription": "Isso retoma a renovação desta assinatura de simultaneidade.",
-      "restoreSubscription": "Restaurar assinatura",
+      "restoreConcurrency": "Restaurar concorrência",
+      "restoreQuantityDescription": "Isso restaura a renovação da sua concorrência paga ({{quantity}}). Seu plano não será alterado.",
+      "restoreTeamPlan": "Restaurar plano Team",
       "restoreTitle": "Restaurar assinatura de simultaneidade?",
       "reviewChange": "Revisar alteração",
       "reviewDescription": "Revise o valor a pagar agora e sua assinatura mensal atualizada.",
@@ -1202,6 +1203,8 @@
     "downgrade": {
       "cancelSubscription": "Cancelar assinatura",
       "chooseTarget": "Escolha o plano para o qual deseja fazer downgrade.",
+      "concurrencyEndsDate": "Sua concorrência paga ({{quantity}}) permanecerá ativa até {{date}} e depois terminará junto com seu plano Team. Todos os slots adicionados até lá terminarão na mesma data.",
+      "concurrencyEndsPeriod": "Sua concorrência paga ({{quantity}}) permanecerá ativa até o fim do período de cobrança e depois terminará junto com seu plano Team. Todos os slots adicionados até lá terminarão ao mesmo tempo.",
       "confirmProCancellation": "Tem certeza de que deseja cancelar seu plano Pro?",
       "confirmTarget": "Fazer downgrade para {{plan}}?",
       "inProgress": "Fazendo downgrade...",
@@ -1235,21 +1238,6 @@
       "changeAnytime": "Faça upgrade ou downgrade a qualquer momento.",
       "compare": "Comparar planos",
       "compareAll": "Comparar todos os planos",
-      "comparison": {
-        "addOnConcurrency": "Concorrência adicional",
-        "available": "Disponível",
-        "concurrentRuns": "Execuções simultâneas",
-        "included": "Sim",
-        "ownLlmKeys": "Suas próprias chaves LLM",
-        "privateAgents": "Agentes privados",
-        "sharedAgents": "Agentes compartilhados",
-        "support": "Suporte",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritário",
-        "unlimited": "Ilimitados",
-        "voiceInput": "Entrada de voz",
-        "voiceInputValue": "{{requests}}/dia · {{minutes}} min"
-      },
       "currentPlan": "Plano atual",
       "custom": {
         "name": "Personalizado"
@@ -1281,6 +1269,23 @@
         "description": "Acesso gratuito legado para workspaces existentes.",
         "name": "Grátis"
       },
+      "highlights": {
+        "addOnConcurrency": "Adicione concorrência quando quiser",
+        "agents": "{{shared}} agentes compartilhados, privados ilimitados",
+        "automations": "Automações agendadas e por eventos",
+        "builtInLeadGeneration": "Geração de leads integrada",
+        "builtInSeoResearch": "Pesquisa de SEO integrada",
+        "builtInWebMarketData": "Dados web e de mercado integrados",
+        "concurrentAgents": "{{slots}} agentes ao mesmo tempo",
+        "everythingInBuiltForTeams": "Tudo do {{plan}}, feito para equipes",
+        "included": "Incluído",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Suporte por e-mail",
+        "supportPriority": "Suporte prioritário",
+        "videoGeneration": "Geração de vídeo e avatares",
+        "voiceInput": "Entrada de voz, {{requests}} por dia",
+        "webhookAutomations": "Acione agentes de qualquer sistema via webhook"
+      },
       "legacy": "Legado",
       "limitedFree": {
         "name": "Grátis limitado"
@@ -1297,7 +1302,8 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/mês",
       "pro": {
-        "description": "Mais créditos e simultaneidade para equipes que executam agentes de IA todos os dias.",
+        "description": "Trabalho diário com agentes, cobrado por membro.",
+        "legacyDescription": "Mais créditos e simultaneidade para equipes que executam agentes de IA todos os dias.",
         "name": "Pro"
       },
       "renews": "Renova em {{date}}",
@@ -1305,7 +1311,8 @@
       "sectionTitle": "Plano",
       "selectedPlan": "o plano selecionado",
       "team": {
-        "description": "Espaço para uma equipe de funcionários de IA: alto volume de créditos e 10 agentes executando ao mesmo tempo.",
+        "description": "Para um time que mantém agentes rodando o dia todo.",
+        "legacyDescription": "Espaço para uma equipe de funcionários de IA: alto volume de créditos e 10 agentes executando ao mesmo tempo.",
         "name": "Team"
       },
       "upgrade": "Fazer upgrade",
@@ -1377,6 +1384,7 @@
     "restore": {
       "cancellationDescription": "Isso desfará o cancelamento agendado do seu plano {{plan}}.",
       "cancellationDescriptionDate": "Isso desfará o cancelamento agendado do seu plano {{plan}}. Ele será renovado em {{date}}.",
+      "concurrencyContinues": "Sua concorrência paga ({{quantity}}) permanecerá ativa e continuará sendo renovada com seu plano.",
       "downgradeDescription": "Isso cancelará o downgrade agendado para {{target}}. Seu plano {{plan}} continuará sendo renovado.",
       "inProgress": "Restaurando...",
       "title": "Restaurar o plano {{plan}}?"

@@ -1143,8 +1143,9 @@
       "paidAddOn": "유료 추가 옵션",
       "payAndAddSlots": "결제하고 슬롯 추가",
       "payAndUpdate": "결제하고 업데이트",
-      "restoreDescription": "이 동시 실행 구독의 갱신을 재개합니다.",
-      "restoreSubscription": "구독 복원",
+      "restoreConcurrency": "동시 실행 복원",
+      "restoreQuantityDescription": "유료 동시 실행({{quantity}}) 갱신을 복원합니다. 플랜은 변경되지 않습니다.",
+      "restoreTeamPlan": "Team 플랜 복원",
       "restoreTitle": "동시 실행 구독을 복원하시겠습니까?",
       "reviewChange": "변경 검토",
       "reviewDescription": "지금 결제할 금액과 업데이트된 월간 구독을 검토하세요.",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "구독 취소",
       "chooseTarget": "다운그레이드할 플랜을 선택하세요.",
+      "concurrencyEndsDate": "유료 동시 실행({{quantity}})은 {{date}}까지 활성 상태로 유지된 후 Team 플랜과 함께 종료됩니다. 그 전에 추가한 모든 슬롯도 같은 날짜에 종료됩니다.",
+      "concurrencyEndsPeriod": "유료 동시 실행({{quantity}})은 결제 기간이 끝날 때까지 활성 상태로 유지된 후 Team 플랜과 함께 종료됩니다. 그 전에 추가한 모든 슬롯도 동시에 종료됩니다.",
       "confirmProCancellation": "Pro 플랜을 취소하시겠습니까?",
       "confirmTarget": "{{plan}}으로 다운그레이드하시겠습니까?",
       "inProgress": "다운그레이드 중...",
@@ -1214,21 +1217,6 @@
       "changeAnytime": "언제든지 업그레이드 또는 다운그레이드 가능.",
       "compare": "플랜 비교",
       "compareAll": "모든 플랜 비교",
-      "comparison": {
-        "addOnConcurrency": "동시 실행 추가 구매",
-        "available": "구매 가능",
-        "concurrentRuns": "동시 실행",
-        "included": "지원",
-        "ownLlmKeys": "자체 LLM 키",
-        "privateAgents": "비공개 에이전트",
-        "sharedAgents": "공유 에이전트",
-        "support": "지원",
-        "supportEmail": "이메일",
-        "supportPriority": "우선",
-        "unlimited": "무제한",
-        "voiceInput": "음성 입력",
-        "voiceInputValue": "{{requests}}회/일 · {{minutes}}분"
-      },
       "currentPlan": "현재 플랜",
       "custom": {
         "name": "사용자 지정"
@@ -1260,6 +1248,23 @@
         "description": "기존 워크스페이스용 레거시 무료 액세스.",
         "name": "무료"
       },
+      "highlights": {
+        "addOnConcurrency": "동시 실행은 언제든 추가",
+        "agents": "공유 에이전트 {{shared}}개, 비공개 무제한",
+        "automations": "일정 및 이벤트 자동화",
+        "builtInLeadGeneration": "기본 제공 리드 생성",
+        "builtInSeoResearch": "기본 제공 SEO 리서치",
+        "builtInWebMarketData": "기본 제공 웹 및 시장 데이터",
+        "concurrentAgents": "에이전트 {{slots}}개 동시 실행",
+        "everythingInBuiltForTeams": "{{plan}}의 모든 기능을 팀 규모로",
+        "included": "포함 사항",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "이메일 지원",
+        "supportPriority": "우선 지원",
+        "videoGeneration": "영상 및 아바타 생성",
+        "voiceInput": "음성 입력 하루 {{requests}}회",
+        "webhookAutomations": "웹훅으로 모든 시스템에서 에이전트 실행"
+      },
       "legacy": "기존",
       "limitedFree": {
         "name": "제한된 무료"
@@ -1276,7 +1281,8 @@
       "popular": "인기",
       "pricePerMonth": "{{price}}/월",
       "pro": {
-        "description": "매일 AI 에이전트를 실행하는 팀을 위한 더 많은 크레딧과 동시 실행 수.",
+        "description": "일상적인 에이전트 작업, 멤버 단위 요금제.",
+        "legacyDescription": "매일 AI 에이전트를 실행하는 팀을 위한 더 많은 크레딧과 동시 실행 수.",
         "name": "Pro"
       },
       "renews": "{{date}}에 갱신됨",
@@ -1284,7 +1290,8 @@
       "sectionTitle": "플랜",
       "selectedPlan": "선택한 플랜",
       "team": {
-        "description": "AI 직원 팀을 위한 충분한 공간: 많은 크레딧과 에이전트 10개 동시 실행.",
+        "description": "하루 종일 에이전트를 돌리는 팀을 위해.",
+        "legacyDescription": "AI 직원 팀을 위한 충분한 공간: 많은 크레딧과 에이전트 10개 동시 실행.",
         "name": "팀"
       },
       "upgrade": "업그레이드",
@@ -1356,6 +1363,7 @@
     "restore": {
       "cancellationDescription": "{{plan}} 플랜의 예약된 취소를 취소합니다.",
       "cancellationDescriptionDate": "{{plan}} 플랜의 예약된 취소를 취소합니다. {{date}}에 갱신됩니다.",
+      "concurrencyContinues": "유료 동시 실행({{quantity}})은 활성 상태로 유지되며 플랜과 함께 계속 갱신됩니다.",
       "downgradeDescription": "{{target}}로 예정된 다운그레이드를 취소합니다. {{plan}} 플랜은 계속 갱신됩니다.",
       "inProgress": "복원 중...",
       "title": "{{plan}} 플랜을 복원하시겠습니까?"

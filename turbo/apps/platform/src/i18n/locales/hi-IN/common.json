@@ -1143,8 +1143,9 @@
       "paidAddOn": "सशुल्क ऐड-ऑन",
       "payAndAddSlots": "भुगतान करें और स्लॉट जोड़ें",
       "payAndUpdate": "भुगतान करें और अपडेट करें",
-      "restoreDescription": "यह इस समवर्ती सदस्यता के लिए नवीनीकरण फिर से शुरू करता है।",
-      "restoreSubscription": "सदस्यता बहाल करें",
+      "restoreConcurrency": "समवर्ती क्षमता बहाल करें",
+      "restoreQuantityDescription": "इससे आपकी सशुल्क समवर्ती क्षमता ({{quantity}}) का नवीनीकरण बहाल होगा। आपका प्लान नहीं बदलेगा।",
+      "restoreTeamPlan": "Team प्लान बहाल करें",
       "restoreTitle": "समवर्ती सदस्यता पुनर्स्थापित करें?",
       "reviewChange": "बदलाव की समीक्षा करें",
       "reviewDescription": "अभी देय राशि और अपनी अपडेट की गई मासिक सदस्यता की समीक्षा करें।",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "सदस्यता रद्द करें",
       "chooseTarget": "चुनें कि किस योजना को डाउनग्रेड करना है.",
+      "concurrencyEndsDate": "आपकी सशुल्क समवर्ती क्षमता ({{quantity}}) {{date}} तक सक्रिय रहेगी और फिर आपके Team प्लान के साथ समाप्त हो जाएगी। इससे पहले जोड़े गए सभी स्लॉट उसी तारीख को समाप्त होंगे।",
+      "concurrencyEndsPeriod": "आपकी सशुल्क समवर्ती क्षमता ({{quantity}}) बिलिंग अवधि के अंत तक सक्रिय रहेगी और फिर आपके Team प्लान के साथ समाप्त हो जाएगी। इससे पहले जोड़े गए सभी स्लॉट उसी समय समाप्त होंगे।",
       "confirmProCancellation": "क्या आप वाकई अपना प्रो प्लान रद्द करना चाहते हैं?",
       "confirmTarget": "{{plan}} पर डाउनग्रेड करें?",
       "inProgress": "डाउनग्रेड किया जा रहा है...",
@@ -1214,21 +1217,6 @@
       "changeAnytime": "किसी भी समय अपग्रेड या डाउनग्रेड करें।",
       "compare": "योजनाओं की तुलना करें",
       "compareAll": "सभी योजनाओं की तुलना करें",
-      "comparison": {
-        "addOnConcurrency": "अतिरिक्त समवर्तिता",
-        "available": "उपलब्ध",
-        "concurrentRuns": "समवर्ती रन",
-        "included": "हाँ",
-        "ownLlmKeys": "अपनी LLM कुंजियाँ",
-        "privateAgents": "निजी एजेंट",
-        "sharedAgents": "साझा एजेंट",
-        "support": "सहायता",
-        "supportEmail": "ईमेल",
-        "supportPriority": "प्राथमिकता",
-        "unlimited": "असीमित",
-        "voiceInput": "वॉइस इनपुट",
-        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट"
-      },
       "currentPlan": "वर्तमान योजना",
       "custom": {
         "name": "रिवाज़"
@@ -1260,6 +1248,23 @@
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
+      "highlights": {
+        "addOnConcurrency": "जब चाहें और समवर्तिता जोड़ें",
+        "agents": "{{shared}} साझा एजेंट, असीमित निजी",
+        "automations": "शेड्यूल और इवेंट ऑटोमेशन",
+        "builtInLeadGeneration": "बिल्ट-इन लीड जनरेशन",
+        "builtInSeoResearch": "बिल्ट-इन SEO रिसर्च",
+        "builtInWebMarketData": "बिल्ट-इन वेब और मार्केट डेटा",
+        "concurrentAgents": "{{slots}} एजेंट एक साथ",
+        "everythingInBuiltForTeams": "{{plan}} की हर सुविधा, टीमों के लिए तैयार",
+        "included": "शामिल",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "ईमेल सहायता",
+        "supportPriority": "प्राथमिकता सहायता",
+        "videoGeneration": "वीडियो और अवतार जनरेशन",
+        "voiceInput": "वॉइस इनपुट, {{requests}} रोज़",
+        "webhookAutomations": "वेबहुक से किसी भी सिस्टम से एजेंट चलाएँ"
+      },
       "legacy": "पुराना",
       "limitedFree": {
         "name": "लिमिटेड फ्री"
@@ -1276,7 +1281,8 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
+        "description": "रोज़ का एजेंट काम, हर सदस्य के हिसाब से।",
+        "legacyDescription": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -1284,7 +1290,8 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
+        "description": "उस टीम के लिए जो दिनभर एजेंट चलाती रहती है।",
+        "legacyDescription": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
@@ -1356,6 +1363,7 @@
     "restore": {
       "cancellationDescription": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा।",
       "cancellationDescriptionDate": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा। यह {{date}} को नवीनीकृत होगा।",
+      "concurrencyContinues": "आपकी सशुल्क समवर्ती क्षमता ({{quantity}}) सक्रिय रहेगी और आपके प्लान के साथ उसका नवीनीकरण जारी रहेगा।",
       "downgradeDescription": "इससे {{target}} पर निर्धारित डाउनग्रेड रद्द हो जाएगा। आपकी {{plan}} योजना नवीनीकृत होती रहेगी।",
       "inProgress": "पुनर्स्थापित हो रहा है...",
       "title": "{{plan}} योजना पुनर्स्थापित करें?"
