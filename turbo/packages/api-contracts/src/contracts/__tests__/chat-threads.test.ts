@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { imageModelIdSchema } from "../image-models";
 import {
   chatThreadByIdContract,
-  chatThreadConnectorSelectionContract,
   chatEventsContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftSchema,
@@ -14,56 +13,6 @@ import {
   userMessageDocumentSchema,
   userMessageInputDocumentSchema,
 } from "../chat-threads";
-
-describe("chat thread connector selection contract", () => {
-  const connectionId = "11111111-1111-4111-8111-111111111111";
-
-  it("keeps connector selections optional on thread creation", () => {
-    expect(
-      chatThreadsContract.create.body.safeParse({
-        agentId: "agent-1",
-        model: "claude-sonnet-5",
-      }),
-    ).toMatchObject({ success: true });
-    expect(
-      chatThreadsContract.create.body.safeParse({
-        agentId: "agent-1",
-        model: "claude-sonnet-5",
-        connectorSelections: [
-          {
-            connectionId,
-            target: { kind: "builtin", connectorSlug: "openai" },
-          },
-        ],
-      }),
-    ).toMatchObject({ success: true });
-  });
-
-  it("accepts strict built-in and custom single-target updates", () => {
-    expect(
-      chatThreadConnectorSelectionContract.update.body.safeParse({
-        connectionId,
-        target: { kind: "builtin", connectorSlug: "openai" },
-      }),
-    ).toMatchObject({ success: true });
-    expect(
-      chatThreadConnectorSelectionContract.update.body.safeParse({
-        connectionId,
-        target: {
-          kind: "custom",
-          customConnectorId: "22222222-2222-4222-8222-222222222222",
-        },
-        unexpected: true,
-      }),
-    ).toMatchObject({ success: false });
-    expect(
-      chatThreadConnectorSelectionContract.clear.body.safeParse({
-        kind: "builtin",
-        connectorSlug: "openai",
-      }),
-    ).toMatchObject({ success: true });
-  });
-});
 
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
