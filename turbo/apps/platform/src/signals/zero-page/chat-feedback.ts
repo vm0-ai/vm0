@@ -118,8 +118,8 @@ export function createComposerFeedbackModel(): ComposerFeedbackModel {
   };
 }
 
-// Compose every selected fragment into a single follow-up turn. A passage can
-// carry a comment, but the reference itself remains meaningful without one.
+// Compose every noted fragment into a single follow-up turn, each passage
+// quoted above the note that belongs to it.
 export function formatFeedbackPrompt(
   items: readonly Pick<FeedbackItem, "quote" | "note" | "source">[],
 ): string {
@@ -138,9 +138,6 @@ export function formatFeedbackPrompt(
       : null;
   const hasSourceContext = items.some((item) => {
     return item.source !== undefined;
-  });
-  const hasQuoteOnlyItem = items.some((item) => {
-    return item.note.trim().length === 0;
   });
   const mailSourceLabel = (source: FeedbackSource) => {
     return source.status === "draft"
@@ -163,16 +160,14 @@ export function formatFeedbackPrompt(
       ? `${source}${quoted}`
       : `${source}${quoted}\n\n${note}`;
   });
-  const intro = hasQuoteOnlyItem
-    ? `The user referenced ${items.length} parts of your reply:`
-    : commonMailSource
-      ? items.length === 1
-        ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
-        : `Feedback on ${items.length} parts of ${mailSourceLabel(commonMailSource)}:`
-      : hasSourceContext
-        ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
-        : items.length === 1
-          ? "Feedback on this part of your reply:"
-          : `Feedback on ${items.length} parts of your reply:`;
+  const intro = commonMailSource
+    ? items.length === 1
+      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+      : `Feedback on ${items.length} parts of ${mailSourceLabel(commonMailSource)}:`
+    : hasSourceContext
+      ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
+      : items.length === 1
+        ? "Feedback on this part of your reply:"
+        : `Feedback on ${items.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }

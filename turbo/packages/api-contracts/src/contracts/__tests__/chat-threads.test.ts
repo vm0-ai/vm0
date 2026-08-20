@@ -414,7 +414,7 @@ describe("chat thread generation template contract", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("accepts referenced feedback passages without a user comment", () => {
+  it("accepts legacy feedback passages persisted without a user comment", () => {
     const userMessage = {
       version: 1,
       parts: [

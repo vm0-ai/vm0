@@ -437,6 +437,8 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("feedback"),
       quote: z.string().min(1),
+      // Composers only send commented passages, but archived events can still
+      // hold a note-less passage, and reading them parses this schema.
       note: z.array(feedbackNotePartSchema),
       eventId: z.string().min(1).optional(),
       range: feedbackRangeSchema.optional(),

@@ -287,9 +287,6 @@ function formatFeedbackParts(
       note: serializeFeedbackNote(part.note, serializeTemplate).trim(),
     };
   });
-  const hasQuoteOnlyPart = entries.some((entry) => {
-    return entry.note.length === 0;
-  });
   const mailSourceLabel = (
     source: NonNullable<
       Extract<UserMessagePart, { type: "feedback" }>["source"]
@@ -314,17 +311,15 @@ function formatFeedbackParts(
       ? `${source}${quoted}`
       : `${source}${quoted}\n\n${note}`;
   });
-  const intro = hasQuoteOnlyPart
-    ? `The user referenced ${parts.length} parts of your reply:`
-    : commonMailSource
-      ? parts.length === 1
-        ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
-        : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
-      : hasSourceContext
-        ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
-        : parts.length === 1
-          ? "Feedback on this part of your reply:"
-          : `Feedback on ${parts.length} parts of your reply:`;
+  const intro = commonMailSource
+    ? parts.length === 1
+      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+      : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
+    : hasSourceContext
+      ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
+      : parts.length === 1
+        ? "Feedback on this part of your reply:"
+        : `Feedback on ${parts.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
