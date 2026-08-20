@@ -45,7 +45,9 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  * Step 1 only makes these paths routable: each one adds a second way to reach
  * the handler that already serves its branded path. Producers switch one at a
  * time in #28278 step 3, once the provider console holds the final URL; the
- * Teams OAuth callback switched in #28300.
+ * Teams OAuth callback switched in #28300 and the Feishu events URL we display
+ * to operators in #28338. Every branded path here stays registered: removal is
+ * gated on #26701.
  */
 const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
   "GET /api/okou/slack/oauth/callback":
