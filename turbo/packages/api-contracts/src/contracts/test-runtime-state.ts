@@ -9,41 +9,12 @@ export const testRuntimeStateErrorSchema = z.object({
   error: z.string(),
 });
 
-const managedModelRuntimeHealthSnapshotSchema = z.object({
-  credential_generation: z.int().nonnegative(),
-  candidate_generation: z.int().nonnegative(),
-  credential_probe: z.boolean(),
-  candidate_probe: z.boolean(),
-  probe_lease_id: z.uuid().nullable(),
-});
-
 const managedModelRuntimeRouteSchema = z.object({
-  selected_model: z.string(),
   provider_type: z.string(),
   upstream_model: z.string(),
   model_key_id: z.uuid(),
   model_key_revision: z.int().positive(),
-  health: managedModelRuntimeHealthSnapshotSchema.nullable(),
 });
-
-const managedModelRuntimeOutcomeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("success") }),
-  z.object({
-    kind: z.literal("credential_failure"),
-    failure_kind: z.enum(["authentication", "billing"]),
-  }),
-  z.object({
-    kind: z.literal("candidate_failure"),
-    failure_kind: z.enum([
-      "rate_limit",
-      "unavailable",
-      "overload",
-      "server_failure",
-      "timeout",
-    ]),
-    retry_after_seconds: z.number().optional(),
-  }),
-]);
 
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -70,13 +41,28 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     fallback_enabled: z.boolean(),
   }),
   z.object({
-    action: z.literal("clear-vm0-managed-model-health"),
+    action: z.literal("set-vm0-managed-credential-cooldown"),
+    model_key_id: z.uuid(),
+    model_key_revision: z.int().positive(),
+    unavailable_until: z.iso.datetime(),
   }),
   z.object({
-    action: z.literal("apply-vm0-managed-model-outcome"),
-    route: managedModelRuntimeRouteSchema,
-    outcome: managedModelRuntimeOutcomeSchema,
-    fallback_enabled: z.boolean(),
+    action: z.literal("delete-vm0-managed-credential-cooldown"),
+    model_key_id: z.uuid(),
+    model_key_revision: z.int().positive(),
+  }),
+  z.object({
+    action: z.literal("set-vm0-managed-candidate-cooldown"),
+    selected_model: z.string(),
+    provider_type: z.string(),
+    upstream_model: z.string(),
+    unavailable_until: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("delete-vm0-managed-candidate-cooldown"),
+    selected_model: z.string(),
+    provider_type: z.string(),
+    upstream_model: z.string(),
   }),
   z.object({
     action: z.literal("upsert-vm0-managed-model-key"),

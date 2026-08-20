@@ -11,11 +11,11 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
-  applyVm0ManagedModelOutcomeFixture,
-  clearVm0ManagedModelHealthFixture,
   resolveVm0ManagedModelRouteFixture,
   seedVm0ManagedModelCandidateKeys,
   seedVm0ManagedModelKey,
+  setVm0ManagedCandidateCooldownFixture,
+  setVm0ManagedCredentialCooldownFixture,
   upsertVm0ManagedModelKeyFixture,
 } from "./helpers/runtime-state";
 
@@ -58,187 +58,85 @@ describe("POST /api/test/runtime-state/action", () => {
     expect(rotated).toStrictEqual({ ...first, revision: first.revision + 1 });
   });
 
-  it("selects, isolates, leases, and resolves managed fallback health", async () => {
+  it("selects routes from scoped expiry-based managed cooldowns", async () => {
     await seedVm0ManagedModelCandidateKeys(context, "claude-fable-5");
     await seedVm0ManagedModelCandidateKeys(context, "gpt-5.6-sol");
-    await seedVm0ManagedModelCandidateKeys(context, "deepseek-v4-flash");
-    await clearVm0ManagedModelHealthFixture(context);
     const startedAt = Date.UTC(2026, 7, 20, 0, 0, 0);
-    let isolatedFallback: Awaited<
-      ReturnType<typeof resolveVm0ManagedModelRouteFixture>
-    > = null;
+    const routeCooldownUntil = new Date(startedAt + 60 * 1000);
+    const credentialCooldownUntil = new Date(startedAt + 30 * 60 * 1000);
 
-    await withMockNowForTest(startedAt, async () => {
-      const disabled = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "gpt-5.6-sol",
-        false,
-      );
-      expect(disabled).toMatchObject({
-        provider_type: "openai-api-key",
-        upstream_model: "gpt-5.6-sol",
-        health: null,
-      });
-      const enabled = await resolveVm0ManagedModelRouteFixture(
+    const gptPrimary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
         context,
         "gpt-5.6-sol",
         true,
       );
-      expect(enabled?.health).toStrictEqual({
-        credential_generation: 0,
-        candidate_generation: 0,
-        credential_probe: false,
-        candidate_probe: false,
-        probe_lease_id: null,
-      });
-
-      const firstClaude = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "claude-fable-5",
-        true,
-      );
-      if (!firstClaude) {
-        throw new Error("Expected a primary Claude route");
-      }
-      await applyVm0ManagedModelOutcomeFixture(context, firstClaude, {
-        kind: "candidate_failure",
-        failure_kind: "unavailable",
-      });
-      const firstClaudeFallback = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "claude-fable-5",
-        true,
-      );
-      expect(firstClaudeFallback?.provider_type).toBe("openrouter-api-key");
-      if (!firstClaudeFallback) {
-        throw new Error("Expected a fallback Claude route");
-      }
-      await applyVm0ManagedModelOutcomeFixture(context, firstClaudeFallback, {
-        kind: "candidate_failure",
-        failure_kind: "overload",
-      });
-
-      const secondClaude = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "claude-opus-5",
-        true,
-      );
-      if (!secondClaude) {
-        throw new Error("Expected another primary Claude route");
-      }
-      await applyVm0ManagedModelOutcomeFixture(context, secondClaude, {
-        kind: "candidate_failure",
-        failure_kind: "unavailable",
-      });
-      isolatedFallback = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "claude-opus-5",
-        true,
-      );
-      expect(isolatedFallback?.provider_type).toBe("openrouter-api-key");
-
-      const deepseek = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "deepseek-v4-flash",
-        true,
-      );
-      if (!deepseek) {
-        throw new Error("Expected a primary DeepSeek route");
-      }
-      await applyVm0ManagedModelOutcomeFixture(context, deepseek, {
-        kind: "candidate_failure",
-        failure_kind: "rate_limit",
-        retry_after_seconds: 1,
-      });
     });
-
-    const probeAt = startedAt + 1000;
-    const concurrent = await withMockNowForTest(probeAt, async () => {
-      return await Promise.all([
-        resolveVm0ManagedModelRouteFixture(context, "deepseek-v4-flash", true),
-        resolveVm0ManagedModelRouteFixture(context, "deepseek-v4-flash", true),
-      ]);
+    expect(gptPrimary).toMatchObject({
+      provider_type: "openai-api-key",
+      upstream_model: "gpt-5.6-sol",
+      model_key_revision: expect.any(Number),
     });
-    const directProbe = concurrent.find((route) => {
-      return route?.provider_type === "deepseek";
-    });
-    expect(
-      concurrent.filter((route) => {
-        return route?.health?.candidate_probe;
-      }),
-    ).toHaveLength(1);
-    expect(directProbe?.health?.candidate_probe).toBeTruthy();
-    if (!directProbe) {
-      throw new Error("Expected one direct DeepSeek probe");
+    if (!gptPrimary) {
+      throw new Error("Expected a primary GPT route");
     }
 
-    await withMockNowForTest(probeAt, async () => {
-      await applyVm0ManagedModelOutcomeFixture(context, directProbe, {
-        kind: "credential_failure",
-        failure_kind: "authentication",
-      });
-    });
-    const dualProbe = await withMockNowForTest(
-      probeAt + 30 * 60 * 1000,
-      async () => {
-        return await resolveVm0ManagedModelRouteFixture(
-          context,
-          "deepseek-v4-flash",
-          true,
-        );
-      },
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "gpt-5.6-sol",
+      gptPrimary,
+      routeCooldownUntil,
     );
-    expect(dualProbe?.health).toMatchObject({
-      credential_generation: 1,
-      candidate_generation: 1,
-      credential_probe: true,
-      candidate_probe: true,
-    });
-    expect(dualProbe?.health?.probe_lease_id).toStrictEqual(expect.any(String));
-    if (!dualProbe) {
-      throw new Error("Expected one dual-scope probe");
-    }
-    await withMockNowForTest(probeAt + 30 * 60 * 1000, async () => {
-      await applyVm0ManagedModelOutcomeFixture(context, dualProbe, {
-        kind: "success",
-      });
-      const closed = await resolveVm0ManagedModelRouteFixture(
-        context,
-        "deepseek-v4-flash",
-        true,
-      );
-      expect(closed?.health).toStrictEqual({
-        credential_generation: 1,
-        candidate_generation: 1,
-        credential_probe: false,
-        candidate_probe: false,
-        probe_lease_id: null,
-      });
-    });
-
-    const isolatedFallbackRoute = isolatedFallback;
-    if (!isolatedFallbackRoute) {
-      throw new Error("Expected an isolated OpenRouter route");
-    }
-    await withMockNowForTest(startedAt, async () => {
-      await applyVm0ManagedModelOutcomeFixture(context, isolatedFallbackRoute, {
-        kind: "credential_failure",
-        failure_kind: "billing",
-      });
-      const gpt = await resolveVm0ManagedModelRouteFixture(
+    const gptFallback = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
         context,
         "gpt-5.6-sol",
         true,
       );
-      if (!gpt) {
-        throw new Error("Expected a primary GPT route");
-      }
-      await applyVm0ManagedModelOutcomeFixture(context, gpt, {
-        kind: "candidate_failure",
-        failure_kind: "timeout",
-      });
+    });
+    expect(gptFallback?.provider_type).toBe("openrouter-codex");
+    if (!gptFallback) {
+      throw new Error("Expected a fallback GPT route");
+    }
+
+    await setVm0ManagedCredentialCooldownFixture(
+      context,
+      gptFallback,
+      credentialCooldownUntil,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", false),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
       await expect(
         resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+      ).resolves.toBeNull();
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-terra", true),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+    });
+
+    const claudePrimary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "claude-fable-5",
+        true,
+      );
+    });
+    expect(claudePrimary?.provider_type).toBe("anthropic-api-key");
+    if (!claudePrimary) {
+      throw new Error("Expected a primary Claude route");
+    }
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "claude-fable-5",
+      claudePrimary,
+      routeCooldownUntil,
+    );
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "claude-fable-5", true),
       ).resolves.toBeNull();
     });
 
@@ -291,8 +189,15 @@ describe("POST /api/test/runtime-state/action", () => {
         status: ALL_RUN_STATUSES.join(","),
         limit: 20,
       }),
-    ).resolves.toStrictEqual({
-      runs: [],
+    ).resolves.toStrictEqual({ runs: [] });
+
+    await withMockNowForTest(routeCooldownUntil.getTime(), async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "claude-fable-5", true),
+      ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
     });
   });
 });

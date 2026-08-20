@@ -193,11 +193,6 @@ async function readAgentDigest(client: Client): Promise<string> {
             - 'model_runtime_model'
             - 'vm0_model_key_id'
             - 'vm0_model_key_revision'
-            - 'vm0_credential_health_generation'
-            - 'vm0_candidate_health_generation'
-            - 'vm0_credential_probe'
-            - 'vm0_candidate_probe'
-            - 'vm0_probe_lease_id'
           )::text,
           ''
           ORDER BY "run"."id"

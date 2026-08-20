@@ -2354,7 +2354,6 @@ async function vm0ModelProviderEnvironment(
       upstreamModel: target.upstreamModel,
       modelKeyId: key.id,
       modelKeyRevision: key.revision,
-      health: null,
     };
   }
   if (!key?.apiKey) {
@@ -6070,42 +6069,7 @@ type Vm0LaunchMetadataValues = Pick<
   | "modelRuntimeModel"
   | "vm0ModelKeyId"
   | "vm0ModelKeyRevision"
-  | "vm0CredentialHealthGeneration"
-  | "vm0CandidateHealthGeneration"
-  | "vm0CredentialProbe"
-  | "vm0CandidateProbe"
-  | "vm0ProbeLeaseId"
 >;
-
-type Vm0LaunchHealthMetadataValues = Pick<
-  Vm0LaunchMetadataValues,
-  | "vm0CredentialHealthGeneration"
-  | "vm0CandidateHealthGeneration"
-  | "vm0CredentialProbe"
-  | "vm0CandidateProbe"
-  | "vm0ProbeLeaseId"
->;
-
-function vm0LaunchHealthMetadataValues(
-  health: BuiltInModelRuntimeRoute["health"],
-): Vm0LaunchHealthMetadataValues {
-  if (!health) {
-    return {
-      vm0CredentialHealthGeneration: null,
-      vm0CandidateHealthGeneration: null,
-      vm0CredentialProbe: null,
-      vm0CandidateProbe: null,
-      vm0ProbeLeaseId: null,
-    };
-  }
-  return {
-    vm0CredentialHealthGeneration: health.credentialGeneration,
-    vm0CandidateHealthGeneration: health.candidateGeneration,
-    vm0CredentialProbe: health.credentialProbe,
-    vm0CandidateProbe: health.candidateProbe,
-    vm0ProbeLeaseId: health.probeLeaseId,
-  };
-}
 
 function vm0LaunchMetadataValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
@@ -6117,7 +6081,6 @@ function vm0LaunchMetadataValues(
       modelRuntimeModel: null,
       vm0ModelKeyId: null,
       vm0ModelKeyRevision: null,
-      ...vm0LaunchHealthMetadataValues(null),
     };
   }
   return {
@@ -6125,7 +6088,6 @@ function vm0LaunchMetadataValues(
     modelRuntimeModel: runtimeRoute.upstreamModel,
     vm0ModelKeyId: runtimeRoute.modelKeyId,
     vm0ModelKeyRevision: runtimeRoute.modelKeyRevision,
-    ...vm0LaunchHealthMetadataValues(runtimeRoute.health),
   };
 }
 

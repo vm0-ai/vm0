@@ -122,11 +122,6 @@ export const agentRuns = pgTable(
     modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
     vm0ModelKeyId: uuid("vm0_model_key_id"),
     vm0ModelKeyRevision: integer("vm0_model_key_revision"),
-    vm0CredentialHealthGeneration: integer("vm0_credential_health_generation"),
-    vm0CandidateHealthGeneration: integer("vm0_candidate_health_generation"),
-    vm0CredentialProbe: boolean("vm0_credential_probe"),
-    vm0CandidateProbe: boolean("vm0_candidate_probe"),
-    vm0ProbeLeaseId: uuid("vm0_probe_lease_id"),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
@@ -199,11 +194,6 @@ export const agentRuns = pgTable(
             ${table.modelRuntimeModel} IS NULL AND
             ${table.vm0ModelKeyId} IS NULL AND
             ${table.vm0ModelKeyRevision} IS NULL AND
-            ${table.vm0CredentialHealthGeneration} IS NULL AND
-            ${table.vm0CandidateHealthGeneration} IS NULL AND
-            ${table.vm0CredentialProbe} IS NULL AND
-            ${table.vm0CandidateProbe} IS NULL AND
-            ${table.vm0ProbeLeaseId} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
             ${table.selectedImageModel} IS NULL AND
@@ -221,40 +211,11 @@ export const agentRuns = pgTable(
       check(
         "agent_runs_vm0_route_snapshot_check",
         sql`(
-          (
-            ${table.vm0ModelKeyRevision} IS NULL AND
-            ${table.vm0CredentialHealthGeneration} IS NULL AND
-            ${table.vm0CandidateHealthGeneration} IS NULL AND
-            ${table.vm0CredentialProbe} IS NULL AND
-            ${table.vm0CandidateProbe} IS NULL AND
-            ${table.vm0ProbeLeaseId} IS NULL
-          ) OR (
+          ${table.vm0ModelKeyRevision} IS NULL OR (
             ${table.vm0ModelKeyId} IS NOT NULL AND
             ${table.vm0ModelKeyRevision} > 0 AND
-            (
-              (
-                ${table.vm0CredentialHealthGeneration} IS NULL AND
-                ${table.vm0CandidateHealthGeneration} IS NULL AND
-                ${table.vm0CredentialProbe} IS NULL AND
-                ${table.vm0CandidateProbe} IS NULL AND
-                ${table.vm0ProbeLeaseId} IS NULL
-              ) OR (
-                ${table.vm0CredentialHealthGeneration} >= 0 AND
-                ${table.vm0CandidateHealthGeneration} >= 0 AND
-                ${table.vm0CredentialProbe} IS NOT NULL AND
-                ${table.vm0CandidateProbe} IS NOT NULL AND
-                (
-                  (
-                    (${table.vm0CredentialProbe} OR ${table.vm0CandidateProbe}) AND
-                    ${table.vm0ProbeLeaseId} IS NOT NULL
-                  ) OR (
-                    NOT ${table.vm0CredentialProbe} AND
-                    NOT ${table.vm0CandidateProbe} AND
-                    ${table.vm0ProbeLeaseId} IS NULL
-                  )
-                )
-              )
-            )
+            ${table.modelRuntimeProvider} IS NOT NULL AND
+            ${table.modelRuntimeModel} IS NOT NULL
           )
         )`,
       ),

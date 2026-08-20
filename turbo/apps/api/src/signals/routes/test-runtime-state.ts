@@ -14,9 +14,9 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import {
-  managedModelCandidateHealth,
-  managedModelCredentialHealth,
-} from "@okouai/db/schema/managed-model-health";
+  managedModelCandidateCooldown,
+  managedModelCredentialCooldown,
+} from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
@@ -51,10 +51,8 @@ import {
 } from "../services/managed-model-key-fixture";
 import { upsertManagedModelKey } from "../services/managed-model-key.service";
 import {
-  applyManagedModelRuntimeOutcome,
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
-  type ManagedModelRuntimeOutcome,
 } from "../services/built-in-model-runtime-route.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
@@ -358,92 +356,22 @@ async function vm0ManagedModelKeyActionResponse(
 
 function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   return {
-    selected_model: route.selectedModel,
     provider_type: route.providerType,
     upstream_model: route.upstreamModel,
     model_key_id: route.modelKeyId,
     model_key_revision: route.modelKeyRevision,
-    health: route.health
-      ? {
-          credential_generation: route.health.credentialGeneration,
-          candidate_generation: route.health.candidateGeneration,
-          credential_probe: route.health.credentialProbe,
-          candidate_probe: route.health.candidateProbe,
-          probe_lease_id: route.health.probeLeaseId,
-        }
-      : null,
   };
-}
-
-type ManagedModelOutcomeAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "apply-vm0-managed-model-outcome" }
->;
-
-function managedModelRuntimeRouteFromAction(
-  body: ManagedModelOutcomeAction,
-): BuiltInModelRuntimeRoute {
-  const candidate = getVm0ManagedRouteCandidates(
-    body.route.selected_model,
-  ).find((entry) => {
-    return (
-      entry.providerType === body.route.provider_type &&
-      entry.upstreamModel === body.route.upstream_model
-    );
-  });
-  if (!candidate) {
-    throw new Error("Managed model outcome route is not in the catalog");
-  }
-  return {
-    selectedModel: candidate.selectedModel,
-    providerType: candidate.providerType,
-    upstreamModel: candidate.upstreamModel,
-    modelKeyId: body.route.model_key_id,
-    modelKeyRevision: body.route.model_key_revision,
-    health: body.route.health
-      ? {
-          credentialGeneration: body.route.health.credential_generation,
-          candidateGeneration: body.route.health.candidate_generation,
-          credentialProbe: body.route.health.credential_probe,
-          candidateProbe: body.route.health.candidate_probe,
-          probeLeaseId: body.route.health.probe_lease_id,
-        }
-      : null,
-  };
-}
-
-function managedModelRuntimeOutcomeFromAction(
-  body: ManagedModelOutcomeAction,
-): ManagedModelRuntimeOutcome {
-  switch (body.outcome.kind) {
-    case "success": {
-      return { kind: "success" };
-    }
-    case "credential_failure": {
-      return {
-        kind: "credential_failure",
-        failureKind: body.outcome.failure_kind,
-      };
-    }
-    case "candidate_failure": {
-      return {
-        kind: "candidate_failure",
-        failureKind: body.outcome.failure_kind,
-        ...(body.outcome.retry_after_seconds === undefined
-          ? {}
-          : { retryAfterSeconds: body.outcome.retry_after_seconds }),
-      };
-    }
-  }
 }
 
 type Vm0ManagedModelRuntimeAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "clear-vm0-managed-model-health"
       | "resolve-vm0-managed-model-route"
-      | "apply-vm0-managed-model-outcome"
+      | "set-vm0-managed-credential-cooldown"
+      | "delete-vm0-managed-credential-cooldown"
+      | "set-vm0-managed-candidate-cooldown"
+      | "delete-vm0-managed-candidate-cooldown"
       | "upsert-vm0-managed-model-key"
       | "delete-vm0-managed-model-key-by-id";
   }
@@ -453,9 +381,11 @@ function isVm0ManagedModelRuntimeAction(
   body: TestRuntimeStateActionBody,
 ): body is Vm0ManagedModelRuntimeAction {
   return [
-    "clear-vm0-managed-model-health",
     "resolve-vm0-managed-model-route",
-    "apply-vm0-managed-model-outcome",
+    "set-vm0-managed-credential-cooldown",
+    "delete-vm0-managed-credential-cooldown",
+    "set-vm0-managed-candidate-cooldown",
+    "delete-vm0-managed-candidate-cooldown",
     "upsert-vm0-managed-model-key",
     "delete-vm0-managed-model-key-by-id",
   ].includes(body.action);
@@ -467,12 +397,6 @@ async function vm0ManagedModelRuntimeActionResponse(
   signal: AbortSignal,
 ) {
   switch (body.action) {
-    case "clear-vm0-managed-model-health": {
-      await db.delete(managedModelCandidateHealth);
-      await db.delete(managedModelCredentialHealth);
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
     case "resolve-vm0-managed-model-route": {
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
@@ -490,13 +414,75 @@ async function vm0ManagedModelRuntimeActionResponse(
         },
       };
     }
-    case "apply-vm0-managed-model-outcome": {
-      await applyManagedModelRuntimeOutcome(
-        db,
-        managedModelRuntimeRouteFromAction(body),
-        managedModelRuntimeOutcomeFromAction(body),
-        body.fallback_enabled,
-      );
+    case "set-vm0-managed-credential-cooldown": {
+      await db
+        .insert(managedModelCredentialCooldown)
+        .values({
+          modelKeyId: body.model_key_id,
+          modelKeyRevision: body.model_key_revision,
+          unavailableUntil: new Date(body.unavailable_until),
+        })
+        .onConflictDoUpdate({
+          target: [
+            managedModelCredentialCooldown.modelKeyId,
+            managedModelCredentialCooldown.modelKeyRevision,
+          ],
+          set: { unavailableUntil: new Date(body.unavailable_until) },
+        });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "delete-vm0-managed-credential-cooldown": {
+      await db
+        .delete(managedModelCredentialCooldown)
+        .where(
+          and(
+            eq(managedModelCredentialCooldown.modelKeyId, body.model_key_id),
+            eq(
+              managedModelCredentialCooldown.modelKeyRevision,
+              body.model_key_revision,
+            ),
+          ),
+        );
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "set-vm0-managed-candidate-cooldown": {
+      await db
+        .insert(managedModelCandidateCooldown)
+        .values({
+          selectedModel: body.selected_model,
+          providerType: body.provider_type,
+          upstreamModel: body.upstream_model,
+          unavailableUntil: new Date(body.unavailable_until),
+        })
+        .onConflictDoUpdate({
+          target: [
+            managedModelCandidateCooldown.selectedModel,
+            managedModelCandidateCooldown.providerType,
+            managedModelCandidateCooldown.upstreamModel,
+          ],
+          set: { unavailableUntil: new Date(body.unavailable_until) },
+        });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "delete-vm0-managed-candidate-cooldown": {
+      await db
+        .delete(managedModelCandidateCooldown)
+        .where(
+          and(
+            eq(
+              managedModelCandidateCooldown.selectedModel,
+              body.selected_model,
+            ),
+            eq(managedModelCandidateCooldown.providerType, body.provider_type),
+            eq(
+              managedModelCandidateCooldown.upstreamModel,
+              body.upstream_model,
+            ),
+          ),
+        );
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }

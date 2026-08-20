@@ -141,28 +141,46 @@ export async function resolveVm0ManagedModelRouteFixture(
   return response.managed_model_route ?? null;
 }
 
-export async function clearVm0ManagedModelHealthFixture(
-  context: TestContext,
-): Promise<void> {
-  await postAction(context, { action: "clear-vm0-managed-model-health" });
-}
-
-type ManagedModelOutcomeFixture = Extract<
-  TestRuntimeStateActionBody,
-  { action: "apply-vm0-managed-model-outcome" }
->["outcome"];
-
-export async function applyVm0ManagedModelOutcomeFixture(
+export async function setVm0ManagedCredentialCooldownFixture(
   context: TestContext,
   route: ManagedModelRuntimeRouteFixture,
-  outcome: ManagedModelOutcomeFixture,
-  fallbackEnabled = true,
+  unavailableUntil: Date,
 ): Promise<void> {
   await postAction(context, {
-    action: "apply-vm0-managed-model-outcome",
-    route,
-    outcome,
-    fallback_enabled: fallbackEnabled,
+    action: "set-vm0-managed-credential-cooldown",
+    model_key_id: route.model_key_id,
+    model_key_revision: route.model_key_revision,
+    unavailable_until: unavailableUntil.toISOString(),
+  });
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-credential-cooldown",
+      model_key_id: route.model_key_id,
+      model_key_revision: route.model_key_revision,
+    });
+  });
+}
+
+export async function setVm0ManagedCandidateCooldownFixture(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+  unavailableUntil: Date,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-vm0-managed-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+    unavailable_until: unavailableUntil.toISOString(),
+  });
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-candidate-cooldown",
+      selected_model: selectedModel,
+      provider_type: route.provider_type,
+      upstream_model: route.upstream_model,
+    });
   });
 }
 

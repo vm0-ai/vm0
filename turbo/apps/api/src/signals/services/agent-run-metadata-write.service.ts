@@ -18,11 +18,6 @@ type StoredRunMetadataValues = Pick<
   | "modelRuntimeModel"
   | "vm0ModelKeyId"
   | "vm0ModelKeyRevision"
-  | "vm0CredentialHealthGeneration"
-  | "vm0CandidateHealthGeneration"
-  | "vm0CredentialProbe"
-  | "vm0CandidateProbe"
-  | "vm0ProbeLeaseId"
   | "codexServiceTier"
   | "selectedVideoModel"
   | "selectedImageModel"
@@ -51,13 +46,7 @@ type RunMetadataInput = Readonly<
 
 type Vm0RunMetadataValues = Pick<
   RunMetadataValues,
-  | "vm0ModelKeyId"
-  | "vm0ModelKeyRevision"
-  | "vm0CredentialHealthGeneration"
-  | "vm0CandidateHealthGeneration"
-  | "vm0CredentialProbe"
-  | "vm0CandidateProbe"
-  | "vm0ProbeLeaseId"
+  "vm0ModelKeyId" | "vm0ModelKeyRevision"
 >;
 
 type RunMetadataPatch = {
@@ -82,11 +71,6 @@ function normalizeVm0RunMetadata(
   return {
     vm0ModelKeyId: input.vm0ModelKeyId ?? null,
     vm0ModelKeyRevision: input.vm0ModelKeyRevision ?? null,
-    vm0CredentialHealthGeneration: input.vm0CredentialHealthGeneration ?? null,
-    vm0CandidateHealthGeneration: input.vm0CandidateHealthGeneration ?? null,
-    vm0CredentialProbe: input.vm0CredentialProbe ?? null,
-    vm0CandidateProbe: input.vm0CandidateProbe ?? null,
-    vm0ProbeLeaseId: input.vm0ProbeLeaseId ?? null,
   };
 }
 
