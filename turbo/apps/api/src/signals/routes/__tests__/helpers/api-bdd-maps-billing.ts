@@ -80,7 +80,7 @@ function mapsBillingApp(context: TestContext) {
 export function createMapsBillingApi(context: TestContext) {
   return {
     configureMapsProvider(): void {
-      mockEnv("ZERO_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
+      mockEnv("OKOU_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
     },
 
     async readBillingStatus(
