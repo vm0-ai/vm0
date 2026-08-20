@@ -296,6 +296,7 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
           >
             {!hideScrollButtons && <SelectScrollUpButton />}
             <SelectPrimitive.List
+              data-slot="select-list"
               className={cn("flex flex-col gap-1 p-1", viewportClassName)}
             >
               {children}

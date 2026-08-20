@@ -63,6 +63,7 @@ import {
 } from "../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../signals/page-signal";
 import { resolveExplicitModelSelection$ } from "../../../signals/zero-page/model-default-selection";
+import { modelPickerPanelHeightRef$ } from "../../../signals/zero-page/model-picker-panel-height";
 import { detach, Reason } from "../../../signals/utils";
 import {
   getModelBrandIconType,
@@ -610,10 +611,12 @@ function ModelFirstPolicyRow({
         <SelectItem
           value={policy.model}
           aria-label={modelLabel}
-          className={cn(
-            "min-w-0 flex-1 rounded-lg pr-8 hover:bg-transparent data-highlighted:bg-transparent",
-            selected && "mr-8",
-          )}
+          // Two fixed columns sit at this row's right edge: the checkmark's
+          // (`pr-8`, shared with every other row) and the fast toggle's, which
+          // `pr-16` reserves immediately left of it. Both are reserved whether
+          // or not the row is selected -- shifting the content only when
+          // selected is what used to push the checkmark off its column.
+          className="min-w-0 flex-1 rounded-lg pr-16 hover:bg-transparent data-highlighted:bg-transparent"
         >
           <ModelFirstPolicyRowContent
             policy={policy}
@@ -629,7 +632,10 @@ function ModelFirstPolicyRow({
                 value={codexFastOptionValue(policy.model)}
                 aria-label={`${modelLabel} ${fastLabel}`}
                 className={cn(
-                  "group/fast-option absolute inset-y-0 right-0 w-8 justify-center rounded-lg px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
+                  // `right-8` parks the toggle in its own column beside the
+                  // checkmark's rather than on top of it, so it keeps a full
+                  // 32x32 hit area without ever displacing the check.
+                  "group/fast-option absolute inset-y-0 right-8 w-8 justify-center rounded-lg px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
                   fastSelected &&
                     "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
                 )}
@@ -1144,7 +1150,14 @@ function ModelPickerListHeader({
     // Pinned so switching category never means scrolling back up for the
     // switch. The negative margins bleed the row over the list's own `p-1`
     // inset so rows scroll under an opaque surface rather than beside it.
-    <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2">
+    //
+    // `py-2` matches `pr-2`: the switch is a 28px control tucked into the
+    // popover's top-right corner, and 4px above it against 8px beside it read
+    // as a mistake rather than as a tighter grid.
+    <div
+      data-model-picker-header
+      className="sticky top-0 z-10 -mx-1 -mt-1 flex items-center gap-2 bg-card py-2 pl-3 pr-2"
+    >
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -1246,8 +1259,13 @@ function ModelFirstModelPickerContentLayout({
     },
   );
   const mediaModelPanelOpen = activeMediaModelCategory !== undefined;
+  const setPanelHeightRef = useSet(modelPickerPanelHeightRef$);
   return (
     <SelectContent
+      // Categories hold different numbers of rows, so switching one for
+      // another changes how tall this popup is; the ref animates between the
+      // two heights instead of letting it snap.
+      ref={setPanelHeightRef}
       className={cn(
         mediaModelPanel
           ? // Wide enough for the longest row this popover has to render: a
