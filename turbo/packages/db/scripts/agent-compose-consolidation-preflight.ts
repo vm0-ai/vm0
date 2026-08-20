@@ -61,6 +61,36 @@ const DEFAULT_LOCK_TIMEOUT_MS = 1000;
 const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_EXPECTED_DANGLING_HEAD_COUNT = 17;
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+const MAX_REPORTED_PHASE_DURATION_MS = DEFAULT_STATEMENT_TIMEOUT_MS;
+export const PREFLIGHT_PHASES = [
+  "configuration",
+  "repositoryInventory",
+  "databaseConnection",
+  "transactionStart",
+  "transactionConfiguration",
+  "capabilities",
+  "danglingStart",
+  "identity",
+  "agentExecutionPlans",
+  "versions",
+  "heads",
+  "runs",
+  "checkpointInventory",
+  "checkpointStorageReferences",
+  "conversations",
+  "catalogDependencies",
+  "danglingEnd",
+  "transactionCleanup",
+  "classification",
+] as const;
+
+type PreflightPhase = (typeof PREFLIGHT_PHASES)[number];
+type PreflightFailurePhase = PreflightPhase | "none" | "unknown";
+
+export interface PreflightProbeEvidence {
+  readonly failurePhase: PreflightFailurePhase;
+  readonly phaseDurationsMs: Readonly<Record<PreflightPhase, number>>;
+}
 // Protected v6 run 32203970280 at d570536126e6137eb3423573623f8abbdf6be0c6
 // emitted this exact aggregate before the nullable cutover. It remains bounded
 // evidence, not an append-only membership gate: approved Run deletion cascades
@@ -478,6 +508,10 @@ const PREFLIGHT_V7_OUTPUT_ALLOWLIST = [
   ...setOutputPaths("checkpoints.transition.acceptedV6LegacySnapshotEvidence"),
   ...comparisonOutputPaths("checkpoints.transition.legacySnapshotLineage"),
   ...setOutputPaths("checkpoints.transition.legacySnapshotGrowth"),
+  "probe.failurePhase",
+  ...PREFLIGHT_PHASES.map((phase) => {
+    return `probe.phaseDurationsMs.${phase}`;
+  }),
 ];
 
 /** Every and only approved scalar/array path in a complete v7 result. */
@@ -529,6 +563,19 @@ export interface CheckpointInventoryRow
   readonly conversationReferenceValid: boolean;
   readonly sessionReferenceValid: boolean;
   readonly storageReferenceValid: boolean;
+}
+
+interface CheckpointCoreInventoryRow
+  extends QueryResultRow, LaunchSnapshotCheckpointInventoryRow {
+  readonly id: string;
+  readonly preCutover: boolean;
+  readonly runReferenceValid: boolean;
+  readonly conversationReferenceValid: boolean;
+  readonly sessionReferenceValid: boolean;
+}
+
+interface InvalidCheckpointStorageReferenceRow extends QueryResultRow {
+  readonly id: string;
 }
 
 export type ConversationInventoryRow = QueryResultRow &
@@ -598,11 +645,62 @@ export interface ReadOnlySnapshotOptions {
 
 export class SanitizedPreflightError extends Error {
   readonly gate: string;
+  readonly probe: PreflightProbeEvidence | undefined;
 
-  constructor(gate: string) {
+  constructor(gate: string, probe?: PreflightProbeEvidence) {
     super(gate);
     this.name = "SanitizedPreflightError";
     this.gate = gate;
+    this.probe = probe;
+  }
+}
+
+function emptyPhaseDurations(): Record<PreflightPhase, number> {
+  return Object.fromEntries(
+    PREFLIGHT_PHASES.map((phase) => {
+      return [phase, 0] as const;
+    }),
+  ) as Record<PreflightPhase, number>;
+}
+
+function emptyProbeEvidence(
+  failurePhase: PreflightFailurePhase = "none",
+): PreflightProbeEvidence {
+  return {
+    failurePhase,
+    phaseDurationsMs: emptyPhaseDurations(),
+  };
+}
+
+class PreflightPhaseRecorder {
+  readonly #phaseDurationsMs = emptyPhaseDurations();
+  #failurePhase: PreflightFailurePhase = "none";
+
+  async measure<Value>(
+    phase: PreflightPhase,
+    operation: () => Promise<Value>,
+  ): Promise<Value> {
+    const startedAt = process.hrtime.bigint();
+    try {
+      return await operation();
+    } catch (error) {
+      this.#failurePhase = phase;
+      throw error;
+    } finally {
+      const elapsedNs = process.hrtime.bigint() - startedAt;
+      const elapsedMs = Math.ceil(Number(elapsedNs) / 1_000_000);
+      this.#phaseDurationsMs[phase] = Math.min(
+        MAX_REPORTED_PHASE_DURATION_MS,
+        Math.max(1, elapsedMs),
+      );
+    }
+  }
+
+  evidence(): PreflightProbeEvidence {
+    return {
+      failurePhase: this.#failurePhase,
+      phaseDurationsMs: { ...this.#phaseDurationsMs },
+    };
   }
 }
 
@@ -615,6 +713,9 @@ const SAFE_OUTPUT_LITERALS: ReadonlySet<string> = new Set([
   "stable",
   "supported",
   "repeatable read",
+  "none",
+  "unknown",
+  ...PREFLIGHT_PHASES,
 ]);
 const SAFE_FAILURE_GATE_PATTERN = /^[A-Za-z]+(?:[._][A-Za-z]+)*$/u;
 const SAFE_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
@@ -649,7 +750,12 @@ function hasSafeAggregateValues(value: unknown, pathPrefix = ""): boolean {
     });
   }
   if (typeof value === "number") {
-    return Number.isSafeInteger(value) && value >= 0;
+    return (
+      Number.isSafeInteger(value) &&
+      value >= 0 &&
+      (!pathPrefix.startsWith("probe.phaseDurationsMs.") ||
+        value <= MAX_REPORTED_PHASE_DURATION_MS)
+    );
   }
   if (typeof value === "boolean") return true;
   if (typeof value !== "string") return false;
@@ -676,31 +782,44 @@ function assertNotAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new SanitizedPreflightError("probe.cancelled");
 }
 
-function classifyThrownError(error: unknown, fallbackGate: string): never {
-  if (error instanceof SanitizedPreflightError) throw error;
+function classifyThrownError(
+  error: unknown,
+  fallbackGate: string,
+  probe?: PreflightProbeEvidence,
+): never {
+  if (error instanceof SanitizedPreflightError) {
+    throw error.probe ? error : new SanitizedPreflightError(error.gate, probe);
+  }
   if (error instanceof DOMException && error.name === "AbortError") {
-    throw new SanitizedPreflightError("probe.cancelled");
+    throw new SanitizedPreflightError("probe.cancelled", probe);
   }
   const code = (error as { readonly code?: unknown } | null)?.code;
   if (code === "57014") {
-    throw new SanitizedPreflightError("probe.statement_timeout");
+    throw new SanitizedPreflightError("probe.statement_timeout", probe);
   }
   if (code === "55P03") {
-    throw new SanitizedPreflightError("probe.lock_timeout");
+    throw new SanitizedPreflightError("probe.lock_timeout", probe);
   }
-  throw new SanitizedPreflightError(fallbackGate);
+  throw new SanitizedPreflightError(fallbackGate, probe);
 }
 
 async function safeQuery<Row extends QueryResultRow>(
   client: Client,
   signal: AbortSignal | undefined,
+  phaseRecorder: PreflightPhaseRecorder,
+  phase: PreflightPhase,
   text: string,
   values?: readonly unknown[],
 ): Promise<readonly Row[]> {
-  assertNotAborted(signal);
-  const result = await client.query<Row>(text, values as unknown[] | undefined);
-  assertNotAborted(signal);
-  return result.rows;
+  return phaseRecorder.measure(phase, async () => {
+    assertNotAborted(signal);
+    const result = await client.query<Row>(
+      text,
+      values as unknown[] | undefined,
+    );
+    assertNotAborted(signal);
+    return result.rows;
+  });
 }
 
 interface CapabilityRow extends QueryResultRow {
@@ -714,6 +833,7 @@ interface CapabilityRow extends QueryResultRow {
 async function executeReadOnlySnapshotTransaction<Value>(
   client: Client,
   options: ReadOnlySnapshotOptions,
+  phaseRecorder: PreflightPhaseRecorder,
   body: (capabilities: PreflightCapabilities) => Promise<Value>,
 ): Promise<{
   readonly capabilities: PreflightCapabilities;
@@ -730,19 +850,25 @@ async function executeReadOnlySnapshotTransaction<Value>(
 
   try {
     assertNotAborted(options.signal);
-    await client.query(
-      "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
-    );
+    await phaseRecorder.measure("transactionStart", async () => {
+      return client.query(
+        "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+      );
+    });
     transactionStarted = true;
-    await client.query(
-      `SELECT
-         set_config('lock_timeout', $1, true),
-         set_config('statement_timeout', $2, true)`,
-      [`${lockTimeoutMs}ms`, `${statementTimeoutMs}ms`],
-    );
+    await phaseRecorder.measure("transactionConfiguration", async () => {
+      return client.query(
+        `SELECT
+           set_config('lock_timeout', $1, true),
+           set_config('statement_timeout', $2, true)`,
+        [`${lockTimeoutMs}ms`, `${statementTimeoutMs}ms`],
+      );
+    });
     const capabilityRows = await safeQuery<CapabilityRow>(
       client,
       options.signal,
+      phaseRecorder,
+      "capabilities",
       `SELECT
          current_setting('server_version_num')::integer AS "serverVersion",
          current_setting('transaction_read_only') = 'on' AS "readOnly",
@@ -778,26 +904,42 @@ async function executeReadOnlySnapshotTransaction<Value>(
 
   if (transactionStarted) {
     try {
-      await client.query("ROLLBACK");
+      await phaseRecorder.measure("transactionCleanup", async () => {
+        return client.query("ROLLBACK");
+      });
     } catch {
       if (options.signal?.aborted) {
-        throw new SanitizedPreflightError("probe.cancelled");
+        throw new SanitizedPreflightError(
+          "probe.cancelled",
+          phaseRecorder.evidence(),
+        );
       }
-      throw new SanitizedPreflightError("probe.transaction_cleanup");
+      throw new SanitizedPreflightError(
+        "probe.transaction_cleanup",
+        phaseRecorder.evidence(),
+      );
     }
   }
   if (options.signal?.aborted) {
-    throw new SanitizedPreflightError("probe.cancelled");
+    throw new SanitizedPreflightError(
+      "probe.cancelled",
+      phaseRecorder.evidence(),
+    );
   }
   if (bodyError !== undefined)
-    classifyThrownError(bodyError, "probe.inventory");
-  if (!result) throw new SanitizedPreflightError("probe.transaction_start");
+    classifyThrownError(bodyError, "probe.inventory", phaseRecorder.evidence());
+  if (!result)
+    throw new SanitizedPreflightError(
+      "probe.transaction_start",
+      phaseRecorder.evidence(),
+    );
   return result;
 }
 
-export async function withReadOnlySnapshot<Value>(
+async function withReadOnlySnapshotPhases<Value>(
   client: Client,
   options: ReadOnlySnapshotOptions,
+  phaseRecorder: PreflightPhaseRecorder,
   body: (capabilities: PreflightCapabilities) => Promise<Value>,
 ): Promise<{
   readonly capabilities: PreflightCapabilities;
@@ -814,10 +956,31 @@ export async function withReadOnlySnapshot<Value>(
   });
   if (options.signal?.aborted) cancelInFlightQuery();
   try {
-    return await executeReadOnlySnapshotTransaction(client, options, body);
+    return await executeReadOnlySnapshotTransaction(
+      client,
+      options,
+      phaseRecorder,
+      body,
+    );
   } finally {
     options.signal?.removeEventListener("abort", cancelInFlightQuery);
   }
+}
+
+export async function withReadOnlySnapshot<Value>(
+  client: Client,
+  options: ReadOnlySnapshotOptions,
+  body: (capabilities: PreflightCapabilities) => Promise<Value>,
+): Promise<{
+  readonly capabilities: PreflightCapabilities;
+  readonly value: Value;
+}> {
+  return withReadOnlySnapshotPhases(
+    client,
+    options,
+    new PreflightPhaseRecorder(),
+    body,
+  );
 }
 
 function frameTuple(parts: readonly string[]): string {
@@ -1927,6 +2090,7 @@ export function classifyPreflightInventory(
   capabilities: PreflightCapabilities,
   inventory: PreflightInventory,
   options: PreflightClassificationOptions = {},
+  probe: PreflightProbeEvidence = emptyProbeEvidence(),
 ) {
   const expectedApprovedCount = options.expectedApprovedArtifactCount ?? 6;
   const expectedDanglingCount =
@@ -2018,6 +2182,7 @@ export function classifyPreflightInventory(
     danglingHeads,
     dependencies,
     launchSnapshots: launchSnapshots.output,
+    probe,
   };
   assertPreflightOutputShape(result);
   return result;
@@ -2040,15 +2205,20 @@ ORDER BY "compose"."id"
 async function collectDatabaseInventory(
   client: Client,
   signal: AbortSignal | undefined,
+  phaseRecorder: PreflightPhaseRecorder,
 ): Promise<PreflightInventory> {
   const danglingStart = await safeQuery<DanglingInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "danglingStart",
     DANGLING_QUERY,
   );
   const identity = await safeQuery<IdentityInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "identity",
     `SELECT
        coalesce("compose"."id", "agent"."id")::text AS "id",
        "compose"."id" IS NOT NULL AS "composePresent",
@@ -2079,6 +2249,8 @@ async function collectDatabaseInventory(
   const agentExecutionPlans = await safeQuery<AgentExecutionPlanInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "agentExecutionPlans",
     `WITH "attributedRunActivity" AS (
        SELECT
          "session"."agent_compose_id" AS "agentComposeId",
@@ -2137,6 +2309,8 @@ async function collectDatabaseInventory(
   const versions = await safeQuery<VersionInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "versions",
     `SELECT
        "version"."id",
        "version"."compose_id"::text AS "composeId",
@@ -2151,6 +2325,8 @@ async function collectDatabaseInventory(
   const heads = await safeQuery<HeadInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "heads",
     `SELECT
        "compose"."id"::text AS "composeId",
        "compose"."head_version_id" AS "headVersionId",
@@ -2165,6 +2341,8 @@ async function collectDatabaseInventory(
   const runs = await safeQuery<RunInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "runs",
     `SELECT
        "run"."id"::text AS "id",
        "run"."agent_compose_version_id" AS "versionId",
@@ -2205,9 +2383,11 @@ async function collectDatabaseInventory(
        ON "version"."id" = "run"."agent_compose_version_id"
      ORDER BY "run"."id"`,
   );
-  const checkpoints = await safeQuery<CheckpointInventoryRow>(
+  const checkpointCoreRows = await safeQuery<CheckpointCoreInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "checkpointInventory",
     `SELECT
        "checkpoint"."id"::text AS "id",
        "checkpoint"."run_id"::text AS "runId",
@@ -2220,87 +2400,7 @@ async function collectDatabaseInventory(
          "conversation"."id" IS NOT NULL AND
          "conversation"."run_id" = "checkpoint"."run_id"
        ) AS "conversationReferenceValid",
-       (
-         "session"."id" IS NOT NULL AND
-         "session"."conversation_id" = "checkpoint"."conversation_id"
-       ) AS "sessionReferenceValid",
-       CASE
-         WHEN "checkpoint"."storage_mounts" IS NULL THEN true
-         WHEN jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
-           THEN false
-         ELSE NOT EXISTS (
-           SELECT 1
-           FROM jsonb_array_elements("checkpoint"."storage_mounts")
-             AS "entry"("mount")
-           LEFT JOIN "storages" AS "storage"
-             ON "storage"."id"::text = "entry"."mount" ->> 'storageId'
-             AND "storage"."org_id" = "entry"."mount" ->> 'orgId'
-             AND "storage"."user_id" = "entry"."mount" ->> 'userId'
-             AND "storage"."name" = "entry"."mount" ->> 'name'
-           LEFT JOIN "storage_versions" AS "storage_version"
-             ON "storage_version"."id" = "entry"."mount" ->> 'version'
-             AND "storage_version"."storage_id" = "storage"."id"
-           WHERE
-             jsonb_typeof("entry"."mount") <> 'object' OR
-             NOT (
-               "entry"."mount" ?& ARRAY[
-                 'orgId',
-                 'userId',
-                 'name',
-                 'storageId',
-                 'version',
-                 'mountPath'
-               ]
-             ) OR
-             (
-               "entry"."mount" -
-               'orgId' -
-               'userId' -
-               'name' -
-               'storageId' -
-               'version' -
-               'mountPath' -
-               'optional' -
-               'writeback' -
-               'instructionsTargetFilename' -
-               'missingRootPolicy'
-             ) <> '{}'::jsonb OR
-             jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
-             jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
-             jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
-             jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
-             jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
-             jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
-             (
-               "entry"."mount" ? 'optional' AND
-               jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
-             ) OR
-             (
-               "entry"."mount" ? 'writeback' AND
-               jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
-             ) OR
-             (
-               "entry"."mount" ? 'instructionsTargetFilename' AND
-               jsonb_typeof(
-                 "entry"."mount" -> 'instructionsTargetFilename'
-               ) <> 'string'
-             ) OR
-             (
-               "entry"."mount" ? 'missingRootPolicy' AND
-               (
-                 jsonb_typeof(
-                   "entry"."mount" -> 'missingRootPolicy'
-                 ) <> 'string' OR
-                 "entry"."mount" ->> 'missingRootPolicy' NOT IN (
-                   'fail',
-                   'preserveParentVersion'
-                 )
-               )
-             ) OR
-             "storage"."id" IS NULL OR
-             "storage_version"."id" IS NULL
-         )
-       END AS "storageReferenceValid"
+       "session"."id" IS NOT NULL AS "sessionReferenceValid"
      FROM "checkpoints" AS "checkpoint"
      LEFT JOIN "agent_runs" AS "run"
        ON "run"."id" = "checkpoint"."run_id"
@@ -2311,9 +2411,120 @@ async function collectDatabaseInventory(
      ORDER BY "checkpoint"."id"`,
     [CHECKPOINT_PRE_CUTOVER_BOUNDARY],
   );
+  const invalidCheckpointStorageReferences =
+    await safeQuery<InvalidCheckpointStorageReferenceRow>(
+      client,
+      signal,
+      phaseRecorder,
+      "checkpointStorageReferences",
+      `WITH "invalidCheckpointStorageReferences" AS (
+         SELECT "checkpoint"."id"
+         FROM "checkpoints" AS "checkpoint"
+         WHERE
+           "checkpoint"."storage_mounts" IS NOT NULL AND
+           jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
+         UNION
+         SELECT "checkpoint"."id"
+         FROM "checkpoints" AS "checkpoint"
+         CROSS JOIN LATERAL jsonb_array_elements(
+           CASE
+             WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
+               THEN "checkpoint"."storage_mounts"
+             ELSE '[]'::jsonb
+           END
+         ) AS "entry"("mount")
+         LEFT JOIN "storages" AS "storage"
+           ON "storage"."id"::text = "entry"."mount" ->> 'storageId'
+             AND "storage"."org_id" = "entry"."mount" ->> 'orgId'
+             AND "storage"."user_id" = "entry"."mount" ->> 'userId'
+             AND "storage"."name" = "entry"."mount" ->> 'name'
+         LEFT JOIN "storage_versions" AS "storage_version"
+           ON "storage_version"."id" = "entry"."mount" ->> 'version'
+           AND "storage_version"."storage_id" = "storage"."id"
+         WHERE
+           jsonb_typeof("entry"."mount") <> 'object' OR
+           NOT (
+             "entry"."mount" ?& ARRAY[
+               'orgId',
+               'userId',
+               'name',
+               'storageId',
+               'version',
+               'mountPath'
+             ]
+           ) OR
+           (
+             "entry"."mount" -
+             'orgId' -
+             'userId' -
+             'name' -
+             'storageId' -
+             'version' -
+             'mountPath' -
+             'optional' -
+             'writeback' -
+             'instructionsTargetFilename' -
+             'missingRootPolicy'
+           ) <> '{}'::jsonb OR
+           jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
+           jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
+           jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
+           jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
+           jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
+           jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
+           (
+             "entry"."mount" ? 'optional' AND
+             jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
+           ) OR
+           (
+             "entry"."mount" ? 'writeback' AND
+             jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
+           ) OR
+           (
+             "entry"."mount" ? 'instructionsTargetFilename' AND
+             jsonb_typeof(
+               "entry"."mount" -> 'instructionsTargetFilename'
+             ) <> 'string'
+           ) OR
+           (
+             "entry"."mount" ? 'missingRootPolicy' AND
+             (
+               jsonb_typeof(
+                 "entry"."mount" -> 'missingRootPolicy'
+               ) <> 'string' OR
+               "entry"."mount" ->> 'missingRootPolicy' NOT IN (
+                 'fail',
+                 'preserveParentVersion'
+               )
+             )
+           ) OR
+           "storage"."id" IS NULL OR
+           "storage_version"."id" IS NULL
+       )
+       SELECT "invalid"."id"::text AS "id"
+       FROM "invalidCheckpointStorageReferences" AS "invalid"
+       ORDER BY "invalid"."id"`,
+    );
+  const invalidCheckpointStorageReferenceIds = new Set(
+    invalidCheckpointStorageReferences.map((row) => {
+      return row.id;
+    }),
+  );
+  const checkpoints: CheckpointInventoryRow[] = checkpointCoreRows.map(
+    (row) => {
+      return {
+        ...row,
+        storageReferenceValid: !invalidCheckpointStorageReferenceIds.has(
+          row.id,
+        ),
+      };
+    },
+  );
   const conversations = await safeQuery<ConversationInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "conversations",
     `SELECT
        "conversation"."run_id"::text AS "runId",
        "conversation"."cli_agent_type" AS "framework"
@@ -2323,11 +2534,15 @@ async function collectDatabaseInventory(
   const catalogDependencies = await safeQuery<CatalogDependencyRow>(
     client,
     signal,
+    phaseRecorder,
+    "catalogDependencies",
     CATALOG_DEPENDENCY_QUERY,
   );
   const danglingEnd = await safeQuery<DanglingInventoryRow>(
     client,
     signal,
+    phaseRecorder,
+    "danglingEnd",
     DANGLING_QUERY,
   );
   return {
@@ -2352,54 +2567,110 @@ export async function executeAgentComposeConsolidationPreflight(args: {
   readonly lockTimeoutMs?: number;
   readonly statementTimeoutMs?: number;
 }) {
+  const phaseRecorder = new PreflightPhaseRecorder();
   let repositoryDependencies: RepositoryDependencyManifest;
   let runtimeContentConsumers: RuntimeContentConsumerManifest;
   try {
-    [repositoryDependencies, runtimeContentConsumers] = await Promise.all([
-      collectRepositoryDependencyManifest(args.repositoryRoot),
-      collectRuntimeContentConsumerManifest(args.repositoryRoot),
-    ]);
+    [repositoryDependencies, runtimeContentConsumers] =
+      await phaseRecorder.measure("repositoryInventory", async () => {
+        return Promise.all([
+          collectRepositoryDependencyManifest(args.repositoryRoot),
+          collectRuntimeContentConsumerManifest(args.repositoryRoot),
+        ]);
+      });
   } catch (error) {
-    classifyThrownError(error, "probe.repository_inventory");
+    classifyThrownError(
+      error,
+      "probe.repository_inventory",
+      phaseRecorder.evidence(),
+    );
   }
 
   const client = new Client({ connectionString: args.connectionString });
   client.on("error", () => {});
   try {
-    await client.connect();
+    await phaseRecorder.measure("databaseConnection", async () => {
+      return client.connect();
+    });
   } catch (error) {
-    classifyThrownError(error, "probe.database_connection");
+    classifyThrownError(
+      error,
+      "probe.database_connection",
+      phaseRecorder.evidence(),
+    );
   }
 
   try {
-    const snapshot = await withReadOnlySnapshot(
+    const snapshot = await withReadOnlySnapshotPhases(
       client,
       {
         signal: args.signal,
         lockTimeoutMs: args.lockTimeoutMs,
         statementTimeoutMs: args.statementTimeoutMs,
       },
+      phaseRecorder,
       async () => {
-        return collectDatabaseInventory(client, args.signal);
+        return collectDatabaseInventory(client, args.signal, phaseRecorder);
       },
     );
-    return classifyPreflightInventory(snapshot.capabilities, snapshot.value, {
-      ...args.classification,
-      observedRepositoryDependencies: repositoryDependencies,
-      observedRuntimeContentConsumers: runtimeContentConsumers,
-    });
+    const classified = await phaseRecorder.measure(
+      "classification",
+      async () => {
+        return classifyPreflightInventory(
+          snapshot.capabilities,
+          snapshot.value,
+          {
+            ...args.classification,
+            observedRepositoryDependencies: repositoryDependencies,
+            observedRuntimeContentConsumers: runtimeContentConsumers,
+          },
+          phaseRecorder.evidence(),
+        );
+      },
+    );
+    const result = { ...classified, probe: phaseRecorder.evidence() };
+    assertPreflightOutputShape(result);
+    return result;
   } catch (error) {
-    classifyThrownError(error, "probe.inventory");
+    classifyThrownError(error, "probe.inventory", phaseRecorder.evidence());
   } finally {
     await client.end().catch(() => {});
   }
+}
+
+function isSafeProbeEvidence(
+  value: PreflightProbeEvidence | undefined,
+): value is PreflightProbeEvidence {
+  if (
+    !value ||
+    !["none", "unknown", ...PREFLIGHT_PHASES].includes(value.failurePhase)
+  ) {
+    return false;
+  }
+  const durationEntries = Object.entries(value.phaseDurationsMs);
+  return (
+    durationEntries.length === PREFLIGHT_PHASES.length &&
+    PREFLIGHT_PHASES.every((phase) => {
+      const duration = value.phaseDurationsMs[phase];
+      return (
+        Number.isSafeInteger(duration) &&
+        duration >= 0 &&
+        duration <= MAX_REPORTED_PHASE_DURATION_MS
+      );
+    })
+  );
 }
 
 export function sanitizedFailureResult(error: unknown): {
   readonly schemaVersion: string;
   readonly status: "failed";
   readonly failureGates: readonly string[];
+  readonly probe: PreflightProbeEvidence;
 } {
+  const probe =
+    error instanceof SanitizedPreflightError && isSafeProbeEvidence(error.probe)
+      ? error.probe
+      : emptyProbeEvidence("unknown");
   return {
     schemaVersion: PREFLIGHT_SCHEMA_VERSION,
     status: "failed",
@@ -2408,6 +2679,7 @@ export function sanitizedFailureResult(error: unknown): {
         ? error.gate
         : "probe.unexpected",
     ],
+    probe,
   };
 }
 
@@ -2415,7 +2687,7 @@ async function runCli(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     process.stdout.write(
-      `${JSON.stringify(sanitizedFailureResult(new SanitizedPreflightError("probe.configuration")))}\n`,
+      `${JSON.stringify(sanitizedFailureResult(new SanitizedPreflightError("probe.configuration", emptyProbeEvidence("configuration"))))}\n`,
     );
     process.exitCode = 1;
     return;

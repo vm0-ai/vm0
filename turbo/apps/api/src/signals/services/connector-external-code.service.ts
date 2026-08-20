@@ -6,6 +6,7 @@ import type {
   ConnectorExternalCodeSessionStartResponse,
   ConnectorResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -25,7 +26,7 @@ import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-exter
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -45,14 +46,22 @@ import {
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
-  upsertConnectorTokenConnection$,
   connectorBySlug,
+  connectorConnectionWriteRejection,
+  upsertConnectorTokenConnection$,
 } from "./connector-data.service";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
+import {
+  normalizeConnectorAccountMutation,
+  parseStoredConnectorAccountMutationIntent,
+  storedConnectorAccountMutationSelection,
+  storedConnectorAccountMutationWrite,
+} from "./connector-account-mutation.service";
+import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
 const SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES = ["pending"] as const;
 const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
@@ -72,6 +81,9 @@ const externalCodeSessionSelection = Object.freeze({
   status: connectorExternalCodeSessions.status,
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
   encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorExternalCodeSessions,
+  ),
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
   errorCode: connectorExternalCodeSessions.errorCode,
   errorMessage: connectorExternalCodeSessions.errorMessage,
@@ -324,7 +336,7 @@ async function expireSession(
     readonly now: Date;
   },
   signal: AbortSignal,
-) {
+): Promise<ReturnType<typeof badRequestMessage>> {
   await args.writeDb
     .update(connectorExternalCodeSessions)
     .set({
@@ -512,10 +524,13 @@ async function persistClaimedConnector(
     readonly persistConnector: (
       args: { readonly token: ConnectorAuthProviderGrantResult },
       signal: AbortSignal,
-    ) => Promise<ConnectorResponse>;
+    ) => Promise<
+      | { readonly ok: true; readonly connector: ConnectorResponse }
+      | { readonly ok: false; readonly message: string }
+    >;
   },
   signal: AbortSignal,
-): Promise<CompleteSuccess> {
+): Promise<CompleteSuccess | ReturnType<typeof conflict>> {
   return await args.writeDb.transaction(async (tx) => {
     await lockExternalCodeSessionOwner({
       ...args,
@@ -536,18 +551,30 @@ async function persistClaimedConnector(
       );
     }
 
-    const connector = await args.persistConnector(
+    const persisted = await args.persistConnector(
       { token: args.token },
       signal,
     );
     signal.throwIfAborted();
+    if (!persisted.ok) {
+      await markClaimError(
+        {
+          writeDb: tx,
+          session: args.session,
+          claimStartedAt: args.claimStartedAt,
+          errorMessage: persisted.message,
+        },
+        signal,
+      );
+      return conflict(persisted.message);
+    }
 
     return await markClaimComplete(
       {
         writeDb: tx,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
-        connector,
+        connector: persisted.connector,
       },
       signal,
     );
@@ -664,7 +691,10 @@ async function completeClaimedExternalCodeSession(
     readonly persistConnector: (
       args: { readonly token: ConnectorAuthProviderGrantResult },
       signal: AbortSignal,
-    ) => Promise<ConnectorResponse>;
+    ) => Promise<
+      | { readonly ok: true; readonly connector: ConnectorResponse }
+      | { readonly ok: false; readonly message: string }
+    >;
   },
   signal: AbortSignal,
 ) {
@@ -783,6 +813,76 @@ function errorMessage(error: unknown): string {
     : "External-code completion failed";
 }
 
+async function createExternalCodeSession(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string | undefined;
+    readonly authorizeAgent: true | undefined;
+    readonly connectorSlug: ConnectorSlug;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly account?: ConnectorAccountMutationIntent;
+    readonly sessionToken: string;
+    readonly encryptedProviderState: string;
+    readonly authorizationUrl: string;
+    readonly now: Date;
+    readonly expiresAt: Date;
+  },
+  signal: AbortSignal,
+) {
+  return await db.transaction(async (tx) => {
+    await lockExternalCodeSessionOwner({
+      connectorSlug: args.connectorSlug,
+      authMethod: args.authMethod,
+      writeDb: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    const mutationResolution = await resolveConnectorConnectionMutation(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+      mutation: normalizeConnectorAccountMutation(args.account),
+    });
+    signal.throwIfAborted();
+    if (mutationResolution.kind !== "ready") {
+      return mutationResolution;
+    }
+    await markPendingSessionsSuperseded({
+      connectorSlug: args.connectorSlug,
+      authMethod: args.authMethod,
+      writeDb: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+      now: args.now,
+    });
+    const [session] = await tx
+      .insert(connectorExternalCodeSessions)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.agentId,
+        authorizeAgent: connectorAgentAuthorizationRequested(args),
+        connectorSlug: args.connectorSlug,
+        authMethod: args.authMethod,
+        status: "pending",
+        sessionTokenHash: sessionTokenHash(args.sessionToken),
+        encryptedProviderState: args.encryptedProviderState,
+        ...storedConnectorAccountMutationWrite(args.account),
+        authorizationUrl: args.authorizationUrl,
+        createdAt: args.now,
+        updatedAt: args.now,
+        expiresAt: args.expiresAt,
+      })
+      .returning({ id: connectorExternalCodeSessions.id });
+    if (!session) {
+      throw new Error("Failed to create external-code authorization session");
+    }
+    return { kind: "created" as const, session };
+  });
+}
+
 export const startConnectorExternalCodeSession$ = command(
   async (
     { get, set },
@@ -793,6 +893,7 @@ export const startConnectorExternalCodeSession$ = command(
       readonly authorizeAgent: true | undefined;
       readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
+      readonly account?: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ) => {
@@ -850,51 +951,38 @@ export const startConnectorExternalCodeSession$ = command(
     );
     signal.throwIfAborted();
 
-    const [session] = await set(writeDb$).transaction(async (tx) => {
-      await lockExternalCodeSessionOwner({
-        connectorSlug: resolved.connectorSlug,
-        authMethod: resolved.authMethodId,
-        writeDb: tx,
+    const sessionResult = await createExternalCodeSession(
+      set(writeDb$),
+      {
         orgId: args.orgId,
         userId: args.userId,
-      });
-      await markPendingSessionsSuperseded({
         connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
-        writeDb: tx,
-        orgId: args.orgId,
-        userId: args.userId,
+        agentId: args.agentId,
+        authorizeAgent: args.authorizeAgent,
+        account: args.account,
+        sessionToken,
+        encryptedProviderState,
+        authorizationUrl: startResult.authorizationUrl,
         now,
-      });
-      return await tx
-        .insert(connectorExternalCodeSessions)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorSlug: resolved.connectorSlug,
-          authMethod: resolved.authMethodId,
-          status: "pending",
-          sessionTokenHash: sessionTokenHash(sessionToken),
-          encryptedProviderState,
-          authorizationUrl: startResult.authorizationUrl,
-          createdAt: now,
-          updatedAt: now,
-          expiresAt,
-        })
-        .returning({
-          id: connectorExternalCodeSessions.id,
-        });
-    });
+        expiresAt,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
-    if (!session) {
-      throw new Error("Failed to create external-code authorization session");
+    if (sessionResult.kind !== "created") {
+      return sessionResult.kind === "missing"
+        ? notFound("Connector account not found")
+        : conflict(
+            sessionResult.kind === "ambiguous"
+              ? "Multiple connector accounts require an exact choice"
+              : "Additional connector accounts are not enabled yet",
+          );
     }
 
     const body: ConnectorExternalCodeSessionStartResponse = {
-      sessionId: session.id,
+      sessionId: sessionResult.session.id,
       sessionToken,
       connectorSlug: resolved.connectorSlug,
       status: "pending",
@@ -1017,10 +1105,16 @@ export const completeConnectorExternalCodeSession$ = command(
               oauthScopes: token.scopes,
               expiresIn: token.expiresIn,
               extraConnectorSecrets: token.extraConnectorSecrets,
+              account: parseStoredConnectorAccountMutationIntent(
+                claimedSession.accountMutation,
+              ),
             },
             persistSignal,
           );
-          return connectorResult.connector;
+          if (connectorResult.status !== "connected") {
+            return connectorConnectionWriteRejection(connectorResult.status);
+          }
+          return { ok: true, connector: connectorResult.connector };
         },
       },
       signal,

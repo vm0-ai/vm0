@@ -186,6 +186,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             )
             .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
+            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
             .env(

@@ -59,6 +59,12 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   },
 );
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
+// The branded paths plus the final Microsoft console path from #28278.
+const TEAMS_BOT_URLS = [
+  "http://api.test/api/okou/teams/bot",
+  TEAMS_BOT_PATH,
+  "http://api.test/api/webhooks/teams/bot",
+] as const;
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -706,10 +712,16 @@ function teamsBotInstallationAddedActivity(
   };
 }
 
+interface TeamsBotRawResponse {
+  readonly status: number;
+  readonly body: string;
+}
+
 async function postTeamsActivity(
   args: {
     readonly activity: Record<string, unknown>;
     readonly token?: string;
+    readonly url?: string;
   },
   signal: AbortSignal = context.signal,
 ): Promise<Response> {
@@ -723,7 +735,7 @@ async function postTeamsActivity(
   if (args.token) {
     headers.authorization = `Bearer ${args.token}`;
   }
-  return await app.request(TEAMS_BOT_PATH, {
+  return await app.request(args.url ?? TEAMS_BOT_PATH, {
     method: "POST",
     headers,
     body: JSON.stringify(args.activity),
@@ -932,6 +944,46 @@ describe("POST /api/zero/teams/bot", () => {
         code: "UNAUTHORIZED",
       },
     });
+  });
+
+  it("verifies the bot token on the final Microsoft console path", async () => {
+    botFrameworkHandlers();
+    const fixture = botFixture();
+    const activity = teamsMessageActivity(fixture, { type: "typing" });
+    const token = teamsToken();
+
+    const results: TeamsBotRawResponse[] = [];
+    for (const url of TEAMS_BOT_URLS) {
+      const response = await postTeamsActivity({ activity, token, url });
+      results.push({
+        status: response.status,
+        body: await response.text(),
+      });
+    }
+
+    const [okou, zero, final] = results;
+    expect(okou?.status).toBe(200);
+    expect(zero).toStrictEqual(okou);
+    expect(final).toStrictEqual(okou);
+  });
+
+  it("rejects an unauthorized activity on every namespace", async () => {
+    const fixture = botFixture();
+    const activity = teamsMessageActivity(fixture);
+
+    const results: TeamsBotRawResponse[] = [];
+    for (const url of TEAMS_BOT_URLS) {
+      const response = await postTeamsActivity({ activity, url });
+      results.push({
+        status: response.status,
+        body: await response.text(),
+      });
+    }
+
+    const [okou, zero, final] = results;
+    expect(okou?.status).toBe(401);
+    expect(zero).toStrictEqual(okou);
+    expect(final).toStrictEqual(okou);
   });
 
   it("rejects a Teams activity without a stable identifier", async () => {

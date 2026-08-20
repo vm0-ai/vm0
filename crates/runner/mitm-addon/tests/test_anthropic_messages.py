@@ -464,20 +464,17 @@ class TestAnthropicSseUsageExtractor:
         )
         assert usage["tokens.output"] == 42
 
-    def test_skip_with_leftover_in_line_buf(self):
-        """Entering skip mode leaves unprocessed line_buf data; next chunk should handle it."""
+    def test_skip_recovery_after_complete_event_same_chunk(self):
+        """A complete skipped event and following usage event in one chunk should both parse."""
         parse, usage = create_anthropic_messages_sse_usage_extractor()
-        # One chunk has event line + start of data (no newline yet) + another event
-        # The while loop processes "event: content_block_stop", sets skip, returns.
-        # line_buf still has the partial "data: ..." from this chunk.
+        # The complete skipped event and the following usage event share one parse call.
         parse(
             b"event: content_block_stop\n"
             b'data: {"type":"content_block_stop"}\n\n'
             b"event: message_delta\n"
             b'data: {"usage":{"output_tokens":77}}\n\n'
         )
-        # content_block_stop triggers skip, but \n\n boundary is in same chunk.
-        # Skip mode should find it and then process message_delta.
+        # Skip handling should consume the event boundary and continue to message_delta.
         assert usage["tokens.output"] == 77
 
     def test_consecutive_skip_events(self):

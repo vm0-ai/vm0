@@ -312,7 +312,7 @@ const createTestConnector$ = command(
       );
     }
 
-    await set(
+    const connectionResult = await set(
       upsertConnectorTokenConnection$,
       {
         orgId,
@@ -337,6 +337,9 @@ const createTestConnector$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if (connectionResult.status !== "connected") {
+      return stringError(400, "Connector account could not be selected");
+    }
 
     return {
       status: 200 as const,

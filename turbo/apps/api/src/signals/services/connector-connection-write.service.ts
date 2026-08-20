@@ -1,12 +1,17 @@
+import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
-import { isNotNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { deleteConnectorOwnedCredentialRows } from "./connector-credential-storage-write.service";
+import type { ConnectorAccountMutation } from "./connector-account-mutation.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export interface StoredConnectorConnectionRow {
   readonly id: string;
   readonly authMethod: string;
+  readonly displayName: string | null;
+  readonly isDefault: boolean | null;
   readonly externalId: string | null;
   readonly externalUsername: string | null;
   readonly externalEmail: string | null;
@@ -43,7 +48,7 @@ interface ConnectorCredentialWriteContext {
   readonly connectorId: string;
 }
 
-export interface UpsertConnectorConnectionMetadataArgs {
+export interface ConnectorConnectionMetadataArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly authMethod: string;
@@ -52,17 +57,44 @@ export interface UpsertConnectorConnectionMetadataArgs {
   readonly target: ConnectorConnectionTarget;
 }
 
-interface ReplaceConnectorConnectionArgs extends UpsertConnectorConnectionMetadataArgs {
+interface ReplaceConnectorConnectionArgs extends ConnectorConnectionMetadataArgs {
+  readonly resolution: ReadyConnectorConnectionMutation;
   readonly writeCredentials: (
     context: ConnectorCredentialWriteContext,
     signal: AbortSignal,
   ) => Promise<void>;
 }
 
+interface ExistingConnectorConnectionRow extends StoredConnectorConnectionRow {
+  readonly connectorSlug: string | null;
+  readonly customConnectorId: string | null;
+}
+
+export type ReadyConnectorConnectionMutation =
+  | {
+      readonly kind: "insert";
+      readonly displayName: string | null;
+    }
+  | {
+      readonly kind: "update";
+      readonly existing: ExistingConnectorConnectionRow;
+    };
+
+export type ConnectorConnectionMutationResolution =
+  | {
+      readonly kind: "ready";
+      readonly mutation: ReadyConnectorConnectionMutation;
+    }
+  | { readonly kind: "missing" }
+  | { readonly kind: "ambiguous" }
+  | { readonly kind: "sibling-disabled" };
+
 function connectorConnectionSelection() {
   return {
     id: connectors.id,
     authMethod: connectors.authMethod,
+    displayName: connectors.displayName,
+    isDefault: connectors.isDefault,
     externalId: connectors.externalId,
     externalUsername: connectors.externalUsername,
     externalEmail: connectors.externalEmail,
@@ -76,9 +108,91 @@ function connectorConnectionSelection() {
   };
 }
 
-export async function upsertConnectorConnectionMetadata(
+function existingConnectorConnectionSelection() {
+  return {
+    ...connectorConnectionSelection(),
+    connectorSlug: connectors.connectorSlug,
+    customConnectorId: connectors.customConnectorId,
+  };
+}
+
+function targetCondition(target: ConnectorAccountTarget) {
+  return target.kind === "builtin"
+    ? eq(connectors.connectorSlug, target.connectorSlug)
+    : eq(connectors.customConnectorId, target.customConnectorId);
+}
+
+export async function resolveConnectorConnectionMutation(
   db: Tx,
-  args: UpsertConnectorConnectionMetadataArgs,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly target: ConnectorAccountTarget;
+    readonly mutation: ConnectorAccountMutation;
+  },
+): Promise<ConnectorConnectionMutationResolution> {
+  await lockConnectorAccountTarget(db, args);
+
+  if (args.mutation.intent === "reconnect") {
+    const [existing] = await db
+      .select(existingConnectorConnectionSelection())
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.id, args.mutation.connectionId),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          targetCondition(args.target),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    return existing
+      ? { kind: "ready", mutation: { kind: "update", existing } }
+      : { kind: "missing" };
+  }
+
+  const existing = await db
+    .select(existingConnectorConnectionSelection())
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        targetCondition(args.target),
+      ),
+    )
+    .orderBy(connectors.id)
+    .for("update")
+    .limit(2);
+  if (args.mutation.intent === "add") {
+    return existing.length === 0
+      ? {
+          kind: "ready",
+          mutation: {
+            kind: "insert",
+            displayName: args.mutation.displayName ?? null,
+          },
+        }
+      : { kind: "sibling-disabled" };
+  }
+  if (existing.length > 1) {
+    return { kind: "ambiguous" };
+  }
+  const [singleton] = existing;
+  return singleton
+    ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
+    : {
+        kind: "ready",
+        mutation: { kind: "insert", displayName: null },
+      };
+}
+
+export async function writeConnectorConnectionMetadata(
+  db: Tx,
+  args: ConnectorConnectionMetadataArgs & {
+    readonly resolution: ReadyConnectorConnectionMutation;
+  },
 ): Promise<StoredConnectorConnectionRow> {
   const identityValues =
     args.target.kind === "builtin" && args.target.identity.kind === "external"
@@ -112,35 +226,30 @@ export async function upsertConnectorConnectionMetadata(
     needsReconnect: false,
     reconnectReason: null,
   };
-  const conflictTarget =
-    args.target.kind === "builtin"
-      ? [connectors.orgId, connectors.userId, connectors.connectorSlug]
-      : [connectors.orgId, connectors.userId, connectors.customConnectorId];
-  const conflictTargetWhere =
-    args.target.kind === "builtin"
-      ? isNotNull(connectors.connectorSlug)
-      : isNotNull(connectors.customConnectorId);
-
-  const [row] = await db
-    .insert(connectors)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      ...targetValues,
-      ...replacementValues,
-    })
-    .onConflictDoUpdate({
-      target: conflictTarget,
-      targetWhere: conflictTargetWhere,
-      set: {
-        ...replacementValues,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    })
-    .returning(connectorConnectionSelection());
+  const [row] =
+    args.resolution.kind === "insert"
+      ? await db
+          .insert(connectors)
+          .values({
+            orgId: args.orgId,
+            userId: args.userId,
+            displayName: args.resolution.displayName,
+            isDefault: true,
+            ...targetValues,
+            ...replacementValues,
+          })
+          .returning(connectorConnectionSelection())
+      : await db
+          .update(connectors)
+          .set({
+            ...replacementValues,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(eq(connectors.id, args.resolution.existing.id))
+          .returning(connectorConnectionSelection());
   if (!row) {
     throw new Error(
-      `Failed to upsert ${args.target.kind === "builtin" ? "Builtin" : "Custom"} connector connection`,
+      `Failed to write ${args.target.kind === "builtin" ? "Builtin" : "Custom"} connector connection`,
     );
   }
   return row;
@@ -151,7 +260,7 @@ export async function replaceConnectorConnection(
   args: ReplaceConnectorConnectionArgs,
   signal: AbortSignal,
 ): Promise<StoredConnectorConnectionRow> {
-  const connection = await upsertConnectorConnectionMetadata(db, args);
+  const connection = await writeConnectorConnectionMetadata(db, args);
   signal.throwIfAborted();
 
   await deleteConnectorOwnedCredentialRows(

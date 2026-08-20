@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
@@ -252,6 +253,57 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     expect(response.status).toBe(400);
   });
 
+  it("requires account labels for manual and no-auth additions", async () => {
+    await seedFixture();
+    const manualClient = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+    const noAuthClient = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorNoAuthGrantContract,
+    );
+
+    const manual = await accept(
+      manualClient.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: "sk-unlabeled" },
+        },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+    expect(manual.body.error.message).toBe(
+      "Account display name is required when adding a manual connector account",
+    );
+
+    const noAuth = await accept(
+      noAuthClient.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+        },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+    expect(noAuth.body.error.message).toBe(
+      "Account display name is required when adding a no-auth connector account",
+    );
+
+    const list = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        zeroConnectorsMainContract,
+      ).list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(list.body.connectors).not.toContainEqual(
+      expect.objectContaining({ slug: "openai" }),
+    );
+  });
+
   it("connects a first-time manual grant connector with connector-owned state", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
@@ -283,6 +335,134 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       authMethod: "api-token",
       connectionStatus: "connected",
     });
+  });
+
+  it("adds the first account, reconnects it exactly, and rejects a sibling", async () => {
+    const fixture = await seedFixture();
+    const client = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+
+    const added = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Work" },
+          values: { apiKey: "sk-first" },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const reconnected = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: { apiKey: "sk-reconnected" },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(reconnected.body.id).toBe(added.body.id);
+
+    const sibling = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Personal" },
+          values: { apiKey: "sk-sibling" },
+        },
+        headers: authHeaders(),
+      }),
+      [409],
+    );
+    expect(sibling.body.error.message).toBe(
+      "Additional connector accounts are not enabled yet",
+    );
+
+    const missing = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: randomUUID() },
+          values: { apiKey: "sk-missing" },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(missing.body.error.message).toBe("Connector account not found");
+
+    seedFixture();
+    const wrongOwner = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: { apiKey: "sk-wrong-owner" },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(wrongOwner.body.error.message).toBe("Connector account not found");
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const wrongTarget = await accept(
+      client.connect({
+        params: { connectorSlug: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: {
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(wrongTarget.body.error.message).toBe("Connector account not found");
+
+    const stored = await readConnector(fixture, "openai");
+    expect(stored.body.id).toBe(added.body.id);
+  });
+
+  it("serializes concurrent first-account adds", async () => {
+    await seedFixture();
+    const client = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+    const requests = ["First", "Second"].map((displayName) => {
+      return client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName },
+          values: { apiKey: `sk-${displayName.toLowerCase()}` },
+        },
+        headers: authHeaders(),
+      });
+    });
+
+    const responses = await Promise.all(requests);
+    expect(
+      responses
+        .map((response) => {
+          return response.status;
+        })
+        .sort(),
+    ).toStrictEqual([200, 409]);
   });
 
   it("connects Zendesk manual grant fields through the API", async () => {

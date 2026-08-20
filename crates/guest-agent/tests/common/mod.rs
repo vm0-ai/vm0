@@ -1030,6 +1030,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         process_control_ipc::BOOTSTRAP_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
+        "VM0_TEST_CODEX_HOME_DIR",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -1115,6 +1116,7 @@ pub unsafe fn setup_codex_app_server_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
+        std::env::set_var("VM0_TEST_CODEX_HOME_DIR", home.join("codex-home"));
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(home, config.run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         set_run_payload_file_env_for_test(
@@ -1162,7 +1164,7 @@ pub fn read_codex_session_history_events_for_runtime(
     let filename_key =
         guest_contracts::codex_thread_id::codex_thread_id_filename_key(thread_id.trim())
             .ok_or("invalid captured Codex thread ID")?;
-    let sessions_dir = Path::new(&runtime.config.home_dir).join(".codex/sessions");
+    let sessions_dir = Path::new(&runtime.config.codex_home_dir).join("sessions");
     let mut matches = Vec::new();
     let mut pending = vec![sessions_dir];
     while let Some(directory) = pending.pop() {

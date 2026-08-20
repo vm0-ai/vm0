@@ -179,6 +179,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         .env("VM0_API_TOKEN", "")
         .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
         .env("VM0_SANDBOX_REUSE_RESULT", "reused")
+        .env("VM0_TEST_CODEX_HOME_DIR", args.home.join(".codex"))
         .env(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             args.runtime_dir,

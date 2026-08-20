@@ -26,9 +26,9 @@ import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalizatio
 import type { ModelFirstPin } from "./model-selection.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import {
-  resolveVm0ModelRuntimeRoute,
-  type Vm0ModelRuntimeRoute,
-} from "./vm0-model-runtime-route.service";
+  resolveBuiltInModelRuntimeRoute,
+  type BuiltInModelRuntimeRoute,
+} from "./built-in-model-runtime-route.service";
 
 const log = logger("api:goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
@@ -77,7 +77,7 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
-      readonly vm0ModelRuntimeRoute: Vm0ModelRuntimeRoute | undefined;
+      readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
     }
@@ -154,7 +154,7 @@ function buildQueueFirstGoalRunInput(args: {
   const {
     modelPin,
     effectiveModelProvider,
-    vm0ModelRuntimeRoute,
+    builtInModelRuntimeRoute,
     cliAgentType,
     codexServiceTier,
   } = args.modelContext;
@@ -180,13 +180,13 @@ function buildQueueFirstGoalRunInput(args: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
-    ...(vm0ModelRuntimeRoute ? { vm0ModelRuntimeRoute } : {}),
+    ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
       modelProvider: effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
-      modelRuntimeProvider: vm0ModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: vm0ModelRuntimeRoute?.upstreamModel ?? null,
+      modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
+      modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType,
     },
     codexServiceTier,
@@ -258,12 +258,12 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const vm0ModelRuntimeRoute =
+  const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
-      ? await resolveVm0ModelRuntimeRoute(args.db, selectedModel)
+      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !vm0ModelRuntimeRoute) {
+  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
     return {
       ok: false,
       failure: {
@@ -286,7 +286,7 @@ async function resolveModelContext(
     ok: true,
     modelPin: pin,
     effectiveModelProvider,
-    vm0ModelRuntimeRoute: vm0ModelRuntimeRoute ?? undefined,
+    builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
     cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
   };

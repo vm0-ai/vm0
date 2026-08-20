@@ -27,9 +27,9 @@ import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.se
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
 import {
-  resolveVm0ModelRuntimeRoute,
-  type Vm0ModelRuntimeRoute,
-} from "./vm0-model-runtime-route.service";
+  resolveBuiltInModelRuntimeRoute,
+  type BuiltInModelRuntimeRoute,
+} from "./built-in-model-runtime-route.service";
 
 export type AutomationRow = typeof workflowAutomations.$inferSelect;
 
@@ -75,7 +75,7 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
-      readonly vm0ModelRuntimeRoute: Vm0ModelRuntimeRoute | undefined;
+      readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
     }
@@ -301,12 +301,12 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const vm0ModelRuntimeRoute =
+  const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
-      ? await resolveVm0ModelRuntimeRoute(args.db, selectedModel)
+      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !vm0ModelRuntimeRoute) {
+  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
     return {
       ok: false,
       failure: {
@@ -329,7 +329,7 @@ async function resolveModelContext(
     ok: true,
     modelPin: pin,
     effectiveModelProvider,
-    vm0ModelRuntimeRoute: vm0ModelRuntimeRoute ?? undefined,
+    builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
     cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
   };
@@ -343,8 +343,9 @@ function workflowThreadSessionRoute(
     modelProvider: modelContext.effectiveModelProvider ?? null,
     modelProviderId: modelContext.modelPin.modelProviderId,
     modelRuntimeProvider:
-      modelContext.vm0ModelRuntimeRoute?.providerType ?? null,
-    modelRuntimeModel: modelContext.vm0ModelRuntimeRoute?.upstreamModel ?? null,
+      modelContext.builtInModelRuntimeRoute?.providerType ?? null,
+    modelRuntimeModel:
+      modelContext.builtInModelRuntimeRoute?.upstreamModel ?? null,
     cliAgentType: modelContext.cliAgentType,
   };
 }
@@ -596,7 +597,7 @@ export const launchQueuedWorkflowAutomation$ = command(
     const {
       modelPin,
       effectiveModelProvider,
-      vm0ModelRuntimeRoute,
+      builtInModelRuntimeRoute,
       codexServiceTier,
     } = modelContext;
 
@@ -644,7 +645,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
-        ...(vm0ModelRuntimeRoute ? { vm0ModelRuntimeRoute } : {}),
+        ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
         threadSessionRoute: workflowThreadSessionRoute(modelContext),
         codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,

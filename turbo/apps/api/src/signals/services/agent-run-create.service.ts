@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
+  CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
@@ -318,11 +319,11 @@ import {
   type RunMetadataValues,
 } from "./agent-run-metadata-write.service";
 import {
-  hasIncompatibleVm0ModelRuntimeRoute,
-  vm0ModelRuntimeTarget,
+  hasIncompatibleBuiltInModelRuntimeRoute,
+  builtInModelRuntimeTarget,
   type ModelRuntimeSessionRoute,
-  type Vm0ModelRuntimeRoute,
-} from "./vm0-model-runtime-route.service";
+  type BuiltInModelRuntimeRoute,
+} from "./built-in-model-runtime-route.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -851,7 +852,7 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
-  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
+  readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -947,7 +948,7 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
-  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
+  readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
@@ -1121,7 +1122,7 @@ function prepareAdditionalVolumesWithSource(
 
 function frameworkSkillsMountPath(framework: SupportedFramework): string {
   return framework === "codex"
-    ? "/home/user/.codex/skills"
+    ? `${CANONICAL_CODEX_HOME_DIR}/skills`
     : "/home/user/.claude/skills";
 }
 
@@ -2302,12 +2303,12 @@ async function multiAuthModelProviderEnvironment(
 async function vm0ModelProviderEnvironment(
   db: Db,
   selectedModel: string,
-  resolvedRoute?: Vm0ModelRuntimeRoute,
+  resolvedRoute?: BuiltInModelRuntimeRoute,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (resolvedRoute && resolvedRoute.selectedModel !== selectedModel) {
     return null;
   }
-  let route: Vm0ModelRuntimeRoute;
+  let route: BuiltInModelRuntimeRoute;
   let key: { readonly id: string; readonly apiKey: string } | undefined;
   if (resolvedRoute) {
     [key] = await db
@@ -2317,7 +2318,7 @@ async function vm0ModelProviderEnvironment(
       .limit(1);
     route = resolvedRoute;
   } else {
-    const target = vm0ModelRuntimeTarget(selectedModel);
+    const target = builtInModelRuntimeTarget(selectedModel);
     [key] = await db
       .select({ id: builtInModelKeys.id, apiKey: builtInModelKeys.apiKey })
       .from(builtInModelKeys)
@@ -2356,7 +2357,7 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: key.apiKey },
     selectedModel,
-    vm0ModelRuntimeRoute: route,
+    builtInModelRuntimeRoute: route,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
 }
@@ -2369,7 +2370,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
-  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
+  readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
@@ -2667,7 +2668,7 @@ async function resolveCandidateModelProviderEnvironment(
     const provider = await vm0ModelProviderEnvironment(
       db,
       selectedModel,
-      args.vm0ModelRuntimeRoute,
+      args.builtInModelRuntimeRoute,
     );
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
@@ -2738,7 +2739,7 @@ async function resolveModelProviderEnvironment(
     const provider = await vm0ModelProviderEnvironment(
       db,
       args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
-      args.vm0ModelRuntimeRoute,
+      args.builtInModelRuntimeRoute,
     );
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
@@ -6019,7 +6020,7 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   const modelPin =
     args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
-  const runtimeRoute = args.modelProvider?.vm0ModelRuntimeRoute;
+  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
   return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
     autonomyBudget: metadata.autonomyBudget,
@@ -7957,7 +7958,7 @@ async function resolveRunModelProvider(
         modelProviderCredentialScope: args.modelProviderCredentialScope,
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
-        vm0ModelRuntimeRoute: args.vm0ModelRuntimeRoute,
+        builtInModelRuntimeRoute: args.builtInModelRuntimeRoute,
         featureSwitchContext: options.featureSwitchContext,
       })
     : null;
@@ -8813,8 +8814,8 @@ function resolveCompatibleDirectResumeSession(args: {
   if (!args.resolved.resumeSessionModelRoute) {
     return args.resolved;
   }
-  const runtimeRoute = args.modelProvider?.vm0ModelRuntimeRoute;
-  const incompatible = hasIncompatibleVm0ModelRuntimeRoute({
+  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
+  const incompatible = hasIncompatibleBuiltInModelRuntimeRoute({
     previous: args.resolved.resumeSessionModelRoute,
     next: {
       modelProvider: args.modelProvider?.type ?? null,

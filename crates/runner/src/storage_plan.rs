@@ -38,14 +38,16 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+use api_contracts::generated::{
+    constants::runners::paths::CANONICAL_CODEX_HOME_DIR,
+    types::runners::storage::ArtifactEntryMissingRootPolicy,
+};
 use guest_contracts::storage_manifest as wire;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
 
-const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
 const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
 const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
@@ -574,7 +576,7 @@ fn record_removed_artifacts<'a>(
 }
 
 fn is_framework_home_path(path: &str) -> bool {
-    matches!(path, CODEX_FRAMEWORK_HOME | CLAUDE_FRAMEWORK_HOME)
+    matches!(path, CANONICAL_CODEX_HOME_DIR | CLAUDE_FRAMEWORK_HOME)
 }
 
 fn is_removed_framework_home_instruction(path: &str, fingerprint: &StorageFingerprint) -> bool {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsBySlugContract,
@@ -50,7 +51,10 @@ function mockSteamRuntimeEnv(): void {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
 }
 
-async function startSteamOpenId(actor: TestActor): Promise<URL> {
+async function startSteamOpenId(
+  actor: TestActor,
+  account?: ConnectorAccountMutationIntent,
+): Promise<URL> {
   mockSession(actor);
   const response = await accept(
     setupApp({ context, routes: connectorsRoutes })(
@@ -58,7 +62,7 @@ async function startSteamOpenId(actor: TestActor): Promise<URL> {
     ).start({
       params: { connectorSlug: "steam" },
       headers: authHeaders(),
-      body: { authMethod: "openid" },
+      body: { authMethod: "openid", account },
     }),
     [200],
   );
@@ -432,7 +436,10 @@ describe("Steam OpenID connector", () => {
     );
     expect(connector.body).toStrictEqual(initial.body);
 
-    const replacementAuthorizationUrl = await startSteamOpenId(actor);
+    const replacementAuthorizationUrl = await startSteamOpenId(actor, {
+      intent: "reconnect",
+      connectionId: initial.body.id,
+    });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);
     const replaced = await accept(

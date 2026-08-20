@@ -2233,6 +2233,122 @@ fn invalid_start_process_env_key_returns_operation_error() {
     }
 }
 
+#[tokio::test]
+async fn start_process_output_rejects_invalid_stream_configuration() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let guest = attach_mock_shutdown_guest(&sandbox).await;
+
+    for (output, expected_message) in [
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 0,
+                queue_capacity: 1,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream chunk limit must be positive",
+        ),
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+                queue_capacity: 0,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream queue capacity must be positive",
+        ),
+        (
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+                queue_capacity: ProcessOutputMode::MAX_QUEUE_CAPACITY + 1,
+                stderr_capture_limit_bytes: None,
+            },
+            "process stream queue capacity must be at most 8192",
+        ),
+    ] {
+        let error = match sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output,
+                control: ProcessControlMode::None,
+            })
+            .await
+        {
+            Ok(_) => panic!("invalid stream configuration should be rejected"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+
+        assert_operation_error(
+            error,
+            SandboxOperation::StartProcess,
+            SandboxOperationReason::Other,
+        );
+        assert!(message.contains(expected_message), "got: {message}");
+
+        let mut unexpected_frame = [0u8; 1];
+        let read_error = guest.try_read(&mut unexpected_frame).unwrap_err();
+        assert_eq!(read_error.kind(), io::ErrorKind::WouldBlock);
+    }
+}
+
+#[tokio::test]
+async fn start_process_output_accepts_maximum_queue_capacity() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let output = ProcessOutputMode::Stream {
+        stream_limit_bytes: 0,
+        chunk_limit_bytes: 16,
+        queue_capacity: ProcessOutputMode::MAX_QUEUE_CAPACITY,
+        stderr_capture_limit_bytes: None,
+    };
+    let request = StartProcessRequest {
+        cmd: "agent",
+        timeout: Duration::from_secs(5),
+        env: &[],
+        sudo: false,
+        output,
+        control: ProcessControlMode::None,
+    };
+
+    let start_process = sandbox.start_process(&request);
+    let acknowledge_start = async {
+        let start = read_vsock_message(&mut guest).await;
+        assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
+        let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+        assert_eq!(
+            decoded.stdout,
+            ExecOutputPolicy::Stream {
+                limit_bytes: 0,
+                chunk_limit_bytes: 16,
+            }
+        );
+
+        let payload = vsock_proto::encode_exec_started(73).unwrap();
+        let response =
+            vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        start.seq
+    };
+    let (handle, exec_seq) = tokio::join!(start_process, acknowledge_start);
+    let handle = handle.unwrap();
+
+    assert!(handle.has_stdout_receiver());
+    send_exec_exit(&mut guest, exec_seq).await;
+    let exit = sandbox
+        .wait_process(handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        exit.termination,
+        sandbox::ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
 #[test]
 fn operation_error_preserves_file_operation_context_for_guest_failures() {
     for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {

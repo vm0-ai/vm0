@@ -7,6 +7,7 @@ import {
   connectorAuthMethodIdSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorGrantScopes,
   resolveConnectorAuthClient,
@@ -40,7 +41,10 @@ import {
   type ConnectorRuntimeConnector,
   type ConnectorRuntimeSnapshot,
 } from "../services/connector-catalog-runtime.service";
-import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
+import {
+  connectorConnectionWriteFailureMessage,
+  upsertConnectorTokenConnection$,
+} from "../services/connector-data.service";
 import {
   linkGithubUser,
   loadActiveGithubInstallationForOrg,
@@ -56,6 +60,7 @@ import {
   connectorOAuthRedirectResponse,
 } from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
+import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -74,6 +79,7 @@ type CompleteOAuthCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
+  readonly account?: ConnectorAccountMutationIntent;
 };
 
 type CompleteOpenIdCallbackInput = {
@@ -86,6 +92,7 @@ type CompleteOpenIdCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
+  readonly account?: ConnectorAccountMutationIntent;
 };
 
 type ResolveCallbackStateInput = {
@@ -112,6 +119,7 @@ type ResolvedCallbackState =
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
+      readonly account?: ConnectorAccountMutationIntent;
     }
   | {
       readonly ok: false;
@@ -127,6 +135,7 @@ type ResolvedOpenIdCallbackState =
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
+      readonly account?: ConnectorAccountMutationIntent;
     }
   | {
       readonly ok: false;
@@ -562,10 +571,20 @@ const completeOAuthCallback$ = command(
         oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
+        account: args.account,
       },
       signal,
     );
     signal.throwIfAborted();
+
+    if (result.status !== "connected") {
+      return redirectWithError(
+        args.origin,
+        args.connectorSlug,
+        connectorConnectionWriteFailureMessage(result.status),
+        true,
+      );
+    }
 
     if (args.authorizeAgent) {
       const authorization = await set(
@@ -636,10 +655,20 @@ const completeOpenIdCallback$ = command(
         oauthScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
+        account: args.account,
       },
       signal,
     );
     signal.throwIfAborted();
+
+    if (result.status !== "connected") {
+      return redirectWithError(
+        args.origin,
+        args.connectorSlug,
+        connectorConnectionWriteFailureMessage(result.status),
+        true,
+      );
+    }
 
     if (args.authorizeAgent) {
       const authorization = await set(
@@ -698,6 +727,9 @@ async function resolveCallbackState(
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
     redirectUri: args.storedState.redirectUri,
+    account: parseStoredConnectorAccountMutationIntent(
+      args.storedState.accountMutation,
+    ),
   };
 }
 
@@ -748,6 +780,9 @@ async function resolveOpenIdCallbackState(
     expectedRealm: storedOpenIdRealm(
       args.storedState.oauthContext,
       args.storedState.redirectUri,
+    ),
+    account: parseStoredConnectorAccountMutationIntent(
+      args.storedState.accountMutation,
     ),
   };
 }
@@ -841,6 +876,7 @@ const handleOpenIdConnectorCallback$ = command(
           identity: resolvedState.identity,
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
+          account: resolvedState.account,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
@@ -1056,6 +1092,7 @@ const handleAuthCodeConnectorCallback$ = command(
           identity: resolvedState.identity,
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
+          account: resolvedState.account,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },

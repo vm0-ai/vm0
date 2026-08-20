@@ -27,6 +27,8 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANONICAL_CODEX_HOME_DIR,
+  CANONICAL_CODEX_SESSIONS_DIR,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_PI_SESSION_DIR,
   CANONICAL_WORKING_DIR,
@@ -54,6 +56,15 @@ const codexOauthPlaceholders =
 const canonicalGuestHomeDirDoc = [
   "Canonical home directory path expected for the sandbox user inside runner guests.",
   "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+] as const;
+
+const canonicalCodexHomeDirDoc = [
+  "Canonical directory for VM0-managed Codex state inside runner guests.",
+  "Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.",
+] as const;
+
+const canonicalCodexSessionsDirDoc = [
+  "Canonical directory for Codex session histories inside runner guests.",
 ] as const;
 
 const canonicalWorkingDirDoc = [
@@ -303,6 +314,18 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_CODEX_HOME_DIR",
+    value: rustString(CANONICAL_CODEX_HOME_DIR),
+    rustDoc: canonicalCodexHomeDirDoc,
+  },
+  {
+    rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_CODEX_SESSIONS_DIR",
+    value: rustString(CANONICAL_CODEX_SESSIONS_DIR),
+    rustDoc: canonicalCodexSessionsDirDoc,
+  },
+  {
+    rustModulePath: ["runners", "paths"],
     rustConstName: "CANONICAL_WORKING_DIR",
     value: rustString(CANONICAL_WORKING_DIR),
     rustDoc: canonicalWorkingDirDoc,
@@ -475,6 +498,15 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_GUEST_HOME_DIR: &str = "${CANONICAL_GUEST_HOME_DIR}";`,
+    );
+    expect(firstRender).toContain(
+      "/// Canonical directory for VM0-managed Codex state inside runner guests.",
+    );
+    expect(firstRender).toContain(
+      `pub const CANONICAL_CODEX_HOME_DIR: &str = "${CANONICAL_CODEX_HOME_DIR}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CANONICAL_CODEX_SESSIONS_DIR: &str = "${CANONICAL_CODEX_SESSIONS_DIR}";`,
     );
     expect(firstRender).toContain(
       "/// Canonical working directory path expected inside runner guests.",

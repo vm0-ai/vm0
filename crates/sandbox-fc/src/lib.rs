@@ -34,6 +34,7 @@ mod cow_pool;
 mod duration;
 mod exec_operation_result;
 mod factory;
+mod firecracker_process;
 mod guest_dns_failure_diagnostics;
 mod guest_dns_probe;
 mod guest_dns_readiness;
