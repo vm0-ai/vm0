@@ -18,7 +18,7 @@ function sendBadGateway(res: ServerResponse): void {
   res.end("Bad gateway");
 }
 
-export function handleDevArtifactFetchProxyRequest(
+function handleDevArtifactFetchProxyRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): void {

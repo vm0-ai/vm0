@@ -2977,8 +2977,7 @@ describe("zero attachment chips", () => {
     const okouSiteUrl = "https://okou-site.okou.app/";
     const okouArtifactUrl =
       "https://cdn.okou.io/artifacts/user_1/artifact_1/report.pdf";
-    const lookalikeSiteUrl =
-      "https://okou-site.okou.app.attacker.example/";
+    const lookalikeSiteUrl = "https://okou-site.okou.app.attacker.example/";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
