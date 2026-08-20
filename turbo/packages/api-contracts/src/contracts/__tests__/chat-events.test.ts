@@ -429,6 +429,7 @@ describe("ChatEvent revocation rules", () => {
     "control.revoke->input.budget",
     "control.revoke->input.rejected",
     "run.dequeued->run.queued",
+    "usage.recorded->usage.recorded",
   ]);
 
   it("accepts only the registered source and target leaf pairs", () => {
