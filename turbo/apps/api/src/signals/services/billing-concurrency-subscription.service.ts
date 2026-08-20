@@ -2447,7 +2447,25 @@ async function restoreScheduledConcurrencyChange(
   );
   signal.throwIfAborted();
   if (owner === "plan") {
-    return "plan_ending";
+    const planEndsAt = await planConcurrencyEnd(db, args.orgId, schedule);
+    signal.throwIfAborted();
+    if (planEndsAt === null) {
+      return "plan_ending";
+    }
+    await applyConcurrencyToAttachedSchedule(
+      stripe,
+      {
+        subscription: stripeSubscription,
+        scheduleId,
+        schedule,
+        priceId: item.priceId,
+        targetQuantity: args.quantity,
+        prorationBehavior: "none",
+        planEndsAt,
+      },
+      signal,
+    );
+    return "restored";
   }
   if (owner === "shared") {
     await applyConcurrencyToAttachedSchedule(

@@ -502,14 +502,18 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
   });
 
-  it("ends concurrency with a Pro downgrade and keeps it active when the Team plan is restored", async () => {
+  it("restores a pre-boundary concurrency change and the Team plan independently", async () => {
     const subId = `sub-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
     const scheduleId = `sched-concurrency-pro-${randomUUID().slice(0, 8)}`;
     const periodStart = Math.floor((now() - 86_400 * 1000) / 1000);
-    const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
-    const futureEnd = periodEnd + 30 * 86_400;
-    const currentPeriodEnd = new Date(periodEnd * 1000);
+    const concurrencyPeriodEnd = Math.floor(
+      (now() + 30 * 86_400 * 1000) / 1000,
+    );
+    const planPeriodEnd = concurrencyPeriodEnd + 30 * 86_400;
+    const futureEnd = planPeriodEnd + 30 * 86_400;
+    const concurrencyPeriodEndDate = new Date(concurrencyPeriodEnd * 1000);
+    const planPeriodEndDate = new Date(planPeriodEnd * 1000);
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -518,7 +522,7 @@ describe("POST /api/zero/billing/downgrade", () => {
           stripeSubscriptionId: subId,
           subscriptionStatus: "active",
           tier: "team",
-          currentPeriodEnd,
+          currentPeriodEnd: planPeriodEndDate,
         },
         context.signal,
       ),
@@ -532,7 +536,7 @@ describe("POST /api/zero/billing/downgrade", () => {
         {
           slots: 5,
           startsAt: new Date(periodStart * 1000),
-          expiresAt: currentPeriodEnd,
+          expiresAt: concurrencyPeriodEndDate,
         },
       ],
     });
@@ -549,7 +553,7 @@ describe("POST /api/zero/billing/downgrade", () => {
           {
             id: "si_item_team",
             current_period_start: periodStart,
-            current_period_end: periodEnd,
+            current_period_end: planPeriodEnd,
             quantity: 1,
             price: {
               id: TEST_PRICE_TEAM,
@@ -559,7 +563,7 @@ describe("POST /api/zero/billing/downgrade", () => {
           {
             id: "si_item_concurrency",
             current_period_start: periodStart,
-            current_period_end: periodEnd,
+            current_period_end: concurrencyPeriodEnd,
             quantity: 5,
             price: {
               id: TEST_PRICE_CONCURRENCY,
@@ -601,11 +605,14 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
       id: scheduleId,
       end_behavior: "release",
-      current_phase: { start_date: periodStart, end_date: periodEnd },
+      current_phase: {
+        start_date: periodStart,
+        end_date: concurrencyPeriodEnd,
+      },
       phases: [
         {
           start_date: periodStart,
-          end_date: periodEnd,
+          end_date: concurrencyPeriodEnd,
           items: [
             { price: TEST_PRICE_TEAM, quantity: 1 },
             { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
@@ -613,7 +620,16 @@ describe("POST /api/zero/billing/downgrade", () => {
           proration_behavior: "none",
         },
         {
-          start_date: periodEnd,
+          start_date: concurrencyPeriodEnd,
+          end_date: planPeriodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: planPeriodEnd,
           end_date: futureEnd,
           items: [
             { price: TEST_PRICE_TEAM, quantity: 1 },
@@ -637,7 +653,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     expect(response.body).toStrictEqual({
       success: true,
-      effectiveDate: currentPeriodEnd.toISOString(),
+      effectiveDate: planPeriodEndDate.toISOString(),
     });
     expect(
       context.mocks.stripe.subscriptionSchedules.update,
@@ -647,7 +663,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       phases: [
         {
           start_date: periodStart,
-          end_date: periodEnd,
+          end_date: concurrencyPeriodEnd,
           items: [
             { price: TEST_PRICE_TEAM, quantity: 1 },
             { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
@@ -655,7 +671,16 @@ describe("POST /api/zero/billing/downgrade", () => {
           proration_behavior: "none",
         },
         {
-          start_date: periodEnd,
+          start_date: concurrencyPeriodEnd,
+          end_date: planPeriodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: planPeriodEnd,
           end_date: futureEnd,
           items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
           proration_behavior: "none",
@@ -666,16 +691,116 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.scheduledChange).toStrictEqual({
       type: "downgrade",
       targetTier: "pro",
-      effectiveDate: currentPeriodEnd.toISOString(),
+      effectiveDate: planPeriodEndDate.toISOString(),
+    });
+    expect(status.body.concurrencySubscriptions[0]?.scheduledQuantity).toBe(3);
+
+    const attachedSubscription = { ...subscription, schedule: scheduleId };
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(attachedSubscription)
+      .mockResolvedValueOnce({
+        ...attachedSubscription,
+        latest_invoice: null,
+      });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: {
+        start_date: periodStart,
+        end_date: concurrencyPeriodEnd,
+      },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: concurrencyPeriodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: concurrencyPeriodEnd,
+          end_date: planPeriodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: planPeriodEnd,
+          end_date: futureEnd,
+          items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+
+    const concurrencyRestored = await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).restore({
+        params: { subscriptionId: subId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(concurrencyRestored.body).toStrictEqual({ success: true });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      scheduleId,
+      {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: periodStart,
+            end_date: concurrencyPeriodEnd,
+            items: [
+              { price: TEST_PRICE_TEAM, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+          {
+            start_date: concurrencyPeriodEnd,
+            end_date: planPeriodEnd,
+            items: [
+              { price: TEST_PRICE_TEAM, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+          {
+            start_date: planPeriodEnd,
+            end_date: futureEnd,
+            items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
+            proration_behavior: "none",
+          },
+        ],
+      },
+      { idempotencyKey: expect.any(String) },
+    );
+    const concurrencyRestoredStatus = await readBillingStatus();
+    expect(concurrencyRestoredStatus.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: planPeriodEndDate.toISOString(),
     });
     expect(
-      status.body.concurrencySubscriptions[0]?.scheduledQuantity,
+      concurrencyRestoredStatus.body.concurrencySubscriptions[0]
+        ?.scheduledQuantity,
     ).toBeUndefined();
 
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
-      ...subscription,
-      schedule: scheduleId,
-    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      attachedSubscription,
+    );
     context.mocks.stripe.subscriptionSchedules.release.mockClear();
     context.mocks.stripe.subscriptionSchedules.release.mockResolvedValueOnce({
       id: scheduleId,

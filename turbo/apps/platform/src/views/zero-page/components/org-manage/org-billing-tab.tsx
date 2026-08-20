@@ -1607,7 +1607,7 @@ function ConcurrencySubscriptionRow({
       action: requestedAction,
       subscriptionId: subscription.id,
       currentQuantity: subscription.quantity,
-      canReduce: subscription.canReduce === true,
+      canReduce: subscription.canReduce === true && !planEnding,
       // Old API responses omit this during the ~2-day web/app client
       // version-skew window. Remove the legacy Stripe branch with #26152
       // after #26116 has been deployed beyond that window.
@@ -1652,29 +1652,28 @@ function ConcurrencySubscriptionRow({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Button
-          variant={restoreAvailable || planEnding ? "default" : "outline"}
+          variant={restoreAvailable && !planEnding ? "default" : "outline"}
           size="sm"
           className="h-8 text-xs"
           onClick={() => {
-            if (planEnding) {
-              onRestorePlan();
-              return;
-            }
             openConcurrencyAction(action);
           }}
         >
-          {planEnding
+          {restoreAvailable
             ? i18n.t(($) => {
-                return $.billing.concurrency.restoreTeamPlan;
+                return $.billing.concurrency.restoreConcurrency;
               })
-            : restoreAvailable
-              ? i18n.t(($) => {
-                  return $.billing.common.restore;
-                })
-              : i18n.t(($) => {
-                  return $.billing.concurrency.changeButton;
-                })}
+            : i18n.t(($) => {
+                return $.billing.concurrency.changeButton;
+              })}
         </Button>
+        {planEnding && (
+          <Button size="sm" className="h-8 text-xs" onClick={onRestorePlan}>
+            {i18n.t(($) => {
+              return $.billing.concurrency.restoreTeamPlan;
+            })}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -2101,7 +2100,10 @@ function ConcurrencyConfirmDialogContent({
     </>
   );
   const showCancellationEntry =
-    action === "change" && changeMode === "quantity" && !reviewing;
+    action === "change" &&
+    changeMode === "quantity" &&
+    !reviewing &&
+    (dialog.canReduce || !dialog.canChangeInApp);
 
   return (
     <DialogContent className="sm:max-w-[480px]">

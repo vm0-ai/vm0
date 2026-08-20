@@ -3221,7 +3221,8 @@ describe("organization billing settings", () => {
     expect(changeButton).toBeEnabled();
   });
 
-  it("shows only Restore Team plan when the Plan is ending", async () => {
+  it("keeps concurrency increases and Team restore available when the Plan is ending", async () => {
+    let previewedQuantity: number | null = null;
     context.mocks.data.org({
       id: "org_1",
       name: "Ending Team Concurrency Org",
@@ -3249,10 +3250,49 @@ describe("organization billing settings", () => {
         ],
       });
     });
+    context.mocks.api(
+      billingConcurrencySubscriptionContract.previewChange,
+      ({ body, respond }) => {
+        previewedQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 5,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 10_000,
+          nextRecurringAmountCents: 0,
+          currency: "usd",
+        });
+      },
+    );
     await openBillingTab();
 
     expect(screen.getByText("Active until Jun 1, 2026")).toBeInTheDocument();
-    expect(screen.queryByText("Change")).not.toBeInTheDocument();
+    click(buttonByText("Change"));
+    const changeDialog = await screen.findByRole("dialog", {
+      name: "Change concurrency",
+    });
+    const quantityInput = within(changeDialog).getByRole("textbox", {
+      name: "Slots",
+    });
+    expect(
+      within(changeDialog).getByLabelText(
+        "Decrease additional concurrency quantity",
+      ),
+    ).toBeDisabled();
+    expect(
+      within(changeDialog).queryByText("Cancel entire subscription"),
+    ).not.toBeInTheDocument();
+    click(
+      within(changeDialog).getByLabelText(
+        "Increase additional concurrency quantity",
+      ),
+    );
+    expect(quantityInput).toHaveValue("6");
+    click(buttonByText("Review change", changeDialog));
+    await waitFor(() => {
+      expect(previewedQuantity).toBe(6);
+    });
+    click(buttonByText("Cancel", changeDialog));
+
     click(buttonByText("Restore Team plan"));
     const restorePlanDialog = await screen.findByRole("dialog", {
       name: "Restore Team plan?",
@@ -3264,7 +3304,56 @@ describe("organization billing settings", () => {
       "Your paid concurrency (5 slots) will remain active and continue renewing with your plan.",
     );
     click(buttonByText("Cancel", restorePlanDialog));
-    expect(screen.queryByText("Change")).not.toBeInTheDocument();
+    expect(buttonByText("Change")).toBeEnabled();
+  });
+
+  it("shows separate concurrency and Team restore actions", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Ending Team Concurrency Restore Org",
+      role: "admin",
+    });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        cancelAtPeriodEnd: true,
+        scheduledChange: {
+          type: "cancel",
+          targetTier: "pro-suspend",
+          effectiveDate: "2026-07-01T00:00:00Z",
+        },
+        concurrencyLimit: 15,
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_restore_before_plan",
+            quantity: 5,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+            canReduce: true,
+            canChangeInApp: true,
+            scheduledQuantity: 3,
+            scheduledChangeAt: "2026-06-01T00:00:00Z",
+          },
+        ],
+      });
+    });
+
+    await openBillingTab();
+
+    click(buttonByText("Restore concurrency"));
+    const restoreConcurrencyDialog = await screen.findByRole("dialog", {
+      name: "Restore concurrency subscription?",
+    });
+    expect(restoreConcurrencyDialog).toHaveTextContent(
+      "This restores renewal for your paid concurrency (5 slots). Your plan will not change.",
+    );
+    click(buttonByText("Cancel", restoreConcurrencyDialog));
+
+    click(buttonByText("Restore Team plan"));
+    const restoreTeamDialog = await screen.findByRole("dialog", {
+      name: "Restore Team plan?",
+    });
+    expect(restoreTeamDialog).toBeInTheDocument();
   });
 
   it("manages an active concurrency subscription through Change", async () => {
@@ -3396,10 +3485,10 @@ describe("organization billing settings", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.getByText("Active until Jun 1, 2026")).toBeInTheDocument();
-      expect(buttonByText("Restore")).toBeInTheDocument();
+      expect(buttonByText("Restore concurrency")).toBeInTheDocument();
     });
 
-    click(buttonByText("Restore"));
+    click(buttonByText("Restore concurrency"));
     const restoreDialog = await screen.findByRole("dialog", {
       name: "Restore concurrency subscription?",
     });
@@ -3716,10 +3805,10 @@ describe("organization billing settings", () => {
       expect(
         screen.getByText("Changes to 3 slots on Jun 1, 2026"),
       ).toBeInTheDocument();
-      expect(buttonByText("Restore")).toBeEnabled();
+      expect(buttonByText("Restore concurrency")).toBeEnabled();
     });
 
-    click(buttonByText("Restore"));
+    click(buttonByText("Restore concurrency"));
     const restoreDialog = await screen.findByRole("dialog", {
       name: "Restore concurrency subscription?",
     });
