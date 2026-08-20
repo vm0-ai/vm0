@@ -960,6 +960,52 @@ describe("managed SocialKit route", () => {
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
+  it("records usage when the client disconnects after provider success", async () => {
+    const actor = createBddApi(context).user();
+    const controller = new AbortController();
+    const abortError = new Error("client disconnected after provider success");
+    abortError.name = "AbortError";
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      providerHandler("GET", "/youtube/transcript", () => {
+        const payload = new TextEncoder().encode(
+          JSON.stringify(providerResponse()),
+        );
+        let payloadSent = false;
+        const stream = new ReadableStream<Uint8Array>({
+          pull(streamController) {
+            if (!payloadSent) {
+              payloadSent = true;
+              streamController.enqueue(payload);
+              return;
+            }
+            streamController.close();
+            setImmediate(() => {
+              controller.abort(abortError);
+            });
+          },
+        });
+        return new HttpResponse(stream);
+      }),
+    );
+
+    const response = await rawSocialRequest(
+      actor,
+      { method: "GET", path: "/youtube/transcript" },
+      {
+        requestSignal: controller.signal,
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(controller.signal.aborted).toBeTruthy();
+    expect(beforeCredits - (await credits(actor))).toBe(5);
+  });
+
   it("records concurrent successful requests exactly once each", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
