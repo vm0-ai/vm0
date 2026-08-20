@@ -249,7 +249,7 @@ describe("API namespace compatibility", () => {
   // literal list is what fails, so such a migration cannot go green and then
   // 404 in production. Removing the path from the list is the way out, and it
   // has to be deliberate.
-  it("fails when a contract migrates to a neutral path and drops its branded registrations", () => {
+  it("reports the branded registrations a neutral contract migration would drop", () => {
     const canonical = "/api/okou/realtime/token";
     const legacy = "/api/zero/realtime/token";
     const neutral = "/api/realtime/token";
@@ -272,10 +272,10 @@ describe("API namespace compatibility", () => {
     // The mechanism stays internally consistent, which is exactly why it cannot
     // be the thing that catches this.
     expect(
-      migratedRegistrations.some((entry) => {
-        return entry.route.path === neutral;
+      migratedRegistrations.map((entry) => {
+        return entry.route.path;
       }),
-    ).toBe(true);
+    ).toContain(neutral);
     expect(apiNamespaceAliasPaths(neutral)).toStrictEqual([neutral]);
     expect(() => {
       assertUniqueRouteRegistrations(migratedRegistrations);
