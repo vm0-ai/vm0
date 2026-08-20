@@ -1,13 +1,15 @@
+import type {
+  IllustrationTemplateItem,
+  PresentationTemplateItem,
+  VideoTemplateItem,
+} from "@okouai/core";
+import type { TFunction } from "i18next";
+import enUSCommon from "../../i18n/locales/en-US/common.json";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-} from "@okouai/core";
-import type { TFunction } from "i18next";
-import enUSCommon from "../../i18n/locales/en-US/common.json";
+} from "../../lib/platform-template-items.ts";
 
 const PRESENTATION_TITLES = enUSCommon.onboarding.templates.presentation;
 const ILLUSTRATION_TITLES = enUSCommon.onboarding.templates.illustration;
