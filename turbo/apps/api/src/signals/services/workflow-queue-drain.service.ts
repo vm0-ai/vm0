@@ -240,12 +240,6 @@ async function handleWorkflowLaunchResult(
   };
 }
 
-function connectorSourceLaunchArgs(connectorSourceId: string | undefined): {
-  readonly connectorSourceId?: string;
-} {
-  return connectorSourceId ? { connectorSourceId } : {};
-}
-
 function matchingLaunch(
   launch: AutomationEventLaunch | undefined,
   eventId: string,
@@ -363,7 +357,9 @@ export const drainWorkflowQueueForThread$ = command(
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
-          ...connectorSourceLaunchArgs(event.connectorSourceId),
+          ...(event.connectorSourceId
+            ? { connectorSourceId: event.connectorSourceId }
+            : {}),
           appendSystemPrompt: launchMaterial.appendSystemPrompt,
           callbacks: launchMaterial.callbacks,
           autonomyBudget: autonomyBudget.autonomyBudget,
