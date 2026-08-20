@@ -164,6 +164,21 @@ export async function setVm0ManagedCandidateCooldownFixture(
   });
 }
 
+export function registerVm0ManagedCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+): void {
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-candidate-cooldown",
+      selected_model: selectedModel,
+      provider_type: route.provider_type,
+      upstream_model: route.upstream_model,
+    });
+  });
+}
+
 export async function readBrowserScreenshotSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {

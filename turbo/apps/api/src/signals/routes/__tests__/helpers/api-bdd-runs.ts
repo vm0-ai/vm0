@@ -32,6 +32,7 @@ import {
   runnersConnectorRuntimeSyncContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelProviderFailuresContract,
   runnersPollContract,
   type CanonicalStorageManifest,
   type StorageManifest,
@@ -93,6 +94,15 @@ interface RunsListQuery {
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
+type RunnerModelProviderFailureRequest = z.infer<
+  (typeof runnersModelProviderFailuresContract.report)["body"]
+>;
+type RunnerModelProviderFailureInput = Omit<
+  RunnerModelProviderFailureRequest,
+  "runnerIdentity"
+> & {
+  readonly runnerIdentity?: RunnerModelProviderFailureRequest["runnerIdentity"];
+};
 type RunnerConnectorRuntimeSyncRequest = z.input<
   (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
@@ -487,6 +497,53 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async reportRunnerModelProviderFailure(
+      runId: string,
+      body: RunnerModelProviderFailureInput,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRunnerModelProviderFailureAs(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      body: RunnerModelProviderFailureInput,
+    ) {
+      return await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawRunnerModelProviderFailure(
+      validAuth: boolean,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: runnerHeaders(validAuth),
+          params: { runId },
+          body: body as RunnerModelProviderFailureRequest,
+        }),
+        statuses,
+      );
     },
 
     async requestReserveRunnerActiveInputsAs<

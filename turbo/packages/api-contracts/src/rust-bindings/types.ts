@@ -4,6 +4,7 @@ import {
   activeInputDeliveryReserveResponseSchema,
   activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
+  runnersModelProviderFailuresContract,
   storageMountEntrySchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
@@ -68,6 +69,10 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
     rustDoc: ["DTOs for recording active-input acceptance receipts."],
+  },
+  {
+    rustModulePath: ["runners", "runs", "model_provider_failures"],
+    rustDoc: ["DTOs for reporting bounded managed model provider failures."],
   },
   {
     rustModulePath: ["webhooks"],
@@ -181,6 +186,53 @@ export const rustTypeBindings = [
         variants: {
           delivered: ["The delivery receipt was accepted idempotently."],
           rejected: ["The delivery can no longer be accepted."],
+        },
+      },
+    ],
+  },
+  {
+    schema: runnersModelProviderFailuresContract.report.body,
+    rustModulePath: ["runners", "runs", "model_provider_failures"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestRunnerIdentity",
+        rustDoc: ["Official runner process identity that won the run claim."],
+        fields: {
+          runnerId: ["Stable runner process identifier."],
+          heartbeatGeneration: [
+            "Runner heartbeat generation active when the run was claimed.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestFailureKind",
+        rustDoc: [
+          "Bounded provider-independent failure eligible for route cooldown.",
+        ],
+        variants: {
+          authentication: ["Provider authentication failed."],
+          billing: ["Provider billing rejected the request."],
+          rate_limit: ["Provider rate limiting rejected the request."],
+          provider_unavailable: [
+            "The provider route was unavailable or overloaded.",
+          ],
+          timeout: ["The provider inference request timed out."],
+          connection: ["The provider connection failed."],
+        },
+      },
+      {
+        rustTypeName: "Request",
+        rustDoc: [
+          "Request body for reporting a managed model provider failure.",
+        ],
+        fields: {
+          runnerIdentity: ["Winning runner identity for the reported run."],
+          failureKind: ["Normalized eligible provider failure kind."],
+          retryAfterSeconds: [
+            "Optional bounded provider retry delay in seconds.",
+          ],
         },
       },
     ],
