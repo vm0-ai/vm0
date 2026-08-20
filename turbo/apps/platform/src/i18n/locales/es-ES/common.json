@@ -1522,7 +1522,14 @@
       "view": "Ver"
     },
     "agentPage": {
-      "invitePeople": "Invitar a personas",
+      "growth": {
+        "addInSlack": "Añadir {{assistantName}} en Slack",
+        "connect": "Conectar",
+        "credits": "Créditos",
+        "inSlack": "{{assistantName}} está en Slack",
+        "inviteMember": "Invitar a un miembro",
+        "otherChannels": "Teams, Telegram y teléfono"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "¿Listo para construir algo?",

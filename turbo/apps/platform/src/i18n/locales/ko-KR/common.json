@@ -1499,7 +1499,14 @@
       "view": "보기"
     },
     "agentPage": {
-      "invitePeople": "사람 초대",
+      "growth": {
+        "addInSlack": "Slack에 {{assistantName}} 추가",
+        "connect": "연결",
+        "credits": "크레딧",
+        "inSlack": "{{assistantName}}이(가) Slack에 있습니다",
+        "inviteMember": "멤버 초대",
+        "otherChannels": "Teams, Telegram, 전화"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "무언가 만들 준비가 되셨나요?",

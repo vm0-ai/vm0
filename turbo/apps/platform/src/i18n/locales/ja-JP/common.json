@@ -1499,7 +1499,14 @@
       "view": "見る"
     },
     "agentPage": {
-      "invitePeople": "人を招待する",
+      "growth": {
+        "addInSlack": "Slack に {{assistantName}} を追加",
+        "connect": "接続",
+        "credits": "クレジット",
+        "inSlack": "{{assistantName}} は Slack にいます",
+        "inviteMember": "メンバーを招待",
+        "otherChannels": "Teams、Telegram、電話"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "何かを構築する準備はできていますか?",

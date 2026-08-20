@@ -1499,7 +1499,14 @@
       "view": "देखें"
     },
     "agentPage": {
-      "invitePeople": "लोगों को आमंत्रित करें",
+      "growth": {
+        "addInSlack": "Slack में {{assistantName}} जोड़ें",
+        "connect": "कनेक्ट करें",
+        "credits": "क्रेडिट",
+        "inSlack": "{{assistantName}} Slack में है",
+        "inviteMember": "सदस्य को आमंत्रित करें",
+        "otherChannels": "Teams, Telegram और फ़ोन"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "कुछ बनाने के लिए तैयार हैं?",

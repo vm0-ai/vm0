@@ -1499,7 +1499,14 @@
       "view": "Lihat"
     },
     "agentPage": {
-      "invitePeople": "Undang orang",
+      "growth": {
+        "addInSlack": "Tambahkan {{assistantName}} di Slack",
+        "connect": "Hubungkan",
+        "credits": "Kredit",
+        "inSlack": "{{assistantName}} ada di Slack",
+        "inviteMember": "Undang anggota",
+        "otherChannels": "Teams, Telegram, dan telepon"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "Siap membangun sesuatu?",

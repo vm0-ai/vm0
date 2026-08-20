@@ -1499,7 +1499,14 @@
       "view": "View"
     },
     "agentPage": {
-      "invitePeople": "Invite people",
+      "growth": {
+        "addInSlack": "Add {{assistantName}} in Slack",
+        "connect": "Connect",
+        "credits": "Credits",
+        "inSlack": "{{assistantName}} is in Slack",
+        "inviteMember": "Invite member",
+        "otherChannels": "Teams, Telegram and phone"
+      },
       "taglines": {
         "anonymous": {
           "buildSomething": "Ready to build something?",
