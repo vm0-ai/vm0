@@ -1238,21 +1238,6 @@
       "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",
       "compare": "Comparer les forfaits",
       "compareAll": "Comparer tous les forfaits",
-      "comparison": {
-        "addOnConcurrency": "Concurrence supplémentaire",
-        "available": "Disponible",
-        "concurrentRuns": "Exécutions simultanées",
-        "included": "Oui",
-        "ownLlmKeys": "Vos propres clés LLM",
-        "privateAgents": "Agents privés",
-        "sharedAgents": "Agents partagés",
-        "support": "Assistance",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritaire",
-        "unlimited": "Illimités",
-        "voiceInput": "Saisie vocale",
-        "voiceInputValue": "{{requests}}/jour · {{minutes}} min"
-      },
       "currentPlan": "Forfait actuel",
       "custom": {
         "name": "Personnalisé"
@@ -1284,6 +1269,23 @@
         "description": "Accès gratuit hérité pour les espaces de travail existants.",
         "name": "Gratuit"
       },
+      "highlights": {
+        "addOnConcurrency": "Ajoutez de la simultanéité quand vous voulez",
+        "agents": "{{shared}} agents partagés, privés illimités",
+        "automations": "Automatisations planifiées et sur événement",
+        "builtInLeadGeneration": "Génération de leads intégrée",
+        "builtInSeoResearch": "Recherche SEO intégrée",
+        "builtInWebMarketData": "Données web et marché intégrées",
+        "concurrentAgents": "{{slots}} agents en parallèle",
+        "everythingInBuiltForTeams": "Tout {{plan}}, conçu pour les équipes",
+        "included": "Inclus",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Assistance par e-mail",
+        "supportPriority": "Assistance prioritaire",
+        "videoGeneration": "Génération de vidéos et d’avatars",
+        "voiceInput": "Saisie vocale, {{requests}} par jour",
+        "webhookAutomations": "Lancez des agents depuis tout système par webhook"
+      },
       "legacy": "Historique",
       "limitedFree": {
         "name": "Gratuit limité"
@@ -1300,7 +1302,8 @@
       "popular": "Populaire",
       "pricePerMonth": "{{price}}/mois",
       "pro": {
-        "description": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
+        "description": "Du travail quotidien avec des agents, au prix par membre.",
+        "legacyDescription": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
         "name": "Pro"
       },
       "renews": "Renouvelle le {{date}}",
@@ -1308,7 +1311,8 @@
       "sectionTitle": "Forfait",
       "selectedPlan": "le forfait sélectionné",
       "team": {
-        "description": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
+        "description": "Pour une équipe qui fait tourner des agents toute la journée.",
+        "legacyDescription": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",

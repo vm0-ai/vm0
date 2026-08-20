@@ -1217,21 +1217,6 @@
       "changeAnytime": "किसी भी समय अपग्रेड या डाउनग्रेड करें।",
       "compare": "योजनाओं की तुलना करें",
       "compareAll": "सभी योजनाओं की तुलना करें",
-      "comparison": {
-        "addOnConcurrency": "अतिरिक्त समवर्तिता",
-        "available": "उपलब्ध",
-        "concurrentRuns": "समवर्ती रन",
-        "included": "हाँ",
-        "ownLlmKeys": "अपनी LLM कुंजियाँ",
-        "privateAgents": "निजी एजेंट",
-        "sharedAgents": "साझा एजेंट",
-        "support": "सहायता",
-        "supportEmail": "ईमेल",
-        "supportPriority": "प्राथमिकता",
-        "unlimited": "असीमित",
-        "voiceInput": "वॉइस इनपुट",
-        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट"
-      },
       "currentPlan": "वर्तमान योजना",
       "custom": {
         "name": "रिवाज़"
@@ -1263,6 +1248,23 @@
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
+      "highlights": {
+        "addOnConcurrency": "जब चाहें और समवर्तिता जोड़ें",
+        "agents": "{{shared}} साझा एजेंट, असीमित निजी",
+        "automations": "शेड्यूल और इवेंट ऑटोमेशन",
+        "builtInLeadGeneration": "बिल्ट-इन लीड जनरेशन",
+        "builtInSeoResearch": "बिल्ट-इन SEO रिसर्च",
+        "builtInWebMarketData": "बिल्ट-इन वेब और मार्केट डेटा",
+        "concurrentAgents": "{{slots}} एजेंट एक साथ",
+        "everythingInBuiltForTeams": "{{plan}} की हर सुविधा, टीमों के लिए तैयार",
+        "included": "शामिल",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "ईमेल सहायता",
+        "supportPriority": "प्राथमिकता सहायता",
+        "videoGeneration": "वीडियो और अवतार जनरेशन",
+        "voiceInput": "वॉइस इनपुट, {{requests}} रोज़",
+        "webhookAutomations": "वेबहुक से किसी भी सिस्टम से एजेंट चलाएँ"
+      },
       "legacy": "पुराना",
       "limitedFree": {
         "name": "लिमिटेड फ्री"
@@ -1279,7 +1281,8 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
+        "description": "रोज़ का एजेंट काम, हर सदस्य के हिसाब से।",
+        "legacyDescription": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -1287,7 +1290,8 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
+        "description": "उस टीम के लिए जो दिनभर एजेंट चलाती रहती है।",
+        "legacyDescription": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",

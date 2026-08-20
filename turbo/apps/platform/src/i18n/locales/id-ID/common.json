@@ -1217,21 +1217,6 @@
       "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
-      "comparison": {
-        "addOnConcurrency": "Konkurensi tambahan",
-        "available": "Tersedia",
-        "concurrentRuns": "Proses bersamaan",
-        "included": "Ya",
-        "ownLlmKeys": "Kunci LLM Anda sendiri",
-        "privateAgents": "Agen privat",
-        "sharedAgents": "Agen bersama",
-        "support": "Dukungan",
-        "supportEmail": "Email",
-        "supportPriority": "Prioritas",
-        "unlimited": "Tanpa batas",
-        "voiceInput": "Input suara",
-        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt"
-      },
       "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
@@ -1263,6 +1248,23 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "highlights": {
+        "addOnConcurrency": "Tambah konkurensi kapan saja",
+        "agents": "{{shared}} agen bersama, privat tanpa batas",
+        "automations": "Otomatisasi terjadwal dan berbasis event",
+        "builtInLeadGeneration": "Perolehan lead bawaan",
+        "builtInSeoResearch": "Riset SEO bawaan",
+        "builtInWebMarketData": "Data web dan pasar bawaan",
+        "concurrentAgents": "{{slots}} agen sekaligus",
+        "everythingInBuiltForTeams": "Semua di {{plan}}, dibuat untuk tim",
+        "included": "Termasuk",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Dukungan email",
+        "supportPriority": "Dukungan prioritas",
+        "videoGeneration": "Pembuatan video dan avatar",
+        "voiceInput": "Input suara, {{requests}} per hari",
+        "webhookAutomations": "Picu agen dari sistem apa pun via webhook"
+      },
       "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
@@ -1279,7 +1281,8 @@
       "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
-        "description": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
+        "description": "Kerja agen harian, dihitung per anggota.",
+        "legacyDescription": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -1287,7 +1290,8 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
+        "description": "Untuk tim yang menjalankan agen sepanjang hari.",
+        "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",

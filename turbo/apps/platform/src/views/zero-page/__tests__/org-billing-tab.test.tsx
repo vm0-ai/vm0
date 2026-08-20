@@ -465,41 +465,60 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
 
     expect(
-      within(proPlan).getByText(
-        "More credits and concurrency for teams running AI agents every day.",
-      ),
+      within(proPlan).getByText("Everyday agent work, priced per member."),
     ).toBeInTheDocument();
     expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
       within(teamPlan).getByText(
-        "Room for a team of AI employees: high credit volume and 10 agents running at once.",
+        "For a team that keeps agents running all day.",
       ),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
 
-    // Both columns carry the same rows so the plans can be read across.
-    for (const plan of [proPlan, teamPlan]) {
-      for (const label of [
-        "Concurrent runs",
-        "Add-on concurrency",
-        "Shared agents",
-        "Private agents",
-        "Voice input",
-        "Your own LLM keys",
-        "Support",
-      ]) {
-        expect(within(plan).getByText(label)).toBeInTheDocument();
-      }
+    // Pro carries the whole list.
+    expect(within(proPlan).getByText("Included")).toBeInTheDocument();
+    for (const item of [
+      "2 agents running at once",
+      "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+      "Bring your own LLM keys",
+      "7 shared agents, unlimited private",
+      "Scheduled and event automations",
+      "Video and avatar generation",
+      "Voice input, 300 a day",
+      "Email support",
+    ]) {
+      expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
-    expect(proPlan).toHaveTextContent("Concurrent runs2");
-    expect(proPlan).toHaveTextContent("Add-on concurrency—");
-    expect(proPlan).toHaveTextContent("Voice input300/day · 200 min");
-    expect(proPlan).toHaveTextContent("SupportEmail");
-    expect(teamPlan).toHaveTextContent("Concurrent runs10");
-    expect(teamPlan).toHaveTextContent("Add-on concurrencyAvailable");
-    expect(teamPlan).toHaveTextContent("Voice input500/day · 500 min");
-    expect(teamPlan).toHaveTextContent("SupportPriority");
+
+    /* Team leads with the scale upgrades, then makes the built-in APIs concrete
+       enough to show what a team can put those ten concurrent runs to work on. */
+    expect(
+      within(teamPlan).getByText("Everything in Pro, built for teams"),
+    ).toBeInTheDocument();
+    for (const item of [
+      "10 agents running at once",
+      "Add more concurrency any time",
+      "Trigger agents from any system via webhook",
+      "Built-in SEO research",
+      "Built-in lead generation",
+      "Built-in web and market data",
+      "Voice input, 500 a day",
+      "Priority support",
+    ]) {
+      expect(within(teamPlan).getByText(item)).toBeInTheDocument();
+    }
+    for (const item of [
+      "2 agents running at once",
+      "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+      "Bring your own LLM keys",
+      "7 shared agents, unlimited private",
+      "Scheduled and event automations",
+      "Video and avatar generation",
+      "Email support",
+    ]) {
+      expect(within(teamPlan).queryByText(item)).toBeNull();
+    }
 
     click(buttonByText("Start with Team", teamPlan));
 
@@ -2924,6 +2943,14 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
+
+    // A legacy plan pools its credits in the organization, so its card keeps
+    // the established legacy description instead of the per-member plan copy.
+    expect(
+      screen.getByText(
+        "More credits and concurrency for teams running AI agents every day.",
+      ),
+    ).toBeInTheDocument();
 
     click(screen.getByText("Start with Team"));
 

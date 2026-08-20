@@ -1238,21 +1238,6 @@
       "changeAnytime": "Faça upgrade ou downgrade a qualquer momento.",
       "compare": "Comparar planos",
       "compareAll": "Comparar todos os planos",
-      "comparison": {
-        "addOnConcurrency": "Concorrência adicional",
-        "available": "Disponível",
-        "concurrentRuns": "Execuções simultâneas",
-        "included": "Sim",
-        "ownLlmKeys": "Suas próprias chaves LLM",
-        "privateAgents": "Agentes privados",
-        "sharedAgents": "Agentes compartilhados",
-        "support": "Suporte",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritário",
-        "unlimited": "Ilimitados",
-        "voiceInput": "Entrada de voz",
-        "voiceInputValue": "{{requests}}/dia · {{minutes}} min"
-      },
       "currentPlan": "Plano atual",
       "custom": {
         "name": "Personalizado"
@@ -1284,6 +1269,23 @@
         "description": "Acesso gratuito legado para workspaces existentes.",
         "name": "Grátis"
       },
+      "highlights": {
+        "addOnConcurrency": "Adicione concorrência quando quiser",
+        "agents": "{{shared}} agentes compartilhados, privados ilimitados",
+        "automations": "Automações agendadas e por eventos",
+        "builtInLeadGeneration": "Geração de leads integrada",
+        "builtInSeoResearch": "Pesquisa de SEO integrada",
+        "builtInWebMarketData": "Dados web e de mercado integrados",
+        "concurrentAgents": "{{slots}} agentes ao mesmo tempo",
+        "everythingInBuiltForTeams": "Tudo do {{plan}}, feito para equipes",
+        "included": "Incluído",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Suporte por e-mail",
+        "supportPriority": "Suporte prioritário",
+        "videoGeneration": "Geração de vídeo e avatares",
+        "voiceInput": "Entrada de voz, {{requests}} por dia",
+        "webhookAutomations": "Acione agentes de qualquer sistema via webhook"
+      },
       "legacy": "Legado",
       "limitedFree": {
         "name": "Grátis limitado"
@@ -1300,7 +1302,8 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/mês",
       "pro": {
-        "description": "Mais créditos e simultaneidade para equipes que executam agentes de IA todos os dias.",
+        "description": "Trabalho diário com agentes, cobrado por membro.",
+        "legacyDescription": "Mais créditos e simultaneidade para equipes que executam agentes de IA todos os dias.",
         "name": "Pro"
       },
       "renews": "Renova em {{date}}",
@@ -1308,7 +1311,8 @@
       "sectionTitle": "Plano",
       "selectedPlan": "o plano selecionado",
       "team": {
-        "description": "Espaço para uma equipe de funcionários de IA: alto volume de créditos e 10 agentes executando ao mesmo tempo.",
+        "description": "Para um time que mantém agentes rodando o dia todo.",
+        "legacyDescription": "Espaço para uma equipe de funcionários de IA: alto volume de créditos e 10 agentes executando ao mesmo tempo.",
         "name": "Team"
       },
       "upgrade": "Fazer upgrade",

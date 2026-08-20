@@ -1217,21 +1217,6 @@
       "changeAnytime": "Upgrade or downgrade anytime.",
       "compare": "Compare plans",
       "compareAll": "Compare all plans",
-      "comparison": {
-        "addOnConcurrency": "Add-on concurrency",
-        "available": "Available",
-        "concurrentRuns": "Concurrent runs",
-        "included": "Yes",
-        "ownLlmKeys": "Your own LLM keys",
-        "privateAgents": "Private agents",
-        "sharedAgents": "Shared agents",
-        "support": "Support",
-        "supportEmail": "Email",
-        "supportPriority": "Priority",
-        "unlimited": "Unlimited",
-        "voiceInput": "Voice input",
-        "voiceInputValue": "{{requests}}/day · {{minutes}} min"
-      },
       "currentPlan": "Current plan",
       "custom": {
         "name": "Custom"
@@ -1263,6 +1248,23 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "highlights": {
+        "addOnConcurrency": "Add more concurrency any time",
+        "agents": "{{shared}} shared agents, unlimited private",
+        "automations": "Scheduled and event automations",
+        "builtInLeadGeneration": "Built-in lead generation",
+        "builtInSeoResearch": "Built-in SEO research",
+        "builtInWebMarketData": "Built-in web and market data",
+        "concurrentAgents": "{{slots}} agents running at once",
+        "everythingInBuiltForTeams": "Everything in {{plan}}, built for teams",
+        "included": "Included",
+        "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "supportEmail": "Email support",
+        "supportPriority": "Priority support",
+        "videoGeneration": "Video and avatar generation",
+        "voiceInput": "Voice input, {{requests}} a day",
+        "webhookAutomations": "Trigger agents from any system via webhook"
+      },
       "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
@@ -1279,7 +1281,8 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
-        "description": "More credits and concurrency for teams running AI agents every day.",
+        "description": "Everyday agent work, priced per member.",
+        "legacyDescription": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -1287,7 +1290,8 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
+        "description": "For a team that keeps agents running all day.",
+        "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",

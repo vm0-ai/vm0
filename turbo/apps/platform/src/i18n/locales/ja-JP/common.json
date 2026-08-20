@@ -1217,21 +1217,6 @@
       "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
       "compare": "プランを比較する",
       "compareAll": "すべてのプランを比較する",
-      "comparison": {
-        "addOnConcurrency": "同時実行の追加購入",
-        "available": "購入可能",
-        "concurrentRuns": "同時実行数",
-        "included": "対応",
-        "ownLlmKeys": "独自の LLM キー",
-        "privateAgents": "プライベートエージェント",
-        "sharedAgents": "共有エージェント",
-        "support": "サポート",
-        "supportEmail": "メール",
-        "supportPriority": "優先",
-        "unlimited": "無制限",
-        "voiceInput": "音声入力",
-        "voiceInputValue": "{{requests}} 回/日 · {{minutes}} 分"
-      },
       "currentPlan": "現在の計画",
       "custom": {
         "name": "カスタム"
@@ -1263,6 +1248,23 @@
         "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
+      "highlights": {
+        "addOnConcurrency": "同時実行はいつでも追加できます",
+        "agents": "共有エージェント {{shared}}、プライベート無制限",
+        "automations": "スケジュールとイベントの自動化",
+        "builtInLeadGeneration": "組み込みのリード獲得",
+        "builtInSeoResearch": "組み込みの SEO リサーチ",
+        "builtInWebMarketData": "組み込みのウェブ・市場データ",
+        "concurrentAgents": "{{slots}} 個のエージェントを同時実行",
+        "everythingInBuiltForTeams": "{{plan}} の全機能をチーム向けに",
+        "included": "含まれるもの",
+        "models": "Claude Opus 5、GPT 5.6 Sol、DeepSeek V4 Pro",
+        "supportEmail": "メールサポート",
+        "supportPriority": "優先サポート",
+        "videoGeneration": "動画とアバターの生成",
+        "voiceInput": "音声入力 1 日 {{requests}} 回",
+        "webhookAutomations": "Webhook であらゆるシステムからエージェントを起動"
+      },
       "legacy": "旧プラン",
       "limitedFree": {
         "name": "限定無料"
@@ -1279,7 +1281,8 @@
       "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
-        "description": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
+        "description": "日々のエージェント業務を、メンバー単位の料金で。",
+        "legacyDescription": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -1287,7 +1290,8 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
+        "description": "エージェントを一日中動かし続けるチームに。",
+        "legacyDescription": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",
