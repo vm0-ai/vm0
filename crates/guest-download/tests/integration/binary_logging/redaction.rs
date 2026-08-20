@@ -1,4 +1,5 @@
 use super::{BinaryLoggingFixture, assert_download_total_success_present};
+use crate::process;
 use crate::support::{
     assert_does_not_contain_any, create_tar_gz, read_http_request_path, write_manifest,
 };
@@ -484,16 +485,7 @@ fn binary_timeout_terminates_child_and_connection_responder() {
     assert!(message.contains("stderr="));
     assert!(message.contains("[INFO] [sandbox:download] Downloading 1 items"));
     assert_eq!(accepted, 1);
-    let child_id = libc::pid_t::try_from(child_id).unwrap();
-    let mut status = 0;
-    // SAFETY: `child_id` came from the directly owned child, and the lifecycle
-    // helper returned only after reaping it. WNOHANG verifies no status remains.
-    let result = unsafe { libc::waitpid(child_id, &mut status, libc::WNOHANG) };
-    assert_eq!(result, -1);
-    assert_eq!(
-        io::Error::last_os_error().raw_os_error(),
-        Some(libc::ECHILD)
-    );
+    process::verify_child_reaped(child_id).unwrap();
 }
 
 #[test]

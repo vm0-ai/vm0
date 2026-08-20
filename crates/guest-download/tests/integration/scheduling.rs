@@ -11,11 +11,13 @@
 //! failure detectors; they are not sleeps used to make scheduling happen.
 
 use crate::binary_logging::BinaryLoggingFixture;
+#[cfg(unix)]
+use crate::process;
+use crate::process::ChildExecution;
 use crate::support::{create_tar_gz, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
 use std::path::Path;
-use std::process::{Child, ExitStatus};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -23,7 +25,7 @@ const REQUEST_START_TIMEOUT: Duration = Duration::from_secs(5);
 const BLOCKED_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const NEGATIVE_START_TIMEOUT: Duration = Duration::from_millis(300);
 const COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
-const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+const RESPONDER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 fn gzip_response(body: Vec<u8>) -> HttpMockResponse {
@@ -442,11 +444,16 @@ fn create_numbered_storages(
 }
 
 struct GuestDownloadExecution {
-    child: Child,
+    child: ChildExecution,
     _runtime: BinaryLoggingFixture,
 }
 
 impl GuestDownloadExecution {
+    #[cfg(unix)]
+    fn id(&self) -> std::io::Result<u32> {
+        self.child.id()
+    }
+
     fn wait_for_completion(
         mut self,
         scenario: &str,
@@ -454,90 +461,24 @@ impl GuestDownloadExecution {
         release_gate: &ReleaseGate,
         observations: &RequestObservations,
     ) -> Result<(), String> {
-        let deadline = Instant::now() + timeout;
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(status)) if status.success() => return Ok(()),
-                Ok(Some(status)) => {
-                    return Err(format!(
-                        "{scenario} guest-download exited with {status}; {}",
-                        observations.snapshot().describe()
-                    ));
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    let snapshot = observations.snapshot();
-                    let cleanup = self.terminate_and_cleanup(release_gate, observations);
-                    return Err(format!(
-                        "{scenario} failed to observe guest-download completion: {error}; {}; \
-                         cleanup: {cleanup}",
-                        snapshot.describe()
-                    ));
-                }
+        match self.child.wait_with_timeout(timeout) {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!(
+                "{scenario} guest-download exited with {status}; {}",
+                observations.snapshot().describe()
+            )),
+            Err(error) => {
+                let snapshot = observations.snapshot();
+                release_gate.close();
+                let responders = match observations.wait_until_idle(RESPONDER_CLEANUP_TIMEOUT) {
+                    Ok(()) => "idle".to_owned(),
+                    Err(error) => format!("failed: {error}"),
+                };
+                Err(format!(
+                    "{scenario} {error}; {}; responders={responders}",
+                    snapshot.describe()
+                ))
             }
-
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
-        }
-
-        let snapshot = observations.snapshot();
-        let cleanup = self.terminate_and_cleanup(release_gate, observations);
-        Err(format!(
-            "{scenario} guest-download timed out after {timeout:?}; {}; cleanup: {cleanup}",
-            snapshot.describe()
-        ))
-    }
-
-    fn terminate_and_cleanup(
-        self,
-        release_gate: &ReleaseGate,
-        observations: &RequestObservations,
-    ) -> String {
-        let Self {
-            mut child,
-            _runtime,
-        } = self;
-        let kill = match child.kill() {
-            Ok(()) => "signal sent".to_owned(),
-            Err(error) => format!("failed: {error}"),
-        };
-        release_gate.close();
-        let reap = match reap_child_with_timeout(child, CLEANUP_TIMEOUT) {
-            Ok(status) => format!("completed with {status}"),
-            Err(error) => format!("failed: {error}"),
-        };
-        let responders = match observations.wait_until_idle(CLEANUP_TIMEOUT) {
-            Ok(()) => "idle".to_owned(),
-            Err(error) => format!("failed: {error}"),
-        };
-
-        format!("kill={kill}, reap={reap}, responders={responders}")
-    }
-}
-
-fn reap_child_with_timeout(mut child: Child, timeout: Duration) -> Result<ExitStatus, String> {
-    let (status_tx, status_rx) = mpsc::channel();
-    let reaper = std::thread::spawn(move || {
-        let _ = status_tx.send(child.wait());
-    });
-
-    match status_rx.recv_timeout(timeout) {
-        Ok(status) => {
-            reaper
-                .join()
-                .map_err(|_| "child reaper panicked".to_owned())?;
-            status.map_err(|error| format!("wait failed: {error}"))
-        }
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            drop(reaper);
-            Err(format!("child was not reaped within {timeout:?}"))
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            drop(reaper);
-            Err("child reaper exited without a status".to_owned())
         }
     }
 }
@@ -554,7 +495,7 @@ fn spawn_guest_download(
     let manifest = write_manifest(dir, &storage_refs, None)?;
     let manifest_path = path_to_string(&manifest)?;
     let runtime = BinaryLoggingFixture::new(scenario)?;
-    let child = runtime.command().arg(manifest_path).spawn()?;
+    let child = ChildExecution::spawn(runtime.command().arg(manifest_path))?;
     Ok(GuestDownloadExecution {
         child,
         _runtime: runtime,
@@ -611,6 +552,53 @@ fn completion_timeout_terminates_child_and_releases_responder() {
     assert!(error.contains("kill=signal sent"));
     assert!(error.contains("reap=completed with"));
     assert!(error.contains("responders=idle"));
+    assert_eq!(observations.active(), 0);
+    blocked_mock.assert();
+}
+
+#[cfg(unix)]
+#[test]
+fn dropping_unconsumed_execution_terminates_child_and_releases_responder() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("blocked");
+    let body = create_tar_gz(&[("state.json", b"blocked")]).unwrap();
+    let (started_tx, started_rx) = mpsc::channel();
+    let release = ReleaseGate::new();
+    let observations = RequestObservations::new();
+    let blocked_mock = serve_blocked_archive(
+        &server,
+        "/blocked.tar.gz",
+        body,
+        move || {
+            started_tx
+                .send(())
+                .map_err(|e| format!("failed to send blocked start event: {e}"))
+        },
+        release.waiter(),
+        "blocked request".to_owned(),
+        observations.clone(),
+    );
+    let storages = vec![(
+        path_to_string(&mount).unwrap(),
+        server.url("/blocked.tar.gz"),
+    )];
+    let execution = spawn_guest_download(
+        stringify!(dropping_unconsumed_execution_terminates_child_and_releases_responder),
+        &dir,
+        &storages,
+    )
+    .unwrap();
+    let child_id = execution.id().unwrap();
+
+    started_rx.recv_timeout(REQUEST_START_TIMEOUT).unwrap();
+    drop(execution);
+    release.close();
+    observations
+        .wait_until_idle(RESPONDER_CLEANUP_TIMEOUT)
+        .unwrap();
+
+    process::verify_child_reaped(child_id).unwrap();
     assert_eq!(observations.active(), 0);
     blocked_mock.assert();
 }
