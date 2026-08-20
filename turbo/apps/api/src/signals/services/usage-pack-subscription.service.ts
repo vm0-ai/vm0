@@ -215,6 +215,7 @@ export interface UsagePackSubscriptionInput {
 interface UsagePackInvoiceLineInput {
   readonly id?: string;
   readonly amount?: number | null;
+  readonly discount_amounts?: readonly { readonly amount: number }[] | null;
   readonly subtotal?: number | null;
   readonly quantity?: number | null;
   readonly price?: { readonly id: string } | null;
@@ -224,6 +225,12 @@ interface UsagePackInvoiceLineInput {
     } | null;
   } | null;
   readonly proration?: boolean;
+  readonly taxes?:
+    | readonly {
+        readonly amount: number;
+        readonly tax_behavior: "exclusive" | "inclusive";
+      }[]
+    | null;
   readonly period: { readonly start?: number; readonly end: number };
   readonly parent: {
     readonly type: "subscription_item_details" | "invoice_item_details";
@@ -2614,6 +2621,28 @@ function invoiceLineAmount(line: UsagePackInvoiceLineInput): number | null {
     : null;
 }
 
+function invoiceLineRefundableAmount(
+  line: UsagePackInvoiceLineInput,
+): number | null {
+  const amount = line.amount ?? line.subtotal;
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount)) {
+    return null;
+  }
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
+  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
+    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
+  }, 0);
+  const refundableAmount = amount - discountAmount + exclusiveTax;
+  return Number.isSafeInteger(refundableAmount) && refundableAmount >= 0
+    ? refundableAmount
+    : null;
+}
+
 function invoiceHasUsagePackLine(invoice: UsagePackInvoiceInput): boolean {
   return (invoice.lines?.data ?? []).some((line) => {
     const priceId = invoiceLinePriceId(line);
@@ -2706,6 +2735,12 @@ function prepareUsagePackPriceCredits(
       `Invoice ${invoice.id} has an invalid amount for ${priceId}`,
     );
   }
+  const sourceAmountCents = invoiceLineRefundableAmount(line);
+  if (sourceAmountCents === null) {
+    throw new Error(
+      `Invoice ${invoice.id} has an invalid refundable amount for ${priceId}`,
+    );
+  }
   const fullAmount = catalogItem.unitAmountCents * subscriptionQuantity;
   if (!Number.isSafeInteger(fullAmount) || amount > fullAmount) {
     throw new Error(
@@ -2743,7 +2778,7 @@ function prepareUsagePackPriceCredits(
     purchasedCredits: Math.floor(catalogItem.purchasedCredits * fraction),
     bonusCredits: Math.floor(catalogItem.bonusCredits * fraction),
     stripeInvoiceLineId: line.id ?? null,
-    sourceAmountCents: amount,
+    sourceAmountCents,
     quantity: subscriptionQuantity,
   };
 }

@@ -103,7 +103,6 @@ export type UsagePackInvitationPurchaseConflictReason =
   | "billing_period_ending"
   | "billing_state_changed"
   | "invitee_unavailable"
-  | "no_amount_due"
   | "no_credits"
   | "payment_method_changed"
   | "purchase_in_progress"
@@ -141,7 +140,7 @@ interface PendingInvitationPurchaseArgs {
 interface SuccessfulPaymentArgs {
   readonly purchaseId: string;
   readonly checkoutSessionId?: string;
-  readonly paymentIntentId: string;
+  readonly paymentIntentId: string | null;
   readonly customerId: string;
   readonly amountPaidCents: number;
   readonly currency: string;
@@ -545,17 +544,6 @@ async function prepareNewUsagePackInvitationPurchase(
     },
     signal,
   );
-  if (preview.amountCents <= 0) {
-    return {
-      status: "conflict",
-      reason: "no_amount_due",
-      diagnostics: {
-        amountCents: preview.amountCents,
-        currency: preview.currency,
-        currentPeriodEnd: preview.currentPeriodEnd.toISOString(),
-      },
-    };
-  }
   const stripe = getStripeClient();
   const [price, creditGrant] = await Promise.all([
     stripe.prices.retrieve(stripePriceId, { expand: ["product"] }),
@@ -763,8 +751,9 @@ function validateSuccessfulPayment(
     throw new Error("Stripe invitation payment does not match local billing");
   }
   if (
-    purchase.stripePaymentIntentId &&
-    purchase.stripePaymentIntentId !== args.paymentIntentId
+    (args.amountPaidCents > 0 && !args.paymentIntentId) ||
+    (purchase.stripePaymentIntentId &&
+      purchase.stripePaymentIntentId !== args.paymentIntentId)
   ) {
     throw new Error("Invitation purchase has a different PaymentIntent");
   }
@@ -1389,7 +1378,7 @@ export async function handleUsagePackInvitationInvoicePaid(
   }
   const customerId = stripeObjectId(invoice.customer);
   const payment = paidInvoicePaymentIntent(invoice);
-  if (!customerId || !payment) {
+  if (!customerId || (!payment && invoice.amount_due !== 0)) {
     throw new Error("Paid invitation invoice is incomplete");
   }
   const paidAtSeconds = invoice.status_transitions?.paid_at;
@@ -1399,9 +1388,9 @@ export async function handleUsagePackInvitationInvoicePaid(
       : nowDate();
   const purchase = await recordSuccessfulPayment(db, {
     purchaseId,
-    paymentIntentId: payment.id,
+    paymentIntentId: payment?.id ?? null,
     customerId,
-    amountPaidCents: payment.amountPaidCents,
+    amountPaidCents: payment?.amountPaidCents ?? 0,
     currency: invoice.currency,
     paidAt,
   });
@@ -2011,7 +2000,10 @@ async function activateAcceptedPurchase(
       signal,
     );
     if (current.purchasedCredits > 0) {
-      if (!current.amountPaidCents || !current.stripePaymentIntentId) {
+      if (
+        current.amountPaidCents === null ||
+        (current.amountPaidCents > 0 && !current.stripePaymentIntentId)
+      ) {
         throw new Error("Invitation acceptance has no refundable payment");
       }
       await createUsagePackCreditGrant(tx, {
@@ -2021,11 +2013,15 @@ async function activateAcceptedPurchase(
         idempotencyKey: `usage-pack-invitation:${current.id}:purchased`,
         amount: current.purchasedCredits,
         expiresAt: current.currentPeriodEnd,
-        refundSource: {
-          type: "payment_intent",
-          paymentIntentId: current.stripePaymentIntentId,
-          amountCents: current.amountPaidCents,
-        },
+        ...(current.amountPaidCents > 0 && current.stripePaymentIntentId
+          ? {
+              refundSource: {
+                type: "payment_intent" as const,
+                paymentIntentId: current.stripePaymentIntentId,
+                amountCents: current.amountPaidCents,
+              },
+            }
+          : {}),
       });
     }
     if (current.bonusCredits > 0) {

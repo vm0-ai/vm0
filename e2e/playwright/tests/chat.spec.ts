@@ -12,6 +12,16 @@ const cardSpacingThreadId = "b0000000-0000-4000-a000-000000000737";
 const forwardLayoutThreadId = "b0000000-0000-4000-a000-000000000738";
 const forwardLayoutThreadTitle =
   "Forward composer layout with a very long thread title";
+const modelPickerBoundaryModels = [
+  { model: "claude-fable-5", label: "Claude Fable 5" },
+  { model: "claude-opus-5", label: "Claude Opus 5" },
+  { model: "claude-opus-4-8", label: "Claude Opus 4.8" },
+  { model: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  { model: "gpt-5.6-sol", label: "GPT 5.6 Sol" },
+  { model: "gpt-5.6-luna", label: "GPT 5.6 Luna" },
+  { model: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { model: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+] as const;
 // Card slots carry the same block margins as the paragraphs around them, and
 // adjacent margins collapse into one gap.
 const cardSlotGapPx = 8;
@@ -30,6 +40,13 @@ interface ConnectorCatalogStatusItem {
 interface ConnectorCatalogStatusResponse {
   readonly connectors: readonly ConnectorCatalogStatusItem[];
   readonly [key: string]: unknown;
+}
+
+interface ModelPickerGeometry {
+  readonly clientHeight: number;
+  readonly optionCount: number;
+  readonly rowStep: number;
+  readonly scrollHeight: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -201,7 +218,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 
 async function enableFeatureSwitch(
   page: Page,
-  key: "chatForward" | "responsiveFollowupCards",
+  key: "chatForward" | "imageModelSelection" | "responsiveFollowupCards",
 ): Promise<void> {
   await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
@@ -230,6 +247,24 @@ async function enableChatForward(page: Page): Promise<void> {
   await enableFeatureSwitch(page, "chatForward");
 }
 
+async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
+  await page.route("**/api/okou/billing/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Billing status returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        supportByok: true,
+        restrictedVm0Models: false,
+      },
+    });
+  });
+}
+
 async function mockSelectedFastModel(page: Page): Promise<void> {
   const policyId = "00000000-0000-4000-a000-000000000736";
   await page.route("**/api/okou/feature-switches", async (route) => {
@@ -249,21 +284,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/billing/status", async (route) => {
-    const response = await route.fetch();
-    const body: unknown = await response.json();
-    if (!isRecord(body)) {
-      throw new Error("Billing status returned an unexpected response");
-    }
-    await route.fulfill({
-      response,
-      json: {
-        ...body,
-        supportByok: true,
-        restrictedVm0Models: false,
-      },
-    });
-  });
+  await mockUnrestrictedModelBilling(page);
   await page.route("**/api/okou/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
@@ -319,6 +340,68 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
+}
+
+async function mockModelPickerBoundary(page: Page): Promise<{
+  showEightModels(): void;
+}> {
+  const policyId = (index: number) => {
+    return `00000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`;
+  };
+  let visibleModelCount = 7;
+
+  await enableFeatureSwitch(page, "imageModelSelection");
+  await mockUnrestrictedModelBilling(page);
+  await page.route("**/api/okou/model-policies", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const policies = modelPickerBoundaryModels
+      .slice(0, visibleModelCount)
+      .map(({ model, label }, index) => {
+        return {
+          id: policyId(index),
+          model,
+          modelLabel: label,
+          isDefault: index === 0,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+          modelProviderSurfaceId: null,
+          routeStatus: "valid",
+          routeStatusReason: null,
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        };
+      });
+    await route.fulfill({
+      json: {
+        policies,
+        workspaceDefaultModel: modelPickerBoundaryModels[0].model,
+        workspaceDefaultPolicyId: policyId(0),
+      },
+    });
+  });
+  await page.route("**/api/okou/user-model-preference", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        selectedModel: null,
+        serviceTier: null,
+        updatedAt: null,
+      },
+    });
+  });
+
+  return {
+    showEightModels: () => {
+      visibleModelCount = 8;
+    },
+  };
 }
 
 interface MockChatThreadOptions {
@@ -922,6 +1005,45 @@ async function expectFastActionRightmost(page: Page): Promise<void> {
   ).toBeLessThan(tolerance);
 }
 
+async function openModelPickerAndReadGeometry(
+  page: Page,
+): Promise<ModelPickerGeometry> {
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const listbox = page.getByRole("listbox");
+  await expect(listbox).toBeVisible();
+  return listbox.evaluate((element) => {
+    let scrollContainer = element.parentElement;
+    while (scrollContainer) {
+      const overflowY = getComputedStyle(scrollContainer).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") {
+        break;
+      }
+      scrollContainer = scrollContainer.parentElement;
+    }
+    if (!scrollContainer) {
+      throw new Error("Model picker scroll container unavailable");
+    }
+    const options = Array.from(
+      element.querySelectorAll<HTMLElement>('[role="option"]'),
+    ).filter((option) => {
+      return option.getBoundingClientRect().height > 0;
+    });
+    const first = options[0]?.getBoundingClientRect();
+    const second = options[1]?.getBoundingClientRect();
+    if (!first || !second) {
+      throw new Error("Model picker row geometry unavailable");
+    }
+    return {
+      clientHeight: scrollContainer.clientHeight,
+      optionCount: options.length,
+      rowStep: second.top - first.top,
+      scrollHeight: scrollContainer.scrollHeight,
+    };
+  });
+}
+
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   await expect(inner).toBeVisible();
   await expect(outer).toBeVisible();
@@ -1113,6 +1235,36 @@ test("Fast action stays rightmost across selection states and previews deactivat
     .getByRole("combobox", { name: "GPT 5.6 Sol", exact: true })
     .click();
   await expectFastActionRightmost(page);
+});
+
+test("model picker fits seven rows and scrolls one row for eight", async ({
+  page,
+}) => {
+  const boundary = await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const sevenModels = await openModelPickerAndReadGeometry(page);
+  expect(sevenModels).toStrictEqual({
+    clientHeight: 292,
+    optionCount: 7,
+    rowStep: 36,
+    scrollHeight: 292,
+  });
+
+  boundary.showEightModels();
+  await page.reload();
+
+  const eightModels = await openModelPickerAndReadGeometry(page);
+  expect(eightModels).toStrictEqual({
+    clientHeight: 292,
+    optionCount: 8,
+    rowStep: 36,
+    scrollHeight: 328,
+  });
+  expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
+    eightModels.rowStep,
+  );
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({

@@ -15,7 +15,7 @@ import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from email.message import Message
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, TypeGuard
 
 import h11
 import mitmproxy_rs
@@ -751,17 +751,23 @@ def _parse_required_string_list(decoded: dict[object, object], field_name: str) 
     return list(value)
 
 
+def is_supported_expiry(value: object) -> TypeGuard[int | float]:
+    """Return whether an expiry is a finite number supported by the runtime."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _parse_expires_at(decoded: dict[object, object]) -> int | float | None:
     if "expiresAt" not in decoded:
         raise _malformed_firewall_auth_success("expiresAt is required")
     value = decoded["expiresAt"]
     if value is None:
         return None
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int | float)
-        or (isinstance(value, float) and not math.isfinite(value))
-    ):
+    if not is_supported_expiry(value):
         raise _malformed_firewall_auth_success("expiresAt must be a finite number or null")
     return value
 

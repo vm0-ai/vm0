@@ -197,6 +197,7 @@ interface UsagePackChangeSubscriptionInput {
 interface UsagePackChangeInvoiceLineInput {
   readonly id?: string;
   readonly amount?: number | null;
+  readonly discount_amounts?: readonly { readonly amount: number }[] | null;
   readonly subtotal?: number | null;
   readonly quantity?: number | null;
   readonly price?: { readonly id: string } | null;
@@ -206,6 +207,12 @@ interface UsagePackChangeInvoiceLineInput {
     } | null;
   } | null;
   readonly proration?: boolean;
+  readonly taxes?:
+    | readonly {
+        readonly amount: number;
+        readonly tax_behavior: "exclusive" | "inclusive";
+      }[]
+    | null;
   readonly period: { readonly start?: number; readonly end: number };
   readonly parent: {
     readonly type: "subscription_item_details" | "invoice_item_details";
@@ -369,6 +376,27 @@ function invoiceLineAmount(
   return typeof amount === "number" && Number.isSafeInteger(amount)
     ? amount
     : null;
+}
+
+function invoiceLineRefundableAmountWithTax(
+  line: UsagePackChangeInvoiceLineInput,
+): number | null {
+  const amount = line.amount ?? line.subtotal;
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount)) {
+    return null;
+  }
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
+  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
+    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
+  }, 0);
+  const refundableAmount =
+    amount + (amount < 0 ? discountAmount : -discountAmount) + exclusiveTax;
+  return Number.isSafeInteger(refundableAmount) ? refundableAmount : null;
 }
 
 function invoiceLineIsProration(
@@ -740,10 +768,16 @@ function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
 }
 
 function invoiceLineAmountWithTax(line: StripeInvoiceLine): number {
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
   const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
     return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
   }, 0);
-  const amount = line.amount + exclusiveTax;
+  const amount = line.amount - discountAmount + exclusiveTax;
   if (!Number.isSafeInteger(amount)) {
     throw new Error("Stripe usage pack preview line has an invalid amount");
   }
@@ -2814,8 +2848,8 @@ function upgradeProrationPeriod(
     return (
       invoiceLineIsProration(line) &&
       amount !== null &&
-      ((priceId === change.sourceStripePriceId && amount < 0) ||
-        (priceId === change.targetStripePriceId && amount > 0))
+      ((priceId === change.sourceStripePriceId && amount <= 0) ||
+        (priceId === change.targetStripePriceId && amount >= 0))
     );
   });
   const sourceLine = matchingLines.find((line) => {
@@ -2845,24 +2879,54 @@ function upgradeProrationPeriod(
   return { start, end };
 }
 
-function upgradeRefundInvoiceLineId(
+interface UsagePackUpgradeRefundInvoiceSource {
+  readonly invoiceLineId: string | null;
+  readonly amountCents: number;
+}
+
+function upgradeRefundInvoiceSource(
   invoice: UsagePackChangeInvoiceInput,
   change: UsagePackAllocationChangeRow,
-): string | null {
+): UsagePackUpgradeRefundInvoiceSource | null {
   if (!change.targetStripePriceId) {
     return null;
   }
-  const targetLine = invoice.lines.data.find((line) => {
+  const matchingLines = invoice.lines.data.filter((line) => {
     const amount = invoiceLineAmount(line);
+    const priceId = invoiceLinePriceId(line);
     return (
-      invoiceLinePriceId(line) === change.targetStripePriceId &&
       invoiceLineIsProration(line) &&
       amount !== null &&
-      amount > 0 &&
+      ((priceId === change.sourceStripePriceId && amount <= 0) ||
+        (priceId === change.targetStripePriceId && amount >= 0)) &&
       line.period.start === change.prorationTimestamp
     );
   });
-  return targetLine?.id ?? null;
+  const targetLine = matchingLines.find((line) => {
+    return invoiceLinePriceId(line) === change.targetStripePriceId;
+  });
+  const sourceLine = change.sourceStripePriceId
+    ? matchingLines.find((line) => {
+        return invoiceLinePriceId(line) === change.sourceStripePriceId;
+      })
+    : undefined;
+  if (!targetLine || (change.sourceStripePriceId && !sourceLine)) {
+    return null;
+  }
+  let amountCents = 0;
+  for (const line of matchingLines) {
+    const amount = invoiceLineRefundableAmountWithTax(line);
+    if (amount === null) {
+      return null;
+    }
+    amountCents += amount;
+  }
+  if (!Number.isSafeInteger(amountCents) || amountCents < 0) {
+    throw new Error(
+      `Usage pack change invoice ${invoice.id} has an invalid refundable amount`,
+    );
+  }
+  return { invoiceLineId: targetLine.id ?? null, amountCents };
 }
 
 function proratedCreditDelta(
@@ -3102,6 +3166,7 @@ async function commitUsagePackUpgradeInvoice(
       throw new Error(`Usage pack change ${change.id} has another invoice`);
     }
     if (args.purchasedCredits > 0) {
+      const refundSource = upgradeRefundInvoiceSource(args.invoice, change);
       await createUsagePackCreditGrant(tx, {
         orgId: change.orgId,
         userId: change.userId,
@@ -3112,8 +3177,10 @@ async function commitUsagePackUpgradeInvoice(
         refundSource: {
           type: "invoice",
           invoiceId: args.invoice.id,
-          invoiceLineId: upgradeRefundInvoiceLineId(args.invoice, change),
-          amountCents: Math.floor(args.purchasedCredits / CREDITS_PER_CENT),
+          invoiceLineId: refundSource?.invoiceLineId ?? null,
+          amountCents:
+            refundSource?.amountCents ??
+            Math.floor(args.purchasedCredits / CREDITS_PER_CENT),
         },
       });
     }
@@ -3160,6 +3227,7 @@ interface PreparedSubscriptionChangeGrant {
   readonly purchasedCredits: number;
   readonly bonusCredits: number;
   readonly stripeInvoiceLineId: string | null;
+  readonly sourceAmountCents: number;
 }
 
 async function prepareSubscriptionChangeFulfillment(
@@ -3219,10 +3287,14 @@ async function prepareSubscriptionChangeFulfillment(
           { start: args.periodStart, end: args.periodEnd },
           args.prorationTimestamp,
         );
+        const refundSource = upgradeRefundInvoiceSource(args.invoice, change);
         return {
           change,
           ...grant,
-          stripeInvoiceLineId: upgradeRefundInvoiceLineId(args.invoice, change),
+          stripeInvoiceLineId: refundSource?.invoiceLineId ?? null,
+          sourceAmountCents:
+            refundSource?.amountCents ??
+            Math.floor(grant.purchasedCredits / CREDITS_PER_CENT),
         };
       }
       if (!change.sourceAllocationId || !change.sourceStripePriceId) {
@@ -3244,21 +3316,26 @@ async function prepareSubscriptionChangeFulfillment(
         usagePackCreditsForPrice(change.sourceStripePriceId),
         usagePackCreditsForPrice(change.targetStripePriceId),
       ]);
+      const purchasedCredits = proratedCreditDelta(
+        sourceCredits.purchased,
+        targetCredits.purchased,
+        sourceAllocation,
+        prorationPeriod,
+      );
+      const refundSource = upgradeRefundInvoiceSource(args.invoice, change);
       return {
         change,
-        purchasedCredits: proratedCreditDelta(
-          sourceCredits.purchased,
-          targetCredits.purchased,
-          sourceAllocation,
-          prorationPeriod,
-        ),
+        purchasedCredits,
         bonusCredits: proratedCreditDelta(
           sourceCredits.bonus,
           targetCredits.bonus,
           sourceAllocation,
           prorationPeriod,
         ),
-        stripeInvoiceLineId: upgradeRefundInvoiceLineId(args.invoice, change),
+        stripeInvoiceLineId: refundSource?.invoiceLineId ?? null,
+        sourceAmountCents:
+          refundSource?.amountCents ??
+          Math.floor(purchasedCredits / CREDITS_PER_CENT),
       };
     }),
   );
@@ -3321,7 +3398,7 @@ async function fulfillPreparedSubscriptionChange(
           type: "invoice",
           invoiceId: args.invoice.id,
           invoiceLineId: prepared.stripeInvoiceLineId,
-          amountCents: Math.floor(prepared.purchasedCredits / CREDITS_PER_CENT),
+          amountCents: prepared.sourceAmountCents,
         },
       });
     }

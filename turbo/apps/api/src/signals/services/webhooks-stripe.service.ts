@@ -125,6 +125,7 @@ interface InvoiceInput {
     readonly data: readonly {
       readonly id?: string;
       readonly amount?: number | null;
+      readonly discount_amounts?: readonly { readonly amount: number }[] | null;
       readonly subtotal?: number | null;
       readonly quantity?: number | null;
       readonly metadata?: Record<string, string> | null;
@@ -135,6 +136,12 @@ interface InvoiceInput {
         } | null;
       } | null;
       readonly proration?: boolean;
+      readonly taxes?:
+        | readonly {
+            readonly amount: number;
+            readonly tax_behavior: "exclusive" | "inclusive";
+          }[]
+        | null;
       readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";

@@ -16,7 +16,9 @@ use super::env::validate_resume_session_id;
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::types::{ExecutionContext, ResumeSessionHistoryRefKind};
-use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::constants::runners::paths::{
+    CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_WORKING_DIR,
+};
 
 impl RestoredSessionIdentity {
     pub(crate) fn from_context(context: &ExecutionContext) -> Option<Self> {
@@ -206,7 +208,7 @@ pub(super) async fn restore_claude_session(
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
-    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
+    let session_dir = format!("{CANONICAL_CLAUDE_CONFIG_DIR}/projects/-{project_name}");
     let session_id = session.cli_agent_session_id();
     let session_path = format!("{session_dir}/{session_id}.jsonl");
 

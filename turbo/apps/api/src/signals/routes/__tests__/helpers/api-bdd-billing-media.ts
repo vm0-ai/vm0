@@ -279,7 +279,7 @@ export function createBillingMediaApi(context: TestContext) {
   }
 
   function configureMapsProvider(): void {
-    mockEnv("ZERO_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
+    mockEnv("OKOU_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
   }
 
   return {

@@ -3,6 +3,7 @@ import {
   resolvePlatformOriginForTarget,
   rewritePlatformHostname,
 } from "../../signals/api-base.ts";
+import { isAllowedDevArtifactFetchUrl } from "../../lib/dev-artifact-fetch-url.ts";
 import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
 import { i18n } from "../../i18n/index.ts";
 import { logger } from "../../signals/log.ts";
@@ -189,25 +190,12 @@ function canUseDevArtifactFetchProxy(): boolean {
   );
 }
 
-function isDevArtifactFetchProxyTarget(url: URL): boolean {
-  if (url.protocol !== "https:") {
-    return false;
-  }
-  return (
-    url.hostname === "cdn.vm0.io" ||
-    url.hostname === "cdn.vm7.io" ||
-    url.hostname === "static.vm0.io" ||
-    url.hostname.endsWith(".sites.vm0.io") ||
-    url.hostname.endsWith(".sites.vm7.io")
-  );
-}
-
 export function readableAttachmentResourceUrl(url: string): string {
   if (!canUseDevArtifactFetchProxy() || !URL.canParse(url)) {
     return url;
   }
   const parsed = new URL(url);
-  if (!isDevArtifactFetchProxyTarget(parsed)) {
+  if (!isAllowedDevArtifactFetchUrl(parsed)) {
     return url;
   }
   return `${DEV_ARTIFACT_FETCH_PROXY_PATH}?url=${encodeURIComponent(url)}`;

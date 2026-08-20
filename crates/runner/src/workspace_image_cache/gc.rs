@@ -1,6 +1,8 @@
 use std::fs::File;
+use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use nix::fcntl::Flock;
 use tokio::fs;
@@ -85,13 +87,30 @@ impl WorkspaceImageCache {
         self.gc_locked(dry_run).await
     }
 
-    pub(crate) async fn try_gc(&self) -> RunnerResult<Option<u64>> {
-        let _capacity_lock =
+    pub(crate) async fn try_routine_gc(
+        &self,
+        minimum_interval: Duration,
+    ) -> RunnerResult<Option<u64>> {
+        let mut capacity_lock =
             match crate::lock::try_acquire_or_busy(self.capacity_lock_path()).await? {
                 crate::lock::TryLock::Acquired(lock) => lock,
                 crate::lock::TryLock::Busy => return Ok(None),
             };
-        self.gc_locked(false).await.map(Some)
+        // The persistent lock file doubles as an opaque completion marker. Old
+        // runners ignore its contents and preserve them when opening the lock.
+        let marker = capacity_lock.metadata()?;
+        if marker.len() > 0
+            && SystemTime::now()
+                .duration_since(marker.modified()?)
+                .unwrap_or_default()
+                < minimum_interval
+        {
+            return Ok(None);
+        }
+
+        let freed_bytes = self.gc_locked(false).await?;
+        capacity_lock.write_all(b"\0")?;
+        Ok(Some(freed_bytes))
     }
 
     pub(super) async fn gc_locked(&self, dry_run: bool) -> RunnerResult<u64> {

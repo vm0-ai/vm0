@@ -55,7 +55,7 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProvider(): void {
-  mockEnv("ZERO_FINANCE_APIDOJO_TOKEN", "test-rapidapi-token");
+  mockEnv("OKOU_FINANCE_APIDOJO_TOKEN", "test-rapidapi-token");
 }
 
 describe("okou finance routes", () => {
@@ -209,7 +209,7 @@ describe("okou finance routes", () => {
   it("returns not configured without calling APIDojo", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
-    mockEnv("ZERO_FINANCE_APIDOJO_TOKEN", undefined);
+    mockEnv("OKOU_FINANCE_APIDOJO_TOKEN", undefined);
     server.use(
       http.get(`${APIDOJO_BASE_URL}/stock/v3/get-profile`, () => {
         providerRequests += 1;

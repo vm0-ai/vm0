@@ -13,6 +13,7 @@ use tracing::{info, warn};
 
 mod diagnostic;
 mod drain_override;
+mod drain_override_cleanup;
 mod drain_resume;
 mod gate;
 mod reload;
@@ -29,6 +30,7 @@ pub(crate) use target::RunnerServiceUnit;
 pub(crate) use unit_config::read_unit_config_path;
 
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
+use drain_override_cleanup::{DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal};
 use gate::check_active_jobs_gate;
 use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use systemctl::{
@@ -186,69 +188,6 @@ fn systemd_run_limit_nofile_property_arg() -> String {
 
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
-fn drain_override_cleanup_reload_error(
-    unit: &RunnerServiceUnit,
-    reload_error: RunnerError,
-    restore_error: RunnerError,
-) -> RunnerError {
-    RunnerError::Internal(format!(
-        "failed to reload systemd after removing drain restart override for {}: {reload_error}; additionally failed to restore drain restart override: {restore_error}",
-        unit.unit_name()
-    ))
-}
-
-async fn restore_drain_restart_override_after_failed_cleanup(
-    unit: &RunnerServiceUnit,
-    context: &str,
-) -> RunnerResult<()> {
-    if let Err(e) = write_drain_restart_override(unit) {
-        return Err(RunnerError::Internal(format!(
-            "failed to restore drain restart override for {} after cleanup reload failure ({context}): {e}",
-            unit.unit_name()
-        )));
-    }
-    if let Err(e) = coordinate_systemd_reload(
-        unit,
-        SystemdReloadRequirement::dirty().with_drain_override(true),
-    )
-    .await
-    {
-        return Err(RunnerError::Internal(format!(
-            "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
-            unit.unit_name()
-        )));
-    }
-    Ok(())
-}
-
-async fn reload_systemd_if_drain_restart_override_removed(
-    unit: &RunnerServiceUnit,
-) -> RunnerResult<bool> {
-    if !remove_drain_restart_override(unit)? {
-        return Ok(false);
-    }
-
-    if let Err(reload_error) = coordinate_systemd_reload(
-        unit,
-        SystemdReloadRequirement::dirty().with_drain_override(false),
-    )
-    .await
-    {
-        if let Err(restore_error) =
-            restore_drain_restart_override_after_failed_cleanup(unit, "remove_reload").await
-        {
-            return Err(drain_override_cleanup_reload_error(
-                unit,
-                reload_error,
-                restore_error,
-            ));
-        }
-        return Err(reload_error);
-    }
-
-    Ok(true)
-}
-
 async fn restore_service_state_after_reload_failure(
     unit: &RunnerServiceUnit,
     prior_enablement: SystemdUnitEnablement,
@@ -368,7 +307,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     )?;
     validate_systemd_path("current executable path", &exe_path)?;
     validate_systemd_path("config path", &config_path)?;
-    reload_systemd_if_drain_restart_override_removed(&unit).await?;
+    reconcile_drain_restart_override_removal(&unit, DrainOverrideReloadPolicy::Unbounded).await?;
 
     let unit_arg = format!("--unit={}", unit.unit_name());
     let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
