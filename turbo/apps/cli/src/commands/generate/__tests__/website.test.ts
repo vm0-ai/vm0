@@ -56,6 +56,7 @@ describe("okou generate website command", () => {
     chalk.level = 0;
     vi.stubEnv("OKOU_TOKEN", undefined);
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "previous");
   });
 
   afterEach(() => {
