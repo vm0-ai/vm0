@@ -915,19 +915,6 @@
       "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",
       "compare": "Comparer les forfaits",
       "compareAll": "Comparer tous les forfaits",
-      "comparison": {
-        "addOnConcurrency": "Concurrence supplémentaire",
-        "agents": "Agents",
-        "agentsValue": "{{shared}} partagés · privés illimités",
-        "available": "Disponible",
-        "concurrentRuns": "Exécutions simultanées",
-        "support": "Assistance",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritaire",
-        "voiceInput": "Saisie vocale",
-        "voiceInputValue": "{{requests}}/jour · {{minutes}} min",
-        "webhookAutomations": "Automatisations par webhook"
-      },
       "currentPlan": "Forfait actuel",
       "custom": {
         "name": "Personnalisé"
@@ -959,14 +946,18 @@
         "description": "Accès gratuit hérité pour les espaces de travail existants.",
         "name": "Gratuit"
       },
-      "included": {
-        "allModels": "Tous les modèles débloqués",
-        "automations": "Automatisations de workflows planifiées et sur événements d’apps",
-        "byok": "Utilisez vos propres clés LLM",
-        "credits": "Recharge automatique et crédits à l’usage",
-        "packageCredits": "Packs par membre de {{lowest}} à {{highest}} crédits",
-        "title": "Inclus dans les deux forfaits",
-        "videoGeneration": "Génération de vidéos et d’avatars"
+      "highlights": {
+        "addOnConcurrency": "Simultanéité supplémentaire à la demande",
+        "agents": "{{shared}} agents partagés, privés illimités",
+        "automations": "Automatisations planifiées et sur événement",
+        "everythingInPlus": "Tout {{plan}}, et en plus",
+        "included": "Inclus",
+        "models": "Tous les modèles, ou vos propres clés",
+        "supportEmail": "Assistance par e-mail",
+        "supportPriority": "Assistance prioritaire",
+        "videoGeneration": "Génération de vidéos et d’avatars",
+        "voiceInput": "Saisie vocale, {{requests}} par jour",
+        "webhookAutomations": "Automatisations par webhook"
       },
       "legacy": "Historique",
       "limitedFree": {
@@ -984,7 +975,7 @@
       "popular": "Populaire",
       "pricePerMonth": "{{price}}/mois",
       "pro": {
-        "description": "Pour une personne ou un petit espace de travail qui utilise des agents chaque jour. Chaque membre a ses propres crédits.",
+        "description": "Du travail quotidien avec des agents, au prix par membre.",
         "legacyDescription": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
         "name": "Pro"
       },
@@ -993,7 +984,7 @@
       "sectionTitle": "Forfait",
       "selectedPlan": "le forfait sélectionné",
       "team": {
-        "description": "Pour les équipes qui utilisent des agents toute la journée. Achetez de la simultanéité et déclenchez des workflows depuis vos systèmes.",
+        "description": "Pour toute une équipe qui utilise des agents toute la journée.",
         "legacyDescription": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },

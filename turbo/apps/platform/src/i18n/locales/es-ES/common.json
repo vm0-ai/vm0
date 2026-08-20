@@ -915,19 +915,6 @@
       "changeAnytime": "Actualiza o baja cuando quieras.",
       "compare": "Comparar planes",
       "compareAll": "Compara todos los planes",
-      "comparison": {
-        "addOnConcurrency": "Concurrencia adicional",
-        "agents": "Agentes",
-        "agentsValue": "{{shared}} compartidos · privados ilimitados",
-        "available": "Disponible",
-        "concurrentRuns": "Ejecuciones simultáneas",
-        "support": "Soporte",
-        "supportEmail": "Correo",
-        "supportPriority": "Prioritario",
-        "voiceInput": "Entrada de voz",
-        "voiceInputValue": "{{requests}}/día · {{minutes}} min",
-        "webhookAutomations": "Automatizaciones por webhook"
-      },
       "currentPlan": "Plan actual",
       "custom": {
         "name": "Personalizado"
@@ -959,14 +946,18 @@
         "description": "Acceso gratuito heredado para los espacios de trabajo existentes.",
         "name": "Gratis"
       },
-      "included": {
-        "allModels": "Todos los modelos desbloqueados",
-        "automations": "Automatizaciones de flujos programadas y por eventos de apps",
-        "byok": "Usa tus propias claves LLM",
-        "credits": "Recarga automática y créditos de pago por uso",
-        "packageCredits": "Paquetes por miembro de {{lowest}} a {{highest}} créditos",
-        "title": "Incluido en ambos planes",
-        "videoGeneration": "Generación de vídeo y avatares"
+      "highlights": {
+        "addOnConcurrency": "Concurrencia extra cuando la necesites",
+        "agents": "{{shared}} agentes compartidos, privados ilimitados",
+        "automations": "Automatizaciones programadas y por eventos",
+        "everythingInPlus": "Todo lo de {{plan}}, y además",
+        "included": "Incluido",
+        "models": "Todos los modelos, o usa tus claves",
+        "supportEmail": "Soporte por correo",
+        "supportPriority": "Soporte prioritario",
+        "videoGeneration": "Generación de vídeo y avatares",
+        "voiceInput": "Entrada de voz, {{requests}} al día",
+        "webhookAutomations": "Automatizaciones por webhook"
       },
       "legacy": "Heredado",
       "limitedFree": {
@@ -984,7 +975,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/mes",
       "pro": {
-        "description": "Para una persona o un espacio pequeño que usa agentes a diario. Cada miembro tiene sus propios créditos.",
+        "description": "Trabajo diario con agentes, con precio por miembro.",
         "legacyDescription": "Más créditos y concurrencia para equipos que usan agentes de IA todos los días.",
         "name": "Pro"
       },
@@ -993,7 +984,7 @@
       "sectionTitle": "Plan",
       "selectedPlan": "El plan seleccionado",
       "team": {
-        "description": "Para equipos que usan agentes todo el día. Compra concurrencia extra y activa flujos desde tus sistemas.",
+        "description": "Para todo un equipo que usa agentes todo el día.",
         "legacyDescription": "Espacio para un equipo de empleados de IA: gran volumen de créditos y 10 agentes ejecutándose a la vez.",
         "name": "Equipo"
       },

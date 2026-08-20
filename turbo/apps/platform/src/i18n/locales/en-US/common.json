@@ -894,19 +894,6 @@
       "changeAnytime": "Upgrade or downgrade anytime.",
       "compare": "Compare plans",
       "compareAll": "Compare all plans",
-      "comparison": {
-        "addOnConcurrency": "Add-on concurrency",
-        "agents": "Agents",
-        "agentsValue": "{{shared}} shared · unlimited private",
-        "available": "Available",
-        "concurrentRuns": "Concurrent runs",
-        "support": "Support",
-        "supportEmail": "Email",
-        "supportPriority": "Priority",
-        "voiceInput": "Voice input",
-        "voiceInputValue": "{{requests}}/day · {{minutes}} min",
-        "webhookAutomations": "Webhook automations"
-      },
       "currentPlan": "Current plan",
       "custom": {
         "name": "Custom"
@@ -938,14 +925,18 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
-      "included": {
-        "allModels": "Every model unlocked",
-        "automations": "Scheduled and app-event workflow automations",
-        "byok": "Bring your own LLM keys",
-        "credits": "Auto-recharge and pay-as-you-go credits",
-        "packageCredits": "Member packages from {{lowest}} to {{highest}} credits",
-        "title": "Included on both plans",
-        "videoGeneration": "Video and avatar generation"
+      "highlights": {
+        "addOnConcurrency": "Extra concurrency on demand",
+        "agents": "{{shared}} shared agents, unlimited private",
+        "automations": "Scheduled and event automations",
+        "everythingInPlus": "Everything in {{plan}}, plus",
+        "included": "Included",
+        "models": "Every model, or bring your own keys",
+        "supportEmail": "Email support",
+        "supportPriority": "Priority support",
+        "videoGeneration": "Video and avatar generation",
+        "voiceInput": "Voice input, {{requests}} a day",
+        "webhookAutomations": "Webhook automations"
       },
       "legacy": "Legacy",
       "limitedFree": {
@@ -963,7 +954,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
-        "description": "For one person or a small workspace running agents every day. Each member gets their own credits.",
+        "description": "Everyday agent work, priced per member.",
         "legacyDescription": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
@@ -972,7 +963,7 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "For teams running agents all day. Buy extra concurrency and trigger workflows from your own systems.",
+        "description": "For a whole team, running agents all day.",
         "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },

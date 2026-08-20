@@ -894,19 +894,6 @@
       "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
       "compare": "プランを比較する",
       "compareAll": "すべてのプランを比較する",
-      "comparison": {
-        "addOnConcurrency": "同時実行の追加購入",
-        "agents": "エージェント",
-        "agentsValue": "共有 {{shared}} · プライベート無制限",
-        "available": "購入可能",
-        "concurrentRuns": "同時実行数",
-        "support": "サポート",
-        "supportEmail": "メール",
-        "supportPriority": "優先",
-        "voiceInput": "音声入力",
-        "voiceInputValue": "{{requests}} 回/日 · {{minutes}} 分",
-        "webhookAutomations": "Webhook 自動化"
-      },
       "currentPlan": "現在の計画",
       "custom": {
         "name": "カスタム"
@@ -938,14 +925,18 @@
         "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
-      "included": {
-        "allModels": "すべてのモデルを利用可能",
-        "automations": "スケジュールとアプリイベントによるワークフロー自動化",
-        "byok": "独自の LLM キーを利用可能",
-        "credits": "自動チャージと従量課金クレジット",
-        "packageCredits": "メンバーパッケージは {{lowest}}〜{{highest}} クレジット",
-        "title": "両プラン共通",
-        "videoGeneration": "動画とアバターの生成"
+      "highlights": {
+        "addOnConcurrency": "同時実行を必要に応じて追加",
+        "agents": "共有エージェント {{shared}}、プライベート無制限",
+        "automations": "スケジュールとイベントの自動化",
+        "everythingInPlus": "{{plan}} のすべて、さらに",
+        "included": "含まれるもの",
+        "models": "すべてのモデル、または独自のキー",
+        "supportEmail": "メールサポート",
+        "supportPriority": "優先サポート",
+        "videoGeneration": "動画とアバターの生成",
+        "voiceInput": "音声入力 1 日 {{requests}} 回",
+        "webhookAutomations": "Webhook 自動化"
       },
       "legacy": "旧プラン",
       "limitedFree": {
@@ -963,7 +954,7 @@
       "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
-        "description": "個人または少人数のワークスペースで毎日エージェントを実行する方に。メンバーごとにクレジットを保有します。",
+        "description": "日々のエージェント業務を、メンバー単位の料金で。",
         "legacyDescription": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
@@ -972,7 +963,7 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "終日エージェントを実行するチームに。同時実行を追加購入し、自社システムからワークフローを起動できます。",
+        "description": "終日エージェントを動かすチーム全体に。",
         "legacyDescription": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },

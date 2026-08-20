@@ -894,19 +894,6 @@
       "changeAnytime": "Upgrade oder Downgrade jederzeit möglich.",
       "compare": "Tarife vergleichen",
       "compareAll": "Vergleichen Sie alle Pläne",
-      "comparison": {
-        "addOnConcurrency": "Zusätzliche Parallelität",
-        "agents": "Agents",
-        "agentsValue": "{{shared}} geteilt · unbegrenzt privat",
-        "available": "Verfügbar",
-        "concurrentRuns": "Parallele Läufe",
-        "support": "Support",
-        "supportEmail": "E-Mail",
-        "supportPriority": "Priorität",
-        "voiceInput": "Spracheingabe",
-        "voiceInputValue": "{{requests}}/Tag · {{minutes}} Min.",
-        "webhookAutomations": "Webhook-Automationen"
-      },
       "currentPlan": "Aktueller Plan",
       "custom": {
         "name": "Benutzerdefiniert"
@@ -938,14 +925,18 @@
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
-      "included": {
-        "allModels": "Alle Modelle freigeschaltet",
-        "automations": "Zeitgesteuerte und ereignisbasierte Workflow-Automationen",
-        "byok": "Eigene LLM-Schlüssel verwenden",
-        "credits": "Automatisches Aufladen und Pay-as-you-go-Credits",
-        "packageCredits": "Mitgliederpakete von {{lowest}} bis {{highest}} Credits",
-        "title": "In beiden Tarifen enthalten",
-        "videoGeneration": "Video- und Avatar-Generierung"
+      "highlights": {
+        "addOnConcurrency": "Parallelität bei Bedarf zukaufen",
+        "agents": "{{shared}} geteilte Agents, unbegrenzt private",
+        "automations": "Zeit- und ereignisgesteuerte Automationen",
+        "everythingInPlus": "Alles aus {{plan}}, plus",
+        "included": "Enthalten",
+        "models": "Jedes Modell, oder eigene Schlüssel",
+        "supportEmail": "E-Mail-Support",
+        "supportPriority": "Priorisierter Support",
+        "videoGeneration": "Video- und Avatar-Generierung",
+        "voiceInput": "Spracheingabe, {{requests}} pro Tag",
+        "webhookAutomations": "Webhook-Automationen"
       },
       "legacy": "Legacy",
       "limitedFree": {
@@ -963,7 +954,7 @@
       "popular": "Beliebt",
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
-        "description": "Für Einzelpersonen oder kleine Workspaces, die täglich Agents einsetzen. Jedes Mitglied erhält eigene Credits.",
+        "description": "Tägliche Agent-Arbeit, pro Mitglied abgerechnet.",
         "legacyDescription": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
         "name": "Pro"
       },
@@ -972,7 +963,7 @@
       "sectionTitle": "Planen",
       "selectedPlan": "den ausgewählten Plan",
       "team": {
-        "description": "Für Teams, die Agents ganztägig einsetzen. Zusätzliche Parallelität kaufen und Workflows aus eigenen Systemen auslösen.",
+        "description": "Für ein ganzes Team, das ganztägig Agents einsetzt.",
         "legacyDescription": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },

@@ -465,60 +465,51 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
 
     expect(
-      within(proPlan).getByText(
-        "For one person or a small workspace running agents every day. Each member gets their own credits.",
-      ),
+      within(proPlan).getByText("Everyday agent work, priced per member."),
     ).toBeInTheDocument();
     expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
-      within(teamPlan).getByText(
-        "For teams running agents all day. Buy extra concurrency and trigger workflows from your own systems.",
-      ),
+      within(teamPlan).getByText("For a whole team, running agents all day."),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
 
-    // Both columns carry the same rows so the plans can be read across.
-    for (const plan of [proPlan, teamPlan]) {
-      for (const label of [
-        "Concurrent runs",
-        "Add-on concurrency",
-        "Agents",
-        "Webhook automations",
-        "Voice input",
-        "Support",
-      ]) {
-        expect(within(plan).getByText(label)).toBeInTheDocument();
-      }
-    }
-    expect(proPlan).toHaveTextContent("Concurrent runs2");
-    expect(proPlan).toHaveTextContent("Add-on concurrency—");
-    expect(proPlan).toHaveTextContent("Agents7 shared · unlimited private");
-    expect(proPlan).toHaveTextContent("Webhook automations—");
-    expect(proPlan).toHaveTextContent("Voice input300/day · 200 min");
-    expect(proPlan).toHaveTextContent("SupportEmail");
-    expect(teamPlan).toHaveTextContent("Concurrent runs10");
-    expect(teamPlan).toHaveTextContent("Add-on concurrencyAvailable");
-    expect(teamPlan).toHaveTextContent("Agents7 shared · unlimited private");
-    expect(teamPlan).toHaveTextContent("Webhook automationsAvailable");
-    expect(teamPlan).toHaveTextContent("Voice input500/day · 500 min");
-    expect(teamPlan).toHaveTextContent("SupportPriority");
-
-    /* What both plans unlock is stated once under the columns rather than
-       repeated down each of them, and the credit range comes from the same
-       catalog the columns price. */
-    const includedBand = screen.getByRole("region", {
-      name: "Included on both plans",
-    });
+    // Pro carries the whole list.
+    expect(within(proPlan).getByText("Included")).toBeInTheDocument();
     for (const item of [
-      "Every model unlocked",
-      "Scheduled and app-event workflow automations",
-      "Bring your own LLM keys",
+      "2 concurrent runs",
+      "7 shared agents, unlimited private",
+      "Every model, or bring your own keys",
+      "Scheduled and event automations",
       "Video and avatar generation",
-      "Member packages from 21,234 to 230,000 credits",
-      "Auto-recharge and pay-as-you-go credits",
+      "Voice input, 300 a day",
+      "Email support",
     ]) {
-      expect(within(includedBand).getByText(item)).toBeInTheDocument();
+      expect(within(proPlan).getByText(item)).toBeInTheDocument();
+    }
+
+    /* Team names only what it adds. Repeating Pro's list here is what made the
+       two columns twice as long as the choice between them needs. */
+    expect(
+      within(teamPlan).getByText("Everything in Pro, plus"),
+    ).toBeInTheDocument();
+    for (const item of [
+      "10 concurrent runs",
+      "Extra concurrency on demand",
+      "Webhook automations",
+      "Voice input, 500 a day",
+      "Priority support",
+    ]) {
+      expect(within(teamPlan).getByText(item)).toBeInTheDocument();
+    }
+    for (const item of [
+      "7 shared agents, unlimited private",
+      "Every model, or bring your own keys",
+      "Scheduled and event automations",
+      "Video and avatar generation",
+      "Email support",
+    ]) {
+      expect(within(teamPlan).queryByText(item)).toBeNull();
     }
 
     click(buttonByText("Start with Team", teamPlan));

@@ -894,19 +894,6 @@
       "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
-      "comparison": {
-        "addOnConcurrency": "Konkurensi tambahan",
-        "agents": "Agen",
-        "agentsValue": "{{shared}} bersama · privat tanpa batas",
-        "available": "Tersedia",
-        "concurrentRuns": "Proses bersamaan",
-        "support": "Dukungan",
-        "supportEmail": "Email",
-        "supportPriority": "Prioritas",
-        "voiceInput": "Input suara",
-        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt",
-        "webhookAutomations": "Otomatisasi webhook"
-      },
       "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
@@ -938,14 +925,18 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
-      "included": {
-        "allModels": "Semua model terbuka",
-        "automations": "Otomatisasi alur kerja terjadwal dan berbasis event aplikasi",
-        "byok": "Gunakan kunci LLM Anda sendiri",
-        "credits": "Isi ulang otomatis dan kredit bayar sesuai pemakaian",
-        "packageCredits": "Paket anggota dari {{lowest}} hingga {{highest}} kredit",
-        "title": "Termasuk di kedua paket",
-        "videoGeneration": "Pembuatan video dan avatar"
+      "highlights": {
+        "addOnConcurrency": "Tambah konkurensi sesuai kebutuhan",
+        "agents": "{{shared}} agen bersama, privat tanpa batas",
+        "automations": "Otomatisasi terjadwal dan berbasis event",
+        "everythingInPlus": "Semua di {{plan}}, plus",
+        "included": "Termasuk",
+        "models": "Semua model, atau pakai kunci sendiri",
+        "supportEmail": "Dukungan email",
+        "supportPriority": "Dukungan prioritas",
+        "videoGeneration": "Pembuatan video dan avatar",
+        "voiceInput": "Input suara, {{requests}} per hari",
+        "webhookAutomations": "Otomatisasi webhook"
       },
       "legacy": "Lama",
       "limitedFree": {
@@ -963,7 +954,7 @@
       "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
-        "description": "Untuk satu orang atau ruang kerja kecil yang menjalankan agen setiap hari. Tiap anggota punya kredit sendiri.",
+        "description": "Kerja agen harian, dihitung per anggota.",
         "legacyDescription": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
@@ -972,7 +963,7 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Untuk tim yang menjalankan agen sepanjang hari. Beli konkurensi tambahan dan picu alur kerja dari sistem Anda.",
+        "description": "Untuk satu tim penuh yang menjalankan agen sepanjang hari.",
         "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },

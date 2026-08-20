@@ -207,13 +207,10 @@ function planConcurrentSlots(tier: UsagePackPlanTier): number {
 // voice input and support on top of it.
 const SHARED_AGENT_COUNT = 7;
 
-function planVoiceInput(tier: UsagePackPlanTier): {
-  readonly minutes: number;
-  readonly requests: number;
-} {
-  return tier === "pro"
-    ? { minutes: 200, requests: 300 }
-    : { minutes: 500, requests: 500 };
+// The daily minute cap differs too, but a plan column that prints both caps
+// spends a line on a distinction nobody picks a plan on.
+function planVoiceRequests(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 300 : 500;
 }
 
 function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
@@ -784,175 +781,109 @@ function PlanPrice({
   );
 }
 
-/* Both plans list the same rows in the same order, so the two columns can be
-   read across rather than compared item by item between two unequal lists.
-   Only what actually differs between the plans earns a row here: a row that
-   prints the same value twice costs a reader a comparison and returns nothing.
-   Everything both plans carry is stated once, under the columns, by
-   PlanIncludedBand. */
-function planComparisonRows(
-  tier: UsagePackPlanTier,
-): readonly { readonly label: string; readonly value: string }[] {
-  const voice = planVoiceInput(tier);
-  const teamOnly = tier === "team";
-  const notIncluded = "—";
-  const available = i18n.t(($) => {
-    return $.billing.plans.comparison.available;
-  });
-  return [
+/* Pro carries the whole list; Team names only what it adds on top. Spelling
+   both columns out in full meant six of the twelve lines said the same thing
+   twice, and lifting those six into a band under the columns only moved the
+   repetition somewhere else -- either way the reader pays for words that do
+   not help them choose. "Everything in Pro, plus" is what removes them.
+
+   These are phrases, not label/value rows: "2 concurrent runs" is shorter
+   than "Concurrent runs ... 2" and reads as something you get rather than a
+   cell in a spec sheet. */
+function planHighlights(tier: UsagePackPlanTier): readonly string[] {
+  const concurrentRuns = i18n.t(
+    ($) => {
+      return $.billing.concurrency.concurrentRun;
+    },
     {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.concurrentRuns;
-      }),
+      count: planConcurrentSlots(tier),
       value: formatLocalizedNumber(planConcurrentSlots(tier)),
     },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.addOnConcurrency;
-      }),
-      value: teamOnly ? available : notIncluded,
+  );
+  const voiceInput = i18n.t(
+    ($) => {
+      return $.billing.plans.highlights.voiceInput;
     },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.agents;
+    { requests: formatLocalizedNumber(planVoiceRequests(tier)) },
+  );
+  if (tier === "team") {
+    return [
+      concurrentRuns,
+      i18n.t(($) => {
+        return $.billing.plans.highlights.addOnConcurrency;
       }),
-      value: i18n.t(
-        ($) => {
-          return $.billing.plans.comparison.agentsValue;
-        },
-        { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
-      ),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.webhookAutomations;
+      i18n.t(($) => {
+        return $.billing.plans.highlights.webhookAutomations;
       }),
-      value: teamOnly ? available : notIncluded,
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.voiceInput;
+      voiceInput,
+      i18n.t(($) => {
+        return $.billing.plans.highlights.supportPriority;
       }),
-      value: i18n.t(
-        ($) => {
-          return $.billing.plans.comparison.voiceInputValue;
-        },
-        {
-          minutes: formatLocalizedNumber(voice.minutes),
-          requests: formatLocalizedNumber(voice.requests),
-        },
-      ),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.support;
-      }),
-      value: teamOnly
-        ? i18n.t(($) => {
-            return $.billing.plans.comparison.supportPriority;
-          })
-        : i18n.t(($) => {
-            return $.billing.plans.comparison.supportEmail;
-          }),
-    },
-  ];
-}
-
-/* What Pro and Team both unlock over a free workspace. These are the reasons
-   to upgrade at all, as opposed to the reasons to pick one plan over the
-   other, so they are stated once across the full width instead of twice down
-   the columns. The credit range is read from the catalog rather than written
-   into the copy: the packages the columns price are the packages this line
-   describes. */
-function planIncludedItems(
-  catalog: readonly UsagePackCatalogItem[],
-): readonly string[] {
-  const packCredits = catalog.map((item) => {
-    return item.totalCredits;
-  });
+    ];
+  }
   return [
-    i18n.t(($) => {
-      return $.billing.plans.included.allModels;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.included.automations;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.included.byok;
-    }),
-    i18n.t(($) => {
-      return $.billing.plans.included.videoGeneration;
-    }),
+    concurrentRuns,
     i18n.t(
       ($) => {
-        return $.billing.plans.included.packageCredits;
+        return $.billing.plans.highlights.agents;
       },
-      {
-        highest: formatLocalizedNumber(Math.max(...packCredits)),
-        lowest: formatLocalizedNumber(Math.min(...packCredits)),
-      },
+      { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
     ),
     i18n.t(($) => {
-      return $.billing.plans.included.credits;
+      return $.billing.plans.highlights.models;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.automations;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.videoGeneration;
+    }),
+    voiceInput,
+    i18n.t(($) => {
+      return $.billing.plans.highlights.supportEmail;
     }),
   ];
 }
 
-function PlanIncludedBand({
-  catalog,
-  className = "",
-}: {
-  readonly catalog: readonly UsagePackCatalogItem[];
-  readonly className?: string;
-}) {
-  const title = i18n.t(($) => {
-    return $.billing.plans.included.title;
-  });
+function planHighlightsLabel(tier: UsagePackPlanTier): string {
+  return tier === "team"
+    ? i18n.t(
+        ($) => {
+          return $.billing.plans.highlights.everythingInPlus;
+        },
+        { plan: planName("pro") },
+      )
+    : i18n.t(($) => {
+        return $.billing.plans.highlights.included;
+      });
+}
+
+/* Both columns open this block at the same y with a label of the same weight,
+   so the lists start on one line even though Team's is shorter. Team's tail is
+   slack the CTA takes up, not a hole to pad with "—" rows. */
+function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <section
-      aria-label={title}
-      className={`border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 ${className}`}
-    >
-      <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      <ul className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
-        {planIncludedItems(catalog).map((item) => {
+    <div className="mt-5">
+      <p className="text-xs font-medium text-muted-foreground">
+        {planHighlightsLabel(tier)}
+      </p>
+      <ul className="mt-3 flex flex-col gap-2.5">
+        {planHighlights(tier).map((item) => {
           return (
             <li
               key={item}
-              className="flex items-start gap-2 text-sm leading-snug text-foreground"
+              className="flex items-start gap-2.5 text-sm leading-snug text-foreground"
             >
               <Check
-                size={14}
+                size={15}
                 aria-hidden
-                className="mt-[3px] shrink-0 text-muted-foreground"
+                className="mt-px shrink-0 text-muted-foreground"
               />
               <span className="min-w-0">{item}</span>
             </li>
           );
         })}
       </ul>
-    </section>
-  );
-}
-
-function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
-  return (
-    <div className="mt-5 flex flex-1 flex-col text-muted-foreground">
-      {planComparisonRows(tier).map((row, index) => {
-        return (
-          <div
-            key={row.label}
-            className={`flex flex-1 items-center justify-between gap-4 text-sm font-medium leading-snug ${
-              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-50))]" : ""
-            }`}
-          >
-            <span>{row.label}</span>
-            <span className="text-right font-normal tabular-nums">
-              {row.value}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -1033,13 +964,15 @@ function PlanSelectionCard({
           {name}
         </h3>
       </div>
-      <p className="mt-2 min-h-[42px] text-sm leading-normal text-muted-foreground">
+      {/* One line, so the price band under it starts at the same y in both
+          columns without reserving a second line neither description needs. */}
+      <p className="mt-2 min-h-[21px] text-sm leading-normal text-muted-foreground">
         {planDescription(plan.tier)}
       </p>
 
       <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
 
-      <PlanComparison tier={plan.tier} />
+      <PlanHighlights tier={plan.tier} />
 
       {/* The action closes the column, under everything it buys. */}
       <div className="mt-auto pt-6">
@@ -1382,31 +1315,25 @@ function PlanSelectionStep({
     /* No panel border inside the dialog frame -- the only rule between the two
        plans is the hairline the second column carries, and it runs the full
        height of the body so the frame reads as two columns, not two cards.
-       The columns and the band under them take the scroll; the note stays
-       pinned to the frame. The columns still claim the free height first, so
-       the two actions stay above the fold and the band is what a reader
-       scrolls to. */
+       The columns take the scroll; the note stays pinned to the frame. */
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
-          {USAGE_PACK_PLANS.map((plan, index) => {
-            const action = resolveAction(plan.tier);
-            return (
-              <PlanSelectionCard
-                key={plan.tier}
-                action={action}
-                busy={false}
-                catalog={catalog}
-                divided={index > 0}
-                plan={plan}
-                onAction={() => {
-                  onAction(plan.tier, action);
-                }}
-              />
-            );
-          })}
-        </div>
-        <PlanIncludedBand catalog={catalog} />
+      <div className="dialog-scrollable grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2">
+        {USAGE_PACK_PLANS.map((plan, index) => {
+          const action = resolveAction(plan.tier);
+          return (
+            <PlanSelectionCard
+              key={plan.tier}
+              action={action}
+              busy={false}
+              catalog={catalog}
+              divided={index > 0}
+              plan={plan}
+              onAction={() => {
+                onAction(plan.tier, action);
+              }}
+            />
+          );
+        })}
       </div>
       <p className="shrink-0 border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
         {i18n.t(($) => {
@@ -3239,7 +3166,6 @@ export function UsagePackMigrationPlanSelectionPage({
               />
             );
           })}
-          <PlanIncludedBand catalog={catalog} className="sm:col-span-2" />
         </PlanSelectionPanel>
       )}
     </div>

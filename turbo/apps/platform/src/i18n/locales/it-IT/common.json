@@ -915,19 +915,6 @@
       "changeAnytime": "Aggiorna o esegui il downgrade in qualsiasi momento.",
       "compare": "Confronta i piani",
       "compareAll": "Confronta tutti i piani",
-      "comparison": {
-        "addOnConcurrency": "Concorrenza aggiuntiva",
-        "agents": "Agenti",
-        "agentsValue": "{{shared}} condivisi · privati illimitati",
-        "available": "Disponibile",
-        "concurrentRuns": "Esecuzioni simultanee",
-        "support": "Assistenza",
-        "supportEmail": "E-mail",
-        "supportPriority": "Prioritaria",
-        "voiceInput": "Input vocale",
-        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min",
-        "webhookAutomations": "Automazioni webhook"
-      },
       "currentPlan": "Piano attuale",
       "custom": {
         "name": "Personalizzato"
@@ -959,14 +946,18 @@
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
-      "included": {
-        "allModels": "Tutti i modelli sbloccati",
-        "automations": "Automazioni di workflow pianificate e su eventi delle app",
-        "byok": "Usa le tue chiavi LLM",
-        "credits": "Ricarica automatica e crediti a consumo",
-        "packageCredits": "Pacchetti per membro da {{lowest}} a {{highest}} crediti",
-        "title": "Incluso in entrambi i piani",
-        "videoGeneration": "Generazione di video e avatar"
+      "highlights": {
+        "addOnConcurrency": "Concorrenza extra su richiesta",
+        "agents": "{{shared}} agenti condivisi, privati illimitati",
+        "automations": "Automazioni pianificate e su evento",
+        "everythingInPlus": "Tutto di {{plan}}, più",
+        "included": "Incluso",
+        "models": "Ogni modello, o le tue chiavi",
+        "supportEmail": "Assistenza via e-mail",
+        "supportPriority": "Assistenza prioritaria",
+        "videoGeneration": "Generazione di video e avatar",
+        "voiceInput": "Input vocale, {{requests}} al giorno",
+        "webhookAutomations": "Automazioni webhook"
       },
       "legacy": "Precedente",
       "limitedFree": {
@@ -984,7 +975,7 @@
       "popular": "Popolare",
       "pricePerMonth": "{{price}}/mese",
       "pro": {
-        "description": "Per una persona o un piccolo spazio di lavoro che usa agenti ogni giorno. Ogni membro ha i propri crediti.",
+        "description": "Lavoro quotidiano con gli agenti, al prezzo per membro.",
         "legacyDescription": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
         "name": "Pro"
       },
@@ -993,7 +984,7 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Per team che usano agenti tutto il giorno. Acquista concorrenza extra e attiva workflow dai tuoi sistemi.",
+        "description": "Per un intero team che usa agenti tutto il giorno.",
         "legacyDescription": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },

@@ -894,19 +894,6 @@
       "changeAnytime": "किसी भी समय अपग्रेड या डाउनग्रेड करें।",
       "compare": "योजनाओं की तुलना करें",
       "compareAll": "सभी योजनाओं की तुलना करें",
-      "comparison": {
-        "addOnConcurrency": "अतिरिक्त समवर्तिता",
-        "agents": "एजेंट",
-        "agentsValue": "{{shared}} साझा · असीमित निजी",
-        "available": "उपलब्ध",
-        "concurrentRuns": "समवर्ती रन",
-        "support": "सहायता",
-        "supportEmail": "ईमेल",
-        "supportPriority": "प्राथमिकता",
-        "voiceInput": "वॉइस इनपुट",
-        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट",
-        "webhookAutomations": "वेबहुक ऑटोमेशन"
-      },
       "currentPlan": "वर्तमान योजना",
       "custom": {
         "name": "रिवाज़"
@@ -938,14 +925,18 @@
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
-      "included": {
-        "allModels": "सभी मॉडल अनलॉक",
-        "automations": "शेड्यूल और ऐप-इवेंट वर्कफ़्लो ऑटोमेशन",
-        "byok": "अपनी LLM कुंजियाँ इस्तेमाल करें",
-        "credits": "ऑटो-रिचार्ज और पे-ऐज़-यू-गो क्रेडिट",
-        "packageCredits": "{{lowest}} से {{highest}} क्रेडिट तक के सदस्य पैकेज",
-        "title": "दोनों प्लान में शामिल",
-        "videoGeneration": "वीडियो और अवतार जनरेशन"
+      "highlights": {
+        "addOnConcurrency": "ज़रूरत पर अतिरिक्त समवर्तिता",
+        "agents": "{{shared}} साझा एजेंट, असीमित निजी",
+        "automations": "शेड्यूल और इवेंट ऑटोमेशन",
+        "everythingInPlus": "{{plan}} का सब कुछ, साथ में",
+        "included": "शामिल",
+        "models": "हर मॉडल, या अपनी कुंजियाँ",
+        "supportEmail": "ईमेल सहायता",
+        "supportPriority": "प्राथमिकता सहायता",
+        "videoGeneration": "वीडियो और अवतार जनरेशन",
+        "voiceInput": "वॉइस इनपुट, {{requests}} रोज़",
+        "webhookAutomations": "वेबहुक ऑटोमेशन"
       },
       "legacy": "पुराना",
       "limitedFree": {
@@ -963,7 +954,7 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "एक व्यक्ति या छोटे वर्कस्पेस के लिए जो रोज़ एजेंट चलाता है। हर सदस्य को अपने क्रेडिट मिलते हैं।",
+        "description": "रोज़ का एजेंट काम, हर सदस्य के हिसाब से।",
         "legacyDescription": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
@@ -972,7 +963,7 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "दिनभर एजेंट चलाने वाली टीमों के लिए। अतिरिक्त समवर्तिता खरीदें और अपने सिस्टम से वर्कफ़्लो ट्रिगर करें।",
+        "description": "पूरी टीम के लिए, जो दिनभर एजेंट चलाती है।",
         "legacyDescription": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
