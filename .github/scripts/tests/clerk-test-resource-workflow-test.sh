@@ -122,10 +122,12 @@ fi
 ruby -ryaml - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/cleanup.yml" \
-  "${repo_root}/.github/workflows/cleanup-stale.yml" <<'RUBY'
+  "${repo_root}/.github/workflows/cleanup-stale.yml" \
+  "${repo_root}/.github/workflows/cleanup-clerk-test-resources.yml" <<'RUBY'
 turbo = YAML.load_file(ARGV.fetch(0))
 cleanup = YAML.load_file(ARGV.fetch(1))
 stale = YAML.load_file(ARGV.fetch(2))
+scheduled_clerk = YAML.load_file(ARGV.fetch(3))
 
 turbo_jobs = turbo.fetch("jobs")
 browser = turbo_jobs.fetch("cli-e2e-02-browser")
@@ -247,14 +249,33 @@ unless closed_pr_step.fetch("run").end_with?("clerk-test-resources.ts cleanup-jo
 end
 
 stale_jobs = stale.fetch("jobs")
-stale_cleanup = stale_jobs.fetch("cleanup-clerk-test-resources")
-unless stale_cleanup.dig("permissions", "contents") == "read"
+if stale_jobs.key?("cleanup-clerk-test-resources")
+  raise "general stale maintenance must not own frequent Clerk cleanup"
+end
+scheduled_triggers = scheduled_clerk.fetch(true)
+unless scheduled_triggers.fetch("schedule") == [{ "cron" => "*/30 * * * *" }]
+  raise "stale Clerk cleanup must run every 30 minutes"
+end
+manual_dispatch = scheduled_triggers.fetch("workflow_dispatch")
+dry_run_input = manual_dispatch.fetch("inputs").fetch("dry-run")
+unless dry_run_input.fetch("type") == "boolean" && dry_run_input.fetch("default") == false
+  raise "manual stale Clerk cleanup must expose a disabled boolean dry-run input"
+end
+scheduled_concurrency = scheduled_clerk.fetch("concurrency")
+unless scheduled_concurrency.fetch("group") == "cleanup-clerk-test-resources" &&
+    scheduled_concurrency.fetch("cancel-in-progress") == false
+  raise "stale Clerk cleanup executions must serialize without cancellation"
+end
+scheduled_jobs = scheduled_clerk.fetch("jobs")
+scheduled_cleanup = scheduled_jobs.fetch("cleanup-clerk-test-resources")
+unless scheduled_cleanup.dig("permissions", "contents") == "read"
   raise "stale Clerk cleanup must use read-only repository permissions"
 end
-if stale_jobs.key?("cleanup-clerk-test-users") || stale_jobs.key?("cleanup-clerk-empty-orgs")
+if scheduled_jobs.key?("cleanup-clerk-test-users") ||
+    scheduled_jobs.key?("cleanup-clerk-empty-orgs")
   raise "legacy Clerk cleanup jobs must be removed"
 end
-stale_checkout = stale_cleanup.fetch("steps").find do |step|
+stale_checkout = scheduled_cleanup.fetch("steps").find do |step|
   step.fetch("uses", "").start_with?("actions/checkout@")
 end
 raise "missing trusted checkout for stale Clerk cleanup" unless stale_checkout
@@ -262,35 +283,23 @@ unless stale_checkout.dig("with", "ref") == "${{ github.event.repository.default
     stale_checkout.dig("with", "persist-credentials") == false
   raise "stale Clerk cleanup must execute credential-free default-branch code"
 end
-stale_non_runner_step = stale_cleanup.fetch("steps").find do |step|
-  step["name"] == "Delete stale non-runner Clerk test resources"
+stale_step = scheduled_cleanup.fetch("steps").find do |step|
+  step["name"] == "Delete stale Clerk test resources"
 end
-stale_runner_step = stale_cleanup.fetch("steps").find do |step|
-  step["name"] == "Delete stale runner Clerk test resources"
-end
-raise "missing non-runner stale Clerk cleanup command" unless stale_non_runner_step
-raise "missing runner stale Clerk cleanup command" unless stale_runner_step
-unless stale_non_runner_step.fetch("run").include?(
-    "cleanup-stale browser,playwright,paid-onboarding --older-than-hours 6",
-  ) && stale_non_runner_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
-  raise "non-runner Clerk resources must retain the six-hour stale policy"
-end
-unless stale_runner_step.fetch("run").include?(
-    "cleanup-stale runner,runner-real-codex,runner-real-claude,runner-mock-claude --older-than-hours 30",
-  ) && stale_runner_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
-  raise "runner resources must outlive the one-day token artifact"
-end
-runner_token_upload = turbo_jobs.fetch("cli-e2e-03-runner-prepare").fetch("steps").find do |step|
-  step["name"] == "Upload runner E2E API tokens"
-end
-raise "missing runner token artifact upload" unless runner_token_upload
-artifact_retention_hours = runner_token_upload.dig("with", "retention-days").to_i * 24
-runner_stale_hours = stale_runner_step.fetch("run")[/--older-than-hours (\d+)/, 1]&.to_i
-unless runner_stale_hours && runner_stale_hours > artifact_retention_hours
-  raise "runner stale cleanup must start after token artifact expiry"
+raise "missing unified stale Clerk cleanup command" unless stale_step
+expected_roles = "browser,playwright,paid-onboarding,runner,runner-real-codex,runner-real-claude,runner-mock-claude"
+unless stale_step.fetch("run").include?(
+    "cleanup-stale #{expected_roles} --older-than-hours 0.5",
+  ) && stale_step.dig("env", "CLERK_SECRET_KEY") == "${{ secrets.CLERK_SECRET_KEY }}" &&
+    stale_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
+  raise "stale Clerk cleanup must use every marked role and a 30-minute cutoff"
 end
 
-cleanup_sources = [File.read(ARGV.fetch(1)), File.read(ARGV.fetch(2))].join("\n")
+cleanup_sources = [
+  File.read(ARGV.fetch(1)),
+  File.read(ARGV.fetch(2)),
+  File.read(ARGV.fetch(3)),
+].join("\n")
 if cleanup_sources.include?("api.clerk.com") ||
     cleanup_sources.include?("memberships?limit=1")
   raise "untested legacy Clerk deletion logic remains in maintenance workflows"
