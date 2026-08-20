@@ -1208,11 +1208,10 @@ def _clear_stale_firewall_authorization_metadata(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(key, None)
 
 
-def _block_current_firewall_authorization(
+def _block_request_classification(
     flow: http.HTTPFlow,
-    classification: request_classification.RequestClassification,
+    classification: request_classification.BlockingRequestClassification,
 ) -> None:
-    _clear_stale_firewall_authorization_metadata(flow)
     if classification.kind == "registry_unavailable":
         _block_registry_unavailable(flow, classification.registry_unavailable)
         return
@@ -1236,6 +1235,17 @@ def _block_current_firewall_authorization(
         return
     if classification.kind == "public_destination_denied":
         _block_public_destination_denied(flow, classification.public_destination_denial)
+        return
+    _unhandled_request_classification(classification)
+
+
+def _block_current_firewall_authorization(
+    flow: http.HTTPFlow,
+    classification: request_classification.RequestClassification,
+) -> None:
+    _clear_stale_firewall_authorization_metadata(flow)
+    if isinstance(classification, request_classification.BlockingRequestClassification):
+        _block_request_classification(flow, classification)
         return
     _block_firewall_authorization_changed(
         flow,
@@ -1330,19 +1340,12 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "no_client_ip":
             ctx.log.warn("No client IP available, passing through")
             return
-        if classification.kind == "registry_unavailable":
-            _block_registry_unavailable(flow, classification.registry_unavailable)
-            return
-        if classification.kind == "stale_tls_admission":
-            _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
-            return
-        if classification.kind == "invalid_registry_vm":
-            _block_invalid_registry_vm(flow, classification.invalid_vm)
+        if isinstance(classification, request_classification.BlockingRequestClassification):
+            if isinstance(classification, request_classification.PublicDestinationDenied):
+                terminal_usage.release_tracked_flow(flow)
+            _block_request_classification(flow, classification)
             return
         if classification.kind == "pass_through":
-            return
-        if classification.kind == "authority_denied":
-            _block_authority_validation_error(flow, classification.authority_error)
             return
         if classification.kind == "api_allow":
             if not _admit_platform_api_request(flow):
@@ -1350,25 +1353,12 @@ async def request(flow: http.HTTPFlow) -> None:
                 return
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
-        if classification.kind == "platform_path_denied":
-            _block_platform_path_denied(flow)
-            return
         if classification.kind == "browser_allow":
             # Browser-originated traffic intentionally bypasses connector
             # firewall handling. User-Agent is the short-term heuristic for that
             # business passthrough, not trusted provenance.
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-            return
-        if classification.kind == "firewall_ambiguous":
-            _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
-            return
-        if classification.kind == "firewall_block":
-            _set_firewall_block_response(flow, classification.firewall_block)
-            return
-        if classification.kind == "public_destination_denied":
-            terminal_usage.release_tracked_flow(flow)
-            _block_public_destination_denied(flow, classification.public_destination_denial)
             return
         if classification.kind == "firewall_policy_allow":
             prepare_firewall_metadata(

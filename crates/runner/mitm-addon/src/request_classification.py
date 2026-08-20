@@ -209,22 +209,26 @@ class Allow:
 
 
 # This must remain a runtime union because cached metadata is validated with
-# ``isinstance`` before it is returned to request handling.
-RequestClassification = (
-    NoClientIp
-    | PassThrough
-    | RegistryUnavailable
+# ``isinstance`` before it is returned to request handling. Blocking members
+# own a canonical local response in both primary dispatch and revalidation.
+BlockingRequestClassification = (
+    RegistryUnavailable
     | StaleTlsAdmission
     | InvalidRegistryVm
     | AuthorityDenied
-    | ApiAllow
     | PlatformPathDenied
-    | BrowserAllow
     | FirewallAmbiguous
     | FirewallBlock
+    | PublicDestinationDenied
+)
+RequestClassification = (
+    NoClientIp
+    | PassThrough
+    | BlockingRequestClassification
+    | ApiAllow
+    | BrowserAllow
     | FirewallAllow
     | FirewallPolicyAllow
-    | PublicDestinationDenied
     | Allow
 )
 
