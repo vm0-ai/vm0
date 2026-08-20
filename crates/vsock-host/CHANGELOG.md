@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.85](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.84...vsock-host-v0.17.85) (2026-08-20)
+
+
+### Refactoring
+
+* **rust:** centralize process output validation ([#28277](https://github.com/vm0-ai/vm0/issues/28277)) ([8e6e25c](https://github.com/vm0-ai/vm0/commit/8e6e25c954c7b4a90d3ba9d9cca7eb87090581e9))
+
 ## [0.17.84](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.83...vsock-host-v0.17.84) (2026-08-14)
 
 

@@ -7,6 +7,7 @@ import pytest
 
 import builtin_host_policy
 import registry
+from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
 from tests.registry_helpers import (
     assert_invalid_builtin_vm,
     write_trusted_catalog_cache_text,
@@ -56,17 +57,10 @@ def _cache_path_for_registry(path):
 def _write_catalog_cache(path, firewalls: dict[str, dict]) -> None:
     write_trusted_catalog_cache_text(
         path,
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "catalogDigest": (
-                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                ),
-                "catalogVersion": "catalog-test",
-                "updatedAt": "2026-07-07T00:00:00.000Z",
-                "firewalls": firewalls,
-            },
-            sort_keys=True,
+        serialize_builtin_firewall_catalog_cache(
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-test",
+            firewalls=firewalls,
         ),
     )
 

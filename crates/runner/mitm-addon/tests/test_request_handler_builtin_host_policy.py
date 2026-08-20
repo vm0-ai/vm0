@@ -12,6 +12,7 @@ import registry
 import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
 from tests.registry_helpers import write_trusted_catalog_cache_text
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import (
@@ -96,36 +97,29 @@ def _write_resolved_host_policy_registry(
     )
     write_trusted_catalog_cache_text(
         tmp_path / "builtin-firewall-catalog-cache.json",
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "catalogDigest": (
-                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                ),
-                "catalogVersion": "catalog-test",
-                "updatedAt": "2026-07-07T00:00:00.000Z",
-                "firewalls": {
-                    firewall_name: {
-                        "name": firewall_name,
-                        "apis": [
-                            {
-                                "base": base,
-                                "auth": {
-                                    "headers": {"Authorization": "Bearer ${{ secrets.TEST_TOKEN }}"}
-                                },
-                                "hostPolicy": host_policy,
-                                "permissions": [
-                                    {
-                                        "name": "full-access",
-                                        "rules": ["ANY /{path+}"],
-                                    }
-                                ],
-                            }
-                        ],
-                    }
+        serialize_builtin_firewall_catalog_cache(
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-test",
+            firewalls={
+                firewall_name: {
+                    "name": firewall_name,
+                    "apis": [
+                        {
+                            "base": base,
+                            "auth": {
+                                "headers": {"Authorization": "Bearer ${{ secrets.TEST_TOKEN }}"}
+                            },
+                            "hostPolicy": host_policy,
+                            "permissions": [
+                                {
+                                    "name": "full-access",
+                                    "rules": ["ANY /{path+}"],
+                                }
+                            ],
+                        }
+                    ],
                 },
             },
-            sort_keys=True,
         ),
     )
     return registry_path

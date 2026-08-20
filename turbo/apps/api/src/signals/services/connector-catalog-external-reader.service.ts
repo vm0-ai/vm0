@@ -520,6 +520,17 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
     return await existing;
   }
 
+  const completedIdentity = cache.completed?.catalog.identity;
+  timing?.recordAcceptedCacheMissReason(
+    completedIdentity === undefined
+      ? "process_empty"
+      : completedIdentity.sourceId !== currentIdentity.sourceId ||
+          completedIdentity.schemaVersion !== currentIdentity.schemaVersion ||
+          completedIdentity.catalogVersion !== currentIdentity.catalogVersion ||
+          completedIdentity.catalogDigest !== currentIdentity.catalogDigest
+        ? "catalog_identity_changed"
+        : "capability_identity_changed",
+  );
   timing?.recordAcceptedCacheOutcome("miss");
   const promise = loadCurrentCatalog({
     db,

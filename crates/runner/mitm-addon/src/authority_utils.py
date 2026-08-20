@@ -127,6 +127,17 @@ def authority_has_empty_port(netloc: str) -> bool:
 
 
 def bracketed_authority_host_is_ipv6(netloc: str) -> bool:
+    """Check that a bracketed authority host, if present, is IPv6.
+
+    This is a conditional bracket-syntax check, not general authority-host
+    validation. Malformed authorities for which ``raw_authority_host()``
+    returns ``None`` produce ``False``. Successfully parsed unbracketed hosts
+    produce ``True`` without hostname or IP validation. Bracketed IPv6 hosts
+    produce ``True``; bracketed IPv4 and non-IP hosts produce ``False``.
+
+    Callers must still apply the normalization and trust-boundary policy
+    checks required for their authority.
+    """
     raw_host = raw_authority_host(netloc)
     if raw_host is None:
         return False
