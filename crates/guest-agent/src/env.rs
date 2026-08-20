@@ -654,8 +654,8 @@ fn resolve_home_dir(
         .ok_or_else(|| "HOME must be set in guest sandbox (rootfs init contract)".to_string())
 }
 
+#[cfg(debug_assertions)]
 fn resolve_codex_home_dir(raw: &GuestConfigRaw) -> String {
-    #[cfg(debug_assertions)]
     if let Some(path) = raw
         .test_codex_home_dir
         .as_deref()
@@ -664,6 +664,11 @@ fn resolve_codex_home_dir(raw: &GuestConfigRaw) -> String {
         return path.to_string_lossy().into_owned();
     }
 
+    CANONICAL_CODEX_HOME_DIR.to_string()
+}
+
+#[cfg(not(debug_assertions))]
+fn resolve_codex_home_dir(_raw: &GuestConfigRaw) -> String {
     CANONICAL_CODEX_HOME_DIR.to_string()
 }
 
@@ -938,6 +943,7 @@ mod tests {
         assert!(!user_env_dir.exists());
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn guest_config_from_raw_uses_captured_test_codex_home() {
         let (_tmp, raw) = raw_config_fixture_with_default_run_payload();
