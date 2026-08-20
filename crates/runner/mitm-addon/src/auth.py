@@ -119,7 +119,6 @@ AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES = 32
 MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS = (
     MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES // AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
 )
-_FIREWALL_AUTH_IDENTITY_VERSION = 2
 _FIREWALL_AUTH_IDENTITY_CACHE_KEY = "_firewallAuthIdentityCache"
 _MISSING_AWS_SIGV4_ORIGINAL_URL = object()
 
@@ -345,7 +344,6 @@ def _build_firewall_auth_identity(
     normal_body = auth_request.to_bytes(force_refresh=False)
     sandbox_token_sha256 = hashlib.sha256(auth_request.sandbox_token.encode("utf-8")).hexdigest()
     material = {
-        "version": _FIREWALL_AUTH_IDENTITY_VERSION,
         "firewallName": firewall_name,
         "firewallBase": firewall_base,
         "authBodySha256": hashlib.sha256(normal_body).hexdigest(),
