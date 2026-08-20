@@ -640,7 +640,7 @@ describe("okou mcp command", () => {
 
   it("reports a discovery server error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/mcp-connectors", () => {
+      http.get("http://localhost:3000/api/mcp-connectors", () => {
         return HttpResponse.json(
           {
             error: {
@@ -662,7 +662,7 @@ describe("okou mcp command", () => {
 
   it("rejects malformed discovery responses", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/mcp-connectors", () => {
+      http.get("http://localhost:3000/api/mcp-connectors", () => {
         return HttpResponse.json({ connectors: [{ id: CONNECTOR_ID }] });
       }),
     );

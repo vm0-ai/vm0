@@ -151,7 +151,7 @@ const commonErrorResponses = {
 export const browserContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/browsers",
+    path: "/api/browsers",
     headers: authHeadersSchema,
     body: browserCreateRequestSchema,
     responses: {
@@ -163,7 +163,7 @@ export const browserContract = c.router({
   },
   use: {
     method: "POST",
-    path: "/api/okou/browsers/use",
+    path: "/api/browsers/use",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -175,7 +175,7 @@ export const browserContract = c.router({
   },
   lease: {
     method: "POST",
-    path: "/api/okou/browsers/lease",
+    path: "/api/browsers/lease",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -234,7 +234,7 @@ export const browserContract = c.router({
   },
   current: {
     method: "GET",
-    path: "/api/okou/browsers/current",
+    path: "/api/browsers/current",
     headers: authHeadersSchema,
     responses: {
       200: browserResponseSchema,

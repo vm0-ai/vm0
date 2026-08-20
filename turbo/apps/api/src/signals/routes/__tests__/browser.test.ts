@@ -117,7 +117,7 @@ async function requestBrowserUse(
   return await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request("/api/zero/browsers/use", {
+  }).request("/api/browsers/use", {
     method: "POST",
     headers: {
       ...headers,
