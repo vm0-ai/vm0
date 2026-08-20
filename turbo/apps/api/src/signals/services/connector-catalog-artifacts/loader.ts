@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
+import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
@@ -9,7 +10,6 @@ import type { ApiDispatchTimingActionType } from "../api-dispatch-timing.service
 import type { ConnectorCatalogLoadTiming } from "../connector-catalog-load-timing.service";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
-  CONNECTOR_CATALOG_MAX_RAW_BYTES,
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,

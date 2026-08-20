@@ -1025,6 +1025,7 @@ export {
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
+  CONNECTOR_CATALOG_MAX_RAW_BYTES,
   publicConnectorCatalogIconSchema,
   connectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
