@@ -3367,7 +3367,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Temukan kontak penting yang telah diam dan draft upaya hubungan.",
-        "scenario": "Hubungan penting pudar ketika tidak ada yang menyadari ketidaktahuan. {{assistantName}} memeriksa Gmail dan Google Contacts, menambahkan riwayat kalender ketika tersedia, dan menyiapkan catatan reconnect yang mendalam.",
+        "scenario": "Hubungan penting pudar ketika tidak ada yang menyadari ketidaktahuan. {{assistantName}} memeriksa Gmail, menambahkan riwayat kalender ketika tersedia, dan menyiapkan catatan reconnect yang mendalam.",
         "steps": {
           "one": {
             "description": "{{assistantName}} memeriksa aktivitas Gmail terbaru dan konteks kontak.",
@@ -3651,8 +3651,8 @@
         "title": "Peringatkan pada insiden Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Bangun ringkasan yang singkat dari Calendar, kontak, dan konteks email.\\n",
-        "scenario": "Persiapan rapat lebih cepat ketika peserta dan riwayat percakapan sudah terhubung. {{assistantName}} memeriksa acara Calendar mendatang dan menambahkan konteks Kontak dan Gmail ketika tersedia.\\n",
+        "description": "Bangun ringkasan yang singkat dari Calendar dan konteks email.\n",
+        "scenario": "Persiapan rapat lebih cepat ketika peserta dan riwayat percakapan sudah terhubung. {{assistantName}} memeriksa acara Calendar mendatang dan menambahkan konteks Gmail ketika tersedia.\n",
         "steps": {
           "one": {
             "description": "{{assistantName}} membaca jendela Calendar Google yang dipilih.\\n",
@@ -3663,7 +3663,7 @@
             "title": "Ringkasan dibuat\\n"
           },
           "two": {
-            "description": "{{assistantName}} memeriksa Kontak Google dan tautan Gmail terkait.\\n",
+            "description": "{{assistantName}} memeriksa tautan Gmail terkait.\n",
             "title": "Konteks peserta dikumpulkan\\n"
           }
         },

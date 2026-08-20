@@ -326,8 +326,8 @@ export const ONBOARDING_WORKFLOW_SPECS = {
     {
       id: "gmail-reconnect-reminders",
       prompt:
-        "Create a relationship-maintenance workflow that finds important Gmail contacts who have gone quiet, cross-checks Google Contacts, uses Google Calendar history when available, and drafts thoughtful reconnect messages for review.",
-      requiredConnectorSlugs: ["gmail", "google-contacts"],
+        "Create a relationship-maintenance workflow that finds important Gmail contacts who have gone quiet, uses Google Calendar history when available, and drafts thoughtful reconnect messages for review.",
+      requiredConnectorSlugs: ["gmail"],
       optionalConnectorSlugs: ["google-calendar"],
     },
   ],
@@ -390,9 +390,9 @@ export const ONBOARDING_WORKFLOW_SPECS = {
     {
       id: "research-calendar-meetings",
       prompt:
-        "Create a pre-meeting workflow that reviews upcoming Google Calendar events, enriches attendee context from Google Contacts and related Gmail threads when available, and produces a focused briefing.",
+        "Create a pre-meeting workflow that reviews upcoming Google Calendar events, enriches attendee context from related Gmail threads when available, and produces a focused briefing.",
       requiredConnectorSlugs: ["google-calendar"],
-      optionalConnectorSlugs: ["google-contacts", "gmail"],
+      optionalConnectorSlugs: ["gmail"],
     },
     {
       id: "summarize-gmail-newsletters",

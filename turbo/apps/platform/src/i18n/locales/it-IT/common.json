@@ -3412,7 +3412,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Trova contatti importanti che sono diventati silenziosi e redigere un approccio.",
-        "scenario": "Le relazioni importanti si deperiscono quando nessuno si accorge del silenzio. {{assistantName}} esamina Gmail e Google Contacts, aggiunge storia del calendario quando disponibile, e redige note di riconnessione pensate.",
+        "scenario": "Le relazioni importanti si deperiscono quando nessuno si accorge del silenzio. {{assistantName}} esamina Gmail, aggiunge storia del calendario quando disponibile, e redige note di riconnessione pensate.",
         "steps": {
           "one": {
             "description": "{{assistantName}} controlla attività recenti di Gmail e contesto dei contatti.",
@@ -3696,8 +3696,8 @@
         "title": "Avvisa su incidenti di Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Costruire riassunti concisi da Google Calendar, contatti e contesto email.",
-        "scenario": "La preparazione delle riunioni è più veloce quando i partecipanti e la storia della conversazione sono già collegati. {{assistantName}} esamina gli eventi futuri di Google Calendar e aggiunge contesto di Google Contacts e Gmail quando disponibile.",
+        "description": "Costruire riassunti concisi da Google Calendar e contesto email.",
+        "scenario": "La preparazione delle riunioni è più veloce quando i partecipanti e la storia della conversazione sono già collegati. {{assistantName}} esamina gli eventi futuri di Google Calendar e aggiunge contesto di Gmail quando disponibile.",
         "steps": {
           "one": {
             "description": "{{assistantName}} legge la finestra di Google Calendar selezionata.",
@@ -3708,7 +3708,7 @@
             "title": "I riassunti vengono preparati"
           },
           "two": {
-            "description": "{{assistantName}} controlla Google Contacts e i filtri Gmail correlati.",
+            "description": "{{assistantName}} controlla i thread Gmail correlati.",
             "title": "Si raccolgono i contesti dei partecipanti"
           }
         },

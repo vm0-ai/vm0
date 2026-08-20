@@ -3368,7 +3368,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Find important contacts who have gone quiet and draft outreach.",
-        "scenario": "Important relationships fade when no one notices the silence. {{assistantName}} reviews Gmail and Google Contacts, adds Calendar history when available, and drafts thoughtful reconnect notes.",
+        "scenario": "Important relationships fade when no one notices the silence. {{assistantName}} reviews Gmail, adds Calendar history when available, and drafts thoughtful reconnect notes.",
         "steps": {
           "one": {
             "description": "{{assistantName}} checks recent Gmail activity and contact context.",
@@ -3652,8 +3652,8 @@
         "title": "Alert on Cloudflare incidents"
       },
       "research-calendar-meetings": {
-        "description": "Build concise briefings from Calendar, contacts, and email context.",
-        "scenario": "Meeting preparation is faster when attendee and conversation history are already connected. {{assistantName}} reviews upcoming Calendar events and adds Contacts and Gmail context when available.",
+        "description": "Build concise briefings from Calendar and email context.",
+        "scenario": "Meeting preparation is faster when attendee and conversation history are already connected. {{assistantName}} reviews upcoming Calendar events and adds Gmail context when available.",
         "steps": {
           "one": {
             "description": "{{assistantName}} reads the selected Google Calendar window.",
@@ -3664,7 +3664,7 @@
             "title": "Briefings are prepared"
           },
           "two": {
-            "description": "{{assistantName}} checks Google Contacts and related Gmail threads.",
+            "description": "{{assistantName}} checks related Gmail threads.",
             "title": "Attendee context is gathered"
           }
         },

@@ -3367,7 +3367,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "連絡が途絶えた重要な連絡先を見つけ、連絡を草稿で作成する。",
-        "scenario": "重要な関係は、誰も静寂を気づかない場合に衰退します。{{assistantName}}はGmailとGoogle Contactsを確認し、カレンダーヒストリーが利用可能な場合にそれを追加し、思いやりのある再連絡メッセージを草稿で作成します。",
+        "scenario": "重要な関係は、誰も静寂を気づかない場合に衰退します。{{assistantName}}はGmailを確認し、カレンダーヒストリーが利用可能な場合にそれを追加し、思いやりのある再連絡メッセージを草稿で作成します。",
         "steps": {
           "one": {
             "description": "{{assistantName}}は最近のGmailの活動と連絡先のコンテキストを確認します。",
@@ -3651,8 +3651,8 @@
         "title": "Cloudflareの事象に警告する"
       },
       "research-calendar-meetings": {
-        "description": "カレンダーや連絡先、メールの文脈から簡潔な概要を作成する。",
-        "scenario": "会議の準備は、出席者と会話の歴史が既に接続されている場合に早くなる。{{assistantName}}は予定されているカレンダーイベントをレビューし、連絡先とギマيلの文脈が利用可能であればそれを追加する。",
+        "description": "カレンダーやメールの文脈から簡潔な概要を作成する。",
+        "scenario": "会議の準備は、出席者と会話の歴史が既に接続されている場合に早くなる。{{assistantName}}は予定されているカレンダーイベントをレビューし、Gmailの文脈が利用可能であればそれを追加する。",
         "steps": {
           "one": {
             "description": "{{assistantName}}は選択されたGoogleカレンダーのウィンドウを読み込む。",
@@ -3663,7 +3663,7 @@
             "title": "概要が作成される"
           },
           "two": {
-            "description": "{{assistantName}}はGoogle連絡先と関連するギマيلスレッドを確認する。",
+            "description": "{{assistantName}}は関連するGmailスレッドを確認する。",
             "title": "出席者の文脈が集まる"
           }
         },

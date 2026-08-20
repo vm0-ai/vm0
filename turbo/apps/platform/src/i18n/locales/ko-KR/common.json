@@ -3367,7 +3367,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "소통이 빠진 중요한 연락처를 찾고 접근 방안을 작성합니다.",
-        "scenario": "중요한 관계는 주의가 없는 경우에 퇴색합니다. {{assistantName}}은 Gmail과 Google Contacts를 검토하고 캘린더 역사가 제공되는 경우 이를 추가하여 깊이 있는 재연결 메시지를 작성합니다.",
+        "scenario": "중요한 관계는 주의가 없는 경우에 퇴색합니다. {{assistantName}}은 Gmail을 검토하고 캘린더 역사가 제공되는 경우 이를 추가하여 깊이 있는 재연결 메시지를 작성합니다.",
         "steps": {
           "one": {
             "description": "{{assistantName}}은 최근 Gmail 활동과 연락처 맥락을 확인합니다.",
@@ -3651,8 +3651,8 @@
         "title": "클라우드플레어 사고 알림"
       },
       "research-calendar-meetings": {
-        "description": "캘린더, 연락처, 이메일 컨텍스트에서 간결한 요약 작성.\\n",
-        "scenario": "참석자와 대화 기록이 연결되어 있을 때 회의 준비는 더 빠릅니다. {{assistantName}}는 임박한 캘린더 이벤트를 검토하고, 연락처와 Gmail 컨텍스트가 제공되는 경우 추가합니다.\\n",
+        "description": "캘린더와 이메일 컨텍스트에서 간결한 요약 작성.\n",
+        "scenario": "참석자와 대화 기록이 연결되어 있을 때 회의 준비는 더 빠릅니다. {{assistantName}}는 임박한 캘린더 이벤트를 검토하고, Gmail 컨텍스트가 제공되는 경우 추가합니다.\n",
         "steps": {
           "one": {
             "description": "{{assistantName}}는 선택된 Google 캘린더 창을 읽습니다.\\n",
@@ -3663,7 +3663,7 @@
             "title": "요약 작성\\n"
           },
           "two": {
-            "description": "{{assistantName}}는 Google 연락처와 관련 Gmail 쓰레드를 확인합니다.\\n",
+            "description": "{{assistantName}}는 관련 Gmail 쓰레드를 확인합니다.\n",
             "title": "참석자 컨텍스트 수집\\n"
           }
         },

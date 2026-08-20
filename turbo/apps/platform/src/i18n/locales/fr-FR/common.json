@@ -3412,7 +3412,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Trouver des contacts importants qui sont silencieux et rédiger des approches.",
-        "scenario": "Les relations importantes s'estompent lorsque personne ne remarque le silence. {{assistantName}} examine Gmail et Google Contacts, ajoute l'historique de l'agenda lorsque disponible, et rédige des notes de reprise réfléchies.",
+        "scenario": "Les relations importantes s'estompent lorsque personne ne remarque le silence. {{assistantName}} examine Gmail, ajoute l'historique de l'agenda lorsque disponible, et rédige des notes de reprise réfléchies.",
         "steps": {
           "one": {
             "description": "{{assistantName}} vérifie l'activité Gmail récente et le contexte des contacts.",
@@ -3696,8 +3696,8 @@
         "title": "Prévenir les incidents Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Construire des présentations concises à partir du calendrier, des contacts et du contexte des e-mails.",
-        "scenario": "La préparation des réunions est plus rapide lorsque les informations sur les participants et l'historique des conversations sont déjà connectées. {{assistantName}} examine les événements à venir dans le calendrier Google et ajoute un contexte de contacts et d'e-mails Gmail lorsque disponible.",
+        "description": "Construire des présentations concises à partir du calendrier et du contexte des e-mails.",
+        "scenario": "La préparation des réunions est plus rapide lorsque les informations sur les participants et l'historique des conversations sont déjà connectées. {{assistantName}} examine les événements à venir dans le calendrier Google et ajoute un contexte d'e-mails Gmail lorsque disponible.",
         "steps": {
           "one": {
             "description": "{{assistantName}} lit la fenêtre de calendrier Google sélectionnée.",
@@ -3708,7 +3708,7 @@
             "title": "Les présentations sont préparées"
           },
           "two": {
-            "description": "{{assistantName}} vérifie les contacts Google et les fils d'e-mails associés.",
+            "description": "{{assistantName}} vérifie les fils d'e-mails associés.",
             "title": "Le contexte des participants est rassemblé"
           }
         },

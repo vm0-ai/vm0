@@ -3368,7 +3368,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Finde wichtige Kontakte, die still sind, und formele eine Rückbindung.",
-        "scenario": "Wichtige Beziehungen verblasen, wenn niemand die Stille bemerkt. {{assistantName}} überprüft E-Mail und Google-Kontakte, fügt Kalenderhistorie bei Verfügbarkeit hinzu und formelt sorgfältige Rückbindungsnachrichten.",
+        "scenario": "Wichtige Beziehungen verblasen, wenn niemand die Stille bemerkt. {{assistantName}} überprüft E-Mail, fügt Kalenderhistorie bei Verfügbarkeit hinzu und formelt sorgfältige Rückbindungsnachrichten.",
         "steps": {
           "one": {
             "description": "{{assistantName}} überprüft neueste E-Mail-Aktivität und Kontext.",
@@ -3652,8 +3652,8 @@
         "title": "Warnung bei Cloudflare-Ausfällen"
       },
       "research-calendar-meetings": {
-        "description": "Erstellen Sie knappe Zusammenfassungen aus Kalender, Kontakten und E-Mail-Kontext.\\n",
-        "scenario": "Die Vorbereitung auf Termine ist schneller, wenn die Teilnehmer und die Gesprächsgeschichte bereits verbunden sind. {{assistantName}} überprüft kommende Kalender-Einträge und fügt Kontaktdaten und Gmail-Kontext hinzu, wenn verfügbar.\\n",
+        "description": "Erstellen Sie knappe Zusammenfassungen aus Kalender und E-Mail-Kontext.\n",
+        "scenario": "Die Vorbereitung auf Termine ist schneller, wenn die Teilnehmer und die Gesprächsgeschichte bereits verbunden sind. {{assistantName}} überprüft kommende Kalender-Einträge und fügt Gmail-Kontext hinzu, wenn verfügbar.\n",
         "steps": {
           "one": {
             "description": "{{assistantName}} liest den ausgewählten Google-Kalenderfensterbereich.\\n",
@@ -3664,7 +3664,7 @@
             "title": "Zusammenfassungen werden erstellt.\\n"
           },
           "two": {
-            "description": "{{assistantName}} überprüft Google-Kontakte und verwandte Gmail-Threads.\\n",
+            "description": "{{assistantName}} überprüft verwandte Gmail-Threads.\n",
             "title": "Kontext für die Teilnehmer wird gesammelt.\\n"
           }
         },

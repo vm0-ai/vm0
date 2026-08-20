@@ -3412,7 +3412,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Encuentra contactos importantes que han quedado sin respuesta y redacta acercamientos.",
-        "scenario": "Las relaciones importantes se atrofian cuando nadie nota el silencio. {{assistantName}} revisa Gmail y Google Contacts, añade historia del calendario cuando esté disponible y redacta notas de reactivación pensativas.",
+        "scenario": "Las relaciones importantes se atrofian cuando nadie nota el silencio. {{assistantName}} revisa Gmail, añade historia del calendario cuando esté disponible y redacta notas de reactivación pensativas.",
         "steps": {
           "one": {
             "description": "{{assistantName}} verifica actividad reciente de Gmail y contexto de contacto.",
@@ -3696,8 +3696,8 @@
         "title": "Alerta sobre incidentes de Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Construir resúmenes concisos desde Google Calendar, contactos y contexto de correo electrónico.",
-        "scenario": "La preparación para las reuniones es más rápida cuando los asistentes y el historial de conversación ya están conectados. {{assistantName}} revisa eventos futuros en Google Calendar y añade contexto de Contactos y Gmail cuando esté disponible.",
+        "description": "Construir resúmenes concisos desde Google Calendar y contexto de correo electrónico.",
+        "scenario": "La preparación para las reuniones es más rápida cuando los asistentes y el historial de conversación ya están conectados. {{assistantName}} revisa eventos futuros en Google Calendar y añade contexto de Gmail cuando esté disponible.",
         "steps": {
           "one": {
             "description": "{{assistantName}} lee la ventana de Google Calendar seleccionada.",
@@ -3708,7 +3708,7 @@
             "title": "Se preparan resúmenes"
           },
           "two": {
-            "description": "{{assistantName}} revisa Google Contacts y hilos de Gmail relacionados.",
+            "description": "{{assistantName}} revisa hilos de Gmail relacionados.",
             "title": "Se recopila contexto de los asistentes"
           }
         },

@@ -3412,7 +3412,7 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Encontrar contatos importantes que ficaram quietos e elaborar abordagens.",
-        "scenario": "Relacionamentos importantes se apagam quando ninguém nota o silêncio. {{assistantName}} revisa o Gmail e Google Contacts, adiciona histórico do calendário quando disponível e elabora notas de reestabelecimento pensativas.",
+        "scenario": "Relacionamentos importantes se apagam quando ninguém nota o silêncio. {{assistantName}} revisa o Gmail, adiciona histórico do calendário quando disponível e elabora notas de reestabelecimento pensativas.",
         "steps": {
           "one": {
             "description": "{{assistantName}} verifica atividade recente no Gmail e contexto de contato.",
@@ -3696,8 +3696,8 @@
         "title": "Alerta sobre incidentes do Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Construir breves resumos a partir do Calendário, contatos e contexto de e-mail.",
-        "scenario": "A preparação para reuniões é mais rápida quando o histórico de participantes e conversas já estão conectados. {{assistantName}} revisa eventos futuros no Calendário e adiciona contexto de Contatos e Gmail quando disponível.",
+        "description": "Construir breves resumos a partir do Calendário e contexto de e-mail.",
+        "scenario": "A preparação para reuniões é mais rápida quando o histórico de participantes e conversas já estão conectados. {{assistantName}} revisa eventos futuros no Calendário e adiciona contexto de Gmail quando disponível.",
         "steps": {
           "one": {
             "description": "{{assistantName}} lê a janela do Calendário do Google selecionada.",
@@ -3708,7 +3708,7 @@
             "title": "Resumos são preparados"
           },
           "two": {
-            "description": "{{assistantName}} verifica os Contatos do Google e fios de e-mail relacionados.",
+            "description": "{{assistantName}} verifica fios de e-mail relacionados.",
             "title": "Contexto dos participantes é coletado"
           }
         },
