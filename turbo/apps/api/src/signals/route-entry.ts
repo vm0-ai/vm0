@@ -262,7 +262,14 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // #28418: the browser, finance, SEO, and MCP connector routes.
+  // #28418: the browser, finance, SEO, and MCP connector routes. The callers
+  // these rows keep working are a released web or app client, which holds the
+  // branded path until a refresh loads a build that derives the neutral one
+  // (~2 days), and a CLI artifact pinned by an execution context's
+  // `CLI_PKG_URL`, which holds it for that context's queue and claimed-run
+  // lifetime. Neither window is the removal condition on its own: a row is
+  // removed under #26701's evidence rules, because the request log retains
+  // about three days and cannot tell a drained caller from a weekly one.
   "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
   "/api/browsers/current": [
     "/api/okou/browsers/current",
