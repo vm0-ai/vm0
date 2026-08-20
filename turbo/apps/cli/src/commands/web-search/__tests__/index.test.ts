@@ -106,13 +106,10 @@ describe("okou web-search command", () => {
   it("posts default requests and prints JSON", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/web-search",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json(responseBody);
-        },
-      ),
+      http.post("http://localhost:3000/api/web-search", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json(responseBody);
+      }),
     );
 
     await webSearchCommand.parseAsync([
@@ -132,18 +129,15 @@ describe("okou web-search command", () => {
   it("translates filters and renders ranked results", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/web-search",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json({
-            ...responseBody,
-            limit: 3,
-            recency: "week",
-            domains: ["example.com", "docs.example.com"],
-          });
-        },
-      ),
+      http.post("http://localhost:3000/api/web-search", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          ...responseBody,
+          limit: 3,
+          recency: "week",
+          domains: ["example.com", "docs.example.com"],
+        });
+      }),
     );
 
     await webSearchCommand.parseAsync([

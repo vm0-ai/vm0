@@ -258,6 +258,14 @@ export function withApiNamespaceAliases(
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
  * request log retains about three days, which by itself cannot prove a row is
  * drained — it cannot tell a caller that left from one that calls weekly.
+ *
+ * The surfaces a row protects, with their observed maximum exposure: an old web
+ * or app client holds a branded path for about two days, and an existing runner
+ * or sandbox for up to two hours. The longest is the CLI: a queued run keeps the
+ * commit-addressed package recorded in `CLI_PKG_URL` when its execution context
+ * was created, so a published build can call a branded path well past both. That
+ * surface has no elapsed-time bound, which is why removal is gated on #26701's
+ * traffic evidence rather than on a rollout window.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
