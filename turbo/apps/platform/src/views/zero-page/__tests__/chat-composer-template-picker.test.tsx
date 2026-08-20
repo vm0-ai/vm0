@@ -3437,7 +3437,7 @@ describe("chat composer templates", () => {
     await sendMessageInUI(user, composer, "Never mind the deck");
 
     await waitFor(() => {
-      expect(sentPrompts).toEqual(["Never mind the deck"]);
+      expect(sentPrompts).toStrictEqual(["Never mind the deck"]);
     });
   });
 
