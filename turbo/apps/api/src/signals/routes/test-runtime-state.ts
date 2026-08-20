@@ -273,31 +273,45 @@ async function deleteVm0ManagedModelKey(
   signal.throwIfAborted();
 }
 
-type Vm0ManagedModelKeyAction = Extract<
+function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
+  return {
+    provider_type: route.providerType,
+    upstream_model: route.upstreamModel,
+    model_key_id: route.modelKeyId,
+  };
+}
+
+type Vm0ManagedModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
       | "seed-vm0-managed-default-model-key"
       | "seed-vm0-managed-model-key"
       | "seed-vm0-managed-model-candidate-keys"
-      | "delete-vm0-managed-model-key";
+      | "delete-vm0-managed-model-key"
+      | "resolve-vm0-managed-model-route"
+      | "set-vm0-managed-candidate-cooldown"
+      | "delete-vm0-managed-candidate-cooldown";
   }
 >;
 
-function isVm0ManagedModelKeyAction(
+function isVm0ManagedModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelKeyAction {
-  return (
-    body.action === "seed-vm0-managed-default-model-key" ||
-    body.action === "seed-vm0-managed-model-key" ||
-    body.action === "seed-vm0-managed-model-candidate-keys" ||
-    body.action === "delete-vm0-managed-model-key"
-  );
+): body is Vm0ManagedModelAction {
+  return [
+    "seed-vm0-managed-default-model-key",
+    "seed-vm0-managed-model-key",
+    "seed-vm0-managed-model-candidate-keys",
+    "delete-vm0-managed-model-key",
+    "resolve-vm0-managed-model-route",
+    "set-vm0-managed-candidate-cooldown",
+    "delete-vm0-managed-candidate-cooldown",
+  ].includes(body.action);
 }
 
-async function vm0ManagedModelKeyActionResponse(
+async function vm0ManagedModelActionResponse(
   db: Db,
-  body: Vm0ManagedModelKeyAction,
+  body: Vm0ManagedModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -346,43 +360,6 @@ async function vm0ManagedModelKeyActionResponse(
       await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
-  }
-}
-
-function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
-  return {
-    provider_type: route.providerType,
-    upstream_model: route.upstreamModel,
-    model_key_id: route.modelKeyId,
-  };
-}
-
-type Vm0ManagedModelRuntimeAction = Extract<
-  TestRuntimeStateActionBody,
-  {
-    action:
-      | "resolve-vm0-managed-model-route"
-      | "set-vm0-managed-candidate-cooldown"
-      | "delete-vm0-managed-candidate-cooldown";
-  }
->;
-
-function isVm0ManagedModelRuntimeAction(
-  body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelRuntimeAction {
-  return [
-    "resolve-vm0-managed-model-route",
-    "set-vm0-managed-candidate-cooldown",
-    "delete-vm0-managed-candidate-cooldown",
-  ].includes(body.action);
-}
-
-async function vm0ManagedModelRuntimeActionResponse(
-  db: Db,
-  body: Vm0ManagedModelRuntimeAction,
-  signal: AbortSignal,
-) {
-  switch (body.action) {
     case "resolve-vm0-managed-model-route": {
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
@@ -1653,11 +1630,8 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0ManagedModelKeyAction(body)) {
-      return await vm0ManagedModelKeyActionResponse(db, body, signal);
-    }
-    if (isVm0ManagedModelRuntimeAction(body)) {
-      return await vm0ManagedModelRuntimeActionResponse(db, body, signal);
+    if (isVm0ManagedModelAction(body)) {
+      return await vm0ManagedModelActionResponse(db, body, signal);
     }
     if (isCustomConnectorAuthTemplateFixtureAction(body)) {
       return await customConnectorAuthTemplateFixtureActionResponse(
