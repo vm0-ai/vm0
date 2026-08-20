@@ -3251,7 +3251,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     }
   });
 
-  it("waits for the previous writer before replacing its Checkout", async () => {
+  it("waits when the previous writer claims a fresh Checkout snapshot", async () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     await prepareUsagePackCheckoutOrg(fixture, customerId);
@@ -3265,6 +3265,15 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       customerId,
     );
     cleanupUsagePackSnapshotOnTestFinished(fixture, legacySnapshotId);
+    // The previous API can claim a snapshot created by another writer. Keep
+    // its freshness timestamp distinct from creation so ownership never
+    // depends on timestamp equality.
+    await usagePackStateAction({
+      action: "set-updated-at",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId: legacySnapshotId,
+      updatedAt: new Date(now() - 1000).toISOString(),
+    });
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
       billingUsagePackCheckoutContract,
     );
@@ -3272,9 +3281,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       return client.create({
         body: {
           tier: "pro",
-          memberUsagePacks: [
-            { memberId: fixture.userId, usagePackUsd: 50 },
-          ],
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 50 }],
           successUrl: `${APP_ORIGIN}/billing?billing=success`,
           cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
         },
@@ -3437,7 +3444,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     expect(
       (await readUsagePackState(fixture.orgId, usagePackSubscriptionId))
         .subscription?.subscriptionStatus,
-    ).toBe("checkout_pending");
+    ).toBe("purchase_pending");
 
     const reused = await accept(
       client.create({
@@ -3464,7 +3471,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     expect(
       (await readUsagePackState(fixture.orgId, usagePackSubscriptionId))
         .subscription?.subscriptionStatus,
-    ).toBe("checkout_pending");
+    ).toBe("purchase_pending");
 
     mockNow(new Date(startedAt.getTime() + 30 * 60 * 1000));
     await reconcileBillingOrganization(fixture.orgId);

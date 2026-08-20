@@ -98,6 +98,10 @@ const CANCELED_USAGE_PACK_ALLOCATION_STATUSES = [
 ] as const;
 const USAGE_PACK_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const USAGE_PACK_PENDING_SNAPSHOT_STALE_MS = BILLING_PURCHASE_PREVIEW_TTL_MS;
+const USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES = [
+  "checkout_pending",
+  "purchase_pending",
+] as const;
 const TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES = [
   "canceled",
   "incomplete_expired",
@@ -587,7 +591,9 @@ async function pendingUsagePackCheckoutContexts(
     .where(
       and(
         eq(usagePackSubscriptions.orgId, orgId),
-        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+        inArray(usagePackSubscriptions.subscriptionStatus, [
+          ...USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES,
+        ]),
       ),
     )
     .orderBy(desc(usagePackSubscriptions.updatedAt));
@@ -615,7 +621,9 @@ async function retireUsagePackCheckout(
     .where(
       and(
         eq(usagePackSubscriptions.id, usagePackSubscriptionId),
-        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+        inArray(usagePackSubscriptions.subscriptionStatus, [
+          ...USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES,
+        ]),
       ),
     )
     .for("update")
@@ -646,15 +654,15 @@ function previousUsagePackCheckoutWriterPending(
   snapshot: UsagePackContext,
   at: Date,
 ): boolean {
-  const { createdAt, updatedAt } = snapshot.subscription;
-  // Previous API versions leave both timestamps equal while creating the
-  // Stripe Session outside the organization lock. During the backend rollout
-  // window (up to ~102 minutes observed), preserve each such writer for the
-  // 15-minute snapshot TTL. Remove after the old API and its final snapshots
-  // are outside the rollback/drain window: #28372.
+  // Previous API versions only write checkout_pending and may still create a
+  // Stripe Session after releasing the organization lock. New snapshots use
+  // purchase_pending so the previous reader cannot take them over. Preserve
+  // every fresh legacy-visible writer for the 15-minute snapshot TTL. Remove
+  // this compatibility branch after the rollback/drain window: #28372.
   return (
-    createdAt.getTime() === updatedAt.getTime() &&
-    updatedAt.getTime() > at.getTime() - USAGE_PACK_PENDING_SNAPSHOT_STALE_MS
+    snapshot.subscription.subscriptionStatus === "checkout_pending" &&
+    snapshot.subscription.updatedAt.getTime() >
+      at.getTime() - USAGE_PACK_PENDING_SNAPSHOT_STALE_MS
   );
 }
 
@@ -685,7 +693,6 @@ async function resolvePendingUsagePackSnapshots(
   });
   if (
     !preferred ||
-    preferred.subscription.subscriptionStatus !== "checkout_pending" ||
     preferred.subscription.stripeCheckoutSessionId ||
     preferred.subscription.stripeSubscriptionId ||
     !args.matches(preferred)
@@ -710,12 +717,18 @@ async function resolvePendingUsagePackCheckout(
   preferredSnapshotId: string | undefined,
   signal: AbortSignal,
 ): Promise<PendingUsagePackCheckoutResolution> {
-  const matches = (context: UsagePackContext) => {
+  const configurationMatches = (context: UsagePackContext) => {
     return (
       context.subscription.tier === args.tier &&
       context.subscription.stripePlanPriceId === args.planPriceId &&
       context.subscription.stripeCustomerId === customerId &&
       usagePackCheckoutAllocationsMatch(context.allocations, args.allocations)
+    );
+  };
+  const snapshotMatches = (context: UsagePackContext) => {
+    return (
+      context.subscription.subscriptionStatus === "purchase_pending" &&
+      configurationMatches(context)
     );
   };
   const stripe = getStripeClient();
@@ -752,7 +765,9 @@ async function resolvePendingUsagePackCheckout(
     }) ??
     resolved.find(({ context, session }) => {
       return (
-        session.status === "open" && Boolean(session.url) && matches(context)
+        session.status === "open" &&
+        Boolean(session.url) &&
+        configurationMatches(context)
       );
     });
   for (const entry of resolved) {
@@ -788,7 +803,7 @@ async function resolvePendingUsagePackCheckout(
   }
   return await resolvePendingUsagePackSnapshots(tx, {
     snapshots,
-    matches,
+    matches: snapshotMatches,
     preferredSnapshotId,
   });
 }
@@ -809,7 +824,6 @@ async function insertUsagePackPurchaseSnapshot(
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
 ): Promise<string> {
-  const createdAt = nowDate();
   const [subscription] = await tx
     .insert(usagePackSubscriptions)
     .values({
@@ -817,11 +831,7 @@ async function insertUsagePackPurchaseSnapshot(
       tier: args.tier,
       stripePlanPriceId: args.planPriceId,
       stripeCustomerId: customerId,
-      createdAt,
-      // A one-millisecond distinction marks snapshots owned by the serialized
-      // writer so mixed-version readers do not confuse them with legacy
-      // lock-free writers. Remove with the compatibility branch in #28372.
-      updatedAt: new Date(createdAt.getTime() + 1),
+      subscriptionStatus: "purchase_pending",
     })
     .returning({ id: usagePackSubscriptions.id });
   if (!subscription) {
@@ -922,11 +932,17 @@ async function createUsagePackCheckoutForSnapshot(args: {
   }
   const correlated = await args.db
     .update(usagePackSubscriptions)
-    .set({ stripeCheckoutSessionId: session.id, updatedAt: nowDate() })
+    .set({
+      stripeCheckoutSessionId: session.id,
+      subscriptionStatus: "checkout_pending",
+      updatedAt: nowDate(),
+    })
     .where(
       and(
         eq(usagePackSubscriptions.id, args.usagePackSubscriptionId),
-        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+        inArray(usagePackSubscriptions.subscriptionStatus, [
+          ...USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES,
+        ]),
         isNull(usagePackSubscriptions.stripeCheckoutSessionId),
         isNull(usagePackSubscriptions.stripeSubscriptionId),
       ),
@@ -1141,7 +1157,7 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
       .where(
         and(
           eq(usagePackSubscriptions.id, resolution.usagePackSubscriptionId),
-          eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+          eq(usagePackSubscriptions.subscriptionStatus, "purchase_pending"),
           isNull(usagePackSubscriptions.stripeCheckoutSessionId),
           isNull(usagePackSubscriptions.stripeSubscriptionId),
         ),
@@ -3328,7 +3344,9 @@ async function reconcileUsagePackSubscriptionCandidate(
           and(
             eq(usagePackSubscriptions.id, candidate.id),
             eq(usagePackSubscriptions.orgId, candidate.orgId),
-            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            inArray(usagePackSubscriptions.subscriptionStatus, [
+              ...USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES,
+            ]),
             isNull(usagePackSubscriptions.stripeSubscriptionId),
             isNull(usagePackSubscriptions.stripeCheckoutSessionId),
             lte(usagePackSubscriptions.updatedAt, pendingSnapshotStaleBefore),
@@ -3470,7 +3488,9 @@ export async function reconcileUsagePackSubscriptions(
           and(
             isNull(usagePackSubscriptions.stripeSubscriptionId),
             isNull(usagePackSubscriptions.stripeCheckoutSessionId),
-            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            inArray(usagePackSubscriptions.subscriptionStatus, [
+              ...USAGE_PACK_PURCHASE_SNAPSHOT_STATUSES,
+            ]),
             lte(usagePackSubscriptions.updatedAt, pendingSnapshotStaleBefore),
           ),
           and(

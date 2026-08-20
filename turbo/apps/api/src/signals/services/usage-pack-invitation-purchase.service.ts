@@ -1745,8 +1745,7 @@ async function billUsagePackInvitationPurchase(
   args: BillUsagePackInvitationPurchaseArgs,
   signal: AbortSignal,
 ): Promise<ConfirmUsagePackInvitationPurchaseResult> {
-  const { purchase, subscription, stripeSubscriptionId, paymentMethod } =
-    args;
+  const { purchase, subscription, stripeSubscriptionId, paymentMethod } = args;
   const stripe = getStripeClient();
   const invoiceCreation = await createInvitationPurchaseInvoice(
     db,

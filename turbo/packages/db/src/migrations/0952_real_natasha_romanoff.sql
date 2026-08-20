@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uq_usage_pack_subscriptions_pending_org" ON "usage_pack_subscriptions" USING btree ("org_id") WHERE "usage_pack_subscriptions"."subscription_status" IN ('checkout_pending', 'purchase_pending');

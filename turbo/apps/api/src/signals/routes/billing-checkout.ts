@@ -732,7 +732,6 @@ const usagePackCheckoutAuthed$ = command(
     ) {
       return usagePackCheckoutDisabled;
     }
-    signal.throwIfAborted();
 
     const db = get(db$);
     if (!(await usagePackSubscriptionSchemaAvailable(db))) {

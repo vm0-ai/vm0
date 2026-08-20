@@ -264,6 +264,11 @@ export const usagePackSubscriptions = pgTable(
       uniqueIndex("uq_usage_pack_subscriptions_stripe_subscription")
         .on(table.stripeSubscriptionId)
         .where(sql`${table.stripeSubscriptionId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_subscriptions_pending_org")
+        .on(table.orgId)
+        .where(
+          sql`${table.subscriptionStatus} IN ('checkout_pending', 'purchase_pending')`,
+        ),
       index("idx_usage_pack_subscriptions_org").on(table.orgId),
       index("idx_usage_pack_subscriptions_reconcile").on(
         table.subscriptionStatus,
