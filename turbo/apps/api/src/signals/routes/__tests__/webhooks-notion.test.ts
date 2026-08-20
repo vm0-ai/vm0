@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -8,7 +9,6 @@ import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
@@ -24,6 +24,7 @@ import {
 } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksNotionRoutes } from "../webhooks-notion";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -96,6 +97,12 @@ function automationsClient() {
   );
 }
 
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 function workflowAutomationExecutionClient() {
   return setupApp({
     context,
@@ -108,6 +115,7 @@ async function enableNotionWorkflowAutomations(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+    [FeatureSwitchKey.ConnectorAccounts]: true,
   });
 }
 
@@ -934,6 +942,14 @@ describe("POST /api/webhooks/notion", () => {
     expect(chatEventDisplayText(workflowMessage)).toBe(
       'Notion page "Launch notes v2" was updated.',
     );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
 
     // The runner claim exposes the persisted event context: latest page
     // title, properties, and no page body/content.

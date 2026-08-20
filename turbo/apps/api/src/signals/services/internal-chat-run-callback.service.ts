@@ -659,6 +659,7 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly publicBrand?: PublicBrand;
   readonly threadId: string;
+  readonly connectorSourceId?: string;
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
@@ -882,6 +883,9 @@ function buildQueuedCreateZeroRunArgs(
     // The time spent waiting in the chat queue is recorded separately.
     apiStartTime: admissionTime,
     chatThreadId: input.threadId,
+    ...(input.connectorSourceId
+      ? { connectorSourceId: input.connectorSourceId }
+      : {}),
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
     modelProviderCredentialScope:
@@ -2716,6 +2720,7 @@ interface QueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
   readonly publicBrand?: PublicBrand;
+  readonly connectorSourceId?: string;
   readonly delivery: QueuedIntegrationDeliveries;
   readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
 }
@@ -2778,7 +2783,10 @@ type NativeQueuedLaunchMaterial = (
   | AgentPhoneQueuedLaunchMaterial
   | TelegramQueuedLaunchMaterial
   | MorningBriefQueuedLaunchMaterial
-) & { readonly publicBrand?: PublicBrand };
+) & {
+  readonly publicBrand?: PublicBrand;
+  readonly connectorSourceId?: string;
+};
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
@@ -2796,6 +2804,9 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
       ...(material.publicBrand ? { publicBrand: material.publicBrand } : {}),
       ...(material.userInfoExtras
         ? { userInfoExtras: material.userInfoExtras }
+        : {}),
+      ...(material.connectorSourceId
+        ? { connectorSourceId: material.connectorSourceId }
         : {}),
     };
   };
@@ -3077,6 +3088,9 @@ function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
   return {
     ...queuedIntegrationDeliveries(launchMaterial),
     userInfoExtras: launchMaterial.userInfoExtras,
+    ...(launchMaterial.connectorSourceId
+      ? { connectorSourceId: launchMaterial.connectorSourceId }
+      : {}),
   };
 }
 
