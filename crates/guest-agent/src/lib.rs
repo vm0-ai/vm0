@@ -79,10 +79,12 @@
 //!   means the history exceeds the guest verification budget.
 //!
 //! The runner caller is
-//! `crates/runner/src/executor/agent_run.rs::build_final_identity_verify_command`;
-//! its result consumer is the exit-code mapping in
-//! `read_final_session_history_identity`. Keep those source references in sync
-//! with the linked shared constants when changing this protocol.
+//! `crates/runner/src/executor/agent_run.rs::build_final_identity_verify_command`,
+//! invoked from `verify_restored_session_identity_for_reuse`. The command is
+//! executed by `verify_final_identity_metadata`, and
+//! `session_history_identity_reason_from_helper_result` maps its exit status
+//! to runner reasons. Keep those source references in sync with the linked
+//! shared constants when changing this protocol.
 //!
 //! ## `export-session-history-sidecar`
 //!
