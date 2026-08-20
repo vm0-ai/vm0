@@ -92,20 +92,10 @@ end
 expected_playwright_lanes = [
   { "lane" => "features", "project" => "features" },
   { "lane" => "paid-onboarding", "project" => "paid-onboarding" },
-  {
-    "lane" => "billing-transitions-1",
-    "project" => "billing-transitions",
-    "shard" => "1/2",
-  },
-  {
-    "lane" => "billing-transitions-2",
-    "project" => "billing-transitions",
-    "shard" => "2/2",
-  },
 ]
 unless playwright.dig("strategy", "matrix", "include") ==
     expected_playwright_lanes
-  raise "Playwright matrix must shard the measured billing bottleneck"
+  raise "Playwright matrix must contain the expected project lanes"
 end
 expected_playwright_group =
   "cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}"

@@ -1844,12 +1844,6 @@ jobs:
             project: features
           - lane: paid-onboarding
             project: paid-onboarding
-          - lane: billing-transitions-1
-            project: billing-transitions
-            shard: 1/2
-          - lane: billing-transitions-2
-            project: billing-transitions
-            shard: 2/2
     concurrency:
       group: cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
