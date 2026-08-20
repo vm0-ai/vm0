@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
+import { connectorRuntimeTargetsSchema } from "./runners";
 
 const c = initContract();
 
@@ -81,6 +82,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
       "inconsistent",
       "incomplete",
     ]),
+  }),
+  z.object({
+    action: z.literal("set-runner-job-connector-runtime-targets"),
+    run_id: z.uuid(),
+    connector_runtime_targets: connectorRuntimeTargetsSchema,
   }),
   z.object({
     action: z.literal("remove-run-canonical-storage-state"),
