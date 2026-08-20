@@ -124,6 +124,11 @@ def record_allow_context(
     diagnostic, asterisk-form target, or incomplete original-URL context is a
     no-op.
 
+    Catalog matching is only a diagnostic hint, not proof that an ordinary
+    request requires connector credentials. Preserve the original request and
+    wait for an upstream 401/403 to provide the auth-failure signal before
+    resolving an inactive connector candidate.
+
     On success, the flow records diagnostic eligibility, active firewall names,
     and one classification-compatible catalog snapshot. Response phases resolve
     candidates only from that pinned snapshot.
