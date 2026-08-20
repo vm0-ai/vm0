@@ -18,7 +18,6 @@ export interface BuiltInModelRuntimeRoute {
   readonly providerType: Vm0ManagedRouteProviderType;
   readonly upstreamModel: string;
   readonly modelKeyId: string;
-  readonly modelKeyRevision: number;
 }
 
 export interface ModelRuntimeSessionRoute {
@@ -29,14 +28,13 @@ export interface ModelRuntimeSessionRoute {
 
 function routeFromTarget(
   target: Vm0ManagedRouteTarget,
-  key: { readonly id: string; readonly revision: number },
+  key: { readonly id: string },
 ): BuiltInModelRuntimeRoute {
   return {
     selectedModel: target.selectedModel,
     providerType: target.providerType,
     upstreamModel: target.upstreamModel,
     modelKeyId: key.id,
-    modelKeyRevision: key.revision,
   };
 }
 
@@ -56,7 +54,7 @@ async function resolvePrimaryRoute(
 ): Promise<BuiltInModelRuntimeRoute | null> {
   const target = builtInModelRuntimeTarget(selectedModel);
   const [key] = await db
-    .select({ id: builtInModelKeys.id, revision: builtInModelKeys.revision })
+    .select({ id: builtInModelKeys.id })
     .from(builtInModelKeys)
     .where(eq(builtInModelKeys.vendor, target.vendor))
     .limit(1);
@@ -75,7 +73,7 @@ export async function resolveBuiltInModelRuntimeRoute(
   const timestamp = nowDate();
   for (const target of getVm0ManagedRouteCandidates(selectedModel)) {
     const [key] = await db
-      .select({ id: builtInModelKeys.id, revision: builtInModelKeys.revision })
+      .select({ id: builtInModelKeys.id })
       .from(builtInModelKeys)
       .where(eq(builtInModelKeys.vendor, target.vendor))
       .limit(1);
@@ -91,7 +89,6 @@ export async function resolveBuiltInModelRuntimeRoute(
       .where(
         and(
           eq(managedModelCredentialCooldown.modelKeyId, key.id),
-          eq(managedModelCredentialCooldown.modelKeyRevision, key.revision),
           gt(managedModelCredentialCooldown.unavailableUntil, timestamp),
         ),
       )

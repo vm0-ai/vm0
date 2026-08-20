@@ -149,14 +149,12 @@ export async function setVm0ManagedCredentialCooldownFixture(
   await postAction(context, {
     action: "set-vm0-managed-credential-cooldown",
     model_key_id: route.model_key_id,
-    model_key_revision: route.model_key_revision,
     unavailable_until: unavailableUntil.toISOString(),
   });
   onTestFinished(async () => {
     await postAction(context, {
       action: "delete-vm0-managed-credential-cooldown",
       model_key_id: route.model_key_id,
-      model_key_revision: route.model_key_revision,
     });
   });
 }
@@ -182,33 +180,6 @@ export async function setVm0ManagedCandidateCooldownFixture(
       upstream_model: route.upstream_model,
     });
   });
-}
-
-export async function upsertVm0ManagedModelKeyFixture(
-  context: TestContext,
-  args: {
-    readonly vendor: string;
-    readonly apiKey: string;
-    readonly label: string | null;
-  },
-) {
-  const response = await postAction(context, {
-    action: "upsert-vm0-managed-model-key",
-    vendor: args.vendor,
-    api_key: args.apiKey,
-    label: args.label,
-  });
-  const key = response.managed_model_key;
-  if (!key) {
-    throw new Error("upsertVm0ManagedModelKeyFixture missing key identity");
-  }
-  onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-model-key-by-id",
-      model_key_id: key.id,
-    });
-  });
-  return key;
 }
 
 export async function readBrowserScreenshotSchemaAvailable(

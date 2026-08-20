@@ -2315,7 +2315,6 @@ async function vm0ModelProviderEnvironment(
     | {
         readonly id: string;
         readonly apiKey: string;
-        readonly revision: number;
       }
     | undefined;
   if (resolvedRoute) {
@@ -2323,15 +2322,9 @@ async function vm0ModelProviderEnvironment(
       .select({
         id: builtInModelKeys.id,
         apiKey: builtInModelKeys.apiKey,
-        revision: builtInModelKeys.revision,
       })
       .from(builtInModelKeys)
-      .where(
-        and(
-          eq(builtInModelKeys.id, resolvedRoute.modelKeyId),
-          eq(builtInModelKeys.revision, resolvedRoute.modelKeyRevision),
-        ),
-      )
+      .where(eq(builtInModelKeys.id, resolvedRoute.modelKeyId))
       .limit(1);
     route = resolvedRoute;
   } else {
@@ -2340,7 +2333,6 @@ async function vm0ModelProviderEnvironment(
       .select({
         id: builtInModelKeys.id,
         apiKey: builtInModelKeys.apiKey,
-        revision: builtInModelKeys.revision,
       })
       .from(builtInModelKeys)
       .where(eq(builtInModelKeys.vendor, target.vendor))
@@ -2353,7 +2345,6 @@ async function vm0ModelProviderEnvironment(
       providerType: target.providerType,
       upstreamModel: target.upstreamModel,
       modelKeyId: key.id,
-      modelKeyRevision: key.revision,
     };
   }
   if (!key?.apiKey) {
@@ -6065,10 +6056,7 @@ function launchRunValues(
 
 type Vm0LaunchMetadataValues = Pick<
   RunMetadataValues,
-  | "modelRuntimeProvider"
-  | "modelRuntimeModel"
-  | "vm0ModelKeyId"
-  | "vm0ModelKeyRevision"
+  "modelRuntimeProvider" | "modelRuntimeModel" | "vm0ModelKeyId"
 >;
 
 function vm0LaunchMetadataValues(
@@ -6080,14 +6068,12 @@ function vm0LaunchMetadataValues(
       modelRuntimeProvider: null,
       modelRuntimeModel: null,
       vm0ModelKeyId: null,
-      vm0ModelKeyRevision: null,
     };
   }
   return {
     modelRuntimeProvider: runtimeRoute.providerType,
     modelRuntimeModel: runtimeRoute.upstreamModel,
     vm0ModelKeyId: runtimeRoute.modelKeyId,
-    vm0ModelKeyRevision: runtimeRoute.modelKeyRevision,
   };
 }
 

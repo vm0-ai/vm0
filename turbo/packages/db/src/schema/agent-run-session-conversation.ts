@@ -121,7 +121,6 @@ export const agentRuns = pgTable(
     modelRuntimeProvider: varchar("model_runtime_provider", { length: 100 }),
     modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
     vm0ModelKeyId: uuid("vm0_model_key_id"),
-    vm0ModelKeyRevision: integer("vm0_model_key_revision"),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
@@ -193,7 +192,6 @@ export const agentRuns = pgTable(
             ${table.modelRuntimeProvider} IS NULL AND
             ${table.modelRuntimeModel} IS NULL AND
             ${table.vm0ModelKeyId} IS NULL AND
-            ${table.vm0ModelKeyRevision} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
             ${table.selectedImageModel} IS NULL AND
@@ -205,17 +203,6 @@ export const agentRuns = pgTable(
           ) OR (
             ${table.triggerSource} IS NOT NULL AND
             ${table.autonomyBudget} IS NOT NULL
-          )
-        )`,
-      ),
-      check(
-        "agent_runs_vm0_route_snapshot_check",
-        sql`(
-          ${table.vm0ModelKeyRevision} IS NULL OR (
-            ${table.vm0ModelKeyId} IS NOT NULL AND
-            ${table.vm0ModelKeyRevision} > 0 AND
-            ${table.modelRuntimeProvider} IS NOT NULL AND
-            ${table.modelRuntimeModel} IS NOT NULL
           )
         )`,
       ),

@@ -12,7 +12,6 @@ import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/co
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import {
   managedModelCandidateCooldown,
   managedModelCredentialCooldown,
@@ -49,7 +48,6 @@ import {
   acquireManagedModelKeyFixture,
   releaseManagedModelKeyFixture,
 } from "../services/managed-model-key-fixture";
-import { upsertManagedModelKey } from "../services/managed-model-key.service";
 import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
@@ -359,7 +357,6 @@ function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
     provider_type: route.providerType,
     upstream_model: route.upstreamModel,
     model_key_id: route.modelKeyId,
-    model_key_revision: route.modelKeyRevision,
   };
 }
 
@@ -371,9 +368,7 @@ type Vm0ManagedModelRuntimeAction = Extract<
       | "set-vm0-managed-credential-cooldown"
       | "delete-vm0-managed-credential-cooldown"
       | "set-vm0-managed-candidate-cooldown"
-      | "delete-vm0-managed-candidate-cooldown"
-      | "upsert-vm0-managed-model-key"
-      | "delete-vm0-managed-model-key-by-id";
+      | "delete-vm0-managed-candidate-cooldown";
   }
 >;
 
@@ -386,8 +381,6 @@ function isVm0ManagedModelRuntimeAction(
     "delete-vm0-managed-credential-cooldown",
     "set-vm0-managed-candidate-cooldown",
     "delete-vm0-managed-candidate-cooldown",
-    "upsert-vm0-managed-model-key",
-    "delete-vm0-managed-model-key-by-id",
   ].includes(body.action);
 }
 
@@ -419,14 +412,10 @@ async function vm0ManagedModelRuntimeActionResponse(
         .insert(managedModelCredentialCooldown)
         .values({
           modelKeyId: body.model_key_id,
-          modelKeyRevision: body.model_key_revision,
           unavailableUntil: new Date(body.unavailable_until),
         })
         .onConflictDoUpdate({
-          target: [
-            managedModelCredentialCooldown.modelKeyId,
-            managedModelCredentialCooldown.modelKeyRevision,
-          ],
+          target: [managedModelCredentialCooldown.modelKeyId],
           set: { unavailableUntil: new Date(body.unavailable_until) },
         });
       signal.throwIfAborted();
@@ -436,13 +425,7 @@ async function vm0ManagedModelRuntimeActionResponse(
       await db
         .delete(managedModelCredentialCooldown)
         .where(
-          and(
-            eq(managedModelCredentialCooldown.modelKeyId, body.model_key_id),
-            eq(
-              managedModelCredentialCooldown.modelKeyRevision,
-              body.model_key_revision,
-            ),
-          ),
+          eq(managedModelCredentialCooldown.modelKeyId, body.model_key_id),
         );
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
@@ -483,25 +466,6 @@ async function vm0ManagedModelRuntimeActionResponse(
             ),
           ),
         );
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "upsert-vm0-managed-model-key": {
-      const key = await upsertManagedModelKey(db, {
-        vendor: body.vendor,
-        apiKey: body.api_key,
-        label: body.label,
-      });
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: { ok: true as const, managed_model_key: key },
-      };
-    }
-    case "delete-vm0-managed-model-key-by-id": {
-      await db
-        .delete(builtInModelKeys)
-        .where(eq(builtInModelKeys.id, body.model_key_id));
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }

@@ -1,7 +1,4 @@
-import { sql } from "drizzle-orm";
 import {
-  check,
-  integer,
   pgTable,
   primaryKey,
   timestamp,
@@ -22,17 +19,10 @@ export const managedModelCredentialCooldown = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    modelKeyRevision: integer("model_key_revision").notNull(),
     unavailableUntil: timestamp("unavailable_until").notNull(),
   },
   (table) => {
-    return [
-      primaryKey({ columns: [table.modelKeyId, table.modelKeyRevision] }),
-      check(
-        "managed_model_credential_cooldown_revision_check",
-        sql`${table.modelKeyRevision} > 0`,
-      ),
-    ];
+    return [primaryKey({ columns: [table.modelKeyId] })];
   },
 );
 

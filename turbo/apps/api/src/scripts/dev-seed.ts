@@ -2,7 +2,7 @@
 
 import { pathToFileURL } from "node:url";
 
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
 import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@okouai/core/github-url";
@@ -23,7 +23,6 @@ import { optionalEnv } from "../lib/env";
 import { nowDate } from "../lib/time";
 import { reconcileConnectorCatalogCompatibility$ } from "../signals/services/connector-catalog-compatibility.service";
 import { syncConnectorCatalog$ } from "../signals/services/connector-catalog-sync.service";
-import { upsertManagedModelKey } from "../signals/services/managed-model-key.service";
 import { onRejection } from "../signals/utils";
 import rawDevSeedSkillVolumes from "./dev-seed-skill-volumes.json";
 
@@ -726,28 +725,13 @@ async function devSeed() {
     });
   writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
-  // --- vm0_api_keys (revision-aware reconciliation) ---
+  // --- vm0_api_keys (transactional replace) ---
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    if (apiKeys.length === 0) {
-      await tx.delete(builtInModelKeys);
-    } else {
-      await tx.delete(builtInModelKeys).where(
-        notInArray(
-          builtInModelKeys.vendor,
-          apiKeys.map((key) => {
-            return key.vendor;
-          }),
-        ),
-      );
-      for (const key of apiKeys) {
-        await upsertManagedModelKey(tx, {
-          vendor: key.vendor,
-          apiKey: key.apiKey,
-          label: key.label ?? null,
-        });
-      }
+    await tx.delete(builtInModelKeys);
+    if (apiKeys.length > 0) {
+      await tx.insert(builtInModelKeys).values(apiKeys);
     }
   });
   for (const k of apiKeys) {

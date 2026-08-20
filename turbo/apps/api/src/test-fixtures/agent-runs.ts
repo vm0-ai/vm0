@@ -245,7 +245,6 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
       modelRuntimeProvider: agentRuns.modelRuntimeProvider,
       modelRuntimeModel: agentRuns.modelRuntimeModel,
       vm0ModelKeyId: agentRuns.vm0ModelKeyId,
-      vm0ModelKeyRevision: agentRuns.vm0ModelKeyRevision,
       modelKeyVendor: builtInModelKeys.vendor,
     })
     .from(agentRuns)
@@ -267,14 +266,11 @@ export async function setRunModelRuntimeRouteFixture(args: {
   readonly modelRuntimeProvider: string | null;
   readonly modelRuntimeModel: string | null;
 }): Promise<void> {
-  const legacyRoute =
-    args.modelRuntimeProvider === null && args.modelRuntimeModel === null;
   const updated = await db()
     .update(agentRuns)
     .set({
       modelRuntimeProvider: args.modelRuntimeProvider,
       modelRuntimeModel: args.modelRuntimeModel,
-      vm0ModelKeyRevision: legacyRoute ? null : undefined,
     })
     .where(eq(agentRuns.id, args.runId))
     .returning({ id: agentRuns.id });

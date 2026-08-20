@@ -16,7 +16,6 @@ import {
   seedVm0ManagedModelKey,
   setVm0ManagedCandidateCooldownFixture,
   setVm0ManagedCredentialCooldownFixture,
-  upsertVm0ManagedModelKeyFixture,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -36,28 +35,6 @@ describe("POST /api/test/runtime-state/action", () => {
     await expect(second.release()).resolves.toBeUndefined();
   });
 
-  it("rotates managed keys without replacing identity", async () => {
-    const vendor = `test-${randomUUID()}`;
-    const first = await upsertVm0ManagedModelKeyFixture(context, {
-      vendor,
-      apiKey: "first-secret",
-      label: "first-label",
-    });
-    const relabeled = await upsertVm0ManagedModelKeyFixture(context, {
-      vendor,
-      apiKey: "first-secret",
-      label: "second-label",
-    });
-    const rotated = await upsertVm0ManagedModelKeyFixture(context, {
-      vendor,
-      apiKey: "second-secret",
-      label: "second-label",
-    });
-
-    expect(relabeled).toStrictEqual({ ...first, revision: first.revision });
-    expect(rotated).toStrictEqual({ ...first, revision: first.revision + 1 });
-  });
-
   it("selects routes from scoped expiry-based managed cooldowns", async () => {
     await seedVm0ManagedModelCandidateKeys(context, "claude-fable-5");
     await seedVm0ManagedModelCandidateKeys(context, "gpt-5.6-sol");
@@ -75,7 +52,6 @@ describe("POST /api/test/runtime-state/action", () => {
     expect(gptPrimary).toMatchObject({
       provider_type: "openai-api-key",
       upstream_model: "gpt-5.6-sol",
-      model_key_revision: expect.any(Number),
     });
     if (!gptPrimary) {
       throw new Error("Expected a primary GPT route");

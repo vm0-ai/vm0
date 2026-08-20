@@ -13,7 +13,6 @@ const managedModelRuntimeRouteSchema = z.object({
   provider_type: z.string(),
   upstream_model: z.string(),
   model_key_id: z.uuid(),
-  model_key_revision: z.int().positive(),
 });
 
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
@@ -43,13 +42,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set-vm0-managed-credential-cooldown"),
     model_key_id: z.uuid(),
-    model_key_revision: z.int().positive(),
     unavailable_until: z.iso.datetime(),
   }),
   z.object({
     action: z.literal("delete-vm0-managed-credential-cooldown"),
     model_key_id: z.uuid(),
-    model_key_revision: z.int().positive(),
   }),
   z.object({
     action: z.literal("set-vm0-managed-candidate-cooldown"),
@@ -63,16 +60,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
-  }),
-  z.object({
-    action: z.literal("upsert-vm0-managed-model-key"),
-    vendor: z.string().min(1).max(50),
-    api_key: z.string().min(1),
-    label: z.string().nullable(),
-  }),
-  z.object({
-    action: z.literal("delete-vm0-managed-model-key-by-id"),
-    model_key_id: z.uuid(),
   }),
   z.object({
     action: z.literal("read-browser-screenshot-schema-state"),
@@ -259,13 +246,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
   managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
-  managed_model_key: z
-    .object({
-      id: z.uuid(),
-      vendor: z.string(),
-      revision: z.int().positive(),
-    })
-    .optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),

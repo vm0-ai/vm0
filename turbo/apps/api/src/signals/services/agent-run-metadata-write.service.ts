@@ -17,7 +17,6 @@ type StoredRunMetadataValues = Pick<
   | "modelRuntimeProvider"
   | "modelRuntimeModel"
   | "vm0ModelKeyId"
-  | "vm0ModelKeyRevision"
   | "codexServiceTier"
   | "selectedVideoModel"
   | "selectedImageModel"
@@ -44,11 +43,6 @@ type RunMetadataInput = Readonly<
     Partial<Omit<RunMetadataValues, "triggerSource">>
 >;
 
-type Vm0RunMetadataValues = Pick<
-  RunMetadataValues,
-  "vm0ModelKeyId" | "vm0ModelKeyRevision"
->;
-
 type RunMetadataPatch = {
   [Key in keyof RunMetadataValues]: Readonly<
     Pick<RunMetadataValues, Key> & Partial<RunMetadataValues>
@@ -65,15 +59,6 @@ interface RunMetadataRow {
   readonly apiStartedAt: Date | null;
 }
 
-function normalizeVm0RunMetadata(
-  input: RunMetadataInput,
-): Vm0RunMetadataValues {
-  return {
-    vm0ModelKeyId: input.vm0ModelKeyId ?? null,
-    vm0ModelKeyRevision: input.vm0ModelKeyRevision ?? null,
-  };
-}
-
 export function normalizeRunMetadata(
   input: RunMetadataInput,
 ): RunMetadataValues {
@@ -88,7 +73,7 @@ export function normalizeRunMetadata(
     selectedModel: input.selectedModel ?? null,
     modelRuntimeProvider: input.modelRuntimeProvider ?? null,
     modelRuntimeModel: input.modelRuntimeModel ?? null,
-    ...normalizeVm0RunMetadata(input),
+    vm0ModelKeyId: input.vm0ModelKeyId ?? null,
     codexServiceTier: input.codexServiceTier ?? null,
     selectedVideoModel: input.selectedVideoModel ?? null,
     selectedImageModel: input.selectedImageModel ?? null,

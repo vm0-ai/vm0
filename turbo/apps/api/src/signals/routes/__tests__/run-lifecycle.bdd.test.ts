@@ -614,7 +614,6 @@ async function expectVm0RunRuntimeRoute(
     modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
     modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
     vm0ModelKeyId: expect.any(String),
-    vm0ModelKeyRevision: expect.any(Number),
     modelKeyVendor: getVm0Vendor(selectedModel),
   });
 }
