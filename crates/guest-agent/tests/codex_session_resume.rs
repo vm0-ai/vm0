@@ -56,6 +56,10 @@ impl CodexResumeFixture {
         &self.paths
     }
 
+    fn codex_home(&self) -> PathBuf {
+        self.home.path().join("codex-home")
+    }
+
     fn config(&self, api_url: &str, api_token: &str) -> TestResult<guest_agent::env::GuestConfig> {
         let run_payload_file = common::write_run_payload_file_for_test(
             &self.runtime_dir,
@@ -65,19 +69,21 @@ impl CodexResumeFixture {
             },
         )
         .map_err(std::io::Error::other)?;
-        let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
-            run_id: self.run_id.clone(),
-            api_url: api_url.to_string(),
-            api_token: api_token.to_string(),
-            sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
-            sandbox_reuse_result: "reused".to_string(),
-            cli_agent_type: "codex".to_string(),
-            home: Some(self.home.path().to_string_lossy().into_owned()),
-            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
-            guest_runtime_dir: Some(self.runtime_dir.clone()),
-            ..Default::default()
-        })
-        .map_err(std::io::Error::other)?;
+        let mut config =
+            guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+                run_id: self.run_id.clone(),
+                api_url: api_url.to_string(),
+                api_token: api_token.to_string(),
+                sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
+                sandbox_reuse_result: "reused".to_string(),
+                cli_agent_type: "codex".to_string(),
+                home: Some(self.home.path().to_string_lossy().into_owned()),
+                run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+                guest_runtime_dir: Some(self.runtime_dir.clone()),
+                ..Default::default()
+            })
+            .map_err(std::io::Error::other)?;
+        config.codex_home_dir = self.codex_home().to_string_lossy().into_owned();
         Ok(config)
     }
 
@@ -105,9 +111,7 @@ impl CodexResumeFixture {
     fn write_codex_session_file(&self, thread_id: &str, history: &str) -> TestResult {
         let id_no_dashes = thread_id.replace('-', "");
         let path = self
-            .home
-            .path()
-            .join(".codex")
+            .codex_home()
             .join("sessions")
             .join("2026")
             .join("06")
@@ -236,8 +240,8 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
         thread_id,
         Some(
             guest_contracts::session_history_identity::SessionHistorySourceRef::Codex {
-                sessions_dir: Path::new(&guest_runtime.config.home_dir)
-                    .join(".codex/sessions")
+                sessions_dir: Path::new(&guest_runtime.config.codex_home_dir)
+                    .join("sessions")
                     .to_string_lossy()
                     .into_owned(),
                 thread_id: thread_id.to_string(),

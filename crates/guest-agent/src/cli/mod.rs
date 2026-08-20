@@ -325,6 +325,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     use_mock_codex: bool,
     mock_codex_path: Cow<'a, str>,
     home_dir: Cow<'a, str>,
+    codex_home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
     api_start_time: Cow<'a, str>,
     anthropic_model: Cow<'a, str>,
@@ -394,6 +395,7 @@ impl<'a> CliRuntimeConfig<'a> {
             use_mock_codex: config.use_mock_codex,
             mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
             home_dir: Cow::Borrowed(&config.home_dir),
+            codex_home_dir: Cow::Borrowed(&config.codex_home_dir),
             api_url: Cow::Borrowed(&config.api_url),
             api_start_time: Cow::Borrowed(&config.api_start_time),
             anthropic_model: Cow::Borrowed(user_env_value(&config.user_env, "ANTHROPIC_MODEL")),
@@ -424,15 +426,15 @@ impl<'a> CliRuntimeConfig<'a> {
         })
     }
 
-    fn codex_home(&self) -> String {
-        codex_home_for_home_dir(self.home_dir.as_ref())
+    fn codex_home(&self) -> &str {
+        self.codex_home_dir.as_ref()
     }
 
     fn codex_startup_config_overrides(&self) -> Vec<String> {
         let codex_home = self.codex_home();
         let mut overrides = codex_runtime_config::startup_config_overrides(
             self.codex_runtime_config.as_ref(),
-            Path::new(&codex_home),
+            Path::new(codex_home),
         );
         if self.codex_runtime_config.is_none() && !self.openai_base_url.is_empty() {
             let base_url =
@@ -467,12 +469,6 @@ impl<'a> CliRuntimeConfig<'a> {
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
     }
-}
-
-fn codex_home_for_home_dir(home_dir: &str) -> String {
-    crate::codex_auth::codex_home_path(Path::new(home_dir))
-        .to_string_lossy()
-        .into_owned()
 }
 
 fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a str {
@@ -1945,9 +1941,9 @@ mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
-        claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        command, exec_boundary, pi_child_env_values, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason, write_pi_launch_payload_file,
+        claude_initial_prompt_frame, cli_exit_summary_from_status, command, exec_boundary,
+        pi_child_env_values, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason, write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
@@ -1988,6 +1984,7 @@ mod tests {
             use_mock_codex: false,
             mock_codex_path: String::new(),
             home_dir: "/tmp/home".to_string(),
+            codex_home_dir: "/tmp/codex-home".to_string(),
             artifacts: Vec::new(),
             feature_flags: HashMap::new(),
             codex_runtime_config: String::new(),
@@ -2025,6 +2022,7 @@ mod tests {
             use_mock_codex: false,
             mock_codex_path: Cow::Borrowed(""),
             home_dir: Cow::Borrowed("/tmp/home"),
+            codex_home_dir: Cow::Borrowed("/tmp/codex-home"),
             api_url: Cow::Borrowed(""),
             api_start_time: Cow::Borrowed(""),
             anthropic_model: Cow::Borrowed(""),
@@ -2049,7 +2047,7 @@ mod tests {
                     working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
                 },
                 env::Framework::Codex => SessionHistoryLaunchSource::Codex {
-                    sessions_dir: Some("/tmp/home/.codex/sessions".to_string()),
+                    sessions_dir: Some("/tmp/codex-home/sessions".to_string()),
                 },
                 env::Framework::Pi => SessionHistoryLaunchSource::Pi,
             },
@@ -2254,7 +2252,7 @@ mod tests {
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         let runtime = runtime_for_command_test(env::Framework::Codex, &prompt, "", &user_env);
         let mut env_values = child_env::values_for_runtime(&runtime);
-        env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
+        env_values.push(("CODEX_HOME".to_string(), runtime.codex_home().to_string()));
 
         exec_boundary::validate_process_argv_env(
             "test codex app-server",
@@ -2356,9 +2354,18 @@ mod tests {
     }
 
     #[test]
-    fn codex_home_uses_shared_path_semantics_for_empty_home() {
-        assert_eq!(codex_home_for_home_dir(""), ".codex");
-        assert_eq!(codex_home_for_home_dir("/tmp/home"), "/tmp/home/.codex");
+    fn codex_home_is_independent_of_child_home() {
+        let user_env = HashMap::new();
+        let runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
+
+        assert_eq!(runtime.home_dir, "/tmp/home");
+        assert_eq!(runtime.codex_home(), "/tmp/codex-home");
+        let SessionHistoryLaunchSource::Codex { sessions_dir } =
+            &runtime.session_history_launch_source
+        else {
+            panic!("expected Codex session-history source");
+        };
+        assert_eq!(sessions_dir.as_deref(), Some("/tmp/codex-home/sessions"));
     }
 
     #[tokio::test]

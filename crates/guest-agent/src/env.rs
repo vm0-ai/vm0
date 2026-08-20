@@ -8,7 +8,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+use api_contracts::generated::{
+    constants::runners::paths::CANONICAL_CODEX_HOME_DIR,
+    types::runners::storage::ArtifactEntryMissingRootPolicy,
+};
 
 use crate::constants;
 use guest_common::log_warn;
@@ -17,6 +20,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
+#[cfg(debug_assertions)]
+const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "VM0_TEST_CODEX_HOME_DIR";
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -276,6 +281,7 @@ pub struct GuestConfig {
     pub use_mock_codex: bool,
     pub mock_codex_path: String,
     pub home_dir: String,
+    pub codex_home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: HashMap<String, bool>,
     pub codex_runtime_config: String,
@@ -362,6 +368,7 @@ impl GuestConfig {
                 DEFAULT_MOCK_CODEX_PATH,
             ),
             home_dir,
+            codex_home_dir: resolve_codex_home_dir(),
             artifacts,
             feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
@@ -640,6 +647,17 @@ fn resolve_home_dir(
         .ok_or_else(|| "HOME must be set in guest sandbox (rootfs init contract)".to_string())
 }
 
+fn resolve_codex_home_dir() -> String {
+    #[cfg(debug_assertions)]
+    if let Some(path) =
+        std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY).filter(|path| !path.is_empty())
+    {
+        return path.to_string_lossy().into_owned();
+    }
+
+    CANONICAL_CODEX_HOME_DIR.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -864,6 +882,7 @@ mod tests {
         assert!(config.use_mock_codex);
         assert_eq!(config.mock_codex_path, DEFAULT_MOCK_CODEX_PATH);
         assert_eq!(config.home_dir, "/home/vm0");
+        assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
         assert_eq!(config.stuck_tool_timeout_secs, 7);
         assert_eq!(config.post_result_sigterm_grace, Duration::from_secs(8));
         assert_eq!(config.post_result_total_cap, Duration::from_secs(9));
@@ -901,6 +920,7 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "/home/from-user-env");
+        assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
         assert_eq!(
             config.user_env.get("OPENAI_MODEL").map(String::as_str),
             Some("gpt-test")
@@ -1067,6 +1087,7 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "");
+        assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
     }
 
     #[test]

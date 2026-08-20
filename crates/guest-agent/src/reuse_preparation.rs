@@ -14,7 +14,9 @@
 //!    recursively populated only by the helper's workload leaf.
 //! 3. Open the runtime parent and every protected runtime directory, require them to share a mount,
 //!    and record their identities before deletion.
-//! 4. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
+//! 4. Remove VM0-managed Codex authentication from the canonical Codex home without following
+//!    symlinks.
+//! 5. Measure rootfs capacity, recursively remove every unprotected direct child of the runtime
 //!    parent, revalidate each protected identity, and measure capacity again.
 //!
 //! Runtime paths are opened component by component without following symlinks, and child opens and
@@ -59,10 +61,13 @@ const MEMORY_MAX_FILE: &str = "memory.max";
 const MEMORY_MIN_FILE: &str = "memory.min";
 const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_MAX_FILE: &str = "pids.max";
+const CODEX_AUTH_FILENAME: &str = "auth.json";
 #[cfg(debug_assertions)]
 const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
 #[cfg(debug_assertions)]
 const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
+#[cfg(debug_assertions)]
+const TEST_CODEX_HOME_DIR_ENV: &str = "VM0_TEST_CODEX_HOME_DIR";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 
 /// Failure returned by the reuse-preparation helper.
@@ -193,6 +198,8 @@ fn prepare(
         }
     }
 
+    remove_managed_codex_auth().map_err(ReusePreparationError::Cleanup)?;
+
     let before = rootfs_capacity().map_err(ReusePreparationError::Inspection)?;
     let protected_identities = protected
         .iter()
@@ -238,6 +245,47 @@ fn prepare(
         after,
         removed_entries,
     })
+}
+
+fn remove_managed_codex_auth() -> io::Result<()> {
+    let codex_home_path = managed_codex_home_path();
+    let codex_home = match Dir::open_absolute(&codex_home_path) {
+        Ok(directory) => directory,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(io::Error::new(
+                error.kind(),
+                format!("canonical Codex home is unsafe: {error}"),
+            ));
+        }
+    };
+    let auth_name = OsStr::new(CODEX_AUTH_FILENAME);
+    let auth_file = match codex_home.open_child_file(auth_name) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(io::Error::new(
+                error.kind(),
+                format!("managed Codex auth entry is unsafe: {error}"),
+            ));
+        }
+    };
+    if !auth_file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "managed Codex auth entry is not a regular file",
+        ));
+    }
+    codex_home.unlink_child_file(auth_name)
+}
+
+fn managed_codex_home_path() -> PathBuf {
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os(TEST_CODEX_HOME_DIR_ENV).filter(|path| !path.is_empty()) {
+        return PathBuf::from(path);
+    }
+
+    PathBuf::from(api_contracts::generated::constants::runners::paths::CANONICAL_CODEX_HOME_DIR)
 }
 
 struct ProcessContainmentPaths {

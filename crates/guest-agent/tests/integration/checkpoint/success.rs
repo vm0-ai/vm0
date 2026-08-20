@@ -54,7 +54,7 @@ async fn success_checkpoint_preserves_small_codex_history() {
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
     std::fs::write(&history_path, &history).unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, history_dir.path());
 
     let history_hash = hex::encode(Sha256::digest(&history));
     let history_size = history.len();
@@ -163,7 +163,7 @@ async fn success_checkpoint_discards_codex_history_that_jumps_past_hard_limit() 
     let (history_dir, history_path, history) =
         write_codex_history_without_compact(session_id, None, CHECKPOINT_TEST_MAX_BYTES as usize)
             .unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, history_dir.path());
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
@@ -210,7 +210,7 @@ async fn success_checkpoint_discards_codex_history_with_oversized_canonical_cand
         CHECKPOINT_TEST_CANDIDATE_MAX_BYTES as usize,
     )
     .unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, history_dir.path());
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
@@ -249,7 +249,7 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let home = tempfile::tempdir().unwrap();
-    runtime.config.home_dir = home.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, home.path());
     guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
     let checkpoint_mock = server.mock(|when, then| {
         when.method(POST)
@@ -334,7 +334,7 @@ async fn success_checkpoint_reports_invalid_reused_zstd_history_as_unavailable()
         encoded,
     )
     .unwrap();
-    runtime.config.home_dir = home.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, home.path());
     guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
 
     let prepare_mock = server.mock(|when, then| {
@@ -456,7 +456,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, candidate) = write_prunable_codex_history(session_id).unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+    use_test_codex_home(&mut runtime, history_dir.path());
     let source_size = std::fs::metadata(&history_path).unwrap().len();
 
     let history_hash = hex::encode(Sha256::digest(&candidate));
