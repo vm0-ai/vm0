@@ -294,6 +294,11 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::ProviderServerError);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_result_response_connection_lost(source, &normalized)
+    {
+        return Some(FailureReason::ResponseConnectionLost);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_output_token_limit_error(&normalized)
     {
         return Some(FailureReason::OutputTokenLimit);
@@ -418,9 +423,20 @@ fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
     source == FailureDetailSource::ClaudeResult
-        && has_claude_api_status(normalized, "500")
-        && normalized.contains("internal server error")
-        && normalized.contains("server-side issue")
+        && ((has_claude_api_status(normalized, "500")
+            && normalized.contains("internal server error")
+            && normalized.contains("server-side issue"))
+            || normalized.trim()
+                == "api error: server error mid-response. the response above may be incomplete.")
+}
+
+fn is_claude_result_response_connection_lost(
+    source: FailureDetailSource,
+    normalized: &str,
+) -> bool {
+    source == FailureDetailSource::ClaudeResult
+        && normalized.trim()
+            == "api error: connection lost mid-response. the response above may be incomplete."
 }
 
 fn is_claude_output_token_limit_error(normalized: &str) -> bool {
