@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
@@ -250,6 +251,57 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("requires account labels for manual and no-auth additions", async () => {
+    await seedFixture();
+    const manualClient = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+    const noAuthClient = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorNoAuthGrantContract,
+    );
+
+    const manual = await accept(
+      manualClient.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: "sk-unlabeled" },
+        },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+    expect(manual.body.error.message).toBe(
+      "Account display name is required when adding a manual connector account",
+    );
+
+    const noAuth = await accept(
+      noAuthClient.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+        },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+    expect(noAuth.body.error.message).toBe(
+      "Account display name is required when adding a no-auth connector account",
+    );
+
+    const list = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        zeroConnectorsMainContract,
+      ).list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(list.body.connectors).not.toContainEqual(
+      expect.objectContaining({ slug: "openai" }),
+    );
   });
 
   it("connects a first-time manual grant connector with connector-owned state", async () => {
