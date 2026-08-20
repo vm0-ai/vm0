@@ -40,6 +40,7 @@ interface OAuthState {
   readonly userId: string | null;
   readonly prompt: string | null;
   readonly publicBrand: PublicBrand;
+  readonly redirectUri: string | null;
 }
 
 interface MicrosoftTeamsUserInfo {
@@ -140,6 +141,7 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
       userId: null,
       prompt: null,
       publicBrand: "vm0",
+      redirectUri: null,
     };
   }
 
@@ -150,6 +152,7 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
       userId: null,
       prompt: null,
       publicBrand: "vm0",
+      redirectUri: null,
     };
   }
 
@@ -161,10 +164,22 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     // Old web/app OAuth state can omit publicBrand for about two days.
     // Remove this VM0 default in #27660 after legacy states have drained.
     publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
+    redirectUri: optionalString(record.redirectUri),
   };
 }
 
 function callbackRedirectUri(origin: string): string {
+  return `${origin}/api/zero/teams/oauth/callback`;
+}
+
+/**
+ * State written before #28300 carries no redirect URI, and the build that wrote
+ * it sent this exact value. Microsoft rejects a token request whose redirect_uri
+ * differs from the authorization request, so an authorization started on the
+ * previous build can only be completed against it. Remove once no state
+ * predating #28300 can still be presented.
+ */
+function legacyCallbackRedirectUri(origin: string): string {
   return `${origin}/api/zero/teams/oauth/callback`;
 }
 
@@ -326,15 +341,20 @@ const connectOauth$ = command(({ get }) => {
     return jsonErrorResponse("Missing orgId or userId", 400);
   }
 
+  // Record the redirect URI this authorization actually sends, so the token
+  // exchange can repeat it instead of recomputing a value that may have moved.
+  const redirectUri = callbackRedirectUri(origin);
   const stateObj: {
     orgId: string;
     userId: string;
     prompt?: string;
     publicBrand: PublicBrand;
+    redirectUri: string;
   } = {
     orgId: query.orgId,
     userId,
     publicBrand,
+    redirectUri,
   };
   if (query.prompt) {
     stateObj.prompt = truncatePrompt(query.prompt);
@@ -342,7 +362,7 @@ const connectOauth$ = command(({ get }) => {
 
   const authUrl = new URL(MICROSOFT_AUTHORIZATION_URL);
   authUrl.searchParams.set("client_id", credentials.clientId);
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
+  authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", MICROSOFT_TEAMS_CONNECT_SCOPES.join(" "));
   authUrl.searchParams.set("state", JSON.stringify(stateObj));
@@ -353,7 +373,6 @@ const connectOauth$ = command(({ get }) => {
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$).raw;
-  const origin = getOAuthApiOrigin(request);
   const credentials = microsoftCredentials();
   if (!credentials) {
     return jsonErrorResponse(
@@ -390,7 +409,9 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
         clientId: credentials.clientId,
         clientSecret: credentials.clientSecret,
         code: query.code,
-        redirectUri: callbackRedirectUri(origin),
+        redirectUri:
+          state.redirectUri ??
+          legacyCallbackRedirectUri(getOAuthApiOrigin(request)),
       },
       signal,
     ),
