@@ -800,7 +800,7 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     ($) => {
       return $.billing.plans.highlights.concurrentAgents;
     },
-    { count: formatLocalizedNumber(planConcurrentSlots(tier)) },
+    { slots: formatLocalizedNumber(planConcurrentSlots(tier)) },
   );
   const voiceInput = i18n.t(
     ($) => {

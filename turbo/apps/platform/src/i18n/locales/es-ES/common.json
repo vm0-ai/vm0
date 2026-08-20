@@ -950,7 +950,7 @@
         "addOnConcurrency": "Añade concurrencia cuando quieras",
         "agents": "{{shared}} agentes compartidos, privados ilimitados",
         "automations": "Automatizaciones programadas y por eventos",
-        "concurrentAgents": "{{count}} agentes a la vez",
+        "concurrentAgents": "{{slots}} agentes a la vez",
         "builtInLeadGeneration": "Generación de leads integrada",
         "builtInSeoResearch": "Investigación SEO integrada",
         "builtInWebMarketData": "Datos web y de mercado integrados",

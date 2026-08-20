@@ -929,7 +929,7 @@
         "addOnConcurrency": "जब चाहें और समवर्तिता जोड़ें",
         "agents": "{{shared}} साझा एजेंट, असीमित निजी",
         "automations": "शेड्यूल और इवेंट ऑटोमेशन",
-        "concurrentAgents": "{{count}} एजेंट एक साथ",
+        "concurrentAgents": "{{slots}} एजेंट एक साथ",
         "builtInLeadGeneration": "बिल्ट-इन लीड जनरेशन",
         "builtInSeoResearch": "बिल्ट-इन SEO रिसर्च",
         "builtInWebMarketData": "बिल्ट-इन वेब और मार्केट डेटा",

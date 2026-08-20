@@ -929,7 +929,7 @@
         "addOnConcurrency": "Add more concurrency any time",
         "agents": "{{shared}} shared agents, unlimited private",
         "automations": "Scheduled and event automations",
-        "concurrentAgents": "{{count}} agents running at once",
+        "concurrentAgents": "{{slots}} agents running at once",
         "builtInLeadGeneration": "Built-in lead generation",
         "builtInSeoResearch": "Built-in SEO research",
         "builtInWebMarketData": "Built-in web and market data",

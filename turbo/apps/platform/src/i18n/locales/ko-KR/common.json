@@ -929,7 +929,7 @@
         "addOnConcurrency": "동시 실행은 언제든 추가",
         "agents": "공유 에이전트 {{shared}}개, 비공개 무제한",
         "automations": "일정 및 이벤트 자동화",
-        "concurrentAgents": "에이전트 {{count}}개 동시 실행",
+        "concurrentAgents": "에이전트 {{slots}}개 동시 실행",
         "builtInLeadGeneration": "기본 제공 리드 생성",
         "builtInSeoResearch": "기본 제공 SEO 리서치",
         "builtInWebMarketData": "기본 제공 웹 및 시장 데이터",
