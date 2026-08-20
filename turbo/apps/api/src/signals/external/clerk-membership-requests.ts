@@ -2,7 +2,12 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { startUntrackedBestEffortCleanup } from "../utils";
-import { ClerkRateLimitError } from "./clerk";
+import {
+  ClerkRateLimitError,
+  createClerkReadContext,
+  retryClerkRead,
+  type ClerkReadContext,
+} from "./clerk";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -33,7 +38,7 @@ function cancelUnusedResponseBody(response: Response): void {
  * Returns [] when Clerk responds 404 (the membership_requests feature is not
  * enabled for the org). Throws on any other non-OK response.
  */
-export async function fetchClerkMembershipRequests(
+async function requestClerkMembershipRequests(
   orgId: string,
   signal: AbortSignal,
 ): Promise<readonly ClerkMembershipRequestData[]> {
@@ -62,6 +67,20 @@ export async function fetchClerkMembershipRequests(
   }
   const body = clerkMembershipRequestsResponseSchema.parse(await res.json());
   return body.data;
+}
+
+export async function fetchClerkMembershipRequests(
+  orgId: string,
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
+): Promise<readonly ClerkMembershipRequestData[]> {
+  return await retryClerkRead(
+    () => {
+      return requestClerkMembershipRequests(orgId, signal);
+    },
+    context,
+    signal,
+  );
 }
 
 export async function acceptClerkMembershipRequest(args: {

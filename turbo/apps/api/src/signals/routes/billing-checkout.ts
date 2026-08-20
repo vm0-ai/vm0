@@ -30,7 +30,11 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { requestSignal$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { clerk$, type ClerkClient } from "../external/clerk";
+import {
+  clerk$,
+  createClerkReadContext,
+  type ClerkClient,
+} from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import {
@@ -161,10 +165,14 @@ async function signupAttributionForUser(
 ): Promise<ReturnType<typeof adAttributionMetadataSchema.parse> | undefined> {
   const usersResult = await settle(
     Promise.resolve(
-      clerk.users.getUserList({
-        userId: [userId],
-        limit: 1,
-      }),
+      clerk.users.getUserList(
+        {
+          userId: [userId],
+          limit: 1,
+        },
+        undefined,
+        signal,
+      ),
     ),
     signal,
   );
@@ -250,6 +258,7 @@ async function validateUsagePackSubscriptionMembers(
   const memberships = await loadBillingOrganizationMemberships(
     args.clerk,
     args.orgId,
+    createClerkReadContext(),
     signal,
   );
   signal.throwIfAborted();

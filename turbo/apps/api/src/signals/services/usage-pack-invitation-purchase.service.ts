@@ -27,11 +27,11 @@ import {
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
-import { now, nowDate } from "../../lib/time";
+import { nowDate } from "../../lib/time";
 import {
-  createClerkReadRetryBudget,
+  createClerkReadContext,
   type ClerkClient,
-  type ClerkReadRetryBudget,
+  type ClerkReadContext,
 } from "../external/clerk";
 import type { Db } from "../external/db";
 import {
@@ -1008,9 +1008,9 @@ async function ensurePaidInvitationCreated(
     return;
   }
   signal.throwIfAborted();
-  const retryBudget = createClerkReadRetryBudget(now);
+  const readContext = createClerkReadContext();
   const membership = await onRejection(
-    membershipForPurchase(clerk, purchase, signal, retryBudget),
+    membershipForPurchase(clerk, purchase, readContext, signal),
     async (error) => {
       await releaseInvitationCreationClaimAfterReadLimit(
         db,
@@ -1036,8 +1036,8 @@ async function ensurePaidInvitationCreated(
     loadBillingOrganizationPendingInvitations(
       clerk,
       purchase.orgId,
+      readContext,
       signal,
-      retryBudget,
     ),
     async (error) => {
       await releaseInvitationCreationClaimAfterReadLimit(
@@ -2035,14 +2035,14 @@ export async function handleUsagePackInvitationAccepted(
 async function membershipForPurchase(
   clerk: ClerkClient,
   purchase: UsagePackInvitationPurchaseRow,
-  signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget = createClerkReadRetryBudget(now),
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<ClerkMembershipIdentity | null> {
   const memberships = await loadBillingOrganizationMemberships(
     clerk,
     purchase.orgId,
+    context,
     signal,
-    retryBudget,
   );
   return (
     memberships.map(clerkMembershipIdentity).find((identity) => {
@@ -2057,12 +2057,12 @@ async function revokeAndRefundPurchase(
   purchase: UsagePackInvitationPurchaseRow,
   signal: AbortSignal,
 ): Promise<"accepted" | "revoked"> {
-  const retryBudget = createClerkReadRetryBudget(now);
+  const readContext = createClerkReadContext();
   const membership = await membershipForPurchase(
     clerk,
     purchase,
+    readContext,
     signal,
-    retryBudget,
   );
   signal.throwIfAborted();
   if (membership) {
@@ -2089,8 +2089,8 @@ async function revokeAndRefundPurchase(
     const pending = await loadBillingOrganizationPendingInvitations(
       clerk,
       purchase.orgId,
+      readContext,
       signal,
-      retryBudget,
     );
     signal.throwIfAborted();
     if (
@@ -2223,7 +2223,12 @@ export async function reconcileUsagePackInvitationPurchases(
           reconciled += 1;
           break;
         }
-        const membership = await membershipForPurchase(clerk, purchase, signal);
+        const membership = await membershipForPurchase(
+          clerk,
+          purchase,
+          createClerkReadContext(),
+          signal,
+        );
         signal.throwIfAborted();
         if (membership && purchase.clerkInvitationId) {
           await handleUsagePackInvitationAccepted(

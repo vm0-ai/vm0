@@ -1,10 +1,8 @@
-import { now } from "../../lib/time";
 import {
   clerkRateLimit,
-  createClerkReadRetryBudget,
-  retryClerkRead,
+  createClerkReadContext,
   type ClerkClient,
-  type ClerkReadRetryBudget,
+  type ClerkReadContext,
 } from "../external/clerk";
 import {
   listAllOrganizationMemberships,
@@ -43,21 +41,11 @@ async function billingClerkRead<T>(
 export async function loadBillingOrganizationMemberships(
   clerk: ClerkClient,
   orgId: string,
-  signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget = createClerkReadRetryBudget(now),
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<Awaited<ReturnType<typeof listAllOrganizationMemberships>>> {
   return await billingClerkRead(
-    retryClerkRead(
-      () => {
-        return listAllOrganizationMemberships(
-          clerk.organizations,
-          orgId,
-          signal,
-        );
-      },
-      signal,
-      retryBudget,
-    ),
+    listAllOrganizationMemberships(clerk.organizations, orgId, context, signal),
     signal,
   );
 }
@@ -65,20 +53,15 @@ export async function loadBillingOrganizationMemberships(
 export async function loadBillingOrganizationPendingInvitations(
   clerk: ClerkClient,
   orgId: string,
-  signal: AbortSignal,
-  retryBudget: ClerkReadRetryBudget = createClerkReadRetryBudget(now),
+  context: ClerkReadContext = createClerkReadContext(),
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<Awaited<ReturnType<typeof listAllPendingOrganizationInvitations>>> {
   return await billingClerkRead(
-    retryClerkRead(
-      () => {
-        return listAllPendingOrganizationInvitations(
-          clerk.organizations,
-          orgId,
-          signal,
-        );
-      },
+    listAllPendingOrganizationInvitations(
+      clerk.organizations,
+      orgId,
+      context,
       signal,
-      retryBudget,
     ),
     signal,
   );
@@ -98,17 +81,17 @@ export async function loadBillingOrganizationDirectory(
   orgId: string,
   signal: AbortSignal,
 ): Promise<BillingOrganizationDirectory> {
-  const retryBudget = createClerkReadRetryBudget(now);
   const controller = new AbortController();
   const readSignal = AbortSignal.any([signal, controller.signal]);
+  const readContext = createClerkReadContext();
   const [memberships, invitations] = await onRejection(
     Promise.all([
-      loadBillingOrganizationMemberships(clerk, orgId, readSignal, retryBudget),
+      loadBillingOrganizationMemberships(clerk, orgId, readContext, readSignal),
       loadBillingOrganizationPendingInvitations(
         clerk,
         orgId,
+        readContext,
         readSignal,
-        retryBudget,
       ),
     ]),
     () => {
