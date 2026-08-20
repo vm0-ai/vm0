@@ -3547,9 +3547,12 @@ describe("zero sidebar", () => {
       return row;
     };
 
-    expect(await rowFor("Minutes old")).toHaveTextContent("5 minutes ago");
-    expect(await rowFor("Hours old")).toHaveTextContent("3 hours ago");
-    expect(await rowFor("Days old")).toHaveTextContent("2 days ago");
+    const minutesRow = await rowFor("Minutes old");
+    expect(minutesRow).toHaveTextContent("5 minutes ago");
+    const hoursRow = await rowFor("Hours old");
+    expect(hoursRow).toHaveTextContent("3 hours ago");
+    const daysRow = await rowFor("Days old");
+    expect(daysRow).toHaveTextContent("2 days ago");
 
     // Past a month a relative phrase stops helping, so the row shows the
     // absolute date instead. Assert the shape rather than an exact string so
