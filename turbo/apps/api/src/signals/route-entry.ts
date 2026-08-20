@@ -258,6 +258,14 @@ export function withApiNamespaceAliases(
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
  * request log retains about three days, which by itself cannot prove a row is
  * drained — it cannot tell a caller that left from one that calls weekly.
+ *
+ * The surfaces a row holds open, and the window each one bounds: an open web or
+ * app page keeps the bundle it loaded for about two days, and an execution
+ * context pins its commit-addressed CLI package at creation, so a run queued
+ * before this deploy can still start the older CLI and hold it for the two-hour
+ * `JOB_TIMEOUT` drain. An installed CLI or desktop build has no window at all,
+ * which is why removal is gated on #26701's request-log evidence rather than on
+ * a date.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
