@@ -1172,6 +1172,115 @@ describe("CHAT-02: thread connector account selection", () => {
     await cancelChatRun(actor, reauthorized.runId);
   });
 
+  it("converges concurrent first sends on one connector account", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "concurrent-thread-selected-openai-key" },
+      agentId,
+    );
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Concurrent connector selection thread",
+    });
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const clientEventIds = [randomUUID(), randomUUID()] as const;
+    const sends = clientEventIds.map((clientEventId, index) => {
+      return chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: `Concurrent connector selection send ${index + 1}`,
+          clientEventId,
+        },
+        [201],
+      );
+    });
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+    await threadLock.done;
+
+    const responses = await Promise.all(sends);
+    const responseBodies = responses.map((response) => {
+      if (response.status !== 201) {
+        throw new Error("Expected both concurrent sends to be accepted");
+      }
+      return response.body;
+    });
+    const activeIndexes = responseBodies.flatMap((body, index) => {
+      return body.runId === null ? [] : [index];
+    });
+    expect(activeIndexes).toHaveLength(1);
+    const activeIndex = activeIndexes[0];
+    if (activeIndex === undefined) {
+      throw new Error("Expected one concurrent send to start a run");
+    }
+    const activeRunId = responseBodies[activeIndex]?.runId;
+    if (!activeRunId) {
+      throw new Error("Expected the active concurrent send to have a run id");
+    }
+    const queuedEventId = clientEventIds.find((_, index) => {
+      return index !== activeIndex;
+    });
+    if (!queuedEventId) {
+      throw new Error("Expected one concurrent send to remain queued");
+    }
+
+    const claimed = await claimChatRun(runnerGroup, activeRunId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: connection.id });
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connection.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+
+    const recalled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: thread.id,
+        revokesEventId: queuedEventId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (recalled.status !== 201) {
+      throw new Error("Expected the queued concurrent send to be recalled");
+    }
+    expect(recalled.body.runId).toBeNull();
+    await cancelChatRun(actor, activeRunId, claimed.sandboxHeaders);
+  });
+
   it("pins and materializes an exact custom MCP account on first use", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
