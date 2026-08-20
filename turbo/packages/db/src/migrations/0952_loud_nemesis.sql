@@ -1,0 +1,2 @@
+ALTER TABLE "usage_pack_invitation_purchases" ADD COLUMN "invoice_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "usage_pack_invitation_purchases" ADD CONSTRAINT "chk_usage_pack_invitation_purchases_invoice_version" CHECK ("usage_pack_invitation_purchases"."invoice_version" IN (1, 2));
