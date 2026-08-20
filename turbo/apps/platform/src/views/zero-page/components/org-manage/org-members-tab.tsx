@@ -982,7 +982,7 @@ function UsagePackCell({
           );
 
   return (
-    <div className="relative flex min-w-0 self-stretch items-center tabular-nums">
+    <div className="min-w-0 tabular-nums">
       <div className="text-[13px] text-muted-foreground">
         {t(
           ($) => {
@@ -992,7 +992,7 @@ function UsagePackCell({
         )}
       </div>
       {downgradeSummary && (
-        <p className="absolute left-0 top-1/2 mt-3 text-[11px] font-medium leading-4 text-yellow-700 dark:text-yellow-300">
+        <p className="mt-0.5 text-[11px] font-medium leading-4 text-yellow-700 dark:text-yellow-300">
           {downgradeSummary}
         </p>
       )}
