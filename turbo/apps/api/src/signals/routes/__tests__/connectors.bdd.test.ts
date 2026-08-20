@@ -614,6 +614,35 @@ describe("CONN-02: OAuth start and callback", () => {
     );
     expect(reconnected.id).toBe(initialConnection.id);
 
+    mockGitHubConnectorOAuth({ userId: 84 });
+    const mismatchedStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+      undefined,
+      {
+        intent: "reconnect",
+        connectionId: initialConnection.id,
+      },
+    );
+    const mismatchedCallback = await connectorsApi.completeOauthCallback(
+      "github",
+      {
+        code: "github-mismatched-account-code",
+        state: stateFromAuthorizationUrl(mismatchedStart.authorizationUrl),
+      },
+    );
+    expectConnectorErrorRedirect(mismatchedCallback, {
+      connectorSlug: "github",
+      message: "Authorized account does not match the connector account",
+    });
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "github"),
+    ).resolves.toMatchObject({
+      id: initialConnection.id,
+      externalId: initialConnection.externalId,
+    });
+
     const siblingAdd = await connectorsApi.requestOauthStart(
       actor,
       "github",

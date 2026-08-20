@@ -265,7 +265,9 @@ export function mockCustomConnectorOAuth2Provider(
   };
 }
 
-export function mockGitHubConnectorOAuth(): void {
+export function mockGitHubConnectorOAuth(
+  options: { readonly userId?: number } = {},
+): void {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
@@ -281,7 +283,7 @@ export function mockGitHubConnectorOAuth(): void {
     }),
     http.get(GITHUB_USER_URL, () => {
       return HttpResponse.json({
-        id: 42,
+        id: options.userId ?? 42,
         login: "bdd-github-user",
         email: "bdd-github@example.test",
       });
