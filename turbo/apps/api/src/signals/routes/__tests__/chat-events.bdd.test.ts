@@ -1073,7 +1073,7 @@ describe("CHAT-02: thread run admission invariant", () => {
 });
 
 describe("CHAT-02: thread connector account selection", () => {
-  it("pins and materializes the default connector account on first use", async () => {
+  it("uses the current default connector account without persisting an override", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
@@ -1091,6 +1091,7 @@ describe("CHAT-02: thread connector account selection", () => {
       agentId,
     );
 
+    context.mocks.ably.publish.mockClear();
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "Use my OpenAI connector account",
@@ -1110,13 +1111,8 @@ describe("CHAT-02: thread connector account selection", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connection.id,
-        target: { kind: "builtin", connectorSlug: "openai" },
-      },
-    ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+    expect(selections.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadDetailChanged:${run.threadId}`,
       null,
     );
@@ -1172,7 +1168,7 @@ describe("CHAT-02: thread connector account selection", () => {
     await cancelChatRun(actor, reauthorized.runId);
   });
 
-  it("converges concurrent first sends on one connector account", async () => {
+  it("does not persist connector overrides during concurrent first sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -1257,12 +1253,7 @@ describe("CHAT-02: thread connector account selection", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connection.id,
-        target: { kind: "builtin", connectorSlug: "openai" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
 
     const recalled = await chat.requestSendEvent(
       actor,
@@ -1281,7 +1272,7 @@ describe("CHAT-02: thread connector account selection", () => {
     await cancelChatRun(actor, activeRunId, claimed.sandboxHeaders);
   });
 
-  it("pins and materializes exact custom HTTP and MCP accounts on first use", async () => {
+  it("uses default custom HTTP and MCP accounts without persisting overrides", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -1386,25 +1377,7 @@ describe("CHAT-02: thread connector account selection", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toHaveLength(2);
-    expect(selections.body.selections).toStrictEqual(
-      expect.arrayContaining([
-        {
-          connectionId: httpConnectorId,
-          target: {
-            kind: "custom",
-            customConnectorId: httpConnector.id,
-          },
-        },
-        {
-          connectionId: mcpConnectorId,
-          target: {
-            kind: "custom",
-            customConnectorId: mcpConnector.id,
-          },
-        },
-      ]),
-    );
+    expect(selections.body.selections).toStrictEqual([]);
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 
@@ -1451,8 +1424,22 @@ describe("CHAT-02: thread connector account selection", () => {
 
     const first = await sendChatRun(actor, {
       agentId,
-      prompt: "Pin my custom connector account",
+      prompt: "Use my default custom connector account",
     });
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: first.threadId },
+        body: {
+          connectionId: connectorId,
+          target: {
+            kind: "custom",
+            customConnectorId: customConnector.id,
+          },
+        },
+      }),
+      [200],
+    );
     await cancelChatRun(actor, first.runId);
     await setCustomConnectorCredentialStorageState(context, {
       orgId,

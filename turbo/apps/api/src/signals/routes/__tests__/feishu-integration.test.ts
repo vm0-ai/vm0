@@ -3550,9 +3550,9 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
   });
 
-  it("pins the exact Feishu account that routed the canonical thread", async () => {
+  it("uses the exact Feishu source without persisting a thread override", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, appId, callbackUrl } = fixture;
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await enableFeishuIntegration(actor, {
       [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.ZeroDebug]: true,
@@ -3579,13 +3579,21 @@ describe("Feishu integration", () => {
       "Expected the managed Feishu custom connector",
     );
 
-    const prompt = "pin this Feishu connector account";
+    const prompt = "use this Feishu connector account";
     context.mocks.ably.publish.mockClear();
     await postEvent(callbackUrl, directMessage(appId, prompt), {
       encrypted: true,
     });
     await flushWaitUntilForTest();
-    await findRun(actor, prompt);
+    const run = await findRun(actor, prompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: customConnector.id,
+      baseUrlVars: {},
+      sourceId: connectorId,
+    });
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const lifecycle = await accept(
@@ -3610,16 +3618,8 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connectorId,
-        target: {
-          kind: "custom",
-          customConnectorId: customConnector.id,
-        },
-      },
-    ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+    expect(selections.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadDetailChanged:${created.chatThreadId}`,
       null,
     );

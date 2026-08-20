@@ -3,7 +3,10 @@ import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
 import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
-import { connectorAccountSelectionSchema } from "./connector-accounts";
+import {
+  connectorAccountSelectionSchema,
+  connectorAccountTargetSchema,
+} from "./connector-accounts";
 import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -1357,11 +1360,7 @@ export const chatThreadModelSelectionContract = c.router({
   },
 });
 
-/**
- * Read or replace one logical connector target's exact account selection.
- * A single-target mutation prevents stale clients from clearing unrelated
- * selections that were pinned by another tab or background ingress.
- */
+/** Read, set, or clear sparse per-thread connector account overrides. */
 export const chatThreadConnectorSelectionContract = c.router({
   get: {
     method: "GET",
@@ -1393,6 +1392,21 @@ export const chatThreadConnectorSelectionContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Update one chat thread connector account selection",
+  },
+  clear: {
+    method: "DELETE",
+    path: "/api/okou/chat-threads/:id/connector-selections",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: connectorAccountTargetSchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Clear one chat thread connector account selection",
   },
 });
 

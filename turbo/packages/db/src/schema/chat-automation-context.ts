@@ -27,6 +27,13 @@ export const chatAutomationContext = pgTable(
     workflowName: text("workflow_name"),
     eventType: text("event_type"),
     /**
+     * Exact account that delivered the event. This is run-scoped launch
+     * material, not a persisted thread account preference. It intentionally
+     * has no foreign key: a deleted source must stay identifiable so launch
+     * fails closed instead of silently falling back to the current default.
+     */
+    connectorSourceId: uuid("connector_source_id"),
+    /**
      * Server-private workflow automation launch material retained permanently.
      * Raw third-party content is intentionally retained as its only database
      * copy. Server-only object-key ordering metadata preserves byte-identical

@@ -6,8 +6,6 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -24,7 +22,6 @@ import {
   loadAgentConnectorScope,
   type AgentConnectorScope,
 } from "./agent-connector-scope.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -50,26 +47,15 @@ type UpdateChatThreadConnectorSelectionResult =
   | { readonly kind: "not_found" }
   | { readonly kind: "invalid"; readonly message: string };
 
-export type SeedChatThreadConnectorSelectionResult =
-  | { readonly kind: "disabled" }
-  | { readonly kind: "seeded"; readonly selection: ConnectorAccountSelection }
-  | {
-      readonly kind: "already_selected";
-      readonly selection: ConnectorAccountSelection;
-    }
-  | { readonly kind: "not_found" }
-  | { readonly kind: "invalid_source" }
-  | {
-      readonly kind: "conflict";
-      readonly selection: ConnectorAccountSelection;
-    };
+type ClearChatThreadConnectorSelectionResult =
+  | { readonly kind: "cleared" }
+  | { readonly kind: "not_found" };
 
 type ResolveChatThreadConnectorSelectionsResult =
   | {
       readonly kind: "resolved";
       readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string>;
       readonly connectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
-      readonly pinned: boolean;
     }
   | { readonly kind: "invalid"; readonly message: string };
 
@@ -111,28 +97,6 @@ function targetIsAuthorized(
   return target.kind === "builtin"
     ? scope.allowedConnectorSlugs.includes(target.connectorSlug)
     : scope.allowedCustomConnectorIds.includes(target.customConnectorId);
-}
-
-function authorizedTargets(
-  scope: AgentConnectorScope,
-): readonly ConnectorAccountTarget[] {
-  const targets: ConnectorAccountTarget[] = [
-    ...scope.allowedConnectorSlugs.map((connectorSlug) => {
-      return { kind: "builtin" as const, connectorSlug };
-    }),
-    ...scope.allowedCustomConnectorIds.map((customConnectorId) => {
-      return { kind: "custom" as const, customConnectorId };
-    }),
-  ];
-  const byKey = new Map<string, ConnectorAccountTarget>();
-  for (const target of targets) {
-    byKey.set(connectorAccountTargetKey(target), target);
-  }
-  return [...byKey.values()].sort((left, right) => {
-    return connectorAccountTargetKey(left).localeCompare(
-      connectorAccountTargetKey(right),
-    );
-  });
 }
 
 async function loadOwnedChatThread(
@@ -179,36 +143,6 @@ async function loadSelectionRows(
       asc(chatThreadConnectorSelections.connectorSlug),
       asc(chatThreadConnectorSelections.customConnectorId),
     );
-}
-
-async function loadSelectionForTarget(
-  db: ReadonlyDb,
-  chatThreadId: string,
-  target: ConnectorAccountTarget,
-): Promise<ConnectorAccountSelection | undefined> {
-  const [row] = await db
-    .select({
-      connectorId: chatThreadConnectorSelections.connectorId,
-      connectorSlug: chatThreadConnectorSelections.connectorSlug,
-      customConnectorId: chatThreadConnectorSelections.customConnectorId,
-    })
-    .from(chatThreadConnectorSelections)
-    .where(
-      and(
-        eq(chatThreadConnectorSelections.chatThreadId, chatThreadId),
-        target.kind === "builtin"
-          ? eq(
-              chatThreadConnectorSelections.connectorSlug,
-              target.connectorSlug,
-            )
-          : eq(
-              chatThreadConnectorSelections.customConnectorId,
-              target.customConnectorId,
-            ),
-      ),
-    )
-    .limit(1);
-  return row ? selectionFromRow(row) : undefined;
 }
 
 async function loadConnectorTarget(
@@ -397,6 +331,40 @@ export async function updateChatThreadConnectorSelection(
   });
 }
 
+export async function clearChatThreadConnectorSelection(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly target: ConnectorAccountTarget;
+  },
+): Promise<ClearChatThreadConnectorSelectionResult> {
+  return await db.transaction(async (tx) => {
+    const thread = await loadOwnedChatThread(tx, args);
+    if (!thread) {
+      return { kind: "not_found" };
+    }
+    await tx
+      .delete(chatThreadConnectorSelections)
+      .where(
+        and(
+          eq(chatThreadConnectorSelections.chatThreadId, args.chatThreadId),
+          args.target.kind === "builtin"
+            ? eq(
+                chatThreadConnectorSelections.connectorSlug,
+                args.target.connectorSlug,
+              )
+            : eq(
+                chatThreadConnectorSelections.customConnectorId,
+                args.target.customConnectorId,
+              ),
+        ),
+      );
+    return { kind: "cleared" };
+  });
+}
+
 export async function insertInitialChatThreadConnectorSelections(
   tx: Tx,
   args: {
@@ -418,168 +386,103 @@ export async function insertInitialChatThreadConnectorSelections(
   );
 }
 
-export async function seedChatThreadConnectorSelectionIfEnabled(
-  tx: Tx,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly chatThreadId: string;
-    readonly connectorId: string;
-  },
-): Promise<SeedChatThreadConnectorSelectionResult> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    tx,
-    args.orgId,
-    args.userId,
-  );
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, featureSwitchContext)
-  ) {
-    return { kind: "disabled" };
-  }
-  const thread = await loadOwnedChatThread(tx, args);
-  if (!thread) {
-    return { kind: "not_found" };
-  }
-  const target = await loadConnectorTarget(tx, args);
-  if (!target) {
-    return { kind: "invalid_source" };
-  }
-  const current = await loadSelectionForTarget(tx, args.chatThreadId, target);
-  if (current) {
-    return current.connectionId === args.connectorId
-      ? { kind: "already_selected", selection: current }
-      : { kind: "conflict", selection: current };
-  }
-
-  const [inserted] = await tx
-    .insert(chatThreadConnectorSelections)
-    .values({
-      chatThreadId: args.chatThreadId,
-      connectorId: args.connectorId,
-      ...targetColumns(target),
-    })
-    .onConflictDoNothing()
-    .returning({ connectorId: chatThreadConnectorSelections.connectorId });
-  const finalSelection = await loadSelectionForTarget(
-    tx,
-    args.chatThreadId,
-    target,
-  );
-  if (!finalSelection) {
-    throw new Error("Failed to resolve connector selection after insert");
-  }
-  if (finalSelection.connectionId !== args.connectorId) {
-    return { kind: "conflict", selection: finalSelection };
-  }
-  return inserted
-    ? { kind: "seeded", selection: finalSelection }
-    : { kind: "already_selected", selection: finalSelection };
-}
-
-export async function resolveAndPinChatThreadConnectorSelections(
-  db: Db,
+export async function resolveChatThreadConnectorSelections(
+  db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly chatThreadId: string;
     readonly scope: AgentConnectorScope;
+    readonly connectorSourceId?: string;
   },
 ): Promise<ResolveChatThreadConnectorSelectionsResult> {
-  return await db.transaction(async (tx) => {
-    const thread = await loadOwnedChatThread(tx, args);
-    if (!thread) {
+  const thread = await loadOwnedChatThread(db, args);
+  if (!thread) {
+    return {
+      kind: "invalid",
+      message: "Chat thread is no longer available",
+    };
+  }
+  const rows = await loadSelectionRows(db, args.chatThreadId);
+  const activeSelections = new Map<string, ConnectorAccountSelection>();
+  for (const row of rows) {
+    const selection = selectionFromRow(row);
+    if (targetIsAuthorized(args.scope, selection.target)) {
+      activeSelections.set(
+        connectorAccountTargetKey(selection.target),
+        selection,
+      );
+    }
+  }
+  if (args.connectorSourceId !== undefined) {
+    const target = await loadConnectorTarget(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.connectorSourceId,
+    });
+    if (!target) {
       return {
         kind: "invalid",
-        message: "Chat thread is no longer available",
+        message: "Connector source is no longer available",
       };
     }
-    const targets = authorizedTargets(args.scope);
-    const currentRows = await loadSelectionRows(tx, args.chatThreadId);
-    const currentByTarget = new Map(
-      currentRows.map((row) => {
-        const selection = selectionFromRow(row);
-        return [
-          connectorAccountTargetKey(selection.target),
-          selection,
-        ] as const;
-      }),
-    );
-    const missingTargets = targets.filter((target) => {
-      return !currentByTarget.has(connectorAccountTargetKey(target));
-    });
-    const defaults = await resolveConnectorAccounts(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      requests: missingTargets.map((target) => {
-        return { target, selection: { kind: "default" as const } };
-      }),
-    });
-    let pinned = false;
-    for (const target of missingTargets) {
-      const resolution = defaults.get(connectorAccountTargetKey(target));
-      if (resolution?.kind !== "resolved") {
-        continue;
-      }
-      const [inserted] = await tx
-        .insert(chatThreadConnectorSelections)
-        .values({
-          chatThreadId: args.chatThreadId,
-          connectorId: resolution.account.connectorId,
-          ...targetColumns(target),
-        })
-        .onConflictDoNothing()
-        .returning({ connectorId: chatThreadConnectorSelections.connectorId });
-      pinned = pinned || inserted !== undefined;
-    }
-
-    const finalRows = await loadSelectionRows(tx, args.chatThreadId);
-    const activeSelections = finalRows.flatMap((row) => {
-      const selection = selectionFromRow(row);
-      return targetIsAuthorized(args.scope, selection.target)
-        ? [selection]
-        : [];
-    });
-    const exact = await resolveConnectorAccounts(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      requests: activeSelections.map((selection) => {
-        return {
-          target: selection.target,
-          selection: {
-            kind: "exact" as const,
-            sourceId: selection.connectionId,
-          },
-        };
-      }),
-    });
-    const connectorIdsBySlug = new Map<ConnectorSlug, string>();
-    const connectorIdsByCustomConnectorId = new Map<string, string>();
-    for (const selection of activeSelections) {
-      const resolution = exact.get(connectorAccountTargetKey(selection.target));
-      if (resolution?.kind !== "resolved") {
+    if (targetIsAuthorized(args.scope, target)) {
+      const key = connectorAccountTargetKey(target);
+      const selected = activeSelections.get(key);
+      if (
+        selected !== undefined &&
+        selected.connectionId !== args.connectorSourceId
+      ) {
         return {
           kind: "invalid",
-          message: "Selected connector account is no longer available",
+          message: "Connector source conflicts with the chat thread selection",
         };
       }
-      if (selection.target.kind === "builtin") {
-        connectorIdsBySlug.set(
-          selection.target.connectorSlug,
-          resolution.account.connectorId,
-        );
-      } else {
-        connectorIdsByCustomConnectorId.set(
-          selection.target.customConnectorId,
-          resolution.account.connectorId,
-        );
-      }
+      activeSelections.set(key, {
+        connectionId: args.connectorSourceId,
+        target,
+      });
     }
-    return {
-      kind: "resolved",
-      connectorIdsBySlug,
-      connectorIdsByCustomConnectorId,
-      pinned,
-    };
+  }
+
+  const exact = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: [...activeSelections.values()].map((selection) => {
+      return {
+        target: selection.target,
+        selection: {
+          kind: "exact" as const,
+          sourceId: selection.connectionId,
+        },
+      };
+    }),
   });
+  const connectorIdsBySlug = new Map<ConnectorSlug, string>();
+  const connectorIdsByCustomConnectorId = new Map<string, string>();
+  for (const selection of activeSelections.values()) {
+    const resolution = exact.get(connectorAccountTargetKey(selection.target));
+    if (resolution?.kind !== "resolved") {
+      return {
+        kind: "invalid",
+        message: "Selected connector account is no longer available",
+      };
+    }
+    if (selection.target.kind === "builtin") {
+      connectorIdsBySlug.set(
+        selection.target.connectorSlug,
+        resolution.account.connectorId,
+      );
+    } else {
+      connectorIdsByCustomConnectorId.set(
+        selection.target.customConnectorId,
+        resolution.account.connectorId,
+      );
+    }
+  }
+  return {
+    kind: "resolved",
+    connectorIdsBySlug,
+    connectorIdsByCustomConnectorId,
+  };
 }

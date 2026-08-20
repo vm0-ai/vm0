@@ -56,6 +56,12 @@ describe("chat thread connector selection contract", () => {
         unexpected: true,
       }),
     ).toMatchObject({ success: false });
+    expect(
+      chatThreadConnectorSelectionContract.clear.body.safeParse({
+        kind: "builtin",
+        connectorSlug: "openai",
+      }),
+    ).toMatchObject({ success: true });
   });
 });
 

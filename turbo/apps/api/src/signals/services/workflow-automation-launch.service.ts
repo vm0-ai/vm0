@@ -112,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly prompt: string;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
+  readonly connectorSourceId?: string;
   readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
@@ -659,6 +660,9 @@ export const launchQueuedWorkflowAutomation$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
+        ...(args.connectorSourceId
+          ? { connectorSourceId: args.connectorSourceId }
+          : {}),
         computerUseHostId: computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

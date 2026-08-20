@@ -168,7 +168,6 @@ import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypas
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
-import { publishChatThreadDetailChangedSafely } from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
@@ -260,7 +259,7 @@ import {
   connectorAccountTargetKey,
   resolveConnectorAccounts,
 } from "./connector-account-resolution.service";
-import { resolveAndPinChatThreadConnectorSelections } from "./chat-thread-connector-selection.service";
+import { resolveChatThreadConnectorSelections } from "./chat-thread-connector-selection.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -963,6 +962,8 @@ export interface CreateAgentRunArgs {
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  /** Exact connector that delivered this run's durable integration input. */
+  readonly connectorSourceId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly productAgentName?: string;
@@ -4083,20 +4084,15 @@ async function loadStoredConnectorMaterializationSnapshot(
   const accountResolutions = await resolveConnectorAccounts(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: args.allowedConnectorSlugs.flatMap((connectorSlug) => {
+    requests: args.allowedConnectorSlugs.map((connectorSlug) => {
       const connectorId = args.connectorIdsBySlug?.get(connectorSlug);
-      if (args.connectorIdsBySlug !== undefined && connectorId === undefined) {
-        return [];
-      }
-      return [
-        {
-          target: { kind: "builtin" as const, connectorSlug },
-          selection:
-            connectorId === undefined
-              ? ({ kind: "default" } as const)
-              : ({ kind: "exact", sourceId: connectorId } as const),
-        },
-      ];
+      return {
+        target: { kind: "builtin" as const, connectorSlug },
+        selection:
+          connectorId === undefined
+            ? ({ kind: "default" } as const)
+            : ({ kind: "exact", sourceId: connectorId } as const),
+      };
     }),
   });
   const connectorIds = args.allowedConnectorSlugs.flatMap((connectorSlug) => {
@@ -4131,7 +4127,10 @@ async function loadStoredConnectorMaterializationSnapshot(
     timing,
   );
   if (rows.length === 0) {
-    if (args.connectorIdsBySlug !== undefined) {
+    if (
+      args.connectorIdsBySlug !== undefined &&
+      args.connectorIdsBySlug.size > 0
+    ) {
       throw new ConnectorSelectionAdmissionError(
         "Selected connector account is no longer available",
       );
@@ -4840,24 +4839,16 @@ async function loadCustomConnectorContext(
   const accountResolutions = await resolveConnectorAccounts(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: args.allowedCustomConnectorIds.flatMap((customConnectorId) => {
+    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
       const connectorId =
         args.connectorIdsByCustomConnectorId?.get(customConnectorId);
-      if (
-        args.connectorIdsByCustomConnectorId !== undefined &&
-        connectorId === undefined
-      ) {
-        return [];
-      }
-      return [
-        {
-          target: { kind: "custom" as const, customConnectorId },
-          selection:
-            connectorId === undefined
-              ? ({ kind: "default" } as const)
-              : ({ kind: "exact", sourceId: connectorId } as const),
-        },
-      ];
+      return {
+        target: { kind: "custom" as const, customConnectorId },
+        selection:
+          connectorId === undefined
+            ? ({ kind: "default" } as const)
+            : ({ kind: "exact", sourceId: connectorId } as const),
+      };
     }),
   });
   const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
@@ -8779,7 +8770,7 @@ async function resolvePreparedThreadConnectorSelections(
   ) {
     return undefined;
   }
-  const resolved = await resolveAndPinChatThreadConnectorSelections(args.db, {
+  const resolved = await resolveChatThreadConnectorSelections(args.db, {
     orgId: args.createArgs.orgId,
     userId: args.createArgs.userId,
     chatThreadId,
@@ -8788,17 +8779,11 @@ async function resolvePreparedThreadConnectorSelections(
       allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
       customConnectorGrants: args.connectorScope.customConnectorGrants ?? [],
     },
+    connectorSourceId: args.createArgs.connectorSourceId,
   });
   signal.throwIfAborted();
   if (resolved.kind === "invalid") {
     return badRequestMessage(resolved.message);
-  }
-  if (resolved.pinned) {
-    await publishChatThreadDetailChangedSafely(
-      args.createArgs.userId,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
   }
   return {
     connectorIdsBySlug: resolved.connectorIdsBySlug,
@@ -8978,13 +8963,29 @@ function preparedRuntimeConnectorScope(args: {
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly threadConnectorSelectionIds: ThreadConnectorSelectionIds | undefined;
 }): EffectiveConnectorScope {
-  return args.threadConnectorSelectionIds === undefined &&
-    args.connectorCatalogSelection.kind === "scoped"
-    ? connectorScopeForRuntimeSnapshot(
-        args.connectorScope,
-        args.connectorCatalogSelection.selection,
-      )
-    : args.connectorScope;
+  if (args.connectorCatalogSelection.kind !== "scoped") {
+    return args.connectorScope;
+  }
+  const filtered = connectorScopeForRuntimeSnapshot(
+    args.connectorScope,
+    args.connectorCatalogSelection.selection,
+  );
+  if (args.threadConnectorSelectionIds === undefined) {
+    return filtered;
+  }
+  return {
+    ...filtered,
+    allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs.filter(
+      (connectorSlug) => {
+        return (
+          filtered.allowedConnectorSlugs.includes(connectorSlug) ||
+          args.threadConnectorSelectionIds?.connectorIdsBySlug.has(
+            connectorSlug,
+          )
+        );
+      },
+    ),
+  };
 }
 
 async function connectorCatalogSelectionForRun(args: {

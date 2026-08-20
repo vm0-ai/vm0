@@ -56,6 +56,7 @@ const TERMINALLY_SKIPPED_EXECUTION = {
 
 interface Scenario {
   readonly actor: ApiTestUser;
+  readonly agentId: string;
   readonly workflowId: string;
   readonly automationId: string;
   readonly chatThreadId: string;
@@ -162,6 +163,7 @@ async function setupScenario(
   }
   return {
     actor,
+    agentId,
     workflowId,
     automationId: created.body.id,
     chatThreadId: created.body.chatThreadId,
@@ -572,16 +574,24 @@ describe("Stripe automation event webhook", () => {
     expect(context.mocks.stripe.invoices.list).not.toHaveBeenCalled();
   });
 
-  it("pins the exact Stripe account that triggered the workflow", async () => {
+  it("uses the exact Stripe source without persisting a thread override", async () => {
     const scenario = await setupScenario();
     await connectors.updateFeatureSwitches(scenario.actor, {
       [FeatureSwitchKey.ConnectorAccounts]: true,
     });
-    await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: "evt_thread_connector_selection" }),
-    );
+    await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+      "stripe",
+    ]);
+    const eventId = "evt_thread_connector_source";
+    await postStripeAutomationEvent(invoicePaidEvent({ eventId }));
     expect((await executeAutomation(scenario)).body).toStrictEqual(
       EXECUTED_EXECUTION,
+    );
+    const claim = await claimScenarioRun(scenario, eventId);
+    expect(
+      Object.values(claim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(
+      expect.objectContaining({ sourceId: scenario.connector.id }),
     );
 
     mocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
@@ -592,13 +602,8 @@ describe("Stripe automation event webhook", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: scenario.connector.id,
-        target: { kind: "builtin", connectorSlug: "stripe" },
-      },
-    ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+    expect(selections.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadDetailChanged:${scenario.chatThreadId}`,
       null,
     );

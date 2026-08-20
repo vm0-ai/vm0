@@ -355,12 +355,7 @@ describe("Google Forms Pub/Sub webhook", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connector.id,
-        target: { kind: "builtin", connectorSlug: "google-forms" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
     const runId = events.find((event) => {
       return event.eventType === "input.prompt" && event.runId;
     })?.runId;

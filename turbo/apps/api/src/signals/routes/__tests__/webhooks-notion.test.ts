@@ -9,12 +9,10 @@ import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createWorkflowsBddApi,
@@ -40,7 +38,6 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const connectors = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const WORKFLOW_NAME = "notion-webhook-workflow";
 const NOTION_WEBHOOK_TOKEN = "notion-webhook-verification-token";
@@ -859,10 +856,6 @@ describe("POST /api/webhooks/notion", () => {
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
-    const connector = await connectors.readConnectorBySlug(
-      scenario.actor,
-      "notion",
-    );
     configureNotionChildPageMock(entities);
 
     const created = await accept(
@@ -956,12 +949,7 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connector.id,
-        target: { kind: "builtin", connectorSlug: "notion" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
 
     // The runner claim exposes the persisted event context: latest page
     // title, properties, and no page body/content.

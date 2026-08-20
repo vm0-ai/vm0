@@ -37,7 +37,6 @@ import type {
 import type { Tx } from "../../lib/db-types";
 import { manualTriggerSource } from "./workflow-automation-trigger-source";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
-import { seedChatThreadConnectorSelectionIfEnabled } from "./chat-thread-connector-selection.service";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
@@ -103,13 +102,8 @@ async function pendingTickExistsForAutomation(
 }
 
 type WorkflowQueueAdmission =
-  | {
-      readonly kind: "inserted";
-      readonly eventId: string;
-      readonly connectorSelectionPinned: boolean;
-    }
-  | { readonly kind: "coalesced" }
-  | { readonly kind: "conflict"; readonly message: string };
+  | { readonly kind: "inserted"; readonly eventId: string }
+  | { readonly kind: "coalesced" };
 
 export type PersistWorkflowQueueSourceTransition = (
   tx: WorkflowQueueAdmissionTransaction,
@@ -122,8 +116,8 @@ interface WorkflowQueueAdmissionArgs {
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   readonly workflowAutomationEventType?: WorkflowAutomationEventType;
   readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
-  readonly chatThreadId: string;
   readonly connectorSourceId?: string;
+  readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
   readonly coalescePendingScheduleRun: boolean;
@@ -150,25 +144,6 @@ async function attemptWorkflowQueueAdmission(
       return { kind: "coalesced" };
     }
 
-    const connectorSelection = args.connectorSourceId
-      ? await seedChatThreadConnectorSelectionIfEnabled(tx, {
-          orgId: automation.orgId,
-          userId: automation.ownerUserId,
-          chatThreadId: args.chatThreadId,
-          connectorId: args.connectorSourceId,
-        })
-      : undefined;
-    if (
-      connectorSelection?.kind === "conflict" ||
-      connectorSelection?.kind === "not_found" ||
-      connectorSelection?.kind === "invalid_source"
-    ) {
-      return {
-        kind: "conflict",
-        message: "Connector source conflicts with the chat thread selection",
-      };
-    }
-
     const automationUserMessage = createUserMessageDocument({
       text: args.displayPrompt,
       nonContentPart: {
@@ -193,17 +168,14 @@ async function attemptWorkflowQueueAdmission(
       workflowName: args.workflowName,
       workflowAutomationEventType: args.workflowAutomationEventType,
       workflowAutomationEventPayload: args.workflowAutomationEventPayload,
+      connectorSourceId: args.connectorSourceId,
       triggerBrief: args.triggerBrief ?? null,
     });
     if (!inserted) {
       throw new Error("Workflow queue event insert returned no row");
     }
     await args.persistSourceTransition?.(tx);
-    return {
-      kind: "inserted",
-      eventId: inserted.id,
-      connectorSelectionPinned: connectorSelection?.kind === "seeded",
-    };
+    return { kind: "inserted", eventId: inserted.id };
   });
 }
 
@@ -229,6 +201,7 @@ export interface PendingWorkflowQueueEvent {
   readonly workflowName: string | null;
   readonly workflowAutomationEventType: string | null;
   readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
+  readonly connectorSourceId: string | undefined;
 }
 
 /**
@@ -274,6 +247,7 @@ export async function loadNextWorkflowQueueEvent(
         workflowName: chatAutomationContext.workflowName,
         workflowAutomationEventType: chatAutomationContext.eventType,
         workflowAutomationEventPayload: chatAutomationContext.eventPayload,
+        connectorSourceId: chatAutomationContext.connectorSourceId,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -295,6 +269,7 @@ export async function loadNextWorkflowQueueEvent(
     }
     return {
       ...event,
+      connectorSourceId: event.connectorSourceId ?? undefined,
       triggerSource:
         event.automationKind === null
           ? null

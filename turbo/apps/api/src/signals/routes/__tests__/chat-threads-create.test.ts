@@ -316,6 +316,28 @@ describe("POST /api/zero/chat-threads", () => {
       [400],
     );
 
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      connectorSelectionsClient().clear({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [204],
+    );
+    const cleared = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(cleared.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${created.body.id}`,
+      null,
+    );
+
     await api.enableAgentConnectors(fixture.actor, fixture.agentId, ["openai"]);
     await accept(
       connectorSelectionsClient().update({
@@ -388,6 +410,14 @@ describe("POST /api/zero/chat-threads", () => {
           connectionId: connection.id,
           target: { kind: "builtin", connectorSlug: "openai" },
         },
+      }),
+      [404],
+    );
+    await accept(
+      connectorSelectionsClient().clear({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: legacyCreated.body.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
       }),
       [404],
     );

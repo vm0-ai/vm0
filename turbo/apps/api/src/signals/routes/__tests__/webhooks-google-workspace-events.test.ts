@@ -202,10 +202,6 @@ describe("POST /api/webhooks/google-workspace-events", () => {
       { [FeatureSwitchKey.ConnectorAccounts]: true },
     );
     await connectGoogleMeet(actor);
-    const connector = await connectors.readConnectorBySlug(
-      actor,
-      "google-meet",
-    );
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
     const created = await accept(
@@ -262,11 +258,6 @@ describe("POST /api/webhooks/google-workspace-events", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connector.id,
-        target: { kind: "builtin", connectorSlug: "google-meet" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
   });
 });

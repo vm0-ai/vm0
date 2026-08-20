@@ -10,6 +10,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { publishChatThreadDetailChangedSafely } from "../external/realtime";
 import {
+  clearChatThreadConnectorSelection,
   listChatThreadConnectorSelections,
   updateChatThreadConnectorSelection,
 } from "../services/chat-thread-connector-selection.service";
@@ -74,6 +75,38 @@ const updateSelectionInner$ = command(
   },
 );
 
+const clearSelectionInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await get(connectorAccountsEnabled$))) {
+      return notFound("Resource not found");
+    }
+    const params = get(
+      pathParamsOf(chatThreadConnectorSelectionContract.clear),
+    );
+    const body = await get(
+      bodyResultOf(chatThreadConnectorSelectionContract.clear),
+    );
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await clearChatThreadConnectorSelection(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      chatThreadId: params.id,
+      target: body.data,
+    });
+    signal.throwIfAborted();
+    if (result.kind === "not_found") {
+      return notFound("Chat thread not found");
+    }
+    await publishChatThreadDetailChangedSafely(auth.userId, params.id);
+    signal.throwIfAborted();
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 const readAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -94,5 +127,9 @@ export const chatThreadConnectorSelectionRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadConnectorSelectionContract.update,
     handler: authRoute(writeAuth, updateSelectionInner$),
+  },
+  {
+    route: chatThreadConnectorSelectionContract.clear,
+    handler: authRoute(writeAuth, clearSelectionInner$),
   },
 ];

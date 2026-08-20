@@ -14,7 +14,6 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -36,7 +35,6 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const connectorsApi = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
@@ -389,10 +387,6 @@ describe("POST /api/webhooks/google-calendar", () => {
       [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     await connectGoogleCalendar(scenario);
-    const connector = await connectorsApi.readConnectorBySlug(
-      scenario.actor,
-      "google-calendar",
-    );
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -433,12 +427,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connector.id,
-        target: { kind: "builtin", connectorSlug: "google-calendar" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));

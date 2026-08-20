@@ -901,7 +901,6 @@ describe("POST /api/webhooks/gmail", () => {
       [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     await connectGmail(actor, gmailEmail);
-    const connector = await connectorsApi.readConnectorBySlug(actor, "gmail");
     await configureWorkspaceModelProvider(actor);
     const created = await accept(
       automationsClient().create({
@@ -967,12 +966,7 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [200],
     );
-    expect(selections.body.selections).toStrictEqual([
-      {
-        connectionId: connector.id,
-        target: { kind: "builtin", connectorSlug: "gmail" },
-      },
-    ]);
+    expect(selections.body.selections).toStrictEqual([]);
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {
         lastRunAt: expect.any(String),
