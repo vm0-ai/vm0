@@ -181,11 +181,19 @@ function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
 }
 
 /**
- * State written before #28300 carries no redirect URI, and the build that wrote
- * it sent this exact value. Microsoft rejects a token request whose redirect_uri
- * differs from the authorization request, so an authorization started on the
- * previous build can only be completed against it. Remove once no state
- * predating #28300 can still be presented.
+ * Rollout fallback for #28300. State written by the previous API build carries
+ * no redirect URI, and that build sent this exact value. Microsoft rejects a
+ * token request whose redirect_uri differs from the authorization request, so
+ * an authorization started before this deploy can only be completed against it.
+ *
+ * Surface: a browser-held Microsoft consent page, so it is bounded by the old
+ * web/app client window of ~2 days rather than by the API deploy gap. The
+ * authorization request is not persisted anywhere and carries no expiry of our
+ * own, so nothing shortens that window.
+ *
+ * Removable once no authorization started before this deploy can still be
+ * presented, and the previous build is outside the production rollback window.
+ * Follow-up: #28303.
  */
 function legacyCallbackRedirectUri(origin: string): string {
   return `${origin}/api/zero/teams/oauth/callback`;
