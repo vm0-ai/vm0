@@ -9,9 +9,9 @@ pub struct SnapshotCreateConfig {
     ///
     /// The format is provider-specific. The Firecracker provider uses this
     /// value as its runtime socket directory name and requires a single,
-    /// non-empty ASCII path segment containing only letters, digits, `.`, `-`,
-    /// and `_`. Nested or composite values such as `<rootfs>/<snapshot>` are
-    /// invalid, and the generated
+    /// non-empty normal ASCII path segment containing only letters, digits,
+    /// `.`, `-`, and `_`. The special `.` and `..` components, nested or
+    /// composite values such as `<rootfs>/<snapshot>`, are invalid, and the generated
     /// `/run/vm0/sock/<id>/vsock/vsock.sock` path must be at most 107 bytes.
     /// Invalid Firecracker IDs are reported as `SnapshotError::Setup` before
     /// snapshot-output cleanup. Other providers may impose different
