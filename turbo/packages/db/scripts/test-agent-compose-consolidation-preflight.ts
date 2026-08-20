@@ -3610,6 +3610,35 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070 \+ #28080/u,
   );
   assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v7/u);
+  const databaseResolutionFailurePayloads = [
+    ...workflow.matchAll(/database_resolution_failure='([^'\n]+)'/gu),
+  ];
+  assert.equal(databaseResolutionFailurePayloads.length, 1);
+  const databaseResolutionFailurePayload =
+    databaseResolutionFailurePayloads[0]?.[1];
+  assert.ok(databaseResolutionFailurePayload);
+  const parsedDatabaseResolutionFailure: unknown = JSON.parse(
+    databaseResolutionFailurePayload,
+  );
+  const canonicalDatabaseResolutionFailure = sanitizedFailureResult(
+    new SanitizedPreflightError("probe.database_resolution", {
+      failurePhase: "configuration",
+      phaseDurationsMs: Object.fromEntries(
+        PREFLIGHT_PHASES.map((phase) => {
+          return [phase, 0] as const;
+        }),
+      ) as Record<(typeof PREFLIGHT_PHASES)[number], number>,
+    }),
+  );
+  assert.deepEqual(
+    parsedDatabaseResolutionFailure,
+    canonicalDatabaseResolutionFailure,
+  );
+  assert.equal(
+    workflow.match(/^\s+printf '%s\\n' "\$database_resolution_failure"$/gmu)
+      ?.length,
+    2,
+  );
   assert.equal(
     /vm0\.agent-compose-consolidation-preflight\.v[1-6]/u.test(workflow),
     false,
