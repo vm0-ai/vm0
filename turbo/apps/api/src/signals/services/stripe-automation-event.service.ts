@@ -1356,6 +1356,7 @@ async function processClaimedDelivery(
           delivery: args.delivery,
           target,
         }),
+        connectorSourceId: args.delivery.connectorId,
         apiStartTime: now(),
         triggerSource: "automation-event",
         triggerBrief: `Stripe invoice paid: ${args.delivery.snapshot.invoice.id}`,

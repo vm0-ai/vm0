@@ -1,6 +1,6 @@
 {
-  "id": "a427d540-65a4-4e05-be78-0c004aca8a3a",
-  "prevId": "6cf575ac-364e-4f14-b6ee-e123b2149c42",
+  "id": "24cce5f5-c837-481a-9e36-5c473d01a87a",
+  "prevId": "a427d540-65a4-4e05-be78-0c004aca8a3a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4068,6 +4068,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
         },
         "name": {
           "name": "name",

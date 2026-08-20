@@ -240,6 +240,13 @@ async function handleWorkflowLaunchResult(
   };
 }
 
+function matchingLaunch(
+  launch: AutomationEventLaunch | undefined,
+  eventId: string,
+): AutomationEventLaunch | undefined {
+  return launch?.eventId === eventId ? launch : undefined;
+}
+
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
@@ -334,10 +341,7 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const launchHint =
-        args.automationEventLaunch?.eventId === event.id
-          ? args.automationEventLaunch
-          : undefined;
+      const launchHint = matchingLaunch(args.automationEventLaunch, event.id);
       const result = await set(
         launchQueuedWorkflowAutomation$,
         {
@@ -353,6 +357,9 @@ export const drainWorkflowQueueForThread$ = command(
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
+          ...(event.connectorSourceId
+            ? { connectorSourceId: event.connectorSourceId }
+            : {}),
           appendSystemPrompt: launchMaterial.appendSystemPrompt,
           callbacks: launchMaterial.callbacks,
           autonomyBudget: autonomyBudget.autonomyBudget,
