@@ -66,7 +66,7 @@ struct CloseGate {
 pub struct NetworkLogSession {
     manager: NetworkLogManager,
     source_ip: String,
-    path: PathBuf,
+    path: Arc<Path>,
     generation: u64,
     closed: bool,
 }
@@ -142,7 +142,7 @@ impl Drop for NetworkLogSession {
 
         let manager = self.manager.clone();
         let source_ip = self.source_ip.clone();
-        let path = self.path.clone();
+        let path = Arc::clone(&self.path);
         let generation = self.generation;
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             std::mem::drop(handle.spawn(async move {
@@ -626,13 +626,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending_old_write_stays_on_old_path_after_reregister() {
+    async fn repeated_appends_share_path_and_stay_on_old_path_after_reregister() {
         let dir = tempfile::tempdir().unwrap();
         let old_path = dir.path().join("old.jsonl");
         let new_path = dir.path().join("new.jsonl");
         let started = Arc::new(Notify::new());
         let release = Arc::new(Semaphore::new(0));
-        let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            started.clone(),
+            release.clone(),
+            WriterConfig {
+                shards: 1,
+                queue_capacity: 4,
+                max_batch_rows: 1,
+                max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+            },
+        );
 
         let _old_session = manager
             .register_source_ip("10.200.0.2", old_path.clone())
@@ -640,10 +649,23 @@ mod tests {
         let old_started = started.notified();
         assert!(
             manager
-                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"old.test"}))
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"old-1.test"}))
                 .await
         );
         old_started.await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"old-2.test"}))
+                .await
+        );
+        assert!(
+            manager
+                .inner
+                .state
+                .source_and_pending_path_share_identity("10.200.0.2", &old_path)
+                .await,
+            "repeated appends should reuse the registered path allocation"
+        );
 
         manager.unregister_source_ip("10.200.0.2").await;
         let _new_session = manager
@@ -654,14 +676,25 @@ mod tests {
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"new.test"}))
                 .await
         );
+        assert!(
+            manager
+                .inner
+                .state
+                .source_and_pending_path_share_identity("10.200.0.2", &new_path)
+                .await,
+            "re-registered source should share its new path allocation"
+        );
 
-        release.add_permits(2);
+        release.add_permits(3);
         manager.flush_path(&old_path).await;
         manager.flush_path(&new_path).await;
 
         let old_lines = read_json_lines(&old_path);
-        assert_eq!(old_lines.len(), 1);
-        assert_eq!(old_lines[0]["host"], "old.test");
+        let old_hosts: Vec<&str> = old_lines
+            .iter()
+            .map(|line| line["host"].as_str().unwrap())
+            .collect();
+        assert_eq!(old_hosts, ["old-1.test", "old-2.test"]);
 
         let new_lines = read_json_lines(&new_path);
         assert_eq!(new_lines.len(), 1);

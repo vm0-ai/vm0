@@ -13,25 +13,25 @@ pub(super) struct NetworkLogState {
 #[derive(Default)]
 struct State {
     source_paths: HashMap<String, SourceState>,
-    pending_paths: HashMap<PathBuf, PathState>,
+    pending_paths: HashMap<Arc<Path>, PathState>,
     next_generation: u64,
 }
 
 enum SourceState {
     Active {
-        path: PathBuf,
+        path: Arc<Path>,
         generation: u64,
         writer_backpressure_observed: bool,
     },
     Draining {
-        path: PathBuf,
+        path: Arc<Path>,
         generation: u64,
         writer_backpressure_observed: bool,
     },
 }
 
 impl SourceState {
-    fn path(&self) -> &PathBuf {
+    fn path(&self) -> &Arc<Path> {
         match self {
             Self::Active { path, .. } | Self::Draining { path, .. } => path,
         }
@@ -44,7 +44,7 @@ impl SourceState {
     }
 
     fn matches(&self, path: &Path, generation: u64) -> bool {
-        self.generation() == generation && self.path() == path
+        self.generation() == generation && self.path().as_ref() == path
     }
 
     fn writer_backpressure_observed(&self) -> bool {
@@ -77,17 +77,17 @@ impl PathState {
 
 pub(super) struct SourceRegistration {
     pub(super) source_ip: String,
-    pub(super) path: PathBuf,
+    pub(super) path: Arc<Path>,
     pub(super) generation: u64,
 }
 
 pub(super) struct SourceSnapshot {
-    pub(super) path: PathBuf,
+    pub(super) path: Arc<Path>,
     generation: u64,
 }
 
 pub(super) struct AcceptedAppend {
-    path: PathBuf,
+    path: Arc<Path>,
     line: String,
 }
 
@@ -96,7 +96,7 @@ impl AcceptedAppend {
         self.line.len()
     }
 
-    pub(super) fn into_parts(self) -> (PathBuf, String) {
+    pub(super) fn into_parts(self) -> (Arc<Path>, String) {
         (self.path, self.line)
     }
 }
@@ -107,7 +107,7 @@ pub(super) struct PendingWriteCompletion {
 }
 
 impl PendingWriteCompletion {
-    pub(super) async fn complete_path(&self, path: PathBuf, count: usize) {
+    pub(super) async fn complete_path(&self, path: Arc<Path>, count: usize) {
         if let Some(state) = self.state.upgrade() {
             state.complete_path(path, count).await;
         }
@@ -129,10 +129,11 @@ impl NetworkLogState {
         let mut state = self.state.lock().await;
         state.next_generation += 1;
         let generation = state.next_generation;
+        let path: Arc<Path> = path.into();
         state.source_paths.insert(
             source_ip.clone(),
             SourceState::Active {
-                path: path.clone(),
+                path: Arc::clone(&path),
                 generation,
                 writer_backpressure_observed: false,
             },
@@ -155,13 +156,29 @@ impl NetworkLogState {
         self.state.lock().await.source_paths.contains_key(source_ip)
     }
 
+    #[cfg(test)]
+    pub(super) async fn source_and_pending_path_share_identity(
+        &self,
+        source_ip: &str,
+        path: &Path,
+    ) -> bool {
+        let state = self.state.lock().await;
+        let Some(source) = state.source_paths.get(source_ip) else {
+            return false;
+        };
+        let Some((pending_path, _)) = state.pending_paths.get_key_value(path) else {
+            return false;
+        };
+        Arc::ptr_eq(source.path(), pending_path)
+    }
+
     pub(super) async fn source_snapshot(&self, source_ip: &str) -> Option<SourceSnapshot> {
         let state = self.state.lock().await;
         state
             .source_paths
             .get(source_ip)
             .map(|source| SourceSnapshot {
-                path: source.path().clone(),
+                path: Arc::clone(source.path()),
                 generation: source.generation(),
             })
     }
@@ -174,16 +191,16 @@ impl NetworkLogState {
     ) -> Option<AcceptedAppend> {
         let mut state = self.state.lock().await;
         let source_state = state.source_paths.get(source_ip)?;
-        if !source_state.matches(&snapshot.path, snapshot.generation) {
+        if !source_state.matches(snapshot.path.as_ref(), snapshot.generation) {
             return None;
         }
         let path_state = state
             .pending_paths
-            .entry(snapshot.path.clone())
+            .entry(Arc::clone(&snapshot.path))
             .or_insert_with(PathState::new);
         path_state.pending += 1;
         Some(AcceptedAppend {
-            path: snapshot.path.clone(),
+            path: Arc::clone(&snapshot.path),
             line,
         })
     }
@@ -197,7 +214,7 @@ impl NetworkLogState {
         let Some(source_state) = state.source_paths.get_mut(source_ip) else {
             return;
         };
-        if !source_state.matches(&snapshot.path, snapshot.generation) {
+        if !source_state.matches(snapshot.path.as_ref(), snapshot.generation) {
             return;
         }
         match source_state {
@@ -225,11 +242,12 @@ impl NetworkLogState {
         if !source_state.matches(path, generation) {
             return false;
         }
+        let path = Arc::clone(source_state.path());
         let writer_backpressure_observed = source_state.writer_backpressure_observed();
         state.source_paths.insert(
             source_ip.to_string(),
             SourceState::Draining {
-                path: path.to_path_buf(),
+                path,
                 generation,
                 writer_backpressure_observed,
             },
@@ -281,13 +299,13 @@ impl NetworkLogState {
         }
     }
 
-    async fn complete_path(&self, path: PathBuf, count: usize) {
+    async fn complete_path(&self, path: Arc<Path>, count: usize) {
         if count == 0 {
             return;
         }
         let notify = {
             let mut state = self.state.lock().await;
-            let Some(path_state) = state.pending_paths.get_mut(&path) else {
+            let Some(path_state) = state.pending_paths.get_mut(path.as_ref()) else {
                 warn!(path = %path.display(), "network log write completed for unknown path");
                 return;
             };
@@ -305,7 +323,10 @@ impl NetworkLogState {
             }
 
             if path_state.pending == 0 {
-                state.pending_paths.remove(&path).map(|state| state.notify)
+                state
+                    .pending_paths
+                    .remove(path.as_ref())
+                    .map(|state| state.notify)
             } else {
                 None
             }
