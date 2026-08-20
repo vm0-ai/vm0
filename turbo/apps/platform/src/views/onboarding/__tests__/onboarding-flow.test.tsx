@@ -597,7 +597,7 @@ describe("onboarding flow", () => {
       }),
     ).resolves.toBeInTheDocument();
 
-    expect(buttonByText("Create draft")).not.toBeDisabled();
+    expect(buttonByText("Create workflow")).not.toBeDisabled();
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
 
@@ -631,7 +631,7 @@ describe("onboarding flow", () => {
     ).resolves.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(buttonByText("Create draft")).not.toBeDisabled();
+      expect(buttonByText("Create workflow")).not.toBeDisabled();
     });
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });

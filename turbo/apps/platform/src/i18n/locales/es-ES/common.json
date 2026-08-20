@@ -2964,7 +2964,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Continuar con {{assistantName}}",
-      "createDraft": "Crear borrador",
+      "createWorkflow": "Crear flujo de trabajo",
       "customNoteLabel": "Describe tu flujo de trabajo",
       "customNotePlaceholder": "Describe lo que quieres que {{assistantName}} cree",
       "customTitle": "Describe tu flujo de trabajo",

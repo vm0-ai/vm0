@@ -2919,7 +2919,7 @@
     },
     "workflowRun": {
       "continueWithZero": "{{assistantName}}와 계속하기",
-      "createDraft": "초안 만들기",
+      "createWorkflow": "워크플로 생성",
       "customNoteLabel": "워크플로 설명",
       "customNotePlaceholder": "{{assistantName}}가 만들기를 원하는 내용을 설명하세요",
       "customTitle": "워크플로 설명",

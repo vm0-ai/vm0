@@ -2964,7 +2964,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Continuer avec {{assistantName}}",
-      "createDraft": "Créer un brouillon",
+      "createWorkflow": "Créer un workflow",
       "customNoteLabel": "Décrivez votre workflow",
       "customNotePlaceholder": "Décrivez ce que vous voulez que {{assistantName}} crée",
       "customTitle": "Décrivez votre workflow",

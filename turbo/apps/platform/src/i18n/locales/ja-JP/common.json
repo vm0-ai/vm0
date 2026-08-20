@@ -2919,7 +2919,7 @@
     },
     "workflowRun": {
       "continueWithZero": "{{assistantName}} に進みます",
-      "createDraft": "ドラフトの作成",
+      "createWorkflow": "ワークフローの作成",
       "customNoteLabel": "ワークフローを説明する",
       "customNotePlaceholder": "{{assistantName}} で構築したいものを説明してください",
       "customTitle": "ワークフローを説明する",

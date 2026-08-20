@@ -2920,7 +2920,7 @@
     },
     "workflowRun": {
       "continueWithZero": "{{assistantName}} के साथ जारी रखें",
-      "createDraft": "ड्राफ्ट बनाएं",
+      "createWorkflow": "वर्कफ़्लो बनाएँ",
       "customNoteLabel": "अपने वर्कफ़्लो का वर्णन करें",
       "customNotePlaceholder": "बताएं कि आप {{assistantName}} से क्या बनवाना चाहते हैं",
       "customTitle": "अपने वर्कफ़्लो का वर्णन करें",

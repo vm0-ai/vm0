@@ -2964,7 +2964,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Continua con {{assistantName}}",
-      "createDraft": "Crea bozza",
+      "createWorkflow": "Crea flusso di lavoro",
       "customNoteLabel": "Descrivi il tuo flusso di lavoro",
       "customNotePlaceholder": "Descrivi cosa vuoi che {{assistantName}} costruisca",
       "customTitle": "Descrivi il tuo flusso di lavoro",

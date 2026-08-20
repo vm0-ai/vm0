@@ -2920,7 +2920,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Continue with {{assistantName}}",
-      "createDraft": "Create draft",
+      "createWorkflow": "Create workflow",
       "customNoteLabel": "Describe your workflow",
       "customNotePlaceholder": "Describe what you want {{assistantName}} to build",
       "customTitle": "Describe your workflow",

@@ -2919,7 +2919,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Lanjutkan dengan {{assistantName}}",
-      "createDraft": "Buat draf",
+      "createWorkflow": "Buat alur kerja",
       "customNoteLabel": "Jelaskan alur kerja Anda",
       "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan {{assistantName}}",
       "customTitle": "Jelaskan alur kerja Anda",

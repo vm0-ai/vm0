@@ -333,9 +333,9 @@ function representativeCategoryConnectors(
 }
 
 const CATEGORY_CONNECTOR_TILE_CLASSES = [
-  "-right-2.5 top-2.5 rotate-[7deg] opacity-[0.22]",
-  "right-6 top-6 -rotate-[5deg] opacity-[0.15]",
-  "right-14 top-2 rotate-[3deg] opacity-[0.1]",
+  "-right-2.5 top-2.5 rotate-[7deg] opacity-[0.16]",
+  "right-6 top-6 -rotate-[5deg] opacity-[0.1]",
+  "right-14 top-2 rotate-[3deg] opacity-[0.06]",
 ] as const;
 
 function CategoryConnectorBackground({
