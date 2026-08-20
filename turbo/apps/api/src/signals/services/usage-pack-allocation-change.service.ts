@@ -874,12 +874,16 @@ function usagePackAllocationAdditionCharge(
       taxRateIds: automaticTax ? [] : invoiceLineTaxRateIds(line),
     };
   });
+  const netAmountCents = invoiceItems.reduce((total, item) => {
+    return total + item.amountCents;
+  }, 0);
   const amount = prorationLines.reduce((total, line) => {
     return total + invoiceLineAmountWithTax(line);
   }, 0);
   if (
     invoice.currency.length !== 3 ||
     prorationLines.length === 0 ||
+    !Number.isSafeInteger(netAmountCents) ||
     !Number.isSafeInteger(amount)
   ) {
     throw new Error("Stripe invitation preview has an invalid amount");
@@ -887,7 +891,11 @@ function usagePackAllocationAdditionCharge(
   return {
     amountCents: Math.max(0, amount),
     automaticTax,
-    invoiceItems,
+    invoiceItems: automaticTax
+      ? netAmountCents > 0
+        ? [{ amountCents: netAmountCents, taxRateIds: [] }]
+        : []
+      : invoiceItems,
   };
 }
 

@@ -1,5 +1,5 @@
 {
-  "id": "6d77f7ee-ed1f-4085-bec2-3acb95387fc7",
+  "id": "1608b729-e9ac-4aaf-aaa9-fed67ecf4b64",
   "prevId": "a108edee-4057-47bc-b4d1-e536e4e0dca0",
   "version": "7",
   "dialect": "postgresql",
@@ -24735,6 +24735,52 @@
       },
       "isRLSEnabled": false
     },
+    "public.usage_pack_pending_snapshot_guards": {
+      "name": "usage_pack_pending_snapshot_guards",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pending_snapshot_count": {
+          "name": "pending_snapshot_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "uq_usage_pack_subscriptions_pending_org": {
+          "name": "uq_usage_pack_subscriptions_pending_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_usage_pack_pending_snapshot_guard_count": {
+          "name": "chk_usage_pack_pending_snapshot_guard_count",
+          "value": "\"usage_pack_pending_snapshot_guards\".\"pending_snapshot_count\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.usage_pack_subscription_changes": {
       "name": "usage_pack_subscription_changes",
       "schema": "",
@@ -25525,22 +25571,6 @@
           ],
           "isUnique": true,
           "where": "\"usage_pack_subscriptions\".\"stripe_subscription_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "uq_usage_pack_subscriptions_pending_org": {
-          "name": "uq_usage_pack_subscriptions_pending_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"usage_pack_subscriptions\".\"subscription_status\" IN ('checkout_pending', 'purchase_pending')",
           "concurrently": false,
           "method": "btree",
           "with": {}

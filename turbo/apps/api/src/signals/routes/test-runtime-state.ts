@@ -45,6 +45,7 @@ import {
 } from "../services/managed-model-key-fixture";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
+import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
@@ -748,6 +749,10 @@ type ReadUsagePackInvitationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-invitation-schema-state" }
 >;
+type ReadUsagePackPurchaseSerializationSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-usage-pack-purchase-serialization-schema-state" }
+>;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -760,6 +765,7 @@ type PersistenceStateAction =
   | ReadRunLaunchSnapshotAction
   | ReadBrowserScreenshotSchemaStateAction
   | ReadUsagePackInvitationSchemaStateAction
+  | ReadUsagePackPurchaseSerializationSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -779,6 +785,9 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-usage-pack-invitation-schema-state": {
+      return true;
+    }
+    case "read-usage-pack-purchase-serialization-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -875,6 +884,17 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           usage_pack_invitation_schema_available: available,
+        },
+      };
+    }
+    case "read-usage-pack-purchase-serialization-schema-state": {
+      const available = await usagePackPurchaseSerializationSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          usage_pack_purchase_serialization_schema_available: available,
         },
       };
     }

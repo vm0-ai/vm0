@@ -410,6 +410,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8",
     "#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8",
     "#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8",
+    "#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

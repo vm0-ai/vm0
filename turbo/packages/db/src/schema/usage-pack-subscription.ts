@@ -264,11 +264,6 @@ export const usagePackSubscriptions = pgTable(
       uniqueIndex("uq_usage_pack_subscriptions_stripe_subscription")
         .on(table.stripeSubscriptionId)
         .where(sql`${table.stripeSubscriptionId} IS NOT NULL`),
-      uniqueIndex("uq_usage_pack_subscriptions_pending_org")
-        .on(table.orgId)
-        .where(
-          sql`${table.subscriptionStatus} IN ('checkout_pending', 'purchase_pending')`,
-        ),
       index("idx_usage_pack_subscriptions_org").on(table.orgId),
       index("idx_usage_pack_subscriptions_reconcile").on(
         table.subscriptionStatus,
@@ -281,6 +276,28 @@ export const usagePackSubscriptions = pgTable(
       check(
         "chk_usage_pack_subscriptions_period",
         sql`(${table.currentPeriodStart} IS NULL AND ${table.currentPeriodEnd} IS NULL) OR (${table.currentPeriodStart} IS NOT NULL AND ${table.currentPeriodEnd} IS NOT NULL AND ${table.currentPeriodEnd} > ${table.currentPeriodStart})`,
+      ),
+    ];
+  },
+);
+
+/**
+ * One database-owned pending count per organization. Migration 0952 preserves
+ * the exact count when legacy writers already left competing snapshots. New
+ * writers may claim the organization only after reconciliation reaches zero.
+ */
+export const usagePackPendingSnapshotGuards = pgTable(
+  "usage_pack_pending_snapshot_guards",
+  {
+    orgId: text("org_id").notNull(),
+    pendingSnapshotCount: integer("pending_snapshot_count").notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_subscriptions_pending_org").on(table.orgId),
+      check(
+        "chk_usage_pack_pending_snapshot_guard_count",
+        sql`${table.pendingSnapshotCount} >= 0`,
       ),
     ];
   },

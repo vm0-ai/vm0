@@ -3251,6 +3251,112 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     }
   });
 
+  it("reconciles competing pre-0952 Checkout Sessions before creating a replacement", async () => {
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    await prepareUsagePackCheckoutOrg(fixture, customerId);
+    const sessionStates = mockStatefulUsagePackCheckoutSessions();
+    const legacySnapshots: {
+      readonly sessionId: string;
+      readonly subscriptionId: string;
+    }[] = [];
+
+    for (const usagePackUsd of [20, 50] as const) {
+      const sessionId = `cs_pre_0952_${usagePackUsd}_${randomUUID()}`;
+      sessionStates.set(sessionId, "open");
+      const seeded = await usagePackStateAction({
+        action: "seed",
+        orgId: fixture.orgId,
+        tier: "pro",
+        stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+        stripeCustomerId: customerId,
+        stripeCheckoutSessionId: sessionId,
+        preSerializationCutover: true,
+        allocations: [
+          {
+            userId: `user_pre_0952_${usagePackUsd}_${randomUUID()}`,
+            invitationId: null,
+            usagePackUsd,
+            stripePriceId:
+              usagePackUsd === 20
+                ? TEST_PRICE_USAGE_PACK_20
+                : TEST_PRICE_USAGE_PACK_50,
+          },
+        ],
+      });
+      if (seeded.action !== "seeded") {
+        throw new Error("Failed to seed a pre-0952 Checkout snapshot");
+      }
+      legacySnapshots.push({
+        sessionId,
+        subscriptionId: seeded.usagePackSubscriptionId,
+      });
+    }
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 100 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: expect.stringMatching(/^https:\/\/checkout\.stripe\.test\//),
+    });
+    for (const snapshot of legacySnapshots) {
+      expect(sessionStates.get(snapshot.sessionId)).toBe("expired");
+      expect(
+        (await readUsagePackState(fixture.orgId, snapshot.subscriptionId))
+          .subscription,
+      ).toMatchObject({ subscriptionStatus: "checkout_expired" });
+    }
+    expect(context.mocks.stripe.checkout.sessions.expire).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(
+      [...sessionStates.values()].filter((status) => {
+        return status === "open";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
+      1,
+    );
+
+    const [createInput] = context.mocks.stripe.checkout.sessions.create.mock
+      .calls[0] ?? [undefined];
+    const replacementSubscriptionId =
+      stripeInputMetadata(createInput).usagePackSubscriptionId;
+    if (!replacementSubscriptionId) {
+      throw new Error("Replacement Checkout did not expose its snapshot ID");
+    }
+    onTestFinished(async () => {
+      for (const snapshot of legacySnapshots) {
+        await usagePackStateAction({
+          action: "cleanup",
+          orgId: fixture.orgId,
+          usagePackSubscriptionId: snapshot.subscriptionId,
+          deleteGrants: false,
+          deleteOrgMetadata: false,
+        });
+      }
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId: replacementSubscriptionId,
+        deleteGrants: false,
+        deleteOrgMetadata: true,
+      });
+    });
+  });
+
   it("waits when the previous writer claims a fresh Checkout snapshot", async () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
@@ -6463,9 +6569,11 @@ describe("usage pack allocation management", () => {
   }
 
   function mockInvitationChargePreview(args: {
-    readonly lineAmountCents: number;
-    readonly subtotalCents: number;
-    readonly exclusiveTaxCents: number;
+    readonly lines: readonly {
+      readonly lineAmountCents: number;
+      readonly subtotalCents: number;
+      readonly exclusiveTaxCents: number;
+    }[];
     readonly periodEnd: number;
     readonly automaticTax?: boolean;
   }): void {
@@ -6478,24 +6586,26 @@ describe("usage pack allocation management", () => {
       }
       return Promise.resolve({
         id: `in_preview_${randomUUID()}`,
-        amount_due: args.lineAmountCents + args.exclusiveTaxCents,
+        amount_due: args.lines.reduce((total, line) => {
+          return total + line.lineAmountCents + line.exclusiveTaxCents;
+        }, 0),
         currency: "usd",
         automatic_tax: args.automaticTax
           ? { enabled: true, liability: { type: "self" } }
           : { enabled: false, liability: null },
         lines: {
           has_more: false,
-          data: [
-            {
+          data: args.lines.map((line) => {
+            return {
               id: `il_preview_${randomUUID()}`,
-              amount: args.lineAmountCents,
-              subtotal: args.subtotalCents,
+              amount: line.lineAmountCents,
+              subtotal: line.subtotalCents,
               price: { id: targetPriceId },
               taxes:
-                args.exclusiveTaxCents > 0
+                line.exclusiveTaxCents !== 0
                   ? [
                       {
-                        amount: args.exclusiveTaxCents,
+                        amount: line.exclusiveTaxCents,
                         tax_behavior: "exclusive" as const,
                         ...(args.automaticTax
                           ? {}
@@ -6515,8 +6625,8 @@ describe("usage pack allocation management", () => {
                 type: "subscription_item_details" as const,
                 subscription_item_details: { proration: true },
               },
-            },
-          ],
+            };
+          }),
         },
       });
     });
@@ -12547,9 +12657,7 @@ describe("usage pack allocation management", () => {
       const { fixture, email } =
         await setupInvitationPreviewContext("priced-invite");
       mockInvitationChargePreview({
-        lineAmountCents,
-        subtotalCents,
-        exclusiveTaxCents,
+        lines: [{ lineAmountCents, subtotalCents, exclusiveTaxCents }],
         periodEnd: fixture.billingPeriod.end,
       });
 
@@ -12820,9 +12928,18 @@ describe("usage pack allocation management", () => {
       default_payment_method: paymentMethodId,
     });
     mockInvitationChargePreview({
-      lineAmountCents: 800,
-      subtotalCents: 1000,
-      exclusiveTaxCents: 80,
+      lines: [
+        {
+          lineAmountCents: -2000,
+          subtotalCents: -2000,
+          exclusiveTaxCents: -200,
+        },
+        {
+          lineAmountCents: 2800,
+          subtotalCents: 3000,
+          exclusiveTaxCents: 280,
+        },
+      ],
       periodEnd: fixture.billingPeriod.end,
       automaticTax: true,
     });

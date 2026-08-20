@@ -11,6 +11,7 @@ import {
   usagePackAllocations,
   usagePackInvitationPurchases,
   usagePackInvoiceFulfillments,
+  usagePackPendingSnapshotGuards,
   usagePackSubscriptionMigrations,
   usagePackSubscriptions,
 } from "@okouai/db/schema/usage-pack-subscription";
@@ -65,6 +66,7 @@ const actionBodySchema = z.discriminatedUnion("action", [
     stripePlanPriceId: z.string().min(1),
     stripeCustomerId: z.string().min(1),
     stripeCheckoutSessionId: z.string().min(1).nullable(),
+    preSerializationCutover: z.boolean().optional(),
     allocations: z.array(seedAllocationSchema).min(1),
   }),
   z.object({
@@ -531,6 +533,13 @@ async function seedUsagePackState(
     if (orgRows.length !== 1) {
       throw new Error(`Missing organization fixture ${body.orgId}`);
     }
+    if (body.preSerializationCutover === true) {
+      // Let this test-only write bypass the post-0952 claim, then reconstruct
+      // the exact count that the migration would have backfilled.
+      await tx
+        .delete(usagePackPendingSnapshotGuards)
+        .where(eq(usagePackPendingSnapshotGuards.orgId, body.orgId));
+    }
     const [subscription] = await tx
       .insert(usagePackSubscriptions)
       .values({
@@ -543,6 +552,24 @@ async function seedUsagePackState(
       .returning({ id: usagePackSubscriptions.id });
     if (!subscription) {
       throw new Error("Failed to seed usage pack subscription state");
+    }
+    if (body.preSerializationCutover === true) {
+      const [pendingState] = await tx
+        .select({ pendingSnapshotCount: count() })
+        .from(usagePackSubscriptions)
+        .where(
+          and(
+            eq(usagePackSubscriptions.orgId, body.orgId),
+            sql`${usagePackSubscriptions.subscriptionStatus} IN ('checkout_pending', 'purchase_pending')`,
+          ),
+        );
+      if (!pendingState) {
+        throw new Error("Failed to reconstruct pre-0952 pending state");
+      }
+      await tx
+        .update(usagePackPendingSnapshotGuards)
+        .set({ pendingSnapshotCount: pendingState.pendingSnapshotCount })
+        .where(eq(usagePackPendingSnapshotGuards.orgId, body.orgId));
     }
     await tx.insert(usagePackAllocations).values(
       body.allocations.map((allocation) => {

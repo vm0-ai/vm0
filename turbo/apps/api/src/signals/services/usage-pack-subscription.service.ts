@@ -471,6 +471,21 @@ export async function usagePackSubscriptionSchemaAvailable(
   return state?.available ?? false;
 }
 
+export async function usagePackPurchaseSerializationSchemaAvailable(
+  db: Pick<Db, "select">,
+): Promise<boolean> {
+  const [state] = await db
+    .select({
+      available:
+        sql`to_regclass('public.usage_pack_subscriptions') IS NOT NULL AND to_regclass('public.usage_pack_allocations') IS NOT NULL AND to_regclass('public.usage_pack_invoice_fulfillments') IS NOT NULL AND to_regclass('public.usage_pack_pending_snapshot_guards') IS NOT NULL AND to_regclass('public.uq_usage_pack_subscriptions_pending_org') IS NOT NULL`.mapWith(
+          pgBooleanDecoder,
+        ),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
+}
+
 export async function activeUsagePackBillingContext(
   db: Pick<Db, "select">,
   orgId: string,
