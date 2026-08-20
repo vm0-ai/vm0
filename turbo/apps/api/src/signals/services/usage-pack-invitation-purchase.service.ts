@@ -181,6 +181,15 @@ interface PreparedUsagePackInvitationPurchase {
   readonly expiresAt: Date;
 }
 
+interface PrepareUsagePackInvitationPurchaseArgs {
+  readonly orgId: string;
+  readonly inviterUserId: string;
+  readonly publicBrand: PublicBrand;
+  readonly email: string;
+  readonly role: OrgRole;
+  readonly usagePackUsd: UsagePackUsd;
+}
+
 type PrepareUsagePackInvitationPurchaseResult =
   | {
       readonly status: "ready";
@@ -503,66 +512,14 @@ function preparedInvitationPurchaseFromRow(
   };
 }
 
-async function prepareUsagePackInvitationPurchase(
+async function prepareNewUsagePackInvitationPurchase(
   db: Db,
-  clerk: ClerkClient,
-  args: {
-    readonly orgId: string;
-    readonly inviterUserId: string;
-    readonly publicBrand: PublicBrand;
-    readonly email: string;
-    readonly role: OrgRole;
-    readonly usagePackUsd: UsagePackUsd;
-  },
+  subscription: UsagePackSubscriptionRow,
+  args: PrepareUsagePackInvitationPurchaseArgs,
+  email: string,
+  stripePriceId: string,
   signal: AbortSignal,
 ): Promise<PrepareUsagePackInvitationPurchaseResult> {
-  const subscription = await currentUsagePackSubscriptionForOrg(db, args.orgId);
-  if (!subscription?.stripeSubscriptionId) {
-    return { status: "not_found" };
-  }
-  if (subscription.cancelAtPeriodEnd) {
-    return {
-      status: "conflict",
-      reason: "subscription_canceling",
-      diagnostics: {
-        subscriptionStatus: subscription.subscriptionStatus,
-        cancelAtPeriodEnd: true,
-      },
-    };
-  }
-  const email = normalizedEmail(args.email);
-  if (await emailAlreadyBelongsToOrg(clerk, args.orgId, email)) {
-    return {
-      status: "conflict",
-      reason: "invitee_unavailable",
-      diagnostics: {},
-    };
-  }
-  signal.throwIfAborted();
-
-  const stripePriceId = activeUsagePackPriceId(args.usagePackUsd);
-  if (!stripePriceId) {
-    throw new Error(`Usage pack $${args.usagePackUsd} Price is not configured`);
-  }
-  const reusablePurchase = await reusablePendingInvitationPurchase(db, {
-    subscriptionId: subscription.id,
-    orgId: args.orgId,
-    email,
-    role: args.role,
-    inviterUserId: args.inviterUserId,
-    publicBrand: args.publicBrand,
-    usagePackUsd: args.usagePackUsd,
-    stripePriceId,
-  });
-  if (reusablePurchase?.stripeCheckoutExpiresAt) {
-    return {
-      status: "ready",
-      purchase: preparedInvitationPurchaseFromRow(
-        reusablePurchase,
-        reusablePurchase.stripeCheckoutExpiresAt,
-      ),
-    };
-  }
   const catalog = await loadUsagePackCatalog();
   const catalogItem = catalog.find((item) => {
     return item.usagePackUsd === args.usagePackUsd;
@@ -663,6 +620,69 @@ async function prepareUsagePackInvitationPurchase(
       expiresAt: new Date(checkoutExpiresAt * 1000),
     },
   };
+}
+
+async function prepareUsagePackInvitationPurchase(
+  db: Db,
+  clerk: ClerkClient,
+  args: PrepareUsagePackInvitationPurchaseArgs,
+  signal: AbortSignal,
+): Promise<PrepareUsagePackInvitationPurchaseResult> {
+  const subscription = await currentUsagePackSubscriptionForOrg(db, args.orgId);
+  if (!subscription?.stripeSubscriptionId) {
+    return { status: "not_found" };
+  }
+  if (subscription.cancelAtPeriodEnd) {
+    return {
+      status: "conflict",
+      reason: "subscription_canceling",
+      diagnostics: {
+        subscriptionStatus: subscription.subscriptionStatus,
+        cancelAtPeriodEnd: true,
+      },
+    };
+  }
+  const email = normalizedEmail(args.email);
+  if (await emailAlreadyBelongsToOrg(clerk, args.orgId, email)) {
+    return {
+      status: "conflict",
+      reason: "invitee_unavailable",
+      diagnostics: {},
+    };
+  }
+  signal.throwIfAborted();
+
+  const stripePriceId = activeUsagePackPriceId(args.usagePackUsd);
+  if (!stripePriceId) {
+    throw new Error(`Usage pack $${args.usagePackUsd} Price is not configured`);
+  }
+  const reusablePurchase = await reusablePendingInvitationPurchase(db, {
+    subscriptionId: subscription.id,
+    orgId: args.orgId,
+    email,
+    role: args.role,
+    inviterUserId: args.inviterUserId,
+    publicBrand: args.publicBrand,
+    usagePackUsd: args.usagePackUsd,
+    stripePriceId,
+  });
+  if (reusablePurchase?.stripeCheckoutExpiresAt) {
+    return {
+      status: "ready",
+      purchase: preparedInvitationPurchaseFromRow(
+        reusablePurchase,
+        reusablePurchase.stripeCheckoutExpiresAt,
+      ),
+    };
+  }
+  return prepareNewUsagePackInvitationPurchase(
+    db,
+    subscription,
+    args,
+    email,
+    stripePriceId,
+    signal,
+  );
 }
 
 export async function createUsagePackInvitationPreview(
@@ -1370,6 +1390,111 @@ function invitationPurchaseConfirmState(
   return { status: "ready", purchase };
 }
 
+async function expireInvitationPurchasePreviewIfNeeded(
+  db: Db,
+  purchase: UsagePackInvitationPurchaseRow,
+): Promise<boolean> {
+  const expiresAt = purchase.stripeCheckoutExpiresAt;
+  if (expiresAt && expiresAt > nowDate()) {
+    return false;
+  }
+  await db
+    .update(usagePackInvitationPurchases)
+    .set({
+      status: "failed",
+      failureReason: "preview_expired",
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(usagePackInvitationPurchases.id, purchase.id),
+        eq(usagePackInvitationPurchases.status, "checkout_pending"),
+      ),
+    );
+  return true;
+}
+
+type InvitationPurchaseSubscriptionState =
+  | {
+      readonly status: "ready";
+      readonly subscription: UsagePackSubscriptionRow;
+      readonly stripeSubscriptionId: string;
+    }
+  | {
+      readonly status: "conflict";
+      readonly result: UsagePackInvitationPurchaseConflictResult;
+    };
+
+function invitationPurchaseSubscriptionState(
+  subscription: UsagePackSubscriptionRow | null,
+  purchase: UsagePackInvitationPurchaseRow,
+): InvitationPurchaseSubscriptionState {
+  const stripeSubscriptionId = subscription?.stripeSubscriptionId;
+  if (!subscription || !stripeSubscriptionId) {
+    return {
+      status: "conflict",
+      result: {
+        status: "conflict",
+        reason: "subscription_unavailable",
+        diagnostics: {
+          subscriptionStatus: subscription?.subscriptionStatus ?? null,
+          hasStripeSubscriptionId: Boolean(stripeSubscriptionId),
+        },
+      },
+    };
+  }
+  if (subscription.id !== purchase.usagePackSubscriptionId) {
+    return {
+      status: "conflict",
+      result: {
+        status: "conflict",
+        reason: "subscription_changed",
+        diagnostics: {
+          subscriptionStatus: subscription.subscriptionStatus,
+        },
+      },
+    };
+  }
+  if (subscription.cancelAtPeriodEnd) {
+    return {
+      status: "conflict",
+      result: {
+        status: "conflict",
+        reason: "subscription_canceling",
+        diagnostics: {
+          subscriptionStatus: subscription.subscriptionStatus,
+          cancelAtPeriodEnd: true,
+        },
+      },
+    };
+  }
+  return { status: "ready", subscription, stripeSubscriptionId };
+}
+
+function invitationPurchasePaymentMethodConflict(
+  paymentMethod: BillingPurchasePaymentMethod | undefined,
+  route: Awaited<ReturnType<typeof resolveBillingPurchaseRoute>>,
+): UsagePackInvitationPurchaseConflictResult | null {
+  if (
+    !paymentMethod ||
+    (route.kind === "preview" &&
+      paymentMethod.paymentMethodId === route.paymentMethodId &&
+      paymentMethod.paymentMethodType === route.paymentMethodType)
+  ) {
+    return null;
+  }
+  return {
+    status: "conflict",
+    reason: "payment_method_changed",
+    diagnostics: {
+      paymentRoute: route.kind,
+      expectedPaymentMethodType: paymentMethod.paymentMethodType,
+      currentPaymentMethodType:
+        route.kind === "preview" ? route.paymentMethodType : null,
+    },
+  };
+}
+
 export async function confirmUsagePackInvitationPurchase(
   db: Db,
   clerk: ClerkClient,
@@ -1388,21 +1513,7 @@ export async function confirmUsagePackInvitationPurchase(
     return purchaseState.result;
   }
   const { purchase } = purchaseState;
-  const expiresAt = purchase.stripeCheckoutExpiresAt;
-  if (!expiresAt || expiresAt <= nowDate()) {
-    await db
-      .update(usagePackInvitationPurchases)
-      .set({
-        status: "failed",
-        failureReason: "preview_expired",
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(usagePackInvitationPurchases.id, purchase.id),
-          eq(usagePackInvitationPurchases.status, "checkout_pending"),
-        ),
-      );
+  if (await expireInvitationPurchasePreviewIfNeeded(db, purchase)) {
     return { status: "expired" };
   }
   if (
@@ -1423,68 +1534,38 @@ export async function confirmUsagePackInvitationPurchase(
     db,
     purchase.orgId,
   );
-  if (!subscription?.stripeSubscriptionId) {
-    return {
-      status: "conflict",
-      reason: "subscription_unavailable",
-      diagnostics: {
-        subscriptionStatus: subscription?.subscriptionStatus ?? null,
-        hasStripeSubscriptionId: Boolean(subscription?.stripeSubscriptionId),
-      },
-    };
+  const subscriptionState = invitationPurchaseSubscriptionState(
+    subscription,
+    purchase,
+  );
+  if (subscriptionState.status === "conflict") {
+    return subscriptionState.result;
   }
-  if (subscription.id !== purchase.usagePackSubscriptionId) {
-    return {
-      status: "conflict",
-      reason: "subscription_changed",
-      diagnostics: {
-        subscriptionStatus: subscription.subscriptionStatus,
-      },
-    };
-  }
-  if (subscription.cancelAtPeriodEnd) {
-    return {
-      status: "conflict",
-      reason: "subscription_canceling",
-      diagnostics: {
-        subscriptionStatus: subscription.subscriptionStatus,
-        cancelAtPeriodEnd: true,
-      },
-    };
-  }
+  const { subscription: activeSubscription, stripeSubscriptionId } =
+    subscriptionState;
   const stripe = getStripeClient();
   const route = await resolveBillingPurchaseRoute(
     {
       stripe,
       supportsInAppPreview: true,
-      customerId: subscription.stripeCustomerId,
-      subscriptionId: subscription.stripeSubscriptionId,
+      customerId: activeSubscription.stripeCustomerId,
+      subscriptionId: stripeSubscriptionId,
     },
     signal,
   );
-  if (
-    args.paymentMethod &&
-    (route.kind === "checkout" ||
-      args.paymentMethod.paymentMethodId !== route.paymentMethodId ||
-      args.paymentMethod.paymentMethodType !== route.paymentMethodType)
-  ) {
-    return {
-      status: "conflict",
-      reason: "payment_method_changed",
-      diagnostics: {
-        paymentRoute: route.kind,
-        expectedPaymentMethodType: args.paymentMethod.paymentMethodType,
-        currentPaymentMethodType:
-          route.kind === "preview" ? route.paymentMethodType : null,
-      },
-    };
+  const paymentMethodConflict = invitationPurchasePaymentMethodConflict(
+    args.paymentMethod,
+    route,
+  );
+  if (paymentMethodConflict) {
+    return paymentMethodConflict;
   }
   const paymentMethod =
     args.paymentMethod ?? (route.kind === "preview" ? route : undefined);
   const metadata = checkoutMetadata(purchase.id);
   const invoice = await stripe.invoices.create(
     {
-      customer: subscription.stripeCustomerId,
+      customer: activeSubscription.stripeCustomerId,
       auto_advance: false,
       ...(paymentMethod
         ? stripeBillingPurchasePaymentParams(paymentMethod)
@@ -1497,7 +1578,7 @@ export async function confirmUsagePackInvitationPurchase(
   await stripe.invoiceItems.create(
     {
       invoice: invoice.id,
-      customer: subscription.stripeCustomerId,
+      customer: activeSubscription.stripeCustomerId,
       amount: purchase.expectedAmountCents,
       currency: purchase.currency,
       description: `Member usage pack for ${purchase.normalizedEmail}`,

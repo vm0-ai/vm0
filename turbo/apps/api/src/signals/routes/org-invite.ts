@@ -114,7 +114,8 @@ const INVITATION_PURCHASE_ERRORS = {
   preview_expired: {
     status: 400,
     code: "INVITATION_PURCHASE_PREVIEW_EXPIRED",
-    message: "This invitation purchase preview expired. Review the invitation again.",
+    message:
+      "This invitation purchase preview expired. Review the invitation again.",
   },
   preview_invalid: {
     status: 409,
@@ -137,7 +138,8 @@ const INVITATION_PURCHASE_ERRORS = {
   purchase_not_found: {
     status: 404,
     code: "INVITATION_PURCHASE_NOT_FOUND",
-    message: "Invitation purchase not found. Review the invitation and try again.",
+    message:
+      "Invitation purchase not found. Review the invitation and try again.",
   },
   subscription_canceling: {
     status: 409,
@@ -147,7 +149,8 @@ const INVITATION_PURCHASE_ERRORS = {
   subscription_changed: {
     status: 409,
     code: "INVITATION_PURCHASE_SUBSCRIPTION_CHANGED",
-    message: "Your usage pack subscription changed. Review the invitation again.",
+    message:
+      "Your usage pack subscription changed. Review the invitation again.",
   },
   subscription_not_found: {
     status: 404,

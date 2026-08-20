@@ -10711,7 +10711,9 @@ describe("usage pack allocation management", () => {
       [404],
     );
 
-    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.code).toBe(
+      "INVITATION_PURCHASE_SUBSCRIPTION_NOT_FOUND",
+    );
   });
 
   it("explains when an invitation purchase targets an existing member", async () => {
