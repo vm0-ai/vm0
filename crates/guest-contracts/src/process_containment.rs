@@ -64,7 +64,7 @@ pub const MIN_PROFILE_MEMORY_MB: u32 = 1024;
 /// CPU bandwidth period used for workload cgroups.
 pub const WORKLOAD_CPU_PERIOD_US: u64 = 100_000;
 
-/// CPU time per period reserved outside each workload leaf for control work.
+/// CPU time per period reserved outside each operation workload cgroup.
 pub const CONTROL_CPU_RESERVE_US: u64 = 10_000;
 
 /// Minimum accumulated CPU throttling reported as material pressure.
