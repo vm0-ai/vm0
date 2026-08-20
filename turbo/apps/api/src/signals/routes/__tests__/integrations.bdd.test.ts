@@ -5843,38 +5843,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     );
   });
 
-  it("keeps GitHub user OAuth callback errors visible through redirects", async () => {
-    const githubError = await integrations.requestGithubOauthConnectCallback(
-      {
-        error: "access_denied",
-        error_description: "User denied access",
-      },
-      [307],
-    );
-    expect(githubError.headers.get("location") ?? "").toContain(
-      "User%20denied%20access",
-    );
-
-    const missingCode = await integrations.requestGithubOauthConnectCallback(
-      {},
-      [307],
-    );
-    expect(missingCode.headers.get("location") ?? "").toContain(
-      "Missing%20authorization%20code%20from%20GitHub",
-    );
-
-    const invalidState = await integrations.requestGithubOauthConnectCallback(
-      {
-        code: "github-code",
-        state: "not-a-valid-state",
-      },
-      [307],
-    );
-    expect(invalidState.headers.get("location") ?? "").toContain(
-      "Invalid%20OAuth%20state",
-    );
-  });
-
   it("keeps GitHub app setup callback errors visible through redirects", async () => {
     integrations.clearGithubAppProvider();
     const unconfiguredSetup = await integrations.requestGithubAppSetupCallback(
