@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
 
-use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
+use super::drain_override::{
+    DrainRestartOverrideRemoval, remove_drain_restart_override_outcome,
+    write_drain_restart_override,
+};
 use super::reload::{
     SystemdReloadRequirement, coordinate_systemd_reload, coordinate_systemd_reload_bounded,
 };
@@ -18,7 +21,10 @@ pub(super) enum DrainOverrideReloadPolicy {
 }
 
 trait DrainOverrideCleanupOps {
-    fn remove_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
+    fn remove_override(
+        &mut self,
+        unit: &RunnerServiceUnit,
+    ) -> RunnerResult<DrainRestartOverrideRemoval>;
     fn restore_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
     fn reload<'a>(
         &'a mut self,
@@ -31,8 +37,11 @@ trait DrainOverrideCleanupOps {
 struct RealDrainOverrideCleanupOps;
 
 impl DrainOverrideCleanupOps for RealDrainOverrideCleanupOps {
-    fn remove_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-        remove_drain_restart_override(unit)
+    fn remove_override(
+        &mut self,
+        unit: &RunnerServiceUnit,
+    ) -> RunnerResult<DrainRestartOverrideRemoval> {
+        remove_drain_restart_override_outcome(unit)
     }
 
     fn restore_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -114,7 +123,9 @@ async fn reconcile_drain_restart_override_removal_with_ops(
     ops: &mut impl DrainOverrideCleanupOps,
 ) -> RunnerResult<()> {
     let remove_result = ops.remove_override(unit);
-    let removed = matches!(&remove_result, Ok(true));
+    let removed = remove_result
+        .as_ref()
+        .is_ok_and(|outcome| outcome.override_removed());
 
     let reload_result = ops
         .reload(
@@ -172,14 +183,17 @@ mod tests {
     }
 
     struct FakeDrainOverrideCleanupOps {
-        remove_result: Option<RunnerResult<bool>>,
+        remove_result: Option<RunnerResult<DrainRestartOverrideRemoval>>,
         restore_result: Option<RunnerResult<()>>,
         reload_results: VecDeque<RunnerResult<()>>,
         events: Vec<Event>,
     }
 
     impl DrainOverrideCleanupOps for FakeDrainOverrideCleanupOps {
-        fn remove_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+        fn remove_override(
+            &mut self,
+            _unit: &RunnerServiceUnit,
+        ) -> RunnerResult<DrainRestartOverrideRemoval> {
             self.events.push(Event::Remove);
             self.remove_result.take().unwrap()
         }
@@ -211,7 +225,7 @@ mod tests {
     }
 
     fn fake_ops(
-        remove_result: RunnerResult<bool>,
+        remove_result: RunnerResult<DrainRestartOverrideRemoval>,
         reload_results: impl IntoIterator<Item = RunnerResult<()>>,
     ) -> FakeDrainOverrideCleanupOps {
         FakeDrainOverrideCleanupOps {
@@ -232,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn absent_override_is_reconciled_through_both_reload_policies() {
         for policy in [DrainOverrideReloadPolicy::Unbounded, bounded_policy()] {
-            let mut ops = fake_ops(Ok(false), []);
+            let mut ops = fake_ops(Ok(DrainRestartOverrideRemoval::AlreadyAbsent), []);
 
             reconcile_drain_restart_override_removal_with_ops(&service_unit(), policy, &mut ops)
                 .await
@@ -253,7 +267,38 @@ mod tests {
 
     #[tokio::test]
     async fn failed_retry_does_not_restore_override_absent_before_this_attempt() {
-        let mut ops = fake_ops(Ok(false), [Err(fake_error("reload failed"))]);
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::AlreadyAbsent),
+            [Err(fake_error("reload failed"))],
+        );
+
+        let error = reconcile_drain_restart_override_removal_with_ops(
+            &service_unit(),
+            DrainOverrideReloadPolicy::Unbounded,
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.to_string(), "internal error: reload failed");
+        assert_eq!(
+            ops.events,
+            [
+                Event::Remove,
+                Event::Reload(
+                    DrainOverrideReloadPolicy::Unbounded,
+                    SystemdReloadRequirement::dirty().with_drain_override(false),
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_directory_cleanup_reload_does_not_restore_override() {
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::DirectoryRemoved),
+            [Err(fake_error("reload failed"))],
+        );
 
         let error = reconcile_drain_restart_override_removal_with_ops(
             &service_unit(),
@@ -279,7 +324,10 @@ mod tests {
     #[tokio::test]
     async fn failed_removal_reload_restores_with_same_policy() {
         let policy = bounded_policy();
-        let mut ops = fake_ops(Ok(true), [Err(fake_error("reload failed")), Ok(())]);
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::OverrideRemoved),
+            [Err(fake_error("reload failed")), Ok(())],
+        );
 
         let error =
             reconcile_drain_restart_override_removal_with_ops(&service_unit(), policy, &mut ops)
@@ -326,7 +374,10 @@ mod tests {
 
     #[tokio::test]
     async fn reload_and_restoration_failures_keep_both_errors() {
-        let mut ops = fake_ops(Ok(true), [Err(fake_error("reload failed"))]);
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::OverrideRemoved),
+            [Err(fake_error("reload failed"))],
+        );
         ops.restore_result = Some(Err(fake_error("restore failed")));
 
         let error = reconcile_drain_restart_override_removal_with_ops(
