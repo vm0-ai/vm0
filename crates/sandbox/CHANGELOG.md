@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.48](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.47...sandbox-v0.19.48) (2026-08-20)
+
+
+### Refactoring
+
+* **rust:** centralize process output validation ([#28277](https://github.com/vm0-ai/vm0/issues/28277)) ([8e6e25c](https://github.com/vm0-ai/vm0/commit/8e6e25c954c7b4a90d3ba9d9cca7eb87090581e9))
+
 ## [0.19.47](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.46...sandbox-v0.19.47) (2026-08-19)
 
 

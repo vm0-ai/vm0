@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.465.0](https://github.com/vm0-ai/vm0/compare/api-v1.464.0...api-v1.465.0) (2026-08-20)
+
+
+### Features
+
+* **api:** accept final provider console paths ([#28283](https://github.com/vm0-ai/vm0/issues/28283)) ([0f96c12](https://github.com/vm0-ai/vm0/commit/0f96c129077708ea5e060c2159635e3a09ae14bc))
+
+
+### Bug Fixes
+
+* **guest:** isolate managed codex home from user home ([#28264](https://github.com/vm0-ai/vm0/issues/28264)) ([d4274c2](https://github.com/vm0-ai/vm0/commit/d4274c2ab1236f0be82390a7598798961b6b0a57))
+* **teams:** carry the oauth redirect uri in state and emit the final callback ([#28302](https://github.com/vm0-ai/vm0/issues/28302)) ([f511cd0](https://github.com/vm0-ai/vm0/commit/f511cd0cb0d3dcb1091b758ef2b9f41abd547d2f))
+
+
+### Refactoring
+
+* add constraint-independent connector account writer ([#28251](https://github.com/vm0-ai/vm0/issues/28251)) ([5420bb2](https://github.com/vm0-ai/vm0/commit/5420bb2dc0bdf8ad8f167e93bf2c2455ce65c39d))
+* **api:** neutralize built-in model runtime route naming ([#28265](https://github.com/vm0-ai/vm0/issues/28265)) ([0b53ad2](https://github.com/vm0-ai/vm0/commit/0b53ad239fd3e2fcf87bc06704cd9adb015848f6)), closes [#28262](https://github.com/vm0-ai/vm0/issues/28262)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.1
+    * @okouai/core bumped to 8.573.1
+    * @okouai/db bumped to 1.209.1
+
 ## [1.464.0](https://github.com/vm0-ai/vm0/compare/api-v1.463.1...api-v1.464.0) (2026-08-20)
 
 
