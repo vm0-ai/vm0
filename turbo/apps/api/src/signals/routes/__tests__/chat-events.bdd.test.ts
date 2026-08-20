@@ -11115,7 +11115,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 
-  it("serializes a terminal drain against an idle queue-first send", async () => {
+  it("serializes a terminal drain against an inline queue-first send", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor for queue serialization");
@@ -11127,14 +11127,6 @@ describe("CHAT-02: shared user message queue", () => {
       prompt: "terminal drain race anchor",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-
-    // Hold the real org admission lock after the inline send has persisted its
-    // queue-first row. This lets both the inline path and terminal callback
-    // drain reach the final atomic launch boundary before either can claim it.
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: actor.orgId,
-      signal: context.signal,
-    });
 
     await webhooks.requestAgentEvents(
       {
@@ -11156,6 +11148,24 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await flushWaitUntilForTest();
 
+    const terminalPrompt = "terminal drain owns the queue head";
+    const terminalMessageId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: terminalPrompt,
+        clientEventId: terminalMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
     onTestFinished(async () => {
       admissionLock.release();
       await admissionLock.done;
@@ -11164,20 +11174,19 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    // Completion starts both the thread-message drain and the org run-queue
-    // drain concurrently. Wait until either has reached admission, then let
-    // the inline send persist its queue-first row and join the same boundary.
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    // The terminal drain owns the existing queue head and reaches final run
+    // admission before the inline send joins the same boundary.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
-    const prompt = "terminal drain and inline send share one claim";
-    const messageId = randomUUID();
+    const inlinePrompt = "inline send waits behind the terminal drain";
+    const inlineMessageId = randomUUID();
     const send = chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        prompt,
-        clientEventId: messageId,
+        prompt: inlinePrompt,
+        clientEventId: inlineMessageId,
       },
       [201],
     );
@@ -11185,56 +11194,65 @@ describe("CHAT-02: shared user message queue", () => {
       .poll(async () => {
         const messages = await chat.listThreadEvents(actor, anchor.threadId);
         return messages.events.some((message) => {
-          return message.id === messageId;
+          return message.id === inlineMessageId;
         });
       })
       .toBe(true);
-    // One terminal drain is already pinned above. The persisted inline send
-    // adds the second contender; sibling completion work may be serialized
-    // before this boundary and is not required for the single-claim race.
-    await expect
-      .poll(admissionLock.waiterCount, { timeout: 10_000 })
-      .toBeGreaterThanOrEqual(2);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
 
     const sent = await send;
     await admissionLock.done;
     await flushWaitUntilForTest();
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected one race winner to own the queued message");
-    }
+    expect(sent.body).toMatchObject({ runId: null });
 
     const messages = await chat.listThreadEvents(actor, anchor.threadId);
     const claimed = userMessages(messages.events).filter((message) => {
       return (
-        message.revokesEventId === messageId && message.runId !== undefined
+        message.revokesEventId === terminalMessageId &&
+        message.runId !== undefined
       );
     });
     expect(claimed).toHaveLength(1);
-    expect(claimed[0]?.runId).toBe(sent.body.runId);
-    const queued = userMessages(messages.events).find((message) => {
-      return message.id === messageId;
-    });
-    if (!queued) {
-      throw new Error("Expected the queued message");
+    const claimedRunId = claimed[0]?.runId;
+    if (!claimedRunId) {
+      throw new Error("Expected the terminal drain to own the queue head");
     }
-    expect(queued.runId).toBeUndefined();
+    const inline = userMessages(messages.events).find((message) => {
+      return message.id === inlineMessageId;
+    });
+    if (!inline) {
+      throw new Error("Expected the inline queued message");
+    }
+    expect(inline.runId).toBeUndefined();
 
     const runList = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
       limit: 100,
     });
     const candidates = runList.runs.filter((run) => {
-      return run.prompt === prompt;
+      return run.prompt === terminalPrompt || run.prompt === inlinePrompt;
     });
     expect(candidates).toStrictEqual([
       expect.objectContaining({
-        id: sent.body.runId,
+        id: claimedRunId,
+        prompt: terminalPrompt,
         status: expect.stringMatching(/^(queued|pending|running)$/),
       }),
     ]);
 
-    await cancelChatRun(actor, sent.body.runId);
+    const recalled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesEventId: inlineMessageId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    expect(recalled.body).toMatchObject({ runId: null });
+    await cancelChatRun(actor, claimedRunId);
   }, 90_000);
 
   it("preserves an appended claim when recall races the queue drain", async () => {
@@ -11263,9 +11281,9 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // Pin both completion-triggered drains at run admission, then make the
-    // claim and recall queue behind the exact message row in a test-owned
-    // order.
+    // Pin the completion-triggered queue-first drain at run admission, then
+    // make the claim and recall queue behind the exact message row in a
+    // test-owned order.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
@@ -11288,7 +11306,7 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    await expect.poll(admissionLock.waiterCount).toBe(1);
     admissionLock.release();
     await admissionLock.done;
     await expect.poll(eventQueueLock.directBlockedWaiterCount).toBe(1);
@@ -11385,8 +11403,8 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
-    // Stage the completion-triggered drains at org admission, then let recall
-    // append before either drain can claim the queued message.
+    // Stage the completion-triggered queue-first drain at org admission, then
+    // let recall append before it can claim the queued message.
     onTestFinished(async () => {
       admissionLock.release();
       await admissionLock.done;
@@ -11398,7 +11416,7 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
     const recalled = await chat.requestSendEvent(
       actor,
