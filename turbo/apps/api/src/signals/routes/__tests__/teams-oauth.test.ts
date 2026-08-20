@@ -24,6 +24,7 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
+const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const APP_ORIGIN = "https://app.vm0.test";
 const MICROSOFT_TOKEN_URL =
@@ -176,11 +177,13 @@ describe("Teams OAuth API routes", () => {
     const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
       readonly orgId: string;
       readonly publicBrand: string;
+      readonly redirectUri: string;
       readonly userId: string;
     };
     expect(state).toStrictEqual({
       orgId: "org_1",
       publicBrand: "vm0",
+      redirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
       userId: "user_1",
     });
   });
@@ -199,6 +202,51 @@ describe("Teams OAuth API routes", () => {
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
       `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
+  });
+
+  it("projects the callback origin onto the Okou brand host", async () => {
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      { origin: OKOU_API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = new URL(response.headers.get("location")!);
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+      `${OKOU_API_ORIGIN}/api/integrations/teams/oauth/callback`,
+    );
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+      readonly publicBrand: string;
+      readonly redirectUri: string;
+    };
+    expect(state).toMatchObject({
+      publicBrand: "okou",
+      redirectUri: `${OKOU_API_ORIGIN}/api/integrations/teams/oauth/callback`,
+    });
+  });
+
+  // api.vm0.ai and /api/zero/** retire together, so the VM0 brand never moves
+  // to the canonical namespace. Pin the exact registered value as a literal:
+  // a refactor that moves it off this string breaks Microsoft's allowlist.
+  it("leaves the VM0 brand authorization URI on the registered legacy value", async () => {
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = new URL(response.headers.get("location")!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+      readonly publicBrand: string;
+      readonly redirectUri: string;
+    };
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+      "https://api.vm0.ai/api/zero/teams/oauth/callback",
+    );
+    expect(state).toMatchObject({
+      publicBrand: "vm0",
+      redirectUri: "https://api.vm0.ai/api/zero/teams/oauth/callback",
+    });
   });
 
   it("rejects connect requests without org and user state", async () => {
@@ -249,6 +297,62 @@ describe("Teams OAuth API routes", () => {
       connectUrl: null,
       tenantId: fixture.teamsTenantId,
     });
+  });
+
+  it("exchanges the code with the redirect URI recorded in the connect state", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const recordedRedirectUri =
+      "https://pr-1-api.vm7.ai/api/zero/teams/oauth/callback";
+    mockMicrosoftOAuth({
+      tenantId: fixture.teamsTenantId,
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
+      expectedRedirectUri: recordedRedirectUri,
+    });
+
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        state: {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          redirectUri: recordedRedirectUri,
+        },
+      }),
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/teams?status=connected`,
+    );
+  });
+
+  it("falls back to the legacy callback URI for state without a redirect URI", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockMicrosoftOAuth({
+      tenantId: fixture.teamsTenantId,
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
+      expectedRedirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+    });
+
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        state: { orgId: fixture.orgId, userId: fixture.userId },
+      }),
+      { origin: API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/teams?status=connected`,
+    );
   });
 
   it("rejects OAuth users when the org is already bound to another Microsoft tenant", async () => {
