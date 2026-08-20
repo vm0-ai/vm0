@@ -22,6 +22,11 @@ import { uploadWebFile } from "./web";
  * Page order is the order the files are published in, so it has to come from
  * something stable. The renderer writes zero-padded names, which sort
  * lexicographically into page order.
+ *
+ * The comparison is code-unit order rather than `localeCompare`, because
+ * `localeCompare` follows the host locale: the same directory could publish in
+ * a different order on a different machine, and a silently reordered deck
+ * misaligns every page against the wrong analysis.
  */
 async function orderedPagePaths(pagesDir: string): Promise<readonly string[]> {
   const entries = await readdir(pagesDir);
@@ -36,7 +41,10 @@ async function orderedPagePaths(pagesDir: string): Promise<readonly string[]> {
     );
   }
   pages.sort((left, right) => {
-    return left.localeCompare(right);
+    if (left === right) {
+      return 0;
+    }
+    return left < right ? -1 : 1;
   });
   return pages.map((name) => {
     return join(pagesDir, name);

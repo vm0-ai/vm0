@@ -111,6 +111,20 @@ function checkPages(pages: readonly ResolvedUpload[]): string | null {
 }
 
 /**
+ * `maxOutputLength` stops zlib at the cap instead of letting a small archive
+ * expand toward the process memory limit, and it reports that stop as
+ * `ERR_BUFFER_TOO_LARGE` rather than as a corrupt-archive error.
+ */
+function isTooLargeDecompressed(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ERR_BUFFER_TOO_LARGE"
+  );
+}
+
+/**
  * A package path has to be a plain relative file path. Anything that could
  * escape the extraction root, or that is not a regular file, is rejected rather
  * than sanitised, so a rejected package is obvious instead of quietly reshaped.
@@ -287,12 +301,20 @@ export const publishPresentationTemplate$ = command(
 
     // A caller-supplied archive is the one input here that can be malformed
     // rather than merely wrong, so gunzip and tar failures become a 400 instead
-    // of propagating as a 500.
+    // of propagating as a 500. The download cap bounds the compressed bytes
+    // only, so the same cap is applied to the decompressed output: without it a
+    // small archive could expand until it exhausted the API process.
     const decompressed = safeSync(() => {
-      return gunzipSync(archive);
+      return gunzipSync(archive, {
+        maxOutputLength: MAX_PRESENTATION_TEMPLATE_PACKAGE_BYTES,
+      });
     });
     if ("error" in decompressed) {
-      return rejected("The package archive could not be read as a .tar.gz");
+      return rejected(
+        isTooLargeDecompressed(decompressed.error)
+          ? `The package must unpack to ${MAX_PRESENTATION_TEMPLATE_PACKAGE_BYTES.toString()} bytes or fewer`
+          : "The package archive could not be read as a .tar.gz",
+      );
     }
     const read = await settle(
       readPackageEntries(decompressed.ok, signal),
