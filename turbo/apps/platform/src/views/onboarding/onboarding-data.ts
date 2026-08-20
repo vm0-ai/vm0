@@ -76,6 +76,7 @@ export interface OnboardingWorkflowCategory {
 }
 
 const WORKFLOW_CATEGORY_IDS = [
+  "everyone",
   "engineering",
   "product",
   "data",
@@ -84,7 +85,6 @@ const WORKFLOW_CATEGORY_IDS = [
   "support",
   "ceo",
   "operations",
-  "everyone",
 ] as const satisfies readonly OnboardingWorkflowCategoryId[];
 
 const WORKFLOW_STEP_KEYS = ["one", "two", "three"] as const;

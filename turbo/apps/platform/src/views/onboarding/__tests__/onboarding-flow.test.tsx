@@ -500,6 +500,8 @@ describe("onboarding flow", () => {
     ).resolves.toBeInTheDocument();
     expect(queryButtonByText("Continue")).toBeNull();
 
+    const everyoneCard = buttonByText("Everyone");
+    expect(everyoneCard.parentElement?.firstElementChild).toBe(everyoneCard);
     const engineerCard = buttonByText("Engineer");
     expect(
       engineerCard.querySelector(
