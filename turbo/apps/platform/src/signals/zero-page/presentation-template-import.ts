@@ -15,8 +15,7 @@ export const PRESENTATION_TEMPLATE_IMPORT_ACCEPT = ".pptx,.pdf";
  *
  * Kept as a plain sentence on purpose: importing a template is not a special
  * protocol, it is a chat message with a file attached, and the user should be
- * able to read what was said on their behalf — and edit it before sending if
- * they want something different.
+ * able to read what was said on their behalf in the thread they land in.
  */
 const PRESENTATION_TEMPLATE_IMPORT_PROMPT =
   "Analyse this deck and save its visual language as a reusable presentation template.";
@@ -41,8 +40,18 @@ export const importPresentationTemplateDeck$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { signals, file } = args;
+    const before = new Set(get(signals.draft.attachments$));
     await set(signals.draft.uploadAttachment$, file, signal);
     signal.throwIfAborted();
+    // A failed upload resolves normally: the composer drops the attachment and
+    // toasts. Sending now would ask for an analysis of a deck that never
+    // arrived, so stop at the error the user was already shown.
+    const attached = get(signals.draft.attachments$).some((attachment) => {
+      return !before.has(attachment);
+    });
+    if (!attached) {
+      return false;
+    }
     set(signals.draft.setDraftInput$, PRESENTATION_TEMPLATE_IMPORT_PROMPT);
 
     const action = await get(signals.submission.primaryAction$);
