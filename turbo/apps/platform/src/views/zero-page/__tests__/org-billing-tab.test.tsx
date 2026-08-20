@@ -476,20 +476,13 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
 
-    /* Concurrency is the number the base price buys and the one that scales
-       between the plans, so each column states it at price size rather than
-       spending a check line on it. */
-    expect(within(proPlan).getByText("2")).toBeInTheDocument();
-    expect(within(teamPlan).getByText("10")).toBeInTheDocument();
-    for (const plan of [proPlan, teamPlan]) {
-      expect(within(plan).getByText("agents running at once")).toBeVisible();
-    }
-
     // Pro carries the whole list.
     expect(within(proPlan).getByText("Included")).toBeInTheDocument();
     for (const item of [
+      "2 agents running at once",
+      "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+      "Bring your own LLM keys",
       "7 shared agents, unlimited private",
-      "Every model, or bring your own keys",
       "Scheduled and event automations",
       "Video and avatar generation",
       "Voice input, 300 a day",
@@ -504,6 +497,7 @@ describe("organization billing settings", () => {
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
     for (const item of [
+      "10 agents running at once",
       "Add more concurrency any time",
       "Trigger agents from any system via webhook",
       "Built-in SEO research",
@@ -515,8 +509,10 @@ describe("organization billing settings", () => {
       expect(within(teamPlan).getByText(item)).toBeInTheDocument();
     }
     for (const item of [
+      "2 agents running at once",
+      "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+      "Bring your own LLM keys",
       "7 shared agents, unlimited private",
-      "Every model, or bring your own keys",
       "Scheduled and event automations",
       "Video and avatar generation",
       "Email support",

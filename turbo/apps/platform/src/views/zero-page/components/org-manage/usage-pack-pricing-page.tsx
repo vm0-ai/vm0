@@ -781,35 +781,27 @@ function PlanPrice({
   );
 }
 
-/* Concurrency is the one number that scales between the plans -- 2 against 10
-   -- and it is what the base price actually buys. Set at the size of the
-   price it sits under, the gap does the arguing on its own; buried as one
-   more check line it read as the smallest claim on the list, which left the
-   dearer plan looking like the lesser one. */
-function PlanConcurrencyStat({ tier }: { readonly tier: UsagePackPlanTier }) {
-  return (
-    <p className="mt-5 flex items-baseline gap-2">
-      <span className="text-[28px] font-medium leading-none tracking-tight tabular-nums text-foreground">
-        {formatLocalizedNumber(planConcurrentSlots(tier))}
-      </span>
-      <span className="text-sm leading-snug text-muted-foreground">
-        {i18n.t(($) => {
-          return $.billing.plans.highlights.agentsAtOnce;
-        })}
-      </span>
-    </p>
-  );
-}
+/* Each plan keeps its complete value story in one list. Concurrency leads both
+   lists, so 2 against 10 is still the first comparison without becoming a
+   second visual hierarchy between the price and the bullets. Pro names three
+   flagship models rather than asking "Every model" to carry the claim, then
+   keeps BYOK as its own value prop.
 
-/* Pro carries the everyday baseline. Team keeps that baseline implicit, then
-   spells out the scale upgrades and the built-in data capabilities a team can
-   put to work. Those APIs also exist on Pro, so the label says "built for
-   teams" rather than claiming every line after it is a Team-only entitlement.
+   Team keeps Pro's baseline implicit, then spells out the scale upgrades and
+   built-in data capabilities a team can put to work. Those APIs also exist on
+   Pro, so the label says "built for teams" rather than claiming every line
+   after it is a Team-only entitlement.
 
    Team's webhook line names both the mechanism and the outcome. "Trigger
    agents from any system via webhook" makes its difference from scheduled and
    app-event automations visible without exposing an internal entitlement key. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
+  const concurrentAgents = i18n.t(
+    ($) => {
+      return $.billing.plans.highlights.concurrentAgents;
+    },
+    { count: formatLocalizedNumber(planConcurrentSlots(tier)) },
+  );
   const voiceInput = i18n.t(
     ($) => {
       return $.billing.plans.highlights.voiceInput;
@@ -818,6 +810,7 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   );
   if (tier === "team") {
     return [
+      concurrentAgents,
       i18n.t(($) => {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
@@ -840,15 +833,19 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     ];
   }
   return [
+    concurrentAgents,
+    i18n.t(($) => {
+      return $.billing.plans.highlights.models;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.features.byok;
+    }),
     i18n.t(
       ($) => {
         return $.billing.plans.highlights.agents;
       },
       { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
     ),
-    i18n.t(($) => {
-      return $.billing.plans.highlights.models;
-    }),
     i18n.t(($) => {
       return $.billing.plans.highlights.automations;
     }),
@@ -988,8 +985,6 @@ function PlanSelectionCard({
       </p>
 
       <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
-
-      <PlanConcurrencyStat tier={plan.tier} />
 
       <PlanHighlights tier={plan.tier} />
 
@@ -1185,7 +1180,7 @@ function PricingStepDialog({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(44rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share
