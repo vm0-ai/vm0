@@ -200,7 +200,7 @@ function legacyInvitationPurchaseId(idempotencyKey: string): string | null {
 async function inferLegacyRefundSource(
   db: Pick<Db, "select">,
   grant: UsagePackCreditGrantRow,
-): Promise<UsagePackCreditRefundSource> {
+): Promise<UsagePackCreditRefundSource | null> {
   const invitationPurchaseId = legacyInvitationPurchaseId(grant.idempotencyKey);
   if (invitationPurchaseId) {
     const [purchase] = await db
@@ -217,10 +217,16 @@ async function inferLegacyRefundSource(
     if (
       !purchase ||
       purchase.orgId !== grant.orgId ||
-      purchase.acceptedUserId !== grant.userId ||
-      !purchase.amountPaidCents ||
-      !purchase.stripePaymentIntentId
+      purchase.acceptedUserId !== grant.userId
     ) {
+      throw new Error(
+        `Usage pack grant ${grant.id} has no refundable invitation payment`,
+      );
+    }
+    if (purchase.amountPaidCents === 0) {
+      return null;
+    }
+    if (purchase.amountPaidCents === null || !purchase.stripePaymentIntentId) {
       throw new Error(
         `Usage pack grant ${grant.id} has no refundable invitation payment`,
       );
@@ -245,7 +251,7 @@ async function inferLegacyRefundSource(
 async function loadRefundSource(
   db: CreditRefundStore,
   grant: UsagePackCreditGrantRow,
-): Promise<UsagePackCreditRefundRow> {
+): Promise<UsagePackCreditRefundRow | null> {
   const [existing] = await db
     .select()
     .from(usagePackCreditRefunds)
@@ -255,6 +261,9 @@ async function loadRefundSource(
     return existing;
   }
   const source = await inferLegacyRefundSource(db, grant);
+  if (!source) {
+    return null;
+  }
   await ensureUsagePackCreditRefundSource(db, {
     creditGrantId: grant.id,
     orgId: grant.orgId,
@@ -290,7 +299,7 @@ export async function prepareUsagePackMemberCreditRefunds(
   let prepared = 0;
   for (const grant of grants) {
     const source = await loadRefundSource(db, grant);
-    if (source.status !== "available") {
+    if (!source || source.status !== "available") {
       continue;
     }
     const requestedAmountCents = Math.floor(
