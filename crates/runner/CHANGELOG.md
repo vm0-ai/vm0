@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.169.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.13...runner-rs-v0.169.14) (2026-08-20)
+
+
+### Bug Fixes
+
+* **runner:** allow large proxied websocket messages ([#28213](https://github.com/vm0-ai/vm0/issues/28213)) ([e77ab8c](https://github.com/vm0-ai/vm0/commit/e77ab8c13fd28b23d060f4ab9c9beb36bcfbe060))
+* **runner:** reject pre-tls proxy bytes in firewall auth ([#28223](https://github.com/vm0-ai/vm0/issues/28223)) ([d8b98f0](https://github.com/vm0-ai/vm0/commit/d8b98f0ed46e49162b77a4def9389444de5ef36c))
+
+
+### Refactoring
+
+* **runner:** centralize sandbox command prerequisites ([#28246](https://github.com/vm0-ai/vm0/issues/28246)) ([8054bc6](https://github.com/vm0-ai/vm0/commit/8054bc6ecaa46dc80f6d2d5d75943af73a36a828))
+
+
+### Performance Improvements
+
+* **python:** bound firewall auth identity ownership ([#28162](https://github.com/vm0-ai/vm0/issues/28162)) ([08dbfdf](https://github.com/vm0-ai/vm0/commit/08dbfdfabb4837f1c79bf1ea0cee86825dc1a764))
+* **runner:** attribute claim response read and decode latency ([#28175](https://github.com/vm0-ai/vm0/issues/28175)) ([f4420d7](https://github.com/vm0-ai/vm0/commit/f4420d74a7cb9dfff9d18833f8321d2484570023))
+* **runner:** bound axiom debug field formatting ([#28158](https://github.com/vm0-ai/vm0/issues/28158)) ([3786a98](https://github.com/vm0-ai/vm0/commit/3786a989714d618c77bdcc60c7c17d14ce5d9373))
+* **runner:** reserve axiom channel before serialization ([#28161](https://github.com/vm0-ai/vm0/issues/28161)) ([5016d20](https://github.com/vm0-ai/vm0/commit/5016d20e3311571f219f24be77e42df69a8415c2))
+
 ## [0.169.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.12...runner-rs-v0.169.13) (2026-08-19)
 
 

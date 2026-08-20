@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.464.0](https://github.com/vm0-ai/vm0/compare/api-v1.463.1...api-v1.464.0) (2026-08-20)
+
+
+### Features
+
+* **api:** persist managed runtime routes ([#28239](https://github.com/vm0-ai/vm0/issues/28239)) ([68d70d7](https://github.com/vm0-ai/vm0/commit/68d70d7d33d679cec165fda24e8ef16b1d8806ea))
+* retire the gpt-image-1.5 and gpt-image-1-mini image models ([#28147](https://github.com/vm0-ai/vm0/issues/28147)) ([c28f7fc](https://github.com/vm0-ai/vm0/commit/c28f7fcd5ea6b0c690f698d8219b7b9834adfe07))
+
+
+### Bug Fixes
+
+* **api:** brand google drive artifact folders ([#28155](https://github.com/vm0-ai/vm0/issues/28155)) ([3150763](https://github.com/vm0-ai/vm0/commit/3150763577ceb7754bf7e9d2b68c9024a01977cd))
+* **api:** make connector consumers account-aware ([#28199](https://github.com/vm0-ai/vm0/issues/28199)) ([2e74808](https://github.com/vm0-ai/vm0/commit/2e748083ddaa5b3f955e358dae4d2a8a42b174ae))
+* **api:** stop terminal drive refresh polling ([#28248](https://github.com/vm0-ai/vm0/issues/28248)) ([cf4b090](https://github.com/vm0-ai/vm0/commit/cf4b090228be43ed7bae550f180bff0355594428))
+* **billing:** price member invitations incrementally ([#28234](https://github.com/vm0-ai/vm0/issues/28234)) ([bde4804](https://github.com/vm0-ai/vm0/commit/bde4804639c15d80811c54ac8c51a2b04eacf2a1))
+* **billing:** stabilize shared subscription updates ([#28232](https://github.com/vm0-ai/vm0/issues/28232)) ([972eaff](https://github.com/vm0-ai/vm0/commit/972eaffad4ad62fadd5ff7a64d944f414fe74ac6))
+* **dev:** point the local env template at renamed 1password fields ([#28228](https://github.com/vm0-ai/vm0/issues/28228)) ([b7af484](https://github.com/vm0-ai/vm0/commit/b7af4848bd66d70bb4be54f5612ffa7003f2b733)), closes [#28227](https://github.com/vm0-ai/vm0/issues/28227)
+* neutralize built-in model provider presentation ([#28171](https://github.com/vm0-ai/vm0/issues/28171)) ([b2142fb](https://github.com/vm0-ai/vm0/commit/b2142fb91324118fcfe529286c8c87c412609c43))
+* neutralize stale runtime diagnostics ([#28185](https://github.com/vm0-ai/vm0/issues/28185)) ([d04e29c](https://github.com/vm0-ai/vm0/commit/d04e29c2d0658f05ddb080f0a16784681eebfc84))
+* **platform:** show exact connector catalog count ([#28226](https://github.com/vm0-ai/vm0/issues/28226)) ([3bbc265](https://github.com/vm0-ai/vm0/commit/3bbc265321226c3d1ce3b4df75558569c8b04162))
+* recover organization member reads from rate limits ([#28229](https://github.com/vm0-ai/vm0/issues/28229)) ([839d4a7](https://github.com/vm0-ai/vm0/commit/839d4a769863f77d93b18379f9ef70d4220fb3f9))
+* replace obsolete agent compose remediation ([#28220](https://github.com/vm0-ai/vm0/issues/28220)) ([2161241](https://github.com/vm0-ai/vm0/commit/2161241f37b0a51051aaf2b3722ccea023bd414d))
+* treat the run's video model as a default, not an override ([#28115](https://github.com/vm0-ai/vm0/issues/28115)) ([081e528](https://github.com/vm0-ai/vm0/commit/081e5281b262a4b5b54597e2baca9e2dcb0fb9ca))
+
+
+### Refactoring
+
+* **api:** neutralize billing and chat metric service filenames ([#28218](https://github.com/vm0-ai/vm0/issues/28218)) ([b16e233](https://github.com/vm0-ai/vm0/commit/b16e23350ff1263287d79fec3ba3eeaf12c8093e)), closes [#28204](https://github.com/vm0-ai/vm0/issues/28204)
+* **api:** neutralize run and model provider route naming ([#28217](https://github.com/vm0-ai/vm0/issues/28217)) ([639941a](https://github.com/vm0-ai/vm0/commit/639941a9cb6bd36efe17b3d9e8d0761f2513e538)), closes [#28205](https://github.com/vm0-ai/vm0/issues/28205)
+* **api:** neutralize the billing downgrade service filename ([#28211](https://github.com/vm0-ai/vm0/issues/28211)) ([1f76a63](https://github.com/vm0-ai/vm0/commit/1f76a635c543d992e87b617e316896b33d4ad47d)), closes [#28209](https://github.com/vm0-ai/vm0/issues/28209)
+* **checkpoint:** stop persisting legacy compose snapshots ([#28111](https://github.com/vm0-ai/vm0/issues/28111)) ([4deb05b](https://github.com/vm0-ai/vm0/commit/4deb05b81c23423cd7c0234a12d6977f38640a39))
+* **contracts:** neutralize agent and team contract naming ([#28214](https://github.com/vm0-ai/vm0/issues/28214)) ([116eebb](https://github.com/vm0-ai/vm0/commit/116eebb7d10a996ec550aa88e26bd98a89711cff)), closes [#28186](https://github.com/vm0-ai/vm0/issues/28186)
+* **contracts:** neutralize billing contract naming ([#28222](https://github.com/vm0-ai/vm0/issues/28222)) ([20ea434](https://github.com/vm0-ai/vm0/commit/20ea434f806fcac8132d8eaddb28ddaec156438c)), closes [#28208](https://github.com/vm0-ai/vm0/issues/28208)
+* **contracts:** neutralize computer use telegram and gateway contract naming ([#28215](https://github.com/vm0-ai/vm0/issues/28215)) ([2c00002](https://github.com/vm0-ai/vm0/commit/2c000023fdf2cc2dbddc9318e36fb38b68fb0d5c)), closes [#28191](https://github.com/vm0-ai/vm0/issues/28191)
+* **contracts:** neutralize connector catalog contract naming ([#28224](https://github.com/vm0-ai/vm0/issues/28224)) ([fff24fa](https://github.com/vm0-ai/vm0/commit/fff24fa789b95600f3b29d7b0d24e546bb1a7fd8)), closes [#28207](https://github.com/vm0-ai/vm0/issues/28207)
+* **contracts:** neutralize workflow contract naming ([#28203](https://github.com/vm0-ai/vm0/issues/28203)) ([22084ad](https://github.com/vm0-ai/vm0/commit/22084adce51a62685ed1d94eb05d27da39e8ef5d)), closes [#28188](https://github.com/vm0-ai/vm0/issues/28188)
+* **test:** rename the api route test helper to a neutral name ([#28212](https://github.com/vm0-ai/vm0/issues/28212)) ([47b5918](https://github.com/vm0-ai/vm0/commit/47b59183d0eb77ef4e28b0486e78daee459d8a4f)), closes [#28202](https://github.com/vm0-ai/vm0/issues/28202)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.0
+    * @okouai/core bumped to 8.573.0
+    * @okouai/db bumped to 1.209.0
+
 ## [1.463.1](https://github.com/vm0-ai/vm0/compare/api-v1.463.0...api-v1.463.1) (2026-08-19)
 
 

@@ -1,5 +1,36 @@
 # Changelog
 
+## [8.573.0](https://github.com/vm0-ai/vm0/compare/core-v8.572.1...core-v8.573.0) (2026-08-20)
+
+
+### Features
+
+* **app:** replace home suggested prompts with entry cards ([#27987](https://github.com/vm0-ai/vm0/issues/27987)) ([67aadb6](https://github.com/vm0-ai/vm0/commit/67aadb6fcab723f39b3fc5744bf6f65c80d60095))
+* collapse flux and seedream 5 image models into variant groups ([#28174](https://github.com/vm0-ai/vm0/issues/28174)) ([5018b97](https://github.com/vm0-ai/vm0/commit/5018b970a21976c98c72e57466e6e107d3a3fd9f))
+* retire the gpt-image-1.5 and gpt-image-1-mini image models ([#28147](https://github.com/vm0-ai/vm0/issues/28147)) ([c28f7fc](https://github.com/vm0-ai/vm0/commit/c28f7fcd5ea6b0c690f698d8219b7b9834adfe07))
+
+
+### Bug Fixes
+
+* **core:** disable shared chat database for staff org ([#28183](https://github.com/vm0-ai/vm0/issues/28183)) ([02a4f3e](https://github.com/vm0-ai/vm0/commit/02a4f3e02f236422a3b88da6d9a438b6075e21e9)), closes [#28179](https://github.com/vm0-ai/vm0/issues/28179)
+* **platform:** show exact connector catalog count ([#28226](https://github.com/vm0-ai/vm0/issues/28226)) ([3bbc265](https://github.com/vm0-ai/vm0/commit/3bbc265321226c3d1ce3b4df75558569c8b04162))
+
+
+### Refactoring
+
+* **contracts:** neutralize agent and team contract naming ([#28214](https://github.com/vm0-ai/vm0/issues/28214)) ([116eebb](https://github.com/vm0-ai/vm0/commit/116eebb7d10a996ec550aa88e26bd98a89711cff)), closes [#28186](https://github.com/vm0-ai/vm0/issues/28186)
+* **contracts:** neutralize billing contract naming ([#28222](https://github.com/vm0-ai/vm0/issues/28222)) ([20ea434](https://github.com/vm0-ai/vm0/commit/20ea434f806fcac8132d8eaddb28ddaec156438c)), closes [#28208](https://github.com/vm0-ai/vm0/issues/28208)
+* **contracts:** neutralize computer use telegram and gateway contract naming ([#28215](https://github.com/vm0-ai/vm0/issues/28215)) ([2c00002](https://github.com/vm0-ai/vm0/commit/2c000023fdf2cc2dbddc9318e36fb38b68fb0d5c)), closes [#28191](https://github.com/vm0-ai/vm0/issues/28191)
+* **contracts:** neutralize workflow contract naming ([#28203](https://github.com/vm0-ai/vm0/issues/28203)) ([22084ad](https://github.com/vm0-ai/vm0/commit/22084adce51a62685ed1d94eb05d27da39e8ef5d)), closes [#28188](https://github.com/vm0-ai/vm0/issues/28188)
+* remove chat smooth auto scroll feature switch ([#28244](https://github.com/vm0-ai/vm0/issues/28244)) ([36a269d](https://github.com/vm0-ai/vm0/commit/36a269dcdb698fb5afe7b7a6f92b78d98935a7c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.0
+
 ## [8.572.1](https://github.com/vm0-ai/vm0/compare/core-v8.572.0...core-v8.572.1) (2026-08-19)
 
 
