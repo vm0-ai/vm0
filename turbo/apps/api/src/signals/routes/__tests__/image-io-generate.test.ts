@@ -39,6 +39,7 @@ import {
 import { createRouteMocks } from "./helpers/route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { setRunImageModelFixture } from "../../../test-fixtures/run-image-model";
+import { removeBuiltInGenerationPublicBrandFixture } from "../../../test-fixtures/built-in-generation";
 
 const context = testContext();
 const store = createStore();
@@ -785,7 +786,7 @@ describe("POST /api/zero/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(0);
   });
 
-  it("admits image generation when allowance remains", async () => {
+  it("keeps a legacy generation job on VM0 when allowance remains", async () => {
     const fixture = await seedImageFixture({ credits: 0 });
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -848,6 +849,7 @@ describe("POST /api/zero/image-io/generate", () => {
       "image",
       fixture.userId,
     );
+    await removeBuiltInGenerationPublicBrandFixture(generationId);
     await postFalWebhook(app, observedRequestUrl, {
       images: [
         {
@@ -866,10 +868,15 @@ describe("POST /api/zero/image-io/generate", () => {
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
-    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+    const result = readGenerationResult(await statusResponse.json());
+    expect(result).toMatchObject({
       creditsCharged: 50,
       billingCategory: "output_image.medium.standard",
       billingQuantity: 1,
+      url: expect.stringMatching(/^https:\/\/cdn\.vm7\.io\/artifacts\//u),
+    });
+    expect(putObjectInput().Metadata).toMatchObject({
+      "public-brand": "vm0",
     });
     await expect(orgCredits(fixture)).resolves.toBe(0);
   });
@@ -1145,11 +1152,11 @@ describe("POST /api/zero/image-io/generate", () => {
     const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.webp$/u);
-    expect(url).toBe(`https://cdn.okou.test/${String(putInput.Key)}`);
+    expect(url).toBe(`https://cdn.okou.io/${String(putInput.Key)}`);
     // The embed URL serves the same stored object through the CDN image
     // transform so a PNG-only model still reaches browsers as AVIF/WebP.
     expect(body).toMatchObject({
-      embedUrl: `https://cdn.okou.test/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/${String(putInput.Key)}`,
+      embedUrl: `https://cdn.okou.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/${String(putInput.Key)}`,
     });
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,

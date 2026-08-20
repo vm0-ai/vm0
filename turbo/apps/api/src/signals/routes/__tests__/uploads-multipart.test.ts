@@ -223,7 +223,13 @@ describe("multipart user artifact uploads", () => {
       if (command instanceof ListObjectsV2Command) {
         return Promise.resolve({
           Contents: objectKey
-            ? [{ Key: objectKey, Size: 20 * 1024 * 1024 }]
+            ? [
+                {
+                  Key: objectKey,
+                  Size: 20 * 1024 * 1024,
+                  LastModified: new Date("2026-08-20T00:00:00.000Z"),
+                },
+              ]
             : [],
         });
       }

@@ -1,30 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  builtInGenerationPublicBrand,
-} from "../../services/built-in-generation.service";
 import { providerFailureDetailsForLog } from "../webhooks-built-in-generations";
-
-describe("builtInGenerationPublicBrand", () => {
-  it("keeps legacy and malformed jobs on VM0", () => {
-    expect(builtInGenerationPublicBrand({ prompt: "legacy job" })).toBe(
-      "vm0",
-    );
-    expect(
-      builtInGenerationPublicBrand({
-        __builtInGeneration: { publicBrand: "unknown" },
-      }),
-    ).toBe("vm0");
-  });
-
-  it("restores a persisted Okou job brand", () => {
-    expect(
-      builtInGenerationPublicBrand({
-        __builtInGeneration: { publicBrand: "okou" },
-      }),
-    ).toBe("okou");
-  });
-});
 
 describe("providerFailureDetailsForLog", () => {
   it("extracts common top-level provider failure fields", () => {
