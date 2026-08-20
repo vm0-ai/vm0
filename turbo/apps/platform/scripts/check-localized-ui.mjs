@@ -103,22 +103,6 @@ function isUserVisibleFunctionName(value) {
 function getInternalAllowedLiterals() {
   return [
     [
-      "src/lib/pptx-renderer.ts\u0000Macro-enabled PowerPoint files are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000Embedded OLE objects are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000Office Math equations are not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
-      "src/lib/pptx-renderer.ts\u0000EMF image content is not supported",
-      "typed renderer diagnostic; UI consumers localize their own presentation",
-    ],
-    [
       "src/signals/zero-page/chat-feedback.ts\u0000a sent email (mail ID: {…}{…})",
       "locale-neutral serialized agent prompt metadata",
     ],
