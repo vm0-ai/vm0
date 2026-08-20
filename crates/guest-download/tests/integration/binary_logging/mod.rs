@@ -1,3 +1,4 @@
+use crate::process;
 use crate::support::unique_run_id;
 use serde_json::Value;
 use std::ffi::OsStr;
@@ -8,7 +9,6 @@ use tempfile::TempDir;
 
 mod attribution;
 mod manifest_input;
-mod process;
 mod redaction;
 mod runtime_paths;
 
