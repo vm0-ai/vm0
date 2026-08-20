@@ -133,6 +133,11 @@ const actionBodySchema = z.discriminatedUnion("action", [
     deleteOrgMetadata: z.boolean(),
   }),
 ]);
+type ActionBody = z.infer<typeof actionBodySchema>;
+type SetGrantRemainingBody = Extract<
+  ActionBody,
+  { action: "set-grant-remaining" }
+>;
 
 const nullableDateSchema = z.iso.datetime().nullable();
 const readStateSchema = z.object({
@@ -999,6 +1004,28 @@ async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {
   });
 }
 
+async function setGrantRemaining(
+  db: Db,
+  body: SetGrantRemainingBody,
+  signal: AbortSignal,
+): Promise<void> {
+  const rows = await db
+    .update(usagePackCreditGrants)
+    .set({ remainingAmount: body.remainingAmount })
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, body.orgId),
+        eq(usagePackCreditGrants.userId, body.userId),
+        eq(usagePackCreditGrants.grantType, body.grantType),
+      ),
+    )
+    .returning({ id: usagePackCreditGrants.id });
+  signal.throwIfAborted();
+  if (rows.length !== 1) {
+    throw new Error("Expected one usage pack credit grant to update");
+  }
+}
+
 const actionBody$ = bodyResultOf(testUsagePackSubscriptionStateContract.action);
 
 const mutateTestUsagePackSubscriptionState$ = command(
@@ -1074,21 +1101,7 @@ const mutateTestUsagePackSubscriptionState$ = command(
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "set-grant-remaining": {
-        const rows = await db
-          .update(usagePackCreditGrants)
-          .set({ remainingAmount: body.remainingAmount })
-          .where(
-            and(
-              eq(usagePackCreditGrants.orgId, body.orgId),
-              eq(usagePackCreditGrants.userId, body.userId),
-              eq(usagePackCreditGrants.grantType, body.grantType),
-            ),
-          )
-          .returning({ id: usagePackCreditGrants.id });
-        signal.throwIfAborted();
-        if (rows.length !== 1) {
-          throw new Error("Expected one usage pack credit grant to update");
-        }
+        await setGrantRemaining(db, body, signal);
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "delete-refund-source": {
