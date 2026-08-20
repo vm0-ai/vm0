@@ -44,6 +44,7 @@ use crate::exec_operation_result::{
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::firecracker_process::spawn_firecracker;
 use crate::guest_dns_failure_diagnostics::{
     GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
@@ -1068,25 +1069,19 @@ impl FirecrackerSandbox {
     /// [`Sandbox::start`] remains responsible for cleanup when startup fails.
     async fn spawn_and_wait_for_api(
         &mut self,
-        mut command: tokio::process::Command,
+        command: tokio::process::Command,
         api_sock: &Path,
         runtime_cancel: CancellationToken,
         boot_mode: &str,
     ) -> sandbox::Result<ApiClient> {
-        let child = command
-            .current_dir(self.sandbox_paths.workspace())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| SandboxError::Start {
+        let child = spawn_firecracker(command, self.sandbox_paths.workspace()).map_err(|e| {
+            SandboxError::Start {
                 message: format!(
                     "spawn firecracker: {e} (boot_mode={boot_mode}, api_sock={})",
                     api_sock.display()
                 ),
-            })?;
+            }
+        })?;
 
         self.process_group_pid = child.id();
         self.runtime.set_process(monitor_process(
