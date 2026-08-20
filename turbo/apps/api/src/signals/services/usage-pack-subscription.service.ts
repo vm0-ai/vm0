@@ -633,15 +633,61 @@ async function retireUsagePackCheckout(
 }
 
 type PendingUsagePackCheckoutResolution =
+  | { readonly kind: "create" }
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "retry" }
   | { readonly kind: "reuse"; readonly usagePackSubscriptionId: string };
+
+async function resolvePendingUsagePackSnapshots(
+  tx: WriteTx,
+  args: {
+    readonly snapshots: readonly UsagePackContext[];
+    readonly matches: (context: UsagePackContext) => boolean;
+    readonly preferredSnapshotId: string | undefined;
+  },
+): Promise<PendingUsagePackCheckoutResolution> {
+  if (args.preferredSnapshotId === undefined) {
+    const matchingSnapshot = args.snapshots.find(args.matches);
+    for (const snapshot of args.snapshots) {
+      if (snapshot !== matchingSnapshot) {
+        await retireUsagePackCheckout(tx, snapshot.subscription.id);
+      }
+    }
+    return matchingSnapshot
+      ? {
+          kind: "reuse",
+          usagePackSubscriptionId: matchingSnapshot.subscription.id,
+        }
+      : { kind: "create" };
+  }
+  const preferred = args.snapshots.find((context) => {
+    return context.subscription.id === args.preferredSnapshotId;
+  });
+  if (
+    !preferred ||
+    preferred.subscription.subscriptionStatus !== "checkout_pending" ||
+    preferred.subscription.stripeCheckoutSessionId ||
+    preferred.subscription.stripeSubscriptionId ||
+    !args.matches(preferred)
+  ) {
+    return { kind: "retry" };
+  }
+  for (const snapshot of args.snapshots) {
+    if (snapshot.subscription.id !== args.preferredSnapshotId) {
+      await retireUsagePackCheckout(tx, snapshot.subscription.id);
+    }
+  }
+  return {
+    kind: "reuse",
+    usagePackSubscriptionId: args.preferredSnapshotId,
+  };
+}
 
 async function resolvePendingUsagePackCheckout(
   tx: WriteTx,
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
-  preferredSnapshotId: string,
+  preferredSnapshotId: string | undefined,
   signal: AbortSignal,
 ): Promise<PendingUsagePackCheckoutResolution> {
   const matches = (context: UsagePackContext) => {
@@ -712,28 +758,11 @@ async function resolvePendingUsagePackCheckout(
       url: retained.session.url,
     };
   }
-  const preferred = snapshots.find((context) => {
-    return context.subscription.id === preferredSnapshotId;
+  return await resolvePendingUsagePackSnapshots(tx, {
+    snapshots,
+    matches,
+    preferredSnapshotId,
   });
-  if (
-    !preferred ||
-    preferred.subscription.orgId !== args.orgId ||
-    preferred.subscription.subscriptionStatus !== "checkout_pending" ||
-    preferred.subscription.stripeCheckoutSessionId ||
-    preferred.subscription.stripeSubscriptionId ||
-    !matches(preferred)
-  ) {
-    return { kind: "retry" };
-  }
-  for (const snapshot of snapshots) {
-    if (snapshot.subscription.id !== preferredSnapshotId) {
-      await retireUsagePackCheckout(tx, snapshot.subscription.id);
-    }
-  }
-  return {
-    kind: "reuse",
-    usagePackSubscriptionId: preferredSnapshotId,
-  };
 }
 
 function definedAttribution(
@@ -747,128 +776,71 @@ function definedAttribution(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function usagePackAllocationKeys(
-  allocations: readonly UsagePackCheckoutAllocation[],
-): readonly string[] {
-  return allocations
-    .map((allocation) => {
-      const owner =
-        "userId" in allocation
-          ? (["user", allocation.userId] as const)
-          : (["invitation", allocation.invitationId] as const);
-      return JSON.stringify([
-        ...owner,
-        allocation.usagePackUsd,
-        allocation.stripePriceId,
-      ]);
-    })
-    .sort();
-}
-
-function usagePackAllocationsMatch(
-  stored: readonly UsagePackCheckoutAllocation[],
-  requested: readonly UsagePackCheckoutAllocation[],
-): boolean {
-  const storedKeys = usagePackAllocationKeys(stored);
-  const requestedKeys = usagePackAllocationKeys(requested);
-  return (
-    storedKeys.length === requestedKeys.length &&
-    storedKeys.every((key, index) => {
-      return key === requestedKeys[index];
-    })
-  );
-}
-
-async function reusableUsagePackPurchaseSnapshot(
-  tx: WriteTx,
-  args: CreateUsagePackCheckoutSessionArgs,
-  customerId: string,
-): Promise<string | null> {
-  const candidates = await tx
-    .select({ id: usagePackSubscriptions.id })
-    .from(usagePackSubscriptions)
-    .where(
-      and(
-        eq(usagePackSubscriptions.orgId, args.orgId),
-        eq(usagePackSubscriptions.tier, args.tier),
-        eq(usagePackSubscriptions.stripePlanPriceId, args.planPriceId),
-        eq(usagePackSubscriptions.stripeCustomerId, customerId),
-        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
-        isNull(usagePackSubscriptions.stripeCheckoutSessionId),
-        isNull(usagePackSubscriptions.stripeSubscriptionId),
-      ),
-    )
-    .orderBy(desc(usagePackSubscriptions.createdAt));
-  for (const candidate of candidates) {
-    const allocationRows = await tx
-      .select({
-        usagePackUsd: usagePackAllocations.usagePackUsd,
-        stripePriceId: usagePackAllocations.stripePriceId,
-        userId: usagePackAllocations.userId,
-        invitationId: usagePackAllocations.invitationId,
-        status: usagePackAllocations.status,
-      })
-      .from(usagePackAllocations)
-      .where(eq(usagePackAllocations.usagePackSubscriptionId, candidate.id));
-    if (
-      allocationRows.length === 0 ||
-      allocationRows.some((allocation) => {
-        return allocation.status !== "pending_payment";
-      })
-    ) {
-      continue;
-    }
-    const storedAllocations = checkoutAllocationsFromRows(allocationRows);
-    if (
-      storedAllocations &&
-      usagePackAllocationsMatch(storedAllocations, args.allocations)
-    ) {
-      return candidate.id;
-    }
-  }
-  return null;
-}
-
-async function createUsagePackPurchaseSnapshot(
-  db: Db,
+async function insertUsagePackPurchaseSnapshot(
+  tx: Pick<WriteTx, "insert">,
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
 ): Promise<string> {
+  const [subscription] = await tx
+    .insert(usagePackSubscriptions)
+    .values({
+      orgId: args.orgId,
+      tier: args.tier,
+      stripePlanPriceId: args.planPriceId,
+      stripeCustomerId: customerId,
+    })
+    .returning({ id: usagePackSubscriptions.id });
+  if (!subscription) {
+    throw new Error("Failed to create usage pack subscription snapshot");
+  }
+  await tx.insert(usagePackAllocations).values(
+    args.allocations.map((allocation) => {
+      return {
+        usagePackSubscriptionId: subscription.id,
+        orgId: args.orgId,
+        usagePackUsd: allocation.usagePackUsd,
+        stripePriceId: allocation.stripePriceId,
+        ...("userId" in allocation
+          ? { userId: allocation.userId }
+          : { invitationId: allocation.invitationId }),
+      };
+    }),
+  );
+  return subscription.id;
+}
+
+type PreparedUsagePackPurchaseSnapshot =
+  | { readonly kind: "redirect"; readonly url: string }
+  | { readonly kind: "snapshot"; readonly usagePackSubscriptionId: string };
+
+async function prepareUsagePackPurchaseSnapshot(
+  db: Db,
+  args: CreateUsagePackCheckoutSessionArgs,
+  customerId: string,
+  signal: AbortSignal,
+): Promise<PreparedUsagePackPurchaseSnapshot> {
   return await db.transaction(async (tx) => {
-    const reusableSnapshotId = await reusableUsagePackPurchaseSnapshot(
+    await lockBillingPurchaseOrg(tx, args.orgId);
+    signal.throwIfAborted();
+    const resolution = await resolvePendingUsagePackCheckout(
       tx,
       args,
       customerId,
+      undefined,
+      signal,
     );
-    if (reusableSnapshotId) {
-      return reusableSnapshotId;
+    if (resolution.kind === "redirect") {
+      return resolution;
     }
-    const [subscription] = await tx
-      .insert(usagePackSubscriptions)
-      .values({
-        orgId: args.orgId,
-        tier: args.tier,
-        stripePlanPriceId: args.planPriceId,
-        stripeCustomerId: customerId,
-      })
-      .returning({ id: usagePackSubscriptions.id });
-    if (!subscription) {
-      throw new Error("Failed to create usage pack subscription snapshot");
+    if (resolution.kind === "retry") {
+      throw new Error("Usage pack snapshot preparation unexpectedly retried");
     }
-    await tx.insert(usagePackAllocations).values(
-      args.allocations.map((allocation) => {
-        return {
-          usagePackSubscriptionId: subscription.id,
-          orgId: args.orgId,
-          usagePackUsd: allocation.usagePackUsd,
-          stripePriceId: allocation.stripePriceId,
-          ...("userId" in allocation
-            ? { userId: allocation.userId }
-            : { invitationId: allocation.invitationId }),
-        };
-      }),
-    );
-    return subscription.id;
+    const usagePackSubscriptionId =
+      resolution.kind === "reuse"
+        ? resolution.usagePackSubscriptionId
+        : await insertUsagePackPurchaseSnapshot(tx, args, customerId);
+    signal.throwIfAborted();
+    return { kind: "snapshot", usagePackSubscriptionId };
   });
 }
 
@@ -940,8 +912,8 @@ async function createSerializedUsagePackCheckout(
       if (resolution.kind === "redirect") {
         return { kind: "complete" as const, url: resolution.url };
       }
-      if (resolution.kind === "retry") {
-        return resolution;
+      if (resolution.kind !== "reuse") {
+        return { kind: "retry" as const };
       }
       return {
         kind: "complete" as const,
@@ -960,12 +932,16 @@ async function createSerializedUsagePackCheckout(
     if (attempt.kind === "complete") {
       return attempt.url;
     }
-    preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+    const prepared = await prepareUsagePackPurchaseSnapshot(
       db,
       args,
       customerId,
+      signal,
     );
-    signal.throwIfAborted();
+    if (prepared.kind === "redirect") {
+      return prepared.url;
+    }
+    preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
 }
 
@@ -990,17 +966,20 @@ const createUsagePackCheckoutSession$ = command(
     );
     signal.throwIfAborted();
     const db = set(writeDb$);
-    const preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+    const prepared = await prepareUsagePackPurchaseSnapshot(
       db,
       args,
       customerId,
+      signal,
     );
-    signal.throwIfAborted();
+    if (prepared.kind === "redirect") {
+      return prepared.url;
+    }
     return await createSerializedUsagePackCheckout(
       db,
       args,
       customerId,
-      preferredSnapshotId,
+      prepared.usagePackSubscriptionId,
       signal,
     );
   },
@@ -1057,8 +1036,8 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
         result: { status: "checkout", url: resolution.url },
       };
     }
-    if (resolution.kind === "retry") {
-      return resolution;
+    if (resolution.kind !== "reuse") {
+      return { kind: "retry" };
     }
     const items = [
       { price: purchase.planPriceId, quantity: 1 },
@@ -1141,12 +1120,16 @@ async function createSerializedUsagePackPurchasePreview(
     if (attempt.kind === "complete") {
       return attempt.result;
     }
-    preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+    const prepared = await prepareUsagePackPurchaseSnapshot(
       input.db,
       input.purchase,
       input.customerId,
+      signal,
     );
-    signal.throwIfAborted();
+    if (prepared.kind === "redirect") {
+      return { status: "checkout", url: prepared.url };
+    }
+    preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
 }
 
@@ -1187,12 +1170,15 @@ export const startUsagePackPurchase$ = command(
       },
       signal,
     );
-    const preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+    const prepared = await prepareUsagePackPurchaseSnapshot(
       db,
       args,
       customerId,
+      signal,
     );
-    signal.throwIfAborted();
+    if (prepared.kind === "redirect") {
+      return { status: "checkout", url: prepared.url };
+    }
     if (route.kind === "checkout") {
       return {
         status: "checkout",
@@ -1200,7 +1186,7 @@ export const startUsagePackPurchase$ = command(
           db,
           args,
           customerId,
-          preferredSnapshotId,
+          prepared.usagePackSubscriptionId,
           signal,
         ),
       };
@@ -1211,7 +1197,7 @@ export const startUsagePackPurchase$ = command(
         stripe,
         purchase: args,
         customerId,
-        preferredSnapshotId,
+        preferredSnapshotId: prepared.usagePackSubscriptionId,
         route,
       },
       signal,

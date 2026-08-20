@@ -832,7 +832,7 @@ function usagePackAllocationAdditionCharge(
   });
   const automaticTax = invoiceAutomaticTaxParam(invoice);
   const invoiceItems = prorationLines.map((line) => {
-    if (!Number.isSafeInteger(line.amount) || line.amount < 0) {
+    if (!Number.isSafeInteger(line.amount)) {
       throw new Error("Stripe invitation preview line has an invalid amount");
     }
     return {

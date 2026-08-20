@@ -5842,6 +5842,10 @@ describe("usage pack allocation management", () => {
     readonly existingMemberUserId: string;
     readonly email: string;
   }> {
+    mockNow(new Date("2035-05-15T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
@@ -11181,6 +11185,10 @@ describe("usage pack allocation management", () => {
   });
 
   it("prices an invitation from only the added package proration", async () => {
+    mockNow(new Date("2035-05-15T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
@@ -11238,8 +11246,21 @@ describe("usage pack allocation management", () => {
               },
             },
             {
-              id: `il_proration_${randomUUID()}`,
-              amount: 2000,
+              id: `il_proration_credit_${randomUUID()}`,
+              amount: -2000,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              period: {
+                start: prorationTimestamp,
+                end: fixture.billingPeriod.end,
+              },
+              parent: {
+                type: "subscription_item_details" as const,
+                subscription_item_details: { proration: true },
+              },
+            },
+            {
+              id: `il_proration_charge_${randomUUID()}`,
+              amount: 4000,
               price: { id: TEST_PRICE_USAGE_PACK_20 },
               period: {
                 start: prorationTimestamp,
@@ -11270,9 +11291,9 @@ describe("usage pack allocation management", () => {
       usagePackUsd: 20,
       immediateAmountCents: 2000,
       currency: "usd",
-      purchasedCredits: 20_000,
-      bonusCredits: 400,
-      totalCredits: 20_400,
+      purchasedCredits: 10_000,
+      bonusCredits: 200,
+      totalCredits: 10_200,
       currentPeriodEnd: new Date(
         fixture.billingPeriod.end * 1000,
       ).toISOString(),
