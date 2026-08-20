@@ -272,14 +272,15 @@ async function createClaimedChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
   agentId: string,
-  prompt: string,
-  publicBrand: PublicBrand = "vm0",
+  prompt: string | { readonly text: string; readonly publicBrand: PublicBrand },
 ) {
+  const promptText = typeof prompt === "string" ? prompt : prompt.text;
+  const publicBrand = typeof prompt === "string" ? "vm0" : prompt.publicBrand;
   const sent = await chat.requestSendEvent(
     actor,
     {
       agentId,
-      prompt,
+      prompt: promptText,
       cloudBrowserEnabled: true,
     },
     [201],
@@ -2127,8 +2128,10 @@ describe("okou browser route", () => {
       runs,
       actor,
       agent.agentId,
-      "Open a managed browser for screenshot capture",
-      "okou",
+      {
+        text: "Open a managed browser for screenshot capture",
+        publicBrand: "okou",
+      },
     );
     const providerId = randomUUID();
     acceptBrowserUseCdpSessions([providerId]);

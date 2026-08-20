@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInGenerationPublicBrand } from "../../services/built-in-generation.service";
+import {
+  builtInGenerationPublicBrand,
+} from "../../services/built-in-generation.service";
 import { providerFailureDetailsForLog } from "../webhooks-built-in-generations";
 
 describe("builtInGenerationPublicBrand", () => {

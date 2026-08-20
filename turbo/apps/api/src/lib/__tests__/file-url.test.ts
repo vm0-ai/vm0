@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../env";
-import {
-  buildFileUrlFromKey,
-  publicBrandFromArtifactUrl,
-} from "../file-url";
+import { buildFileUrlFromKey, publicBrandFromArtifactUrl } from "../file-url";
 
 describe("branded artifact URLs", () => {
   it("maps each configured CDN origin to its public brand", () => {

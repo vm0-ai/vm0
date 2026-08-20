@@ -247,6 +247,9 @@ describe("POST /api/zero/uploads/complete", () => {
       size: 17,
       url: prepared.url,
     });
+    if ("error" in response.body) {
+      throw new Error("Expected the upload to complete successfully");
+    }
     expect(response.body.url).toMatch(/^https:\/\/cdn\.vm7\.io\//u);
   });
 

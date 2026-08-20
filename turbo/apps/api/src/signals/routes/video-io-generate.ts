@@ -6,6 +6,7 @@ import {
   type VideoIoGenerateRequest,
 } from "@okouai/api-contracts/contracts/video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { VIDEO_MODEL_CONFIGS } from "@okouai/core/video-model-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -58,8 +59,16 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import type { AuthContext } from "../../types/auth";
 
 const videoBody$ = bodyResultOf(videoIoGenerateContract.post);
+
+function resolveGenerationPublicBrand(
+  auth: AuthContext,
+  requestPublicBrand: PublicBrand,
+): PublicBrand {
+  return auth.tokenType === "zero" ? auth.publicBrand : requestPublicBrand;
+}
 
 async function loadRunVideoModel(
   db: ReadonlyDb,
@@ -424,8 +433,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = resolveGenerationPublicBrand(auth, get(publicBrand$));
   const runVideoModel = await loadDefaultRunVideoModel(
     db,
     auth.orgId,
