@@ -66,6 +66,7 @@ from .openai_chat_completions import (
     extract_openai_chat_completions_usage_with_error_from_json,
 )
 from .openai_responses import (
+    OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR,
     OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
     OpenAIResponsesServerEventInspection,
@@ -98,6 +99,7 @@ from .providers.model_provider import (
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
+    "OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR",
     "BufferedReportLease",
     "ModelUsageProtocol",
     "OpenAIResponsesClientEvent",
