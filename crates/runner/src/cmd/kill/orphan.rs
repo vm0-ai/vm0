@@ -74,7 +74,7 @@ pub(super) async fn confirmed_disappeared_outcome(
     .await
 }
 
-async fn confirmed_disappeared_outcome_with_discovery<Discover, DiscoverFuture>(
+pub(super) async fn confirmed_disappeared_outcome_with_discovery<Discover, DiscoverFuture>(
     target: &KillTarget,
     was_orphan: bool,
     discover: Discover,
