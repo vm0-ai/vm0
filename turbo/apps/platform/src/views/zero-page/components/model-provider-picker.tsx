@@ -1253,11 +1253,12 @@ function ModelFirstModelPickerContentLayout({
           ? // Wide enough for the longest row this popover has to render: a
             // model name beside a three-up variant segment (Seedance 2.0 with
             // Standard/Fast/Mini). One width for every category, so switching
-            // tabs never resizes the popover. The extra height offsets the
-            // category strip so the list itself keeps its former room. The
-            // max-width only bites below a 348px viewport, where 332px would
-            // otherwise run past the screen edge.
-            "max-h-[320px] min-w-[332px] max-w-[calc(100vw-1rem)]"
+            // tabs never resizes the popover. The 294px bordered cap leaves a
+            // 292px scroll viewport: enough for the compact header and seven
+            // model rows, while an eighth adds one 32px row plus its 4px gap.
+            // The max-width only bites below a 348px viewport, where 332px
+            // would otherwise run past the screen edge.
+            "max-h-[294px] min-w-[332px] max-w-[calc(100vw-1rem)]"
           : "max-h-[280px] min-w-[260px]",
       )}
     >
