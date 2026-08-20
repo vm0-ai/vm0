@@ -1074,6 +1074,25 @@ async function seedPreMigrationBrowserCreation(
     readonly creationRunId: string;
   },
 ): Promise<void> {
+  // Keep an earlier foreign instance in the fixture so the production
+  // selection must correlate by chat_thread_id instead of accidentally
+  // reading the first browser instance in the database.
+  const foreignRunId = randomUUID();
+  await insertBrowserRolloutCallback(db, foreignRunId, "vm0");
+  await db.execute(sql`
+    INSERT INTO public.browser_session_instances (
+      provider_session_id,
+      chat_thread_id,
+      run_id,
+      created_at
+    ) VALUES (
+      ${randomUUID()},
+      ${randomUUID()},
+      ${foreignRunId},
+      now() - interval '1 minute'
+    )
+  `);
+
   await insertBrowserRolloutCallback(db, args.creationRunId, "okou");
   await insertBrowserRolloutSession(db, args.chatThreadId, args.creationRunId);
   await db.execute(sql`

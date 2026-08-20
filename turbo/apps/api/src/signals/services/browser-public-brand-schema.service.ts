@@ -74,22 +74,26 @@ export const browserSessionPublicBrandSelection = sql`
  */
 export const browserSessionCreationPublicBrandSelection = sql`
   (
-    SELECT ${agentRunCallbacks.payload} ->> 'publicBrand'
-    FROM ${agentRunCallbacks}
-    WHERE ${agentRunCallbacks.runId} = COALESCE(
+    SELECT "creation_callback"."payload" ->> 'publicBrand'
+    FROM ${agentRunCallbacks} AS "creation_callback"
+    WHERE "creation_callback"."run_id" = COALESCE(
       (
-        SELECT ${browserSessionInstances.runId}
-        FROM ${browserSessionInstances}
-        WHERE ${browserSessionInstances.chatThreadId} = ${browserSessions.chatThreadId}
-          AND ${browserSessionInstances.createdAt} >= ${browserSessions.createdAt}
-        ORDER BY ${browserSessionInstances.createdAt}, ${browserSessionInstances.providerSessionId}
+        SELECT "creation_instance"."run_id"
+        FROM ${browserSessionInstances} AS "creation_instance"
+        WHERE "creation_instance"."chat_thread_id" = "browser_sessions"."chat_thread_id"
+          AND "creation_instance"."created_at" >= "browser_sessions"."created_at"
+        ORDER BY
+          "creation_instance"."created_at",
+          "creation_instance"."provider_session_id"
         LIMIT 1
       ),
-      ${browserSessions.runId}
+      "browser_sessions"."run_id"
     )
-      AND ${agentRunCallbacks.internalKind} = 'chat'
-      AND ${agentRunCallbacks.payload} ->> 'publicBrand' IN ('vm0', 'okou')
-    ORDER BY ${agentRunCallbacks.createdAt}, ${agentRunCallbacks.id}
+      AND "creation_callback"."internal_kind" = 'chat'
+      AND "creation_callback"."payload" ->> 'publicBrand' IN ('vm0', 'okou')
+    ORDER BY
+      "creation_callback"."created_at",
+      "creation_callback"."id"
     LIMIT 1
   )
 `.mapWith(nullableDriverValueDecoder(pgTextDecoder));
