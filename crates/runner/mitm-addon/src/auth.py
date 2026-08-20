@@ -119,7 +119,6 @@ AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES = 32
 MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS = (
     MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES // AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
 )
-_FIREWALL_AUTH_IDENTITY_VERSION = 1
 _FIREWALL_AUTH_IDENTITY_CACHE_KEY = "_firewallAuthIdentityCache"
 _MISSING_AWS_SIGV4_ORIGINAL_URL = object()
 
@@ -130,6 +129,14 @@ class _FirewallAuthIdentityCacheEntry:
 
     api_entry: dict = field(repr=False)
     auth_identity: str
+
+
+@dataclass(frozen=True)
+class _ResolvedFirewallAuthIdentity:
+    """Content identity and request-local body preparation for one lookup."""
+
+    auth_identity: str
+    auth_request: FirewallAuthRequest = field(repr=False)
 
 
 @dataclass
@@ -298,16 +305,17 @@ def _build_firewall_auth_context(
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
         matched_firewall=matched_firewall,
     )
+    resolved_identity = _cached_firewall_auth_identity(
+        vm_info=vm_info,
+        api_entry=api_entry,
+        firewall_name=allow.name,
+        firewall_base=firewall_base,
+        auth_request=auth_request,
+    )
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
         api_id=api_id,
-        auth_identity=_cached_firewall_auth_identity(
-            vm_info=vm_info,
-            api_entry=api_entry,
-            firewall_name=allow.name,
-            firewall_base=firewall_base,
-            auth_request=auth_request,
-        ),
+        auth_identity=resolved_identity.auth_identity,
         registry_generation=_firewall_auth_registry_generation(vm_info),
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = auth_cache_key
@@ -315,7 +323,7 @@ def _build_firewall_auth_context(
         allow=allow,
         firewall_base=firewall_base,
         proxy_log_path=flow_metadata.proxy_log_path(flow.metadata),
-        auth_request=auth_request,
+        auth_request=resolved_identity.auth_request,
         auth_cache_key=auth_cache_key,
     )
 
@@ -332,17 +340,20 @@ def _build_firewall_auth_identity(
     firewall_name: str,
     firewall_base: str,
     auth_request: FirewallAuthRequest,
-) -> str:
+) -> _ResolvedFirewallAuthIdentity:
+    normal_body = auth_request.to_bytes(force_refresh=False)
     sandbox_token_sha256 = hashlib.sha256(auth_request.sandbox_token.encode("utf-8")).hexdigest()
     material = {
-        "version": _FIREWALL_AUTH_IDENTITY_VERSION,
         "firewallName": firewall_name,
         "firewallBase": firewall_base,
-        "auth": auth_request.to_body(force_refresh=False),
+        "authBodySha256": hashlib.sha256(normal_body).hexdigest(),
         "sandboxTokenSha256": sandbox_token_sha256,
     }
     canonical_json = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(canonical_json).hexdigest()
+    return _ResolvedFirewallAuthIdentity(
+        auth_identity=hashlib.sha256(canonical_json).hexdigest(),
+        auth_request=auth_request.with_prepared_normal_body(normal_body),
+    )
 
 
 def _cached_firewall_auth_identity(
@@ -352,7 +363,7 @@ def _cached_firewall_auth_identity(
     firewall_name: str,
     firewall_base: str,
     auth_request: FirewallAuthRequest,
-) -> str:
+) -> _ResolvedFirewallAuthIdentity:
     cache = vm_info.get(_FIREWALL_AUTH_IDENTITY_CACHE_KEY)
     if not isinstance(cache, _FirewallAuthIdentityCache):
         cache = _FirewallAuthIdentityCache()
@@ -361,18 +372,21 @@ def _cached_firewall_auth_identity(
     key = (id(api_entry), firewall_name, firewall_base)
     entry = cache.entries.get(key)
     if entry is not None and entry.api_entry is api_entry:
-        return entry.auth_identity
+        return _ResolvedFirewallAuthIdentity(
+            auth_identity=entry.auth_identity,
+            auth_request=auth_request,
+        )
 
-    auth_identity = _build_firewall_auth_identity(
+    resolved_identity = _build_firewall_auth_identity(
         firewall_name=firewall_name,
         firewall_base=firewall_base,
         auth_request=auth_request,
     )
     cache.entries[key] = _FirewallAuthIdentityCacheEntry(
         api_entry=api_entry,
-        auth_identity=auth_identity,
+        auth_identity=resolved_identity.auth_identity,
     )
-    return auth_identity
+    return resolved_identity
 
 
 def _request_method_forbids_managed_credentials(method: str) -> bool:

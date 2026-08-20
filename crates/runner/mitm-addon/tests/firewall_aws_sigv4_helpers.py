@@ -339,7 +339,7 @@ def _aws_auth_cache_key(
             firewall_name=resolved_allow.name,
             firewall_base=resolved_api_entry["base"],
             auth_request=auth_request,
-        ),
+        ).auth_identity,
     )
 
 
