@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
+import { scrapeRoutes } from "../signals/routes/scrape";
+import { translationRoutes } from "../signals/routes/translation";
+import { webSearchRoutes } from "../signals/routes/web-search";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -310,6 +314,63 @@ describe("branded paths for migrated neutral routes", () => {
         // compatibility table missed.
         expect(match.viaNamespaceAliasFallback).toBeUndefined();
       }
+    }
+  });
+
+  // The assertions above stop at the route table. This one goes through the app
+  // the way a released caller does, because the branded paths are the whole
+  // point of the rows: a request to one must reach the route rather than fall
+  // through to the 404 handler. The three responses are compared to each other
+  // instead of to a fixed status, so this stays a statement about routing and
+  // not about the authentication an unauthenticated request happens to fail.
+  it("answers every migrated route at its neutral and branded paths", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const migrated = [
+      {
+        routes: imageRecognitionRoutes,
+        paths: ["/api/recognize", "/api/okou/recognize", "/api/zero/recognize"],
+      },
+      {
+        routes: scrapeRoutes,
+        paths: ["/api/scrape", "/api/okou/scrape", "/api/zero/scrape"],
+      },
+      {
+        routes: translationRoutes,
+        paths: ["/api/translate", "/api/okou/translate", "/api/zero/translate"],
+      },
+      {
+        routes: webSearchRoutes,
+        paths: [
+          "/api/web-search",
+          "/api/okou/web-search",
+          "/api/zero/web-search",
+        ],
+      },
+    ];
+
+    for (const { routes, paths } of migrated) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+      const statuses: number[] = [];
+      for (const path of paths) {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        statuses.push(response.status);
+      }
+
+      const [neutral] = paths;
+      expect(statuses, `${neutral} did not answer at every path`).not.toContain(
+        404,
+      );
+      expect(
+        new Set(statuses).size,
+        `${neutral} answered differently per path: ${statuses.join(", ")}`,
+      ).toBe(1);
     }
   });
 
