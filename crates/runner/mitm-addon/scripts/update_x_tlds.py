@@ -40,6 +40,10 @@ class TldSourceError(ValueError):
     """Raised when an IANA TLD source cannot be read or parsed."""
 
 
+class TldWriteError(RuntimeError):
+    """Raised when the generated IANA TLD snapshot cannot be written."""
+
+
 class SnapshotComparison(NamedTuple):
     checked_version: str
     source_version: str
@@ -242,9 +246,18 @@ def write_generated_module(contents: str) -> None:
             tmp_path = Path(tmp_file.name)
             tmp_file.write(contents)
         tmp_path.replace(OUTPUT_PATH)
-    finally:
-        if tmp_path is not None and tmp_path.exists():
-            tmp_path.unlink()
+    except OSError as exc:
+        cleanup_error: OSError | None = None
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                cleanup_error = cleanup_exc
+
+        message = f"failed to write generated IANA TLD snapshot {OUTPUT_PATH}: {exc}"
+        if cleanup_error is not None:
+            message += f"; failed to remove temporary file {tmp_path}: {cleanup_error}"
+        raise TldWriteError(message) from exc
 
 
 def update_generated(source_file: Path | None) -> int:
@@ -286,6 +299,6 @@ def main() -> int:
                 parser.error("--check-source requires --source-file")
             return check_source(args.source_file)
         return update_generated(args.source_file)
-    except (TldFetchError, TldSourceError) as exc:
+    except (TldFetchError, TldSourceError, TldWriteError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 1
