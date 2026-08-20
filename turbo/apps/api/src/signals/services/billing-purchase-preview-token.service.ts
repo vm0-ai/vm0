@@ -6,7 +6,7 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 
-const BILLING_PURCHASE_PREVIEW_TTL_MS = 15 * 60 * 1000;
+export const BILLING_PURCHASE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 
 const billingPaymentMethodPreviewTokenSchema = z.object({
   version: z.literal(1),
@@ -67,9 +67,9 @@ export function parseBillingPreviewToken<T>(
   return result.success ? result.data : null;
 }
 
-export function billingPreviewExpiresAt(): string {
+export function billingPreviewExpiresAt(at = nowDate()): string {
   return new Date(
-    nowDate().getTime() + BILLING_PURCHASE_PREVIEW_TTL_MS,
+    at.getTime() + BILLING_PURCHASE_PREVIEW_TTL_MS,
   ).toISOString();
 }
 

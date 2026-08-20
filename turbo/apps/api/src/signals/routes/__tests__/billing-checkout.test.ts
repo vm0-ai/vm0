@@ -2905,6 +2905,451 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     }
   });
 
+  it("keeps a reused purchase preview snapshot until its latest token expires", async () => {
+    const startedAt = new Date("2035-05-15T00:00:00.000Z");
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const paymentMethodId = `pm_${randomUUID()}`;
+    authenticateOrg(fixture);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID()}`,
+      customer: customerId,
+      amount_due: 4000,
+      currency: "usd",
+      status: null,
+      metadata: {},
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackCheckoutContract,
+    );
+    const body = {
+      tier: "pro" as const,
+      supportsInAppPreview: true,
+      memberUsagePacks: [
+        { memberId: fixture.userId, usagePackUsd: 20 as const },
+      ],
+      successUrl: `${APP_ORIGIN}/billing?billing=success`,
+      cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+    };
+
+    const first = await accept(
+      client.create({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in first.body)) {
+      throw new Error("Expected an initial usage pack purchase preview");
+    }
+    expect(first.body.expiresAt).toBe(
+      new Date(startedAt.getTime() + 15 * 60 * 1000).toISOString(),
+    );
+    const initialState = await readUsagePackState(fixture.orgId);
+    const usagePackSubscriptionId = initialState.subscriptionIds[0];
+    if (!usagePackSubscriptionId) {
+      throw new Error("Usage pack preview did not persist its snapshot");
+    }
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: false,
+        deleteOrgMetadata: true,
+      });
+    });
+
+    mockNow(new Date(startedAt.getTime() + 14 * 60 * 1000));
+    await reconcileBillingOrganization(fixture.orgId);
+    expect(
+      (await readUsagePackState(fixture.orgId, usagePackSubscriptionId))
+        .subscription?.subscriptionStatus,
+    ).toBe("checkout_pending");
+
+    const reused = await accept(
+      client.create({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in reused.body)) {
+      throw new Error("Expected a reused usage pack purchase preview");
+    }
+    expect(reused.body.expiresAt).toBe(
+      new Date(startedAt.getTime() + 29 * 60 * 1000).toISOString(),
+    );
+    const reusedState = await readUsagePackState(
+      fixture.orgId,
+      usagePackSubscriptionId,
+    );
+    expect(reusedState.subscriptionCount).toBe(1);
+    expect(reusedState.subscription?.id).toBe(usagePackSubscriptionId);
+
+    mockNow(new Date(startedAt.getTime() + 16 * 60 * 1000));
+    await reconcileBillingOrganization(fixture.orgId);
+    expect(
+      (await readUsagePackState(fixture.orgId, usagePackSubscriptionId))
+        .subscription?.subscriptionStatus,
+    ).toBe("checkout_pending");
+
+    mockNow(new Date(startedAt.getTime() + 30 * 60 * 1000));
+    await reconcileBillingOrganization(fixture.orgId);
+    const expired = await readUsagePackState(
+      fixture.orgId,
+      usagePackSubscriptionId,
+    );
+    expect(expired.subscription?.subscriptionStatus).toBe("checkout_expired");
+    expect(expired.allocations).toStrictEqual([
+      expect.objectContaining({ status: "inactive" }),
+    ]);
+  });
+
+  it("retires a stale purchase snapshot that never received a Checkout Session", async () => {
+    const reconciledAt = new Date("2035-05-15T00:00:00.000Z");
+    mockNow(reconciledAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+    const seeded = await usagePackStateAction({
+      action: "seed",
+      orgId: fixture.orgId,
+      tier: "pro",
+      stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+      stripeCustomerId: customerId,
+      stripeCheckoutSessionId: null,
+      allocations: [
+        {
+          userId: fixture.userId,
+          invitationId: null,
+          usagePackUsd: 20,
+          stripePriceId: TEST_PRICE_USAGE_PACK_20,
+        },
+      ],
+    });
+    if (seeded.action !== "seeded") {
+      throw new Error("Failed to seed a stale usage pack snapshot");
+    }
+    const usagePackSubscriptionId = seeded.usagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: false,
+        deleteOrgMetadata: true,
+      });
+    });
+    await usagePackStateAction({
+      action: "set-updated-at",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId,
+      updatedAt: new Date(
+        reconciledAt.getTime() - 16 * 60 * 1000,
+      ).toISOString(),
+    });
+
+    await reconcileBillingOrganization(fixture.orgId);
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      usagePackSubscriptionId,
+    );
+    expect(state.subscription).toMatchObject({
+      stripeCheckoutSessionId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: "checkout_expired",
+    });
+    expect(state.allocations).toStrictEqual([
+      expect.objectContaining({ status: "inactive" }),
+    ]);
+    expect(
+      context.mocks.stripe.checkout.sessions.retrieve,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rechecks a stale snapshot after waiting for a concurrent Checkout writer", async () => {
+    const reconciledAt = new Date("2035-05-15T00:00:00.000Z");
+    mockNow(reconciledAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+    const seeded = await usagePackStateAction({
+      action: "seed",
+      orgId: fixture.orgId,
+      tier: "pro",
+      stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+      stripeCustomerId: customerId,
+      stripeCheckoutSessionId: null,
+      allocations: [
+        {
+          userId: fixture.userId,
+          invitationId: null,
+          usagePackUsd: 20,
+          stripePriceId: TEST_PRICE_USAGE_PACK_20,
+        },
+      ],
+    });
+    if (seeded.action !== "seeded") {
+      throw new Error("Failed to seed a racing usage pack snapshot");
+    }
+    const usagePackSubscriptionId = seeded.usagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: false,
+        deleteOrgMetadata: true,
+      });
+    });
+    await usagePackStateAction({
+      action: "set-updated-at",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId,
+      updatedAt: new Date(
+        reconciledAt.getTime() - 16 * 60 * 1000,
+      ).toISOString(),
+    });
+
+    let reconciliationPromise: Promise<void> | undefined;
+    const holdPromise = usagePackStateAction({
+      action: "hold-billing-purchase-lock",
+      orgId: fixture.orgId,
+      usagePackSubscriptionId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      updatedAt: reconciledAt.toISOString(),
+    });
+    onTestFinished(async () => {
+      const lockState = await usagePackStateAction({
+        action: "read-billing-purchase-lock-state",
+        orgId: fixture.orgId,
+      });
+      if (lockState.action === "billing-purchase-lock-state" && lockState.held) {
+        await usagePackStateAction({
+          action: "release-billing-purchase-lock",
+          orgId: fixture.orgId,
+        });
+      }
+      await Promise.allSettled([holdPromise]);
+      if (reconciliationPromise) {
+        await Promise.allSettled([reconciliationPromise]);
+      }
+    });
+    await expect
+      .poll(
+        async () => {
+          const state = await usagePackStateAction({
+            action: "read-billing-purchase-lock-state",
+            orgId: fixture.orgId,
+          });
+          return state.action === "billing-purchase-lock-state" && state.held;
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toBeTruthy();
+
+    reconciliationPromise = reconcileBillingOrganization(fixture.orgId);
+    await expect
+      .poll(
+        async () => {
+          const state = await usagePackStateAction({
+            action: "read-billing-purchase-lock-state",
+            orgId: fixture.orgId,
+          });
+          return state.action === "billing-purchase-lock-state"
+            ? state.waiterCount
+            : 0;
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toBeGreaterThanOrEqual(1);
+
+    await usagePackStateAction({
+      action: "release-billing-purchase-lock",
+      orgId: fixture.orgId,
+    });
+    await holdPromise;
+    await reconciliationPromise;
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      usagePackSubscriptionId,
+    );
+    expect(state.subscription).toMatchObject({
+      stripeCheckoutSessionId: checkoutSessionId,
+      stripeSubscriptionId: null,
+      subscriptionStatus: "checkout_pending",
+    });
+    expect(state.allocations).toStrictEqual([
+      expect.objectContaining({ status: "pending_payment" }),
+    ]);
+    expect(
+      context.mocks.stripe.checkout.sessions.retrieve,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("commits Checkout correlation before honoring an abort from Session creation", async () => {
+    const startedAt = new Date("2035-05-15T00:00:00.000Z");
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    const checkoutUrl = "https://checkout.stripe.test/aborted-usage-pack";
+    authenticateOrg(fixture);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: null },
+      default_source: null,
+    });
+    context.mocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
+    const controller = new AbortController();
+    const abortError = new Error("API owner cancelled usage pack checkout");
+    abortError.name = "AbortError";
+    const ownerContext = {
+      mocks: context.mocks,
+      sessionHistoryBlobs: context.sessionHistoryBlobs,
+      signal: controller.signal,
+    };
+    let usagePackSubscriptionId: string | null = null;
+    context.mocks.stripe.checkout.sessions.create.mockImplementation(
+      (input) => {
+        usagePackSubscriptionId =
+          stripeInputMetadata(input).usagePackSubscriptionId ?? null;
+        controller.abort(abortError);
+        return Promise.resolve({ id: checkoutSessionId, url: checkoutUrl });
+      },
+    );
+
+    const response = await setupApp({
+      context: ownerContext,
+      routes: billingCheckoutRoutes,
+    })(billingUsagePackCheckoutContract).create({
+      body: {
+        tier: "pro",
+        memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+        successUrl: `${APP_ORIGIN}/billing?billing=success`,
+        cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+      },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(500);
+    if (!usagePackSubscriptionId) {
+      throw new Error("Aborted Checkout did not expose its snapshot ID");
+    }
+    const persistedUsagePackSubscriptionId = usagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId: persistedUsagePackSubscriptionId,
+        deleteGrants: false,
+        deleteOrgMetadata: true,
+      });
+    });
+    const correlated = await readUsagePackState(
+      fixture.orgId,
+      persistedUsagePackSubscriptionId,
+    );
+    expect(correlated.subscription).toMatchObject({
+      stripeCheckoutSessionId: checkoutSessionId,
+      stripeSubscriptionId: null,
+      subscriptionStatus: "checkout_pending",
+    });
+    expect(context.mocks.stripe.checkout.sessions.expire).not.toHaveBeenCalled();
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: checkoutSessionId,
+      status: "open",
+      url: checkoutUrl,
+    });
+    mockNow(new Date(startedAt.getTime() + 16 * 60 * 1000));
+    await reconcileBillingOrganization(fixture.orgId);
+    expect(context.mocks.stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+      checkoutSessionId,
+    );
+    expect(
+      (
+        await readUsagePackState(
+          fixture.orgId,
+          persistedUsagePackSubscriptionId,
+        )
+      ).subscription?.subscriptionStatus,
+    ).toBe("checkout_pending");
+  });
+
   it("rejects a usage pack preview after a replacement retires its snapshot", async () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;

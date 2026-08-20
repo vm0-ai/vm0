@@ -58,6 +58,7 @@ import type { BillingReconciliationScope } from "./billing-reconciliation-scope"
 import { completeBillingOperationInvoiceWithInvoice } from "./billing-operation-invoice.service";
 import { lockBillingPurchaseOrg } from "./billing-purchase-lock.service";
 import {
+  BILLING_PURCHASE_PREVIEW_TTL_MS,
   billingPreviewExpiresAt,
   createBillingPreviewToken,
   parseBillingPreviewToken,
@@ -96,6 +97,7 @@ const CANCELED_USAGE_PACK_ALLOCATION_STATUSES = [
   "inactive",
 ] as const;
 const USAGE_PACK_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
+const USAGE_PACK_PENDING_SNAPSHOT_STALE_MS = BILLING_PURCHASE_PREVIEW_TTL_MS;
 const TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES = [
   "canceled",
   "incomplete_expired",
@@ -852,7 +854,6 @@ async function createUsagePackCheckoutForSnapshot(
     readonly customerId: string;
     readonly usagePackSubscriptionId: string;
   },
-  signal: AbortSignal,
 ): Promise<string> {
   const metadata = usagePackCheckoutMetadata({
     orgId: args.purchase.orgId,
@@ -879,13 +880,27 @@ async function createUsagePackCheckoutForSnapshot(
       idempotencyKey: `usage-pack-checkout:${args.usagePackSubscriptionId}`,
     },
   );
-  await args.db
+  // Stripe cannot be rolled back. Correlate or expire the Session before the
+  // caller's transaction observes cancellation.
+  if (!session.url) {
+    await args.stripe.checkout.sessions.expire(session.id);
+    throw new Error("Stripe checkout session did not return a URL");
+  }
+  const correlated = await args.db
     .update(usagePackSubscriptions)
     .set({ stripeCheckoutSessionId: session.id, updatedAt: nowDate() })
-    .where(eq(usagePackSubscriptions.id, args.usagePackSubscriptionId));
-  signal.throwIfAborted();
-  if (!session.url) {
-    throw new Error("Stripe checkout session did not return a URL");
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, args.usagePackSubscriptionId),
+        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+        isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+        isNull(usagePackSubscriptions.stripeSubscriptionId),
+      ),
+    )
+    .returning({ id: usagePackSubscriptions.id });
+  if (correlated.length !== 1) {
+    await args.stripe.checkout.sessions.expire(session.id);
+    throw new Error("Usage pack checkout snapshot changed during creation");
   }
   return session.url;
 }
@@ -925,7 +940,6 @@ async function createSerializedUsagePackCheckout(
             customerId,
             usagePackSubscriptionId: resolution.usagePackSubscriptionId,
           },
-          signal,
         ),
       };
     });
@@ -1069,7 +1083,26 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
         "Stripe usage pack purchase previews disagree on currency",
       );
     }
-    const expiresAt = billingPreviewExpiresAt();
+    const issuedAt = nowDate();
+    const expiresAt = billingPreviewExpiresAt(issuedAt);
+    const refreshed = await lockTx
+      .update(usagePackSubscriptions)
+      .set({ updatedAt: issuedAt })
+      .where(
+        and(
+          eq(
+            usagePackSubscriptions.id,
+            resolution.usagePackSubscriptionId,
+          ),
+          eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+          isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+          isNull(usagePackSubscriptions.stripeSubscriptionId),
+        ),
+      )
+      .returning({ id: usagePackSubscriptions.id });
+    if (refreshed.length !== 1) {
+      return { kind: "retry" };
+    }
     const attribution = definedAttribution(purchase.adAttribution);
     const payload: UsagePackPurchasePreviewToken = {
       version: 1,
@@ -1500,7 +1533,6 @@ async function confirmUsagePackPurchaseSnapshot(
             customerId: preview.customerId,
             usagePackSubscriptionId: preview.usagePackSubscriptionId,
           },
-          signal,
         ),
       },
       paidInvoice: null,
@@ -3235,13 +3267,32 @@ async function reconcileUsagePackSubscriptionCandidate(
   db: Db,
   stripe: StripeClient,
   candidate: UsagePackSubscriptionRow,
+  pendingSnapshotStaleBefore: Date,
   signal: AbortSignal,
 ): Promise<ReconcileUsagePackSubscriptionResult> {
   const orgIds = new Set<string>();
   let subscriptionId = candidate.stripeSubscriptionId;
   if (!subscriptionId && !candidate.stripeCheckoutSessionId) {
     await db.transaction(async (tx) => {
-      await retireUsagePackCheckout(tx, candidate.id);
+      await lockBillingPurchaseOrg(tx, candidate.orgId);
+      signal.throwIfAborted();
+      const [staleSnapshot] = await tx
+        .select({ id: usagePackSubscriptions.id })
+        .from(usagePackSubscriptions)
+        .where(
+          and(
+            eq(usagePackSubscriptions.id, candidate.id),
+            eq(usagePackSubscriptions.orgId, candidate.orgId),
+            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            isNull(usagePackSubscriptions.stripeSubscriptionId),
+            isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+            lte(usagePackSubscriptions.updatedAt, pendingSnapshotStaleBefore),
+          ),
+        )
+        .limit(1);
+      if (staleSnapshot) {
+        await retireUsagePackCheckout(tx, staleSnapshot.id);
+      }
     });
     signal.throwIfAborted();
     return { reconciled: 0, orgIds: [] };
@@ -3359,6 +3410,9 @@ export async function reconcileUsagePackSubscriptions(
   const staleBefore = new Date(
     at.getTime() - USAGE_PACK_RECONCILIATION_DELAY_MS,
   );
+  const pendingSnapshotStaleBefore = new Date(
+    at.getTime() - USAGE_PACK_PENDING_SNAPSHOT_STALE_MS,
+  );
   const candidates = await db
     .select()
     .from(usagePackSubscriptions)
@@ -3372,7 +3426,10 @@ export async function reconcileUsagePackSubscriptions(
             isNull(usagePackSubscriptions.stripeSubscriptionId),
             isNull(usagePackSubscriptions.stripeCheckoutSessionId),
             eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
-            lte(usagePackSubscriptions.updatedAt, staleBefore),
+            lte(
+              usagePackSubscriptions.updatedAt,
+              pendingSnapshotStaleBefore,
+            ),
           ),
           and(
             isNull(usagePackSubscriptions.stripeSubscriptionId),
@@ -3418,6 +3475,7 @@ export async function reconcileUsagePackSubscriptions(
       db,
       stripe,
       candidate,
+      pendingSnapshotStaleBefore,
       signal,
     );
     reconciled += result.reconciled;
