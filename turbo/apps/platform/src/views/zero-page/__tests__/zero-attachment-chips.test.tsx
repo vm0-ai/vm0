@@ -3005,7 +3005,7 @@ describe("zero attachment chips", () => {
       screen.getByLabelText("Open html preview for Okou site"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Open pdf preview for Okou report"),
+      screen.getByLabelText("Open pdf preview for report.pdf"),
     ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Open html preview for Lookalike site"),
@@ -3014,14 +3014,14 @@ describe("zero attachment chips", () => {
       screen.getByRole("link", { name: "Lookalike site" }),
     ).toHaveAttribute("href", lookalikeSiteUrl);
 
-    click(screen.getByLabelText("Open pdf preview for Okou report"));
+    click(screen.getByLabelText("Open pdf preview for report.pdf"));
 
     await waitFor(() => {
       expect(
         screen.getByTestId("artifact-dialog-document-frame"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByTitle("Okou report preview")).toHaveAttribute(
+    expect(screen.getByTitle("report.pdf preview")).toHaveAttribute(
       "src",
       `${okouArtifactUrl}#navpanes=0`,
     );
