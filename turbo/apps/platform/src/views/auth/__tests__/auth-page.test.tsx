@@ -376,6 +376,10 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-user-banned-error",
+      expect.stringContaining("support@vm0.ai"),
+    );
   });
 
   it("allows sign-in redirects to okou.ai subdomains", async () => {
@@ -419,6 +423,10 @@ describe("app auth pages", () => {
     expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
       "data-clerk-sign-in-email-code-subtitle",
       "to continue to Okou",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-user-banned-error",
+      expect.stringContaining("support@okou.ai"),
     );
     expect(screen.getByTestId("clerk-provider-config")).not.toHaveAttribute(
       "data-clerk-touch-session",

@@ -40,6 +40,10 @@ use self::runtime::run_snapshot_workflow;
 /// discards the uncommitted artifacts and returns the original publish error;
 /// any discard error is intentionally suppressed.
 ///
+/// The `config.id` value must satisfy the Firecracker-specific socket-ID
+/// contract documented on [`FirecrackerSnapshotProvider`]. Invalid IDs are
+/// rejected as [`SnapshotError::Setup`] before snapshot-output cleanup.
+///
 /// The current Rust workflow spans orchestration in this module, live VM execution in
 /// `snapshot/runtime.rs`, resource ownership and cleanup in `snapshot/attempt/`, and stable
 /// artifact publication in `snapshot/publish.rs`:

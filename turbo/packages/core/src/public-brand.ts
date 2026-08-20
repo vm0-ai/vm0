@@ -4,11 +4,23 @@ export interface PublicBrandPresentation {
   readonly [key: string]: string;
   readonly assistantName: "Zero" | "Okou";
   readonly brandName: "VM0" | "Okou";
+  readonly contactEmail: "contact@vm0.ai" | "contact@okou.ai";
+  readonly supportEmail: "support@vm0.ai" | "support@okou.ai";
 }
 
 const PUBLIC_BRAND_PRESENTATION = Object.freeze({
-  vm0: Object.freeze({ assistantName: "Zero", brandName: "VM0" }),
-  okou: Object.freeze({ assistantName: "Okou", brandName: "Okou" }),
+  vm0: Object.freeze({
+    assistantName: "Zero",
+    brandName: "VM0",
+    contactEmail: "contact@vm0.ai",
+    supportEmail: "support@vm0.ai",
+  }),
+  okou: Object.freeze({
+    assistantName: "Okou",
+    brandName: "Okou",
+    contactEmail: "contact@okou.ai",
+    supportEmail: "support@okou.ai",
+  }),
 }) satisfies Readonly<Record<PublicBrand, PublicBrandPresentation>>;
 
 export function publicBrandPresentation(

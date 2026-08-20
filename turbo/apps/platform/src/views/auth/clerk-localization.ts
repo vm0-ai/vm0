@@ -10,6 +10,7 @@ import {
   koKR,
   ptBR,
 } from "@clerk/localizations";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import type { TFunction } from "i18next";
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
@@ -40,6 +41,9 @@ export function getClerkLocalization(
   locale: SupportedLocale,
   t: TFunction<"common">,
 ) {
+  const supportEmail = publicBrandPresentation(
+    brandName === "Okou" ? "okou" : "vm0",
+  ).supportEmail;
   const localization =
     locale === "pt-BR"
       ? ptBR
@@ -75,7 +79,7 @@ export function getClerkLocalization(
         ($) => {
           return $.auth.clerk.userBanned;
         },
-        { brandName },
+        { brandName, supportEmail },
       ),
     },
   };
