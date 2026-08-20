@@ -2469,14 +2469,14 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "users",
     triggerName: "users_clerk_cleanup_transition_guard",
   },
-  // DB/API rollout bridge for #28304. Remove in #28372 after all pre-0952
+  // DB/API rollout bridge for #28304. Remove in #28372 after all pre-0953
   // pending snapshots and Checkout Sessions have drained or reconciled.
   {
     definition:
-      "CREATE TRIGGER sync_usage_pack_pending_snapshot_guard_0952 AFTER INSERT OR DELETE OR UPDATE OF org_id, subscription_status ON public.usage_pack_subscriptions FOR EACH ROW EXECUTE FUNCTION sync_usage_pack_pending_snapshot_guard_0952()",
+      "CREATE TRIGGER sync_usage_pack_pending_snapshot_guard_0953 AFTER INSERT OR DELETE OR UPDATE OF org_id, subscription_status ON public.usage_pack_subscriptions FOR EACH ROW EXECUTE FUNCTION sync_usage_pack_pending_snapshot_guard_0953()",
     schemaName: "public",
     tableName: "usage_pack_subscriptions",
-    triggerName: "sync_usage_pack_pending_snapshot_guard_0952",
+    triggerName: "sync_usage_pack_pending_snapshot_guard_0953",
   },
   // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
   // Previous API revisions explicitly insert NULL for omitted avatars. Remove
@@ -2516,7 +2516,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   // Same #28304 DB/API rollout bridge and #28372 removal gate as its trigger.
   {
     bodyHash: "ced36d9b55fb6907880d545aa7f36dbe",
-    functionName: "sync_usage_pack_pending_snapshot_guard_0952",
+    functionName: "sync_usage_pack_pending_snapshot_guard_0953",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -11605,7 +11605,7 @@ async function validateUsagePackPendingSnapshotSerializationMigration(): Promise
       [firstId, secondId, orgId],
     );
 
-    await applyMigrationsUpToTag(client, "0952_gifted_lifeguard");
+    await applyMigrationsUpToTag(client, "0953_blushing_venus");
     const seededGuards = await client.query<{
       orgId: string;
       pendingSnapshotCount: number;
@@ -11688,7 +11688,7 @@ async function validateUsagePackPendingSnapshotSerializationMigration(): Promise
     assert.deepEqual(replacementGuards.rows, [{ pendingSnapshotCount: 1 }]);
 
     console.log(
-      "   ✅ Dirty pre-0952 snapshots retain their exact pending count",
+      "   ✅ Dirty pre-0953 snapshots retain their exact pending count",
     );
     console.log(
       "   ✅ Concurrent reconciliation reaches zero before replacement\n",

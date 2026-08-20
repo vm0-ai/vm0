@@ -16,7 +16,7 @@ function preMigrationDatabaseUrl(): string {
 }
 
 describe("usage pack purchase rollout compatibility", () => {
-  it("keeps new purchase writers unavailable without the 0952 serialization invariant", async () => {
+  it("keeps new purchase writers unavailable without the 0953 serialization invariant", async () => {
     await expect(
       readUsagePackPurchaseSerializationSchemaAvailable(context),
     ).resolves.toBeTruthy();

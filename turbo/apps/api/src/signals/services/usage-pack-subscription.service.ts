@@ -476,10 +476,19 @@ export async function usagePackPurchaseSerializationSchemaAvailable(
 ): Promise<boolean> {
   const [state] = await db
     .select({
-      available:
-        sql`to_regclass('public.usage_pack_subscriptions') IS NOT NULL AND to_regclass('public.usage_pack_allocations') IS NOT NULL AND to_regclass('public.usage_pack_invoice_fulfillments') IS NOT NULL AND to_regclass('public.usage_pack_pending_snapshot_guards') IS NOT NULL AND to_regclass('public.uq_usage_pack_subscriptions_pending_org') IS NOT NULL`.mapWith(
-          pgBooleanDecoder,
-        ),
+      available: sql`to_regclass('public.usage_pack_subscriptions') IS NOT NULL
+          AND to_regclass('public.usage_pack_allocations') IS NOT NULL
+          AND to_regclass('public.usage_pack_invoice_fulfillments') IS NOT NULL
+          AND to_regclass('public.usage_pack_pending_snapshot_guards') IS NOT NULL
+          AND to_regclass('public.uq_usage_pack_subscriptions_pending_org') IS NOT NULL
+          AND to_regprocedure('public.sync_usage_pack_pending_snapshot_guard_0953()') IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM pg_trigger
+            WHERE tgrelid = to_regclass('public.usage_pack_subscriptions')
+              AND tgname = 'sync_usage_pack_pending_snapshot_guard_0953'
+              AND NOT tgisinternal
+          )`.mapWith(pgBooleanDecoder),
     })
     .from(sql`(SELECT 1) AS schema_probe`)
     .limit(1);
