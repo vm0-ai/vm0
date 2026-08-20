@@ -116,7 +116,7 @@ export const managedModelProviderFailureKindSchema = z.enum([
   "connection",
 ]);
 
-export const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
 
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
