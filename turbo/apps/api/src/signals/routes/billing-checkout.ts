@@ -143,6 +143,34 @@ const billingClerkUnavailable$ = command(
   },
 );
 
+class BillingClerkReadRateLimitError extends Error {
+  constructor(
+    readonly retryAfterSeconds: number,
+    cause: unknown,
+  ) {
+    super("Billing Clerk read rate limit exhausted", { cause });
+    this.name = "BillingClerkReadRateLimitError";
+  }
+}
+
+async function billingClerkRead<T>(
+  read: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  const result = await settle(read, signal);
+  if (result.ok) {
+    return result.value;
+  }
+  const rateLimit = clerkRateLimit(result.error);
+  if (!rateLimit) {
+    throw result.error;
+  }
+  throw new BillingClerkReadRateLimitError(
+    rateLimit.retryAfterSeconds,
+    result.error,
+  );
+}
+
 function withBillingClerkRateLimit<T>(
   handler$: Command<Promise<T>, [AbortSignal]>,
 ): Command<Promise<T | ReturnType<typeof providerUnavailable>>, [AbortSignal]> {
@@ -151,11 +179,10 @@ function withBillingClerkRateLimit<T>(
     if (result.ok) {
       return result.value;
     }
-    const rateLimit = clerkRateLimit(result.error);
-    if (!rateLimit) {
+    if (!(result.error instanceof BillingClerkReadRateLimitError)) {
       throw result.error;
     }
-    return set(billingClerkUnavailable$, rateLimit.retryAfterSeconds);
+    return set(billingClerkUnavailable$, result.error.retryAfterSeconds);
   });
 }
 
@@ -179,34 +206,37 @@ async function loadBillingOrganizationDirectory(
   const retryBudget = createClerkReadRetryBudget(now);
   const controller = new AbortController();
   const readSignal = AbortSignal.any([signal, controller.signal]);
-  const [memberships, invitations] = await onRejection(
-    Promise.all([
-      retryClerkRead(
-        () => {
-          return listAllOrganizationMemberships(
-            clerk.organizations,
-            orgId,
-            readSignal,
-          );
-        },
-        readSignal,
-        retryBudget,
-      ),
-      retryClerkRead(
-        () => {
-          return listAllPendingOrganizationInvitations(
-            clerk.organizations,
-            orgId,
-            readSignal,
-          );
-        },
-        readSignal,
-        retryBudget,
-      ),
-    ]),
-    () => {
-      controller.abort();
-    },
+  const [memberships, invitations] = await billingClerkRead(
+    onRejection(
+      Promise.all([
+        retryClerkRead(
+          () => {
+            return listAllOrganizationMemberships(
+              clerk.organizations,
+              orgId,
+              readSignal,
+            );
+          },
+          readSignal,
+          retryBudget,
+        ),
+        retryClerkRead(
+          () => {
+            return listAllPendingOrganizationInvitations(
+              clerk.organizations,
+              orgId,
+              readSignal,
+            );
+          },
+          readSignal,
+          retryBudget,
+        ),
+      ]),
+      () => {
+        controller.abort();
+      },
+    ),
+    signal,
   );
   controller.abort();
   signal.throwIfAborted();
@@ -333,16 +363,19 @@ async function validateUsagePackSubscriptionMembers(
     return "member_additions_unavailable";
   }
   const retryBudget = createClerkReadRetryBudget(now);
-  const memberships = await retryClerkRead(
-    () => {
-      return listAllOrganizationMemberships(
-        args.clerk.organizations,
-        args.orgId,
-        signal,
-      );
-    },
+  const memberships = await billingClerkRead(
+    retryClerkRead(
+      () => {
+        return listAllOrganizationMemberships(
+          args.clerk.organizations,
+          args.orgId,
+          signal,
+        );
+      },
+      signal,
+      retryBudget,
+    ),
     signal,
-    retryBudget,
   );
   signal.throwIfAborted();
   const activeMemberIds = memberships.map((membership) => {
