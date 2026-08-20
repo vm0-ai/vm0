@@ -589,6 +589,8 @@ describe("organization members settings", () => {
     mockUsagePackManagement();
     mockUsagePackCatalog();
     let previewCount = 0;
+    const purchaseError =
+      "Your payment method changed. Review the invitation again.";
     context.mocks.api(
       orgInviteContract.previewPurchase,
       ({ body, respond }) => {
@@ -613,8 +615,8 @@ describe("organization members settings", () => {
     context.mocks.api(orgInviteContract.confirmPurchase, ({ respond }) => {
       return respond(409, {
         error: {
-          code: "CONFLICT",
-          message: "Invitation purchase preview is no longer valid",
+          code: "INVITATION_PURCHASE_PAYMENT_METHOD_CHANGED",
+          message: purchaseError,
         },
       });
     });
@@ -649,6 +651,7 @@ describe("organization members settings", () => {
 
     const firstDialog = await openPurchase("first@example.com");
     click(buttonByText("Pay and invite", firstDialog));
+    await expect(screen.findByText(purchaseError)).resolves.toBeInTheDocument();
     await within(firstDialog).findByText(
       "Could not purchase this member package. Review your billing details and try again.",
     );

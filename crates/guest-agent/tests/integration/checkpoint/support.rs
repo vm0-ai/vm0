@@ -51,18 +51,7 @@ pub(super) fn checkpoint_session_metadata(
     let source = match runtime.config.framework {
         guest_agent::env::Framework::ClaudeCode => Some(
             guest_contracts::session_history_identity::SessionHistorySourceRef::ClaudeCode {
-                config_dir: runtime
-                    .config
-                    .user_env
-                    .get("CLAUDE_CONFIG_DIR")
-                    .filter(|value| !value.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        std::path::Path::new(&runtime.config.home_dir)
-                            .join(".claude")
-                            .to_string_lossy()
-                            .into_owned()
-                    }),
+                config_dir: runtime.config.claude_config_dir.clone(),
                 working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
                 session_id: session_id.clone(),
             },
@@ -132,10 +121,7 @@ pub(super) fn write_literal_session_history(
 ) -> Result<tempfile::TempDir, String> {
     let session_id_file = session_id_file();
     let dir = tempfile::tempdir().map_err(|e| format!("create temp history dir: {e}"))?;
-    runtime.config.user_env.insert(
-        "CLAUDE_CONFIG_DIR".to_string(),
-        dir.path().to_string_lossy().into_owned(),
-    );
+    runtime.config.claude_config_dir = dir.path().to_string_lossy().into_owned();
     let history_path = claude_history_path(dir.path(), session_id);
     let history_parent = history_path
         .parent()
@@ -185,10 +171,7 @@ pub(super) fn write_prunable_claude_history(
 
     let history_dir =
         tempfile::tempdir().map_err(|error| format!("create history dir: {error}"))?;
-    runtime.config.user_env.insert(
-        "CLAUDE_CONFIG_DIR".to_string(),
-        history_dir.path().to_string_lossy().into_owned(),
-    );
+    runtime.config.claude_config_dir = history_dir.path().to_string_lossy().into_owned();
     let history_path = claude_history_path(history_dir.path(), session_id);
     let history_parent = history_path
         .parent()

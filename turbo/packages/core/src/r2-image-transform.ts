@@ -1,7 +1,9 @@
 const R2_IMAGE_TRANSFORM_HOSTS = new Set([
   "cdn.vm0.io",
+  "cdn.okou.io",
   "cdn.vm7.io",
   "static.vm0.io",
+  "static.okou.io",
 ]);
 const R2_IMAGE_TRANSFORM_PREFIX = "/cdn-cgi/image/";
 

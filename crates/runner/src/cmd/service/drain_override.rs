@@ -18,6 +18,23 @@ pub(super) enum DrainRestartOverrideWrite {
     Replaced,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DrainRestartOverrideRemoval {
+    OverrideRemoved,
+    DirectoryRemoved,
+    AlreadyAbsent,
+}
+
+impl DrainRestartOverrideRemoval {
+    pub(super) const fn override_removed(self) -> bool {
+        matches!(self, Self::OverrideRemoved)
+    }
+
+    const fn reload_required(self) -> bool {
+        !matches!(self, Self::AlreadyAbsent)
+    }
+}
+
 pub(super) fn write_drain_restart_override(
     unit: &RunnerServiceUnit,
 ) -> RunnerResult<DrainRestartOverrideWrite> {
@@ -26,6 +43,12 @@ pub(super) fn write_drain_restart_override(
 
 /// Returns whether cleanup found state that warrants reloading systemd.
 pub(super) fn remove_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+    remove_drain_restart_override_outcome(unit).map(DrainRestartOverrideRemoval::reload_required)
+}
+
+pub(super) fn remove_drain_restart_override_outcome(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<DrainRestartOverrideRemoval> {
     remove_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
 
@@ -68,11 +91,14 @@ fn write_drain_restart_override_at(
     Ok(outcome)
 }
 
-fn remove_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+fn remove_drain_restart_override_at(
+    root: &Path,
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<DrainRestartOverrideRemoval> {
     let path = drain_restart_override_path_at(root, unit);
     cleanup_unit_staging_files(&path)?;
 
-    let mut changed = match std::fs::remove_file(&path) {
+    let override_removed = match std::fs::remove_file(&path) {
         Ok(()) => true,
         Err(e) if e.kind() == ErrorKind::NotFound => false,
         Err(e) => {
@@ -84,19 +110,26 @@ fn remove_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> Ru
     };
 
     let dir = drain_restart_override_dir_at(root, unit);
-    match std::fs::remove_dir(&dir) {
-        Ok(()) => changed = true,
-        Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty) => {}
+    let directory_removed = match std::fs::remove_dir(&dir) {
+        Ok(()) => true,
+        Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty) => false,
         Err(e) => {
             warn!(
                 directory = %dir.display(),
                 error = %e,
                 "failed to remove empty drain restart override directory"
             );
+            false
         }
-    }
+    };
 
-    Ok(changed)
+    Ok(if override_removed {
+        DrainRestartOverrideRemoval::OverrideRemoved
+    } else if directory_removed {
+        DrainRestartOverrideRemoval::DirectoryRemoved
+    } else {
+        DrainRestartOverrideRemoval::AlreadyAbsent
+    })
 }
 
 #[cfg(test)]
@@ -170,7 +203,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let unit = service_unit();
 
-        assert!(!remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+        let outcome = remove_drain_restart_override_at(dir.path(), &unit).unwrap();
+
+        assert_eq!(outcome, DrainRestartOverrideRemoval::AlreadyAbsent);
+        assert!(!outcome.reload_required());
     }
 
     #[test]
@@ -180,7 +216,10 @@ mod tests {
         let drop_in_dir = drain_restart_override_dir_at(dir.path(), &unit);
         std::fs::create_dir(&drop_in_dir).unwrap();
 
-        assert!(remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+        let outcome = remove_drain_restart_override_at(dir.path(), &unit).unwrap();
+
+        assert_eq!(outcome, DrainRestartOverrideRemoval::DirectoryRemoved);
+        assert!(outcome.reload_required());
 
         assert!(!drop_in_dir.exists());
     }
@@ -192,7 +231,10 @@ mod tests {
         let drop_in_dir = drain_restart_override_dir_at(dir.path(), &unit);
 
         write_drain_restart_override_at(dir.path(), &unit).unwrap();
-        assert!(remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+        assert_eq!(
+            remove_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideRemoval::OverrideRemoved
+        );
 
         assert!(!drop_in_dir.exists());
     }
@@ -206,7 +248,10 @@ mod tests {
 
         write_drain_restart_override_at(dir.path(), &unit).unwrap();
         std::fs::write(&other, "[Service]\nEnvironment=EXTRA=1\n").unwrap();
-        assert!(remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+        assert_eq!(
+            remove_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideRemoval::OverrideRemoved
+        );
 
         assert!(drop_in_dir.exists());
         assert!(other.exists());
@@ -224,7 +269,10 @@ mod tests {
         let path = drain_restart_override_path_at(dir.path(), &unit);
         std::fs::write(&path, DRAIN_DROP_IN_CONTENT).unwrap();
 
-        assert!(remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+        assert_eq!(
+            remove_drain_restart_override_at(dir.path(), &unit).unwrap(),
+            DrainRestartOverrideRemoval::OverrideRemoved
+        );
 
         assert!(!path.exists());
         assert!(

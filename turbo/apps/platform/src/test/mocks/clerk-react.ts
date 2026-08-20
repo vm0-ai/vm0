@@ -45,6 +45,7 @@ interface ClerkProviderProps {
       emailCode?: { subtitle?: string };
       start?: { title?: string };
     };
+    unstable__errors?: { user_banned?: string };
   };
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;
@@ -65,6 +66,8 @@ export function ClerkProvider({
       "data-clerk-sign-in-email-code-subtitle":
         localization?.signIn?.emailCode?.subtitle,
       "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
+      "data-clerk-user-banned-error":
+        localization?.unstable__errors?.user_banned,
       "data-clerk-touch-session":
         touchSession === undefined ? undefined : String(touchSession),
       "data-testid": "clerk-provider-config",

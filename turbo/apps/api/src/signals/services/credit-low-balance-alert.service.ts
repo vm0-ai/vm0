@@ -12,9 +12,11 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import {
   clerk$,
+  createClerkReadContext,
   type ClerkClient,
   type ClerkOrganizationMembership,
 } from "../external/clerk";
+import { listAllOrganizationMemberships } from "../external/clerk-organization-lists";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import {
@@ -32,7 +34,6 @@ type OrganizationMembership = ClerkOrganizationMembership;
 export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 
 const L = logger("CreditLowBalanceAlert");
-const ORG_MEMBERSHIP_PAGE_SIZE = 100;
 function billingCreditsUrl(publicBrand: PublicBrand): string {
   return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/?settings=billing&billingView=credits`;
 }
@@ -54,26 +55,6 @@ interface OrgMemberCacheRow {
   readonly userId: string;
   readonly role: "admin" | "member";
   readonly cachedAt: Date;
-}
-
-async function listCurrentOrgMemberships(
-  clerk: ClerkClient,
-  orgId: string,
-  signal: AbortSignal,
-): Promise<OrganizationMembership[]> {
-  const memberships: OrganizationMembership[] = [];
-  for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
-    const page = await clerk.organizations.getOrganizationMembershipList({
-      organizationId: orgId,
-      limit: ORG_MEMBERSHIP_PAGE_SIZE,
-      offset,
-    });
-    signal.throwIfAborted();
-    memberships.push(...page.data);
-    if (page.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
-      return memberships;
-    }
-  }
 }
 
 function membershipUserId(
@@ -254,9 +235,10 @@ export const enqueueCreditLowBalanceAlert$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     const clerk = get(clerk$);
-    const memberships = await listCurrentOrgMemberships(
-      clerk,
+    const memberships = await listAllOrganizationMemberships(
+      clerk.organizations,
       args.orgId,
+      createClerkReadContext(),
       signal,
     );
     await refreshOrgMemberCache(db, args.orgId, memberships);

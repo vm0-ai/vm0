@@ -91,7 +91,7 @@ export function userFeatureSwitchOverridesFromRows(
 }
 
 async function loadUserFeatureSwitchOverrides(
-  db: ReadonlyDb,
+  db: Pick<ReadonlyDb, "select">,
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
@@ -122,7 +122,7 @@ export function userFeatureSwitchOverrides(
 }
 
 export async function loadUserFeatureSwitchContext(
-  db: ReadonlyDb,
+  db: Pick<ReadonlyDb, "select">,
   orgId: string,
   userId: string,
 ): Promise<FeatureSwitchContext> {

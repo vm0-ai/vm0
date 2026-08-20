@@ -91,7 +91,7 @@ function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
 }
 
 function configureProvider(): void {
-  mockEnv("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN", "test-google-weather-key");
+  mockEnv("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN", "test-google-weather-key");
 }
 
 async function prepareFreeWeatherActor(
@@ -139,7 +139,7 @@ describe("okou weather route", () => {
   it("returns not configured before calling Google Weather", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
-    mockEnv("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN", undefined);
+    mockEnv("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN", undefined);
     server.use(
       http.get(GOOGLE_WEATHER_CURRENT_URL, () => {
         providerRequests += 1;
@@ -166,7 +166,6 @@ describe("okou weather route", () => {
       "OKOU_WEATHER_GOOGLE_WEATHER_TOKEN",
       "test-okou-google-weather-key",
     );
-    mockEnv("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN", "ignored-zero-key");
     let providerUrl: URL | undefined;
     server.use(
       http.get(GOOGLE_WEATHER_CURRENT_URL, ({ request }) => {

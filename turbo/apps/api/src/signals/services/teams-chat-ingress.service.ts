@@ -5,6 +5,10 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
+import {
+  loadNewChatThreadMediaModels,
+  type NewChatThreadMediaModels,
+} from "./chat-thread-media-model.service";
 import type { Tx } from "../../lib/db-types";
 
 interface TeamsChatThreadRouteKey {
@@ -65,6 +69,12 @@ async function loadRoute(
   return route;
 }
 
+interface CreatedTeamsChatThread {
+  readonly id: string;
+  readonly createdAt: Date;
+  readonly mediaModels: NewChatThreadMediaModels;
+}
+
 async function createCanonicalTeamsChatThread(
   tx: TeamsChatThreadTransaction,
   args: TeamsChatThreadRouteKey & {
@@ -75,7 +85,11 @@ async function createCanonicalTeamsChatThread(
     readonly currentTime: Date;
   },
   computerUseHostId: string | null = null,
-) {
+): Promise<CreatedTeamsChatThread> {
+  const mediaModels = await loadNewChatThreadMediaModels(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await tx
     .insert(chatThreads)
     .values({
@@ -89,12 +103,13 @@ async function createCanonicalTeamsChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
+      ...mediaModels,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
     throw new Error("Failed to create canonical Teams chat thread");
   }
-  return thread;
+  return { ...thread, mediaModels };
 }
 
 async function appendCanonicalTeamsChatThreadCreatedEvent(
@@ -105,7 +120,7 @@ async function appendCanonicalTeamsChatThreadCreatedEvent(
     readonly selectedModel: string | null;
     readonly serviceTier: ChatThreadServiceTier | null;
   },
-  thread: { readonly id: string; readonly createdAt: Date },
+  thread: CreatedTeamsChatThread,
   computerUseHostId: string | null | undefined,
 ): Promise<void> {
   await appendChatThreadEvent(tx, {
@@ -118,6 +133,7 @@ async function appendCanonicalTeamsChatThreadCreatedEvent(
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
     computerUseHostId,
+    ...thread.mediaModels,
     createdAt: thread.createdAt,
   });
 }

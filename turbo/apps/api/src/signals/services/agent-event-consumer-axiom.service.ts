@@ -255,15 +255,11 @@ export async function ingestAxiomEvents(
       eventData: eventDataForAxiom(payload.runId, event, encoder),
     };
   });
-  const ingestSignal = AbortSignal.any([
-    signal,
-    AbortSignal.timeout(AXIOM_EVENT_INGEST_TIMEOUT_MS),
-  ]);
-
   const result = await ingestAxiomDirect(
     getDatasetName(AGENT_RUN_EVENTS_DATASET),
     axiomEvents,
-    ingestSignal,
+    AXIOM_EVENT_INGEST_TIMEOUT_MS,
+    signal,
   );
   signal.throwIfAborted();
   if (!result.configured) {

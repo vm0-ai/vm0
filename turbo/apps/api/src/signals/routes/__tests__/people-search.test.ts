@@ -156,7 +156,7 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProvider(): void {
-  mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", "test-people-search-token");
+  mockEnv("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN", "test-people-search-token");
 }
 
 function defaultRequest(
@@ -627,7 +627,7 @@ describe("okou people-search route", () => {
         return HttpResponse.json(providerResponse());
       }),
     );
-    mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
+    mockEnv("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
     const noCredential = await accept(
       client(pricing.resolution)(peopleSearchContract).search({
         headers: authenticate(actor),

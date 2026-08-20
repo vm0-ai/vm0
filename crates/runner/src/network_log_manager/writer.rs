@@ -36,9 +36,8 @@ impl Default for WriterConfig {
     }
 }
 
-#[derive(Clone)]
 pub(super) struct WriterPool {
-    shards: Arc<Vec<mpsc::Sender<AcceptedAppend>>>,
+    shards: Vec<mpsc::Sender<AcceptedAppend>>,
 }
 
 struct PathWriteBatch {
@@ -75,9 +74,7 @@ impl WriterPool {
                 write_gate.clone(),
             )));
         }
-        Self {
-            shards: Arc::new(shards),
-        }
+        Self { shards }
     }
 
     pub(super) fn sender_for_path(&self, path: &Path) -> Option<mpsc::Sender<AcceptedAppend>> {

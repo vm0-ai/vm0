@@ -295,6 +295,66 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
   });
 
+  it("shows Claude Consumer Terms guidance without provider context", () => {
+    const rawRunError =
+      "API Error: 400 We've updated our Consumer Terms and Privacy Policy. You'll need to accept them in claude.ai with the email in /status to continue.";
+    const expectedMessage =
+      "Claude Code requires acceptance of updated Consumer Terms and Privacy Policy. Sign in to https://claude.ai with the Claude account connected in Model Providers, accept the updated terms and policy, then retry.";
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(expectedMessage);
+    expect(isActionableRunError(rawRunError)).toBe(true);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(false);
+    expect(isActionableRunError(expectedMessage)).toBe(true);
+    expect(isGenericRunErrorForDisplay(expectedMessage)).toBe(false);
+  });
+
+  it("appends Model Providers to Claude Consumer Terms guidance", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "api error: 400 PLEASE ACCEPT the updated PRIVACY POLICY and CONSUMER TERMS at CLAUDE.AI before continuing.",
+        claudeCodeCredentialRecovery: {
+          modelProviderType: "claude-code-oauth-token",
+          modelProviderCredentialScope: "member",
+          canManageOrgModelProviders: false,
+          modelProvidersUrl: "https://app.example.test/?settings=model",
+        },
+      }),
+    ).toBe(
+      "Claude Code requires acceptance of updated Consumer Terms and Privacy Policy. Sign in to https://claude.ai with the Claude account connected in Model Providers, accept the updated terms and policy, then retry.\n\nOpen Model Providers: https://app.example.test/?settings=model",
+    );
+  });
+
+  it("keeps incomplete Claude Consumer Terms messages generic", () => {
+    for (const rawRunError of [
+      "We've updated our Consumer Terms and Privacy Policy. Accept them in claude.ai.",
+      "API Error: 400 We've updated our Service Terms and Privacy Policy. Accept them in claude.ai.",
+      "API Error: 400 We've updated our Consumer Terms. Accept them in claude.ai.",
+      "API Error: 400 We've updated our Consumer Terms and Privacy Policy. Review them in claude.ai.",
+      "API Error: 400 We've updated our Consumer Terms and Privacy Policy. Accept them to continue.",
+      "API Error: 400 request rejected by the provider",
+      "API Error: 400-error Consumer Terms and Privacy Policy must be accepted at claude.ai.",
+      "API Error: 4000 Consumer Terms and Privacy Policy must be accepted at claude.ai.",
+      "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+      "API Error: 529 upstream failed",
+    ]) {
+      expect(
+        formatRunErrorForExternalSurface({
+          code: "UNKNOWN",
+          message: rawRunError,
+        }),
+      ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+      expect(isActionableRunError(rawRunError)).toBe(false);
+      expect(isGenericRunErrorForDisplay(rawRunError)).toBe(true);
+    }
+  });
+
   it("keeps unrelated Claude limit errors generic", () => {
     const unrelatedClaudeLimit =
       "Claude process memory limit reached while preparing the sandbox.";

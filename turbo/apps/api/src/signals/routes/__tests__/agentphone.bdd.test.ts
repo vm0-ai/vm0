@@ -9,6 +9,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
+
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -33,6 +36,7 @@ import {
   type AgentPhoneSendCapture,
 } from "./helpers/api-bdd-agentphone";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -537,6 +541,17 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a linked AgentPhone actor to own an org");
+    }
+    // Ingress-created threads take the same creation-time media pin as web
+    // threads, so this thread is the representative coverage for the ingress
+    // wiring of that pin.
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.VideoModelSelection]: true },
+    );
 
     const smsMessageId = await ap.postAgentPhoneInboundMessage({
       channel: "sms",
@@ -605,6 +620,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     if (!thread) {
       throw new Error("Expected AgentPhone ingress to create a chat thread");
     }
+    expect(thread).toMatchObject({
+      selectedVideoModel: DEFAULT_VIDEO_MODEL,
+    });
     const phoneEvents = await chat.listThreadEvents(actor, thread.chatThreadId);
     expect(
       phoneEvents.events.some((event) => {

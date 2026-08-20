@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.74.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.14...guest-agent-v0.74.15) (2026-08-20)
+
+
+### Bug Fixes
+
+* **guest:** isolate managed codex home from user home ([#28264](https://github.com/vm0-ai/vm0/issues/28264)) ([d4274c2](https://github.com/vm0-ai/vm0/commit/d4274c2ab1236f0be82390a7598798961b6b0a57))
+
+
+### Documentation
+
+* **rust:** document guest-agent helper protocol ([#28271](https://github.com/vm0-ai/vm0/issues/28271)) ([19c84f4](https://github.com/vm0-ai/vm0/commit/19c84f4ee6c75d80aa875aa158fb2f2d3288f37f))
+
 ## [0.74.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.13...guest-agent-v0.74.14) (2026-08-20)
 
 

@@ -125,6 +125,7 @@ interface InvoiceInput {
     readonly data: readonly {
       readonly id?: string;
       readonly amount?: number | null;
+      readonly discount_amounts?: readonly { readonly amount: number }[] | null;
       readonly subtotal?: number | null;
       readonly quantity?: number | null;
       readonly metadata?: Record<string, string> | null;
@@ -135,6 +136,12 @@ interface InvoiceInput {
         } | null;
       } | null;
       readonly proration?: boolean;
+      readonly taxes?:
+        | readonly {
+            readonly amount: number;
+            readonly tax_behavior: "exclusive" | "inclusive";
+          }[]
+        | null;
       readonly period: { readonly start?: number; readonly end: number };
       readonly parent: {
         readonly type: "subscription_item_details" | "invoice_item_details";
@@ -3792,12 +3799,14 @@ async function handleCheckoutCompleted(
   getClerk: ClerkClientProvider,
   session: CheckoutSessionInput,
   paidAt: Date,
+  signal: AbortSignal,
 ): Promise<CheckoutCompletedOutcome> {
   const usagePackInvitation = await handleUsagePackInvitationCheckoutPaid(
     db,
     getClerk(),
     session,
     paidAt,
+    signal,
   );
   if (usagePackInvitation.handled) {
     return {
@@ -3989,6 +3998,7 @@ async function handleInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
+  signal: AbortSignal,
 ): Promise<string | null> {
   const migrationResult = await handleUsagePackMigrationInvoicePaid(
     db,
@@ -4002,6 +4012,7 @@ async function handleInvoicePaid(
     db,
     getClerk(),
     invoice,
+    signal,
   );
   if (invitationResult.handled) {
     return invitationResult.orgId;
@@ -4924,7 +4935,7 @@ export async function reconcileStripeSubscriptionSnapshot(
     signal,
   );
   const invoiceOrgId = paidInvoice
-    ? await handleInvoicePaid(db, getClerk, paidInvoice)
+    ? await handleInvoicePaid(db, getClerk, paidInvoice, signal)
     : null;
   signal.throwIfAborted();
   if (invoiceOrgId) {
@@ -5000,6 +5011,7 @@ export const reconcilePaidStripeCheckoutSession$ = command(
       getClerk,
       input.session,
       input.paidAt,
+      signal,
     );
     signal.throwIfAborted();
 
@@ -5026,7 +5038,7 @@ export const reconcilePaidStripeInvoice$ = command(
     const getClerk = (): ClerkClient => {
       return get(clerk$);
     };
-    const orgId = await handleInvoicePaid(db, getClerk, invoice);
+    const orgId = await handleInvoicePaid(db, getClerk, invoice, signal);
     signal.throwIfAborted();
     if (!orgId) {
       return null;
@@ -5069,6 +5081,7 @@ export const handleStripeWebhookEvent$ = command(
             getClerk(),
             event.object,
             new Date(event.created * 1000),
+            signal,
           );
         signal.throwIfAborted();
         if (usagePackInvitation.handled) {
@@ -5087,6 +5100,7 @@ export const handleStripeWebhookEvent$ = command(
           getClerk,
           event.object,
           new Date(event.created * 1000),
+          signal,
         );
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
@@ -5103,6 +5117,7 @@ export const handleStripeWebhookEvent$ = command(
           db,
           getClerk,
           event.object,
+          signal,
         );
         signal.throwIfAborted();
         drainOrgId = paidDrainOrgId;

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.230](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.229...sandbox-fc-v0.37.230) (2026-08-20)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound firecracker child file descriptor tables ([#28318](https://github.com/vm0-ai/vm0/issues/28318)) ([09e2cf9](https://github.com/vm0-ai/vm0/commit/09e2cf926dfe6718cb05b1bd1c3c57acd1f2bc70))
+
+
+### Refactoring
+
+* **rust:** centralize process output validation ([#28277](https://github.com/vm0-ai/vm0/issues/28277)) ([8e6e25c](https://github.com/vm0-ai/vm0/commit/8e6e25c954c7b4a90d3ba9d9cca7eb87090581e9))
+
 ## [0.37.229](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.228...sandbox-fc-v0.37.229) (2026-08-20)
 
 

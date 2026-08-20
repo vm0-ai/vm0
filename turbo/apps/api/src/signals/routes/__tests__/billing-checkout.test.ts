@@ -145,6 +145,15 @@ const TEST_PRICE_CUSTOM_CREDIT_UNIT = "price_test_custom_credit_unit";
 const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
 const STRIPE_WEBHOOK_SECRET = "whsec_checkout_test";
 
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly status = 429;
+
+  constructor(readonly retryAfter: number) {
+    super("Clerk Backend API rate limit exceeded");
+  }
+}
+
 interface BillingOrgFixture {
   readonly orgId: string;
   readonly userId: string;
@@ -261,6 +270,15 @@ function createOrgFixture(orgId = `org_${randomUUID()}`): BillingOrgFixture {
   return {
     orgId,
     userId: `user_${randomUUID()}`,
+  };
+}
+
+function usagePackCheckoutBody(memberId: string) {
+  return {
+    tier: "pro" as const,
+    memberUsagePacks: [{ memberId, usagePackUsd: 20 as const }],
+    successUrl: `${APP_ORIGIN}/billing?billing=success`,
+    cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
   };
 }
 
@@ -2475,6 +2493,255 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       limit: 100,
       offset: 100,
     });
+  });
+
+  it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
+    const fixture = createOrgFixture();
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockResolvedValue({
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      });
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValueOnce({
+      id: `cus_${randomUUID()}`,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValueOnce({
+      id: checkoutSessionId,
+      url: "https://checkout.stripe.com/session/usage-pack-recovered",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const checkoutCall =
+      context.mocks.stripe.checkout.sessions.create.mock.calls[0];
+    const usagePackSubscriptionId = checkoutCall
+      ? stripeInputMetadata(checkoutCall[0]).usagePackSubscriptionId
+      : undefined;
+    if (!usagePackSubscriptionId) {
+      throw new Error("Checkout did not expose its usage pack subscription ID");
+    }
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: true,
+        deleteOrgMetadata: true,
+      });
+    });
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/usage-pack-recovered",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
+      1,
+    );
+  });
+
+  it("returns a non-cacheable 503 when Clerk rate limits persist", async () => {
+    const fixture = createOrgFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(7),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Billing organization members are temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(response.headers.get("Retry-After")).toBe("7");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("preserves non-rate-limit Clerk checkout failures", async () => {
+    const fixture = createOrgFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new Error("Clerk membership read failed"),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("stops sibling Clerk pagination after checkout directory exhaustion", async () => {
+    const fixture = createOrgFixture();
+    const invitationPage = createDeferredPromise<{
+      readonly data: readonly {
+        readonly id: string;
+        readonly emailAddress: string;
+        readonly role: string;
+        readonly createdAt: number;
+      }[];
+    }>(context.signal);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockReturnValueOnce(
+      invitationPage.promise,
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.headers.get("Retry-After")).toBe("1");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationInvitationList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+
+    invitationPage.resolve({
+      data: Array.from({ length: 100 }, (_, index) => {
+        return {
+          id: `inv_${index}`,
+          emailAddress: `pending-${index}@example.com`,
+          role: "org:member",
+          createdAt: now(),
+        };
+      }),
+    });
+    await invitationPage.promise;
+    expect(
+      context.mocks.clerk.organizations.getOrganizationInvitationList,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops Clerk retries when usage pack checkout is cancelled", async () => {
+    const fixture = createOrgFixture();
+    const controller = new AbortController();
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    let retrySignal: AbortSignal | undefined;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected Clerk retry delay to receive a signal");
+      }
+      retrySignal = signal;
+      retryStarted.resolve();
+      return createDeferredPromise<void>(signal).promise;
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    const request = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackCheckoutContract,
+    ).create({
+      body: usagePackCheckoutBody(fixture.userId),
+      headers: { authorization: "Bearer clerk-session" },
+      fetchOptions: { signal: controller.signal },
+    });
+
+    await retryStarted.promise;
+    const abortError = new Error("usage pack checkout cancelled");
+    abortError.name = "AbortError";
+    controller.abort(abortError);
+    const response = await accept(request, [500]);
+
+    expect(response.status).toBe(500);
+    expect(retrySignal?.aborted).toBeTruthy();
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it.each(["pro", "team"] as const)(
@@ -5641,6 +5908,65 @@ describe("usage pack allocation management", () => {
         usagePackInvitationPurchaseId: purchase.purchaseId,
       },
     });
+  }
+
+  function mockSavedCardInvitationPayment(
+    purchase: InvitationPurchaseFixture,
+  ): string {
+    const paymentMethodId = `pm_invite_${randomUUID()}`;
+    const invoiceId = `in_invite_${randomUUID()}`;
+    const paymentIntentId = `pi_invite_${randomUUID()}`;
+    const metadata = {
+      purpose: "usage_pack_invitation_purchase",
+      usagePackInvitationPurchaseId: purchase.purchaseId,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...managedUsagePackSubscription(
+        purchase.fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      default_payment_method: paymentMethodId,
+    });
+    context.mocks.stripe.invoices.create.mockResolvedValue({
+      id: invoiceId,
+      metadata,
+      status: "draft",
+      hosted_invoice_url: null,
+    });
+    context.mocks.stripe.invoiceItems.create.mockResolvedValue({
+      id: `ii_invite_${randomUUID()}`,
+    });
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+      id: invoiceId,
+      status: "open",
+      hosted_invoice_url: `https://invoice.stripe.test/${invoiceId}`,
+    });
+    context.mocks.stripe.invoices.pay.mockResolvedValue({
+      id: invoiceId,
+      status: "paid",
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: invoiceId,
+      customer: purchase.fixture.customerId,
+      metadata,
+      status: "paid",
+      paid: true,
+      currency: "usd",
+      status_transitions: { paid_at: Math.floor(now() / 1000) },
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 1000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: paymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    return paymentIntentId;
   }
 
   async function postClerkInvitationAccepted(args: {
@@ -9623,6 +9949,118 @@ describe("usage pack allocation management", () => {
     expect(state.grants).toHaveLength(4);
   });
 
+  it("completes a fully discounted usage pack upgrade with nonrefundable credits", async () => {
+    mockNow(new Date("2035-01-20T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await enableSavedBillingPurchasePreview(fixture);
+    const paymentMethodId = `pm_${randomUUID()}`;
+    const oldSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      default_payment_method: paymentMethodId,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      oldSubscription,
+    );
+    mockUsagePackChangePreviews(0, 5000);
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackManagementContract,
+    );
+    const preview = await accept(
+      client.previewChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          memberId: userId,
+          targetUsagePackUsd: 50,
+          supportsInAppPreview: true,
+          returnUrl: `${APP_ORIGIN}/billing`,
+        },
+      }),
+      [200],
+    );
+    expect(preview.body.immediateAmountCents).toBe(0);
+    expect(preview.body.paymentMethodPreviewToken).toBeUndefined();
+    const prorationTimestamp = Math.floor(
+      new Date(preview.body.prorationDate).getTime() / 1000,
+    );
+    const invoice = {
+      ...managedUsagePackUpgradeInvoice(fixture, {
+        invoiceId: `in_zero_upgrade_${randomUUID()}`,
+        sourcePriceId: TEST_PRICE_USAGE_PACK_20,
+        targetPriceId: TEST_PRICE_USAGE_PACK_50,
+        prorationTimestamp,
+      }),
+      amount_due: 0,
+      currency: "usd",
+      paid: true,
+      lines: {
+        has_more: false,
+        data: managedUsagePackUpgradeInvoice(fixture, {
+          invoiceId: `in_zero_upgrade_lines_${randomUUID()}`,
+          sourcePriceId: TEST_PRICE_USAGE_PACK_20,
+          targetPriceId: TEST_PRICE_USAGE_PACK_50,
+          prorationTimestamp,
+        }).lines.data.map((line) => {
+          return { ...line, amount: 0, subtotal: 0 };
+        }),
+      },
+    };
+    const upgradedSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+      fixture.billingPeriod,
+      { latestInvoice: invoice },
+    );
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(oldSubscription)
+      .mockResolvedValue(upgradedSubscription);
+    context.mocks.stripe.subscriptions.update.mockResolvedValue(
+      upgradedSubscription,
+    );
+
+    const confirmed = await accept(
+      client.confirmChange({
+        params: { changeId: preview.body.changeId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    expect(confirmed.body.status).toBe("completed");
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.allocations).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ usagePackUsd: 20, status: "inactive" }),
+        expect.objectContaining({ usagePackUsd: 50, status: "active" }),
+      ]),
+    );
+    expect(state.grants).toContainEqual(
+      expect.objectContaining({
+        userId,
+        grantType: "purchased",
+        originalAmount: 15_000,
+      }),
+    );
+    expect(state.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        sourceType: "invoice",
+        sourceAmountCents: 0,
+        status: "available",
+      }),
+    );
+  });
+
   it("expires a failed pending upgrade without changing allocation or credits", async () => {
     const initialNow = new Date("2035-02-16T00:00:00.000Z");
     mockNow(initialNow);
@@ -10555,6 +10993,93 @@ describe("usage pack allocation management", () => {
     expect(state.org?.cancelAtPeriodEnd).toBeTruthy();
   });
 
+  it("removes a member when a legacy invoice has no refundable amount", async () => {
+    mockNow(new Date("2035-04-20T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const targetUserId = `user_${randomUUID()}`;
+    const targetEmail = `${targetUserId}@example.test`;
+    const fixture = await seedManagedUsagePack([
+      { userId: targetUserId, usagePackUsd: 20 },
+    ]);
+    await usagePackStateAction({
+      action: "delete-refund-source",
+      orgId: fixture.orgId,
+      userId: targetUserId,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: targetUserId }],
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          { publicUserData: { userId: fixture.userId } },
+          { publicUserData: { userId: targetUserId } },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.deleteOrganizationMembership.mockResolvedValue(
+      {},
+    );
+    const currentSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    context.mocks.stripe.subscriptions.update.mockResolvedValue(
+      currentSubscription,
+    );
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_zero_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 0,
+      refunds: [],
+    });
+
+    await accept(
+      setupApp({ context, routes: orgMembersRoutes })(
+        orgMembersContract,
+      ).removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: targetEmail },
+      }),
+      [200],
+    );
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.remainingCredits).toContainEqual({
+      userId: targetUserId,
+      amount: 0,
+    });
+    expect(state.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        sourceType: "invoice",
+        sourceAmountCents: 2000,
+        status: "succeeded",
+        requestedAmountCents: 2000,
+        refundedAmountCents: 0,
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.refunds.retrieve).not.toHaveBeenCalled();
+    expect(state.changes[0]).toStrictEqual(
+      expect.objectContaining({ kind: "removal", status: "scheduled" }),
+    );
+  });
+
   it.each(["pro", "team"] as const)(
     "requires a usage pack for managed %s invitation entitlements",
     async (tier) => {
@@ -10711,7 +11236,359 @@ describe("usage pack allocation management", () => {
       [404],
     );
 
-    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.code).toBe(
+      "INVITATION_PURCHASE_SUBSCRIPTION_NOT_FOUND",
+    );
+  });
+
+  it("explains when an invitation purchase targets an existing member", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const existingMemberEmail = `existing-${randomUUID()}@example.test`;
+    await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: existingMemberEmail,
+            },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: existingMemberEmail,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_INVITEE_UNAVAILABLE",
+      message: "This person is already a member or has a pending invitation.",
+    });
+  });
+
+  it("purchases, accepts, and removes a fully discounted invitation through Stripe", async () => {
+    mockNow(new Date("2035-02-16T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    const subscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      default_payment_method: null,
+      default_source: null,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: fixture.customerId,
+      invoice_settings: { default_payment_method: null },
+      default_source: null,
+    });
+    context.mocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: `${existingMemberUserId}@example.test`,
+            },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    mockUsagePackChangePreviews(0, 2000);
+    const email = `zero-proration-${randomUUID()}@example.test`;
+    const invitationId = `inv_zero_${randomUUID()}`;
+    const acceptedUserId = `user_zero_${randomUUID()}`;
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValue(
+      {
+        id: invitationId,
+        emailAddress: email,
+        organizationId: fixture.orgId,
+        status: "pending",
+      },
+    );
+
+    const client = setupApp({ context, routes: orgInviteRoutes })(
+      orgInviteContract,
+    );
+    const preview = await accept(
+      client.previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [200],
+    );
+    expect(preview.body).toStrictEqual({
+      purchaseId: expect.any(String),
+      usagePackUsd: 20,
+      immediateAmountCents: 0,
+      currency: "usd",
+      purchasedCredits: 10_000,
+      bonusCredits: 200,
+      totalCredits: 10_200,
+      currentPeriodEnd: new Date(
+        fixture.billingPeriod.end * 1000,
+      ).toISOString(),
+      expiresAt: expect.any(String),
+    });
+
+    const invoiceId = `in_zero_invite_${randomUUID()}`;
+    const metadata = {
+      purpose: "usage_pack_invitation_purchase",
+      usagePackInvitationPurchaseId: preview.body.purchaseId,
+    };
+    context.mocks.stripe.invoices.create.mockResolvedValue({
+      id: invoiceId,
+      customer: fixture.customerId,
+      metadata,
+      amount_due: 0,
+      currency: "usd",
+      status: "draft",
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    context.mocks.stripe.invoiceItems.create.mockResolvedValue({
+      id: `ii_zero_invite_${randomUUID()}`,
+    });
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+      id: invoiceId,
+      customer: fixture.customerId,
+      metadata,
+      amount_due: 0,
+      currency: "usd",
+      status: "paid",
+      paid: true,
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: invoiceId,
+      customer: fixture.customerId,
+      metadata,
+      amount_due: 0,
+      currency: "usd",
+      status: "paid",
+      paid: true,
+      hosted_invoice_url: null,
+      status_transitions: { paid_at: Math.floor(now() / 1000) },
+      payments: { data: [] },
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+
+    const confirmation = await accept(
+      client.confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: preview.body.purchaseId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(confirmation.body.message).toBe("Invitation purchased and sent");
+    expect(context.mocks.stripe.invoiceItems.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoice: invoiceId,
+        amount: 0,
+        currency: "usd",
+      }),
+      expect.any(Object),
+    );
+    expect(context.mocks.stripe.invoices.pay).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+
+    const pending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(pending.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({
+        status: "invitation_pending",
+        expectedAmountCents: 0,
+        amountPaidCents: 0,
+        stripePaymentIntentId: null,
+        clerkInvitationId: invitationId,
+      }),
+    );
+
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    const purchase: InvitationPurchaseFixture = {
+      fixture,
+      existingMemberUserId,
+      email,
+      purchaseId: preview.body.purchaseId,
+      paymentIntentId: `pi_unused_${randomUUID()}`,
+    };
+    await postClerkInvitationAccepted({
+      purchase,
+      invitationId,
+      userId: acceptedUserId,
+    });
+
+    const accepted = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(accepted.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({ status: "accepted", acceptedUserId }),
+    );
+    expect(
+      accepted.grants.filter((grant) => {
+        return grant.userId === acceptedUserId;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          grantType: "purchased",
+          originalAmount: 10_000,
+        }),
+        expect.objectContaining({ grantType: "bonus", originalAmount: 200 }),
+      ]),
+    );
+    expect(
+      accepted.refunds.filter((refund) => {
+        return refund.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([]);
+
+    context.mocks.stripe.subscriptions.update.mockClear();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 2]]),
+      ),
+    );
+    const removalEvent = {
+      type: "organizationMembership.deleted",
+      data: {
+        id: `mem_zero_${randomUUID()}`,
+        organization: { id: fixture.orgId },
+        publicUserData: { userId: acceptedUserId },
+        role: "org:member",
+      },
+    };
+    context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(removalEvent);
+    await accept(
+      setupApp({ context, routes: webhooksClerkRoutes })(
+        webhookClerkContract,
+      ).post({ body: JSON.stringify(removalEvent) }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const removed = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(
+      removed.allocations.find((allocation) => {
+        return allocation.userId === acceptedUserId;
+      })?.status,
+    ).toBe("inactive");
+    expect(removed.remainingCredits).toContainEqual({
+      userId: acceptedUserId,
+      amount: 0,
+    });
+    expect(
+      removed.refunds.filter((refund) => {
+        return refund.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([]);
+    expect(context.mocks.stripe.refunds.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      {
+        items: [{ id: `si_${TEST_PRICE_USAGE_PACK_20}`, quantity: 1 }],
+        proration_behavior: "none",
+      },
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("member-removal"),
+      }),
+    );
+  });
+
+  it("asks the buyer to restore a canceling subscription before inviting", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    const endingSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      endingSubscription,
+    );
+    await postManagedUsagePackEvent(
+      "customer.subscription.updated",
+      endingSubscription,
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: `canceling-${randomUUID()}@example.test`,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_SUBSCRIPTION_CANCELING",
+      message: "Restore your subscription before purchasing a member package.",
+    });
   });
 
   it("prices an invitation from only the added package proration", async () => {
@@ -10943,7 +11820,7 @@ describe("usage pack allocation management", () => {
     );
   });
 
-  it("previews and confirms an invitation with the saved payment method", async () => {
+  it("recovers a saved-card invitation from a transient post-payment Clerk rate limit", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
@@ -11061,7 +11938,11 @@ describe("usage pack allocation management", () => {
       }),
       [409],
     );
-    expect(supersededConfirmation.body.error.code).toBe("CONFLICT");
+    expect(supersededConfirmation.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_INACTIVE",
+      message:
+        "This invitation purchase is no longer active. Review the invitation again.",
+    });
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
 
     const metadata = {
@@ -11108,6 +11989,32 @@ describe("usage pack allocation management", () => {
       },
     };
     context.mocks.stripe.invoices.retrieve.mockResolvedValue(paidInvoice);
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockResolvedValueOnce({
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: `${existingMemberUserId}@example.test`,
+            },
+            createdAt: now(),
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockResolvedValue({
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: `${existingMemberUserId}@example.test`,
+            },
+            createdAt: now(),
+          },
+        ],
+      });
 
     const confirmed = await accept(
       client.confirmPurchase({
@@ -11119,6 +12026,10 @@ describe("usage pack allocation management", () => {
     );
 
     expect(confirmed.body.message).toBe("Invitation purchased and sent");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
     expect(context.mocks.stripe.invoices.create).toHaveBeenCalledWith(
       {
         customer: fixture.customerId,
@@ -11228,6 +12139,303 @@ describe("usage pack allocation management", () => {
         usagePackUsd: 20,
       }),
     ]);
+  });
+
+  it("returns a retryable 503 before starting payment when Clerk rate limits persist", async () => {
+    const purchase = await beginInvitationPurchase();
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(7),
+    );
+    context.mocks.stripe.invoices.createPreview.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: `rate-limited-${randomUUID()}@example.test`,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Billing organization members are temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(response.headers.get("Retry-After")).toBe("7");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+    expect(
+      (
+        await readUsagePackState(
+          purchase.fixture.orgId,
+          purchase.fixture.usagePackSubscriptionId,
+        )
+      ).invitationPurchases,
+    ).toHaveLength(1);
+  });
+
+  it("preserves non-rate-limit Clerk invitation purchase failures", async () => {
+    const purchase = await beginInvitationPurchase();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new Error("Clerk membership read failed"),
+    );
+    context.mocks.stripe.invoices.createPreview.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: `failed-${randomUUID()}@example.test`,
+          role: "member",
+          usagePackUsd: 20,
+        },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(response.headers.get("Retry-After")).toBeNull();
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+    expect(
+      (
+        await readUsagePackState(
+          purchase.fixture.orgId,
+          purchase.fixture.usagePackSubscriptionId,
+        )
+      ).invitationPurchases,
+    ).toHaveLength(1);
+  });
+
+  it("stops Clerk retries when an invitation purchase is cancelled", async () => {
+    await beginInvitationPurchase();
+    const controller = new AbortController();
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    let retrySignal: AbortSignal | undefined;
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected Clerk retry delay to receive a signal");
+      }
+      retrySignal = signal;
+      retryStarted.resolve();
+      return createDeferredPromise<void>(signal).promise;
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+    context.mocks.stripe.invoices.createPreview.mockClear();
+    const request = setupApp({ context, routes: orgInviteRoutes })(
+      orgInviteContract,
+    ).previewPurchase({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        email: `cancelled-${randomUUID()}@example.test`,
+        role: "member",
+        usagePackUsd: 20,
+      },
+      fetchOptions: { signal: controller.signal },
+    });
+
+    await retryStarted.promise;
+    const abortError = new Error("invitation purchase cancelled");
+    abortError.name = "AbortError";
+    controller.abort(abortError);
+    expect(retrySignal?.aborted).toBeTruthy();
+    const response = await accept(request, [500]);
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("resumes invitation creation after a persistent post-payment Clerk rate limit", async () => {
+    const purchase = await beginInvitationPurchase();
+    const paymentIntentId = mockSavedCardInvitationPayment(purchase);
+    const invitationId = `inv_resumed_${randomUUID()}`;
+    const existingMember = {
+      publicUserData: {
+        userId: purchase.existingMemberUserId,
+        identifier: `${purchase.existingMemberUserId}@example.test`,
+      },
+      createdAt: now(),
+    };
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockResolvedValueOnce({ data: [existingMember] })
+      .mockRejectedValue(new ClerkApiResponseTestError(9));
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    const client = setupApp({ context, routes: orgInviteRoutes })(
+      orgInviteContract,
+    );
+
+    const limited = await accept(
+      client.confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: purchase.purchaseId },
+        body: {},
+      }),
+      [503],
+    );
+
+    expect(limited.headers.get("Retry-After")).toBe("9");
+    expect(limited.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+    const paid = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(paid.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({
+        status: "payment_succeeded",
+        stripePaymentIntentId: paymentIntentId,
+        clerkInvitationId: null,
+        allocationId: null,
+      }),
+    );
+    expect(context.mocks.stripe.invoices.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledTimes(1);
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [existingMember] },
+    );
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+      {
+        id: invitationId,
+        emailAddress: purchase.email,
+        organizationId: purchase.fixture.orgId,
+        status: "pending",
+      },
+    );
+    const resumed = await accept(
+      client.confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: purchase.purchaseId },
+        body: {},
+      }),
+      [200],
+    );
+
+    expect(resumed.body.message).toBe("Invitation purchased and sent");
+    expect(context.mocks.stripe.invoices.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledTimes(1);
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledTimes(1);
+    const completed = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(completed.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({
+        status: "invitation_pending",
+        clerkInvitationId: invitationId,
+      }),
+    );
+  });
+
+  it("does not reclassify a Clerk invitation mutation rate limit as a retryable read", async () => {
+    const purchase = await beginInvitationPurchase();
+    mockSavedCardInvitationPayment(purchase);
+    const existingMember = {
+      publicUserData: {
+        userId: purchase.existingMemberUserId,
+        identifier: `${purchase.existingMemberUserId}@example.test`,
+      },
+      createdAt: now(),
+    };
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [existingMember] },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockRejectedValueOnce(
+      new ClerkApiResponseTestError(4),
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: purchase.purchaseId },
+        body: {},
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(response.headers.get("Retry-After")).toBeNull();
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledTimes(1);
+    const state = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(state.invitationPurchases[0]?.status).toBe("creating_invitation");
+  });
+
+  it("rejects an invalid invitation payment preview with a stable error", async () => {
+    const purchase = await beginInvitationPurchase();
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: purchase.purchaseId },
+        body: { paymentMethodPreviewToken: "invalid-preview-token" },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "INVITATION_PURCHASE_PREVIEW_INVALID",
+      message:
+        "This invitation purchase preview is no longer valid. Review the invitation again.",
+    });
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
   });
 
   it("returns a hosted invoice for a pending invitation payment to an older client", async () => {

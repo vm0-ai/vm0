@@ -102,8 +102,8 @@ async function credits(actor: OrgApiTestUser): Promise<number> {
 }
 
 function configureProviders(): void {
-  mockEnv("ZERO_SEO_DATAFORSEO_LOGIN", "test-dataforseo-login");
-  mockEnv("ZERO_SEO_DATAFORSEO_PASSWORD", "test-dataforseo-password");
+  mockEnv("OKOU_SEO_DATAFORSEO_LOGIN", "test-dataforseo-login");
+  mockEnv("OKOU_SEO_DATAFORSEO_PASSWORD", "test-dataforseo-password");
 }
 
 function dataForSeoResponse(cost: number, result: unknown) {

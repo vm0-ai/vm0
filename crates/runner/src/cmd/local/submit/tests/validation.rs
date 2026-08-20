@@ -1,10 +1,17 @@
 use std::process::ExitCode;
 
-use super::super::{MAX_LOCAL_SUBMIT_TIMEOUT_SECS, SubmitArgs, run_submit_with_home};
+use super::super::{MAX_LOCAL_SUBMIT_TIMEOUT_SECS, SubmitArgs, SubmitPlan, run_submit_with_home};
 use super::support::{run_submit_and_write_success, submit_args_for_test};
 use crate::error::RunnerError;
 use crate::local_queue;
 use crate::paths::HomePaths;
+
+fn prompt_len_for_serialized_job_size(root: &std::path::Path, target_bytes: usize) -> usize {
+    let mut args = submit_args_for_test();
+    args.prompt.clear();
+    let plan = SubmitPlan::from_args(args, HomePaths::with_root(root.to_path_buf())).unwrap();
+    target_bytes.checked_sub(plan.request_json.len()).unwrap()
+}
 
 #[tokio::test]
 async fn rejects_invalid_profile_name() {
@@ -163,6 +170,56 @@ async fn oversized_timeouts_are_rejected_before_publishing_job() {
             "invalid timeout must not create a local queue group directory"
         );
     }
+}
+
+#[tokio::test]
+async fn serialized_job_at_size_limit_is_accepted() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let prompt_len = prompt_len_for_serialized_job_size(root, local_queue::LOCAL_JOB_MAX_BYTES);
+    let mut args = submit_args_for_test();
+    args.prompt = "x".repeat(prompt_len);
+
+    let (exit_code, request) =
+        run_submit_and_write_success(args, HomePaths::with_root(root.to_path_buf()))
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, ExitCode::SUCCESS);
+    assert_eq!(
+        serde_json::to_vec(&request).unwrap().len(),
+        local_queue::LOCAL_JOB_MAX_BYTES
+    );
+}
+
+#[tokio::test]
+async fn serialized_job_over_size_limit_is_rejected_before_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let prompt_len = prompt_len_for_serialized_job_size(root, local_queue::LOCAL_JOB_MAX_BYTES) + 1;
+    let mut args = submit_args_for_test();
+    args.prompt = "x".repeat(prompt_len);
+
+    let error = run_submit_with_home(args, HomePaths::with_root(root.to_path_buf()))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, RunnerError::Config(_)), "got: {error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains(&local_queue::LOCAL_JOB_MAX_BYTES.to_string()),
+        "got: {error}"
+    );
+    let job_dir = local_queue::profile_jobs_dir(
+        &root.join("groups/test/group"),
+        crate::profile::DEFAULT_PROFILE,
+    )
+    .unwrap();
+    assert!(
+        std::fs::read_dir(job_dir).unwrap().next().is_none(),
+        "oversized request must not publish a local job"
+    );
 }
 
 #[tokio::test]

@@ -110,6 +110,20 @@ class _BodyOpener:
         return self._response
 
 
+class _FailingWriteTemporaryFile:
+    def __init__(self, path: Path) -> None:
+        self.name = str(path)
+
+    def __enter__(self) -> _FailingWriteTemporaryFile:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def write(self, contents: str) -> None:
+        raise OSError("simulated temporary write failure")
+
+
 def _build_failing_opener(*handlers: object) -> _FailingOpener:
     return _FailingOpener()
 
@@ -142,6 +156,17 @@ def _write_generated_snapshot(path: Path) -> None:
         update_x_tlds.render_module(IANA_TLD_VERSION, tuple(sorted(IANA_TLDS))),
         encoding="utf-8",
     )
+
+
+def _prepare_update_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+    source = tmp_path / "tlds.txt"
+    source.write_text("# Version 1, Last Updated test\nCOM\nORG\n", encoding="utf-8")
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--source-file", str(source)])
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    return output, original
 
 
 def _run_update_script(*args: str) -> subprocess.CompletedProcess[str]:
@@ -452,6 +477,114 @@ def test_update_cli_reports_missing_source_file_without_replacing_output(
     assert captured.out == ""
     assert str(source) in captured.err
     assert "failed to read IANA TLD source file" in captured.err
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_cli_reports_temporary_file_creation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output, original = _prepare_update_cli(tmp_path, monkeypatch)
+
+    def fail_create(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated temporary file creation failure")
+
+    monkeypatch.setattr(update_x_tlds.tempfile, "NamedTemporaryFile", fail_create)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"failed to write generated IANA TLD snapshot {output}: "
+        "simulated temporary file creation failure\n"
+    )
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob(f".{output.name}.*.tmp")) == []
+
+
+def test_update_cli_reports_temporary_file_write_failure_and_removes_staged_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output, original = _prepare_update_cli(tmp_path, monkeypatch)
+    staged = tmp_path / f".{output.name}.injected.tmp"
+    staged.touch()
+    failing_file = _FailingWriteTemporaryFile(staged)
+
+    def open_failing_file(*args: object, **kwargs: object) -> _FailingWriteTemporaryFile:
+        return failing_file
+
+    monkeypatch.setattr(update_x_tlds.tempfile, "NamedTemporaryFile", open_failing_file)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"failed to write generated IANA TLD snapshot {output}: simulated temporary write failure\n"
+    )
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+    assert not staged.exists()
+
+
+def test_update_cli_reports_replace_failure_and_removes_staged_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output, original = _prepare_update_cli(tmp_path, monkeypatch)
+
+    def fail_replace(path: Path, target: Path) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"failed to write generated IANA TLD snapshot {output}: simulated atomic replace failure\n"
+    )
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob(f".{output.name}.*.tmp")) == []
+
+
+def test_update_cli_preserves_replace_failure_when_staged_file_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output, original = _prepare_update_cli(tmp_path, monkeypatch)
+
+    def fail_replace(path: Path, target: Path) -> None:
+        raise OSError("simulated atomic replace failure")
+
+    def fail_unlink(path: Path, missing_ok: bool = False) -> None:
+        raise OSError("simulated temporary file cleanup failure")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    staged_files = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged_files) == 1
+    assert captured.out == ""
+    assert captured.err == (
+        f"failed to write generated IANA TLD snapshot {output}: "
+        "simulated atomic replace failure; "
+        f"failed to remove temporary file {staged_files[0]}: "
+        "simulated temporary file cleanup failure\n"
+    )
     assert "Traceback" not in captured.err
     assert output.read_text(encoding="utf-8") == original
 

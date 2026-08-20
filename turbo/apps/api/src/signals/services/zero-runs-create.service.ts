@@ -1,5 +1,6 @@
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import {
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_WORKING_DIR,
 } from "@okouai/api-contracts/contracts/runners";
@@ -12,7 +13,12 @@ import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contrac
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
-import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
 import {
   agentDisplayNameForPublicBrand,
   appUrlForPublicBrand,
@@ -349,6 +355,7 @@ function buildIntegrationToolsPrompt(
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
+  readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
   return [
@@ -359,6 +366,9 @@ function buildAgentToolsPrompt(args: {
     "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    ...(args.presentationTemplatesEnabled
+      ? [`- ${presentationTemplateSkillInstruction()}`]
+      : []),
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.cloudBrowserEnabled === true
       ? [
@@ -405,7 +415,7 @@ function buildAgentToolsPrompt(args: {
     "- Multiple access actions: do not use callback commands or URLs when the turn needs multiple connector or permission actions. Return all generated links in one response, one link per line, using only ordinary non-callback links, and wait for the user to finish all of them.",
     "- Inspect yourself: `okou whoami` for identity and permissions, `okou agent view $OKOU_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `okou agent edit --help`.",
-    `- Manage workflows with \`okou workflow --help\`. Create or update a durable workflow with \`okou workflow create|edit <name>\`, passing the workflow body via \`--instruction <text>\` or \`--instruction-file <path>\`; its \`SKILL.md\` is synthesized from the name, description, and instruction. \`--dir <path>\` uploads supplementary files only and must not contain a \`SKILL.md\` (it is rejected). Local changes or newly-created workflow folders under \`${CANONICAL_CODEX_HOME_DIR}/skills\` or \`/home/user/.claude/skills\` are runtime-only and will not persist, sync back, or affect future runs.`,
+    `- Manage workflows with \`okou workflow --help\`. Create or update a durable workflow with \`okou workflow create|edit <name>\`, passing the workflow body via \`--instruction <text>\` or \`--instruction-file <path>\`; its \`SKILL.md\` is synthesized from the name, description, and instruction. \`--dir <path>\` uploads supplementary files only and must not contain a \`SKILL.md\` (it is rejected). Local changes or newly-created workflow folders under \`${CANONICAL_CODEX_HOME_DIR}/skills\` or \`${CANONICAL_CLAUDE_CONFIG_DIR}/skills\` are runtime-only and will not persist, sync back, or affect future runs.`,
   ].join("\n");
 }
 
@@ -463,6 +473,7 @@ function buildAppendSystemPrompt(args: {
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
+  readonly presentationTemplatesEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
   return [
@@ -470,6 +481,7 @@ function buildAppendSystemPrompt(args: {
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
+      presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
   ]
@@ -657,6 +669,7 @@ function createRunBody(args: {
   readonly publicBrand: PublicBrand | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
+  readonly presentationTemplatesEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
@@ -665,6 +678,7 @@ function createRunBody(args: {
     userInfo: args.userInfo,
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
+    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -837,6 +851,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly timing: ApiDispatchTimingCollector;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly cloudBrowserEnabled: boolean | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }): CreateAgentRunArgs {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
@@ -853,6 +868,10 @@ function buildZeroCreateAgentRunArgs(args: {
       publicBrand: command.publicBrand,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
+      presentationTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PresentationTemplates,
+        args.featureSwitchContext,
+      ),
     }),
     apiStartTime: command.apiStartTime,
     modelProviderId: command.modelProviderId ?? agentModelProviderId,

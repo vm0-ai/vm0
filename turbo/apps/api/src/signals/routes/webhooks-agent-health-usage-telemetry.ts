@@ -405,10 +405,8 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         await ingestAxiomDirect(
           batch.dataset,
           batch.events,
-          AbortSignal.any([
-            signal,
-            AbortSignal.timeout(TELEMETRY_INGEST_TIMEOUT_MS),
-          ]),
+          TELEMETRY_INGEST_TIMEOUT_MS,
+          signal,
         );
       }),
     );

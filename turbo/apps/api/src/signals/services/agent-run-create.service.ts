@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
@@ -1123,7 +1124,7 @@ function prepareAdditionalVolumesWithSource(
 function frameworkSkillsMountPath(framework: SupportedFramework): string {
   return framework === "codex"
     ? `${CANONICAL_CODEX_HOME_DIR}/skills`
-    : "/home/user/.claude/skills";
+    : `${CANONICAL_CLAUDE_CONFIG_DIR}/skills`;
 }
 
 function skillMountPath(skillsRoot: string, skillName: string): string {

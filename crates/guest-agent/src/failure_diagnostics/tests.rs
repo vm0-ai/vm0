@@ -45,6 +45,10 @@ fn classify_cli_failure_reason(
 }
 
 const CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+const CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE: &str =
+    "API Error: Server error mid-response. The response above may be incomplete.";
+const CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE: &str =
+    "API Error: Connection lost mid-response. The response above may be incomplete.";
 
 #[test]
 fn cli_failure_message_logs_stderr_to_system_log() {
@@ -439,6 +443,82 @@ fn cli_failure_reason_ignores_generic_claude_401() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_claude_terms_acceptance_required() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::ClaudeCode,
+        "API Error: 400 We've updated our Consumer Terms and Privacy Policy. You'll need to accept them in claude.ai with the email in /status to continue.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::TermsAcceptanceRequired));
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_terms_acceptance_wording_variant() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::ClaudeCode,
+        "api error: 400 PLEASE ACCEPT the updated PRIVACY POLICY and CONSUMER TERMS at CLAUDE.AI before continuing.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::TermsAcceptanceRequired));
+}
+
+#[test]
+fn cli_failure_reason_ignores_claude_terms_message_for_other_frameworks() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::Codex,
+        "API Error: 400 We've updated our Consumer Terms and Privacy Policy. Accept them in claude.ai to continue.",
+    );
+
+    assert_eq!(reason, None);
+}
+
+#[test]
+fn cli_failure_reason_ignores_incomplete_claude_terms_messages() {
+    for message in [
+        "We've updated our Consumer Terms and Privacy Policy. Accept them in claude.ai.",
+        "API Error: 400 We've updated our Service Terms and Privacy Policy. Accept them in claude.ai.",
+        "API Error: 400 We've updated our Consumer Terms. Accept them in claude.ai.",
+        "API Error: 400 We've updated our Consumer Terms and Privacy Policy. Review them in claude.ai.",
+        "API Error: 400 We've updated our Consumer Terms and Privacy Policy. Accept them to continue.",
+        "API Error: 400 request rejected by the provider",
+        "API Error: 400-error Consumer Terms and Privacy Policy must be accepted at claude.ai.",
+        "API Error: 4000 Consumer Terms and Privacy Policy must be accepted at claude.ai.",
+    ] {
+        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_result_terms_acceptance_diagnostic() {
+    let message = "API Error: 400 We've updated our Consumer Terms and Privacy Policy. You'll need to accept them in claude.ai with the email in /status to continue.";
+    let msg = cli_failure_message(
+        1,
+        &["background stderr noise".to_string()],
+        Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+    );
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(msg.source);
+    let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+    assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::TermsAcceptanceRequired)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::ClaudeResult)
+    );
+}
+
+#[test]
 fn cli_failure_reason_classifies_claude_provider_overloaded() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
@@ -762,6 +842,89 @@ fn cli_failure_reason_classifies_claude_result_provider_server_error_diagnostic(
         diagnostic.failure_detail_source,
         Some(FailureDetailSource::ClaudeResult)
     );
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_result_mid_response_failures() {
+    for (message, expected_reason) in [
+        (
+            CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+            FailureReason::ProviderServerError,
+        ),
+        (
+            CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+            FailureReason::ResponseConnectionLost,
+        ),
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            message,
+        );
+
+        assert_eq!(reason, Some(expected_reason), "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_result_mid_response_diagnostics() {
+    for (message, expected_reason) in [
+        (
+            CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+            FailureReason::ProviderServerError,
+        ),
+        (
+            CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+            FailureReason::ResponseConnectionLost,
+        ),
+    ] {
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(diagnostic.failure_reason, Some(expected_reason));
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
+    for message in [
+        CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+        CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+    ] {
+        for (framework, source) in [
+            (AgentFramework::ClaudeCode, FailureDetailSource::Stderr),
+            (AgentFramework::Codex, FailureDetailSource::ClaudeResult),
+        ] {
+            let reason = super::classify_cli_failure_reason(framework, source, message);
+
+            assert_eq!(reason, None, "message: {message}");
+        }
+
+        let explanatory_message = format!("Observed {message} in an earlier run");
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            &explanatory_message,
+        );
+
+        assert_eq!(reason, None, "message: {explanatory_message}");
+    }
 }
 
 #[test]

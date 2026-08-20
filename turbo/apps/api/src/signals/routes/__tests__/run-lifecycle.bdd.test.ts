@@ -1115,6 +1115,11 @@ function expectApiDispatchTimingEventsNotToLeak(
 function expectConnectorCatalogLoadTiming(args: {
   readonly events: readonly Record<string, unknown>[];
   readonly acceptedCacheOutcome: "hit" | "miss" | "in_flight";
+  readonly acceptedCacheMissReason:
+    | "process_empty"
+    | "catalog_identity_changed"
+    | "capability_identity_changed"
+    | undefined;
   readonly runtimeCacheOutcome: "hit" | "miss";
   readonly requestedConnectorCount: "known" | "not_applicable";
   readonly requestedConnectorCountBucket?: (typeof CONNECTOR_CATALOG_COUNT_BUCKETS)[number];
@@ -1143,6 +1148,17 @@ function expectConnectorCatalogLoadTiming(args: {
         args.materializedConnectorCountBucket,
       connector_catalog_validation_outcome: args.validation.outcome,
     }),
+  );
+  expect([
+    Object.prototype.hasOwnProperty.call(
+      event,
+      "connector_catalog_accepted_cache_miss_reason",
+    ),
+    event.connector_catalog_accepted_cache_miss_reason,
+  ]).toStrictEqual(
+    args.acceptedCacheMissReason === undefined
+      ? [false, undefined]
+      : [true, args.acceptedCacheMissReason],
   );
   const expectedValidationDimensions =
     args.validation.outcome === "full_fallback"
@@ -1565,6 +1581,42 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // The guide is not a mounted skill, so the prompt is the only thing that
+    // tells a run where to find it. Off, it must stay out of every run.
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "vm0-ai/Template-artifact",
+    );
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationTemplates]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("vm0-ai/Template-artifact");
+    expect(appendSystemPrompt).toContain("reverse-template");
+    expect(appendSystemPrompt).toContain("feat/reverse-template-skill");
+  });
+
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1852,6 +1904,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: missingAuthorityEvents,
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "process_empty",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "2_4",
@@ -1916,6 +1969,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: missingCompatibilityEvents,
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       materializedConnectorCountBucket: "1",
@@ -1981,6 +2035,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: differentAuthorityEvents,
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       materializedConnectorCountBucket: "1",
@@ -2030,6 +2085,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: cachedEvents,
       acceptedCacheOutcome: "hit",
+      acceptedCacheMissReason: undefined,
       runtimeCacheOutcome: "hit",
       requestedConnectorCount: "known",
       materializedConnectorCountBucket: "0",
@@ -2105,6 +2161,21 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         return outcome === "hit" || outcome === "in_flight";
       }),
     ).toHaveLength(1);
+    const missLoadEvent = concurrentLoadEvents.find((event) => {
+      return event.connector_catalog_accepted_cache_outcome === "miss";
+    });
+    const reusedLoadEvent = concurrentLoadEvents.find((event) => {
+      return event.connector_catalog_accepted_cache_outcome !== "miss";
+    });
+    if (missLoadEvent === undefined || reusedLoadEvent === undefined) {
+      throw new Error("Expected one catalog miss and one reused catalog load");
+    }
+    expect(missLoadEvent.connector_catalog_accepted_cache_miss_reason).toBe(
+      "catalog_identity_changed",
+    );
+    expect(reusedLoadEvent).not.toHaveProperty(
+      "connector_catalog_accepted_cache_miss_reason",
+    );
     expect(
       concurrentLoadEvents.map((event) => {
         return event.connector_catalog_validation_outcome;
@@ -2189,6 +2260,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(firstRun.runId),
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "2_4",
@@ -2205,6 +2277,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(repeatedRun.runId),
       acceptedCacheOutcome: "hit",
+      acceptedCacheMissReason: undefined,
       runtimeCacheOutcome: "hit",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "2_4",
@@ -2221,6 +2294,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(additionalRun.runId),
       acceptedCacheOutcome: "hit",
+      acceptedCacheMissReason: undefined,
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "1",
@@ -2246,6 +2320,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(rotatedRun.runId),
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "1",
@@ -2254,12 +2329,51 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       validation: { outcome: "attested" },
     });
     await api.requestCancelRun(actor, rotatedRun.runId, [200]);
+
+    const capabilityIdentityEnvName = "CALCOM_OAUTH_CLIENT_ID";
+    const capabilityIdentityEnvValue = "api-test-calcom-oauth-client-id";
+    mockOptionalEnv(capabilityIdentityEnvName, undefined);
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedCatalogVersion,
+    });
+    const capabilityRotatedPrompt =
+      "materialize after capability identity rotation";
+    const capabilityRotatedRun = await createScopedRun(
+      capabilityRotatedPrompt,
+      ["x"],
+    );
+    const capabilityRotatedEvents = apiDispatchTimingEventsForRun(
+      capabilityRotatedRun.runId,
+    );
+    expectConnectorCatalogLoadTiming({
+      events: capabilityRotatedEvents,
+      acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "capability_identity_changed",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "1",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "attested" },
+    });
+    expectApiDispatchTimingEventsNotToLeak(capabilityRotatedEvents, [
+      rotatedCatalogVersion,
+      capabilityRotatedPrompt,
+      agentId,
+      capabilityIdentityEnvName,
+      capabilityIdentityEnvValue,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+    await api.requestCancelRun(actor, capabilityRotatedRun.runId, [200]);
+
     await fw.seedTestConnector(actor, {
       connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-filtered-access",
       refreshToken: "x-filtered-refresh",
     });
+    mockOptionalEnv(capabilityIdentityEnvName, capabilityIdentityEnvValue);
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-scoped-runtime-${randomUUID()}`,
     });
@@ -2278,6 +2392,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(filteredRun.runId),
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "1",
@@ -7737,6 +7852,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expectConnectorCatalogLoadTiming({
       events: timingEvents,
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "1",
@@ -10251,6 +10367,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expectConnectorCatalogLoadTiming({
       events: apiDispatchTimingEventsForRun(restoredRun.runId),
       acceptedCacheOutcome: "miss",
+      acceptedCacheMissReason: "catalog_identity_changed",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "0",

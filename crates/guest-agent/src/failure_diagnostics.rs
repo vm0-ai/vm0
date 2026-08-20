@@ -268,6 +268,11 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::InsufficientCredits);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_terms_acceptance_required_error(&normalized)
+    {
+        return Some(FailureReason::TermsAcceptanceRequired);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_invalid_credentials_error(&normalized)
     {
         return Some(FailureReason::InvalidCredentials);
@@ -287,6 +292,11 @@ fn classify_cli_failure_reason(
         && is_claude_provider_server_error(source, &normalized)
     {
         return Some(FailureReason::ProviderServerError);
+    }
+    if matches!(framework, AgentFramework::ClaudeCode)
+        && is_claude_result_response_connection_lost(source, &normalized)
+    {
+        return Some(FailureReason::ResponseConnectionLost);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
         && is_claude_output_token_limit_error(&normalized)
@@ -370,6 +380,14 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
         && normalized.contains("api error: 401 invalid authentication credentials")
 }
 
+fn is_claude_terms_acceptance_required_error(normalized: &str) -> bool {
+    has_claude_api_status(normalized, "400")
+        && normalized.contains("consumer terms")
+        && normalized.contains("privacy policy")
+        && normalized.contains("accept")
+        && normalized.contains("claude.ai")
+}
+
 fn is_claude_provider_overloaded_error(normalized: &str) -> bool {
     const MARKER: &str = "api error:";
     normalized.match_indices(MARKER).any(|(index, _)| {
@@ -405,9 +423,20 @@ fn is_claude_result_stalled_mid_stream(trimmed: &str) -> bool {
 
 fn is_claude_provider_server_error(source: FailureDetailSource, normalized: &str) -> bool {
     source == FailureDetailSource::ClaudeResult
-        && has_claude_api_status(normalized, "500")
-        && normalized.contains("internal server error")
-        && normalized.contains("server-side issue")
+        && ((has_claude_api_status(normalized, "500")
+            && normalized.contains("internal server error")
+            && normalized.contains("server-side issue"))
+            || normalized.trim()
+                == "api error: server error mid-response. the response above may be incomplete.")
+}
+
+fn is_claude_result_response_connection_lost(
+    source: FailureDetailSource,
+    normalized: &str,
+) -> bool {
+    source == FailureDetailSource::ClaudeResult
+        && normalized.trim()
+            == "api error: connection lost mid-response. the response above may be incomplete."
 }
 
 fn is_claude_output_token_limit_error(normalized: &str) -> bool {

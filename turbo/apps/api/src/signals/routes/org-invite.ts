@@ -1,22 +1,24 @@
 import { command } from "ccstate";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { orgInviteContract } from "@okouai/api-contracts/contracts/org-member-routes";
+import type { OrgRole } from "@okouai/api-contracts/contracts/org-members";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import {
   badRequestMessage,
   conflict,
-  notFound,
   providerUnavailable,
 } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
+import { publicBrand$, requestSignal$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -28,6 +30,7 @@ import {
   createUsagePackInvitationPreview,
   revokeUsagePackInvitationPurchase,
   usagePackInvitationPurchaseSchemaAvailable,
+  type UsagePackInvitationPurchaseConflictReason,
 } from "../services/usage-pack-invitation-purchase.service";
 import { activeUsagePackBillingContext } from "../services/usage-pack-subscription.service";
 import {
@@ -37,6 +40,9 @@ import {
   type BillingPurchasePaymentMethod,
 } from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
+import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
+
+const log = logger("api:zero:org-invite");
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -57,6 +63,139 @@ const memberInvitationUpgradeRequired = Object.freeze({
     }),
   }),
 });
+
+type InvitationPurchaseErrorReason =
+  | UsagePackInvitationPurchaseConflictReason
+  | "preview_expired"
+  | "preview_invalid"
+  | "purchase_not_found"
+  | "subscription_not_found";
+
+interface InvitationPurchaseErrorDefinition {
+  readonly status: 400 | 404 | 409;
+  readonly code: string;
+  readonly message: string;
+}
+
+const INVITATION_PURCHASE_ERRORS = {
+  billing_period_ending: {
+    status: 409,
+    code: "INVITATION_PURCHASE_BILLING_PERIOD_ENDING",
+    message:
+      "This billing period is ending too soon to complete the purchase. Try again after it renews.",
+  },
+  billing_state_changed: {
+    status: 409,
+    code: "INVITATION_PURCHASE_BILLING_STATE_CHANGED",
+    message:
+      "Billing changed while this invitation was being purchased. Review the invitation and try again.",
+  },
+  invitee_unavailable: {
+    status: 409,
+    code: "INVITATION_PURCHASE_INVITEE_UNAVAILABLE",
+    message: "This person is already a member or has a pending invitation.",
+  },
+  no_credits: {
+    status: 409,
+    code: "INVITATION_PURCHASE_NO_CREDITS",
+    message:
+      "This purchase would not add any credits. Choose a larger member package or try again after renewal.",
+  },
+  payment_method_changed: {
+    status: 409,
+    code: "INVITATION_PURCHASE_PAYMENT_METHOD_CHANGED",
+    message: "Your payment method changed. Review the invitation again.",
+  },
+  preview_expired: {
+    status: 400,
+    code: "INVITATION_PURCHASE_PREVIEW_EXPIRED",
+    message:
+      "This invitation purchase preview expired. Review the invitation again.",
+  },
+  preview_invalid: {
+    status: 409,
+    code: "INVITATION_PURCHASE_PREVIEW_INVALID",
+    message:
+      "This invitation purchase preview is no longer valid. Review the invitation again.",
+  },
+  purchase_in_progress: {
+    status: 409,
+    code: "INVITATION_PURCHASE_IN_PROGRESS",
+    message:
+      "Another purchase for this invitation is already in progress. Wait a moment and try again.",
+  },
+  purchase_inactive: {
+    status: 409,
+    code: "INVITATION_PURCHASE_INACTIVE",
+    message:
+      "This invitation purchase is no longer active. Review the invitation again.",
+  },
+  purchase_not_found: {
+    status: 404,
+    code: "INVITATION_PURCHASE_NOT_FOUND",
+    message:
+      "Invitation purchase not found. Review the invitation and try again.",
+  },
+  subscription_canceling: {
+    status: 409,
+    code: "INVITATION_PURCHASE_SUBSCRIPTION_CANCELING",
+    message: "Restore your subscription before purchasing a member package.",
+  },
+  subscription_changed: {
+    status: 409,
+    code: "INVITATION_PURCHASE_SUBSCRIPTION_CHANGED",
+    message:
+      "Your usage pack subscription changed. Review the invitation again.",
+  },
+  subscription_not_found: {
+    status: 404,
+    code: "INVITATION_PURCHASE_SUBSCRIPTION_NOT_FOUND",
+    message:
+      "Usage pack subscription not found. Review your billing settings and try again.",
+  },
+  subscription_unavailable: {
+    status: 409,
+    code: "INVITATION_PURCHASE_SUBSCRIPTION_UNAVAILABLE",
+    message:
+      "Your usage pack subscription is no longer available. Review your billing settings and try again.",
+  },
+} satisfies Readonly<
+  Record<InvitationPurchaseErrorReason, InvitationPurchaseErrorDefinition>
+>;
+
+function invitationPurchaseError(args: {
+  readonly phase: "preview" | "confirm";
+  readonly reason: InvitationPurchaseErrorReason;
+  readonly orgId: string;
+  readonly purchaseId?: string;
+  readonly usagePackUsd?: UsagePackUsd;
+  readonly role?: OrgRole;
+  readonly diagnostics?: Readonly<
+    Record<string, string | number | boolean | null>
+  >;
+}) {
+  const error = INVITATION_PURCHASE_ERRORS[args.reason];
+  log.debug("Usage pack invitation purchase rejected", {
+    ...args.diagnostics,
+    type: "usage_pack_invitation_purchase_rejected",
+    phase: args.phase,
+    reason: args.reason,
+    errorCode: error.code,
+    orgId: args.orgId,
+    ...(args.purchaseId ? { purchaseId: args.purchaseId } : {}),
+    ...(args.usagePackUsd ? { usagePackUsd: args.usagePackUsd } : {}),
+    ...(args.role ? { role: args.role } : {}),
+  });
+  return {
+    status: error.status,
+    body: {
+      error: {
+        message: error.message,
+        code: error.code,
+      },
+    },
+  };
+}
 
 const inviteBody$ = bodyResultOf(orgInviteContract.invite);
 
@@ -227,6 +366,7 @@ const purchasePreviewInner$ = command(
         "returnUrl must match the platform origin for in-app billing",
       );
     }
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const result = await createUsagePackInvitationPreview(
       set(writeDb$),
       get(clerk$),
@@ -238,21 +378,41 @@ const purchasePreviewInner$ = command(
         usagePackUsd: body.data.usagePackUsd,
         publicBrand: get(publicBrand$),
       },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
+    readSignal.throwIfAborted();
     if (result.status === "not_found") {
-      return notFound("Usage pack subscription not found");
+      return invitationPurchaseError({
+        phase: "preview",
+        reason: "subscription_not_found",
+        orgId: auth.orgId,
+        usagePackUsd: body.data.usagePackUsd,
+        role: body.data.role,
+      });
     }
     if (result.status === "conflict") {
-      return conflict(
-        "This invitation cannot be purchased in the current billing state",
-      );
+      return invitationPurchaseError({
+        phase: "preview",
+        reason: result.reason,
+        orgId: auth.orgId,
+        usagePackUsd: body.data.usagePackUsd,
+        role: body.data.role,
+        diagnostics: result.diagnostics,
+      });
     }
     if (previewEnabled && body.data.returnUrl) {
       const billing = await activeUsagePackBillingContext(db, auth.orgId);
       signal.throwIfAborted();
       if (!billing) {
-        return notFound("Usage pack subscription not found");
+        return invitationPurchaseError({
+          phase: "preview",
+          reason: "subscription_not_found",
+          orgId: auth.orgId,
+          purchaseId: result.preview.purchaseId,
+          usagePackUsd: body.data.usagePackUsd,
+          role: body.data.role,
+        });
       }
       const route = await routeBillingPurchasePreview(
         {
@@ -381,26 +541,48 @@ const purchaseConfirmInner$ = command(
         signal,
       );
       if (revalidated.kind === "invalid_preview") {
-        return conflict("Invitation purchase preview is no longer valid");
+        return invitationPurchaseError({
+          phase: "confirm",
+          reason: "preview_invalid",
+          orgId: auth.orgId,
+          purchaseId,
+        });
       }
       paymentMethod = revalidated.paymentMethod;
     }
+    const readSignal = AbortSignal.any([signal, get(requestSignal$)]);
     const result = await confirmUsagePackInvitationPurchase(
       set(writeDb$),
       get(clerk$),
       { orgId: auth.orgId, purchaseId, paymentMethod },
-      signal,
+      readSignal,
     );
+    signal.throwIfAborted();
+    readSignal.throwIfAborted();
     if (result.status === "not_found") {
-      return notFound("Invitation purchase not found");
+      return invitationPurchaseError({
+        phase: "confirm",
+        reason: "purchase_not_found",
+        orgId: auth.orgId,
+        purchaseId,
+      });
     }
     if (result.status === "expired") {
-      return badRequestMessage("Invitation purchase preview expired");
+      return invitationPurchaseError({
+        phase: "confirm",
+        reason: "preview_expired",
+        orgId: auth.orgId,
+        purchaseId,
+      });
     }
     if (result.status === "conflict") {
-      return conflict(
-        "This invitation cannot be purchased in the current billing state",
-      );
+      return invitationPurchaseError({
+        phase: "confirm",
+        reason: result.reason,
+        orgId: auth.orgId,
+        purchaseId,
+        diagnostics: result.diagnostics,
+      });
     }
     if (result.status === "pending_payment") {
       return {
@@ -437,14 +619,14 @@ export const orgInviteRoutes: readonly RouteEntry[] = [
     route: orgInviteContract.previewPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      purchasePreviewInner$,
+      withBillingClerkRateLimit(purchasePreviewInner$),
     ),
   },
   {
     route: orgInviteContract.confirmPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      purchaseConfirmInner$,
+      withBillingClerkRateLimit(purchaseConfirmInner$),
     ),
   },
 ];

@@ -43,6 +43,7 @@ def _registry_vm(
     allow_repos: bool = True,
     allow_unrelated_orgs: bool = False,
     auth_base: bool = False,
+    enforce_public_destination: bool = False,
 ) -> dict[str, object]:
     allowed_permissions = ["repos-write"] if allow_repos else []
     denied_permissions = [] if allow_repos else ["repos-write"]
@@ -61,19 +62,22 @@ def _registry_vm(
             "query": {"managed": "${{ secrets.GITHUB_TOKEN }}"},
         }
         api_base = "https://api.github.com"
+    api_entry: dict[str, object] = {
+        "base": api_base,
+        "auth": auth_config,
+        "permissions": [
+            {"name": "repos-write", "rules": ["POST /repos/{path+}"]},
+            {"name": "orgs-write", "rules": ["POST /orgs/{path+}"]},
+        ],
+    }
+    if enforce_public_destination:
+        api_entry["hostPolicy"] = {"kind": "publicDestination"}
 
     return _single_firewall_vm(
         tmp_path,
         run_id=run_id,
         firewall_name=_FIREWALL_NAME,
-        api_entry={
-            "base": api_base,
-            "auth": auth_config,
-            "permissions": [
-                {"name": "repos-write", "rules": ["POST /repos/{path+}"]},
-                {"name": "orgs-write", "rules": ["POST /orgs/{path+}"]},
-            ],
-        },
+        api_entry=api_entry,
         network_policy={
             "allow": allowed_permissions,
             "deny": denied_permissions,
@@ -233,6 +237,7 @@ def _firewall_flow(
     make_tls_data,
     *,
     auth_base: bool = False,
+    upstream_endpoint: tuple[str, int] = ("172.66.0.243", 443),
 ) -> tuple[http.HTTPFlow, tls.ClientHelloData]:
     host = "placeholder.example.com" if auth_base else "api.github.com"
     flow = real_flow(
@@ -251,7 +256,6 @@ def _firewall_flow(
     )
     client_id = f"client-firewall-auth-revalidation-{'base' if auth_base else 'ordinary'}"
     flow.client_conn.id = client_id
-    upstream_endpoint = ("172.66.0.243", 443)
     mark_connected_tls_upstream(
         flow,
         sni=host,
@@ -396,6 +400,80 @@ async def test_registry_change_during_auth_blocks_old_authorization(
     assert flow.request.path == original_path
     assert flow.request.headers.get("Authorization") is None
     _assert_current_denial(flow, registry_mutation)
+
+
+async def test_public_destination_policy_added_during_auth_blocks_private_destination(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+):
+    registry_path = _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        vm_info=_registry_vm(tmp_path),
+    )
+    private_endpoint = ("10.0.0.1", 443)
+    flow, tls_data = _firewall_flow(
+        real_flow,
+        make_tls_data,
+        upstream_endpoint=private_endpoint,
+    )
+    original_path = flow.request.path
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_firewall_auth()
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    request_task: asyncio.Task[None] | None = None
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            _publish_registry(
+                registry_path,
+                vm_info=_registry_vm(tmp_path, enforce_public_destination=True),
+            )
+            release_auth_resolution.set()
+            await asyncio.gather(request_task)
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.request.headers.get("Host") == "api.github.com"
+    assert flow.request.headers.get("Content-Length") == str(STREAM_BUFFER_LIMIT + 1)
+    assert flow.request.headers.get("Accept-Encoding") == "identity"
+    assert flow.request.path == original_path
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.content is not None
+    assert json.loads(flow.response.content) == {
+        "error": "unsafe_public_destination",
+        "message": "Request blocked: publicDestination resolved to a non-public destination",
+        "name": _FIREWALL_NAME,
+        "base": "https://api.github.com",
+        "destination_host": private_endpoint[0],
+        "trusted_authority_host": "api.github.com",
+        "reason": "non_public_destination",
+    }
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _FIREWALL_NAME
+    assert flow.request.stream is False
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.query.get("managed") is None
+    assert flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY) is None
+    assert "_usage_flow_tracked" not in flow.metadata
 
 
 @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])

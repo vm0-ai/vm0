@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.775.1](https://github.com/vm0-ai/vm0/compare/app-v0.775.0...app-v0.775.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **composer:** stop redundant feedback note dom writes during composition ([#28168](https://github.com/vm0-ai/vm0/issues/28168)) ([88b7464](https://github.com/vm0-ai/vm0/commit/88b74647cb42dce28d5032761654f31b8f78977a))
+
+
+### Refactoring
+
+* **platform:** drop the unused browser pptx renderer ([#28280](https://github.com/vm0-ai/vm0/issues/28280)) ([002d5c3](https://github.com/vm0-ai/vm0/commit/002d5c31fa8096a58dedf85b4d72f7e0b8b69f3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.1
+    * @okouai/core bumped to 8.573.1
+
 ## [0.775.0](https://github.com/vm0-ai/vm0/compare/app-v0.774.0...app-v0.775.0) (2026-08-20)
 
 

@@ -1,5 +1,7 @@
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import type { ErrorInfo } from "react";
 import { useTranslation } from "react-i18next";
+import { resolveBrandNameForHostname } from "../signals/branding.ts";
 
 interface ErrorFallbackProps {
   error: Error;
@@ -9,6 +11,9 @@ interface ErrorFallbackProps {
 export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
   void error;
   const { t } = useTranslation();
+  const contactEmail = publicBrandPresentation(
+    resolveBrandNameForHostname(location.hostname) === "Okou" ? "okou" : "vm0",
+  ).contactEmail;
 
   return (
     <div className="flex h-full items-center justify-center bg-white">
@@ -25,7 +30,7 @@ export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
               return $.shared.errorBoundary.description;
             })}{" "}
             <a
-              href="mailto:contact@vm0.ai"
+              href={`mailto:${contactEmail}`}
               className="text-blue-500 hover:underline"
             >
               {t(($) => {

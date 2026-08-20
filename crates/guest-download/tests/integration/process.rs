@@ -8,8 +8,69 @@ const RUN_TIMEOUT: Duration = Duration::from_secs(10);
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-pub(super) struct CommandExecution {
+pub(super) struct ChildExecution {
     child: Option<Child>,
+}
+
+impl ChildExecution {
+    pub(super) fn spawn(command: &mut Command) -> io::Result<Self> {
+        Ok(Self {
+            child: Some(command.spawn()?),
+        })
+    }
+
+    #[cfg(unix)]
+    pub(super) fn id(&self) -> io::Result<u32> {
+        self.child
+            .as_ref()
+            .map(Child::id)
+            .ok_or_else(|| io::Error::other("command execution lost its child"))
+    }
+
+    pub(super) fn wait_with_timeout(&mut self, timeout: Duration) -> io::Result<ExitStatus> {
+        let mut child = self
+            .child
+            .take()
+            .ok_or_else(|| io::Error::other("command execution lost its child"))?;
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok(status),
+                Ok(None) => {}
+                Err(error) => {
+                    let cleanup = terminate_and_reap(child);
+                    return Err(io::Error::other(format!(
+                        "failed to observe guest-download completion: {error}; cleanup: {cleanup}"
+                    )));
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
+        }
+
+        let cleanup = terminate_and_reap(child);
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("guest-download timed out after {timeout:?}; cleanup: {cleanup}"),
+        ))
+    }
+}
+
+impl Drop for ChildExecution {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.take() {
+            let _ = terminate_and_reap(child);
+        }
+    }
+}
+
+pub(super) struct CommandExecution {
+    child: ChildExecution,
     stdout: File,
     stderr: File,
 }
@@ -24,7 +85,7 @@ impl CommandExecution {
             .stderr(Stdio::from(stderr.try_clone()?));
 
         Ok(Self {
-            child: Some(command.spawn()?),
+            child: ChildExecution::spawn(command)?,
             stdout,
             stderr,
         })
@@ -32,10 +93,7 @@ impl CommandExecution {
 
     #[cfg(unix)]
     pub(super) fn id(&self) -> io::Result<u32> {
-        self.child
-            .as_ref()
-            .map(Child::id)
-            .ok_or_else(|| io::Error::other("command execution lost its child"))
+        self.child.id()
     }
 
     pub(super) fn wait(self) -> io::Result<Output> {
@@ -43,41 +101,16 @@ impl CommandExecution {
     }
 
     pub(super) fn wait_with_timeout(mut self, timeout: Duration) -> io::Result<Output> {
-        let mut child = self
-            .child
-            .take()
-            .ok_or_else(|| io::Error::other("command execution lost its child"))?;
-        let deadline = Instant::now() + timeout;
-
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => return self.read_output(status),
-                Ok(None) => {}
-                Err(error) => {
-                    let cleanup = terminate_and_reap(child);
-                    let diagnostics = self.read_diagnostics();
-                    return Err(io::Error::other(format!(
-                        "failed to observe guest-download completion: {error}; cleanup: {cleanup}; \
-                         {diagnostics}"
-                    )));
-                }
+        match self.child.wait_with_timeout(timeout) {
+            Ok(status) => self.read_output(status),
+            Err(error) => {
+                let diagnostics = self.read_diagnostics();
+                Err(io::Error::new(
+                    error.kind(),
+                    format!("{error}; {diagnostics}"),
+                ))
             }
-
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
         }
-
-        let cleanup = terminate_and_reap(child);
-        let diagnostics = self.read_diagnostics();
-        Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            format!(
-                "guest-download timed out after {timeout:?}; cleanup: {cleanup}; {diagnostics}"
-            ),
-        ))
     }
 
     fn read_output(&mut self, status: ExitStatus) -> io::Result<Output> {
@@ -108,16 +141,28 @@ impl CommandExecution {
     }
 }
 
-impl Drop for CommandExecution {
-    fn drop(&mut self) {
-        if let Some(child) = self.child.take() {
-            let _ = terminate_and_reap(child);
-        }
-    }
-}
-
 pub(super) fn run(command: &mut Command) -> io::Result<Output> {
     CommandExecution::spawn(command, None)?.wait()
+}
+
+#[cfg(unix)]
+pub(super) fn verify_child_reaped(child_id: u32) -> Result<(), String> {
+    let child_id = libc::pid_t::try_from(child_id)
+        .map_err(|error| format!("child ID {child_id} does not fit pid_t: {error}"))?;
+    let mut status = 0;
+    // SAFETY: `child_id` came from the directly owned child, and the lifecycle
+    // helper returned only after reaping it. WNOHANG verifies no status remains.
+    let result = unsafe { libc::waitpid(child_id, &mut status, libc::WNOHANG) };
+    if result != -1 {
+        return Err(format!(
+            "waitpid returned {result} for reaped child {child_id}"
+        ));
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() != Some(libc::ECHILD) {
+        return Err(format!("waitpid failed for child {child_id}: {error}"));
+    }
+    Ok(())
 }
 
 fn stdin_file(stdin: Option<&[u8]>) -> io::Result<Stdio> {

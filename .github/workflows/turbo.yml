@@ -1844,12 +1844,6 @@ jobs:
             project: features
           - lane: paid-onboarding
             project: paid-onboarding
-          - lane: billing-transitions-1
-            project: billing-transitions
-            shard: 1/2
-          - lane: billing-transitions-2
-            project: billing-transitions
-            shard: 2/2
     concurrency:
       group: cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -1945,18 +1939,12 @@ jobs:
         continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         shell: bash
         run: |
-          args=(
-            --config playwright/playwright.config.ts
-            --project="$PLAYWRIGHT_PROJECT"
-          )
-          if [[ -n "$PLAYWRIGHT_SHARD" ]]; then
-            args+=(--shard="$PLAYWRIGHT_SHARD")
-          fi
           cd e2e
-          pnpm exec playwright test "${args[@]}"
+          pnpm exec playwright test \
+            --config playwright/playwright.config.ts \
+            --project="$PLAYWRIGHT_PROJECT"
         env:
           PLAYWRIGHT_PROJECT: ${{ matrix.project }}
-          PLAYWRIGHT_SHARD: ${{ matrix.shard || '' }}
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}

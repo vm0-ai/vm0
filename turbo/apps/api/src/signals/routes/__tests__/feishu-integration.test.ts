@@ -92,6 +92,7 @@ const runsApi = createRunsApi(context);
 const storagesApi = createStoragesBddApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
+const FEISHU_CALLBACK_ORIGIN = "https://www.vm0.test";
 const ENCRYPT_KEY = "feishu-test-encrypt-key";
 const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
@@ -641,7 +642,7 @@ describe("Feishu integration", () => {
     mockEnv("APP_URL", APP_ORIGIN);
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-    mockEnv("FEISHU_CALLBACK_BASE_URL", "https://www.vm0.test");
+    mockEnv("FEISHU_CALLBACK_BASE_URL", FEISHU_CALLBACK_ORIGIN);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
@@ -2693,12 +2694,13 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("verifies the Feishu signature on the final console path", async () => {
+  it("emits the final path and still serves the branded ones", async () => {
     const fixture = await setupFeishuRunFixture();
-    // The stored callback URL still points at the branded path: #28278 step 1
-    // only makes the final path routable and switches no producer.
-    expect(new URL(fixture.callbackUrl).pathname).toBe(
-      `/api/okou/feishu/events/${fixture.installationId}`,
+    // #28278 step 3 switched this producer: the URL the connect service hands
+    // the operator now carries the final path on the unchanged callback origin.
+    // Installation ids are UUIDs, so percent-encoding leaves the id verbatim.
+    expect(fixture.callbackUrl).toBe(
+      `${FEISHU_CALLBACK_ORIGIN}/api/webhooks/feishu/events/${fixture.installationId}`,
     );
     const event = v2Event(fixture.appId, "unknown.event", {});
     const eventPaths = [
