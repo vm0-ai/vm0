@@ -845,8 +845,9 @@
       "paidAddOn": "complemento de pago",
       "payAndAddSlots": "Pagar y añadir cupos",
       "payAndUpdate": "Pagar y actualizar",
-      "restoreDescription": "Esto reanuda la renovación de esta suscripción de concurrencia.",
-      "restoreSubscription": "Restaurar suscripción",
+      "restoreConcurrency": "Restaurar concurrencia",
+      "restoreQuantityDescription": "Esto restaura la renovación de tu concurrencia de pago ({{quantity}}). Tu plan no cambiará.",
+      "restoreTeamPlan": "Restaurar plan Team",
       "restoreTitle": "¿Restaurar la suscripción de concurrencia?",
       "reviewChange": "Revisar cambio",
       "reviewDescription": "Revisa el importe a pagar ahora y tu suscripción mensual actualizada.",
@@ -884,6 +885,8 @@
     "downgrade": {
       "cancelSubscription": "Cancelar suscripción",
       "chooseTarget": "Elige a qué plan inferior quieres cambiar.",
+      "concurrencyEndsDate": "Tu concurrencia de pago ({{quantity}}) seguirá activa hasta el {{date}} y después finalizará junto con tu plan Team. Los slots que añadas hasta entonces finalizarán en la misma fecha.",
+      "concurrencyEndsPeriod": "Tu concurrencia de pago ({{quantity}}) seguirá activa hasta el final del periodo de facturación y después finalizará junto con tu plan Team. Los slots que añadas hasta entonces finalizarán al mismo tiempo.",
       "confirmProCancellation": "¿Estás seguro de que quieres cancelar tu plan Pro?",
       "confirmTarget": "¿Cambiar al plan {{plan}}?",
       "inProgress": "Cambiando de plan...",
@@ -1059,6 +1062,7 @@
     "restore": {
       "cancellationDescription": "Esto anulará la cancelación programada de tu plan {{plan}}.",
       "cancellationDescriptionDate": "Esto anulará la cancelación programada de tu plan {{plan}}. Se renovará el {{date}}.",
+      "concurrencyContinues": "Tu concurrencia de pago ({{quantity}}) seguirá activa y renovándose junto con tu plan.",
       "downgradeDescription": "Esto cancelará el cambio programado a {{target}}. Tu plan {{plan}} seguirá renovándose.",
       "inProgress": "Restaurando...",
       "title": "¿Restaurar el plan {{plan}}?"

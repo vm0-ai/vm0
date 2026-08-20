@@ -845,8 +845,9 @@
       "paidAddOn": "componente aggiuntivo a pagamento",
       "payAndAddSlots": "Paga e aggiungi slot",
       "payAndUpdate": "Paga e aggiorna",
-      "restoreDescription": "Questo riprende il rinnovo per questa sottoscrizione simultanea.",
-      "restoreSubscription": "Ripristina l'abbonamento",
+      "restoreConcurrency": "Ripristina concorrenza",
+      "restoreQuantityDescription": "Questo ripristina il rinnovo della concorrenza a pagamento ({{quantity}}). Il tuo piano non cambierà.",
+      "restoreTeamPlan": "Ripristina il piano Team",
       "restoreTitle": "Ripristinare la sottoscrizione di concorrenza?",
       "reviewChange": "Rivedi modifica",
       "reviewDescription": "Controlla l'importo da pagare ora e l'abbonamento mensile aggiornato.",
@@ -884,6 +885,8 @@
     "downgrade": {
       "cancelSubscription": "Annulla l'abbonamento",
       "chooseTarget": "Scegli a quale piano effettuare il downgrade.",
+      "concurrencyEndsDate": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva fino al {{date}}, quindi terminerà insieme al tuo piano Team. Tutti gli slot aggiunti prima di allora termineranno nella stessa data.",
+      "concurrencyEndsPeriod": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva fino alla fine del periodo di fatturazione, quindi terminerà insieme al tuo piano Team. Tutti gli slot aggiunti prima di allora termineranno nello stesso momento.",
       "confirmProCancellation": "Sei sicuro di voler annullare il tuo piano Pro?",
       "confirmTarget": "Downgrade a {{plan}}?",
       "inProgress": "Declassamento...",
@@ -1059,6 +1062,7 @@
     "restore": {
       "cancellationDescription": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}.",
       "cancellationDescriptionDate": "Questa operazione annullerà la cancellazione programmata del piano {{plan}}, che si rinnoverà il {{date}}.",
+      "concurrencyContinues": "La concorrenza a pagamento ({{quantity}}) rimarrà attiva e continuerà a rinnovarsi insieme al tuo piano.",
       "downgradeDescription": "Questa operazione annullerà il passaggio programmato a {{target}}. Il piano {{plan}} continuerà a rinnovarsi.",
       "inProgress": "Ripristino...",
       "title": "Ripristinare il piano {{plan}}?"

@@ -825,8 +825,9 @@
       "paidAddOn": "paid add-on",
       "payAndAddSlots": "Pay and add slots",
       "payAndUpdate": "Pay and update",
-      "restoreDescription": "This resumes renewal for this concurrency subscription.",
-      "restoreSubscription": "Restore subscription",
+      "restoreConcurrency": "Restore concurrency",
+      "restoreQuantityDescription": "This restores renewal for your paid concurrency ({{quantity}}). Your plan will not change.",
+      "restoreTeamPlan": "Restore Team plan",
       "restoreTitle": "Restore concurrency subscription?",
       "reviewChange": "Review change",
       "reviewDescription": "Review the amount due now and your updated monthly subscription.",
@@ -863,6 +864,8 @@
     "downgrade": {
       "cancelSubscription": "Cancel subscription",
       "chooseTarget": "Choose which plan to downgrade to.",
+      "concurrencyEndsDate": "Your paid concurrency ({{quantity}}) will remain active until {{date}}, then end with your Team plan. Any slots added before then will end on the same date.",
+      "concurrencyEndsPeriod": "Your paid concurrency ({{quantity}}) will remain active until the end of the billing period, then end with your Team plan. Any slots added before then will end at the same time.",
       "confirmProCancellation": "Are you sure you want to cancel your Pro plan?",
       "confirmTarget": "Downgrade to {{plan}}?",
       "inProgress": "Downgrading...",
@@ -1038,6 +1041,7 @@
     "restore": {
       "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",
       "cancellationDescriptionDate": "This will undo the scheduled cancellation for your {{plan}} plan. It will renew on {{date}}.",
+      "concurrencyContinues": "Your paid concurrency ({{quantity}}) will remain active and continue renewing with your plan.",
       "downgradeDescription": "This will cancel the scheduled downgrade to {{target}}. Your {{plan}} plan will continue renewing.",
       "inProgress": "Restoring...",
       "title": "Restore {{plan}} plan?"

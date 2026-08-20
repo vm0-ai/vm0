@@ -825,8 +825,9 @@
       "paidAddOn": "유료 추가 옵션",
       "payAndAddSlots": "결제하고 슬롯 추가",
       "payAndUpdate": "결제하고 업데이트",
-      "restoreDescription": "이 동시 실행 구독의 갱신을 재개합니다.",
-      "restoreSubscription": "구독 복원",
+      "restoreConcurrency": "동시 실행 복원",
+      "restoreQuantityDescription": "유료 동시 실행({{quantity}}) 갱신을 복원합니다. 플랜은 변경되지 않습니다.",
+      "restoreTeamPlan": "Team 플랜 복원",
       "restoreTitle": "동시 실행 구독을 복원하시겠습니까?",
       "reviewChange": "변경 검토",
       "reviewDescription": "지금 결제할 금액과 업데이트된 월간 구독을 검토하세요.",
@@ -863,6 +864,8 @@
     "downgrade": {
       "cancelSubscription": "구독 취소",
       "chooseTarget": "다운그레이드할 플랜을 선택하세요.",
+      "concurrencyEndsDate": "유료 동시 실행({{quantity}})은 {{date}}까지 활성 상태로 유지된 후 Team 플랜과 함께 종료됩니다. 그 전에 추가한 모든 슬롯도 같은 날짜에 종료됩니다.",
+      "concurrencyEndsPeriod": "유료 동시 실행({{quantity}})은 결제 기간이 끝날 때까지 활성 상태로 유지된 후 Team 플랜과 함께 종료됩니다. 그 전에 추가한 모든 슬롯도 동시에 종료됩니다.",
       "confirmProCancellation": "Pro 플랜을 취소하시겠습니까?",
       "confirmTarget": "{{plan}}으로 다운그레이드하시겠습니까?",
       "inProgress": "다운그레이드 중...",
@@ -1038,6 +1041,7 @@
     "restore": {
       "cancellationDescription": "{{plan}} 플랜의 예약된 취소를 취소합니다.",
       "cancellationDescriptionDate": "{{plan}} 플랜의 예약된 취소를 취소합니다. {{date}}에 갱신됩니다.",
+      "concurrencyContinues": "유료 동시 실행({{quantity}})은 활성 상태로 유지되며 플랜과 함께 계속 갱신됩니다.",
       "downgradeDescription": "{{target}}로 예정된 다운그레이드를 취소합니다. {{plan}} 플랜은 계속 갱신됩니다.",
       "inProgress": "복원 중...",
       "title": "{{plan}} 플랜을 복원하시겠습니까?"

@@ -3221,10 +3221,7 @@ describe("organization billing settings", () => {
     expect(changeButton).toBeEnabled();
   });
 
-  it("reports a Plan-ending concurrency conflict after submission", async () => {
-    const errorToast = vi.spyOn(toast, "error");
-    let previewedQuantity: number | null = null;
-    let canceledSubscriptionId: string | null = null;
+  it("shows only Restore Team plan when the Plan is ending", async () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Ending Team Concurrency Org",
@@ -3252,77 +3249,22 @@ describe("organization billing settings", () => {
         ],
       });
     });
-    context.mocks.api(
-      billingConcurrencySubscriptionContract.previewChange,
-      ({ body, respond }) => {
-        previewedQuantity = body.quantity;
-        return respond(409, {
-          error: {
-            code: "CONFLICT",
-            message:
-              "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
-          },
-        });
-      },
-    );
-    context.mocks.api(
-      billingConcurrencySubscriptionContract.cancel,
-      ({ params, respond }) => {
-        canceledSubscriptionId = params.subscriptionId;
-        return respond(409, {
-          error: {
-            code: "CONFLICT",
-            message:
-              "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
-          },
-        });
-      },
-    );
-
     await openBillingTab();
 
-    click(buttonByText("Change"));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Change concurrency",
+    expect(screen.getByText("Active until Jun 1, 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Change")).not.toBeInTheDocument();
+    click(buttonByText("Restore Team plan"));
+    const restorePlanDialog = await screen.findByRole("dialog", {
+      name: "Restore Team plan?",
     });
-    const quantityInput = within(dialog).getByRole("textbox", {
-      name: "Slots",
-    });
-    const decreaseQuantity = within(dialog).getByLabelText(
-      "Decrease additional concurrency quantity",
+    expect(restorePlanDialog).toHaveTextContent(
+      "This will undo the scheduled cancellation for your Team plan. It will renew on Jun 1, 2026.",
     );
-    const increaseQuantity = within(dialog).getByLabelText(
-      "Increase additional concurrency quantity",
+    expect(restorePlanDialog).toHaveTextContent(
+      "Your paid concurrency (5 slots) will remain active and continue renewing with your plan.",
     );
-
-    expect(quantityInput).toHaveValue("5");
-    expect(decreaseQuantity).toBeEnabled();
-    expect(increaseQuantity).toBeEnabled();
-    expect(buttonByText("Cancel entire subscription", dialog)).toBeEnabled();
-
-    click(decreaseQuantity);
-    expect(quantityInput).toHaveValue("4");
-    click(buttonByText("Review change", dialog));
-
-    await waitFor(() => {
-      expect(previewedQuantity).toBe(4);
-      expect(errorToast).toHaveBeenCalledWith(
-        "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
-      );
-    });
-
-    click(buttonByText("Cancel entire subscription", dialog));
-    const cancelDialog = await screen.findByRole("dialog", {
-      name: "Cancel entire subscription",
-    });
-    click(buttonByText("Cancel subscription", cancelDialog));
-
-    await waitFor(() => {
-      expect(canceledSubscriptionId).toBe("sub_concurrency_ending_plan");
-      expect(errorToast).toHaveBeenCalledWith(
-        "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
-      );
-    });
+    click(buttonByText("Cancel", restorePlanDialog));
+    expect(screen.queryByText("Change")).not.toBeInTheDocument();
   });
 
   it("manages an active concurrency subscription through Change", async () => {
@@ -3462,7 +3404,10 @@ describe("organization billing settings", () => {
       name: "Restore concurrency subscription?",
     });
     expect(restoredSubscriptionId).toBeNull();
-    click(buttonByText("Restore subscription", restoreDialog));
+    expect(restoreDialog).toHaveTextContent(
+      "This restores renewal for your paid concurrency (2 slots). Your plan will not change.",
+    );
+    click(buttonByText("Restore concurrency", restoreDialog));
 
     await waitFor(() => {
       expect(restoredSubscriptionId).toBe("sub_concurrency_12345678");
@@ -3778,7 +3723,10 @@ describe("organization billing settings", () => {
     const restoreDialog = await screen.findByRole("dialog", {
       name: "Restore concurrency subscription?",
     });
-    click(buttonByText("Restore subscription", restoreDialog));
+    expect(restoreDialog).toHaveTextContent(
+      "This restores renewal for your paid concurrency (5 slots). Your plan will not change.",
+    );
+    click(buttonByText("Restore concurrency", restoreDialog));
 
     await waitFor(() => {
       expect(restoredSubscriptionId).toBe("sub_concurrency_reduce");
@@ -4701,7 +4649,20 @@ describe("organization billing settings", () => {
   });
 
   it("schedules and restores a team plan downgrade from the pricing page", async () => {
-    let billingStatus = activeTeamBillingStatus();
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      concurrencyLimit: 15,
+      concurrencySubscriptions: [
+        {
+          id: "sub_team_downgrade_concurrency",
+          quantity: 5,
+          currentPeriodEnd: "2026-05-01T00:00:00Z",
+          cancelAtPeriodEnd: false,
+          canReduce: true,
+          canChangeInApp: true,
+        },
+      ],
+    };
 
     context.mocks.data.org({
       id: "org_1",
@@ -4749,7 +4710,7 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Team plan")).toBeInTheDocument();
-      expect(screen.getByText("Renews May 1, 2026")).toBeInTheDocument();
+      expect(screen.getAllByText("Renews May 1, 2026")).toHaveLength(2);
     });
 
     click(screen.getByText("Downgrade"));
@@ -4766,6 +4727,9 @@ describe("organization billing settings", () => {
       throw new Error("Pro downgrade option not found");
     }
     click(proOption);
+    expect(downgradeDialog).toHaveTextContent(
+      "Your paid concurrency (5 slots) will remain active until May 1, 2026, then end with your Team plan. Any slots added before then will end on the same date.",
+    );
     click(buttonByText("Downgrade to Pro", downgradeDialog));
 
     await waitFor(() => {
@@ -4775,6 +4739,8 @@ describe("organization billing settings", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.getByText("Restore plan")).toBeInTheDocument();
+      expect(screen.getByText("Restore Team plan")).toBeInTheDocument();
+      expect(screen.getByText("Active until May 1, 2026")).toBeInTheDocument();
       expect(
         screen.getByText(
           "Your Team plan will downgrade to Pro on May 1, 2026.",
@@ -4800,6 +4766,9 @@ describe("organization billing settings", () => {
         "This will cancel the scheduled downgrade to Pro. Your Team plan will continue renewing.",
       ),
     ).toBeInTheDocument();
+    expect(restoreDialog).toHaveTextContent(
+      "Your paid concurrency (5 slots) will remain active and continue renewing with your plan.",
+    );
     click(buttonByText("Restore plan", restoreDialog));
 
     await waitFor(() => {
