@@ -132,27 +132,15 @@ function OrganizationCreditMenuItem({
   openCredits: () => void;
 }) {
   const creditLabel = useOrganizationCreditLabel();
-  return (
-    <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />
-  );
+  return <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />;
 }
 
-function CombinedCreditMenuItem({
-  openCredits,
-}: {
-  openCredits: () => void;
-}) {
+function CombinedCreditMenuItem({ openCredits }: { openCredits: () => void }) {
   const creditLabel = useCombinedCreditLabel();
-  return (
-    <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />
-  );
+  return <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />;
 }
 
-function GrowthCreditMenuItem({
-  openCredits,
-}: {
-  openCredits: () => void;
-}) {
+function GrowthCreditMenuItem({ openCredits }: { openCredits: () => void }) {
   const features = useLastResolved(featureSwitch$);
   const usagePackPlansEnabled =
     features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
