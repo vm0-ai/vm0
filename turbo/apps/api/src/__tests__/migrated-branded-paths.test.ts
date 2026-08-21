@@ -243,6 +243,15 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/seo/ranked-keywords",
   ],
   "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
+  // #28415
+  "/api/built-in-generations/:generationId": [
+    "/api/okou/built-in-generations/:generationId",
+    "/api/zero/built-in-generations/:generationId",
+  ],
+  "/api/image-io/generate": [
+    "/api/okou/image-io/generate",
+    "/api/zero/image-io/generate",
+  ],
   // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
   // attribution.
   "/api/attribution/signup": [

@@ -4,6 +4,7 @@ import { getConnectorAuthProviderRegistrationCapabilities } from "../auth-provid
 import { isConnectorDirectOkouOauthCallbackReady } from "../app-oauth-callback";
 
 const DIRECT_OKOU_READY_CONNECTORS = [
+  "cloudflare",
   "gmail",
   "google-ads",
   "google-analytics",

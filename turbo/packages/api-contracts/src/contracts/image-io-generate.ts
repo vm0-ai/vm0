@@ -77,7 +77,7 @@ export type ImageIoGenerateResponse = z.infer<
 export const imageIoGenerateContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/image-io/generate",
+    path: "/api/image-io/generate",
     headers: authHeadersSchema,
     body: imageIoGenerateRequestSchema,
     responses: {
