@@ -456,6 +456,35 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
   "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
   "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
+  // #28419. The goal and hosted-site contracts. `domains/host.ts` builds its
+  // four URLs by hand rather than from the contract, so a published CLI holds
+  // the `okou` form independently of this table; the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed, on
+  // the same commit-addressed CLI drain described above.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
+  "/api/goal/block": ["/api/okou/goal/block", "/api/zero/goal/block"],
+  "/api/goal/complete": ["/api/okou/goal/complete", "/api/zero/goal/complete"],
+  "/api/goal/pause": ["/api/okou/goal/pause", "/api/zero/goal/pause"],
+  "/api/goal/resume": ["/api/okou/goal/resume", "/api/zero/goal/resume"],
+  "/api/host/deployments/:deploymentId/complete": [
+    "/api/okou/host/deployments/:deploymentId/complete",
+    "/api/zero/host/deployments/:deploymentId/complete",
+  ],
+  "/api/host/deployments/prepare": [
+    "/api/okou/host/deployments/prepare",
+    "/api/zero/host/deployments/prepare",
+  ],
+  "/api/host/sites/:publicSlug/files": [
+    "/api/okou/host/sites/:publicSlug/files",
+    "/api/zero/host/sites/:publicSlug/files",
+  ],
+  "/api/host/sites/:site/deployments": [
+    "/api/okou/host/sites/:site/deployments",
+    "/api/zero/host/sites/:site/deployments",
+  ],
   // #28422: artifact catalog, logs, push subscriptions, the platform realtime
   // token, and the run reads.
   "/api/artifacts/catalog": [

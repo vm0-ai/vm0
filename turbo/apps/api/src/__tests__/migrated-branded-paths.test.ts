@@ -261,6 +261,28 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
   "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
   "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
+  // #28419
+  "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
+  "/api/goal/block": ["/api/okou/goal/block", "/api/zero/goal/block"],
+  "/api/goal/complete": ["/api/okou/goal/complete", "/api/zero/goal/complete"],
+  "/api/goal/pause": ["/api/okou/goal/pause", "/api/zero/goal/pause"],
+  "/api/goal/resume": ["/api/okou/goal/resume", "/api/zero/goal/resume"],
+  "/api/host/deployments/:deploymentId/complete": [
+    "/api/okou/host/deployments/:deploymentId/complete",
+    "/api/zero/host/deployments/:deploymentId/complete",
+  ],
+  "/api/host/deployments/prepare": [
+    "/api/okou/host/deployments/prepare",
+    "/api/zero/host/deployments/prepare",
+  ],
+  "/api/host/sites/:publicSlug/files": [
+    "/api/okou/host/sites/:publicSlug/files",
+    "/api/zero/host/sites/:publicSlug/files",
+  ],
+  "/api/host/sites/:site/deployments": [
+    "/api/okou/host/sites/:site/deployments",
+    "/api/zero/host/sites/:site/deployments",
+  ],
   // #28422
   "/api/artifacts/catalog": [
     "/api/okou/artifacts/catalog",
