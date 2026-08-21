@@ -65,6 +65,11 @@ export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   [
     z
       .object({
+        intent: z.literal("single-account"),
+      })
+      .strict(),
+    z
+      .object({
         intent: z.literal("add"),
         displayName: connectorAccountDisplayNameSchema.optional(),
       })

@@ -47,7 +47,18 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("distinguishes add from exact reconnect intent", () => {
+  it("distinguishes single-account, add, and exact reconnect intent", () => {
+    expect(
+      connectorAccountMutationIntentSchema.parse({
+        intent: "single-account",
+      }),
+    ).toStrictEqual({ intent: "single-account" });
+    expect(
+      connectorAccountMutationIntentSchema.safeParse({
+        intent: "single-account",
+        connectionId,
+      }).success,
+    ).toBe(false);
     expect(
       connectorAccountMutationIntentSchema.parse({
         intent: "add",

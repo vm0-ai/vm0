@@ -299,7 +299,9 @@ describe("CONN-02: external-code session lifecycle", () => {
     const actor = await awsActor();
     const bdd = createBddApi(context);
 
-    const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    const session = await connectorsApi.startExternalCode(actor, "aws", "cli", {
+      intent: "single-account",
+    });
     expect(session).toMatchObject({
       connectorSlug: "aws",
       status: "pending",
