@@ -1055,22 +1055,25 @@ fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
         let replacement_backend = nbd_backend(device_index).expect("replacement sysfs backend");
         let replacement_size_matches =
             nbd_cow::netlink::verify_device_size(device_index, fixture.size()).await;
-        let mut replacement_device = tokio::time::timeout(Duration::from_secs(5), async move {
-            tokio::fs::File::open(format!("/dev/nbd{device_index}")).await
-        })
-        .await
-        .expect("replacement open should not time out")
-        .expect("replacement open should succeed");
 
         let stale_cleanup_result = original.destroy_with_retries(destroy_policy()).await;
         let backend_after_stale_cleanup = nbd_backend(device_index);
         let pid_after_stale_cleanup = nbd_pid(device_index);
-        let replacement_read = tokio::time::timeout(Duration::from_secs(5), async move {
-            let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
-            replacement_device.read_exact(&mut block).await?;
-            Ok::<_, std::io::Error>(block)
-        })
-        .await;
+        // Keep block-device I/O off the single Tokio blocking worker reserved
+        // above for deterministic connect TID reuse. NBD request handling also
+        // needs that worker, so using tokio::fs here would deadlock the test.
+        let (replacement_read_sender, replacement_read_receiver) = tokio::sync::oneshot::channel();
+        let replacement_read_thread = std::thread::spawn(move || {
+            let result = (|| {
+                let mut device = std::fs::File::open(format!("/dev/nbd{device_index}"))?;
+                let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
+                std::io::Read::read_exact(&mut device, &mut block)?;
+                Ok::<_, std::io::Error>(block)
+            })();
+            let _ = replacement_read_sender.send(result);
+        });
+        let replacement_read =
+            tokio::time::timeout(Duration::from_secs(5), replacement_read_receiver).await;
 
         let replacement_disconnect_result = nbd_cow::netlink::disconnect(device_index);
         replacement_shutdown.cancel();
@@ -1079,6 +1082,9 @@ fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
             let _ = server.await;
         }
         pool.cleanup().await;
+        replacement_read_thread
+            .join()
+            .expect("replacement read thread");
 
         assert_eq!(original_tid, replacement_connect_tid.0);
         assert_eq!(replacement_tid, replacement_connect_tid.0);
@@ -1093,6 +1099,7 @@ fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
         assert_eq!(
             replacement_read
                 .expect("replacement read should not time out")
+                .expect("replacement read thread should report its result")
                 .expect("replacement read should succeed"),
             vec![0_u8; nbd_cow::BLOCK_SIZE]
         );
