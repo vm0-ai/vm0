@@ -19,6 +19,7 @@ const DIRECT_OKOU_READY_CONNECTORS = [
   "google-search-console",
   "google-sheets",
   "microsoft-365",
+  "notion",
   "outlook-calendar",
   "outlook-mail",
   "youtube",

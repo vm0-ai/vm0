@@ -37,6 +37,7 @@ const CLOUDFLARE_USERINFO_URL = "https://dash.cloudflare.com/oauth2/userinfo";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_OPENID_USERINFO_URL =
   "https://openidconnect.googleapis.com/v1/userinfo";
+const NOTION_OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const AIRTABLE_OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
 const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
@@ -473,6 +474,104 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expect(callbackLocation.pathname).toBe("/connector/success");
     expect(tokenBodies).toHaveLength(1);
     expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+  });
+
+  it("uses the direct Okou App callback for Notion and reuses its exact redirect URI", async () => {
+    const tokenBodies: unknown[] = [];
+    server.use(
+      http.post(NOTION_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(await request.json());
+        return HttpResponse.json({
+          access_token: "notion-test-token",
+          refresh_token: "notion-refresh-token",
+          expires_in: 3600,
+          owner: {
+            user: {
+              id: "notion-user-123",
+              name: "Notion Test User",
+              person: { email: "notion@example.test" },
+            },
+          },
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("notion", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://api.notion.com/v1/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "notion-test-client-id",
+    );
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe("https://app.okou.ai/connectors/notion/callback");
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const callback = await app.request(
+      `${OKOU_API_ORIGIN}/api/connectors/notion/callback?${new URLSearchParams({
+        code: "notion-authorization-code",
+        state,
+      })}`,
+      { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+    );
+
+    expect(callback.status).toBe(307);
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.pathname).toBe("/connector/success");
+    expect(tokenBodies).toStrictEqual([
+      {
+        grant_type: "authorization_code",
+        code: "notion-authorization-code",
+        redirect_uri: redirectUri,
+      },
+    ]);
+  });
+
+  it("keeps the VM0 App callback for Notion", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("notion", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.ai/connectors/notion/callback",
+    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps an omitted Notion callback target on the existing Web callback", async () => {
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("notion", {
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/notion/callback`,
+    );
+    expectOkouOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("keeps an Okou start on the VM0 App callback when the provider is not ready", async () => {
