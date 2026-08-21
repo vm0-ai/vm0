@@ -189,8 +189,7 @@ def render_metrics(
     lines.extend(
         [
             "",
-            "# HELP vm0_runner_status_collection_success Whether all runner "
-            "status inputs were collected successfully.",
+            "# HELP vm0_runner_status_collection_success Whether all runner status inputs were collected successfully.",
             "# TYPE vm0_runner_status_collection_success gauge",
             f"vm0_runner_status_collection_success {collection_success}",
         ]
