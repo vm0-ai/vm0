@@ -12,7 +12,7 @@ use crate::host_file::{self, DirMode};
 use crate::types::MAX_HELD_WORKSPACE_STATES;
 
 use super::WorkspaceImageCache;
-use super::entry::{CacheEntryPaths, is_cache_key_name};
+use super::entry::is_cache_key_name;
 use super::metadata::WorkspaceCacheScopeClassification;
 
 const METADATA_FILE_NAME: &str = "metadata.json";
@@ -141,9 +141,13 @@ impl WorkspaceCacheWatcher {
                 Some(EntryWatchState::Relevant) => {}
                 Some(EntryWatchState::Unclassified) => {
                     requires_refresh = true;
-                    let paths = self.cache.entry_paths(cache_key);
-                    self.classify_metadata_commit(cache_key, &paths, &mut committed_cache_keys)
-                        .await;
+                    let metadata_path = self.cache.workspace_image_cache_metadata(cache_key);
+                    self.classify_metadata_commit(
+                        cache_key,
+                        &metadata_path,
+                        &mut committed_cache_keys,
+                    )
+                    .await;
                 }
                 None => {
                     requires_refresh = true;
@@ -263,9 +267,9 @@ impl WorkspaceCacheWatcher {
                     .await?;
             }
             for cache_key in metadata_commit_keys {
-                let paths = self.cache.entry_paths(&cache_key);
+                let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
                 changed |= self
-                    .classify_metadata_commit(&cache_key, &paths, &mut committed_cache_keys)
+                    .classify_metadata_commit(&cache_key, &metadata_path, &mut committed_cache_keys)
                     .await;
             }
             if reconcile_all_entry_watches {
@@ -309,8 +313,8 @@ impl WorkspaceCacheWatcher {
 
         let watched_cache_keys = self.watch_by_cache_key.keys().cloned().collect::<Vec<_>>();
         for cache_key in watched_cache_keys {
-            let paths = self.cache.entry_paths(&cache_key);
-            self.classify_metadata_commit(&cache_key, &paths, committed_cache_keys)
+            let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
+            self.classify_metadata_commit(&cache_key, &metadata_path, committed_cache_keys)
                 .await;
         }
 
@@ -390,7 +394,7 @@ impl WorkspaceCacheWatcher {
         );
         self.watch_by_cache_key.insert(cache_key.clone(), watch);
         let changed = self
-            .classify_metadata_commit(&cache_key, &paths, committed_cache_keys)
+            .classify_metadata_commit(&cache_key, paths.metadata(), committed_cache_keys)
             .await;
         self.enforce_watch_limit(&cache_key);
         if !self.watch_by_cache_key.contains_key(&cache_key) {
@@ -402,13 +406,17 @@ impl WorkspaceCacheWatcher {
     async fn classify_metadata_commit(
         &mut self,
         cache_key: &str,
-        paths: &CacheEntryPaths,
+        metadata_path: &Path,
         committed_cache_keys: &mut BTreeSet<String>,
     ) -> bool {
         let Some(previous_state) = self.entry_watch_state(cache_key) else {
             return false;
         };
-        match self.cache.classify_metadata_scope(cache_key, paths).await {
+        match self
+            .cache
+            .classify_metadata_scope(cache_key, metadata_path)
+            .await
+        {
             WorkspaceCacheScopeClassification::Relevant => {
                 self.set_entry_watch_state(cache_key, EntryWatchState::Relevant);
                 if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {

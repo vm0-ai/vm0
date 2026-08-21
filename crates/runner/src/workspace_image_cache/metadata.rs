@@ -13,9 +13,7 @@ use super::fs::{
     allocated_bytes, remove_workspace_cache_path_if_exists, secure_workspace_cache_publication_file,
 };
 use super::types::WorkspaceCacheTerminalStatus;
-use super::{
-    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache, entry::CacheEntryPaths,
-};
+use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,9 +84,9 @@ impl WorkspaceImageCache {
     pub(super) async fn classify_metadata_scope(
         &self,
         cache_key: &str,
-        paths: &CacheEntryPaths,
+        metadata_path: &Path,
     ) -> WorkspaceCacheScopeClassification {
-        let Ok(metadata) = self.read_metadata_file(paths.metadata()).await else {
+        let Ok(metadata) = self.read_metadata_file(metadata_path).await else {
             return WorkspaceCacheScopeClassification::Unclassified;
         };
         if !self.metadata_matches_cache_key(cache_key, &metadata) {

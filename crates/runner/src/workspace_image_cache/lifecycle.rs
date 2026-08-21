@@ -754,8 +754,10 @@ impl WorkspaceImageCache {
                     if collect_locked_commits
                         && locked_commit_keys.len() < MAX_HELD_WORKSPACE_STATES
                     {
-                        let paths = self.entry_paths(cache_key);
-                        if self.classify_metadata_scope(cache_key, &paths).await
+                        let metadata_path = self.workspace_image_cache_metadata(cache_key);
+                        if self
+                            .classify_metadata_scope(cache_key, &metadata_path)
+                            .await
                             == WorkspaceCacheScopeClassification::Relevant
                         {
                             locked_commit_keys.insert(cache_key.to_owned());
