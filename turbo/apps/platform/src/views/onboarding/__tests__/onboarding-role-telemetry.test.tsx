@@ -94,7 +94,6 @@ test("reports the final role for the identified user after onboarding completes"
     screen.findByRole("heading", { name: "What do you want to make first" }),
   ).resolves.toBeInTheDocument();
   click(screen.getByRole("radio", { name: /Workflow automation/u }));
-  click(buttonByText("Continue"));
 
   await expect(
     screen.findByRole("heading", { name: "What do you work on?" }),
@@ -104,7 +103,6 @@ test("reports the final role for the identified user after onboarding completes"
     screen.findByRole("heading", { name: "Engineer workflows" }),
   ).resolves.toBeInTheDocument();
   click(buttonByText("Talk to Zero and make my own"));
-  click(buttonByText("Continue"));
 
   await waitFor(() => {
     expect(completionStarted).toHaveBeenCalledOnce();

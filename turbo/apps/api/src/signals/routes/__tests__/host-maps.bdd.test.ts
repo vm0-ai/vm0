@@ -61,7 +61,6 @@ function geocodeOkHandler(requests: URL[]) {
 describe("FILE-01: hosted-site deployments through host APIs", () => {
   it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
     mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou-public-sites.test");
-    mockEnv("OKOU_HOST_DOMAIN", "okou-sites.test");
     mockEnv("ZERO_HOST_DOMAIN", "zero-sites.test");
     mockEnv("OKOU_HOST_SCHEME", "http");
     mockEnv("ZERO_HOST_SCHEME", "https");
@@ -221,7 +220,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
 
   it("uses the creation brand for hosted-site URLs and isolates Okou pointers [HOST-A]", async () => {
     mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
-    mockEnv("OKOU_HOST_DOMAIN", "legacy-sites.test");
     mockEnv("ZERO_HOST_DOMAIN", "sites.vm0.io");
     mockEnv("OKOU_HOST_SCHEME", "https");
     mockEnv("ZERO_HOST_SCHEME", "https");

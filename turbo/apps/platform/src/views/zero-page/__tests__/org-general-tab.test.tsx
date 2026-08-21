@@ -32,7 +32,7 @@ describe("organization general settings", () => {
       name: "Old Name",
       role: "admin",
     });
-    context.mocks.http.get("*/api/okou/org/logo", () => {
+    context.mocks.http.get("*/api/org/logo", () => {
       return new Response(JSON.stringify({ logoUrl, hasImage: true }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -113,7 +113,7 @@ describe("organization general settings", () => {
       name: "Acme",
       role: "admin",
     });
-    context.mocks.http.get("*/api/okou/org/logo", () => {
+    context.mocks.http.get("*/api/org/logo", () => {
       return new Response(
         JSON.stringify({ logoUrl: initialLogoUrl, hasImage: true }),
         {
@@ -121,7 +121,7 @@ describe("organization general settings", () => {
         },
       );
     });
-    context.mocks.http.post("*/api/okou/org/logo", async ({ request }) => {
+    context.mocks.http.post("*/api/org/logo", async ({ request }) => {
       const formData = await request.formData();
       const file = formData.get("file");
       if (!(file instanceof File)) {

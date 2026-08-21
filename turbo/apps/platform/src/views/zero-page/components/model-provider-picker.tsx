@@ -77,29 +77,12 @@ export interface ModelProviderSelection {
   codexServiceTier?: CodexServiceTier;
 }
 
-/**
- * Sibling variants of one model family (GPT Image 1 Standard/Mini, Seedance 2.0
- * Standard/Fast/Mini). They render as a segment control on the model's own row:
- * every variant stays visible, one click is a complete selection, and nothing
- * overlays the rest of the list the way a nested menu did.
- */
-interface MediaModelPanelVariantControl {
-  readonly label: string;
-  readonly options: readonly {
-    readonly label: string;
-    readonly chipLabel: string;
-    readonly selected: boolean;
-    readonly onSelect: () => void;
-  }[];
-}
-
 export interface MediaModelPanelOption {
   readonly key: string;
   readonly label: string;
   readonly icon: ReactNode;
   readonly selected: boolean;
   readonly onSelect: () => void;
-  readonly variant?: MediaModelPanelVariantControl;
 }
 
 export type MediaModelCategoryId = "image" | "video";
@@ -1027,75 +1010,6 @@ export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
 }
 
 function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
-  if (option.variant) {
-    const variant = option.variant;
-    const groupSelected =
-      option.selected ||
-      variant.options.some((candidate) => {
-        return candidate.selected;
-      });
-    const selectedVariant = variant.options.find((candidate) => {
-      return candidate.selected;
-    });
-    // A segment control reads as "one of these", so a family that is not the
-    // active model still fills its base variant instead of leaving the whole
-    // segment blank. The checkmark, gated on `groupSelected`, is what marks a
-    // real selection.
-    const highlightedVariant = selectedVariant ?? variant.options[0];
-    return (
-      // The segment is `xs` (h-7), so this row drops to `py-0.5` to land on the
-      // same 32px as the plain rows around it -- `py-1.5` would make the one row
-      // that carries variants 8px taller than its neighbours.
-      <div
-        // The segment always fills one variant, so its checked state no longer
-        // separates the active family from a default fill. `aria-current` is
-        // what the checkmark means, so assistive technology gets the same
-        // "this is the current model" cue sighted users get from the check.
-        // `aria-pressed` on the label button keeps its narrower meaning: the
-        // base model specifically, not the family.
-        aria-current={groupSelected ? "true" : undefined}
-        className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
-      >
-        <button
-          type="button"
-          aria-label={option.label}
-          aria-pressed={option.selected}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg text-left outline-none"
-          onClick={option.onSelect}
-        >
-          {option.icon}
-          <span className="min-w-0 flex-1 truncate">{option.label}</span>
-        </button>
-        <SegmentControl
-          size="xs"
-          aria-label={variant.label}
-          value={highlightedVariant?.label ?? null}
-          onValueChange={(next: string | null) => {
-            variant.options
-              .find((candidate) => {
-                return candidate.label === next;
-              })
-              ?.onSelect();
-          }}
-        >
-          {variant.options.map((candidate) => {
-            return (
-              <SegmentControlItem
-                key={candidate.label}
-                value={candidate.label}
-                aria-label={candidate.label}
-              >
-                {candidate.chipLabel}
-              </SegmentControlItem>
-            );
-          })}
-        </SegmentControl>
-        {groupSelected && (
-          <Check size={15} className="absolute right-2 text-foreground" />
-        )}
-      </div>
-    );
-  }
   return (
     <button
       type="button"
@@ -1247,14 +1161,13 @@ function ModelFirstModelPickerContentLayout({
     <SelectContent
       className={cn(
         mediaModelPanel
-          ? // Wide enough for the longest row this popover has to render: a
-            // model name beside a three-up variant segment (Seedance 2.0 with
-            // Standard/Fast/Mini). One width for every category, so switching
-            // tabs never resizes the popover. The 294px bordered cap leaves a
-            // 292px scroll viewport: enough for the compact header and seven
-            // model rows, while an eighth adds one 32px row plus its 4px gap.
-            // The max-width only bites below a 348px viewport, where 332px
-            // would otherwise run past the screen edge.
+          ? // One width for every category, so switching tabs never resizes the
+            // popover: it is sized for the chat rows, which carry a provider
+            // label and a price tier badge beside the model name. The 294px
+            // bordered cap leaves a 292px scroll viewport: enough for the
+            // compact header and seven model rows, while an eighth adds one
+            // 32px row plus its 4px gap. The max-width only bites below a 348px
+            // viewport, where 332px would otherwise run past the screen edge.
             "max-h-[294px] min-w-[332px] max-w-[calc(100vw-1rem)]"
           : "max-h-[280px] min-w-[260px]",
       )}

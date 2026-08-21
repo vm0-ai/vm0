@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ArrowUpRight, Pin, UserPlus } from "lucide-react";
+import { ArrowUpRight, Pin } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
@@ -24,10 +24,9 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
 import { detach, Reason } from "../../signals/utils.ts";
-import { isOrgAdmin$ } from "../../signals/org.ts";
-import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { StartCards } from "./zero-start-cards.tsx";
+import { GrowthEntryHeader } from "./zero-growth-entry.tsx";
 import { homeStartCardsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { relatedCatalogItems$ } from "../../signals/zero-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
@@ -245,34 +244,6 @@ function TypewriterText({
         <span className="inline-block w-[2px] h-[1em] bg-foreground/60 ml-0.5 align-middle animate-pulse" />
       )}
     </>
-  );
-}
-
-function InviteButton() {
-  const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
-  const isAdminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin =
-    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const openSettings = useSet(openSettingsDialogAt$);
-  const handleInvite = () => {
-    detach(openSettings("people", pageSignal), Reason.DomCallback);
-  };
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleInvite}
-      className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
-      aria-hidden={isAdmin ? undefined : "true"}
-      tabIndex={isAdmin ? undefined : -1}
-      data-testid="invite-button"
-    >
-      <UserPlus size={14} />
-      {t(($) => {
-        return $.chat.agentPage.invitePeople;
-      })}
-    </Button>
   );
 }
 
@@ -560,11 +531,7 @@ export function AgentChatPage() {
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
       <span ref={subscribeComputerUseHostsChangedRef} hidden />
-      <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
-        <div className="flex justify-end items-center gap-2">
-          <InviteButton />
-        </div>
-      </header>
+      <GrowthEntryHeader />
 
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[20vh] sm:pb-[10vh]">

@@ -44,6 +44,8 @@
 //!                               happy path
 //!   @write-env-json:<path>    - Write current process env as JSON to path,
 //!                               emit result, and exit(0)
+//!   @parallel-shell-tool-oom  - Run two Bash tools concurrently and verify
+//!                               a group OOM leaves the unrelated tool alive
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
 //!                               lines as JSONL and emit them unchanged.
 //!   @ECHO-HANG@               - Same as @ECHO@, then remain alive until reaped.

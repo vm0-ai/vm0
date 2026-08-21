@@ -19,7 +19,7 @@ const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const GET_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/metadata`;
 const OTHER_GET_URL = `http://localhost:3000/api/chat-threads/${OTHER_THREAD_ID}/metadata`;
 const OTHER_MODEL_SELECTION_URL = `http://localhost:3000/api/chat-threads/${OTHER_THREAD_ID}/model-selection`;
-const MODEL_POLICIES_URL = "http://localhost:3000/api/okou/model-policies";
+const MODEL_POLICIES_URL = "http://localhost:3000/api/model-policies";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-5",

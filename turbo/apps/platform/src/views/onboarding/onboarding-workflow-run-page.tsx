@@ -83,7 +83,7 @@ export function OnboardingWorkflowRunPage() {
                     return $.onboarding.workflowRun.continueWithZero;
                   })
                 : t(($) => {
-                    return $.onboarding.workflowRun.createDraft;
+                    return $.onboarding.workflowRun.createWorkflow;
                   })
             }
             onBack={handleBack}

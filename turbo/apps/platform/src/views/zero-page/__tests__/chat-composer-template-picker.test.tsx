@@ -19,6 +19,7 @@ import {
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
+import { setMockPresentationTemplates } from "../../../mocks/handlers/api-presentation-templates.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   click,
@@ -3356,6 +3357,63 @@ describe("chat composer templates", () => {
       expect(composerInlineTemplates()).toHaveLength(0);
     });
   });
+  it("lists the decks this user already imported ahead of the built-in templates", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    setMockPresentationTemplates([
+      {
+        id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
+        title: "Brand system",
+        sourceFilename: "brand-system.pptx",
+        coverUrl: "https://example.com/imported-cover.png",
+        pageCount: 18,
+        createdAt: "2026-08-21T02:41:59.522Z",
+        updatedAt: "2026-08-21T02:41:59.522Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    const card = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-imported-presentation-template="8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e"]',
+      );
+      if (!found) {
+        throw new Error("Imported template card not found");
+      }
+      return found as HTMLElement;
+    });
+    expect(within(card).getByText("Brand system")).toBeInTheDocument();
+    expect(within(card).getByText("18 slides")).toBeInTheDocument();
+    expect(within(card).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/imported-cover.png",
+    );
+
+    // Grid order is the import tile, then this user's decks, then the
+    // built-ins: a returning user looks for their own deck first.
+    const grid = card.parentElement;
+    if (!grid) {
+      throw new Error("Imported template card has no grid");
+    }
+    const tiles = Array.from(grid.children);
+    expect(tiles.indexOf(card)).toBe(1);
+    expect(tiles[0]).toHaveAttribute("data-presentation-template-import");
+
+    // Selection stays with the built-in templates until the API can resolve a
+    // private template id for a run (#26238), so the card offers no `Use`.
+    expect(queryAllByRoleFast("button", card)).toHaveLength(0);
+  });
+
   it("imports an uploaded deck as an ordinary chat message", async () => {
     const user = userEvent.setup({ delay: null });
     let sentPrompt: string | undefined;

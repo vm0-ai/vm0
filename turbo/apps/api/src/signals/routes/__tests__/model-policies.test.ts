@@ -43,7 +43,7 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsApi(context);
-const MODEL_POLICIES_PATH = "/api/zero/model-policies";
+const MODEL_POLICIES_PATH = "/api/model-policies";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -143,7 +143,7 @@ async function makeLimitedFreeWorkspace(
   }
 }
 
-describe("GET/PUT /api/zero/model-policies", () => {
+describe("GET/PUT /api/model-policies", () => {
   it("returns 401 for unauthenticated reads and writes", async () => {
     const client = apiClient();
 

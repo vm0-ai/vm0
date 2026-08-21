@@ -29,7 +29,7 @@ async function mockPinnedAgentGrid(
 ): Promise<(agents: readonly PinnedAgentStoryEntry[]) => void> {
   let pinnedAgents: readonly PinnedAgentStoryEntry[] = pinnedAgentStory;
 
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -123,7 +123,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
   const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
   await Promise.all([
     ...[
-      "/api/okou/feature-switches",
+      "/api/feature-switches",
       "/api/onboarding/status",
       "/api/team",
       "/api/user-preferences",

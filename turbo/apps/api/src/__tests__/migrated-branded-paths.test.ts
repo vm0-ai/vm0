@@ -4,11 +4,14 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { billingStatusRoutes } from "../signals/routes/billing-status";
+import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
 import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
+import { orgReadRoutes } from "../signals/routes/org-read";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
@@ -482,6 +485,143 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/shared-threads/:id/meta",
     "/api/zero/shared-threads/:id/meta",
   ],
+  // #28457: the billing surface.
+  "/api/billing/auto-recharge": [
+    "/api/okou/billing/auto-recharge",
+    "/api/zero/billing/auto-recharge",
+  ],
+  "/api/billing/checkout": [
+    "/api/okou/billing/checkout",
+    "/api/zero/billing/checkout",
+  ],
+  "/api/billing/checkout/complete": [
+    "/api/okou/billing/checkout/complete",
+    "/api/zero/billing/checkout/complete",
+  ],
+  "/api/billing/checkout/confirm": [
+    "/api/okou/billing/checkout/confirm",
+    "/api/zero/billing/checkout/confirm",
+  ],
+  "/api/billing/concurrency-checkout": [
+    "/api/okou/billing/concurrency-checkout",
+    "/api/zero/billing/concurrency-checkout",
+  ],
+  "/api/billing/concurrency-checkout/preview": [
+    "/api/okou/billing/concurrency-checkout/preview",
+    "/api/zero/billing/concurrency-checkout/preview",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/cancel": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/cancel",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/cancel",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/confirm": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/preview": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/restore": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/restore",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/restore",
+  ],
+  "/api/billing/credit-checkout": [
+    "/api/okou/billing/credit-checkout",
+    "/api/zero/billing/credit-checkout",
+  ],
+  "/api/billing/credit-checkout/confirm": [
+    "/api/okou/billing/credit-checkout/confirm",
+    "/api/zero/billing/credit-checkout/confirm",
+  ],
+  "/api/billing/downgrade": [
+    "/api/okou/billing/downgrade",
+    "/api/zero/billing/downgrade",
+  ],
+  "/api/billing/invoices": [
+    "/api/okou/billing/invoices",
+    "/api/zero/billing/invoices",
+  ],
+  "/api/billing/invoices/receipts": [
+    "/api/okou/billing/invoices/receipts",
+    "/api/zero/billing/invoices/receipts",
+  ],
+  "/api/billing/portal": [
+    "/api/okou/billing/portal",
+    "/api/zero/billing/portal",
+  ],
+  "/api/billing/redeem-code": [
+    "/api/okou/billing/redeem-code",
+    "/api/zero/billing/redeem-code",
+  ],
+  "/api/billing/redeem/:campaign": [
+    "/api/okou/billing/redeem/:campaign",
+    "/api/zero/billing/redeem/:campaign",
+  ],
+  "/api/billing/restore": [
+    "/api/okou/billing/restore",
+    "/api/zero/billing/restore",
+  ],
+  "/api/billing/status": [
+    "/api/okou/billing/status",
+    "/api/zero/billing/status",
+  ],
+  "/api/billing/usage-pack-catalog": [
+    "/api/okou/billing/usage-pack-catalog",
+    "/api/zero/billing/usage-pack-catalog",
+  ],
+  "/api/billing/usage-pack-checkout": [
+    "/api/okou/billing/usage-pack-checkout",
+    "/api/zero/billing/usage-pack-checkout",
+  ],
+  "/api/billing/usage-pack-checkout/confirm": [
+    "/api/okou/billing/usage-pack-checkout/confirm",
+    "/api/zero/billing/usage-pack-checkout/confirm",
+  ],
+  "/api/billing/usage-pack-credits": [
+    "/api/okou/billing/usage-pack-credits",
+    "/api/zero/billing/usage-pack-credits",
+  ],
+  "/api/billing/usage-pack-migration": [
+    "/api/okou/billing/usage-pack-migration",
+    "/api/zero/billing/usage-pack-migration",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/confirm": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/confirm",
+    "/api/zero/billing/usage-pack-migration/:migrationId/confirm",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/revision/confirm": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/revision/confirm",
+    "/api/zero/billing/usage-pack-migration/:migrationId/revision/confirm",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/revision/preview": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/revision/preview",
+    "/api/zero/billing/usage-pack-migration/:migrationId/revision/preview",
+  ],
+  "/api/billing/usage-pack-migration/preview": [
+    "/api/okou/billing/usage-pack-migration/preview",
+    "/api/zero/billing/usage-pack-migration/preview",
+  ],
+  "/api/billing/usage-pack-subscription": [
+    "/api/okou/billing/usage-pack-subscription",
+    "/api/zero/billing/usage-pack-subscription",
+  ],
+  "/api/billing/usage-pack-subscription/changes/:changeId/confirm": [
+    "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
+    "/api/zero/billing/usage-pack-subscription/changes/:changeId/confirm",
+  ],
+  "/api/billing/usage-pack-subscription/changes/preview": [
+    "/api/okou/billing/usage-pack-subscription/changes/preview",
+    "/api/zero/billing/usage-pack-subscription/changes/preview",
+  ],
+  "/api/billing/usage-pack-subscription/subscription-change/confirm": [
+    "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
+    "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
+  ],
+  "/api/billing/usage-pack-subscription/subscription-change/preview": [
+    "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
+    "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
+  ],
   // #28466
   "/api/computer-use/audit-events": [
     "/api/okou/computer-use/audit-events",
@@ -849,6 +989,69 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/desktop/updates/:channel/:platform/:arch/release",
     "/api/zero/desktop/updates/:channel/:platform/:arch/release",
   ],
+  // #28462: feature switches, model policies, org model providers and their
+  // device-auth sessions, the org profile and membership routes, and the usage
+  // reads.
+  "/api/feature-switches": [
+    "/api/okou/feature-switches",
+    "/api/zero/feature-switches",
+  ],
+  "/api/model-policies": [
+    "/api/okou/model-policies",
+    "/api/zero/model-policies",
+  ],
+  "/api/model-providers": [
+    "/api/okou/model-providers",
+    "/api/zero/model-providers",
+  ],
+  "/api/model-providers/:type": [
+    "/api/okou/model-providers/:type",
+    "/api/zero/model-providers/:type",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions",
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/complete": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+  ],
+  "/api/model-providers/codex/device-auth/sessions": [
+    "/api/okou/model-providers/codex/device-auth/sessions",
+    "/api/zero/model-providers/codex/device-auth/sessions",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
+    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/complete": [
+    "/api/okou/model-providers/codex/device-auth/sessions/complete",
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+  ],
+  "/api/org": ["/api/okou/org", "/api/zero/org"],
+  "/api/org/delete": ["/api/okou/org/delete", "/api/zero/org/delete"],
+  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
+  "/api/org/invite/purchase/:purchaseId/confirm": [
+    "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    "/api/zero/org/invite/purchase/:purchaseId/confirm",
+  ],
+  "/api/org/invite/purchase/preview": [
+    "/api/okou/org/invite/purchase/preview",
+    "/api/zero/org/invite/purchase/preview",
+  ],
+  "/api/org/leave": ["/api/okou/org/leave", "/api/zero/org/leave"],
+  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
+  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
+  "/api/org/membership-requests": [
+    "/api/okou/org/membership-requests",
+    "/api/zero/org/membership-requests",
+  ],
+  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
+  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
 };
 
 function missingBrandedPaths(
@@ -1289,6 +1492,46 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
+  // The #28457 twin of the two assertions above, for the billing slice. Every
+  // caller of these routes in this repository derives its URL from the
+  // contract, so a request-level case is the only place a dropped row shows
+  // up as the 404 a released client would get. Requests are unauthenticated,
+  // so the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated billing paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: billingStatusRoutes, method: "GET", suffix: "billing/status" },
+    ] as const;
+
+    for (const { routes, method, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
   // The #28464 twin of the two assertions above, driven through the app factory
   // production uses rather than over the route table. Every path is a GET a
   // released web build, or a connect link already sitting in a Slack, Teams, or
@@ -1309,6 +1552,47 @@ describe("branded paths for migrated neutral routes", () => {
       { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
       { routes: teamsBrowserConnectRoutes, suffix: "teams/connect" },
       { routes: teamsOauthRoutes, suffix: "teams/oauth/connect" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28462 twin, driven through the same production app factory. An
+  // installed desktop build hardcodes `/api/okou/org` and
+  // `/api/okou/feature-switches` rather than deriving them from a contract, and
+  // it has no expiry window, so these are the two rows a dropped registration
+  // would strand longest. Requests are unauthenticated, so the status is
+  // whatever the auth layer returns — the point is that all three forms reach
+  // the same handler instead of falling through to 404.
+  it("serves the migrated org and feature-switch paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: orgReadRoutes, suffix: "org" },
+      { routes: featureSwitchesRoutes, suffix: "feature-switches" },
     ];
 
     for (const { routes, suffix } of families) {

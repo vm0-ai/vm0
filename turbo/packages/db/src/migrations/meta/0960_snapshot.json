@@ -1,5 +1,5 @@
 {
-  "id": "1e112cd3-b915-4405-ade9-0b086b9d881b",
+  "id": "cf032d0b-25d0-47bc-8512-9c6f188dd7c8",
   "prevId": "fa18ed3c-561d-49c5-8e31-841f593c0c48",
   "version": "7",
   "dialect": "postgresql",
@@ -12791,8 +12791,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "status": {
           "name": "status",
@@ -13040,8 +13039,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "chat_thread_id": {
           "name": "chat_thread_id",

@@ -14,7 +14,7 @@ export type OrgLogoResponse = z.infer<typeof orgLogoResponseSchema>;
 export const orgLogoContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/org/logo",
+    path: "/api/org/logo",
     headers: authHeadersSchema,
     responses: {
       200: orgLogoResponseSchema,
@@ -26,7 +26,7 @@ export const orgLogoContract = c.router({
   },
   post: {
     method: "POST",
-    path: "/api/okou/org/logo",
+    path: "/api/org/logo",
     headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),

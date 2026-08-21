@@ -135,11 +135,9 @@ export function OnboardingMakePage() {
     return <PromptOnboarding />;
   }
 
-  const handleContinue = (): void => {
-    if (!draft.choice) {
-      return;
-    }
-    if (draft.choice === "explore") {
+  const handleChoice = (choice: OnboardingChoice): void => {
+    setDraft({ choice });
+    if (choice === "explore") {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
       const completeAndOpenHome = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
@@ -148,9 +146,9 @@ export function OnboardingMakePage() {
       detach(completeAndOpenHome(), Reason.DomCallback);
       return;
     }
-    navigateTo(choicePath(draft.choice), {
+    navigateTo(choicePath(choice), {
       remove: BRANCH_STATE_PARAMS,
-      updates: { choice: draft.choice },
+      updates: { choice },
     });
   };
 
@@ -164,16 +162,6 @@ export function OnboardingMakePage() {
       description={t(($) => {
         return $.onboarding.make.description;
       })}
-      footer={
-        <OnboardingFooter
-          onPrimary={handleContinue}
-          primaryLabel={t(($) => {
-            return $.onboarding.common.continue;
-          })}
-          primaryDisabled={!draft.choice}
-          busy={completeLoadable.state === "loading"}
-        />
-      }
     >
       <div
         className="grid grid-cols-1 gap-3 sm:grid-cols-2"
@@ -191,8 +179,10 @@ export function OnboardingMakePage() {
               role="radio"
               aria-checked={selected}
               onClick={() => {
-                setDraft({ choice: option.id });
+                handleChoice(option.id);
               }}
+              disabled={completeLoadable.state === "loading"}
+              aria-busy={selected && completeLoadable.state === "loading"}
               className={cn(
                 "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--zero-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
                 "hover:border-primary/55",

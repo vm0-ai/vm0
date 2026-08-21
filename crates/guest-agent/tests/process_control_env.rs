@@ -24,6 +24,7 @@ async fn process_control_endpoint_without_workload_capability_fails_closed()
     command
         .env(process_control_ipc::BOOTSTRAP_ENV, "missing-capability")
         .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
         .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
     let output = common::command_output_with_timeout(
         &mut command,
@@ -38,7 +39,7 @@ async fn process_control_endpoint_without_workload_capability_fails_closed()
         stderr.contains(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV),
         "stderr: {stderr}"
     );
-    assert!(stderr.contains("is required with"), "stderr: {stderr}");
+    assert!(stderr.contains("are required with"), "stderr: {stderr}");
     Ok(())
 }
 
@@ -72,6 +73,10 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
         .env(
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             endpoint,
+        )
+        .env(
+            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            "test-tool-placement",
         )
         .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
     let output_result = common::command_output_with_timeout(

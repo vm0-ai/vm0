@@ -6,6 +6,7 @@ members = [
     "guest-agent",
     "guest-contracts",
     "guest-session-prune",
+    "guest-tool-exec",
     "process-control-ipc",
     "guest-common",
     "guest-download",
@@ -37,6 +38,7 @@ api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
 guest-contracts = { path = "guest-contracts" }
 guest-session-prune = { path = "guest-session-prune" }
+guest-tool-exec = { path = "guest-tool-exec" }
 process-control-ipc = { path = "process-control-ipc" }
 guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }

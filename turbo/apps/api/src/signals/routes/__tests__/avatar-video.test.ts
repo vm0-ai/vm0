@@ -158,7 +158,7 @@ async function orgCredits(fixture: AvatarVideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const response = await createAvatarVideoTestApp(
     fixture.usagePricingResolution,
-  ).request("/api/zero/billing/status", { headers: authHeaders() });
+  ).request("/api/billing/status", { headers: authHeaders() });
   expect(response.status).toBe(200);
   const body = asRecord(await response.json());
   if (typeof body.credits !== "number") {
