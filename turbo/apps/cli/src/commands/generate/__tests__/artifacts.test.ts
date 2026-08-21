@@ -15,6 +15,7 @@ describe("okou generate source-backed artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    vi.stubEnv("OKOU_TOKEN", undefined);
   });
 
   afterEach(() => {
@@ -69,7 +70,7 @@ describe("okou generate source-backed artifact commands", () => {
       expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(
-        `https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
+        `https://static.okou.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
       );
       expect(stdout).not.toContain("/website.json");
       expect(stdout).not.toContain("Sources:");

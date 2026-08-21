@@ -10,7 +10,10 @@ import {
   abortMultipartS3Upload,
   completeMultipartS3Upload,
 } from "../external/s3";
-import { resolveArtifactMultipartUpload$ } from "../services/artifact-storage.service";
+import {
+  resolveArtifactMultipartUpload$,
+  resolveArtifactObject$,
+} from "../services/artifact-storage.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -60,11 +63,20 @@ const completeMultipartInner$ = command(
     await get(completeMultipartS3Upload(bucket, key, uploadId, parts));
     signal.throwIfAborted();
 
+    const completed = await set(
+      resolveArtifactObject$,
+      { userId: auth.userId, id },
+      signal,
+    );
+    if (!completed) {
+      throw new Error("Completed R2 multipart upload was not found");
+    }
+
     return {
       status: 200 as const,
       body: {
         id,
-        url: upload.url,
+        url: completed.url,
       },
     };
   },

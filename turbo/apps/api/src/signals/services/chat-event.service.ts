@@ -238,6 +238,7 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowName?: string;
     readonly workflowAutomationEventType?: WorkflowAutomationEventType;
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
+    readonly connectorSourceId?: string;
     readonly triggerBrief: string | null;
   };
 
@@ -553,6 +554,7 @@ type NewDisplayContext =
       readonly workflowName: string | null;
       readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
       readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
+      readonly connectorSourceId: string | null;
       readonly triggerBrief: string | null;
     }
   | {
@@ -588,6 +590,8 @@ function newAutomationDisplayContext(
       "workflowAutomationEventPayload" in values
         ? (values.workflowAutomationEventPayload ?? null)
         : null,
+    connectorSourceId:
+      "connectorSourceId" in values ? (values.connectorSourceId ?? null) : null,
     triggerBrief:
       "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
   };
@@ -929,6 +933,7 @@ async function insertDisplayContext(
       workflowName: context.workflowName,
       eventType: context.workflowAutomationEventType,
       eventPayload: context.workflowAutomationEventPayload,
+      connectorSourceId: context.connectorSourceId,
       triggerBrief: context.triggerBrief,
       createdAt,
     });

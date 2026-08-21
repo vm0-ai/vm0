@@ -17,6 +17,7 @@ import {
 } from "./html-artifact-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
+import { getCliPublicBrand } from "../../lib/api/config";
 
 interface ArtifactOptions {
   prompt?: string;
@@ -168,6 +169,7 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
 
         const packet = createHtmlArtifactAuthoringPacket({
           kind: config.target,
+          publicBrand: getCliPublicBrand(),
           prompt,
           slugSource: options.title,
           siteSlug: options.siteSlug,

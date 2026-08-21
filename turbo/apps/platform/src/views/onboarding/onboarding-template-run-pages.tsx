@@ -1,11 +1,6 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  r2ImageTransformUrl,
-  VIDEO_TEMPLATE_ITEMS,
-} from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -23,6 +18,11 @@ import {
   ONBOARDING_TEXTAREA_CLASS,
   OnboardingShell,
 } from "./onboarding-shell.tsx";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "../../lib/platform-template-items.ts";
 
 type TemplateRunKind = "presentation" | "image" | "video";
 

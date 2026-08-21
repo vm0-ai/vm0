@@ -36,21 +36,24 @@ import {
 import type { Db } from "../external/db";
 import {
   getStripeClient,
+  type StripeClient,
   type StripeInvoice,
   type StripePaymentIntent,
+  type StripePrice,
   type StripeRefund,
 } from "../external/stripe-client";
 import {
+  calculateUsagePackAdditionCreditGrant,
   lockUsagePackBillingOrg,
   previewUsagePackAllocationAddition,
   syncUsagePackAllocationProjection,
   syncUsagePackAllocationProjectionAfterInvitationRemoval,
+  type UsagePackAllocationAdditionChargePreview,
   type UsagePackAllocationAdditionPreview,
 } from "./usage-pack-allocation-change.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
-import { loadUsagePackCatalog } from "./usage-pack-subscription.service";
 import {
   isCurrentStripePreviewMetadata,
   stripePreviewMetadata,
@@ -533,13 +536,6 @@ async function prepareNewUsagePackInvitationPurchase(
   signal: AbortSignal,
 ): Promise<PrepareUsagePackInvitationPurchaseResult> {
   const { email, stripePriceId } = input;
-  const catalog = await loadUsagePackCatalog();
-  const catalogItem = catalog.find((item) => {
-    return item.usagePackUsd === args.usagePackUsd;
-  });
-  if (!catalogItem) {
-    throw new Error(`Usage pack $${args.usagePackUsd} is not in the catalog`);
-  }
   const preview = await previewUsagePackAllocationAddition(
     db,
     {
@@ -549,9 +545,17 @@ async function prepareNewUsagePackInvitationPurchase(
     signal,
   );
   const stripe = getStripeClient();
-  const price = await stripe.prices.retrieve(stripePriceId, {
-    expand: ["product"],
-  });
+  const [price, creditGrant] = await Promise.all([
+    stripe.prices.retrieve(stripePriceId, { expand: ["product"] }),
+    calculateUsagePackAdditionCreditGrant(
+      stripePriceId,
+      {
+        start: Math.floor(preview.currentPeriodStart.getTime() / 1000),
+        end: Math.floor(preview.currentPeriodEnd.getTime() / 1000),
+      },
+      preview.prorationTimestamp,
+    ),
+  ]);
   signal.throwIfAborted();
   if (
     price.currency !== preview.currency ||
@@ -561,42 +565,14 @@ async function prepareNewUsagePackInvitationPurchase(
     throw new Error("Usage pack invitation Price does not match its preview");
   }
   const unitAmountCents = price.unit_amount;
-  const currentPeriodStart = Math.floor(
-    preview.currentPeriodStart.getTime() / 1000,
-  );
-  const currentPeriodEnd = Math.floor(
-    preview.currentPeriodEnd.getTime() / 1000,
-  );
-  const periodSeconds = currentPeriodEnd - currentPeriodStart;
-  const remainingSeconds = currentPeriodEnd - preview.prorationTimestamp;
-  if (
-    periodSeconds <= 0 ||
-    remainingSeconds <= 0 ||
-    remainingSeconds > periodSeconds
-  ) {
-    throw new Error("Usage pack invitation preview has an invalid period");
-  }
-  const purchasedCredits = Math.max(
-    Math.floor(
-      (catalogItem.purchasedCredits * preview.amountCents) / unitAmountCents,
-    ),
-    Math.floor(
-      (catalogItem.purchasedCredits * remainingSeconds) / periodSeconds,
-    ),
-  );
-  const bonusCredits = Math.max(
-    Math.floor(
-      (catalogItem.bonusCredits * preview.amountCents) / unitAmountCents,
-    ),
-    Math.floor((catalogItem.bonusCredits * remainingSeconds) / periodSeconds),
-  );
+  const { purchasedCredits, bonusCredits } = creditGrant;
   if (purchasedCredits <= 0) {
     return {
       status: "conflict",
       reason: "no_credits",
       diagnostics: {
         amountCents: preview.amountCents,
-        remainingSeconds,
+        unitAmountCents,
         purchasedCredits,
       },
     };
@@ -1470,6 +1446,176 @@ function invitationPurchaseConfirmState(
   return { status: "ready", purchase };
 }
 
+interface StructuredInvitationCharge {
+  readonly preview: UsagePackAllocationAdditionChargePreview;
+  readonly price: StripePrice;
+}
+
+function invitationChargeMatchesPurchase(
+  purchase: UsagePackInvitationPurchaseRow,
+  preview: UsagePackAllocationAdditionChargePreview,
+): boolean {
+  return (
+    preview.amountCents === purchase.expectedAmountCents &&
+    preview.currency === purchase.currency &&
+    preview.currentPeriodStart.getTime() ===
+      purchase.currentPeriodStart.getTime() &&
+    preview.currentPeriodEnd.getTime() ===
+      purchase.currentPeriodEnd.getTime() &&
+    preview.prorationTimestamp === purchase.prorationTimestamp
+  );
+}
+
+function invitationInvoiceTaxBehavior(
+  price: StripePrice,
+): "exclusive" | "inclusive" | undefined {
+  return price.tax_behavior === "exclusive" ||
+    price.tax_behavior === "inclusive"
+    ? price.tax_behavior
+    : undefined;
+}
+
+function invitationInvoiceTaxCode(price: StripePrice): string | undefined {
+  if (typeof price.product === "string" || "deleted" in price.product) {
+    throw new Error("Usage pack invitation Price has no active Product");
+  }
+  return stripeObjectId(price.product.tax_code) ?? undefined;
+}
+
+async function loadStructuredInvitationCharge(
+  db: Db,
+  purchase: UsagePackInvitationPurchaseRow,
+  signal: AbortSignal,
+): Promise<StructuredInvitationCharge | null> {
+  const stripe = getStripeClient();
+  const [preview, price] = await Promise.all([
+    previewUsagePackAllocationAddition(
+      db,
+      {
+        usagePackSubscriptionId: purchase.usagePackSubscriptionId,
+        stripePriceId: purchase.stripePriceId,
+        prorationTimestamp: purchase.prorationTimestamp,
+      },
+      signal,
+    ),
+    stripe.prices.retrieve(purchase.stripePriceId, { expand: ["product"] }),
+  ]);
+  signal.throwIfAborted();
+  if (
+    !invitationChargeMatchesPurchase(purchase, preview) ||
+    price.id !== purchase.stripePriceId ||
+    price.currency !== purchase.currency ||
+    price.unit_amount !== purchase.unitAmountCents
+  ) {
+    return null;
+  }
+  invitationInvoiceTaxCode(price);
+  return { preview, price };
+}
+
+async function createStructuredInvitationInvoiceItems(
+  stripe: StripeClient,
+  args: {
+    readonly invoiceId: string;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly purchase: UsagePackInvitationPurchaseRow;
+    readonly charge: StructuredInvitationCharge;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const taxBehavior = invitationInvoiceTaxBehavior(args.charge.price);
+  const taxCode = invitationInvoiceTaxCode(args.charge.price);
+  const period = {
+    start: args.purchase.prorationTimestamp,
+    end: Math.floor(args.purchase.currentPeriodEnd.getTime() / 1000),
+  };
+  for (const [index, item] of args.charge.preview.invoiceItems.entries()) {
+    await stripe.invoiceItems.create(
+      {
+        invoice: args.invoiceId,
+        customer: args.customerId,
+        amount: item.amountCents,
+        currency: args.purchase.currency,
+        description: `Member usage pack for ${args.purchase.normalizedEmail}`,
+        discountable: false,
+        period,
+        subscription: args.subscriptionId,
+        ...(taxBehavior ? { tax_behavior: taxBehavior } : {}),
+        ...(taxCode ? { tax_code: taxCode } : {}),
+        ...(item.taxRateIds.length > 0
+          ? { tax_rates: [...item.taxRateIds] }
+          : {}),
+      },
+      {
+        idempotencyKey:
+          index === 0
+            ? `usage-pack-invitation:${args.purchase.id}:invoice-item`
+            : `usage-pack-invitation:${args.purchase.id}:invoice-item:${index}`,
+      },
+    );
+    signal.throwIfAborted();
+  }
+}
+
+type InvitationPurchaseInvoiceCreation =
+  | UsagePackInvitationPurchaseConflictResult
+  | { readonly status: "created"; readonly invoice: StripeInvoice };
+
+async function createInvitationPurchaseInvoice(
+  db: Db,
+  stripe: StripeClient,
+  purchase: UsagePackInvitationPurchaseRow,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly paymentMethod: BillingPurchasePaymentMethod | undefined;
+  },
+  signal: AbortSignal,
+): Promise<InvitationPurchaseInvoiceCreation> {
+  const structuredCharge = await loadStructuredInvitationCharge(
+    db,
+    purchase,
+    signal,
+  );
+  if (!structuredCharge) {
+    return {
+      status: "conflict",
+      reason: "billing_state_changed",
+      diagnostics: {},
+    };
+  }
+  const invoice = await stripe.invoices.create(
+    {
+      customer: args.customerId,
+      auto_advance: false,
+      ...(args.paymentMethod
+        ? stripeBillingPurchasePaymentParams(args.paymentMethod)
+        : {}),
+      metadata: checkoutMetadata(purchase.id),
+      discounts: "",
+      ...(structuredCharge.preview.automaticTax
+        ? { automatic_tax: structuredCharge.preview.automaticTax }
+        : {}),
+    },
+    { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },
+  );
+  signal.throwIfAborted();
+  await createStructuredInvitationInvoiceItems(
+    stripe,
+    {
+      invoiceId: invoice.id,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      purchase,
+      charge: structuredCharge,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: "created", invoice };
+}
+
 async function expireInvitationPurchasePreviewIfNeeded(
   db: Db,
   purchase: UsagePackInvitationPurchaseRow,
@@ -1578,6 +1724,7 @@ function invitationPurchasePaymentMethodConflict(
 interface BillUsagePackInvitationPurchaseArgs {
   readonly purchase: UsagePackInvitationPurchaseRow;
   readonly subscription: UsagePackSubscriptionRow;
+  readonly stripeSubscriptionId: string;
   readonly paymentMethod: BillingPurchasePaymentMethod | undefined;
 }
 
@@ -1587,32 +1734,23 @@ async function billUsagePackInvitationPurchase(
   args: BillUsagePackInvitationPurchaseArgs,
   signal: AbortSignal,
 ): Promise<ConfirmUsagePackInvitationPurchaseResult> {
-  const { purchase, subscription, paymentMethod } = args;
+  const { purchase, subscription, stripeSubscriptionId, paymentMethod } = args;
   const stripe = getStripeClient();
-  const metadata = checkoutMetadata(purchase.id);
-  const invoice = await stripe.invoices.create(
+  const invoiceCreation = await createInvitationPurchaseInvoice(
+    db,
+    stripe,
+    purchase,
     {
-      customer: subscription.stripeCustomerId,
-      auto_advance: false,
-      ...(paymentMethod
-        ? stripeBillingPurchasePaymentParams(paymentMethod)
-        : {}),
-      metadata,
+      customerId: subscription.stripeCustomerId,
+      subscriptionId: stripeSubscriptionId,
+      paymentMethod,
     },
-    { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },
+    signal,
   );
-  signal.throwIfAborted();
-  await stripe.invoiceItems.create(
-    {
-      invoice: invoice.id,
-      customer: subscription.stripeCustomerId,
-      amount: purchase.expectedAmountCents,
-      currency: purchase.currency,
-      description: `Member usage pack for ${purchase.normalizedEmail}`,
-    },
-    { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice-item` },
-  );
-  signal.throwIfAborted();
+  if (invoiceCreation.status === "conflict") {
+    return invoiceCreation;
+  }
+  const { invoice } = invoiceCreation;
   const payment = await completeBillingOperationInvoice(
     stripe,
     invoice,
@@ -1728,7 +1866,12 @@ export async function confirmUsagePackInvitationPurchase(
   return await billUsagePackInvitationPurchase(
     db,
     clerk,
-    { purchase, subscription: activeSubscription, paymentMethod },
+    {
+      purchase,
+      subscription: activeSubscription,
+      stripeSubscriptionId,
+      paymentMethod,
+    },
     signal,
   );
 }

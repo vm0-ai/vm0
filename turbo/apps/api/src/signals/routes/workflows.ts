@@ -549,6 +549,7 @@ const connectorReadinessInner$ = command(
             instruction: visible.workflow.instruction,
           },
           featureStates: getAllFeatureStates(featureContext),
+          publicBrand: get(publicBrand$),
         },
         signal,
       ),
