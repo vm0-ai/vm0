@@ -1332,10 +1332,15 @@ async fn execute_cli_inner(
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
-                            let is_result_event =
-                                event.get("type").and_then(serde_json::Value::as_str)
-                                    == Some("result");
-                            if post_result_cleanup_was_armed || is_result_event {
+                            let is_terminal_result_event = event
+                                .get("type")
+                                .and_then(serde_json::Value::as_str)
+                                == Some("result")
+                                && event
+                                    .pointer("/origin/kind")
+                                    .and_then(serde_json::Value::as_str)
+                                    != Some("task-notification");
+                            if post_result_cleanup_was_armed || is_terminal_result_event {
                                 match try_observe_cli_exit(
                                     &mut child,
                                     &mut cli_status,
@@ -1351,7 +1356,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Print Claude Code final result to stdout if applicable.
-                            if is_result_event {
+                            if is_terminal_result_event {
                                 let result_summary = ClaudeResultSummary::from_event(&event);
                                 claude_result = Some(result_summary);
                                 if let Some(diagnostic) =
