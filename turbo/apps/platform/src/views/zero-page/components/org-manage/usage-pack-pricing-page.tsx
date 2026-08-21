@@ -791,14 +791,16 @@ function PlanPrice({
    covers SEO, lead, web, and market data instead of three, which names the
    whole capability without pushing Pro's list past a scannable length.
 
-   Team then carries only what a buyer gets by moving up from Pro: more
-   concurrency, concurrency they can keep adding to, webhook triggers, a higher
-   voice ceiling, and priority support. Every line under "built for teams" is a
-   real Team upgrade, so the shorter list is the accurate one.
+   Team answers "what does a team do with this", not "which flags flip". Only
+   add-on concurrency and webhook automations are hard Team gates, so the rest
+   of the column earns its place by being team-shaped rather than exclusive:
+   ten slots make agent-to-agent work actually run in parallel instead of
+   queueing behind Pro's two, chat surfaces are where a team already works, and
+   a custom connector is registered once for every member to use.
 
-   Team's webhook line names both the mechanism and the outcome. "Trigger
-   agents from any system via webhook" makes its difference from scheduled and
-   app-event automations visible without exposing an internal entitlement key. */
+   Both lists run nine rows. That is also the ceiling -- the dialog is a fixed
+   43rem, which leaves 570px for the columns, and a tenth row overflows. Any
+   line added here has to replace one, or fit on a single line at this width. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const concurrentAgents = i18n.t(
     ($) => {
@@ -819,7 +821,19 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
       i18n.t(($) => {
+        return $.billing.plans.highlights.agentHandoff;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.agentFanOut;
+      }),
+      i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.chatSurfaces;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.customConnectors;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -871,15 +885,19 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
 }
 
 /* Both columns open this block at the same y with a label of the same weight,
-   so the lists start on one line even though Team's is shorter. Team's tail is
-   slack the CTA takes up, not a hole to pad with "—" rows. */
+   so the lists start on one line.
+
+   The block leads at mt-5 and rows sit 8px apart rather than 10px. Nine rows
+   at the old spacing measured 589px against the 570px the dialog gives the
+   columns, which cost both cards their bottom inset and left the CTAs sitting
+   on the note's rule. Type size is untouched; only the air between rows moved. */
 function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-6">
+    <div className="mt-5">
       <p className="text-xs font-medium text-muted-foreground">
         {planHighlightsLabel(tier)}
       </p>
-      <ul className="mt-3 flex flex-col gap-2.5">
+      <ul className="mt-3 flex flex-col gap-2">
         {planHighlights(tier).map((item) => {
           return (
             <li

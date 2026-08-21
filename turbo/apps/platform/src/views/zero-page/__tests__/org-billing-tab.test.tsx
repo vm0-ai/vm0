@@ -492,15 +492,20 @@ describe("organization billing settings", () => {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team lists only what a buyer gains by moving up from Pro, so nothing
-       under "built for teams" is a capability Pro already ships. */
+    /* Team reads as team-shaped work -- parallel agents handing tasks around,
+       the surfaces a team already sits in, one connector for every member --
+       rather than repeating capability lines Pro already carries. */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
     for (const item of [
       "10 agents running at once",
       "Add more concurrency any time",
+      "Agents hand work to each other and run in parallel",
+      "One agent can split a job and collect every result",
       "Trigger agents from any system via webhook",
+      "Run agents from Slack, Teams, or Feishu",
+      "Register your own internal APIs for everyone to use",
       "Voice input, 500 a day",
       "Priority support",
     ]) {
