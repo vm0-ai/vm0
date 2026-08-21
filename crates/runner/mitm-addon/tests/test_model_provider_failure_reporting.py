@@ -251,6 +251,14 @@ def test_overlapping_inference_flows_suppress_failure(tmp_path, real_flow, mitm_
             b'"error":{"code":"server_error"},"error_type":"authentication"}}\n\n',
             "authentication",
         ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/responses",
+            b"event: error\n"
+            b'data: {"type":"error","code":"server_error",'
+            b'"message":"provider failed","param":null}\n\n',
+            "provider_unavailable",
+        ),
     ],
 )
 def test_protocol_sse_failures_are_reported(
@@ -275,6 +283,27 @@ def test_protocol_sse_failures_are_reported(
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
     assert json.loads(failure_path.read_text()) == {"failureKind": expected_kind}
+
+
+def test_conflicting_sse_event_type_is_not_reported(tmp_path, real_flow, mitm_ctx):
+    failure_path = tmp_path / "model-provider-failure.json"
+    failure_path.write_text('{"failureKind":"rate_limit"}')
+    body = (
+        b"event: response.completed\n"
+        b'data: {"type":"response.failed","response":{'
+        b'"error":{"code":"server_error"}}}\n\n'
+    )
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+
+    _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
+
+    assert not failure_path.exists()
 
 
 def test_connection_error_is_reported(tmp_path, real_flow, mitm_ctx):
@@ -378,6 +407,31 @@ def test_websocket_failure_is_reported(
             flow,
             b'{"type":"response.failed","response":{"id":"resp-1",'
             b'"error":{"code":"service_unavailable"}}}',
+        )
+        mitm_addon.websocket_end(flow)
+
+    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+
+
+def test_websocket_top_level_error_is_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    capture_deferred_websocket_trims(monkeypatch)
+    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"error","code":"server_error","message":"provider failed","param":null}',
         )
         mitm_addon.websocket_end(flow)
 

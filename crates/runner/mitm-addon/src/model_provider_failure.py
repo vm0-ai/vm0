@@ -81,6 +81,7 @@ _CONNECTION_CODES = frozenset(("connection", "connection_error"))
 
 _SCALAR_FIELDS: Mapping[JsonPath, ScalarField] = {
     ("type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
+    ("code",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
     ("status",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
     ("error_type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
     ("error", "type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
@@ -436,7 +437,15 @@ class _SseEventHandler:
             self._parse_ambiguous = True
             return
         result = extractor.finish()
-        event_type = event_name or _string_value(result.values, ("type",))
+        payload_event_type = _string_value(result.values, ("type",))
+        if (
+            event_name is not None
+            and payload_event_type is not None
+            and event_name != payload_event_type
+        ):
+            self._parse_ambiguous = True
+            return
+        event_type = event_name or payload_event_type
         if not result.complete:
             self._parse_ambiguous = True
             return
@@ -579,6 +588,12 @@ def _failure_from_result(result: JsonExtractionResult) -> Failure | None:
         failure_kind = _failure_kind_from_code(code)
         if failure_kind is not None:
             return Failure(failure_kind)
+    if _string_value(result.values, ("type",)) == "error":
+        code = _string_value(result.values, ("code",))
+        if code is not None:
+            failure_kind = _failure_kind_from_code(code)
+            if failure_kind is not None:
+                return Failure(failure_kind)
     return None
 
 
