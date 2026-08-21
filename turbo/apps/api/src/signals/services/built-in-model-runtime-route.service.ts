@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -21,6 +21,12 @@ export interface ModelRuntimeSessionRoute {
   readonly modelProvider: string | null;
   readonly modelRuntimeProvider: string | null;
   readonly modelRuntimeModel: string | null;
+}
+
+interface ManagedModelCandidateIdentity {
+  readonly selectedModel: string;
+  readonly providerType: string;
+  readonly upstreamModel: string;
 }
 
 function routeFromTarget(
@@ -99,6 +105,42 @@ export async function resolveBuiltInModelRuntimeRoute(
     return routeFromTarget(target, key);
   }
   return null;
+}
+
+export async function extendManagedModelCandidateCooldown(
+  db: Db,
+  args: ManagedModelCandidateIdentity & {
+    readonly retryAfterSeconds: number;
+  },
+): Promise<Date> {
+  const unavailableUntil = new Date(
+    nowDate().getTime() + args.retryAfterSeconds * 1000,
+  );
+  const [cooldown] = await db
+    .insert(managedModelCandidateCooldown)
+    .values({
+      selectedModel: args.selectedModel,
+      providerType: args.providerType,
+      upstreamModel: args.upstreamModel,
+      unavailableUntil,
+    })
+    .onConflictDoUpdate({
+      target: [
+        managedModelCandidateCooldown.selectedModel,
+        managedModelCandidateCooldown.providerType,
+        managedModelCandidateCooldown.upstreamModel,
+      ],
+      set: {
+        unavailableUntil: sql`GREATEST(${managedModelCandidateCooldown.unavailableUntil}, EXCLUDED.unavailable_until)`,
+      },
+    })
+    .returning({
+      unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+    });
+  if (!cooldown) {
+    throw new Error("Expected managed model candidate cooldown to be written");
+  }
+  return cooldown.unavailableUntil;
 }
 
 export function hasIncompatibleBuiltInModelRuntimeRoute(args: {
