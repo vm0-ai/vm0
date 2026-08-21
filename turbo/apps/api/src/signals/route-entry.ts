@@ -1659,6 +1659,47 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/feishu/events/:installationId",
     "/api/zero/feishu/events/:installationId",
   ],
+  // #28565, the closing slice: the connector-account reads and writes and the
+  // managed SocialKit request. Both contracts were added by features that
+  // merged while #28278 was in flight — #28066 and #28519 for the connector
+  // accounts, #28343 for SocialKit — so no earlier slice's inventory contained
+  // them and they declared the branded namespace by default. The guard in
+  // `contracts/__tests__/api-namespace-declarations.test.ts` lands with this
+  // slice so the next late contract is rejected rather than migrated later.
+  //
+  // Surfaces: a commit-addressed CLI package pinned by a run execution context
+  // holds `/api/okou/social/request` for that context's queue and
+  // claimed-execution lifetime, bounded by the runner's 2h `JOB_TIMEOUT`. The
+  // connector-account paths have no caller in this repository at all — no
+  // platform, desktop or CLI code references them — so what they owe is the
+  // `zero` form the blanket expansion served until this move, plus any external
+  // holder of either branded form, neither of which has a window. That is a
+  // floor rather than the removal condition either way: these rows retire under
+  // #26701's evidence rules like every other row in this file.
+  "/api/connector-accounts": [
+    "/api/okou/connector-accounts",
+    "/api/zero/connector-accounts",
+  ],
+  "/api/connector-accounts/:connectionId": [
+    "/api/okou/connector-accounts/:connectionId",
+    "/api/zero/connector-accounts/:connectionId",
+  ],
+  "/api/connector-accounts/:connectionId/default": [
+    "/api/okou/connector-accounts/:connectionId/default",
+    "/api/zero/connector-accounts/:connectionId/default",
+  ],
+  "/api/connector-accounts/:connectionId/deletion-impact": [
+    "/api/okou/connector-accounts/:connectionId/deletion-impact",
+    "/api/zero/connector-accounts/:connectionId/deletion-impact",
+  ],
+  "/api/connector-accounts/connections": [
+    "/api/okou/connector-accounts/connections",
+    "/api/zero/connector-accounts/connections",
+  ],
+  "/api/social/request": [
+    "/api/okou/social/request",
+    "/api/zero/social/request",
+  ],
 };
 
 /**
