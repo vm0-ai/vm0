@@ -505,7 +505,7 @@ describe("organization billing settings", () => {
       "Start a run from any system with one webhook",
       "Watch an agent's live browser and take the wheel",
       "Agents drive real apps on your desktop",
-      "Publish an agent's work as a live site",
+      "More custom connectors & channel integration",
       "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {

@@ -797,14 +797,17 @@ function PlanPrice({
    2/10, canBuyConcurrency, workflowWebhookAutomationAllowed, audioDailyRateLimit
    300/500 and audioDailyDurationSeconds 200/500, and nothing else.
 
-   The middle four rows are capability both plans ship. They sit here because
-   the label says "Everything in Pro, built for teams" -- inherited, not
-   exclusive. They are phrased as the thing the agent does rather than the
-   setting that enables it: a plan column earns attention by naming an outcome,
-   and "Choose which models your workspace can use" named a settings screen.
-   If any of them is ever gated to Team, the label can tighten to a plain delta;
-   until then it must not, or the column is claiming Pro features as Team
-   entitlements again.
+   The middle rows are capability both plans ship. They sit here because the
+   label says "Everything in Pro, built for teams" -- inherited, not exclusive.
+   They are phrased as the thing the agent does rather than the setting that
+   enables it: a plan column earns attention by naming an outcome, and "Choose
+   which models your workspace can use" named a settings screen.
+
+   The connector row is the one exception, and it is a promise ahead of the
+   code: custom connectors are unlimited on both plans today, with the only
+   check in custom-connector.service.ts being an org-admin test. It reads true
+   only once ORG_PLAN_ENTITLEMENT_TIER_VALUES carries a per-tier connector
+   limit and createCustomConnector$ enforces it.
 
    Nine rows on each side, every row a single line at this width, so the columns
    align row for row across the divider.
@@ -847,7 +850,7 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.computerUse;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.hostedSite;
+        return $.billing.plans.highlights.moreConnectorsChannels;
       }),
       voiceInput,
       i18n.t(($) => {
