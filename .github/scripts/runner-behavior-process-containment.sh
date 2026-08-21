@@ -119,10 +119,8 @@ for controller in cpu memory pids; do
 done
 expected_control_memory_min=$((384 * 1024 * 1024))
 expected_workload_memory_reserve=$((128 * 1024 * 1024))
-expected_tools_memory_reserve=$((576 * 1024 * 1024))
 guest_memory_bytes=$(( $(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) ))
 expected_workload_memory_max=$((guest_memory_bytes - expected_workload_memory_reserve))
-expected_tools_memory_max=$((expected_workload_memory_max - expected_tools_memory_reserve))
 test "$(cat "$base/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/memory.min")" = "$expected_control_memory_min"
 test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
@@ -131,7 +129,7 @@ test "$(cat "$parent/workload/memory.high")" = max
 test "$(cat "$parent/workload/memory.max")" = "$expected_workload_memory_max"
 test "$(cat "$parent/workload/memory.oom.group")" = 0
 test "$(cat "$parent/workload/pids.max")" = max
-test "$(cat "$parent/workload/tools/memory.max")" = "$expected_tools_memory_max"
+test "$(cat "$parent/workload/tools/memory.max")" = max
 test "$(cat "$parent/workload/tools/memory.oom.group")" = 0
 grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
 test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
@@ -694,7 +692,7 @@ PRESSURE_SUBMIT_OUTPUT=""
 echo "--- Pressure: group-kill only the high-memory Bash tool ---"
 # The mock CLI launches two Bash children directly from the managed runtime.
 # The launcher places them in distinct tool cgroups before either shell runs.
-# One tool exhausts the aggregate tools limit while the other remains alive.
+# One tool drives the existing workload limit to OOM while the other remains alive.
 # Use a fresh VM so the preceding extreme balloon-reclaim scenario cannot
 # delay Guest Agent startup and obscure the tool-isolation assertion.
 MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)

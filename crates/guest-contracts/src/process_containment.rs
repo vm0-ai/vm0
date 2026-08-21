@@ -28,7 +28,7 @@ pub const WORKLOAD_CGROUP_NAME: &str = "workload";
 /// Leaf containing the agent CLI and its runtime helpers.
 pub const RUNTIME_CGROUP_NAME: &str = "runtime";
 
-/// Empty aggregate memory domain containing agent shell tools.
+/// Empty domain containing one cgroup per agent shell tool.
 pub const TOOLS_CGROUP_NAME: &str = "tools";
 
 /// Prefix for one shell invocation cgroup below [`TOOLS_CGROUP_NAME`].
@@ -84,13 +84,6 @@ pub const CONTROL_MEMORY_MIN_BYTES: u64 = 384 * 1024 * 1024;
 /// yet been charged while allowing the Guest to enter whole-memory reclaim
 /// before the workload reaches its local hard limit.
 pub const WORKLOAD_MEMORY_RESERVE_BYTES: u64 = 128 * 1024 * 1024;
-
-/// Fixed workload capacity kept outside the aggregate tool OOM domain.
-///
-/// At the smallest supported 1 GiB profile, the existing workload limit is
-/// 896 MiB and this reserve leaves 320 MiB for shell tools. The reserve covers
-/// the agent runtime and headroom between the child and parent hard limits.
-pub const TOOLS_MEMORY_RESERVE_BYTES: u64 = 576 * 1024 * 1024;
 
 /// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
 pub const WORKLOAD_MEMORY_HIGH: &str = "max";
@@ -224,8 +217,6 @@ pub struct WorkloadResourcePolicy {
     pub memory_high: &'static str,
     /// Workload hard memory limit in bytes.
     pub memory_max_bytes: u64,
-    /// Aggregate hard memory limit for all shell tool cgroups.
-    pub tools_memory_max_bytes: u64,
     /// Value written to the workload `memory.oom.group` cgroup file.
     pub memory_oom_group: &'static str,
     /// Protected Guest Agent memory in bytes.
@@ -280,16 +271,11 @@ impl WorkloadResourcePolicy {
             .checked_sub(WORKLOAD_MEMORY_RESERVE_BYTES)
             .filter(|limit| *limit > 0)
             .ok_or("guest memory capacity cannot preserve workload memory reserve")?;
-        let tools_memory_max_bytes = memory_max_bytes
-            .checked_sub(TOOLS_MEMORY_RESERVE_BYTES)
-            .filter(|limit| *limit > 0)
-            .ok_or("guest memory capacity cannot preserve tool runtime reserve")?;
         Ok(Self {
             cpu_quota_us,
             cpu_period_us: WORKLOAD_CPU_PERIOD_US,
             memory_high: WORKLOAD_MEMORY_HIGH,
             memory_max_bytes,
-            tools_memory_max_bytes,
             memory_oom_group: WORKLOAD_MEMORY_OOM_GROUP,
             control_memory_min_bytes: CONTROL_MEMORY_MIN_BYTES,
             pids_max: WORKLOAD_PIDS_MAX,
@@ -311,7 +297,6 @@ mod tests {
         assert_eq!(policy.cpu_period_us, 100_000);
         assert_eq!(policy.memory_high, "max");
         assert_eq!(policy.memory_max_bytes, 3968 * 1024 * 1024);
-        assert_eq!(policy.tools_memory_max_bytes, 3392 * 1024 * 1024);
         assert_eq!(policy.memory_oom_group, "0");
         assert_eq!(policy.control_memory_min_bytes, 384 * 1024 * 1024);
         assert_eq!(policy.pids_max, "max");
@@ -326,16 +311,6 @@ mod tests {
             error,
             "guest memory capacity cannot preserve control memory minimum"
         );
-    }
-
-    #[test]
-    fn derives_minimum_profile_tool_budget_without_rejecting_it() {
-        let policy =
-            WorkloadResourcePolicy::for_guest_capacity(1, u64::from(1024_u32) * 1024 * 1024)
-                .unwrap();
-
-        assert_eq!(policy.memory_max_bytes, 896 * 1024 * 1024);
-        assert_eq!(policy.tools_memory_max_bytes, 320 * 1024 * 1024);
     }
 
     #[test]

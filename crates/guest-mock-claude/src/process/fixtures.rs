@@ -23,7 +23,7 @@ const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_su
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
-const TOOL_OOM_MEMORY_MAX_BYTES: u64 = 192 * 1024 * 1024;
+const TOOL_OOM_PARENT_HEADROOM_BYTES: u64 = 192 * 1024 * 1024;
 const TOOL_OOM_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const TOOL_OOM_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TOOL_OOM_SURVIVOR_CGROUP: &str = "/tmp/vm0-tool-oom-survivor.cgroup";
@@ -439,9 +439,29 @@ fn verify_parallel_shell_tool_oom() -> Result<String, String> {
         })?;
     let tools_relative = format!("{operation_relative}/workload/tools");
     let tools_path = Path::new("/sys/fs/cgroup").join(tools_relative.trim_start_matches('/'));
-    let memory_max_path = tools_path.join("memory.max");
+    let workload_path = tools_path
+        .parent()
+        .ok_or_else(|| "tools cgroup has no workload parent".to_string())?;
+    let memory_max_path = workload_path.join("memory.max");
     let original_memory_max = read_trimmed(&memory_max_path)?;
-    let before_events = read_cgroup_events(&tools_path.join("memory.events"))?;
+    let original_memory_max_bytes = original_memory_max
+        .parse::<u64>()
+        .map_err(|error| format!("invalid workload memory.max {original_memory_max}: {error}"))?;
+    let workload_current = read_trimmed(&workload_path.join("memory.current"))?
+        .parse::<u64>()
+        .map_err(|error| format!("invalid workload memory.current: {error}"))?;
+    let test_memory_max = workload_current
+        .checked_add(TOOL_OOM_PARENT_HEADROOM_BYTES)
+        .ok_or_else(|| "workload OOM test limit overflowed".to_string())?;
+    if test_memory_max >= original_memory_max_bytes {
+        return Err(format!(
+            "workload lacks OOM test headroom: current={workload_current} original_max={original_memory_max_bytes}"
+        ));
+    }
+    if read_trimmed(&tools_path.join("memory.max"))? != "max" {
+        return Err("tools cgroup unexpectedly has its own memory limit".to_string());
+    }
+    let before_events = read_cgroup_events(&workload_path.join("memory.events"))?;
 
     for marker in [
         TOOL_OOM_SURVIVOR_CGROUP,
@@ -455,7 +475,7 @@ fn verify_parallel_shell_tool_oom() -> Result<String, String> {
         }
     }
 
-    write_cgroup_value_as_root(&memory_max_path, &TOOL_OOM_MEMORY_MAX_BYTES.to_string())?;
+    write_cgroup_value_as_root(&memory_max_path, &test_memory_max.to_string())?;
     let mut fixture = ParallelToolOomFixture::new(memory_max_path, original_memory_max);
 
     fixture.survivor = Some(spawn_bash_tool(TOOL_OOM_SURVIVOR_SCRIPT)?);
@@ -521,10 +541,10 @@ fn verify_parallel_shell_tool_oom() -> Result<String, String> {
         ));
     }
 
-    let after_events = read_cgroup_events(&tools_path.join("memory.events"))?;
+    let after_events = read_cgroup_events(&workload_path.join("memory.events"))?;
     let oom_group_kills = event_delta(&before_events, &after_events, "oom_group_kill")?;
     if oom_group_kills == 0 {
-        return Err("tools cgroup did not record an OOM group kill".to_string());
+        return Err("workload cgroup did not record an OOM group kill".to_string());
     }
 
     fixture.restore_memory_max()?;

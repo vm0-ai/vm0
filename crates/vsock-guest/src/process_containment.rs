@@ -328,12 +328,6 @@ impl CgroupGuard {
                     )?;
                     write_cgroup_value(
                         &tools_path,
-                        MEMORY_MAX_FILE,
-                        &policy.tools_memory_max_bytes.to_string(),
-                        "configure tools memory.max",
-                    )?;
-                    write_cgroup_value(
-                        &tools_path,
                         MEMORY_OOM_GROUP_FILE,
                         WORKLOAD_MEMORY_OOM_GROUP,
                         "configure tools memory.oom.group",
