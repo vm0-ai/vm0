@@ -183,7 +183,7 @@ impl NbdCowDevice {
                 self.disconnected = true;
                 tracing::warn!(
                     device_index = self.device_index,
-                    "skipping disconnect: device recycled by another process"
+                    "skipping disconnect: device belongs to a different connection"
                 );
             }
         }

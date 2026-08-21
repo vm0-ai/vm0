@@ -576,13 +576,13 @@ fn log_owned_disconnect_foreign(mode: CreateDisconnectCleanupMode, connected: Co
         CreateDisconnectCleanupMode::AmbiguousConnect => {
             tracing::warn!(
                 device_index = connected.index,
-                "skipping create cleanup disconnect: device recycled by another process"
+                "skipping create cleanup disconnect: device belongs to a different connection"
             );
         }
         CreateDisconnectCleanupMode::SizeRetry => {
             tracing::warn!(
                 device_index = connected.index,
-                "skipping create retry cleanup disconnect: device recycled by another process"
+                "skipping create retry cleanup disconnect: device belongs to a different connection"
             );
         }
     }

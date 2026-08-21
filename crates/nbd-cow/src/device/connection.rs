@@ -318,7 +318,7 @@ fn observe_detached_disconnect_result(device_index: u32, result: &Result<OwnedDi
         Ok(OwnedDisconnectState::Foreign) => {
             tracing::warn!(
                 device_index,
-                "detached owned NBD disconnect skipped: device recycled by another process"
+                "detached owned NBD disconnect skipped: device belongs to a different connection"
             );
         }
         Ok(OwnedDisconnectState::Disconnected) => {}
@@ -387,7 +387,7 @@ fn disconnect_connected_if_owned_with(
         DeviceOwnership::Foreign => {
             tracing::warn!(
                 device_index = connected.index,
-                "skipping cancelled-create disconnect: device recycled by another process"
+                "skipping cancelled-create disconnect: device belongs to a different connection"
             );
             false
         }
@@ -519,7 +519,7 @@ mod tests {
 
         let event = event_with_message(
             &captured,
-            "detached owned NBD disconnect skipped: device recycled by another process",
+            "detached owned NBD disconnect skipped: device belongs to a different connection",
         );
         assert_eq!(event.level, Level::WARN);
         assert_eq!(
