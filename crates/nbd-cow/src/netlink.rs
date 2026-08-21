@@ -19,6 +19,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use nix::sys::socket::{AddressFamily, SockFlag, SockType, socketpair};
+use uuid::Uuid;
 
 use crate::device::{NbdNetlinkConnectStage, NbdNetlinkConnectTiming};
 use crate::error::{NbdCowError, Result};
@@ -38,6 +39,7 @@ const NBD_ATTR_SERVER_FLAGS: u16 = 5;
 const NBD_ATTR_SOCKETS: u16 = 7;
 const NBD_ATTR_TIMEOUT: u16 = 4;
 const NBD_ATTR_DEAD_CONN_TIMEOUT: u16 = 8;
+const NBD_ATTR_BACKEND_IDENTIFIER: u16 = 10;
 
 // NBD socket item attribute types (nested inside NBD_ATTR_SOCKETS)
 const NBD_SOCK_ITEM: u16 = 1;
@@ -123,12 +125,8 @@ where
 /// Successful NBD connect metadata.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ConnectDeviceSuccess {
-    /// TID of the thread that sent `NBD_CMD_CONNECT`.
-    ///
-    /// The kernel records this value in `/sys/block/nbdN/pid` after a
-    /// successful connect. Cleanup uses it to avoid disconnecting a device
-    /// recycled by another process.
-    pub(crate) connect_tid: u32,
+    /// Unique identity exposed by the kernel in `/sys/block/nbdN/backend`.
+    pub(crate) connection_id: Uuid,
 }
 
 /// Error state for `NBD_CMD_CONNECT`.
@@ -154,8 +152,8 @@ pub(crate) enum ConnectDeviceError {
     /// The connect command was sent, but userspace could not observe completion.
     #[error("NBD connect completion is ambiguous after sending command: {source}")]
     AmbiguousAfterSend {
-        /// TID of the thread that sent `NBD_CMD_CONNECT`.
-        connect_tid: u32,
+        /// Unique identity included in the connect command.
+        connection_id: Uuid,
         /// Underlying completion-observation error.
         source: NbdCowError,
     },
@@ -241,6 +239,8 @@ pub(crate) fn connect_device_with_state_timing(
 
     let command_started_at = Instant::now();
     let sockets_nla = build_sockets_nla(client_fds, sockets_payload_len);
+    let connection_id = Uuid::new_v4();
+    let backend_identifier = format!("{connection_id}\0");
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
@@ -266,13 +266,14 @@ pub(crate) fn connect_device_with_state_timing(
         NBD_ATTR_DEAD_CONN_TIMEOUT,
         &TIMEOUT_SECS.to_ne_bytes(),
     ));
+    attrs.extend_from_slice(&wire::build_nla(
+        NBD_ATTR_BACKEND_IDENTIFIER,
+        backend_identifier.as_bytes(),
+    ));
     attrs.extend_from_slice(&sockets_nla);
 
-    // The kernel records the sending task's TID in /sys/block/nbdN/pid on
-    // successful connect. Capture it before crossing the netlink send boundary.
-    let connect_tid = unsafe { libc::gettid() } as u32;
     let result = match send_nbd_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs) {
-        Ok(seq) => finish_connect_after_send(&sock, seq, connect_tid),
+        Ok(seq) => finish_connect_after_send(&sock, seq, connection_id),
         Err(source) => Err(ConnectDeviceError::NotSent { source }),
     };
     timing.record_stage(
@@ -373,22 +374,22 @@ fn recv_genl_completion(sock: &socket::GenlSocket, expected_seq: u32) -> Result<
 fn finish_connect_after_send(
     sock: &socket::GenlSocket,
     expected_seq: u32,
-    connect_tid: u32,
+    connection_id: Uuid,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
-    classify_connect_completion(connect_tid, recv_genl_completion(sock, expected_seq))
+    classify_connect_completion(connection_id, recv_genl_completion(sock, expected_seq))
 }
 
 fn classify_connect_completion(
-    connect_tid: u32,
+    connection_id: Uuid,
     completion: Result<()>,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
     match completion {
-        Ok(()) => Ok(ConnectDeviceSuccess { connect_tid }),
+        Ok(()) => Ok(ConnectDeviceSuccess { connection_id }),
         Err(source @ NbdCowError::NetlinkErrno { .. }) => {
             Err(ConnectDeviceError::DefiniteAfterSend { source })
         }
         Err(source) => Err(ConnectDeviceError::AmbiguousAfterSend {
-            connect_tid,
+            connection_id,
             source,
         }),
     }
@@ -456,6 +457,10 @@ mod tests {
     fn assert_close_on_exec(fd: &OwnedFd) {
         let flags = fcntl(fd, FcntlArg::F_GETFD).unwrap();
         assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
+    }
+
+    fn test_connection_id() -> Uuid {
+        Uuid::from_u128(1234)
     }
 
     #[test]
@@ -685,17 +690,15 @@ mod tests {
     }
 
     #[test]
-    fn finish_connect_after_send_success_returns_connect_tid() {
+    fn finish_connect_after_send_success_returns_connection_id() {
         let (sock, peer) = socket::test_genl_socket_pair();
         let reply = wire::build_genl_msg(0x19, NBD_CMD_CONNECT, NBD_GENL_VERSION, &[], 2, false);
         socket::send_test_nl(&peer, &reply);
 
-        let result = finish_connect_after_send(&sock, 2, 1234);
+        let connection_id = test_connection_id();
+        let result = finish_connect_after_send(&sock, 2, connection_id);
 
-        assert!(matches!(
-            result,
-            Ok(ConnectDeviceSuccess { connect_tid: 1234 })
-        ));
+        assert_eq!(result.unwrap().connection_id, connection_id);
     }
 
     #[test]
@@ -703,7 +706,7 @@ mod tests {
         let (sock, peer) = socket::test_genl_socket_pair();
         socket::send_test_nl(&peer, &wire::build_nlmsg_error_for_test(2, -libc::EBUSY));
 
-        let result = finish_connect_after_send(&sock, 2, 1234);
+        let result = finish_connect_after_send(&sock, 2, test_connection_id());
 
         assert!(matches!(
             result,
@@ -718,7 +721,7 @@ mod tests {
         let (sock, peer) = socket::test_genl_socket_pair();
         socket::send_test_nl(&peer, &wire::build_nlmsg_error_for_test(2, -libc::EINVAL));
 
-        let result = finish_connect_after_send(&sock, 2, 1234);
+        let result = finish_connect_after_send(&sock, 2, test_connection_id());
 
         assert!(matches!(
             result,
@@ -735,18 +738,16 @@ mod tests {
         socket::send_test_nl(&peer, &wire::build_nlmsg_error_for_test(1, -libc::EBUSY));
         socket::send_test_nl(&peer, &reply);
 
-        let result = finish_connect_after_send(&sock, 2, 1234);
+        let connection_id = test_connection_id();
+        let result = finish_connect_after_send(&sock, 2, connection_id);
 
-        assert!(matches!(
-            result,
-            Ok(ConnectDeviceSuccess { connect_tid: 1234 })
-        ));
+        assert_eq!(result.unwrap().connection_id, connection_id);
     }
 
     #[test]
     fn classify_connect_completion_io_error_is_ambiguous() {
         let result = classify_connect_completion(
-            1234,
+            test_connection_id(),
             Err(NbdCowError::Io(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
                 "completion timed out",
@@ -756,9 +757,9 @@ mod tests {
         assert!(matches!(
             result,
             Err(ConnectDeviceError::AmbiguousAfterSend {
-                connect_tid: 1234,
+                connection_id,
                 ..
-            })
+            }) if connection_id == test_connection_id()
         ));
     }
 
@@ -769,14 +770,14 @@ mod tests {
         wire::set_nlmsg_len_for_test(&mut malformed, 15);
         socket::send_test_nl(&peer, &malformed);
 
-        let result = finish_connect_after_send(&sock, 2, 1234);
+        let result = finish_connect_after_send(&sock, 2, test_connection_id());
 
         assert!(matches!(
             result,
             Err(ConnectDeviceError::AmbiguousAfterSend {
-                connect_tid: 1234,
+                connection_id,
                 ..
-            })
+            }) if connection_id == test_connection_id()
         ));
     }
 

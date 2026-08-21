@@ -80,11 +80,14 @@ const migrationContract = c.router({
     },
   },
   // A route `FINAL_PROVIDER_CONSOLE_PATHS` also acts on, before and after its
-  // move, so both tables can be run over one pipeline.
+  // move, so both tables can be run over one pipeline. Slack interactive is one
+  // of the paths that table still holds; the Feishu events route this stood in
+  // for left it in #28544, and the Teams bot endpoint in #28545. Repoint this
+  // pair at another still-branded console path whenever the Slack contracts
+  // move, since the first case below needs the console table to act on it.
   consoleBranded: {
     method: "POST",
-    path: "/api/okou/feishu/events/:installationId",
-    pathParams: z.object({ installationId: z.string() }),
+    path: "/api/okou/slack/interactive",
     body: z.object({}),
     responses: {
       200: z.object({ served: z.literal(true) }),
@@ -92,8 +95,7 @@ const migrationContract = c.router({
   },
   consoleFinal: {
     method: "POST",
-    path: "/api/webhooks/feishu/events/:installationId",
-    pathParams: z.object({ installationId: z.string() }),
+    path: "/api/webhooks/slack/interactive",
     body: z.object({}),
     responses: {
       200: z.object({ served: z.literal(true) }),
@@ -140,9 +142,9 @@ const MIGRATED_TABLE: Readonly<Record<string, readonly string[]>> = {
 };
 
 const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
-  "/api/webhooks/feishu/events/:installationId": [
-    "/api/okou/feishu/events/:installationId",
-    "/api/zero/feishu/events/:installationId",
+  "/api/webhooks/slack/interactive": [
+    "/api/okou/slack/interactive",
+    "/api/zero/slack/interactive",
   ],
 };
 
@@ -958,8 +960,8 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/user-permission-grants/apply",
   ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
-  // eight paths a provider console holds are not in this slice and stay
-  // branded; they are covered by `provider-console-paths.test.ts`.
+  // paths a provider console holds are not in this slice and stay branded;
+  // they are covered by `provider-console-paths.test.ts`.
   "/api/feishu/connect": [
     "/api/okou/feishu/connect",
     "/api/zero/feishu/connect",
@@ -1260,6 +1262,19 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/web/download-file",
   ],
   "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
+  // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
+  // Both branded forms used to be the declared paths, so these rows are the
+  // only thing registering them now — the events one is what keeps the two
+  // production Feishu installations delivering to the URL each of them holds in
+  // its own Feishu app console.
+  "/api/integrations/feishu/oauth/callback": [
+    "/api/okou/feishu/oauth/callback",
+    "/api/zero/feishu/oauth/callback",
+  ],
+  "/api/webhooks/feishu/events/:installationId": [
+    "/api/okou/feishu/events/:installationId",
+    "/api/zero/feishu/events/:installationId",
+  ],
   // #28565: the connector-account reads and writes and the managed SocialKit
   // request, the two contracts that were added while #28278 was in flight and
   // so appeared in no slice's inventory.
@@ -1379,16 +1394,17 @@ describe("branded paths for migrated neutral routes", () => {
     );
 
     expect(registeredPaths(registered)).toStrictEqual([
-      "/api/okou/feishu/events/:installationId",
-      "/api/zero/feishu/events/:installationId",
-      "/api/webhooks/feishu/events/:installationId",
+      "/api/okou/slack/interactive",
+      "/api/zero/slack/interactive",
+      "/api/webhooks/slack/interactive",
     ]);
   });
 
-  // The same route once it has moved to the final console path. This also pins
-  // the order the two tables run in: producing the branded paths before the
-  // console table would feed `/api/okou/feishu/events/:installationId` back
-  // into it and register the console path a second time.
+  // The same route once it has moved to the final console path — the shape
+  // #28544 gave both Feishu routes. This also pins the order the two tables run
+  // in: producing the branded paths before the console table would feed
+  // `/api/okou/slack/interactive` back into it and register the console path a
+  // second time.
   it("registers a migrated console route's branded paths exactly once", () => {
     const registered = withMigratedBrandedPaths(
       withApiNamespaceAliases(
@@ -1398,9 +1414,9 @@ describe("branded paths for migrated neutral routes", () => {
     );
 
     expect(registeredPaths(registered)).toStrictEqual([
-      "/api/webhooks/feishu/events/:installationId",
-      "/api/okou/feishu/events/:installationId",
-      "/api/zero/feishu/events/:installationId",
+      "/api/webhooks/slack/interactive",
+      "/api/okou/slack/interactive",
+      "/api/zero/slack/interactive",
     ]);
     expect(() => {
       assertUniqueRouteRegistrations(registered);
