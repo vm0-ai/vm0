@@ -52,6 +52,18 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/runs/${runId}/context`)",
     },
+    // #28460's MSW patterns, and the connector OAuth callback that was neutral
+    // before the slice: `/api/connectors` covers everything below it, so this
+    // path stops being distinguishable once the family moves.
+    {
+      code: 'context.mocks.http.get("*/api/connector-catalog/status", handler)',
+    },
+    {
+      code: "fetchFn(`/api/custom-connectors/${id}/values`)",
+    },
+    {
+      code: 'window.open("/api/connectors/github/callback")',
+    },
   ],
   invalid: [
     {
@@ -66,8 +78,9 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'const url = "/api/usage/members"',
       errors: [{ messageId: "nonZeroApi" }],
     },
+    // A longer sibling of a migrated connector path is not itself migrated.
     {
-      code: 'window.open("/api/connectors/github/callback")',
+      code: 'fetchFn("/api/connectors-legacy/github")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
