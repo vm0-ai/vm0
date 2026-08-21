@@ -144,6 +144,13 @@ fn nbd_pid(device_index: u32) -> Option<u32> {
         .and_then(|contents| contents.trim().parse().ok())
 }
 
+fn nbd_backend(device_index: u32) -> Option<String> {
+    let backend_path = format!("/sys/block/nbd{device_index}/backend");
+    std::fs::read_to_string(backend_path)
+        .ok()
+        .map(|contents| contents.trim().to_owned())
+}
+
 // ---------------------------------------------------------------------------
 // Full device lifecycle tests (require root + nbd module)
 // ---------------------------------------------------------------------------
@@ -956,4 +963,146 @@ async fn drop_without_destroy_disconnects() {
     }
 
     pool.cleanup().await;
+}
+
+/// A stale device object must not disconnect a replacement connection even
+/// when Tokio reuses the same blocking worker TID for both connects.
+#[test]
+#[ignore]
+fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
+    if !nbd_test_available() {
+        return;
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .max_blocking_threads(1)
+        .enable_all()
+        .build()
+        .expect("build single-blocking-thread runtime");
+
+    runtime.block_on(async {
+        let fixture = NbdTestFixture::new();
+        let original_cow = fixture.cow_path("original-cow.img");
+        let replacement_cow = fixture.cow_path("replacement-cow.img");
+        let pool = default_device_pool();
+        let original = pool
+            .create_cow_device(fixture.base(), &original_cow, fixture.size())
+            .await
+            .expect("create original device");
+        let device_index = original.device_index();
+        let original_tid = nbd_pid(device_index).expect("original sysfs pid");
+        let original_backend = nbd_backend(device_index).expect("original sysfs backend");
+
+        nbd_cow::netlink::disconnect(device_index).expect("externally disconnect original");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !nbd_cow::netlink::device_appears_free(device_index) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("original device should be released");
+
+        let replacement_layer = nbd_cow::cow::CowLayer::new(
+            fixture.base(),
+            &replacement_cow,
+            fixture.size(),
+            nbd_cow::BLOCK_SIZE,
+            nbd_cow::DEFAULT_FLUSH_THRESHOLD,
+        )
+        .expect("replacement COW layer");
+        let replacement_io = nbd_cow::cow_io::CowIo::new(replacement_layer);
+        let replacement_shutdown = tokio_util::sync::CancellationToken::new();
+        let mut client_fds = Vec::with_capacity(nbd_cow::NUM_CONNECTIONS);
+        let mut replacement_servers = Vec::with_capacity(nbd_cow::NUM_CONNECTIONS);
+        for _ in 0..nbd_cow::NUM_CONNECTIONS {
+            let (client_fd, server_fd) =
+                nbd_cow::netlink::create_socketpair().expect("replacement socketpair");
+            client_fds.push(client_fd);
+            let server_io = replacement_io.clone();
+            let server_shutdown = replacement_shutdown.clone();
+            replacement_servers.push(tokio::spawn(async move {
+                let _ = nbd_cow::server::dispatch(server_fd, server_io, server_shutdown).await;
+            }));
+        }
+        let size = fixture.size();
+        let replacement_connect_tid = tokio::task::spawn_blocking(move || {
+            let tid = unsafe { libc::gettid() } as u32;
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let result = loop {
+                match nbd_cow::netlink::connect_device(
+                    device_index,
+                    &client_fds,
+                    size,
+                    nbd_cow::BLOCK_SIZE as u64,
+                ) {
+                    Err(nbd_cow::error::NbdCowError::NetlinkErrno { errno, .. })
+                        if errno == libc::EBUSY && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    result => break result,
+                }
+            };
+            (tid, result)
+        })
+        .await
+        .expect("replacement connect task");
+        replacement_connect_tid
+            .1
+            .expect("connect replacement device");
+        let replacement_tid = nbd_pid(device_index).expect("replacement sysfs pid");
+        let replacement_backend = nbd_backend(device_index).expect("replacement sysfs backend");
+        let replacement_size_matches =
+            nbd_cow::netlink::verify_device_size(device_index, fixture.size()).await;
+
+        let stale_cleanup_result = original.destroy_with_retries(destroy_policy()).await;
+        let backend_after_stale_cleanup = nbd_backend(device_index);
+        let pid_after_stale_cleanup = nbd_pid(device_index);
+        // Keep block-device I/O off the single Tokio blocking worker reserved
+        // above for deterministic connect TID reuse. NBD request handling also
+        // needs that worker, so using tokio::fs here would deadlock the test.
+        let (replacement_read_sender, replacement_read_receiver) = tokio::sync::oneshot::channel();
+        let replacement_read_thread = std::thread::spawn(move || {
+            let result = (|| {
+                let mut device = std::fs::File::open(format!("/dev/nbd{device_index}"))?;
+                let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
+                std::io::Read::read_exact(&mut device, &mut block)?;
+                Ok::<_, std::io::Error>(block)
+            })();
+            let _ = replacement_read_sender.send(result);
+        });
+        let replacement_read =
+            tokio::time::timeout(Duration::from_secs(5), replacement_read_receiver).await;
+
+        let replacement_disconnect_result = nbd_cow::netlink::disconnect(device_index);
+        replacement_shutdown.cancel();
+        for server in replacement_servers {
+            server.abort();
+            let _ = server.await;
+        }
+        pool.cleanup().await;
+        replacement_read_thread
+            .join()
+            .expect("replacement read thread");
+
+        assert_eq!(original_tid, replacement_connect_tid.0);
+        assert_eq!(replacement_tid, replacement_connect_tid.0);
+        assert_ne!(original_backend, replacement_backend);
+        assert!(replacement_size_matches);
+        stale_cleanup_result.expect("stale device cleanup");
+        assert_eq!(
+            backend_after_stale_cleanup.as_deref(),
+            Some(replacement_backend.as_str())
+        );
+        assert_eq!(pid_after_stale_cleanup, Some(replacement_tid));
+        assert_eq!(
+            replacement_read
+                .expect("replacement read should not time out")
+                .expect("replacement read thread should report its result")
+                .expect("replacement read should succeed"),
+            vec![0_u8; nbd_cow::BLOCK_SIZE]
+        );
+        replacement_disconnect_result.expect("disconnect replacement device");
+    });
 }

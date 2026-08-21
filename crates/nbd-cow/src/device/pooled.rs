@@ -434,7 +434,7 @@ impl PooledNbdCowDevice {
         if !device.disconnected {
             let connected = ConnectedDevice {
                 index: device.device_index,
-                connect_tid: device.connect_tid,
+                connection_id: device.connection_id,
             };
             let Some(device_lease) = lease.take() else {
                 return Err(error::NbdCowError::Io(std::io::Error::other(
@@ -563,7 +563,7 @@ mod tests {
                     server_handles: Vec::new(),
                     shutdown: CancellationToken::new(),
                     disconnected: true,
-                    connect_tid: 0,
+                    connection_id: uuid::Uuid::nil(),
                 },
                 lease: LeaseGuard::new(
                     pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, &lock_dir),
