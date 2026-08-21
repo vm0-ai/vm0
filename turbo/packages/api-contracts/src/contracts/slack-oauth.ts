@@ -28,7 +28,7 @@ export const slackOauthCallbackQuerySchema = z.object({
 export const slackOauthContract = c.router({
   install: {
     method: "GET",
-    path: "/api/okou/slack/oauth/install",
+    path: "/api/slack/oauth/install",
     query: slackOauthInstallQuerySchema,
     responses: {
       307: c.noBody(),
@@ -38,7 +38,7 @@ export const slackOauthContract = c.router({
   },
   connect: {
     method: "GET",
-    path: "/api/okou/slack/oauth/connect",
+    path: "/api/slack/oauth/connect",
     query: slackOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),

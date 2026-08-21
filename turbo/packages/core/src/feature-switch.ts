@@ -61,7 +61,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.BoxConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Box file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",

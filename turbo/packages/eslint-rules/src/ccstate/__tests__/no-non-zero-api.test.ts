@@ -64,6 +64,14 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: 'window.open("/api/connectors/github/callback")',
     },
+    // #28464 moved the IM connect and OAuth-start routes, so a connect URL the
+    // API hands back is no longer a violation.
+    {
+      code: 'window.open("/api/teams/oauth/connect?orgId=org_1&userId=user_1")',
+    },
+    {
+      code: 'fetchFn("/api/feishu/connect/status")',
+    },
     // #28462 moved the org, model provider, and usage routes, which the
     // platform reaches both directly and through its MSW patterns.
     {

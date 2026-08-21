@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::os::fd::{AsFd, AsRawFd, RawFd};
+use std::path::Path;
 
 use nix::errno::Errno;
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify, WatchDescriptor};
@@ -140,8 +141,13 @@ impl WorkspaceCacheWatcher {
                 Some(EntryWatchState::Relevant) => {}
                 Some(EntryWatchState::Unclassified) => {
                     requires_refresh = true;
-                    self.classify_metadata_commit(cache_key, &mut committed_cache_keys)
-                        .await;
+                    let metadata_path = self.cache.workspace_image_cache_metadata(cache_key);
+                    self.classify_metadata_commit(
+                        cache_key,
+                        &metadata_path,
+                        &mut committed_cache_keys,
+                    )
+                    .await;
                 }
                 None => {
                     requires_refresh = true;
@@ -261,8 +267,9 @@ impl WorkspaceCacheWatcher {
                     .await?;
             }
             for cache_key in metadata_commit_keys {
+                let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
                 changed |= self
-                    .classify_metadata_commit(&cache_key, &mut committed_cache_keys)
+                    .classify_metadata_commit(&cache_key, &metadata_path, &mut committed_cache_keys)
                     .await;
             }
             if reconcile_all_entry_watches {
@@ -306,7 +313,8 @@ impl WorkspaceCacheWatcher {
 
         let watched_cache_keys = self.watch_by_cache_key.keys().cloned().collect::<Vec<_>>();
         for cache_key in watched_cache_keys {
-            self.classify_metadata_commit(&cache_key, committed_cache_keys)
+            let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
+            self.classify_metadata_commit(&cache_key, &metadata_path, committed_cache_keys)
                 .await;
         }
 
@@ -347,8 +355,8 @@ impl WorkspaceCacheWatcher {
         Ok(())
     }
 
-    fn entry_is_watchable(&self, cache_key: &str) -> RunnerResult<bool> {
-        match std::fs::symlink_metadata(self.cache.workspace_image_cache_entry_dir(cache_key)) {
+    fn entry_is_watchable(entry_dir: &Path) -> RunnerResult<bool> {
+        match std::fs::symlink_metadata(entry_dir) {
             Ok(metadata) => Ok(metadata.is_dir()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(watcher_io_error("inspect entry", error.kind())),
@@ -360,12 +368,13 @@ impl WorkspaceCacheWatcher {
         cache_key: String,
         committed_cache_keys: &mut BTreeSet<String>,
     ) -> RunnerResult<bool> {
-        if self.watch_by_cache_key.contains_key(&cache_key)
-            || !self.entry_is_watchable(&cache_key)?
-        {
+        if self.watch_by_cache_key.contains_key(&cache_key) {
             return Ok(false);
         }
         let entry_dir = self.cache.workspace_image_cache_entry_dir(&cache_key);
+        if !Self::entry_is_watchable(&entry_dir)? {
+            return Ok(false);
+        }
         let watch = match self
             .inotify
             .get_ref()
@@ -384,8 +393,9 @@ impl WorkspaceCacheWatcher {
             },
         );
         self.watch_by_cache_key.insert(cache_key.clone(), watch);
+        let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
         let changed = self
-            .classify_metadata_commit(&cache_key, committed_cache_keys)
+            .classify_metadata_commit(&cache_key, &metadata_path, committed_cache_keys)
             .await;
         self.enforce_watch_limit(&cache_key);
         if !self.watch_by_cache_key.contains_key(&cache_key) {
@@ -397,12 +407,17 @@ impl WorkspaceCacheWatcher {
     async fn classify_metadata_commit(
         &mut self,
         cache_key: &str,
+        metadata_path: &Path,
         committed_cache_keys: &mut BTreeSet<String>,
     ) -> bool {
         let Some(previous_state) = self.entry_watch_state(cache_key) else {
             return false;
         };
-        match self.cache.classify_metadata_scope(cache_key).await {
+        match self
+            .cache
+            .classify_metadata_scope(cache_key, metadata_path)
+            .await
+        {
             WorkspaceCacheScopeClassification::Relevant => {
                 self.set_entry_watch_state(cache_key, EntryWatchState::Relevant);
                 if committed_cache_keys.len() < MAX_HELD_WORKSPACE_STATES {
