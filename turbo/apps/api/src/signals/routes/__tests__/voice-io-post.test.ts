@@ -281,7 +281,7 @@ async function seedVoiceFixture(options: {
 async function orgCredits(fixture: VoiceFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const app = createVoiceIoTestApp();
-  const response = await app.request("/api/zero/billing/status", {
+  const response = await app.request("/api/billing/status", {
     headers: authHeaders(),
   });
   expect(response.status).toBe(200);

@@ -29,7 +29,7 @@ function stubBillingStatus(
     readonly videoGenerationAllowed?: boolean;
   } = {},
 ) {
-  return http.get("http://localhost:3000/api/okou/billing/status", () => {
+  return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
       tier: overrides.tier ?? "pro",
       canBuyCredits: overrides.canBuyCredits ?? true,
@@ -100,20 +100,17 @@ describe("okou credit command", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/billing/credit-checkout",
-        () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Only org admins can buy credits",
-                code: "FORBIDDEN",
-              },
+      http.post("http://localhost:3000/api/billing/credit-checkout", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Only org admins can buy credits",
+              code: "FORBIDDEN",
             },
-            { status: 403 },
-          );
-        },
-      ),
+          },
+          { status: 403 },
+        );
+      }),
     );
 
     try {
@@ -132,7 +129,7 @@ describe("okou credit command", () => {
     let capturedBody: unknown = null;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/billing/credit-checkout",
+        "http://localhost:3000/api/billing/credit-checkout",
         async ({ request }) => {
           capturedBody = await request.json();
           return HttpResponse.json({
@@ -172,15 +169,12 @@ describe("okou credit command", () => {
         canBuyCredits: false,
         videoGenerationAllowed: false,
       }),
-      http.post(
-        "http://localhost:3000/api/okou/billing/credit-checkout",
-        () => {
-          checkoutRequests += 1;
-          return HttpResponse.json({
-            url: "https://checkout.stripe.com/should-not-open",
-          });
-        },
-      ),
+      http.post("http://localhost:3000/api/billing/credit-checkout", () => {
+        checkoutRequests += 1;
+        return HttpResponse.json({
+          url: "https://checkout.stripe.com/should-not-open",
+        });
+      }),
     );
 
     await creditCommand.parseAsync(["node", "cli", "20000"]);

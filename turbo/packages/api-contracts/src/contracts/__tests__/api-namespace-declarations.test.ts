@@ -51,22 +51,24 @@ function declaredRoutes(): readonly DeclaredRoute[] {
 describe("branded API namespace declarations", () => {
   const routes = declaredRoutes();
 
+  // The named sample proves the walk above actually reaches a declaration
+  // rather than passing on an empty list. It must be a path #28278 does not
+  // move, or the sample rots the moment that slice lands: a provider console
+  // holds this URL, so it stays branded under #26701.
   it("enumerates branded contract routes through the package barrel", () => {
     const brandedRoutes = routes.filter(({ path }) => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    // A smoke floor on the barrel walk, not a target: it catches an
-    // enumeration that silently stops finding routes. #28278 drains the branded
-    // surface toward zero, so the floor comes down as slices land and is never
-    // raised — #28463 took the count under the previous 100.
+    // A floor, not a snapshot: #28278 moves branded families off the namespace
+    // one slice at a time (the billing slice #28457 alone dropped 34 routes),
+    // so the exact count shrinks as slices land. The floor must stay below the
+    // remaining branded count while still proving the barrel walk reaches a
+    // broad set of declarations rather than a handful of samples.
     expect(brandedRoutes.length).toBeGreaterThan(50);
     expect(
       brandedRoutes.some(({ method, path }) => {
-        return (
-          method === "POST" &&
-          path === "/api/okou/billing/concurrency-checkout/preview"
-        );
+        return method === "POST" && path === "/api/okou/slack/events";
       }),
     ).toBe(true);
   });

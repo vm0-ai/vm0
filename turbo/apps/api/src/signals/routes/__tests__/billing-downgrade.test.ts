@@ -49,7 +49,7 @@ async function readBillingStatus() {
   );
 }
 
-describe("POST /api/zero/billing/downgrade", () => {
+describe("POST /api/billing/downgrade", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
   });

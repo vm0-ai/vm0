@@ -44,7 +44,7 @@ async function readBillingStatus() {
   );
 }
 
-describe("POST /api/zero/billing/restore", () => {
+describe("POST /api/billing/restore", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
   });

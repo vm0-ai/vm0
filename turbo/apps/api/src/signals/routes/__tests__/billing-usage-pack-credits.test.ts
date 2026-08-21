@@ -150,7 +150,7 @@ function registerCleanup(
   });
 }
 
-describe("GET /api/zero/billing/usage-pack-credits", () => {
+describe("GET /api/billing/usage-pack-credits", () => {
   it("keeps member usage pack credits behind UsagePackPlans", async () => {
     const actor = fixture();
     authenticate(actor);

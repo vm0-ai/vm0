@@ -156,8 +156,6 @@ describe("okou presentation-template publish", () => {
         return HttpResponse.json({
           id: TEMPLATE_ID,
           title: published.title,
-          status: "ready",
-          error: null,
           sourceFilename: "brand-system.pptx",
           coverUrl: "https://presigned.example.com/cover.png",
           pageCount: published.pageFileIds.length,
