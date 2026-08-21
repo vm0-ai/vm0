@@ -1273,20 +1273,22 @@
       },
       "highlights": {
         "addOnConcurrency": "Ajoutez de la simultanéité quand vous voulez",
-        "agents": "{{shared}} agents partagés, privés illimités",
+        "agentFanOut": "Un agent peut piloter toute une équipe d'agents",
         "automations": "Automatisations planifiées et sur événement",
-        "builtInLeadGeneration": "Génération de leads intégrée",
-        "builtInSeoResearch": "Recherche SEO intégrée",
-        "builtInWebMarketData": "Données web et marché intégrées",
+        "builtInResearchData": "Données SEO, leads, web et marché intégrées",
+        "chatIntegrations": "Intégration Slack et Telegram",
+        "computerUse": "Les agents pilotent de vraies applis sur votre poste",
         "concurrentAgents": "{{slots}} agents en parallèle",
         "everythingInBuiltForTeams": "Tout {{plan}}, conçu pour les équipes",
         "included": "Inclus",
+        "liveBrowser": "Suivez le navigateur d'un agent et prenez la main",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "moreConnectorsChannels": "Plus de connecteurs personnalisés et d'intégrations de canaux",
         "supportEmail": "Assistance par e-mail",
         "supportPriority": "Assistance prioritaire",
         "videoGeneration": "Génération de vidéos et d’avatars",
-        "voiceInput": "Saisie vocale, {{requests}} par jour",
-        "webhookAutomations": "Lancez des agents depuis tout système par webhook"
+        "voiceInput": "Saisie vocale : {{requests}} requêtes et {{minutes}} minutes par jour",
+        "webhookAutomations": "Lancez une exécution depuis n'importe quel système par webhook"
       },
       "legacy": "Historique",
       "limitedFree": {

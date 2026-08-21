@@ -203,14 +203,15 @@ function planConcurrentSlots(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 2 : 10;
 }
 
-// Both plans carry the same shared-agent allowance; Team only adds concurrency,
-// voice input and support on top of it.
-const SHARED_AGENT_COUNT = 7;
-
-// The daily minute cap differs too, but a plan column that prints both caps
-// spends a line on a distinction nobody picks a plan on.
+/* Both caps are printed. ORG_PLAN_ENTITLEMENT_TIER_VALUES gives Pro and Team
+   exactly five differing fields, and audioDailyDurationSeconds is one of them,
+   so a column that hid it would be dropping a fifth of what the upgrade buys. */
 function planVoiceRequests(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 300 : 500;
+}
+
+function planVoiceMinutes(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 200 : 500;
 }
 
 function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
@@ -787,14 +788,33 @@ function PlanPrice({
    flagship models rather than asking "Every model" to carry the claim, then
    keeps BYOK as its own value prop.
 
-   Team keeps Pro's baseline implicit, then spells out the scale upgrades and
-   built-in data capabilities a team can put to work. Those APIs also exist on
-   Pro, so the label says "built for teams" rather than claiming every line
-   after it is a Team-only entitlement.
+   The built-in research APIs ship on Pro, so they sit in Pro's list. One line
+   covers SEO, lead, web, and market data instead of three, which names the
+   whole capability without pushing Pro's list past a scannable length.
 
-   Team's webhook line names both the mechanism and the outcome. "Trigger
-   agents from any system via webhook" makes its difference from scheduled and
-   app-event automations visible without exposing an internal entitlement key. */
+   Team's first three rows and its voice caps are the only real entitlement
+   differences: ORG_PLAN_ENTITLEMENT_TIER_VALUES varies baseConcurrencyLimit
+   2/10, canBuyConcurrency, workflowWebhookAutomationAllowed, audioDailyRateLimit
+   300/500 and audioDailyDurationSeconds 200/500, and nothing else.
+
+   The middle rows are capability both plans ship. They sit here because the
+   label says "Everything in Pro, built for teams" -- inherited, not exclusive.
+   They are phrased as the thing the agent does rather than the setting that
+   enables it: a plan column earns attention by naming an outcome, and "Choose
+   which models your workspace can use" named a settings screen.
+
+   The connector row is the one exception, and it is a promise ahead of the
+   code: custom connectors are unlimited on both plans today, with the only
+   check in custom-connector.service.ts being an org-admin test. It reads true
+   only once ORG_PLAN_ENTITLEMENT_TIER_VALUES carries a per-tier connector
+   limit and createCustomConnector$ enforces it.
+
+   Nine rows on each side, every row a single line at this width, so the columns
+   align row for row across the divider.
+
+   The dialog is a fixed 43rem, leaving 570px for the columns, which Pro's nine
+   rows sit exactly on. A tenth row has to replace one, and any row that wraps
+   costs the same height as a new row. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const concurrentAgents = i18n.t(
     ($) => {
@@ -806,7 +826,10 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     ($) => {
       return $.billing.plans.highlights.voiceInput;
     },
-    { requests: formatLocalizedNumber(planVoiceRequests(tier)) },
+    {
+      minutes: formatLocalizedNumber(planVoiceMinutes(tier)),
+      requests: formatLocalizedNumber(planVoiceRequests(tier)),
+    },
   );
   if (tier === "team") {
     return [
@@ -815,16 +838,19 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
       i18n.t(($) => {
+        return $.billing.plans.highlights.agentFanOut;
+      }),
+      i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.builtInSeoResearch;
+        return $.billing.plans.highlights.liveBrowser;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.builtInLeadGeneration;
+        return $.billing.plans.highlights.computerUse;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.builtInWebMarketData;
+        return $.billing.plans.highlights.moreConnectorsChannels;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -840,17 +866,17 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     i18n.t(($) => {
       return $.billing.plans.features.byok;
     }),
-    i18n.t(
-      ($) => {
-        return $.billing.plans.highlights.agents;
-      },
-      { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
-    ),
     i18n.t(($) => {
       return $.billing.plans.highlights.automations;
     }),
     i18n.t(($) => {
       return $.billing.plans.highlights.videoGeneration;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.builtInResearchData;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.chatIntegrations;
     }),
     voiceInput,
     i18n.t(($) => {
@@ -873,15 +899,19 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
 }
 
 /* Both columns open this block at the same y with a label of the same weight,
-   so the lists start on one line even though Team's is shorter. Team's tail is
-   slack the CTA takes up, not a hole to pad with "—" rows. */
+   so the lists start on one line.
+
+   The block leads at mt-5 and rows sit 8px apart rather than 10px. Nine rows
+   at the old spacing measured 589px against the 570px the dialog gives the
+   columns, which cost both cards their bottom inset and left the CTAs sitting
+   on the note's rule. Type size is untouched; only the air between rows moved. */
 function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-6">
+    <div className="mt-5">
       <p className="text-xs font-medium text-muted-foreground">
         {planHighlightsLabel(tier)}
       </p>
-      <ul className="mt-3 flex flex-col gap-2.5">
+      <ul className="mt-3 flex flex-col gap-2">
         {planHighlights(tier).map((item) => {
           return (
             <li

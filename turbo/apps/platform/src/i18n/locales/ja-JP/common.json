@@ -1251,20 +1251,22 @@
       },
       "highlights": {
         "addOnConcurrency": "同時実行はいつでも追加できます",
-        "agents": "共有エージェント {{shared}}、プライベート無制限",
+        "agentFanOut": "1 つのエージェントがエージェントのチームを動かす",
         "automations": "スケジュールとイベントの自動化",
-        "builtInLeadGeneration": "組み込みのリード獲得",
-        "builtInSeoResearch": "組み込みの SEO リサーチ",
-        "builtInWebMarketData": "組み込みのウェブ・市場データ",
+        "builtInResearchData": "組み込みの SEO・リード・ウェブ・市場データ",
+        "chatIntegrations": "Slack・Telegram 連携",
+        "computerUse": "エージェントがデスクトップの実アプリを操作",
         "concurrentAgents": "{{slots}} 個のエージェントを同時実行",
         "everythingInBuiltForTeams": "{{plan}} の全機能をチーム向けに",
         "included": "含まれるもの",
+        "liveBrowser": "エージェントのライブブラウザを見て操作を奪う",
         "models": "Claude Opus 5、GPT 5.6 Sol、DeepSeek V4 Pro",
+        "moreConnectorsChannels": "カスタムコネクターとチャネル連携をより多く",
         "supportEmail": "メールサポート",
         "supportPriority": "優先サポート",
         "videoGeneration": "動画とアバターの生成",
-        "voiceInput": "音声入力 1 日 {{requests}} 回",
-        "webhookAutomations": "Webhook であらゆるシステムからエージェントを起動"
+        "voiceInput": "音声入力 1 日 {{requests}} 回・{{minutes}} 分",
+        "webhookAutomations": "Webhook 一発でどのシステムからでも実行を開始"
       },
       "legacy": "旧プラン",
       "limitedFree": {

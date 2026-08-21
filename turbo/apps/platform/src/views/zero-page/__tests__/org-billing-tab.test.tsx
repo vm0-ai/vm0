@@ -482,28 +482,31 @@ describe("organization billing settings", () => {
       "2 agents running at once",
       "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
       "Bring your own LLM keys",
-      "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
-      "Voice input, 300 a day",
+      "Built-in SEO, lead, web, and market data",
+      "Slack and Telegram integration",
+      "Voice input, 300 requests and 200 minutes a day",
       "Email support",
     ]) {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team leads with the scale upgrades, then makes the built-in APIs concrete
-       enough to show what a team can put those ten concurrent runs to work on. */
+    /* Concurrency, webhooks and the voice caps are the real entitlement
+       differences; the middle rows are shared capability the label inherits with
+       "Everything in Pro", each phrased as an outcome rather than a setting. */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
     for (const item of [
       "10 agents running at once",
       "Add more concurrency any time",
-      "Trigger agents from any system via webhook",
-      "Built-in SEO research",
-      "Built-in lead generation",
-      "Built-in web and market data",
-      "Voice input, 500 a day",
+      "One agent can run a whole team of agents",
+      "Start a run from any system with one webhook",
+      "Watch an agent's live browser and take the wheel",
+      "Agents drive real apps on your desktop",
+      "More custom connectors & channel integration",
+      "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {
       expect(within(teamPlan).getByText(item)).toBeInTheDocument();
@@ -512,9 +515,10 @@ describe("organization billing settings", () => {
       "2 agents running at once",
       "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
       "Bring your own LLM keys",
-      "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
+      "Built-in SEO, lead, web, and market data",
+      "Slack and Telegram integration",
       "Email support",
     ]) {
       expect(within(teamPlan).queryByText(item)).toBeNull();
