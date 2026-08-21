@@ -17,6 +17,9 @@ Request context
   warnings, usage reporting, and auth/streaming diagnostics.
 - ``VM_SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry VM info.
   Read by usage webhook reporters.
+- ``VM_MODEL_PROVIDER_FAILURE_PATH``: optional runner-owned per-run state path
+  copied from registry VM info. Read only by trusted model-provider failure
+  reduction; absent for old runners and non-managed runs.
 - ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
   trusted authority, or from the authority-validation fallback URL on local
   denial. Asterisk-form contributes an empty URL path while its raw ``*``
@@ -197,6 +200,7 @@ VM_RUN_ID: Final = "vm_run_id"
 VM_NETWORK_LOG_PATH: Final = "vm_network_log_path"
 VM_PROXY_LOG_PATH: Final = "vm_proxy_log_path"
 VM_SANDBOX_AUTH_KEY: Final = "vm_sandbox_token"
+VM_MODEL_PROVIDER_FAILURE_PATH: Final = "vm_model_provider_failure_path"
 ORIGINAL_URL: Final = "original_url"
 NETWORK_LOG_TARGET: Final = "network_log_target"
 CAPTURE_BODY: Final = "capture_body"

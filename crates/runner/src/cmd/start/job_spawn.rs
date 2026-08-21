@@ -612,6 +612,8 @@ pub(super) async fn run_job(
     let provider = Arc::clone(&ctx.provider);
     let runner_id = ctx.runner_id.clone();
     let exec_config = Arc::clone(&ctx.exec_config);
+    let model_provider_failure_path = exec_config.log_paths.model_provider_failure(run_id);
+    let model_provider_failure_path_for_panic = model_provider_failure_path.clone();
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
     let reuse_state_notify = Arc::clone(&ctx.reuse_state_notify);
@@ -730,6 +732,14 @@ pub(super) async fn run_job(
             cancelled_for_log,
             executor_result.outcome.failure.as_ref(),
         );
+        report_model_provider_failure_before_completion(
+            provider.as_ref(),
+            run_id,
+            &model_provider_failure_path,
+            executor_result.exit_code,
+            cancelled_for_log,
+        )
+        .await;
 
         let completion_payload = CompletionPayload::new(
             run_id,
@@ -770,6 +780,15 @@ pub(super) async fn run_job(
     match AssertUnwindSafe(body).catch_unwind().await {
         Ok(()) => cancellation,
         Err(payload) => {
+            if let Err(error) =
+                crate::model_provider_failure::remove(&model_provider_failure_path_for_panic).await
+            {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    "model provider failure state cleanup failed after outer job panic"
+                );
+            }
             let cleanup = cleanup_panicked_job(
                 run_id,
                 sandbox_id,
@@ -788,6 +807,34 @@ pub(super) async fn run_job(
             }
             std::panic::resume_unwind(payload);
         }
+    }
+}
+
+async fn report_model_provider_failure_before_completion(
+    provider: &dyn JobProvider,
+    run_id: RunId,
+    path: &std::path::Path,
+    exit_code: i32,
+    cancelled: bool,
+) {
+    let request = match crate::model_provider_failure::take(path).await {
+        Ok(request) => request,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "model provider failure state was invalid or unreadable"
+            );
+            return;
+        }
+    };
+    if exit_code == 0 || cancelled {
+        return;
+    }
+    if let Some(request) = request {
+        provider
+            .report_model_provider_failure(run_id, &request)
+            .await;
     }
 }
 

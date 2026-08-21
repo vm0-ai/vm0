@@ -288,6 +288,18 @@ def _classify_registry_vms(
             )
             continue
 
+        model_provider_failure_path = vm.get("modelProviderFailurePath")
+        if model_provider_failure_path is not None and (
+            not isinstance(model_provider_failure_path, str)
+            or not model_provider_failure_path
+            or not Path(model_provider_failure_path).is_absolute()
+        ):
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "invalid_model_provider_failure_path",
+                "proxy registry VM entry modelProviderFailurePath must be an absolute path",
+            )
+            continue
+
         if "cliAgentType" not in vm:
             invalid_vms[client_ip] = InvalidVmEntry(
                 "missing_cli_agent_type",
