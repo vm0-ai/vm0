@@ -95,9 +95,12 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject has to be re-picked whenever its own slice lands: #28459 migrated
+    // the previous one, `/api/chat-threads/snapshot`, which made this case pass
+    // for the wrong reason. `/api/okou/model-policies` is still branded.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/model-policies")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

@@ -927,13 +927,10 @@ describe("chat lifecycle", () => {
     const toastError = vi.spyOn(toast, "error");
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.patch(
-      "*/api/okou/chat-threads/:id",
-      async ({ request }) => {
-        draftPatches.push(await request.json());
-        return new Response(null, { status: 200 });
-      },
-    );
+    context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
+      draftPatches.push(await request.json());
+      return new Response(null, { status: 200 });
+    });
     context.mocks.http.post("*/api/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
         headers: { "Content-Type": "application/json" },
@@ -1111,13 +1108,10 @@ describe("chat lifecycle", () => {
       rms: [0.1, 0.1, 0, 0, 0],
     });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.patch(
-      "*/api/okou/chat-threads/:id",
-      async ({ request }) => {
-        draftPatches.push(await request.json());
-        return new Response(null, { status: 200 });
-      },
-    );
+    context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
+      draftPatches.push(await request.json());
+      return new Response(null, { status: 200 });
+    });
     context.mocks.http.post("*/api/voice-io/stt", async ({ request }) => {
       transcriptionRequested.resolve(undefined);
       const form = await request.formData();
