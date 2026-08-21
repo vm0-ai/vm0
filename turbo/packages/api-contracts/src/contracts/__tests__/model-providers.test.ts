@@ -20,6 +20,8 @@ import {
   getVm0ApiModel,
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0ManagedRouteCandidates,
+  getVm0ManagedRouteVendors,
   getVm0ModelPriceTier,
   isModelSupportedByProvider,
   isCodexFastModeModel,
@@ -27,12 +29,15 @@ import {
   normalizeRunModelId,
   getAuthMethodsForType,
   getSecretNameForType,
+  getModelProviderFirewall,
+  getModelProviderCodexCatalogForModel,
   getSecretsForAuthMethod,
   isLimitedFree1RestrictedRunModel,
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
   updateOrgModelPoliciesRequestSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  VM0_MODEL_TO_PROVIDER,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
   SUPPORTED_RUN_MODELS,
@@ -526,6 +531,74 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ApiModel(model)).toBe(model);
     expect(getProviderRuntimeModel("vm0", model)).toBe(model);
   });
+
+  it("defines two statically compilable managed routes for every model", () => {
+    expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+    ]);
+    expect(getVm0ManagedRouteVendors()).toEqual([
+      "anthropic",
+      "openrouter",
+      "deepseek",
+      "openai",
+    ]);
+
+    for (const model of SUPPORTED_RUN_MODELS) {
+      const candidates = getVm0ManagedRouteCandidates(model);
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0]?.providerType).toBe(
+        getVm0ConcreteProviderType(model),
+      );
+      expect(candidates[0]?.upstreamModel).toBe(getVm0ApiModel(model));
+      expect(
+        new Set(
+          candidates.map((candidate) => {
+            return `${candidate.providerType}:${candidate.upstreamModel}`;
+          }),
+        ).size,
+      ).toBe(candidates.length);
+
+      const frameworks = new Set(
+        candidates.map((candidate) => {
+          const config = MODEL_PROVIDER_TYPES[candidate.providerType];
+          expect(getSecretNameForType(candidate.providerType)).toBeTruthy();
+          expect(
+            getModelProviderEnvBindings(candidate.providerType),
+          ).toBeTruthy();
+          expect(getModelProviderFirewall(candidate.providerType)).toBeTruthy();
+          expect(config.models).toContain(candidate.upstreamModel);
+          return getFrameworkForType(candidate.providerType);
+        }),
+      );
+      expect(frameworks.size).toBe(1);
+    }
+  });
+
+  it.each([
+    ["deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
+    ["deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  ] as const)(
+    "projects provider-owned Codex metadata for OpenRouter %s",
+    (model, upstreamModel) => {
+      const catalog = getModelProviderCodexCatalogForModel(
+        model,
+        upstreamModel,
+      );
+      expect(catalog?.models).toEqual([
+        expect.objectContaining({ slug: upstreamModel }),
+      ]);
+    },
+  );
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
@@ -1307,12 +1380,22 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
     "%s offers current GPT models with gpt-5.6-luna default",
     (type) => {
-      expect(getModels(type)).toEqual([
-        "openai/gpt-5.6-sol",
-        "openai/gpt-5.6-terra",
-        "openai/gpt-5.6-luna",
-        "openai/gpt-5.5",
-      ]);
+      expect(getModels(type)).toEqual(
+        expect.arrayContaining([
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-luna",
+          "openai/gpt-5.5",
+        ]),
+      );
+      if (type === "openrouter-codex") {
+        expect(getModels(type)).toEqual(
+          expect.arrayContaining([
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+          ]),
+        );
+      }
       expect(getDefaultModel(type)).toBe("openai/gpt-5.6-luna");
     },
   );

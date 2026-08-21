@@ -163,6 +163,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       contentType: mimetype,
       sizeBytes: size,
       url: fileUrl,
+      publicBrand: s3Object.publicBrand,
       metadata: buildMetadata({
         body,
         s3Key: s3Object.key,

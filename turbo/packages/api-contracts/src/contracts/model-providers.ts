@@ -225,64 +225,182 @@ export function getDefaultOrgModelPolicySeed(
  * NOTE: Defined before MODEL_PROVIDER_TYPES so the vm0 entry can derive its
  * models list from this mapping via Object.keys().
  */
-interface Vm0ModelConfig {
-  concreteType: ModelProviderType;
-  vendor: string;
+export const VM0_MANAGED_ROUTE_PROVIDERS = {
+  "anthropic-api-key": { vendor: "anthropic" },
+  "openrouter-api-key": { vendor: "openrouter" },
+  deepseek: { vendor: "deepseek" },
+  "openrouter-codex": { vendor: "openrouter" },
+  "openai-api-key": { vendor: "openai" },
+} as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
+
+export type Vm0ManagedRouteProviderType =
+  keyof typeof VM0_MANAGED_ROUTE_PROVIDERS;
+
+export interface Vm0ManagedRouteCandidate {
+  readonly concreteType: Vm0ManagedRouteProviderType;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
   // different identifier than what we show to users.
-  apiModel?: string;
+  readonly apiModel?: string;
+}
+
+interface Vm0ModelConfig {
+  readonly candidates: readonly [
+    Vm0ManagedRouteCandidate,
+    ...Vm0ManagedRouteCandidate[],
+  ];
 }
 
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
 // `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
-export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
+export const VM0_MODEL_TO_PROVIDER = {
   "claude-fable-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-fable-5",
+      },
+    ],
   },
   "claude-opus-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-opus-5",
+      },
+    ],
   },
   "claude-opus-4-8": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-opus-4.8",
+      },
+    ],
   },
   "claude-sonnet-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-sonnet-5",
+      },
+    ],
   },
   "claude-sonnet-4-6": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-sonnet-4.6",
+      },
+    ],
   },
   "deepseek-v4-flash": {
-    concreteType: "deepseek",
-    vendor: "deepseek",
+    candidates: [
+      { concreteType: "deepseek" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "deepseek/deepseek-v4-flash",
+      },
+    ],
   },
   "deepseek-v4-pro": {
-    concreteType: "deepseek",
-    vendor: "deepseek",
+    candidates: [
+      { concreteType: "deepseek" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "deepseek/deepseek-v4-pro",
+      },
+    ],
   },
   "gpt-5.6-sol": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-5.6-sol",
+      },
+    ],
   },
   "gpt-5.6-terra": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-5.6-terra",
+      },
+    ],
   },
   "gpt-5.6-luna": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-5.6-luna",
+      },
+    ],
   },
   "gpt-5.5": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-5.5",
+      },
+    ],
   },
-};
+} as const satisfies Record<SupportedRunModel, Vm0ModelConfig>;
+
+export interface Vm0ManagedRouteTarget {
+  readonly selectedModel: SupportedRunModel;
+  readonly providerType: Vm0ManagedRouteProviderType;
+  readonly upstreamModel: string;
+  readonly vendor: string;
+}
+
+function vm0PrimaryCandidate(model: string): Vm0ManagedRouteCandidate {
+  if (!isSupportedRunModel(model)) {
+    throw new Error(
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+    );
+  }
+  return VM0_MODEL_TO_PROVIDER[model].candidates[0];
+}
+
+export function getVm0ManagedRouteCandidates(
+  model: string,
+): readonly Vm0ManagedRouteTarget[] {
+  if (!isSupportedRunModel(model)) {
+    throw new Error(
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+    );
+  }
+  return VM0_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {
+    return {
+      selectedModel: model,
+      providerType: candidate.concreteType,
+      upstreamModel: "apiModel" in candidate ? candidate.apiModel : model,
+      vendor: VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor,
+    };
+  });
+}
+
+export function getVm0ManagedRouteVendors(): readonly string[] {
+  return [
+    ...new Set(
+      Object.values(VM0_MODEL_TO_PROVIDER).flatMap((config) => {
+        return config.candidates.map((candidate) => {
+          return VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor;
+        });
+      }),
+    ),
+  ];
+}
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5": "claude-fable-5",
@@ -526,6 +644,8 @@ export const MODEL_PROVIDER_TYPES = {
       "openai/gpt-5.6-terra",
       "openai/gpt-5.6-luna",
       "openai/gpt-5.5",
+      "deepseek/deepseek-v4-flash",
+      "deepseek/deepseek-v4-pro",
     ] as string[],
     defaultModel: "openai/gpt-5.6-luna",
   },
@@ -912,7 +1032,7 @@ export function getProviderRuntimeModel(
     return model;
   }
   if (type === "vm0") {
-    return VM0_MODEL_TO_PROVIDER[canonical]?.apiModel ?? canonical;
+    return vm0PrimaryCandidate(canonical).apiModel ?? canonical;
   }
   return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
 }
@@ -956,14 +1076,10 @@ export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
  * Get the concrete provider type for a VM0 managed model.
  * Throws if the model is not in the VM0 model mapping.
  */
-export function getVm0ConcreteProviderType(model: string): ModelProviderType {
-  const entry = VM0_MODEL_TO_PROVIDER[model];
-  if (!entry) {
-    throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
-    );
-  }
-  return entry.concreteType as ModelProviderType;
+export function getVm0ConcreteProviderType(
+  model: string,
+): Vm0ManagedRouteProviderType {
+  return vm0PrimaryCandidate(model).concreteType;
 }
 
 /**
@@ -971,13 +1087,8 @@ export function getVm0ConcreteProviderType(model: string): ModelProviderType {
  * Used for key pool lookup.
  */
 export function getVm0Vendor(model: string): string {
-  const entry = VM0_MODEL_TO_PROVIDER[model];
-  if (!entry) {
-    throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
-    );
-  }
-  return entry.vendor;
+  const providerType = vm0PrimaryCandidate(model).concreteType;
+  return VM0_MANAGED_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
@@ -985,13 +1096,7 @@ export function getVm0Vendor(model: string): string {
  * Falls back to the display name when no override is configured.
  */
 export function getVm0ApiModel(model: string): string {
-  const entry = VM0_MODEL_TO_PROVIDER[model];
-  if (!entry) {
-    throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
-    );
-  }
-  return entry.apiModel ?? model;
+  return vm0PrimaryCandidate(model).apiModel ?? model;
 }
 
 /**

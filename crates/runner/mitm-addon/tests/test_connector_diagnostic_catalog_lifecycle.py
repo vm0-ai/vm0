@@ -129,7 +129,7 @@ def test_unchanged_cache_reuses_compiled_diagnostic_snapshot(tmp_path, mitm_ctx)
 
 
 @pytest.mark.parametrize("terminal_hook", ["response", "stream", "error"])
-def test_pinned_flow_finishes_with_catalog_a_after_atomic_b_replacement(
+def test_pinned_flow_uses_catalog_a_for_auth_error_and_releases_on_connection_error(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -175,12 +175,16 @@ def test_pinned_flow_finishes_with_catalog_a_after_atomic_b_replacement(
                 streamed_body = stream_result
             mitm_addon.response(flow)
 
-    if streamed_body is not None:
+    if terminal_hook == "error":
+        assert flow.response is None
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+    elif streamed_body is not None:
         assert json.loads(streamed_body)["connector"] == "catalog-a"
     else:
         assert _response_connector(flow) == "catalog-a"
     _assert_connector_diagnostic_state_released(flow)
-    _assert_catalog_a_public_diagnostic_metadata(flow)
+    if terminal_hook != "error":
+        _assert_catalog_a_public_diagnostic_metadata(flow)
     if diagnostic_stream is not None:
         assert flow.response is not None
         assert flow.response.stream is False
@@ -242,6 +246,18 @@ async def test_later_flow_observes_atomic_catalog_replacement(
             version="catalog-b",
         )
         await mitm_addon.request(second_flow)
+        first_flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"first upstream auth error",
+        )
+        second_flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"second upstream auth error",
+        )
+        mitm_addon.response(first_flow)
+        mitm_addon.response(second_flow)
 
     assert _response_connector(first_flow) == "catalog-a"
     assert _response_connector(second_flow) == "catalog-b"
@@ -481,6 +497,13 @@ async def test_unavailable_flow_stays_unavailable_after_cache_recovers(
         )
         mitm_addon.response(unavailable_flow)
         await mitm_addon.request(recovered_flow)
+        assert recovered_flow.response is None
+        recovered_flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-type": "text/plain"}),
+            content=b"upstream auth error",
+        )
+        mitm_addon.response(recovered_flow)
 
     assert unavailable_flow.response.status_code == 401
     assert unavailable_flow.response.content == b"upstream auth error"

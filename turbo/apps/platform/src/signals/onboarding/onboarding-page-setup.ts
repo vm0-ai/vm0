@@ -4,7 +4,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
-} from "@okouai/core";
+} from "../../lib/platform-template-items.ts";
 import {
   CUSTOM_WORKFLOW_ID,
   hasOnboardingWorkflow,

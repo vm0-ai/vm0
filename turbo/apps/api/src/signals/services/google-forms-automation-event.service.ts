@@ -1495,6 +1495,7 @@ const startGoogleFormsWorkflowRun$ = command(
             chatThreadId: args.automation.chatThreadId,
           },
           automationContext: context,
+          connectorSourceId: args.state.connectorId,
           apiStartTime: args.apiStartTime,
           triggerSource: "automation-event",
           triggerBrief: googleFormsTriggerBrief(args),

@@ -81,11 +81,13 @@ const SCHEMA = {
   R2_USER_ARTIFACTS_ACCESS_KEY_ID: z.string().min(1),
   R2_USER_ARTIFACTS_SECRET_ACCESS_KEY: z.string().min(1),
   PUBLIC_ARTIFACTS_BASE_URL: z.url(),
+  OKOU_PUBLIC_ARTIFACTS_BASE_URL: z.url().optional(),
   R2_HOSTED_SITES_BUCKET_NAME: z.string().min(1).optional(),
   R2_HOSTED_SITES_ACCESS_KEY_ID: z.string().min(1).optional(),
   R2_HOSTED_SITES_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
+  OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1).optional(),
   OKOU_HOST_DOMAIN: z.string().min(1).optional(),
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
   OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),
@@ -208,6 +210,7 @@ const OKOU_ENV_FALLBACKS = {
 } as const satisfies Partial<Record<EnvName, EnvName>>;
 
 type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;
+type RequiredOkouEnvName = "OKOU_HOST_DOMAIN" | "OKOU_HOST_SCHEME";
 
 const {
   get: getOverrideEnv,
@@ -237,6 +240,10 @@ function isOkouEnvName(name: EnvName): name is OkouEnvName {
   return Object.prototype.hasOwnProperty.call(OKOU_ENV_FALLBACKS, name);
 }
 
+export function env<K extends RequiredOkouEnvName>(
+  name: K,
+): NonNullable<EnvShape[K]>;
+export function env<K extends EnvName>(name: K): EnvShape[K];
 export function env<K extends EnvName>(name: K): EnvShape[K] {
   const value = readEnv(name);
   if (value !== undefined || !isOkouEnvName(name)) {

@@ -40,6 +40,7 @@ import {
   badRequestMessage,
   conflict,
   insufficientCredits,
+  modelProviderUnavailable,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -424,6 +425,7 @@ interface NormalSendFeatureSwitches {
    * reloading the switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly managedModelProviderFallbackEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -449,6 +451,7 @@ type NormalSendFailure =
   | ReturnType<typeof autonomyBudgetExhausted>
   | ReturnType<typeof insufficientCredits>
   | ReturnType<typeof providerUnavailable>
+  | ReturnType<typeof modelProviderUnavailable>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatEventResponse {
@@ -818,6 +821,7 @@ const resolveIncomingAttachFileMetadata$ = command(
               contentType: file.contentType,
               size: object.size,
               objectKey: object.key,
+              publicBrand: object.publicBrand,
             });
           }
         }
@@ -912,6 +916,7 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
 async function withBuiltInModelRuntimeRoute(
   db: Db,
   configuration: ResolvedRunConfiguration,
+  fallbackEnabled: boolean,
 ): Promise<ResolvedRunConfiguration | NormalSendFailure> {
   if (
     configuration.providerAdmission.error ||
@@ -928,12 +933,17 @@ async function withBuiltInModelRuntimeRoute(
   const builtInModelRuntimeRoute = await resolveBuiltInModelRuntimeRoute(
     db,
     selectedModel,
+    fallbackEnabled,
   );
   return builtInModelRuntimeRoute
     ? { ...configuration, builtInModelRuntimeRoute }
-    : providerUnavailable(
-        "No model provider configured: no VM0 managed model key is configured",
-      );
+    : fallbackEnabled
+      ? modelProviderUnavailable(
+          "Every managed route for this model is temporarily unavailable",
+        )
+      : providerUnavailable(
+          "No model provider configured: no VM0 managed model key is configured",
+        );
 }
 
 async function resolveExplicitRunConfiguration(params: {
@@ -942,6 +952,7 @@ async function resolveExplicitRunConfiguration(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
+  readonly managedModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
   const modelSelection = params.body.modelSelection;
@@ -996,15 +1007,19 @@ async function resolveExplicitRunConfiguration(params: {
   if (codexServiceTierError) {
     return codexServiceTierError;
   }
-  return await withBuiltInModelRuntimeRoute(params.db, {
-    modelPin,
-    providerAdmission,
-    codexServiceTier: codexServiceTierForRun({
-      body: params.body,
+  return await withBuiltInModelRuntimeRoute(
+    params.db,
+    {
       modelPin,
-      codexFastModeEnabled: params.codexFastModeEnabled,
-    }),
-  });
+      providerAdmission,
+      codexServiceTier: codexServiceTierForRun({
+        body: params.body,
+        modelPin,
+        codexFastModeEnabled: params.codexFastModeEnabled,
+      }),
+    },
+    params.managedModelProviderFallbackEnabled,
+  );
 }
 
 async function resolveNormalSendFeatureSwitches(
@@ -1027,6 +1042,10 @@ async function resolveNormalSendFeatureSwitches(
       context,
     ),
     featureSwitchContext: context,
+    managedModelProviderFallbackEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ManagedModelProviderFallback,
+      context,
+    ),
   };
 }
 
@@ -1467,6 +1486,7 @@ async function resolveThread(params: {
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly managedModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1545,6 +1565,7 @@ async function resolveThread(params: {
         providerAdmission: persisted.providerAdmission,
         codexServiceTier: persisted.runCodexServiceTier,
       },
+      params.managedModelProviderFallbackEnabled,
     );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
@@ -1724,6 +1745,7 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly appendQueueMarker: boolean;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -2204,6 +2226,8 @@ function resolveTimedExplicitRunConfiguration(
         userId: args.userId,
         body: args.body,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+        managedModelProviderFallbackEnabled:
+          featureSwitches.managedModelProviderFallbackEnabled,
         timing: args.timing,
       });
     },
@@ -2270,6 +2294,8 @@ function resolveTimedThread(
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
         featureSwitchContext: featureSwitches.featureSwitchContext,
+        managedModelProviderFallbackEnabled:
+          featureSwitches.managedModelProviderFallbackEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {
@@ -2621,6 +2647,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
 }): void {
   waitUntil(
     (async () => {
@@ -2639,6 +2666,7 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         appendQueueMarker: params.appendQueueMarker,
         triggerSource: params.triggerSource,
+        publicBrand: params.publicBrand,
         clearDraft: true,
       });
       if (inserted) {
@@ -2677,6 +2705,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly triggerSource: "web" | "agent";
+  readonly publicBrand: PublicBrand;
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -2720,6 +2749,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
     triggerSource: params.triggerSource,
+    publicBrand: params.publicBrand,
   });
 }
 
@@ -3167,6 +3197,7 @@ function scheduleNormalChatRunSideEffects(params: {
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
+    publicBrand: params.args.publicBrand,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },

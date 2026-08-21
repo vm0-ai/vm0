@@ -53,6 +53,7 @@ import {
   activeUsagePackBillingContext,
   loadUsagePackCatalog,
   startUsagePackPurchase$,
+  usagePackPurchaseSerializationSchemaAvailable,
   usagePackSubscriptionSchemaAvailable,
   type UsagePackCheckoutAllocation,
 } from "../services/usage-pack-subscription.service";
@@ -668,7 +669,17 @@ const checkoutConfirm$ = command(async ({ set }, signal: AbortSignal) => {
 });
 
 const confirmUsagePackPurchaseForOrg$ = command(
-  async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
+  async (
+    { get, set },
+    orgId: string,
+    previewToken: string,
+    signal: AbortSignal,
+  ) => {
+    const db = get(db$);
+    if (!(await usagePackPurchaseSerializationSchemaAvailable(db))) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    signal.throwIfAborted();
     const result = await set(
       confirmUsagePackPurchase$,
       orgId,
@@ -732,10 +743,9 @@ const usagePackCheckoutAuthed$ = command(
     ) {
       return usagePackCheckoutDisabled;
     }
-    signal.throwIfAborted();
 
     const db = get(db$);
-    if (!(await usagePackSubscriptionSchemaAvailable(db))) {
+    if (!(await usagePackPurchaseSerializationSchemaAvailable(db))) {
       return providerUnavailable("Usage pack billing is not ready");
     }
     signal.throwIfAborted();
@@ -828,6 +838,9 @@ const usagePackCheckoutAuthed$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if (result.status === "purchase_in_progress") {
+      return conflict("Another usage pack purchase is still being prepared");
+    }
     return {
       status: 200 as const,
       body: result.status === "preview" ? result.preview : { url: result.url },

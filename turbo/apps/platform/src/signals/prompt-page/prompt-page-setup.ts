@@ -4,9 +4,9 @@ import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  findWebsiteTemplateItem,
   findVideoTemplateItem,
-} from "@okouai/core";
+  findWebsiteTemplateItem,
+} from "../../lib/platform-template-items.ts";
 import { i18n } from "../../i18n/index.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";

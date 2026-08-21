@@ -10,6 +10,7 @@ import {
 } from "../../lib/uploads-constants";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import {
   abortMultipartS3Upload,
@@ -57,6 +58,8 @@ const prepareUploadInner$ = command(
       {
         userId: auth.userId,
         filename,
+        publicBrand:
+          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
       },
       signal,
     );

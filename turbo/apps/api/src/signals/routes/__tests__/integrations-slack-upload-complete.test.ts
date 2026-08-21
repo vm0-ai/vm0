@@ -482,12 +482,17 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("keeps one canonical output in artifact, Slack, and Google Drive surfaces", async () => {
+  it("keeps one Okou canonical output in artifact, Slack, and Google Drive surfaces", async () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
-    const token = okouToken({ userId, orgId, runId });
+    const token = okouToken({
+      userId,
+      orgId,
+      runId,
+      publicBrand: "okou",
+    });
     context.mocks.slack.files.getUploadURLExternal.mockClear();
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
       ok: true,
@@ -527,6 +532,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       uploadHeaders: {
         "x-amz-meta-artifact-id": canonicalAssetId,
         "x-amz-meta-filename": "report.csv",
+        "x-amz-meta-public-brand": "okou",
         "x-amz-meta-user-id": encodeURIComponent(userId),
       },
     });
@@ -537,6 +543,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       /^\/+/u,
       "",
     );
+    expect(initialized.body.url).toMatch(/^https:\/\/cdn\.okou\.io\//u);
     objectStore.addObject({
       bucket: "test-user-artifacts",
       key: storageKey,
@@ -545,6 +552,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       metadata: {
         "artifact-id": canonicalAssetId,
         filename: "report.csv",
+        "public-brand": "okou",
         "user-id": encodeURIComponent(userId),
       },
     });
@@ -1199,7 +1207,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     const frameRequests: string[] = [];
     server.use(
       http.get(
-        /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
+        /^https:\/\/cdn\.okou\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
         ({ request }) => {
           frameRequests.push(request.url);
           return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
@@ -1208,7 +1216,12 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
         },
       ),
     );
-    const token = okouToken({ userId, orgId, runId });
+    const token = okouToken({
+      userId,
+      orgId,
+      runId,
+      publicBrand: "okou",
+    });
 
     const client = setupApp({
       context,
@@ -1224,14 +1237,15 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toStrictEqual([
-      `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
+      `https://cdn.okou.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
     ]);
     expect(
       objectStore.puts.some((put) => {
         return (
           put.bucket === "test-user-artifacts" &&
           /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
-          put.contentType === "image/jpeg"
+          put.contentType === "image/jpeg" &&
+          put.metadata?.["public-brand"] === "okou"
         );
       }),
     ).toBeTruthy();
@@ -1245,7 +1259,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     expect(files[0]).toMatchObject({
       id: fileId,
       previewImageUrl: expect.stringMatching(
-        /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
       ),
     });
   });

@@ -119,24 +119,10 @@ import {
   previewPresentationHtml,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  type IllustrationTemplateItem,
-} from "@okouai/core/illustration-template-items";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  type PresentationTemplateItem,
-} from "@okouai/core/presentation-template-items";
-import {
-  VIDEO_TEMPLATE_ITEMS,
-  findVideoTemplateItem,
-  type VideoTemplateItem,
-} from "@okouai/core/video-template-items";
-import {
-  WEBSITE_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  type WebsiteTemplateItem,
-} from "@okouai/core/website-template-items";
+import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import type { VideoTemplateItem } from "@okouai/core/video-template-items";
+import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -263,6 +249,15 @@ import {
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
 import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
+import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  findWebsiteTemplateItem,
+} from "../../lib/platform-template-items.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -343,8 +338,9 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   width: 224,
   height: 126,
 } as const;
-const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
-  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04";
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
+  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04",
+);
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;

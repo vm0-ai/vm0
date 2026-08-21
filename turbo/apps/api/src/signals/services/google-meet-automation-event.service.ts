@@ -1482,6 +1482,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
                 chatThreadId: automation.chatThreadId,
               },
               automationContext: runInput.context,
+              connectorSourceId: state.connectorId,
               apiStartTime: args.apiStartTime,
               triggerSource: "automation-event",
               triggerBrief: runInput.triggerBrief,
