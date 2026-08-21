@@ -395,8 +395,8 @@ function PinnedAgentGridCard({
       </span>
       <span
         className={`w-full truncate text-center text-[11px] leading-tight ${
-          isDragging ? "opacity-0" : ""
-        }`}
+          isPrimarySelected ? "font-medium" : ""
+        } ${isDragging ? "opacity-0" : ""}`}
       >
         {agent.displayName ?? agent.id}
       </span>
