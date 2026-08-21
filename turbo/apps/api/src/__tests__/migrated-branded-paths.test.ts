@@ -839,6 +839,16 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/teams/oauth/connect",
     "/api/zero/teams/oauth/connect",
   ],
+  // #28465. Keys hold their path parameters verbatim, because the table is
+  // matched against `entry.route.path` rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
   // #28461
   "/api/agents": ["/api/okou/agents", "/api/zero/agents"],
   "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],

@@ -66,6 +66,11 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/slack/oauth/install",
   "/api/teams/connect",
   "/api/teams/oauth/connect",
+  // #28465. The desktop release page and DMG download. Listed as the shared
+  // prefix rather than the two paths, because the channel, platform and arch
+  // parameters are already substituted by the time the download button builds
+  // its URL.
+  "/api/desktop/updates",
   // #28461
   "/api/agents",
   "/api/morning-brief",

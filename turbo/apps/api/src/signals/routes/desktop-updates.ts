@@ -78,12 +78,25 @@ const getDesktopMigrationPolicy$ = command(
   },
 );
 
+/**
+ * The update line the release-page and DMG routes serve, taken from the
+ * namespace the request arrived on.
+ *
+ * #28465 moved the contract from `/api/okou/desktop/updates/**` to the neutral
+ * path, which makes the neutral path the successor of the `okou` form rather
+ * than a new one: the platform download button and the Zero migration bridge
+ * both point at it and both expect an Okou artifact. So neutral resolves to the
+ * Okou line, and only the `/api/zero/**` compatibility alias still resolves to
+ * the Zero line, which is what its callers reached before the move. Keying the
+ * default on `zero` rather than on `okou` is what keeps every caller on the
+ * product it had.
+ */
 function desktopUpdateLineFromRequestUrl(
   requestUrl: string,
 ): DesktopUpdateLine {
-  return brandedApiNamespace(new URL(requestUrl).pathname) === "okou"
-    ? DESKTOP_UPDATE_LINE_OKOU
-    : DESKTOP_UPDATE_LINE_ZERO;
+  return brandedApiNamespace(new URL(requestUrl).pathname) === "zero"
+    ? DESKTOP_UPDATE_LINE_ZERO
+    : DESKTOP_UPDATE_LINE_OKOU;
 }
 
 const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {

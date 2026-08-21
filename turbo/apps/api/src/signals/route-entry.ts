@@ -1103,6 +1103,33 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/teams/oauth/connect",
     "/api/zero/teams/oauth/connect",
   ],
+  // #28465: the stable desktop release page and DMG download.
+  //
+  // These two rows hold open a longer window than any other row in this table.
+  // Their callers are installed macOS applications, not a web bundle or a
+  // commit-addressed CLI artifact: the final Zero bridge release documented in
+  // `apps/desktop/README.md` opens the `okou` DMG path from a constant compiled
+  // into the shipped build, and `isTrustedZeroMigrationDownloadUrl` in that
+  // build refuses any other path — so a user who never updates keeps asking for
+  // the branded form indefinitely. The platform download button held the same
+  // path until this slice moved it, and released tabs keep it for the ~2 day
+  // old-web-client window. The `zero` form was reachable through the blanket
+  // expansion until the contract moved, so both are owed.
+  //
+  // An installed desktop build has no drain window at all, so these rows must
+  // not be removed on the #26701 evidence rules alone: retiring the branded
+  // forms needs the Desktop-side drain gate tracked by #26364.
+  //
+  // Each key holds its path parameters verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
   // #28461: the agent reads and writes, the manual Morning Brief trigger, and
   // the workflow and workflow-automation management routes. Every caller in
   // this repository derives its URL from the contract, so nothing here still
