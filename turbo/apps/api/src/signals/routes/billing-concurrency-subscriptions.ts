@@ -17,7 +17,6 @@ import {
   cancelConcurrencySubscription$,
   changeConcurrencySubscription$,
   previewConcurrencySubscriptionChange$,
-  reduceConcurrencySubscription$,
   restoreConcurrencySubscription$,
 } from "../services/billing-concurrency-subscription.service";
 import { getStripeClient } from "../external/stripe-client";
@@ -114,7 +113,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before reducing concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -255,7 +254,7 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before reducing concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -279,100 +278,6 @@ const confirmConcurrencySubscriptionChangeRoute$ = command(
           requiredCapability: "billing:write",
         },
         confirmConcurrencySubscriptionChangeAuthed$,
-      ),
-      signal,
-    );
-  },
-);
-
-const reduceConcurrencySubscriptionAuthed$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return adminRequired;
-    }
-    signal.throwIfAborted();
-
-    const bodyResult = await get(
-      bodyResultOf(billingConcurrencySubscriptionContract.reduce),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    const { quantity, successUrl, cancelUrl } = bodyResult.data;
-    if (
-      !billingRedirectAllowed(successUrl) ||
-      !billingRedirectAllowed(cancelUrl)
-    ) {
-      return badRequestMessage(
-        "Billing redirects must use the configured app origin",
-      );
-    }
-    const { subscriptionId } = get(
-      pathParamsOf(billingConcurrencySubscriptionContract.reduce),
-    );
-    const result = await set(
-      reduceConcurrencySubscription$,
-      {
-        orgId: auth.orgId,
-        subscriptionId,
-        quantity,
-        successUrl,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (!result.ok) {
-      switch (result.reason) {
-        case "not_found": {
-          return notFound("Concurrency subscription not found");
-        }
-        case "canceling": {
-          return badRequestMessage(
-            "Restore the concurrency subscription before reducing slots",
-          );
-        }
-        case "not_reduction": {
-          return badRequestMessage(
-            "New concurrency quantity must be lower than the current quantity",
-          );
-        }
-        case "pending_update": {
-          return badRequestMessage(
-            "Complete the pending concurrency update before reducing slots",
-          );
-        }
-        case "plan_ending": {
-          return conflict(
-            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
-          );
-        }
-      }
-    }
-
-    return {
-      status: 200 as const,
-      body: { url: result.url },
-    };
-  },
-);
-
-const reduceConcurrencySubscriptionRoute$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    if (!optionalEnv("STRIPE_SECRET_KEY")) {
-      return providerUnavailable("Billing not configured");
-    }
-
-    return await set(
-      authRoute(
-        {
-          requireOrganization: true,
-          missingOrganizationStatus: 401,
-          requiredCapability: "billing:write",
-        },
-        reduceConcurrencySubscriptionAuthed$,
       ),
       signal,
     );
@@ -409,7 +314,7 @@ const cancelConcurrencySubscriptionAuthed$ = command(
         }
         case "plan_ending": {
           return conflict(
-            "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
+            "Restore your Plan before canceling concurrency while a Plan downgrade or cancellation is scheduled.",
           );
         }
       }
@@ -464,11 +369,21 @@ const restoreConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return result.reason === "not_found"
-        ? notFound("Concurrency subscription not found")
-        : conflict(
+      switch (result.reason) {
+        case "not_found": {
+          return notFound("Concurrency subscription not found");
+        }
+        case "plan_ending": {
+          return conflict(
+            "Restore your Plan to keep concurrency active while a Plan downgrade or cancellation is scheduled.",
+          );
+        }
+        case "pending_update": {
+          return conflict(
             "Complete the pending subscription update before restoring concurrency",
           );
+        }
+      }
     }
 
     return {
@@ -508,10 +423,6 @@ export const billingConcurrencySubscriptionRoutes: readonly RouteEntry[] = [
   {
     route: billingConcurrencySubscriptionContract.confirmChange,
     handler: confirmConcurrencySubscriptionChangeRoute$,
-  },
-  {
-    route: billingConcurrencySubscriptionContract.reduce,
-    handler: reduceConcurrencySubscriptionRoute$,
   },
   {
     route: billingConcurrencySubscriptionContract.cancel,

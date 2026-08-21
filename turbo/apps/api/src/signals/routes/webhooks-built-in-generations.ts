@@ -22,6 +22,7 @@ import {
   type ImagePricing,
 } from "../services/image-generation.service";
 import {
+  builtInGenerationPublicBrand,
   completeBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   getBuiltInGenerationWebhookJobByProviderJobId$,
@@ -437,6 +438,7 @@ const handleFalImageCompletion$ = command(
         orgId: args.job.orgId,
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -526,6 +528,7 @@ const handleBytePlusVideoCompletion$ = command(
         orgId: args.job.orgId,
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -618,6 +621,7 @@ const handleMiniMaxVideoCompletion$ = command(
         orgId: args.job.orgId,
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -706,6 +710,7 @@ const handleFalVideoCompletion$ = command(
         orgId: args.job.orgId,
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
         generation,
         usageIdempotency: {
@@ -789,6 +794,7 @@ const handleJoggAiAvatarVideoCompletion$ = command(
         orgId: args.job.orgId,
         userId: args.job.userId,
         runId: args.job.runId ?? undefined,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
         generation,
         usageIdempotency: {

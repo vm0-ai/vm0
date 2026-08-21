@@ -13,6 +13,7 @@ import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import state_file
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
@@ -511,6 +512,7 @@ async def test_registry_reload_replaces_firewall_auth_identity(tmp_path, real_fl
         for _ in range(3)
     ]
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+    registry_identities: list[state_file.StateFileIdentity] = []
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -527,9 +529,16 @@ async def test_registry_reload_replaces_firewall_auth_identity(tmp_path, real_fl
                     tmp_path,
                     vm_fields={"encryptedSecrets": f"iv:tag:data-updated-{index}"},
                 )
+            with state_file.open_state_file(
+                reg_path,
+                description="proxy registry",
+            ) as opened_file:
+                registry_identities.append(opened_file.identity)
             await mitm_addon.request(flow)
 
     keys = [flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] for flow in flows]
+    assert registry_identities[0] != registry_identities[1]
+    assert registry_identities[1] != registry_identities[2]
     assert {key.run_id for key in keys} == {"run-conn-1"}
     assert {key.api_id for key in keys} == {"run-conn-1:0"}
     assert len({key.auth_identity for key in keys}) == 3

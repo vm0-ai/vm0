@@ -86,7 +86,9 @@ impl Drop for StreamJsonChild {
 }
 
 pub fn mock_claude() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"));
+    command.env_remove("CLAUDE_CONFIG_DIR");
+    command
 }
 
 pub fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<ProcessGroupChild> {

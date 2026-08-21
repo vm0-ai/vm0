@@ -180,7 +180,7 @@ run_real_claude_steer() {
     [[ -n "$(runner_chat_field "$pi_output" '.threadId')" ]]
     [[ -n "$(runner_chat_field "$pi_output" '.sessionId')" ]]
 
-    run runner_api_curl "/api/okou/runs/${run_id}/context"
+    run runner_api_curl "/api/runs/${run_id}/context"
     assert_success
     run jq -e '
         .cliAgentType == "pi" and

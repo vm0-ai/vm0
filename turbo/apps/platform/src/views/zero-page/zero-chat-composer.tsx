@@ -18,6 +18,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import {
+  importPresentationTemplateDeck$,
+  presentationTemplateImportEnabled$,
+  PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
+} from "../../signals/zero-page/presentation-template-import.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -114,24 +119,10 @@ import {
   previewPresentationHtml,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  type IllustrationTemplateItem,
-} from "@okouai/core/illustration-template-items";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  type PresentationTemplateItem,
-} from "@okouai/core/presentation-template-items";
-import {
-  VIDEO_TEMPLATE_ITEMS,
-  findVideoTemplateItem,
-  type VideoTemplateItem,
-} from "@okouai/core/video-template-items";
-import {
-  WEBSITE_TEMPLATE_ITEMS,
-  findWebsiteTemplateItem,
-  type WebsiteTemplateItem,
-} from "@okouai/core/website-template-items";
+import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import type { VideoTemplateItem } from "@okouai/core/video-template-items";
+import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -237,6 +228,10 @@ import {
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
 import {
+  localizedWorkflowTemplate,
+  localizedWorkflowTemplateCategory,
+} from "./workflow-template-copy.ts";
+import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CONFIGS,
   IMAGE_MODEL_VARIANT_GROUPS,
@@ -254,6 +249,15 @@ import {
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
 import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
+import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+  findWebsiteTemplateItem,
+} from "../../lib/platform-template-items.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -334,8 +338,9 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   width: 224,
   height: 126,
 } as const;
-const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
-  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04";
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
+  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04",
+);
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
@@ -821,7 +826,10 @@ function selectedTemplateTitle(
     );
   }
   if (value?.type === "workflow") {
-    return selectedWorkflowTemplateItem(value)?.title;
+    const workflowItem = selectedWorkflowTemplateItem(value);
+    return workflowItem
+      ? localizedWorkflowTemplate(workflowItem).title
+      : undefined;
   }
   if (value?.type === "website") {
     return selectedWebsiteTemplateItem(value)?.title;
@@ -946,10 +954,15 @@ function workflowTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
+  // Both wordings are searchable: the reader types in their own language, and
+  // connector names stay English in every locale.
+  const copy = localizedWorkflowTemplate(item);
   const searchable = [
     item.title,
     item.id,
     item.description,
+    copy.title,
+    copy.description,
     item.connectorSlugs.join(" "),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
@@ -1427,6 +1440,7 @@ function WorkflowTemplateCard({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   const { t } = useTranslation();
+  const copy = localizedWorkflowTemplate(item);
   return (
     <div
       className={cn(
@@ -1436,9 +1450,9 @@ function WorkflowTemplateCard({
         selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
-      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="text-sm font-semibold text-foreground">{copy.title}</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-        {item.description}
+        {copy.description}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-3.5">
         <WorkflowTemplateConnectorIcons
@@ -1452,7 +1466,7 @@ function WorkflowTemplateCard({
               return $.artifacts.templates.selectWorkflow;
             },
             {
-              title: item.title,
+              title: copy.title,
             },
           )}
           aria-pressed={selected}
@@ -1540,7 +1554,7 @@ function WorkflowTemplatePillRow({
               ? t(($) => {
                   return $.artifacts.templates.all;
                 })
-              : pill}
+              : localizedWorkflowTemplateCategory(pill)}
           </button>
         );
       })}
@@ -4802,12 +4816,80 @@ function IllustrationTemplateGrid({
   );
 }
 
+/**
+ * Hands the chosen deck to the composer, which attaches it, sends it, and
+ * navigates into the new thread. Importing is the ordinary chat path with the
+ * message written for the user, not a separate upload flow.
+ */
+function PptImportCard({
+  signals,
+  onImported,
+}: {
+  signals: ComposerSignals;
+  onImported: () => void;
+}) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const importDeck = useSet(importPresentationTemplateDeck$);
+  const label = t(($) => {
+    return $.artifacts.templates.importDeck;
+  });
+  return (
+    <label
+      data-presentation-template-import=""
+      className={TEMPLATE_TILE_WRAPPER}
+    >
+      <span
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "block aspect-video bg-muted/40 transition-colors duration-150 group-hover/tile:bg-muted/60 group-active/tile:bg-muted/80 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+        )}
+      >
+        <Plus
+          className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-muted-foreground transition-colors duration-150 group-hover/tile:text-foreground"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <input
+          type="file"
+          className="sr-only"
+          accept={PRESENTATION_TEMPLATE_IMPORT_ACCEPT}
+          aria-label={label}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            // Clear the input so choosing the same deck again still fires.
+            event.currentTarget.value = "";
+            if (!file) {
+              return;
+            }
+            onImported();
+            detach(
+              importDeck({ signals, file }, pageSignal),
+              Reason.DomCallback,
+            );
+          }}
+        />
+      </span>
+      <span className={TEMPLATE_TILE_CAPTION}>
+        <span className={TEMPLATE_TILE_NAME}>{label}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {t(($) => {
+            return $.artifacts.templates.importDeckHint;
+          })}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function PptTemplateGrid({
   items,
   runtime,
   value,
   onSelect,
   onPreview,
+  onImported,
   signals,
 }: {
   items: readonly PresentationTemplateItem[];
@@ -4815,10 +4897,15 @@ function PptTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  onImported: () => void;
   signals: ComposerSignals;
 }) {
+  const importEnabled = useGet(presentationTemplateImportEnabled$);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {importEnabled ? (
+        <PptImportCard signals={signals} onImported={onImported} />
+      ) : null}
       {items.map((item) => {
         return (
           <PptCard
@@ -5230,6 +5317,7 @@ function TemplatePickerDialog({
                   }
                   onSelectPresentation={handleSelectPresentation}
                   onPreviewPresentation={handlePreview}
+                  onImportedPresentation={closeTemplatePicker}
                   onSelectWebsite={handleSelectWebsite}
                   onPreviewWebsite={handlePreviewWebsite}
                   onSelectIllustration={handleSelectIllustration}
@@ -5267,6 +5355,7 @@ function TemplatePickerCategoryContent({
   onRestorePresentationScroll,
   onSelectPresentation,
   onPreviewPresentation,
+  onImportedPresentation,
   onSelectWebsite,
   onPreviewWebsite,
   onSelectIllustration,
@@ -5300,6 +5389,7 @@ function TemplatePickerCategoryContent({
     item: PresentationTemplateItem,
     slideIndex?: number,
   ) => void;
+  onImportedPresentation: () => void;
   onSelectWebsite: (item: WebsiteTemplateItem) => void;
   onPreviewWebsite: (item: WebsiteTemplateItem) => void;
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
@@ -5330,6 +5420,7 @@ function TemplatePickerCategoryContent({
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
+            onImported={onImportedPresentation}
             runtime={runtime}
             signals={signals}
           />
@@ -5507,7 +5598,7 @@ function selectedComposerTemplateAttachment(
   if (workflowItem) {
     return {
       type: "workflow",
-      title: workflowItem.title,
+      title: localizedWorkflowTemplate(workflowItem).title,
       category: "workflow",
     };
   }

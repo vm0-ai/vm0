@@ -14,7 +14,10 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
+import {
+  connectorCatalogContract,
+  CONNECTOR_CATALOG_MAX_RAW_BYTES,
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
@@ -2895,6 +2898,127 @@ describe("connector catalog valid lifecycle", () => {
     await runs.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
+  it("omits and clears permission grants for a removed catalog connector", async () => {
+    const removedConnectorSlug = "external-removed-permissions";
+    const currentConnectorSlug = "external-current-permissions";
+    configureSource();
+    const removedRelease = buildRelease({
+      version: "2026-07-15.external-removed-permissions",
+      connectorSlug: removedConnectorSlug,
+      label: "External Removed Permissions",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([removedRelease], removedRelease));
+    await syncCatalog();
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Removed catalog permission agent",
+      visibility: "private",
+    });
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const client = setupApp({ context, routes: userPermissionGrantsRoutes })(
+      zeroUserPermissionGrantsContract,
+    );
+    await accept(
+      client.apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorSlug: removedConnectorSlug,
+          mode: "replace",
+          grants: [{ permission: "items.read", action: "deny" }],
+        },
+      }),
+      [200],
+    );
+
+    const currentRelease = buildRelease({
+      version: "2026-07-15.external-current-permissions",
+      connectorSlug: currentConnectorSlug,
+      label: "External Current Permissions",
+      generatedFirewall: true,
+    });
+    serveObjects(
+      catalogObjects([removedRelease, currentRelease], currentRelease),
+    );
+    await syncCatalog();
+    await accept(
+      client.apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorSlug: currentConnectorSlug,
+          mode: "replace",
+          grants: [{ permission: "items.read", action: "allow" }],
+        },
+      }),
+      [200],
+    );
+
+    const listed = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { agentId: agent.agentId },
+      }),
+      [200],
+    );
+    expect(listed.body).toStrictEqual([
+      expect.objectContaining({
+        connectorSlug: currentConnectorSlug,
+        permission: "items.read",
+        action: "allow",
+      }),
+    ]);
+
+    const rejected = await accept(
+      client.apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorSlug: removedConnectorSlug,
+          mode: "replace",
+          grants: [{ permission: "items.read", action: "deny" }],
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      `Unknown connector slug: ${removedConnectorSlug}`,
+    );
+    const cleared = await accept(
+      client.apply({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorSlug: removedConnectorSlug,
+          mode: "replace",
+          grants: [],
+        },
+      }),
+      [200],
+    );
+    expect(cleared.body).toStrictEqual([]);
+
+    serveObjects(
+      catalogObjects([removedRelease, currentRelease], removedRelease),
+    );
+    await syncCatalog();
+    const restored = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { agentId: agent.agentId },
+      }),
+      [200],
+    );
+    expect(restored.body).toStrictEqual([]);
+  });
+
   it("wakes claimed runs when a custom permission bundle changes", async () => {
     const connectorSlug = "external-custom-permissions";
     configureSource();
@@ -3937,7 +4061,7 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("uses one external release for readiness status and connector metadata", async () => {
+  it("uses the active external release for workflow connector readiness", async () => {
     mockGmailConnectorOAuth({ email: "readiness@example.test" });
     configureSource();
     const connectedRelease = buildRelease({
@@ -4165,6 +4289,48 @@ describe("connector catalog valid lifecycle", () => {
       },
     ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReadiness);
+
+    const removedRelease = buildRelease({
+      version: "2026-07-15.external-readiness-removed",
+      connectorSlug: "external-readiness-replacement",
+      label: "External Readiness Replacement",
+    });
+    serveObjects(
+      catalogObjects(
+        [connectedRelease, unavailableRelease, removedRelease],
+        removedRelease,
+      ),
+    );
+    await syncCatalog();
+    const callsBeforeRemovedReadiness = context.mocks.s3.send.mock.calls.length;
+    const removedReadiness = await accept(
+      setupApp({ context, routes: workflowsRoutes })(
+        workflowsDetailContract,
+      ).connectorReadiness({
+        headers,
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+    expect(removedReadiness.body.connectors).toStrictEqual([
+      {
+        connectorSlug: "gmail",
+        label: "gmail",
+        reason: "This workflow has a Gmail event automation.",
+        status: "unavailable",
+      },
+    ]);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
+      callsBeforeRemovedReadiness,
+    );
+
+    serveObjects(
+      catalogObjects(
+        [connectedRelease, unavailableRelease, removedRelease],
+        connectedRelease,
+      ),
+    );
+    await syncCatalog();
   });
 
   it("does not persist an in-flight refresh after the connector is replaced", async () => {
@@ -5974,19 +6140,23 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs between eight and sixteen MiB and rejects larger catalogs", async () => {
+  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
     configureSource();
     const accepted = buildRelease({
       version: "2026-07-15.sixteen-mib-limit",
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          8 * 1024 * 1024,
+          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(8 * 1024 * 1024);
-    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(16 * 1024 * 1024);
+    expect(acceptedBytes.byteLength).toBeGreaterThan(
+      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+    );
+    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
+      CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    );
     serveObjects(catalogObjects([accepted], accepted));
 
     expect((await syncCatalog()).body).toMatchObject({
@@ -5996,7 +6166,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
 
     const rejected = buildRelease({
       version: "2026-07-15.over-sixteen-mib-limit",
-      catalogBytes: Buffer.alloc(16 * 1024 * 1024 + 1),
+      catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
 

@@ -27,7 +27,8 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
-# matching/model_websocket_usage/registry/response_encoding_negotiation/response_streaming/
+# http_header_syntax/matching/model_websocket_usage/registry/response_encoding_negotiation/
+# response_streaming/
 # runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_framing/
 # websocket_retention are imported
 # by module (not selective `from X import ...`) so that:
@@ -54,6 +55,7 @@ import connector_intent
 import content_length
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_header_syntax
 import http_local_responses
 import http_network_log
 import matching
@@ -111,13 +113,13 @@ from request_authority import AuthorityValidationError, TrustedAuthority, get_tr
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
-_HTTP_OWS_CHARS = " \t"
-
 # Request-header phase state.
 # Creator: requestheaders() and header-phase stream/auth helpers.
 # Consumer: request() and terminal cleanup.
 # Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
+_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+_MAX_REQUEST_HEADER_NAME_BYTES = 4096
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
 _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
@@ -746,6 +748,19 @@ def client_disconnected(client: connection.Client) -> None:
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
+    request_header_fields = flow.request.headers.fields
+    if any(len(name) > _MAX_REQUEST_HEADER_NAME_BYTES for name, _value in request_header_fields):
+        # Mitmproxy performs an Expect lookup after this hook, so rejected names
+        # must be gone before control returns while ordinary protocol fields stay.
+        flow.request.headers.fields = tuple(
+            (name, value)
+            for name, value in request_header_fields
+            if len(name) <= _MAX_REQUEST_HEADER_NAME_BYTES
+        )
+        flow.response = http.Response.make(_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE)
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        return None
+
     codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     connector_intent.capture_and_strip(flow)
 
@@ -1303,15 +1318,15 @@ async def request(flow: http.HTTPFlow) -> None:
     `request_classification.classify_request()`, which owns the canonical decision
     order. This hook dispatches the current-state result.
     """
-    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
-    connector_intent.capture_and_strip(flow)
-
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
         release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         return
+
+    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
+    connector_intent.capture_and_strip(flow)
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
@@ -1444,15 +1459,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
         if classification.kind == "allow":
             connector_diagnostics.record_allow_context(flow, classification)
-            if request_streaming.streamed_request_size(flow) is None:
-                original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-                if isinstance(
-                    original_url, str
-                ) and connector_diagnostics.maybe_make_local_response(
-                    flow,
-                    original_url=original_url,
-                ):
-                    return
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
 
@@ -1512,31 +1518,24 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         return False
     if flow.request.http_version != "HTTP/1.1":
         return False
-    if not _header_values_contain_token(flow.request.headers, "Upgrade", "websocket"):
+    if not http_header_syntax.header_values_contain_token(
+        flow.request.headers.get_all("Upgrade"), "websocket"
+    ):
         return False
-    websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    websocket_key = http_header_syntax.single_header_value(
+        flow.request.headers.get_all("Sec-WebSocket-Key")
+    )
     if websocket_key is None or not _is_valid_websocket_key(websocket_key):
         return False
-    websocket_version = _single_header_value(flow.request.headers, "Sec-WebSocket-Version")
+    websocket_version = http_header_syntax.single_header_value(
+        flow.request.headers.get_all("Sec-WebSocket-Version")
+    )
     if websocket_version != "13":
         return False
 
-    return _header_values_contain_token(flow.request.headers, "Connection", "upgrade")
-
-
-def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
-    return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == expected
-        for value in headers.get_all(name)
-        for token in value.split(",")
+    return http_header_syntax.header_values_contain_token(
+        flow.request.headers.get_all("Connection"), "upgrade"
     )
-
-
-def _single_header_value(headers: http.Headers, name: str) -> str | None:
-    values = headers.get_all(name)
-    if len(values) != 1:
-        return None
-    return values[0].strip(_HTTP_OWS_CHARS)
 
 
 def _is_valid_websocket_key(value: str) -> bool:
@@ -1867,7 +1866,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow_metadata.firewall_action(flow.metadata)
 
-    connector_diagnostics.maybe_make_error_response(flow, original_url=original_url)
+    connector_diagnostics.handle_error(flow)
 
     request_size = _request_size(flow)
     error_msg = flow.error.msg if flow.error else "unknown error"

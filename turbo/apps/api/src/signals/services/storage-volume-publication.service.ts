@@ -36,7 +36,8 @@ const SERVER_SIDE_STORAGE_VERSION_CREATOR = "user";
 
 interface VolumeFileInput {
   readonly path: string;
-  readonly content: string;
+  /** Buffer for binary payloads such as logos, fonts, and page images. */
+  readonly content: string | Buffer;
 }
 
 export interface PrepareVolumeServerSideInput {
@@ -102,7 +103,9 @@ function materializeFiles(
   const validationRoot = resolve(tmpdir(), "vm0-api-volume-validation");
   return files.map((file) => {
     resolveVolumeFilePath(validationRoot, file.path);
-    const content = Buffer.from(file.content, "utf8");
+    const content = Buffer.isBuffer(file.content)
+      ? file.content
+      : Buffer.from(file.content, "utf8");
     return {
       path: file.path,
       content,

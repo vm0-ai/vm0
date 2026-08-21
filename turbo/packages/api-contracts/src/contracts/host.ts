@@ -148,7 +148,7 @@ export const hostedSiteDeploymentsResponseSchema = z.object({
 export const hostContract = c.router({
   prepare: {
     method: "POST",
-    path: "/api/okou/host/deployments/prepare",
+    path: "/api/host/deployments/prepare",
     headers: authHeadersSchema,
     body: hostedSitePrepareRequestSchema,
     responses: {
@@ -164,7 +164,7 @@ export const hostContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/okou/host/deployments/:deploymentId/complete",
+    path: "/api/host/deployments/:deploymentId/complete",
     pathParams: z.object({
       deploymentId: z.string().uuid(),
     }),
@@ -184,7 +184,7 @@ export const hostContract = c.router({
   },
   files: {
     method: "GET",
-    path: "/api/okou/host/sites/:publicSlug/files",
+    path: "/api/host/sites/:publicSlug/files",
     pathParams: z.object({
       publicSlug: hostedSitePublicSlugSchema,
     }),
@@ -205,7 +205,7 @@ export const hostContract = c.router({
   },
   deployments: {
     method: "GET",
-    path: "/api/okou/host/sites/:site/deployments",
+    path: "/api/host/sites/:site/deployments",
     pathParams: z.object({
       site: hostedSiteSlugSchema,
     }),

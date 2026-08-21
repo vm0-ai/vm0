@@ -137,6 +137,7 @@ import {
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setAgentComposeVersionlessFixture,
   setCustomConnectorAuthTemplateFixture,
+  setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
@@ -1579,6 +1580,42 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(rejected.body.error.message).toBe(
       MISSING_AGENT_CONFIGURATION_MESSAGE,
     );
+  });
+
+  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // The guide is not a mounted skill, so the prompt is the only thing that
+    // tells a run where to find it. Off, it must stay out of every run.
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "vm0-ai/Template-artifact",
+    );
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationTemplates]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "turn this deck into a template",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("vm0-ai/Template-artifact");
+    expect(appendSystemPrompt).toContain("reverse-template");
+    expect(appendSystemPrompt).toContain("feat/reverse-template-skill");
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
@@ -6212,6 +6249,49 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 
+  it("does not serialize an empty org queue drain with run admission", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization for queue drain admission");
+    }
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel without an organization queue entry",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    onTestFinished(async () => {
+      const cleanupResults = await Promise.allSettled([
+        releaseOrgAdmissionLock(context),
+        admissionLockRequest,
+      ]);
+      const cleanupFailure = cleanupResults.find((result) => {
+        return result.status === "rejected";
+      });
+      if (cleanupFailure?.status === "rejected") {
+        throw cleanupFailure.reason;
+      }
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await expect(readOrgAdmissionLockState(context)).resolves.toStrictEqual({
+      held: true,
+      waiting: false,
+    });
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+  });
+
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -10161,32 +10241,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error("Expected a custom connector actor with an organization");
-    }
-    const suffix = randomUUID().slice(0, 8);
     const connectorCount = CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1;
-    const runtimeConnectors = Array.from(
-      { length: connectorCount },
-      (_unused, sequence) => {
-        return {
-          id: randomUUID(),
-          slug: `_bdd-batch-${suffix}-${sequence}`,
-          displayName: `BDD Runtime Batch ${sequence}`,
-          prefixTemplate: `https://batch-${sequence}-${suffix}.example.test/api/`,
-        };
-      },
-    );
-    await seedCustomConnectorRuntimeConnectors(context, {
-      orgId: actor.orgId,
-      userId: actor.userId,
-      agentId,
-      customConnectors: runtimeConnectors,
-    });
-    const createdIds = runtimeConnectors.map((connector) => {
-      return connector.id;
-    });
-
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use more than one connector runtime sync batch",
@@ -10195,6 +10250,20 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     onTestFinished(async () => {
       await api.requestCancelRun(actor, run.runId, [200]);
     });
+    const createdIds = Array.from({ length: connectorCount }, () => {
+      return randomUUID();
+    });
+    await setRunnerJobConnectorRuntimeTargets(
+      context,
+      run.runId,
+      createdIds.map((customConnectorId) => {
+        return {
+          kind: "custom",
+          customConnectorId,
+          baseUrlVars: {},
+        };
+      }),
+    );
     const claim = await api.claimRunnerJob(run.runId);
     const expectedIds = [...createdIds].sort();
     expect(
@@ -13763,27 +13832,40 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     }
   });
 
-  it("uses the commit-addressed R2 Okou CLI distribution", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const r2Run = await api.createRun(actor, {
-      agentId,
-      prompt: "use the default Okou CLI",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const r2Claim = await api.claimRunnerJob(r2Run.runId);
-    expect(r2Claim.appendSystemPrompt ?? "").toContain(
-      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
-    );
-    expect(r2Claim.environment?.CLI_PKG_URL).toBe(
-      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-    );
-    expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-      "previous",
-    );
-    await api.requestCancelRun(actor, r2Run.runId, [200]);
-  });
+  it.each([
+    { publicBrand: "vm0", staticDomain: "static.vm0.io" },
+    { publicBrand: "okou", staticDomain: "static.okou.io" },
+  ] satisfies readonly {
+    readonly publicBrand: PublicBrand;
+    readonly staticDomain: string;
+  }[])(
+    "uses the $publicBrand commit-addressed Okou CLI distribution",
+    async ({ publicBrand, staticDomain }) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const r2Run = await api.createRun(
+        actor,
+        {
+          agentId,
+          prompt: "use the default Okou CLI",
+          modelProvider: "anthropic-api-key",
+        },
+        publicBrand,
+      );
+      await api.heartbeatRunner(runnerGroup);
+      const r2Claim = await api.claimRunnerJob(r2Run.runId);
+      expect(r2Claim.appendSystemPrompt ?? "").toContain(
+        `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
+      );
+      expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+        `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
+      );
+      expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+        "previous",
+      );
+      await api.requestCancelRun(actor, r2Run.runId, [200]);
+    },
+  );
 
   it("pins the latest Website template release into opted-in run contexts", async () => {
     const api = createRunsApi(context);

@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Client } from "pg";
+import { Client, type QueryResultRow } from "pg";
 import {
   buildZeroAgentComposeContent,
   computeComposeVersionId,
@@ -51,13 +51,17 @@ import {
 } from "./test-agent-run-launch-snapshot-backfill";
 import { validateCheckpointAgentComposeSnapshotNullableStatic } from "./test-checkpoint-agent-compose-snapshot-nullable";
 import {
+  CHECKPOINT_STORAGE_REFERENCE_QUERY,
   PREFLIGHT_OUTPUT_ALLOWLIST,
   PREFLIGHT_PHASES,
+  STORAGE_REFERENCE_IDENTITY_QUERY,
+  STORAGE_REFERENCE_VERSION_QUERY,
   SanitizedPreflightError,
   assertPreflightOutputShape,
   classifyPreflightInventory,
   executeAgentComposeConsolidationPreflight,
   sanitizedFailureResult,
+  validateCheckpointStorageReferences,
   withReadOnlySnapshot,
   type AgentExecutionPlanInventoryRow,
   type DanglingInventoryRow,
@@ -74,7 +78,185 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.resolve(dirname, "..");
 const repositoryRoot = path.resolve(dirname, "../../../..");
 const testDatabase = "agent_compose_consolidation_preflight_test";
+const storagePlanTestDatabase =
+  "agent_compose_consolidation_preflight_storage_plan_test";
+const STORAGE_PLAN_CHECKPOINT_COUNT = 139_811;
+const STORAGE_PLAN_MOUNTS_PER_CHECKPOINT = 2;
+const STORAGE_PLAN_EXPANDED_MOUNT_COUNT =
+  STORAGE_PLAN_CHECKPOINT_COUNT * STORAGE_PLAN_MOUNTS_PER_CHECKPOINT;
+const STORAGE_PLAN_STORAGE_COUNT = 12_730;
+const STORAGE_PLAN_VERSION_COUNT = 23_717;
+const STORAGE_PLAN_OPTIONAL_MISSING_INTERVAL = 5;
+const STORAGE_PLAN_OPTIONAL_MISSING_CHECKPOINT_COUNT = Math.floor(
+  STORAGE_PLAN_CHECKPOINT_COUNT / STORAGE_PLAN_OPTIONAL_MISSING_INTERVAL,
+);
+const STORAGE_PLAN_MAX_OLD_SPACE_MIB = 256;
+const STORAGE_PLAN_MAX_HEAP_GROWTH_BYTES = 192 * 1024 * 1024;
 const ACTIVITY_TIME_ZONES = ["UTC", "Asia/Shanghai"] as const;
+
+// The second profile removes every join strategy that the former relational
+// query depended on. The streamed one-relation statements must retain the same
+// single-scan plan because their structure contains no join choice.
+const STORAGE_PLAN_PROFILES = [
+  {
+    name: "catalog-scans",
+    settings: ["SET LOCAL max_parallel_workers_per_gather = 0"],
+  },
+  {
+    name: "join-planner-pressure",
+    settings: [
+      "SET LOCAL max_parallel_workers_per_gather = 0",
+      "SET LOCAL enable_hashjoin = off",
+      "SET LOCAL enable_mergejoin = off",
+      "SET LOCAL enable_memoize = off",
+      "SET LOCAL enable_seqscan = off",
+      "SET LOCAL jit = off",
+    ],
+  },
+] as const;
+type StoragePlanProfile = (typeof STORAGE_PLAN_PROFILES)[number];
+
+const STORAGE_PLAN_IDS = {
+  agent: "00000000-0000-4000-8000-000000028301",
+  session: "00000000-0000-4000-8000-000000028302",
+} as const;
+
+// Frozen predicates from #28317. The adversarial database fixtures require the
+// streamed validator to classify every target checkpoint identically before
+// this prior production query is removed from the protected path.
+const PRIOR_CHECKPOINT_STORAGE_REFERENCE_QUERY = `
+WITH
+"storageCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage"."id"::text,
+      jsonb_build_object(
+        'orgId', "storage"."org_id",
+        'userId', "storage"."user_id",
+        'name', "storage"."name"
+      )
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storages" AS "storage"
+),
+"storageVersionCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage_version"."id",
+      to_jsonb("storage_version"."storage_id"::text)
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storage_versions" AS "storage_version"
+),
+"invalidCheckpointStorageReferences" AS (
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  WHERE
+    "checkpoint"."storage_mounts" IS NOT NULL AND
+    jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
+  UNION
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
+        THEN "checkpoint"."storage_mounts"
+      ELSE '[]'::jsonb
+    END
+  ) AS "entry"("mount")
+  CROSS JOIN "storageCatalog"
+  CROSS JOIN "storageVersionCatalog"
+  WHERE
+    jsonb_typeof("entry"."mount") <> 'object' OR
+    NOT (
+      "entry"."mount" ?& ARRAY[
+        'orgId',
+        'userId',
+        'name',
+        'storageId',
+        'version',
+        'mountPath'
+      ]
+    ) OR
+    (
+      "entry"."mount" -
+      'orgId' -
+      'userId' -
+      'name' -
+      'storageId' -
+      'version' -
+      'mountPath' -
+      'optional' -
+      'writeback' -
+      'instructionsTargetFilename' -
+      'missingRootPolicy'
+    ) <> '{}'::jsonb OR
+    jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
+    (
+      "entry"."mount" ? 'optional' AND
+      jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'writeback' AND
+      jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'instructionsTargetFilename' AND
+      jsonb_typeof(
+        "entry"."mount" -> 'instructionsTargetFilename'
+      ) <> 'string'
+    ) OR
+    (
+      "entry"."mount" ? 'missingRootPolicy' AND
+      (
+        jsonb_typeof(
+          "entry"."mount" -> 'missingRootPolicy'
+        ) <> 'string' OR
+        "entry"."mount" ->> 'missingRootPolicy' NOT IN (
+          'fail',
+          'preserveParentVersion'
+        )
+      )
+    ) OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'orgId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'orgId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'userId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'userId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'name'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'name' OR
+    (
+      "storageVersionCatalog"."entries" ->>
+      ("entry"."mount" ->> 'version')
+    ) IS DISTINCT FROM "entry"."mount" ->> 'storageId'
+)
+SELECT "invalid"."id"::text AS "id"
+FROM "invalidCheckpointStorageReferences" AS "invalid"
+ORDER BY "invalid"."id"
+`;
+
+interface ExplainRow extends QueryResultRow {
+  readonly "QUERY PLAN": unknown;
+}
+
+interface PriorInvalidStorageReferenceRow extends QueryResultRow {
+  readonly id: string;
+}
 
 interface CheckpointLineageTimeZoneProjection {
   readonly expectedSurvivors: SetFingerprint;
@@ -498,7 +680,7 @@ function checkpointRow(
   snapshot: unknown,
   overrides: Partial<PreflightInventory["checkpoints"][number]> = {},
 ): PreflightInventory["checkpoints"][number] {
-  return {
+  const row = {
     id,
     runId,
     snapshot,
@@ -507,8 +689,16 @@ function checkpointRow(
     conversationReferenceValid: true,
     sessionReferenceValid: true,
     storageReferenceValid: true,
+    storageReferenceReasons: [],
     ...overrides,
   };
+  return row.storageReferenceValid ||
+    Object.hasOwn(overrides, "storageReferenceReasons")
+    ? row
+    : {
+        ...row,
+        storageReferenceReasons: ["requiredStorageMissing"],
+      };
 }
 
 function acceptedV3DomainProjection(
@@ -3679,12 +3869,107 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.ok(inventoryStart >= 0 && inventoryEnd > inventoryStart);
   const inventorySource = preflightSource.slice(inventoryStart, inventoryEnd);
-  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 11);
+  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 10);
   assert.match(inventorySource, /"checkpointStorageReferences"/u);
-  assert.match(
-    inventorySource,
-    /WITH "invalidCheckpointStorageReferences" AS \([\s\S]*CROSS JOIN LATERAL jsonb_array_elements/u,
+  assert.match(inventorySource, /validateCheckpointStorageReferences/u);
+  const storageReferenceQueryStart = preflightSource.indexOf(
+    "export const STORAGE_REFERENCE_IDENTITY_QUERY =",
   );
+  assert.ok(
+    storageReferenceQueryStart >= 0 &&
+      storageReferenceQueryStart < inventoryStart,
+  );
+  const storageReferenceQuerySource = preflightSource.slice(
+    storageReferenceQueryStart,
+    inventoryStart,
+  );
+  assert.match(
+    storageReferenceQuerySource,
+    /STORAGE_REFERENCE_IDENTITY_QUERY[\s\S]*FROM "storages" AS "storage"/u,
+  );
+  assert.match(
+    storageReferenceQuerySource,
+    /STORAGE_REFERENCE_VERSION_QUERY[\s\S]*FROM "storage_versions" AS "storage_version"/u,
+  );
+  assert.match(
+    storageReferenceQuerySource,
+    /CHECKPOINT_STORAGE_REFERENCE_QUERY[\s\S]*FROM "checkpoints" AS "checkpoint"/u,
+  );
+  assert.equal(
+    /jsonb_(?:array_elements|object_agg)|\bJOIN\b|\bLIMIT\b|\bOFFSET\b/iu.test(
+      storageReferenceQuerySource,
+    ),
+    false,
+  );
+  assert.match(
+    storageReferenceQuerySource,
+    /const STORAGE_REFERENCE_CURSOR_BATCH_SIZE = 512;/u,
+  );
+  assert.match(storageReferenceQuerySource, /DECLARE .* NO SCROLL CURSOR FOR/u);
+  assert.match(
+    storageReferenceQuerySource,
+    /FETCH FORWARD \$\{STORAGE_REFERENCE_CURSOR_BATCH_SIZE\} FROM/u,
+  );
+  assert.match(storageReferenceQuerySource, /CLOSE /u);
+  assert.match(
+    storageReferenceQuerySource,
+    /assertNotAborted\(signal\)[\s\S]*for \(const row of result\.rows\)[\s\S]*consume\(row\)/u,
+  );
+  assert.equal(
+    storageReferenceQuerySource.match(/streamCursorRows</gu)?.length,
+    4,
+  );
+
+  const runtimeStorageSource = await fs.readFile(
+    path.join(
+      repositoryRoot,
+      "turbo/apps/api/src/signals/services/agent-run-storage.service.ts",
+    ),
+    "utf8",
+  );
+  const persistedResolverStart = runtimeStorageSource.indexOf(
+    "async function resolvePersistedStorageMounts(",
+  );
+  const persistedResolverEnd = runtimeStorageSource.indexOf(
+    "async function buildEntriesFromPersistedStorageMounts(",
+  );
+  assert.ok(
+    persistedResolverStart >= 0 &&
+      persistedResolverEnd > persistedResolverStart,
+  );
+  const persistedResolverSource = runtimeStorageSource.slice(
+    persistedResolverStart,
+    persistedResolverEnd,
+  );
+  assert.match(
+    persistedResolverSource,
+    /storageIndexKey\(lookup\.orgId, lookup\.userId, lookup\.name\)/u,
+  );
+  assert.match(
+    persistedResolverSource,
+    /if \(!storage\) \{[\s\S]*if \(mount\.optional\) \{[\s\S]*continue;[\s\S]*not found in database/u,
+  );
+  assert.ok(
+    persistedResolverSource.indexOf("storage.storageId !== mount.storageId") <
+      persistedResolverSource.indexOf("resolveStorageVersion("),
+  );
+  const missingClassifierStart = runtimeStorageSource.indexOf(
+    "function isMissingStorageError(",
+  );
+  const missingClassifierEnd = runtimeStorageSource.indexOf(
+    "function volumeStorageName(",
+  );
+  assert.ok(
+    missingClassifierStart >= 0 &&
+      missingClassifierEnd > missingClassifierStart,
+  );
+  const missingClassifierSource = runtimeStorageSource.slice(
+    missingClassifierStart,
+    missingClassifierEnd,
+  );
+  assert.match(missingClassifierSource, /not found in database/u);
+  assert.match(missingClassifierSource, /has no HEAD version/u);
+  assert.equal(/version .* not found/u.test(missingClassifierSource), false);
 
   const historicalClassifierPath = path.join(
     repositoryRoot,
@@ -4516,6 +4801,190 @@ async function testDatabaseBoundariesForTimeZone(
         "exact",
       );
 
+      const storageReferenceClassification = async (
+        storageMounts: unknown,
+        writeSqlNull = false,
+        expectPriorParity = true,
+      ) => {
+        await client.query(
+          `UPDATE "checkpoints"
+           SET "storage_mounts" = CASE
+             WHEN $1::boolean THEN NULL
+             ELSE $2::jsonb
+           END
+           WHERE "id" = $3`,
+          [
+            writeSqlNull,
+            JSON.stringify(storageMounts),
+            latestContinuation.checkpointId,
+          ],
+        );
+        await client.query(
+          "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        );
+        try {
+          const checkpointRows = await client.query<{ readonly id: string }>(
+            `SELECT "id"::text AS "id" FROM "checkpoints"`,
+          );
+          const expectedCheckpointIds = new Set(
+            checkpointRows.rows.map((row) => {
+              return row.id;
+            }),
+          );
+          const priorInvalidReferences =
+            await client.query<PriorInvalidStorageReferenceRow>(
+              PRIOR_CHECKPOINT_STORAGE_REFERENCE_QUERY,
+            );
+          const validation = await validateCheckpointStorageReferences(
+            client,
+            undefined,
+            expectedCheckpointIds,
+          );
+          const priorValid = !priorInvalidReferences.rows.some((row) => {
+            return row.id === latestContinuation.checkpointId;
+          });
+          const streamedValid = !validation.invalidCheckpointIds.has(
+            latestContinuation.checkpointId,
+          );
+          if (expectPriorParity) assert.equal(streamedValid, priorValid);
+          return { priorValid, streamedValid, validation };
+        } finally {
+          await client.query("ROLLBACK");
+        }
+      };
+      const storageReferenceIsValid = async (
+        storageMounts: unknown,
+        writeSqlNull = false,
+      ): Promise<boolean> => {
+        const classification = await storageReferenceClassification(
+          storageMounts,
+          writeSqlNull,
+        );
+        return classification.streamedValid;
+      };
+      for (const validMounts of [
+        [],
+        [storageMount],
+        [
+          {
+            ...storageMount,
+            optional: true,
+            writeback: true,
+            instructionsTargetFilename: "AGENTS.md",
+            missingRootPolicy: "fail",
+          },
+        ],
+        [
+          {
+            ...storageMount,
+            optional: false,
+            writeback: false,
+            instructionsTargetFilename: "AGENTS.md",
+            missingRootPolicy: "preserveParentVersion",
+          },
+        ],
+      ]) {
+        assert.equal(await storageReferenceIsValid(validMounts), true);
+      }
+      assert.equal(await storageReferenceIsValid(null, true), true);
+      const malformedRoot = await storageReferenceClassification({});
+      assert.equal(malformedRoot.streamedValid, false);
+      assert.equal(
+        malformedRoot.validation.reasonCheckpointIds.malformedRoot.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      assert.equal(await storageReferenceIsValid(null), false);
+      const malformedMount = await storageReferenceClassification([null]);
+      assert.equal(malformedMount.streamedValid, false);
+      assert.equal(
+        malformedMount.validation.reasonCheckpointIds.malformedMount.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+
+      const requiredStorageMountKeys = [
+        "orgId",
+        "userId",
+        "name",
+        "storageId",
+        "version",
+        "mountPath",
+      ] as const;
+      for (const requiredKey of requiredStorageMountKeys) {
+        const missingRequiredKey = Object.fromEntries(
+          Object.entries(storageMount).filter(([key]) => {
+            return key !== requiredKey;
+          }),
+        );
+        assert.equal(
+          await storageReferenceIsValid([missingRequiredKey]),
+          false,
+        );
+        assert.equal(
+          await storageReferenceIsValid([
+            { ...storageMount, [requiredKey]: 1 },
+          ]),
+          false,
+        );
+      }
+      for (const invalidOptionalMount of [
+        { ...storageMount, optional: "true" },
+        { ...storageMount, writeback: "true" },
+        { ...storageMount, instructionsTargetFilename: true },
+        { ...storageMount, missingRootPolicy: true },
+        { ...storageMount, missingRootPolicy: "inherit" },
+        { ...storageMount, unexpected: true },
+      ]) {
+        assert.equal(
+          await storageReferenceIsValid([invalidOptionalMount]),
+          false,
+        );
+      }
+      for (const identityMismatch of [
+        { ...storageMount, orgId: "other-org" },
+        { ...storageMount, userId: "other-user" },
+        { ...storageMount, name: "other-name" },
+        {
+          ...storageMount,
+          storageId: "00000000-0000-4000-8000-000000027659",
+        },
+      ]) {
+        assert.equal(await storageReferenceIsValid([identityMismatch]), false);
+      }
+
+      const otherStorageId = "00000000-0000-4000-8000-000000027651";
+      const otherStorageVersionId = "d".repeat(64);
+      await client.query(
+        `INSERT INTO "storages" (
+           "id", "user_id", "name", "org_id", "s3_prefix"
+         ) VALUES (
+           $1, $2, 'other-checkpoint-storage', $3,
+           'other-checkpoint-storage-prefix'
+         )`,
+        [otherStorageId, storageMount.userId, storageMount.orgId],
+      );
+      await client.query(
+        `INSERT INTO "storage_versions" (
+           "id", "storage_id", "s3_key", "archive_size", "created_by"
+         ) VALUES (
+           $1, $2, 'other-checkpoint-storage-key', 0, $3
+         )`,
+        [otherStorageVersionId, otherStorageId, storageMount.userId],
+      );
+      const crossStorageVersion = await storageReferenceClassification([
+        { ...storageMount, version: otherStorageVersionId },
+      ]);
+      assert.equal(crossStorageVersion.streamedValid, false);
+      assert.equal(
+        crossStorageVersion.validation.reasonCheckpointIds.crossStorageVersionOwnerMismatch.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+
       await client.query(
         `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
          WHERE "id" = $2`,
@@ -4534,6 +5003,267 @@ async function testDatabaseBoundariesForTimeZone(
           },
         });
       gatePresent(missingStorageVersion, "checkpoints.storage_reference");
+      await client.query(
+        `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
+         WHERE "id" = $2`,
+        [JSON.stringify([storageMount]), latestContinuation.checkpointId],
+      );
+
+      const deletedStorageId = "00000000-0000-4000-8000-000000027652";
+      const replacementStorageId = "00000000-0000-4000-8000-000000027653";
+      const deletedStorageVersionId = "c".repeat(64);
+      const deletedStorageMount = {
+        ...storageMount,
+        name: "deleted-checkpoint-storage",
+        storageId: deletedStorageId,
+        version: deletedStorageVersionId,
+      } as const;
+      await client.query(
+        `INSERT INTO "storages" (
+           "id", "user_id", "name", "org_id", "s3_prefix"
+         ) VALUES ($1, $2, $3, $4, 'deleted-checkpoint-storage-prefix')`,
+        [
+          deletedStorageId,
+          deletedStorageMount.userId,
+          deletedStorageMount.name,
+          deletedStorageMount.orgId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "storage_versions" (
+           "id", "storage_id", "s3_key", "archive_size", "created_by"
+         ) VALUES ($1, $2, 'deleted-checkpoint-storage-key', 0, $3)`,
+        [deletedStorageVersionId, deletedStorageId, deletedStorageMount.userId],
+      );
+      const deletedStorage = await client.query(
+        `DELETE FROM "storages" WHERE "id" = $1`,
+        [deletedStorageId],
+      );
+      assert.equal(deletedStorage.rowCount, 1);
+
+      const optionalDeletedStorage = await storageReferenceClassification(
+        [{ ...deletedStorageMount, optional: true }],
+        false,
+        false,
+      );
+      assert.equal(optionalDeletedStorage.priorValid, false);
+      assert.equal(optionalDeletedStorage.streamedValid, true);
+      assert.equal(
+        optionalDeletedStorage.validation.reasonCheckpointIds.optionalStorageMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      const optionalDeletedStoragePreflight =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition
+          .storageReferenceClosure.classification,
+        "exact",
+      );
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition
+          .legacySnapshotLineage.classification,
+        "exact",
+      );
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition.storageReferences
+          .strictLiveCatalogInvalid.count,
+        1,
+      );
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition.storageReferences
+          .runtimeInvalid.count,
+        0,
+      );
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition.storageReferences
+          .acceptedOptionalStorageMissing.count,
+        1,
+      );
+      assert.equal(
+        optionalDeletedStoragePreflight.checkpoints.transition.storageReferences
+          .primaryPartitions.optionalStorageMissing.count,
+        1,
+      );
+
+      const requiredDeletedStorage = await storageReferenceClassification([
+        { ...deletedStorageMount, optional: false },
+      ]);
+      assert.equal(requiredDeletedStorage.streamedValid, false);
+      assert.equal(
+        requiredDeletedStorage.validation.reasonCheckpointIds.requiredStorageMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      const requiredDeletedStoragePreflight =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      gatePresent(
+        requiredDeletedStoragePreflight,
+        "checkpoints.storage_reference",
+      );
+      gatePresent(
+        requiredDeletedStoragePreflight,
+        "checkpoints.legacy_snapshot_lineage",
+      );
+
+      await client.query(
+        `INSERT INTO "storages" (
+           "id", "user_id", "name", "org_id", "s3_prefix"
+         ) VALUES ($1, $2, $3, $4, 'replacement-checkpoint-storage-prefix')`,
+        [
+          replacementStorageId,
+          deletedStorageMount.userId,
+          deletedStorageMount.name,
+          deletedStorageMount.orgId,
+        ],
+      );
+      const sameKeyReplacement = await storageReferenceClassification([
+        { ...deletedStorageMount, optional: true },
+      ]);
+      assert.equal(sameKeyReplacement.streamedValid, false);
+      assert.equal(
+        sameKeyReplacement.validation.reasonCheckpointIds.storageIdentityMismatch.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      await client.query(`DELETE FROM "storages" WHERE "id" = $1`, [
+        replacementStorageId,
+      ]);
+
+      const deletedPinnedVersionId = "b".repeat(64);
+      await client.query(
+        `INSERT INTO "storage_versions" (
+           "id", "storage_id", "s3_key", "archive_size", "created_by"
+         ) VALUES ($1, $2, 'deleted-pinned-version-key', 0, $3)`,
+        [deletedPinnedVersionId, storageId, storageMount.userId],
+      );
+      await client.query(`DELETE FROM "storage_versions" WHERE "id" = $1`, [
+        deletedPinnedVersionId,
+      ]);
+      const optionalDeletedVersion = await storageReferenceClassification([
+        {
+          ...storageMount,
+          version: deletedPinnedVersionId,
+          optional: true,
+        },
+      ]);
+      assert.equal(optionalDeletedVersion.streamedValid, false);
+      assert.equal(
+        optionalDeletedVersion.validation.reasonCheckpointIds.optionalVersionMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      const requiredDeletedVersion = await storageReferenceClassification([
+        {
+          ...storageMount,
+          version: deletedPinnedVersionId,
+          optional: false,
+        },
+      ]);
+      assert.equal(requiredDeletedVersion.streamedValid, false);
+      assert.equal(
+        requiredDeletedVersion.validation.reasonCheckpointIds.requiredVersionMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+
+      const requiredAbsentStorageMount = {
+        ...deletedStorageMount,
+        name: "required-deleted-checkpoint-storage",
+        storageId: "00000000-0000-4000-8000-000000027654",
+        optional: false,
+      } as const;
+      const multiReason = await storageReferenceClassification(
+        [
+          { ...deletedStorageMount, optional: true },
+          requiredAbsentStorageMount,
+          { ...storageMount, version: otherStorageVersionId },
+        ],
+        false,
+        false,
+      );
+      assert.equal(multiReason.streamedValid, false);
+      assert.equal(
+        multiReason.validation.reasonCheckpointIds.optionalStorageMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      assert.equal(
+        multiReason.validation.reasonCheckpointIds.requiredStorageMissing.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      assert.equal(
+        multiReason.validation.reasonCheckpointIds.crossStorageVersionOwnerMismatch.has(
+          latestContinuation.checkpointId,
+        ),
+        true,
+      );
+      const multiReasonPreflight =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      const multiReasonEvidence =
+        multiReasonPreflight.checkpoints.transition.storageReferences;
+      assert.equal(
+        multiReasonEvidence.primaryPartitions.requiredStorageMissing.count,
+        1,
+      );
+      assert.equal(
+        multiReasonEvidence.reasonMembers.optionalStorageMissing.count,
+        1,
+      );
+      assert.equal(
+        multiReasonEvidence.reasonMembers.requiredStorageMissing.count,
+        1,
+      );
+      assert.equal(
+        multiReasonEvidence.reasonMembers.crossStorageVersionOwnerMismatch
+          .count,
+        1,
+      );
+      assert.equal(multiReasonEvidence.acceptedOptionalStorageMissing.count, 0);
+      assert.equal(multiReasonEvidence.overlappingReasons.count, 1);
+      for (const closure of [
+        multiReasonEvidence.primaryCardinalityClosure,
+        multiReasonEvidence.primaryDisjointnessClosure,
+        multiReasonEvidence.primaryUnionClosure,
+        multiReasonEvidence.reasonUnionClosure,
+        multiReasonEvidence.reasonOverlapClosure,
+        multiReasonEvidence.runtimeCardinalityClosure,
+        multiReasonEvidence.runtimeDisjointnessClosure,
+        multiReasonEvidence.runtimeUnionClosure,
+        multiReasonEvidence.runtimeSemanticsClosure,
+        multiReasonEvidence.acceptedOptionalStorageMissingClosure,
+      ]) {
+        assert.equal(closure.classification, "exact");
+      }
       await client.query(
         `UPDATE "checkpoints" SET "storage_mounts" = $1::jsonb
          WHERE "id" = $2`,
@@ -4756,6 +5486,482 @@ async function testDatabaseBoundariesForTimeZone(
   return checkpointLineageProjection;
 }
 
+function relationScanLoops(plan: unknown, relationName: string): number[] {
+  const loops: number[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+
+    const record = value as Readonly<Record<string, unknown>>;
+    if (record["Relation Name"] === relationName) {
+      const actualLoops = record["Actual Loops"];
+      if (typeof actualLoops !== "number") {
+        throw new TypeError("Expected numeric relation scan loops");
+      }
+      loops.push(actualLoops);
+    }
+    for (const nested of Object.values(record)) visit(nested);
+  };
+  visit(plan);
+  return loops;
+}
+
+function explainExecutionTimeMs(plan: unknown): number {
+  assert.ok(Array.isArray(plan));
+  const root: unknown = plan[0];
+  assert.ok(root !== null && typeof root === "object");
+  const executionTime = (root as Readonly<Record<string, unknown>>)[
+    "Execution Time"
+  ];
+  if (typeof executionTime !== "number") {
+    throw new TypeError("Expected numeric plan execution time");
+  }
+  return executionTime;
+}
+
+function explainActualRows(plan: unknown): number {
+  assert.ok(Array.isArray(plan));
+  const root: unknown = plan[0];
+  assert.ok(root !== null && typeof root === "object");
+  const rootRecord = root as Readonly<Record<string, unknown>>;
+  const rootPlan = rootRecord.Plan;
+  assert.ok(rootPlan !== null && typeof rootPlan === "object");
+  const actualRows = (rootPlan as Readonly<Record<string, unknown>>)[
+    "Actual Rows"
+  ];
+  if (typeof actualRows !== "number") {
+    throw new TypeError("Expected numeric plan row count");
+  }
+  return actualRows;
+}
+
+function planNodeTypes(plan: unknown): ReadonlySet<string> {
+  const nodeTypes = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+    const record = value as Readonly<Record<string, unknown>>;
+    const nodeType = record["Node Type"];
+    if (typeof nodeType === "string") nodeTypes.add(nodeType);
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(plan);
+  return nodeTypes;
+}
+
+function storagePlanCheckpointId(ordinal: number): string {
+  return `22000000-0000-4000-8000-${ordinal.toString().padStart(12, "0")}`;
+}
+
+function storagePlanExpectedCheckpointIds(): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (
+    let ordinal = 1;
+    ordinal <= STORAGE_PLAN_CHECKPOINT_COUNT;
+    ordinal += 1
+  ) {
+    ids.add(storagePlanCheckpointId(ordinal));
+  }
+  return ids;
+}
+
+async function measurePeakHeapGrowth<Value>(
+  operation: () => Promise<Value>,
+): Promise<{
+  readonly value: Value;
+  readonly baselineHeapBytes: number;
+  readonly peakHeapBytes: number;
+  readonly peakGrowthBytes: number;
+}> {
+  const baseline = process.memoryUsage().heapUsed;
+  let peak = baseline;
+  const sample = (): void => {
+    peak = Math.max(peak, process.memoryUsage().heapUsed);
+  };
+  const interval = setInterval(sample, 1);
+  try {
+    const value = await operation();
+    sample();
+    return {
+      value,
+      baselineHeapBytes: baseline,
+      peakHeapBytes: peak,
+      peakGrowthBytes: Math.max(0, peak - baseline),
+    };
+  } finally {
+    clearInterval(interval);
+  }
+}
+
+async function seedStoragePlanOwnershipFixture(client: Client): Promise<void> {
+  await client.query(
+    `INSERT INTO "agent_composes" (
+       "id", "user_id", "name", "org_id"
+     ) VALUES ($1, 'storage-plan-user', 'storage-plan-agent',
+       'storage-plan-org')`,
+    [STORAGE_PLAN_IDS.agent],
+  );
+  await client.query(
+    `INSERT INTO "agent_sessions" (
+       "id", "user_id", "org_id", "agent_compose_id"
+     ) VALUES ($1, 'storage-plan-user', 'storage-plan-org', $2)`,
+    [STORAGE_PLAN_IDS.session, STORAGE_PLAN_IDS.agent],
+  );
+}
+
+async function seedStoragePlanCheckpointOwners(client: Client): Promise<void> {
+  await client.query(
+    `INSERT INTO "agent_runs" (
+       "id", "user_id", "org_id", "session_id", "status", "prompt"
+     )
+     SELECT
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       'storage-plan-user',
+       'storage-plan-org',
+       $1,
+       'completed',
+       'storage plan fixture'
+     FROM generate_series(1, $2::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_IDS.session, STORAGE_PLAN_CHECKPOINT_COUNT],
+  );
+  await client.query(
+    `INSERT INTO "conversations" (
+       "id", "run_id", "cli_agent_type", "cli_agent_session_id"
+     )
+     SELECT
+       format(
+         '21000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       'claude-code',
+       'storage-plan-conversation-' || "fixture"."ordinal"
+     FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_CHECKPOINT_COUNT],
+  );
+}
+
+async function seedStoragePlanCatalogs(client: Client): Promise<void> {
+  await client.query(
+    `INSERT INTO "storages" (
+       "id", "user_id", "name", "org_id", "s3_prefix"
+     )
+     SELECT
+       format(
+         '10000000-0000-4000-8000-%s',
+         lpad("fixture"."ordinal"::text, 12, '0')
+       )::uuid,
+       'storage-plan-user',
+       'storage-plan-' || "fixture"."ordinal",
+       'storage-plan-org',
+       'storage-plan-prefix-' || "fixture"."ordinal"
+     FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_STORAGE_COUNT],
+  );
+  await client.query(
+    `INSERT INTO "storage_versions" (
+       "id", "storage_id", "s3_key", "archive_size", "created_by"
+     )
+     SELECT
+       lpad(to_hex("fixture"."ordinal"), 64, '0'),
+       format(
+         '10000000-0000-4000-8000-%s',
+         lpad(
+           ((("fixture"."ordinal" - 1) % $2::integer) + 1)::text,
+           12,
+           '0'
+         )
+       )::uuid,
+       'storage-plan-key-' || "fixture"."ordinal",
+       0,
+       'storage-plan-user'
+     FROM generate_series(1, $1::integer) AS "fixture"("ordinal")`,
+    [STORAGE_PLAN_VERSION_COUNT, STORAGE_PLAN_STORAGE_COUNT],
+  );
+}
+
+async function seedStoragePlanCheckpoints(client: Client): Promise<void> {
+  await client.query(
+    `INSERT INTO "checkpoints" (
+       "id", "run_id", "conversation_id", "storage_mounts"
+     )
+     SELECT
+       format(
+         '22000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '20000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
+       format(
+         '21000000-0000-4000-8000-%s',
+         lpad("checkpoint"."ordinal"::text, 12, '0')
+       )::uuid,
+       jsonb_agg(
+         jsonb_build_object(
+           'orgId', 'storage-plan-org',
+           'userId', 'storage-plan-user',
+           'name', CASE
+             WHEN
+               "checkpoint"."ordinal" % $5::integer = 0 AND
+               "mount"."ordinal" = 1
+               THEN 'storage-plan-deleted'
+             ELSE 'storage-plan-' || "mount"."storageOrdinal"
+           END,
+           'storageId', CASE
+             WHEN
+               "checkpoint"."ordinal" % $5::integer = 0 AND
+               "mount"."ordinal" = 1
+               THEN '19999999-0000-4000-8000-000000000001'
+             ELSE format(
+               '10000000-0000-4000-8000-%s',
+               lpad("mount"."storageOrdinal"::text, 12, '0')
+             )
+           END,
+           'version', lpad(to_hex("mount"."versionOrdinal"), 64, '0'),
+           'mountPath',
+             '/home/oai/share/storage-plan-' || "mount"."storageOrdinal",
+           'optional',
+             "mount"."ordinal" % 2 = 0 OR
+             (
+               "checkpoint"."ordinal" % $5::integer = 0 AND
+               "mount"."ordinal" = 1
+             ),
+           'writeback', "mount"."ordinal" % 3 = 0,
+           'instructionsTargetFilename', 'AGENTS.md',
+           'missingRootPolicy', CASE
+             WHEN "mount"."ordinal" % 2 = 0
+               THEN 'preserveParentVersion'
+             ELSE 'fail'
+           END
+         )
+         ORDER BY "mount"."ordinal"
+       )
+     FROM generate_series(1, $1::integer) AS "checkpoint"("ordinal")
+     CROSS JOIN LATERAL (
+       SELECT
+         "fixture"."ordinal",
+         (
+           (
+             (
+               ("checkpoint"."ordinal" - 1) * $2::integer +
+               "fixture"."ordinal" - 1
+             ) % $3::integer
+           ) + 1
+         )::integer AS "versionOrdinal"
+       FROM generate_series(1, $2::integer) AS "fixture"("ordinal")
+     ) AS "expanded"
+     CROSS JOIN LATERAL (
+       SELECT
+         "expanded"."ordinal",
+         "expanded"."versionOrdinal",
+         (
+           (("expanded"."versionOrdinal" - 1) % $4::integer) + 1
+         )::integer AS "storageOrdinal"
+     ) AS "mount"
+     GROUP BY "checkpoint"."ordinal"`,
+    [
+      STORAGE_PLAN_CHECKPOINT_COUNT,
+      STORAGE_PLAN_MOUNTS_PER_CHECKPOINT,
+      STORAGE_PLAN_VERSION_COUNT,
+      STORAGE_PLAN_STORAGE_COUNT,
+      STORAGE_PLAN_OPTIONAL_MISSING_INTERVAL,
+    ],
+  );
+}
+
+async function assertStoragePlanProfile(
+  client: Client,
+  profile: StoragePlanProfile,
+): Promise<void> {
+  await client.query(
+    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+  );
+  try {
+    await client.query(
+      `SELECT
+         set_config('lock_timeout', '1s', true),
+         set_config('statement_timeout', '30s', true)`,
+    );
+    for (const setting of profile.settings) await client.query(setting);
+    const startedAt = performance.now();
+    const measured = await measurePeakHeapGrowth(async () => {
+      const expectedCheckpointIds = storagePlanExpectedCheckpointIds();
+      return validateCheckpointStorageReferences(
+        client,
+        undefined,
+        expectedCheckpointIds,
+      );
+    });
+    const elapsedMs = performance.now() - startedAt;
+    assert.equal(measured.value.checkpointCount, STORAGE_PLAN_CHECKPOINT_COUNT);
+    assert.equal(
+      measured.value.expandedMountCount,
+      STORAGE_PLAN_EXPANDED_MOUNT_COUNT,
+    );
+    assert.deepEqual([...measured.value.invalidCheckpointIds], []);
+    assert.equal(
+      measured.value.reasonCheckpointIds.optionalStorageMissing.size,
+      STORAGE_PLAN_OPTIONAL_MISSING_CHECKPOINT_COUNT,
+    );
+    assert.equal(
+      Object.entries(measured.value.reasonCheckpointIds)
+        .filter(([reason]) => {
+          return reason !== "optionalStorageMissing";
+        })
+        .every(([, ids]) => {
+          return ids.size === 0;
+        }),
+      true,
+    );
+    assert.ok(
+      elapsedMs < 30_000,
+      `${profile.name} must complete the full streamed closure within 30s`,
+    );
+    assert.ok(
+      measured.peakGrowthBytes < STORAGE_PLAN_MAX_HEAP_GROWTH_BYTES,
+      `${profile.name} must keep streamed validation heap growth bounded`,
+    );
+    assert.ok(
+      measured.peakHeapBytes < STORAGE_PLAN_MAX_OLD_SPACE_MIB * 1024 * 1024,
+      `${profile.name} must remain within the fixed scale-process heap bound`,
+    );
+
+    let planExecutionTimeMs = 0;
+    const queryPlans = [
+      {
+        query: STORAGE_REFERENCE_IDENTITY_QUERY,
+        relation: "storages",
+        expectedRows: STORAGE_PLAN_STORAGE_COUNT,
+      },
+      {
+        query: STORAGE_REFERENCE_VERSION_QUERY,
+        relation: "storage_versions",
+        expectedRows: STORAGE_PLAN_VERSION_COUNT,
+      },
+      {
+        query: CHECKPOINT_STORAGE_REFERENCE_QUERY,
+        relation: "checkpoints",
+        expectedRows: STORAGE_PLAN_CHECKPOINT_COUNT,
+      },
+    ] as const;
+    for (const queryPlan of queryPlans) {
+      const explained = await client.query<ExplainRow>(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${queryPlan.query}`,
+      );
+      const plan = explained.rows[0]?.["QUERY PLAN"];
+      assert.deepEqual(
+        relationScanLoops(plan, queryPlan.relation),
+        [1],
+        `${profile.name} must scan ${queryPlan.relation} exactly once`,
+      );
+      assert.equal(explainActualRows(plan), queryPlan.expectedRows);
+      for (const forbiddenNodeType of [
+        "CTE Scan",
+        "Function Scan",
+        "Hash Join",
+        "Merge Join",
+        "Nested Loop",
+      ]) {
+        assert.equal(planNodeTypes(plan).has(forbiddenNodeType), false);
+      }
+      planExecutionTimeMs += explainExecutionTimeMs(plan);
+      assert.ok(
+        explainExecutionTimeMs(plan) < 30_000,
+        `${profile.name} ${queryPlan.relation} scan must remain within 30s`,
+      );
+    }
+    console.log(
+      JSON.stringify({
+        checkpointStorageReferenceScale: {
+          profile: profile.name,
+          checkpointCount: measured.value.checkpointCount,
+          expandedMountCount: measured.value.expandedMountCount,
+          optionalMissingCheckpointCount:
+            measured.value.reasonCheckpointIds.optionalStorageMissing.size,
+          elapsedMs: Math.ceil(elapsedMs),
+          baselineHeapBytes: measured.baselineHeapBytes,
+          peakHeapBytes: measured.peakHeapBytes,
+          peakHeapGrowthBytes: measured.peakGrowthBytes,
+          planExecutionTimeMs: Math.ceil(planExecutionTimeMs),
+        },
+      }),
+    );
+  } finally {
+    await client.query("ROLLBACK");
+  }
+}
+
+async function testCheckpointStorageReferencePlans(
+  databaseUrl: string,
+): Promise<void> {
+  const sourceUrl = new URL(databaseUrl);
+  const admin = new Client({
+    connectionString: databaseUrlFor(sourceUrl, "postgres"),
+  });
+  await admin.connect();
+  await admin.query(
+    `DROP DATABASE IF EXISTS "${storagePlanTestDatabase}" WITH (FORCE)`,
+  );
+  await admin.query(`CREATE DATABASE "${storagePlanTestDatabase}"`);
+  const testUrl = databaseUrlFor(sourceUrl, storagePlanTestDatabase);
+
+  try {
+    execFileSync("tsx", [path.join(dirname, "migrate.ts")], {
+      cwd: packageDirectory,
+      env: { ...process.env, DATABASE_URL: testUrl },
+      stdio: "pipe",
+    });
+    const client = new Client({ connectionString: testUrl });
+    await client.connect();
+    try {
+      await seedStoragePlanOwnershipFixture(client);
+      await seedStoragePlanCheckpointOwners(client);
+      await seedStoragePlanCatalogs(client);
+      await seedStoragePlanCheckpoints(client);
+      await client.query('ANALYZE "checkpoints"');
+      await client.query('ANALYZE "storages"');
+      await client.query('ANALYZE "storage_versions"');
+    } finally {
+      await client.end();
+    }
+    const scaleOutput = execFileSync(
+      process.execPath,
+      [
+        `--max-old-space-size=${STORAGE_PLAN_MAX_OLD_SPACE_MIB}`,
+        "--import",
+        "tsx",
+        path.join(dirname, "test-agent-compose-consolidation-preflight.ts"),
+        "--checkpoint-storage-scale",
+      ],
+      {
+        cwd: packageDirectory,
+        encoding: "utf8",
+        env: { ...process.env, DATABASE_URL: testUrl },
+      },
+    );
+    process.stdout.write(scaleOutput);
+  } finally {
+    await admin.query(
+      `DROP DATABASE IF EXISTS "${storagePlanTestDatabase}" WITH (FORCE)`,
+    );
+    await admin.end();
+  }
+}
+
 async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
   const projections = ACTIVITY_TIME_ZONES.map((timeZone) => {
     return execFileSync(
@@ -4777,6 +5983,7 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
   }
   assert.equal(projections.length, ACTIVITY_TIME_ZONES.length);
   assert.equal(projections[1], projections[0]);
+  await testCheckpointStorageReferencePlans(databaseUrl);
 }
 
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
@@ -4816,6 +6023,20 @@ export async function validateAgentComposeConsolidationPreflight(): Promise<void
 }
 
 async function runFromCommandLine(): Promise<void> {
+  if (process.argv[2] === "--checkpoint-storage-scale") {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    try {
+      for (const profile of STORAGE_PLAN_PROFILES) {
+        await assertStoragePlanProfile(client, profile);
+      }
+    } finally {
+      await client.end();
+    }
+    return;
+  }
   if (process.argv[2] === "--checkpoint-lineage-time-zone") {
     const timeZone = process.argv[3];
     if (timeZone !== "UTC" && timeZone !== "Asia/Shanghai") {

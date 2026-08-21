@@ -35,7 +35,6 @@ import {
   setConcurrencyTargetQuantity$,
   startCheckout$,
   startConcurrencyCheckout$,
-  startConcurrencyReduction$,
   openBillingPortal$,
   setConcurrencySubscriptionQuantity$,
   apiTierToBillingTier,
@@ -161,15 +160,18 @@ function planName(tier: BillingPlan["tier"] | BillingTier): string {
   });
 }
 
+/* The legacy plan cards need their own copy. A legacy plan pools its credits
+   in the organization, so the usage-pack description's per-member pricing is
+   not true of the plan this card sells. */
 function planDescription(tier: BillingPlan["tier"]): string {
   if (tier === "pro") {
     return i18n.t(($) => {
-      return $.billing.plans.pro.description;
+      return $.billing.plans.pro.legacyDescription;
     });
   }
   if (tier === "team") {
     return i18n.t(($) => {
-      return $.billing.plans.team.description;
+      return $.billing.plans.team.legacyDescription;
     });
   }
   return i18n.t(($) => {
@@ -295,6 +297,16 @@ function scheduledTargetLabel(scheduledChange: ScheduledBillingChange): string {
   return formatTierLabel(scheduledChange.targetTier);
 }
 
+function scheduledPlanEndsConcurrency(
+  scheduledChange: ScheduledBillingChange,
+): boolean {
+  return (
+    scheduledChange?.type === "cancel" ||
+    (scheduledChange?.type === "downgrade" &&
+      scheduledChange.targetTier === "pro")
+  );
+}
+
 function billingScheduledChange(
   status: BillingStatusResponse | null,
 ): ScheduledBillingChange {
@@ -316,6 +328,14 @@ function billingScheduledChange(
 
 function billingCanRestorePlan(status: BillingStatusResponse | null): boolean {
   return status?.canRestorePlan === true;
+}
+
+function billingPaidConcurrency(status: BillingStatusResponse | null): number {
+  return (
+    status?.concurrencySubscriptions.reduce((total, subscription) => {
+      return total + subscription.quantity;
+    }, 0) ?? 0
+  );
 }
 
 type BillingManagementMode = "payment_methods" | null;
@@ -838,8 +858,12 @@ function formatTierLabel(tier: BillingTier): string {
 
 function DowngradeConfirmDialogContent({
   currentTier,
+  paidConcurrency,
+  periodEnd,
 }: {
   currentTier: BillingTier;
+  paidConcurrency: number;
+  periodEnd: string | null | undefined;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [downgradeLoadable, confirm] = useLoadableSet(confirmDowngrade$);
@@ -929,6 +953,27 @@ function DowngradeConfirmDialogContent({
           </p>
         )}
 
+        {paidConcurrency > 0 && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+            {periodEnd
+              ? i18n.t(
+                  ($) => {
+                    return $.billing.downgrade.concurrencyEndsDate;
+                  },
+                  {
+                    quantity: slotCountLabel(paidConcurrency),
+                    date: formatBillingDate(periodEnd),
+                  },
+                )
+              : i18n.t(
+                  ($) => {
+                    return $.billing.downgrade.concurrencyEndsPeriod;
+                  },
+                  { quantity: slotCountLabel(paidConcurrency) },
+                )}
+          </p>
+        )}
+
         {isTeam && !isLockedTarget && (
           <div className="flex flex-col gap-2 mt-2">
             <button
@@ -1010,22 +1055,38 @@ function DowngradeConfirmDialogContent({
   );
 }
 
-function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
+function DowngradeConfirmDialog({
+  currentTier,
+  paidConcurrency,
+  periodEnd,
+}: {
+  currentTier: BillingTier;
+  paidConcurrency: number;
+  periodEnd: string | null | undefined;
+}) {
   const open = useGet(downgradeDialogOpen$);
 
   if (!open) {
     return null;
   }
 
-  return <DowngradeConfirmDialogContent currentTier={currentTier} />;
+  return (
+    <DowngradeConfirmDialogContent
+      currentTier={currentTier}
+      paidConcurrency={paidConcurrency}
+      periodEnd={periodEnd}
+    />
+  );
 }
 
 function RestorePlanConfirmDialogContent({
   currentTier,
+  paidConcurrency,
   periodEnd,
   scheduledChange,
 }: {
   currentTier: BillingTier;
+  paidConcurrency: number;
   periodEnd: string | null | undefined;
   scheduledChange: ScheduledBillingChange;
 }) {
@@ -1086,6 +1147,17 @@ function RestorePlanConfirmDialogContent({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
+        {paidConcurrency > 0 && (
+          <p className="text-sm font-semibold text-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.restore.concurrencyContinues;
+              },
+              { quantity: slotCountLabel(paidConcurrency) },
+            )}
+          </p>
+        )}
+
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
@@ -1117,10 +1189,12 @@ function RestorePlanConfirmDialogContent({
 
 function RestorePlanConfirmDialog({
   currentTier,
+  paidConcurrency,
   periodEnd,
   scheduledChange,
 }: {
   currentTier: BillingTier;
+  paidConcurrency: number;
   periodEnd: string | null | undefined;
   scheduledChange: ScheduledBillingChange;
 }) {
@@ -1133,6 +1207,7 @@ function RestorePlanConfirmDialog({
   return (
     <RestorePlanConfirmDialogContent
       currentTier={currentTier}
+      paidConcurrency={paidConcurrency}
       periodEnd={periodEnd}
       scheduledChange={scheduledChange}
     />
@@ -1384,10 +1459,12 @@ type ConcurrencySubscription =
 
 function concurrencySubscriptionPeriodLabel(
   subscription: ConcurrencySubscription,
-  canceled: boolean,
+  ending: boolean,
+  planEndAt: string | null,
 ): string {
-  if (!subscription.currentPeriodEnd) {
-    return canceled
+  const endAt = planEndAt ?? subscription.currentPeriodEnd;
+  if (!endAt) {
+    return ending
       ? i18n.t(($) => {
           return $.billing.concurrency.cancellationScheduled;
         })
@@ -1396,8 +1473,8 @@ function concurrencySubscriptionPeriodLabel(
         });
   }
 
-  const date = formatBillingDate(subscription.currentPeriodEnd);
-  return canceled
+  const date = formatBillingDate(endAt);
+  return ending
     ? i18n.t(
         ($) => {
           return $.billing.concurrency.activeUntil;
@@ -1501,6 +1578,9 @@ function ConcurrencyQuantityControl({
 function ConcurrencySubscriptionRow({
   canceled,
   onAction,
+  onRestorePlan,
+  planEndAt,
+  planEnding,
   subscription,
 }: {
   canceled: boolean;
@@ -1509,8 +1589,10 @@ function ConcurrencySubscriptionRow({
     readonly subscriptionId: string;
     readonly currentQuantity: number;
     readonly canReduce: boolean;
-    readonly canChangeInApp: boolean;
   }) => void;
+  onRestorePlan: () => void;
+  planEndAt: string | null;
+  planEnding: boolean;
   subscription: ConcurrencySubscription;
 }) {
   const restoreAvailable =
@@ -1518,6 +1600,17 @@ function ConcurrencySubscriptionRow({
     (subscription.scheduledQuantity !== null &&
       subscription.scheduledQuantity !== undefined);
   const action = restoreAvailable ? "restore" : "change";
+  const ending = canceled || planEnding;
+  const openConcurrencyAction = (
+    requestedAction: "change" | "restore",
+  ): void => {
+    onAction({
+      action: requestedAction,
+      subscriptionId: subscription.id,
+      currentQuantity: subscription.quantity,
+      canReduce: subscription.canReduce === true && !planEnding,
+    });
+  };
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -1531,12 +1624,12 @@ function ConcurrencySubscriptionRow({
         </p>
         <p
           className={`text-[13px] mt-0.5 ${
-            canceled
+            ending
               ? "text-amber-600 dark:text-amber-400"
               : "text-muted-foreground"
           }`}
         >
-          {concurrencySubscriptionPeriodLabel(subscription, canceled)}
+          {concurrencySubscriptionPeriodLabel(subscription, ending, planEndAt)}
         </p>
         {subscription.scheduledQuantity !== null &&
         subscription.scheduledQuantity !== undefined &&
@@ -1554,31 +1647,31 @@ function ConcurrencySubscriptionRow({
           </p>
         ) : null}
       </div>
-      <Button
-        variant={restoreAvailable ? "default" : "outline"}
-        size="sm"
-        className="h-8 shrink-0 text-xs"
-        onClick={() => {
-          onAction({
-            action,
-            subscriptionId: subscription.id,
-            currentQuantity: subscription.quantity,
-            canReduce: subscription.canReduce === true,
-            // Old API responses omit this during the ~2-day web/app client
-            // version-skew window. Remove the legacy Stripe branch with #26152
-            // after #26116 has been deployed beyond that window.
-            canChangeInApp: subscription.canChangeInApp === true,
-          });
-        }}
-      >
-        {restoreAvailable
-          ? i18n.t(($) => {
-              return $.billing.common.restore;
-            })
-          : i18n.t(($) => {
-              return $.billing.concurrency.changeButton;
+      <div className="flex shrink-0 items-center gap-2">
+        <Button
+          variant={restoreAvailable && !planEnding ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => {
+            openConcurrencyAction(action);
+          }}
+        >
+          {restoreAvailable
+            ? i18n.t(($) => {
+                return $.billing.concurrency.restoreConcurrency;
+              })
+            : i18n.t(($) => {
+                return $.billing.concurrency.changeButton;
+              })}
+        </Button>
+        {planEnding && (
+          <Button size="sm" className="h-8 text-xs" onClick={onRestorePlan}>
+            {i18n.t(($) => {
+              return $.billing.concurrency.restoreTeamPlan;
             })}
-      </Button>
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1593,6 +1686,7 @@ function concurrencyConfirmCopy(
   changeMode: ConcurrencyChangeMode,
   reviewing: boolean,
   scheduled: boolean,
+  currentQuantity: number,
 ): ConcurrencyConfirmCopy {
   if (reviewing) {
     return {
@@ -1613,9 +1707,12 @@ function concurrencyConfirmCopy(
       title: i18n.t(($) => {
         return $.billing.concurrency.restoreTitle;
       }),
-      description: i18n.t(($) => {
-        return $.billing.concurrency.restoreDescription;
-      }),
+      description: i18n.t(
+        ($) => {
+          return $.billing.concurrency.restoreQuantityDescription;
+        },
+        { quantity: slotCountLabel(currentQuantity) },
+      ),
     };
   }
   if (changeMode === "cancel") {
@@ -1675,22 +1772,17 @@ function concurrencyChangeQuantityValid(
 function concurrencyConfirmButtonLabel(
   action: "change" | "restore",
   changeMode: ConcurrencyChangeMode,
-  canChangeInApp: boolean,
   preview: ConcurrencySubscriptionChangePreviewResponse | null,
   loading: boolean,
 ): string {
   if (loading) {
-    return action === "change" && changeMode === "quantity" && !canChangeInApp
-      ? i18n.t(($) => {
-          return $.billing.common.redirecting;
-        })
-      : i18n.t(($) => {
-          return $.billing.common.updating;
-        });
+    return i18n.t(($) => {
+      return $.billing.common.updating;
+    });
   }
   if (action === "restore") {
     return i18n.t(($) => {
-      return $.billing.concurrency.restoreSubscription;
+      return $.billing.concurrency.restoreConcurrency;
     });
   }
   if (changeMode === "cancel") {
@@ -1712,13 +1804,9 @@ function concurrencyConfirmButtonLabel(
           return $.billing.concurrency.updateSlots;
         });
   }
-  return canChangeInApp
-    ? i18n.t(($) => {
-        return $.billing.concurrency.reviewChange;
-      })
-    : i18n.t(($) => {
-        return $.billing.concurrency.continueToStripe;
-      });
+  return i18n.t(($) => {
+    return $.billing.concurrency.reviewChange;
+  });
 }
 
 function concurrencyConfirmDisabled(
@@ -1860,33 +1948,24 @@ function ConcurrencyConfirmDialogContent({
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
     cancelConcurrencySubscription$,
   );
-  const [checkoutLoadable, checkout] = useLoadableSet(
-    startConcurrencyCheckout$,
-  );
   const [previewLoadable, previewChange] = useLoadableSet(
     previewConcurrencySubscriptionChange$,
   );
   const [confirmLoadable, confirmChange] = useLoadableSet(
     confirmConcurrencySubscriptionChange$,
   );
-  const [reduceLoadable, reduceSubscription] = useLoadableSet(
-    startConcurrencyReduction$,
-  );
   const [restoreLoadable, restoreSubscription] = useLoadableSet(
     restoreConcurrencySubscription$,
   );
   const loading = [
     cancelLoadable.state,
-    checkoutLoadable.state,
     previewLoadable.state,
     confirmLoadable.state,
-    reduceLoadable.state,
     restoreLoadable.state,
   ].includes("loading");
   const action = dialog.action;
   const changeMode = dialog.changeMode;
   const targetQuantity = dialog.targetQuantity;
-  const canChangeInApp = dialog.canChangeInApp;
   const preview = dialog.preview;
   const reviewing = preview !== null;
   const changeQuantityValid = concurrencyChangeQuantityValid(
@@ -1899,6 +1978,7 @@ function ConcurrencyConfirmDialogContent({
     changeMode,
     reviewing,
     preview?.effectiveAt !== undefined,
+    dialog.currentQuantity,
   );
 
   const handleConfirm = () => {
@@ -1917,36 +1997,13 @@ function ConcurrencyConfirmDialogContent({
         detach(confirmChange(pageSignal), Reason.DomCallback);
         return;
       }
-      if (canChangeInApp) {
-        detach(
-          previewChange(
-            {
-              subscriptionId: dialog.subscriptionId,
-              quantity: targetQuantity,
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-        return;
-      }
-      if (targetQuantity > dialog.currentQuantity) {
-        detach(
-          checkout(targetQuantity - dialog.currentQuantity, false, pageSignal),
-          Reason.DomCallback,
-        );
-      } else {
-        detach(
-          reduceSubscription(
-            {
-              subscriptionId: dialog.subscriptionId,
-              quantity: targetQuantity,
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-      }
+      detach(
+        previewChange(
+          { subscriptionId: dialog.subscriptionId, quantity: targetQuantity },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
       return;
     }
     detach(
@@ -1988,18 +2045,15 @@ function ConcurrencyConfirmDialogContent({
         )}
         onClick={handleConfirm}
       >
-        {concurrencyConfirmButtonLabel(
-          action,
-          changeMode,
-          canChangeInApp,
-          preview,
-          loading,
-        )}
+        {concurrencyConfirmButtonLabel(action, changeMode, preview, loading)}
       </Button>
     </>
   );
   const showCancellationEntry =
-    action === "change" && changeMode === "quantity" && !reviewing;
+    action === "change" &&
+    changeMode === "quantity" &&
+    !reviewing &&
+    dialog.canReduce;
 
   return (
     <DialogContent className="sm:max-w-[480px]">
@@ -2253,6 +2307,7 @@ function ConcurrencyBillingSection({
 }) {
   const openPurchaseDialog = useSet(openConcurrencyPurchaseDialog$);
   const openConfirmDialog = useSet(openConcurrencyConfirmDialog$);
+  const openRestorePlan = useSet(openRestoreDialog$);
   const subscriptions = status?.concurrencySubscriptions ?? [];
   const concurrencyLimit = status?.concurrencyLimit ?? 0;
   const paidConcurrency = subscriptions.reduce((total, subscription) => {
@@ -2261,6 +2316,11 @@ function ConcurrencyBillingSection({
   const includedConcurrency = concurrencyLimit - paidConcurrency;
   const purchaseReviewAvailable =
     status?.concurrencyPurchaseReviewAvailable === true;
+  const scheduledChange = billingScheduledChange(status);
+  const planEnding = scheduledPlanEndsConcurrency(scheduledChange);
+  const planEndAt = planEnding
+    ? scheduledEffectiveDate(scheduledChange, status?.currentPeriodEnd)
+    : null;
 
   return (
     <section className="flex flex-col gap-3">
@@ -2325,6 +2385,9 @@ function ConcurrencyBillingSection({
                 <ConcurrencySubscriptionRow
                   canceled={canceled}
                   onAction={openConfirmDialog}
+                  onRestorePlan={openRestorePlan}
+                  planEndAt={planEndAt}
+                  planEnding={planEnding}
                   subscription={subscription}
                 />
               </div>
@@ -2478,6 +2541,7 @@ function BillingPricingPage({
   onMigrationBack,
   onSelectMigration,
   onRestore,
+  paidConcurrency,
   periodEnd,
   scheduledChange,
 }: {
@@ -2491,6 +2555,7 @@ function BillingPricingPage({
   readonly onMigrationBack: () => void;
   readonly onSelectMigration: (tier: "pro" | "team") => void;
   readonly onRestore: () => void;
+  readonly paidConcurrency: number;
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
 }) {
@@ -2534,9 +2599,14 @@ function BillingPricingPage({
           onRestore={onRestore}
         />
       )}
-      <DowngradeConfirmDialog currentTier={currentTier} />
+      <DowngradeConfirmDialog
+        currentTier={currentTier}
+        paidConcurrency={paidConcurrency}
+        periodEnd={periodEnd}
+      />
       <RestorePlanConfirmDialog
         currentTier={currentTier}
+        paidConcurrency={paidConcurrency}
         periodEnd={periodEnd}
         scheduledChange={scheduledChange}
       />
@@ -2764,6 +2834,7 @@ export function OrgBillingTab() {
   const isCancelling = scheduledChange?.type === "cancel";
   const isDowngrading = scheduledChange?.type === "downgrade";
   const periodEnd = status?.currentPeriodEnd;
+  const paidConcurrency = billingPaidConcurrency(status);
   const periodLabel = billingPeriodLabel({
     isPaid,
     migration,
@@ -2841,6 +2912,7 @@ export function OrgBillingTab() {
         periodEnd={periodEnd}
         onBack={closeBillingSubPage}
         onRestore={handleRestore}
+        paidConcurrency={paidConcurrency}
       />
     );
   }
@@ -3022,9 +3094,14 @@ export function OrgBillingTab() {
         />
       )}
 
-      <DowngradeConfirmDialog currentTier={currentTier} />
+      <DowngradeConfirmDialog
+        currentTier={currentTier}
+        paidConcurrency={paidConcurrency}
+        periodEnd={periodEnd}
+      />
       <RestorePlanConfirmDialog
         currentTier={currentTier}
+        paidConcurrency={paidConcurrency}
         periodEnd={periodEnd}
         scheduledChange={scheduledChange}
       />

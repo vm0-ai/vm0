@@ -31,6 +31,8 @@ from tests.model_provider_response_helpers import (
     run_response,
     standard_success_payload,
 )
+from tests.usage_helpers import compact_observation_quantities
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 def _deterministic_low_ratio_text(size: int) -> str:
@@ -163,6 +165,108 @@ class TestModelProviderJsonStreaming:
         assert by_category == expected_event_quantities(
             provider_case,
             cache_write_tokens=cache_write_tokens,
+        )
+
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=model_provider_json_case_id,
+    )
+    def test_full_pipeline_out_of_range_model_json_quantity_is_rejected(
+        self,
+        tmp_path,
+        real_flow,
+        provider_case,
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            standard_success_payload(
+                provider_case,
+                input_tokens=MAX_USAGE_QUANTITY + 1,
+            )
+        )
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
+        [warning] = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert warning["level"] == "warn"
+        assert warning["type"] == "usage_event"
+        assert warning["error"] == "integer value limit exceeded"
+
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=model_provider_json_case_id,
+    )
+    def test_full_pipeline_exact_integer_boundary_is_reported(
+        self,
+        tmp_path,
+        real_flow,
+        provider_case,
+    ):
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            standard_success_payload(
+                provider_case,
+                input_tokens=MAX_USAGE_QUANTITY,
+            )
+        )
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        input_categories = (
+            "tokens.input",
+            "tokens.cache_read",
+            "tokens.cache_creation",
+        )
+        assert (
+            sum(
+                event["quantity"]
+                for event in webhook.usage_events()
+                if event["category"].startswith(input_categories)
+            )
+            == MAX_USAGE_QUANTITY
+        )
+        observation_quantities = compact_observation_quantities(
+            webhook.model_usage_observation_events()
+        )
+        assert (
+            sum(
+                quantity
+                for category, quantity in observation_quantities.items()
+                if category.startswith(input_categories)
+            )
+            == MAX_USAGE_QUANTITY
         )
 
     @pytest.mark.parametrize(

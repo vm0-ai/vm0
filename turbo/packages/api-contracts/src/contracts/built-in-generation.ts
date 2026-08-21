@@ -66,7 +66,7 @@ export type BuiltInGenerationResponse = z.infer<
 export const builtInGenerationContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/built-in-generations/:generationId",
+    path: "/api/built-in-generations/:generationId",
     headers: authHeadersSchema,
     pathParams: z.object({
       generationId: z.string().uuid(),

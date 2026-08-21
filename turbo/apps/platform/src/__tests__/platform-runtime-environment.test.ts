@@ -166,11 +166,11 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
-
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
     plausibleController.abort();
@@ -202,6 +202,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       publicBrand: "vm0",
+      publicStaticAssetsBaseUrl: "https://static.vm0.io",
     });
   });
 
@@ -313,6 +314,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
       publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
       clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });

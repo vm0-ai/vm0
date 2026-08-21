@@ -466,10 +466,17 @@ export function createRunsApi(context: TestContext) {
       return { customerId, subscriptionId, invoiceId };
     },
 
-    async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
+    async createRun(
+      actor: ApiTestUser,
+      body: ZeroRunRequest,
+      publicBrand: PublicBrand = "vm0",
+    ) {
       const response = await accept(
         runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         [201],
@@ -1092,7 +1099,7 @@ export function createRunsApi(context: TestContext) {
         signal,
         routes: runRoutes,
       });
-      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+      const response = await app.request(`/api/runs/${runId}/cancel`, {
         method: "POST",
         headers: authorization === undefined ? {} : { authorization },
       });

@@ -54,9 +54,9 @@ const concurrencySubscriptionSchema = z.object({
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
   canReduce: z.boolean().optional(),
-  // Old API responses omit this capability during the ~2-day web/app client
-  // version-skew window. Remove the optional field with #26152 after #26116
-  // has been deployed beyond that window.
+  // Emitted for every subscription that is not cancelling, like `canReduce`.
+  // It stays optional so a new app reaching a draining older API still parses
+  // the response; no client branches on its absence since #26152.
   canChangeInApp: z.boolean().optional(),
   // Optional while older API deployments can still serve an already-loaded
   // web/app client during rollout.
@@ -461,12 +461,6 @@ const concurrencyCheckoutPreviewRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
   supportsInAppPreview: z.boolean().optional(),
   returnUrl: stripeRedirectUrlSchema.optional(),
-});
-
-const concurrencySubscriptionReduceRequestSchema = z.object({
-  quantity: z.number().int().min(1).max(1000),
-  successUrl: stripeRedirectUrlSchema,
-  cancelUrl: stripeRedirectUrlSchema,
 });
 
 const concurrencySubscriptionChangeRequestSchema = z.object({
@@ -965,7 +959,7 @@ export type BillingUsagePackMigrationContract =
 export const billingConcurrencyCheckoutContract = c.router({
   preview: {
     method: "POST",
-    path: "/api/zero/billing/concurrency-checkout/preview",
+    path: "/api/okou/billing/concurrency-checkout/preview",
     headers: authHeadersSchema,
     body: concurrencyCheckoutPreviewRequestSchema,
     responses: {
@@ -1043,26 +1037,6 @@ export const billingConcurrencySubscriptionContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Apply a concurrency add-on subscription quantity change",
-  },
-  reduce: {
-    method: "POST",
-    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/reduce",
-    pathParams: z.object({
-      subscriptionId: z.string().min(1),
-    }),
-    headers: authHeadersSchema,
-    body: concurrencySubscriptionReduceRequestSchema,
-    responses: {
-      200: checkoutResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary: "Reduce a concurrency add-on subscription quantity",
   },
   cancel: {
     method: "POST",

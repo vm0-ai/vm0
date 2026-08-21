@@ -107,7 +107,7 @@ runner_e2e_upload_text() {
 
 runner_e2e_cancel_run() {
     local run_id="$1"
-    runner_api_curl "/api/okou/runs/${run_id}/cancel" -X POST
+    runner_api_curl "/api/runs/${run_id}/cancel" -X POST
 }
 
 runner_e2e_wait_for_run_status() {
@@ -119,7 +119,7 @@ runner_e2e_wait_for_run_status() {
     local run_status=""
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if response=$(runner_api_curl "/api/okou/runs/${run_id}" 2>&1); then
+        if response=$(runner_api_curl "/api/runs/${run_id}" 2>&1); then
             run_status=$(jq -r '.status // empty' <<<"$response")
             if [[ "$run_status" == "$expected_status" ]]; then
                 printf '%s\n' "$response"
@@ -328,7 +328,7 @@ runner_e2e_assert_no_usage_for_thread() {
 
 runner_e2e_network_logs() {
     local run_id="$1"
-    runner_e2e_collect_pages "/api/okou/runs/${run_id}/network" networkLogs
+    runner_e2e_collect_pages "/api/runs/${run_id}/network" networkLogs
 }
 
 runner_e2e_collect_pages() {
@@ -432,7 +432,7 @@ runner_e2e_wait_for_active_chat_text() {
             return 0
         fi
 
-        if last_run=$(runner_api_curl "/api/okou/runs/${run_id}" 2>&1); then
+        if last_run=$(runner_api_curl "/api/runs/${run_id}" 2>&1); then
             run_status=$(jq -r '.status // empty' <<<"$last_run")
             case "$run_status" in
                 completed|failed|timeout|cancelled)

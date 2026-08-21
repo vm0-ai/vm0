@@ -325,6 +325,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     use_mock_codex: bool,
     mock_codex_path: Cow<'a, str>,
     home_dir: Cow<'a, str>,
+    claude_config_dir: Cow<'a, str>,
     codex_home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
     api_start_time: Cow<'a, str>,
@@ -395,6 +396,7 @@ impl<'a> CliRuntimeConfig<'a> {
             use_mock_codex: config.use_mock_codex,
             mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
             home_dir: Cow::Borrowed(&config.home_dir),
+            claude_config_dir: Cow::Borrowed(&config.claude_config_dir),
             codex_home_dir: Cow::Borrowed(&config.codex_home_dir),
             api_url: Cow::Borrowed(&config.api_url),
             api_start_time: Cow::Borrowed(&config.api_start_time),
@@ -928,9 +930,16 @@ async fn execute_cli_inner(
         .kill_on_drop(true);
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
-    if matches!(runtime.framework, env::Framework::Pi) {
-        write_pi_launch_payload_file(runtime)?;
-        child_env_values.extend(pi_child_env_values(runtime));
+    match runtime.framework {
+        env::Framework::ClaudeCode => child_env_values.push((
+            "CLAUDE_CONFIG_DIR".to_string(),
+            runtime.claude_config_dir.to_string(),
+        )),
+        env::Framework::Pi => {
+            write_pi_launch_payload_file(runtime)?;
+            child_env_values.extend(pi_child_env_values(runtime));
+        }
+        env::Framework::Codex => {}
     }
     // Suppress Claude CLI features that are unnecessary or harmful in a
     // sandbox: startup network calls (statsig, Datadog, Segment, GCS update
@@ -1984,6 +1993,7 @@ mod tests {
             use_mock_codex: false,
             mock_codex_path: String::new(),
             home_dir: "/tmp/home".to_string(),
+            claude_config_dir: "/tmp/claude-config".to_string(),
             codex_home_dir: "/tmp/codex-home".to_string(),
             artifacts: Vec::new(),
             feature_flags: HashMap::new(),
@@ -2022,6 +2032,7 @@ mod tests {
             use_mock_codex: false,
             mock_codex_path: Cow::Borrowed(""),
             home_dir: Cow::Borrowed("/tmp/home"),
+            claude_config_dir: Cow::Borrowed("/tmp/claude-config"),
             codex_home_dir: Cow::Borrowed("/tmp/codex-home"),
             api_url: Cow::Borrowed(""),
             api_start_time: Cow::Borrowed(""),

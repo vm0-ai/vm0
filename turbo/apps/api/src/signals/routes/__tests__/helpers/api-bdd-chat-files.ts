@@ -8,6 +8,7 @@ import {
   chatThreadDraftContract,
   chatThreadEventsContract,
   chatThreadImageModelContract,
+  chatThreadVideoModelContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadMarkUnreadContract,
@@ -32,6 +33,7 @@ import {
   type ZeroIndicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
+import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -81,6 +83,7 @@ import { chatThreadComputerUseHostRoutes } from "../../chat-threads-computer-use
 import { chatThreadCreateRoutes } from "../../chat-threads-create";
 import { chatThreadDeleteRoutes } from "../../chat-threads-delete";
 import { chatThreadImageModelRoutes } from "../../chat-threads-image-model";
+import { chatThreadVideoModelRoutes } from "../../chat-threads-video-model";
 import { chatThreadMarkReadRoutes } from "../../chat-threads-mark-read";
 import { chatThreadModelSelectionRoutes } from "../../chat-threads-model-selection";
 import { chatThreadPatchRoutes } from "../../chat-threads-patch";
@@ -203,6 +206,7 @@ const chatFilesRoutes = [
   ...chatThreadUnpinRoutes,
   ...chatThreadRenameRoutes,
   ...chatThreadImageModelRoutes,
+  ...chatThreadVideoModelRoutes,
   ...chatThreadModelSelectionRoutes,
   ...chatThreadComputerUseHostRoutes,
   ...chatThreadsArtifactsSyncRoutes,
@@ -339,6 +343,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadImageModelClient() {
     return chatFilesApp(context)(chatThreadImageModelContract);
+  }
+
+  function threadVideoModelClient() {
+    return chatFilesApp(context)(chatThreadVideoModelContract);
   }
 
   function userModelPreferenceClient() {
@@ -938,6 +946,21 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async updateThreadVideoModel(
+      actor: ApiTestUser,
+      threadId: string,
+      videoModel: VideoModelId | null,
+    ): Promise<void> {
+      await accept(
+        threadVideoModelClient().update({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+          body: { model: videoModel },
+        }),
+        [204],
+      );
+    },
+
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
@@ -1292,6 +1315,7 @@ export function createChatFilesBddApi(context: TestContext) {
         | 409
         | 422
         | 429
+        | 503
       )[],
       signal?: AbortSignal,
       publicBrand: PublicBrand = "vm0",

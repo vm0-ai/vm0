@@ -1,5 +1,78 @@
 # Changelog
 
+## [0.778.0](https://github.com/vm0-ai/vm0/compare/app-v0.777.0...app-v0.778.0) (2026-08-21)
+
+
+### Features
+
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Refactoring
+
+* **api:** move chat-thread, indicator and attribution routes off the brand namespace ([#28425](https://github.com/vm0-ai/vm0/issues/28425)) ([f0bf52e](https://github.com/vm0-ai/vm0/commit/f0bf52eb50e5f7bd30a4f3aa5eee00a5cf81d344))
+* remove expired deployment compatibility ([#28452](https://github.com/vm0-ai/vm0/issues/28452)) ([cfc81f2](https://github.com/vm0-ai/vm0/commit/cfc81f2a5b5c833db1729ad889eae7b552e20dd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+    * @okouai/connectors bumped to 1.209.0
+    * @okouai/core bumped to 8.576.0
+
+## [0.777.0](https://github.com/vm0-ai/vm0/compare/app-v0.776.0...app-v0.777.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add managed model fallback resolver ([#28301](https://github.com/vm0-ai/vm0/issues/28301)) ([745a08f](https://github.com/vm0-ai/vm0/commit/745a08fa51b6b0b51208fae1a02ec599664be115))
+
+
+### Bug Fixes
+
+* revise chat usage after late settlement ([#28378](https://github.com/vm0-ai/vm0/issues/28378)) ([21ca637](https://github.com/vm0-ai/vm0/commit/21ca637a2975b12d44aa1dce9d62633e89fb0556))
+
+
+### Refactoring
+
+* **api:** move user config and personal model provider routes off the brand namespace ([#28429](https://github.com/vm0-ai/vm0/issues/28429)) ([6ef5bd2](https://github.com/vm0-ai/vm0/commit/6ef5bd26a731fe5372c2fedd6dad7c173e1ff591))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+    * @okouai/connectors bumped to 1.208.0
+    * @okouai/core bumped to 8.575.0
+
+## [0.776.0](https://github.com/vm0-ai/vm0/compare/app-v0.775.1...app-v0.776.0) (2026-08-20)
+
+
+### Features
+
+* **host:** prepare okou public domains ([#28359](https://github.com/vm0-ai/vm0/issues/28359)) ([853415c](https://github.com/vm0-ai/vm0/commit/853415cbe56481d6e2c44c8cbd73ee50c6064902))
+* **platform:** import a deck as a presentation template from the picker ([#28344](https://github.com/vm0-ai/vm0/issues/28344)) ([e7efc60](https://github.com/vm0-ai/vm0/commit/e7efc606a87a71da3e81eeabf62710af8f0617e7))
+* point runs at the deck reverse-engineering guide ([#28362](https://github.com/vm0-ai/vm0/issues/28362)) ([8022cb6](https://github.com/vm0-ai/vm0/commit/8022cb61be52befefacfd44e1d758bd1a54f7584))
+
+
+### Bug Fixes
+
+* **platform:** fit seven models without scrolling ([#28260](https://github.com/vm0-ai/vm0/issues/28260)) ([98f9ac8](https://github.com/vm0-ai/vm0/commit/98f9ac831b6a64d31618ec6bdf22a6b95bbf2e5f))
+* **platform:** localize workflow template copy ([#28360](https://github.com/vm0-ai/vm0/issues/28360)) ([b07bcba](https://github.com/vm0-ai/vm0/commit/b07bcbae9b26fa46c0f5a75e417ce9478ef50b77))
+* **platform:** show pinned agent drag handle only while dragging ([#28320](https://github.com/vm0-ai/vm0/issues/28320)) ([f359c07](https://github.com/vm0-ai/vm0/commit/f359c07355b7fab1a1c959a0f7ac97ea9b1d5826))
+* project support and VAPID contacts by public brand ([#28312](https://github.com/vm0-ai/vm0/issues/28312)) ([4d3848a](https://github.com/vm0-ai/vm0/commit/4d3848ad76a64ddc0c52d9497fb4886b94854fe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.343.0
+    * @okouai/core bumped to 8.574.0
+
 ## [0.775.1](https://github.com/vm0-ai/vm0/compare/app-v0.775.0...app-v0.775.1) (2026-08-20)
 
 

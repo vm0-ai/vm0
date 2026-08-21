@@ -20,6 +20,7 @@ import {
 import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
+  chatThreadConnectorSelectionContract,
   chatThreadsContract,
   resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
@@ -74,6 +75,12 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import {
+  API_TEST_CONNECTOR_CATALOG,
+  apiTestConnectorCatalogValidationAuthority,
+  installApiTestConnectorCatalog,
+  replaceApiTestConnectorCatalogStoredBytes,
+} from "../../../test-fixtures/connector-catalog";
+import {
   readRunChatThreadIdFixture,
   readRunVideoModelFixture,
   setOrgMemberVideoModelFixture,
@@ -98,6 +105,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
@@ -119,6 +127,10 @@ import {
 import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
+import {
+  readCustomConnectorCredentialStorageParent,
+  setCustomConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { verifyZeroToken } from "../../auth/tokens";
@@ -1038,6 +1050,12 @@ function chatThreadsClient() {
   return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
     await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
@@ -1057,6 +1075,549 @@ describe("CHAT-02: thread run admission invariant", () => {
     await expect(
       createUnassociatedThreadBoundAgentRunFixture(""),
     ).rejects.toThrow("Thread-bound run requires a queue-first association");
+  });
+});
+
+describe("CHAT-02: thread connector account selection", () => {
+  it("uses the current default connector account without persisting an override", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "thread-selected-openai-key" },
+      agentId,
+    );
+
+    context.mocks.ably.publish.mockClear();
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Use my OpenAI connector account",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+      sourceId: connection.id,
+    });
+
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
+
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+    await api.enableAgentConnectors(actor, agentId, []);
+    const unauthorizedResponse = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "Continue while OpenAI is unauthorized",
+      },
+      [201],
+    );
+    if (unauthorizedResponse.status !== 201) {
+      throw new Error("Expected the unauthorized-connector send to succeed");
+    }
+    if (!unauthorizedResponse.body.runId) {
+      throw new Error("Expected the unauthorized-connector run to start");
+    }
+    const unauthorized = {
+      runId: unauthorizedResponse.body.runId,
+      threadId: unauthorizedResponse.body.threadId,
+    };
+    const unauthorizedClaim = await claimChatRun(
+      runnerGroup,
+      unauthorized.runId,
+    );
+    expect(
+      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toBeUndefined();
+    await completeChatRunOk(
+      unauthorized.runId,
+      unauthorizedClaim.sandboxHeaders,
+    );
+    await flushWaitUntilForTest();
+
+    await api.enableAgentConnectors(actor, agentId, ["openai"]);
+    const reauthorized = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "Continue after OpenAI is authorized again",
+    });
+    const reauthorizedClaim = await claimChatRun(
+      runnerGroup,
+      reauthorized.runId,
+    );
+    expect(
+      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: connection.id });
+    await cancelChatRun(actor, reauthorized.runId);
+  });
+
+  it("does not persist connector overrides during concurrent first sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "concurrent-thread-selected-openai-key" },
+      agentId,
+    );
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Concurrent connector selection thread",
+    });
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const clientEventIds = [randomUUID(), randomUUID()] as const;
+    const sends = clientEventIds.map((clientEventId, index) => {
+      return chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: `Concurrent connector selection send ${index + 1}`,
+          clientEventId,
+        },
+        [201],
+      );
+    });
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+    await threadLock.done;
+
+    const responses = await Promise.all(sends);
+    const responseBodies = responses.map((response) => {
+      if (response.status !== 201) {
+        throw new Error("Expected both concurrent sends to be accepted");
+      }
+      return response.body;
+    });
+    const activeIndexes = responseBodies.flatMap((body, index) => {
+      return body.runId === null ? [] : [index];
+    });
+    expect(activeIndexes).toHaveLength(1);
+    const activeIndex = activeIndexes[0];
+    if (activeIndex === undefined) {
+      throw new Error("Expected one concurrent send to start a run");
+    }
+    const activeRunId = responseBodies[activeIndex]?.runId;
+    if (!activeRunId) {
+      throw new Error("Expected the active concurrent send to have a run id");
+    }
+    const queuedEventId = clientEventIds.find((_, index) => {
+      return index !== activeIndex;
+    });
+    if (!queuedEventId) {
+      throw new Error("Expected one concurrent send to remain queued");
+    }
+
+    const claimed = await claimChatRun(runnerGroup, activeRunId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: connection.id });
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
+
+    const recalled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: thread.id,
+        revokesEventId: queuedEventId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (recalled.status !== 201) {
+      throw new Error("Expected the queued concurrent send to be recalled");
+    }
+    expect(recalled.body.runId).toBeNull();
+    await cancelChatRun(actor, activeRunId, claimed.sandboxHeaders);
+  });
+
+  it("uses default custom HTTP and MCP accounts without persisting overrides", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+      },
+    );
+    const httpConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_thread-http-runtime-${randomUUID()}`,
+        displayName: "Thread HTTP runtime connector",
+        prefixTemplates: ["https://thread-http-runtime.example.test/v1/"],
+      }),
+    );
+    const mcpConnector = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      slug: `_thread-mcp-runtime-${randomUUID()}`,
+      displayName: "Thread MCP runtime connector",
+      endpoint: "https://thread-mcp-runtime.example.test/server",
+      transport: "streamable-http",
+      fields: [
+        {
+          key: "secret",
+          label: "API token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      httpConnector.id,
+      "thread-http-runtime-secret",
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      mcpConnector.id,
+      "thread-mcp-runtime-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      httpConnector.id,
+      mcpConnector.id,
+    ]);
+    const httpConnection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: httpConnector.id,
+      },
+    );
+    const mcpConnection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: mcpConnector.id,
+      },
+    );
+    const httpConnectorId = httpConnection.connector?.id;
+    const mcpConnectorId = mcpConnection.connector?.id;
+    if (!httpConnectorId || !mcpConnectorId) {
+      throw new Error("Expected custom HTTP and MCP connector accounts");
+    }
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Use my selected HTTP and MCP connector accounts",
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(claimed.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: httpConnector.id,
+      baseUrlVars: {},
+      sourceId: httpConnectorId,
+    });
+    expect(claimed.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: mcpConnector.id,
+      baseUrlVars: {},
+      sourceId: mcpConnectorId,
+    });
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: run.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  });
+
+  it("starts the run when a selected custom connector becomes unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const customConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_thread-runtime-${randomUUID()}`,
+        displayName: "Thread runtime connector",
+        prefixTemplates: ["https://thread-runtime.example.test/v1/"],
+      }),
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      customConnector.id,
+      "thread-runtime-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      customConnector.id,
+    ]);
+    const connection = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId,
+        userId: actor.userId,
+        customConnectorId: customConnector.id,
+      },
+    );
+    const connectorId = connection.connector?.id;
+    const storageVersion = connection.connector?.storage_version;
+    if (!connectorId || storageVersion === undefined) {
+      throw new Error("Expected a custom connector account");
+    }
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "Use my default custom connector account",
+    });
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: first.threadId },
+        body: {
+          connectionId: connectorId,
+          target: {
+            kind: "custom",
+            customConnectorId: customConnector.id,
+          },
+        },
+      }),
+      [200],
+    );
+    await cancelChatRun(actor, first.runId);
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId,
+      userId: actor.userId,
+      customConnectorId: customConnector.id,
+      authMethod: "manual",
+      storageVersion,
+      needsReconnect: true,
+    });
+
+    const fallback = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "Continue despite the unavailable connector account",
+    });
+    const claimed = await claimChatRun(runnerGroup, fallback.runId);
+    expect(claimed.claim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({ customConnectorId: customConnector.id }),
+    );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: first.threadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toContainEqual({
+      connectionId: connectorId,
+      target: { kind: "custom", customConnectorId: customConnector.id },
+    });
+    await cancelChatRun(actor, fallback.runId, claimed.sandboxHeaders);
+  });
+
+  it("starts the run when the runtime catalog no longer contains the selected built-in", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const connection = await connectors.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { apiKey: "retired-thread-openai-key" },
+      agentId,
+    );
+    const runtimeConnection = await connectors.connectManualGrant(
+      actor,
+      "runtime",
+      "api-token",
+      { apiKey: "retired-thread-runtime-key" },
+      agentId,
+    );
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Retired catalog connector thread",
+    });
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: runtimeConnection.id,
+          target: { kind: "builtin", connectorSlug: "runtime" },
+        },
+      }),
+      [200],
+    );
+
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+    });
+    const catalogVersion = `api-test-without-openai-${randomUUID()}`;
+    const catalogWithoutOpenAi = {
+      ...API_TEST_CONNECTOR_CATALOG,
+      catalogVersion,
+      connectors: API_TEST_CONNECTOR_CATALOG.connectors.filter((connector) => {
+        return connector.slug !== "openai";
+      }),
+    };
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion,
+      rawBytes: Buffer.from(`${JSON.stringify(catalogWithoutOpenAi)}\n`),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Continue after the selected connector leaves the catalog",
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toBeUndefined();
+
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: runtimeConnection.id,
+        target: { kind: "builtin", connectorSlug: "runtime" },
+      },
+    ]);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [400],
+    );
+    await accept(
+      chatThreadsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          agentId,
+          model: "claude-sonnet-5",
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().clear({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [204],
+    );
+    await installApiTestConnectorCatalog();
+    const restoredSelections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(restoredSelections.body.selections).toStrictEqual(
+      selections.body.selections,
+    );
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 });
 
@@ -8936,6 +9497,56 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     await cancelChatRun(actor, run.runId);
   }, 60_000);
+
+  it("keeps a legacy VM0 attachment on the VM0 CDN for an Okou send", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const fileId = randomUUID();
+    const filename = "legacy-brand.txt";
+    chat.mockCompletedUploadObject(actor, fileId, filename, 24);
+
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "read the legacy attachment",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: filename,
+              contentType: "text/plain",
+            },
+            { type: "text", text: "read the legacy attachment" },
+          ],
+        },
+      },
+      "okou",
+    );
+    await flushWaitUntilForTest();
+
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: run.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    const summary = catalog.artifacts.find((artifact) => {
+      return artifact.title === filename;
+    });
+    if (!summary) {
+      throw new Error("Expected the legacy attachment in the artifact catalog");
+    }
+    const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+    if (detail.kind !== "file") {
+      throw new Error("Expected a file artifact for the legacy attachment");
+    }
+    expect(detail.file.url).toMatch(/^https:\/\/cdn\.vm7\.io\//);
+    expect(detail.file.url).not.toMatch(/^https:\/\/cdn\.okou\.io\//);
+
+    await cancelChatRun(actor, run.runId);
+  }, 60_000);
 });
 
 describe("CHAT-02: queued attachments on auto-send", () => {
@@ -11115,7 +11726,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 
-  it("serializes a terminal drain against an idle queue-first send", async () => {
+  it("serializes a terminal drain against an inline queue-first send", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor for queue serialization");
@@ -11127,14 +11738,6 @@ describe("CHAT-02: shared user message queue", () => {
       prompt: "terminal drain race anchor",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-
-    // Hold the real org admission lock after the inline send has persisted its
-    // queue-first row. This lets both the inline path and terminal callback
-    // drain reach the final atomic launch boundary before either can claim it.
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: actor.orgId,
-      signal: context.signal,
-    });
 
     await webhooks.requestAgentEvents(
       {
@@ -11156,6 +11759,24 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await flushWaitUntilForTest();
 
+    const terminalPrompt = "terminal drain owns the queue head";
+    const terminalMessageId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: terminalPrompt,
+        clientEventId: terminalMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
     onTestFinished(async () => {
       admissionLock.release();
       await admissionLock.done;
@@ -11164,20 +11785,19 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    // Completion starts both the thread-message drain and the org run-queue
-    // drain concurrently. Wait until either has reached admission, then let
-    // the inline send persist its queue-first row and join the same boundary.
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    // The terminal drain owns the existing queue head and reaches final run
+    // admission before the inline send joins the same boundary.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
-    const prompt = "terminal drain and inline send share one claim";
-    const messageId = randomUUID();
+    const inlinePrompt = "inline send waits behind the terminal drain";
+    const inlineMessageId = randomUUID();
     const send = chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        prompt,
-        clientEventId: messageId,
+        prompt: inlinePrompt,
+        clientEventId: inlineMessageId,
       },
       [201],
     );
@@ -11185,56 +11805,65 @@ describe("CHAT-02: shared user message queue", () => {
       .poll(async () => {
         const messages = await chat.listThreadEvents(actor, anchor.threadId);
         return messages.events.some((message) => {
-          return message.id === messageId;
+          return message.id === inlineMessageId;
         });
       })
       .toBe(true);
-    // One terminal drain is already pinned above. The persisted inline send
-    // adds the second contender; sibling completion work may be serialized
-    // before this boundary and is not required for the single-claim race.
-    await expect
-      .poll(admissionLock.waiterCount, { timeout: 10_000 })
-      .toBeGreaterThanOrEqual(2);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
 
     const sent = await send;
     await admissionLock.done;
     await flushWaitUntilForTest();
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected one race winner to own the queued message");
-    }
+    expect(sent.body).toMatchObject({ runId: null });
 
     const messages = await chat.listThreadEvents(actor, anchor.threadId);
     const claimed = userMessages(messages.events).filter((message) => {
       return (
-        message.revokesEventId === messageId && message.runId !== undefined
+        message.revokesEventId === terminalMessageId &&
+        message.runId !== undefined
       );
     });
     expect(claimed).toHaveLength(1);
-    expect(claimed[0]?.runId).toBe(sent.body.runId);
-    const queued = userMessages(messages.events).find((message) => {
-      return message.id === messageId;
-    });
-    if (!queued) {
-      throw new Error("Expected the queued message");
+    const claimedRunId = claimed[0]?.runId;
+    if (!claimedRunId) {
+      throw new Error("Expected the terminal drain to own the queue head");
     }
-    expect(queued.runId).toBeUndefined();
+    const inline = userMessages(messages.events).find((message) => {
+      return message.id === inlineMessageId;
+    });
+    if (!inline) {
+      throw new Error("Expected the inline queued message");
+    }
+    expect(inline.runId).toBeUndefined();
 
     const runList = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
       limit: 100,
     });
     const candidates = runList.runs.filter((run) => {
-      return run.prompt === prompt;
+      return run.prompt === terminalPrompt || run.prompt === inlinePrompt;
     });
     expect(candidates).toStrictEqual([
       expect.objectContaining({
-        id: sent.body.runId,
+        id: claimedRunId,
+        prompt: terminalPrompt,
         status: expect.stringMatching(/^(queued|pending|running)$/),
       }),
     ]);
 
-    await cancelChatRun(actor, sent.body.runId);
+    const recalled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesEventId: inlineMessageId,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    expect(recalled.body).toMatchObject({ runId: null });
+    await cancelChatRun(actor, claimedRunId);
   }, 90_000);
 
   it("preserves an appended claim when recall races the queue drain", async () => {
@@ -11263,9 +11892,9 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // Pin both completion-triggered drains at run admission, then make the
-    // claim and recall queue behind the exact message row in a test-owned
-    // order.
+    // Pin the completion-triggered queue-first drain at run admission, then
+    // make the claim and recall queue behind the exact message row in a
+    // test-owned order.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
@@ -11288,7 +11917,7 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    await expect.poll(admissionLock.waiterCount).toBe(1);
     admissionLock.release();
     await admissionLock.done;
     await expect.poll(eventQueueLock.directBlockedWaiterCount).toBe(1);
@@ -11385,8 +12014,8 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
-    // Stage the completion-triggered drains at org admission, then let recall
-    // append before either drain can claim the queued message.
+    // Stage the completion-triggered queue-first drain at org admission, then
+    // let recall append before it can claim the queued message.
     onTestFinished(async () => {
       admissionLock.release();
       await admissionLock.done;
@@ -11398,7 +12027,7 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
     const recalled = await chat.requestSendEvent(
       actor,
@@ -11685,32 +12314,99 @@ describe("CHAT-02: shared user message queue", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: run video model snapshot", () => {
-  it("resolves the thread pin, then the member default, then the catalog default", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected an entitled chat actor to own an org");
-    }
+/**
+ * Creation-time pinning follows the picker's own switch, so a video test has to
+ * say which side of that switch it is on.
+ */
+async function videoModelSelectionActor(args: {
+  readonly selectionEnabled: boolean;
+}): Promise<{
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly orgId: string;
+}> {
+  const { actor, agentId } = await entitledChatActor();
+  const orgId = actor.orgId;
+  if (!orgId) {
+    throw new Error("Expected an entitled chat actor to own an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId },
+    { [FeatureSwitchKey.VideoModelSelection]: args.selectionEnabled },
+  );
+  return { actor, agentId, orgId };
+}
 
-    const unpinned = await sendChatRun(actor, {
-      agentId,
-      prompt: "video model falls back to the catalog default",
+describe("CHAT-02: run video model snapshot", () => {
+  it("leaves a thread unpinned while video model selection is disabled", async () => {
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: false,
     });
-    await expect(readRunVideoModelFixture(unpinned.runId)).resolves.toBe(
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "no video picker means nothing to freeze at creation",
+    });
+    await expect(readRunVideoModelFixture(anchor.runId)).resolves.toBe(
       DEFAULT_VIDEO_MODEL,
     );
-    await cancelChatRun(actor, unpinned.runId);
+    await cancelChatRun(actor, anchor.runId);
+
+    // Without a pin the thread keeps following the live default, so a member
+    // default written later still reaches it.
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const followsDefault = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "an unpinned thread still follows the member default",
+    });
+    await expect(readRunVideoModelFixture(followsDefault.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, followsDefault.runId);
+  }, 90_000);
+
+  it("pins a thread at creation and resolves later runs through that pin", async () => {
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: true,
+    });
+
+    const catalogDefault = await sendChatRun(actor, {
+      agentId,
+      prompt: "a thread created with no member default takes the catalog one",
+    });
+    await expect(readRunVideoModelFixture(catalogDefault.runId)).resolves.toBe(
+      DEFAULT_VIDEO_MODEL,
+    );
+    await cancelChatRun(actor, catalogDefault.runId);
 
     await setOrgMemberVideoModelFixture({
       orgId,
       userId: actor.userId,
       selectedVideoModel: "MiniMax-H3",
     });
+
+    // The pin the thread already carries survives the new member default. A
+    // thread that followed the live default would answer "MiniMax-H3" here.
+    const afterDefaultChanged = await sendChatRun(actor, {
+      agentId,
+      threadId: catalogDefault.threadId,
+      prompt: "an existing thread keeps the model it was created with",
+    });
+    await expect(
+      readRunVideoModelFixture(afterDefaultChanged.runId),
+    ).resolves.toBe(DEFAULT_VIDEO_MODEL);
+    await cancelChatRun(actor, afterDefaultChanged.runId);
+
+    // A thread created after the change does take the new member default.
     const memberDefault = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
-      prompt: "video model comes from the member default",
+      prompt: "a thread created later takes the member default",
     });
     await expect(readRunVideoModelFixture(memberDefault.runId)).resolves.toBe(
       "MiniMax-H3",
@@ -11718,12 +12414,12 @@ describe("CHAT-02: run video model snapshot", () => {
     await cancelChatRun(actor, memberDefault.runId);
 
     await setChatThreadVideoModelFixture(
-      unpinned.threadId,
+      catalogDefault.threadId,
       "fal-ai/veo3.1/fast",
     );
     const threadPinned = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
+      threadId: catalogDefault.threadId,
       prompt: "video model comes from the thread pin",
     });
     await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
@@ -11734,7 +12430,7 @@ describe("CHAT-02: run video model snapshot", () => {
     // the whole reason the model is snapshotted onto the run instead of being
     // read back off the thread when generation happens.
     await setChatThreadVideoModelFixture(
-      unpinned.threadId,
+      catalogDefault.threadId,
       "dreamina-seedance-2-5-260628",
     );
     await expect(readRunVideoModelFixture(threadPinned.runId)).resolves.toBe(
@@ -11745,13 +12441,45 @@ describe("CHAT-02: run video model snapshot", () => {
     // The next run does pick the re-pinned model up.
     const rePinned = await sendChatRun(actor, {
       agentId,
-      threadId: unpinned.threadId,
+      threadId: catalogDefault.threadId,
       prompt: "the run after the re-pin uses the new thread pin",
     });
     await expect(readRunVideoModelFixture(rePinned.runId)).resolves.toBe(
       "dreamina-seedance-2-5-260628",
     );
     await cancelChatRun(actor, rePinned.runId);
+  }, 90_000);
+
+  it("still follows the member default for a thread that predates the pin", async () => {
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: true,
+    });
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run that creates the thread",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    // Clearing the pin reproduces the state of a thread created before
+    // creation-time pinning. Those rows were deliberately left alone, so they
+    // keep reading the live member default.
+    await chat.updateThreadVideoModel(actor, anchor.threadId, null);
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+
+    const legacy = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "a thread with no pin follows the member default",
+    });
+    await expect(readRunVideoModelFixture(legacy.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, legacy.runId);
   }, 90_000);
 
   it("keeps falling back past video models the catalog no longer lists", async () => {
@@ -11940,10 +12668,22 @@ describe("CHAT-02: run image model snapshot", () => {
     await cancelChatRun(actor, globalDefault.runId);
 
     await chat.updateUserModelPreference(actor, null, "fal-ai/qwen-image");
-    const memberDefault = await sendChatRun(actor, {
+
+    // The thread was pinned when it was created, so the new member default
+    // does not reach back into it.
+    const afterDefaultChanged = await sendChatRun(actor, {
       agentId,
       threadId: globalDefault.threadId,
-      prompt: "image model comes from the member default",
+      prompt: "an existing thread keeps the image model it was created with",
+    });
+    await expect(
+      readRunImageModelSnapshotFixture(afterDefaultChanged.runId),
+    ).resolves.toBe(DEFAULT_IMAGE_MODEL);
+    await cancelChatRun(actor, afterDefaultChanged.runId);
+
+    const memberDefault = await sendChatRun(actor, {
+      agentId,
+      prompt: "a thread created later takes the member default",
     });
     await expect(
       readRunImageModelSnapshotFixture(memberDefault.runId),

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.74.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.16...guest-agent-v0.74.17) (2026-08-20)
+
+## [0.74.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.15...guest-agent-v0.74.16) (2026-08-20)
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* surface claude terms acceptance failures ([#28314](https://github.com/vm0-ai/vm0/issues/28314)) ([dc0674c](https://github.com/vm0-ai/vm0/commit/dc0674cd33b9b5ec44e592814c4f7b0c3d952575))
+
 ## [0.74.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.14...guest-agent-v0.74.15) (2026-08-20)
 
 

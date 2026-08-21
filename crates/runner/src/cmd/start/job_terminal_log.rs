@@ -123,6 +123,10 @@ fn log_job_execution_failed(
                     event_delivery_fields.first_failure_final_attempt_number,
                 event_delivery_first_failure_final_attempt_kind =
                     event_delivery_fields.first_failure_final_attempt_kind,
+                event_delivery_first_failure_final_attempt_timeout_observed =
+                    event_delivery_fields.first_failure_final_attempt_timeout_observed,
+                event_delivery_first_failure_final_attempt_connect_observed =
+                    event_delivery_fields.first_failure_final_attempt_connect_observed,
                 event_delivery_first_failure_final_attempt_http_status =
                     event_delivery_fields.first_failure_final_attempt_http_status,
                 event_delivery_first_failure_final_attempt_request_id =
@@ -240,6 +244,8 @@ struct JobEventDeliveryLogFields<'a> {
     first_failure_attempt_count: Option<u64>,
     first_failure_final_attempt_number: Option<u32>,
     first_failure_final_attempt_kind: Option<&'static str>,
+    first_failure_final_attempt_timeout_observed: Option<bool>,
+    first_failure_final_attempt_connect_observed: Option<bool>,
     first_failure_final_attempt_http_status: Option<u16>,
     first_failure_final_attempt_request_id: Option<&'a str>,
     first_failure_final_attempt_elapsed_ms: Option<u64>,
@@ -323,6 +329,10 @@ impl<'a> From<Option<&'a EventDeliveryDiagnostic>> for JobEventDeliveryLogFields
                 .map(|attempt| attempt.attempt),
             first_failure_final_attempt_kind: first_failure_final_attempt
                 .map(|attempt| attempt.failure_kind.as_str()),
+            first_failure_final_attempt_timeout_observed: first_failure_final_attempt
+                .and_then(|attempt| attempt.timeout_observed),
+            first_failure_final_attempt_connect_observed: first_failure_final_attempt
+                .and_then(|attempt| attempt.connect_observed),
             first_failure_final_attempt_http_status: first_failure_final_attempt
                 .and_then(|attempt| attempt.http_status),
             first_failure_final_attempt_request_id: first_failure_final_attempt
@@ -639,6 +649,55 @@ mod tests {
     }
 
     #[test]
+    fn claude_result_mid_response_failures_log_structured_outcomes() {
+        for (reason, error, expected_level) in [
+            (
+                FailureReason::ProviderServerError,
+                "API Error: Server error mid-response. The response above may be incomplete.",
+                Level::INFO,
+            ),
+            (
+                FailureReason::ResponseConnectionLost,
+                "API Error: Connection lost mid-response. The response above may be incomplete.",
+                Level::ERROR,
+            ),
+        ] {
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CliNonzero,
+                AgentFramework::ClaudeCode,
+                PromptMetadata::from_prompt("plain prompt"),
+            )
+            .with_cli_exit_code(1)
+            .with_cli_observed_exit(CliObservedExitDiagnostic::from_exit_code(1))
+            .with_claude_num_turns(Some(48))
+            .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+            .with_session_history_status(SessionHistoryStatus::Present)
+            .with_failure_reason(reason);
+            let failure = executor::ExecutionFailure::new(1, error, Some(diagnostic));
+
+            let event = capture_job_failure_log(&failure);
+
+            assert_eq!(event.level, expected_level);
+            assert_eq!(
+                event.fields.get("message").map(String::as_str),
+                Some("job execution failed")
+            );
+            assert_field_eq(&event, "error", error);
+            assert_field_eq(&event, "failure_reason", reason.as_str());
+            assert_field_eq(&event, "failure_class", "cli_nonzero");
+            assert_field_eq(&event, "failure_framework", "claude_code");
+            assert_field_eq(&event, "failure_detail_source", "claude_result");
+            assert_field_eq(&event, "failure_claude_num_turns", "48");
+            assert_field_eq(&event, "cli_observed_exit_kind", "exit");
+            assert_field_eq(&event, "cli_observed_exit_code", "1");
+            assert!(!event.fields.contains_key("cli_termination_initiator"));
+            assert!(!event.fields.contains_key("cli_termination_reason"));
+            assert!(!event.fields.contains_key("cli_observed_signal_number"));
+            assert!(!event.fields.contains_key("cli_observed_signal_name"));
+        }
+    }
+
+    #[test]
     fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,
@@ -794,6 +853,8 @@ mod tests {
             elapsed_ms: 30_000,
             failure_kind: EventDeliveryAttemptFailureKind::HttpStatus,
             http_status: Some(500),
+            timeout_observed: None,
+            connect_observed: None,
         };
         let diagnostic = FailureDiagnostic::new(
             FailureClass::EventUploadFailed,
@@ -859,6 +920,16 @@ mod tests {
             "event_delivery_first_failure_final_attempt_kind",
             "http_status",
         );
+        assert!(
+            !event
+                .fields
+                .contains_key("event_delivery_first_failure_final_attempt_timeout_observed")
+        );
+        assert!(
+            !event
+                .fields
+                .contains_key("event_delivery_first_failure_final_attempt_connect_observed")
+        );
         assert_field_eq(
             &event,
             "event_delivery_first_failure_final_attempt_http_status",
@@ -890,6 +961,53 @@ mod tests {
         );
         assert!(!event.fields.contains_key("event_delivery_attempts"));
         assert!(!event.fields.contains_key("event_delivery_body"));
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_event_transport_observations() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::EventUploadFailed,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("continue"),
+        )
+        .with_cli_exit_code(0)
+        .with_event_delivery(EventDeliveryDiagnostic {
+            total_events: 1,
+            total_batches: 1,
+            failed_batches: 1,
+            last_acknowledged_sequence: None,
+            first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+                first_sequence: 0,
+                last_sequence: 0,
+                event_count: 1,
+                conservative_bytes: 128,
+                outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+                attempts: vec![EventDeliveryCompletedAttemptDiagnostic {
+                    attempt: 3,
+                    client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                    elapsed_ms: 10_000,
+                    failure_kind: EventDeliveryAttemptFailureKind::Timeout,
+                    http_status: None,
+                    timeout_observed: Some(true),
+                    connect_observed: Some(true),
+                }],
+            }),
+            drain_timeout: None,
+        });
+        let failure = executor::ExecutionFailure::new(1, "event delivery failed", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_timeout_observed",
+            "true",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_connect_observed",
+            "true",
+        );
     }
 
     #[test]

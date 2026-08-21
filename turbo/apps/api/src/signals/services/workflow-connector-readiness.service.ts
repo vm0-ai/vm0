@@ -3,6 +3,7 @@ import type {
   WorkflowConnectorReadinessResponse,
   WorkflowConnectorReadinessStatus,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -42,6 +43,7 @@ interface DetectWorkflowConnectorReadinessArgs {
   readonly workflowId: string;
   readonly workflow: WorkflowConnectorReadinessInput;
   readonly featureStates: FeatureStates;
+  readonly publicBrand: PublicBrand;
 }
 
 type DetectWorkflowConnectorReadinessResult =
@@ -308,6 +310,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       featureStates: args.featureStates,
       connectors: connectorState.connectors,
       referenceConnectorSlugs: [...automationDependencies.keys()],
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
     const statusCatalog = catalogRead.status;
@@ -353,15 +356,12 @@ export const detectWorkflowConnectorReadiness$ = command(
       const catalogEntry = statusBySlug.get(connectorSlug);
       if (!catalogEntry) {
         const fallbackMetadata = automationFallbackMetadata.get(connectorSlug);
-        if (!fallbackMetadata) {
-          throw new Error(
-            `Missing connector catalog metadata: ${connectorSlug}`,
-          );
-        }
         connectors.push({
           connectorSlug,
-          label: fallbackMetadata.label,
-          icon: fallbackMetadata.icon,
+          label: fallbackMetadata?.label ?? connectorSlug,
+          ...(fallbackMetadata === undefined
+            ? {}
+            : { icon: fallbackMetadata.icon }),
           reason,
           status: "unavailable",
         });

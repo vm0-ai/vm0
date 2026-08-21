@@ -39,6 +39,7 @@ import {
 import type { RouteEntry } from "../route-entry";
 import { chatThreadsArtifactsSyncRoutes } from "./chat-threads-artifacts-sync";
 import { chatThreadComputerUseHostRoutes } from "./chat-threads-computer-use-host";
+import { chatThreadConnectorSelectionRoutes } from "./chat-threads-connector-selections";
 import { chatThreadCreateRoutes } from "./chat-threads-create";
 import { chatThreadDeleteRoutes } from "./chat-threads-delete";
 import { chatThreadDraftGetRoutes } from "./chat-threads-draft-get";
@@ -394,6 +395,7 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   },
   ...chatThreadsArtifactsSyncRoutes,
   ...chatThreadComputerUseHostRoutes,
+  ...chatThreadConnectorSelectionRoutes,
   ...chatThreadCreateRoutes,
   ...chatThreadDeleteRoutes,
   ...chatThreadDraftGetRoutes,

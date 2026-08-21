@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  chatThreadConnectorSelectionContract,
   chatThreadMetadataContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -13,18 +15,26 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import {
+  createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
+} from "./helpers/api-bdd-connectors";
+import { readCustomConnectorCredentialStorageParent } from "./helpers/connector-credential-storage-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedRun$ } from "./helpers/usage-state";
+import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { chatThreadGetRoutes } from "../chat-threads-get";
+import { userModelPreferenceRoutes } from "../user-model-preference";
 
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
+const connectorApi = createConnectorBddApi(context);
 
 const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-5";
 const OTHER_WORKSPACE_MODEL = "claude-opus-4-8";
@@ -33,8 +43,11 @@ const EXPLICIT_VIDEO_MODEL = "fal-ai/veo3.1/fast";
 const INHERITED_VIDEO_MODEL = "MiniMax-H3";
 const EXPLICIT_IMAGE_MODEL = "fal-ai/qwen-image";
 const INHERITED_IMAGE_MODEL = "gpt-image-2";
+const MEMBER_VIDEO_MODEL = "seedance-1-5-pro-251215";
+const MEMBER_IMAGE_MODEL = "fal-ai/flux-pro/v1.1";
 
 interface AgentFixture {
+  readonly actor: ApiTestUser;
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
@@ -81,6 +94,7 @@ async function seedAgent(): Promise<AgentFixture> {
     context.signal,
   );
   return {
+    actor,
     userId: actor.userId,
     orgId: actor.orgId,
     agentId: agent.agentId,
@@ -121,6 +135,35 @@ function metadataClient() {
   );
 }
 
+function preferenceClient() {
+  return setupApp({ context, routes: userModelPreferenceRoutes })(
+    userModelPreferenceContract,
+  );
+}
+
+/** The preference route only accepts a session, so zero tokens cannot seed it. */
+async function setMemberMediaDefaults(fixture: AgentFixture): Promise<void> {
+  createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    preferenceClient().update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        selectedModel: null,
+        serviceTier: null,
+        selectedVideoModel: MEMBER_VIDEO_MODEL,
+        selectedImageModel: MEMBER_IMAGE_MODEL,
+      },
+    }),
+    [200],
+  );
+}
+
+function connectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 async function readCreatedThreadEvent(threadId: string, token: string) {
   const response = await accept(
     threadsClient().events({
@@ -139,6 +182,369 @@ async function readCreatedThreadEvent(threadId: string, token: string) {
 }
 
 describe("POST /api/zero/chat-threads", () => {
+  it("creates and reads an exact built-in connector account selection", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connection = await connectorApi.connectManualGrant(
+      fixture.actor,
+      "openai",
+      "api-token",
+      { apiKey: "selected-openai-key" },
+      fixture.agentId,
+    );
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const created = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const selections = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: connection.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+    const readToken = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read"],
+    });
+    await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${readToken}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${readToken}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [403],
+    );
+
+    const foreignActor = bdd.user({ orgId: fixture.orgId });
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: foreignActor.userId, orgId: fixture.orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    await store.set(
+      seedOrgMembership$,
+      { orgId: fixture.orgId, userId: foreignActor.userId },
+      context.signal,
+    );
+    const foreignToken = zeroToken({
+      userId: foreignActor.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${foreignToken}` },
+        params: { id: created.body.id },
+      }),
+      [404],
+    );
+
+    context.mocks.ably.publish.mockClear();
+    const updated = await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [200],
+    );
+    expect(updated.body.connectionId).toBe(connection.id);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${created.body.id}`,
+      null,
+    );
+
+    await api.enableAgentConnectors(fixture.actor, fixture.agentId, []);
+    const preserved = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(preserved.body.selections).toStrictEqual(selections.body.selections);
+    await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [400],
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      connectorSelectionsClient().clear({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [204],
+    );
+    const cleared = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(cleared.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${created.body.id}`,
+      null,
+    );
+
+    await api.enableAgentConnectors(fixture.actor, fixture.agentId, ["openai"]);
+    await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "github" },
+        },
+      }),
+      [400],
+    );
+  });
+
+  it("rejects connector selections while connector accounts are disabled", async () => {
+    const fixture = await seedAgent();
+    const connection = await connectorApi.connectManualGrant(
+      fixture.actor,
+      "openai",
+      "api-token",
+      { apiKey: "disabled-openai-key" },
+      fixture.agentId,
+    );
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+
+    const legacyCreated = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: legacyCreated.body.id },
+      }),
+      [404],
+    );
+    await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: legacyCreated.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [404],
+    );
+    await accept(
+      connectorSelectionsClient().clear({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: legacyCreated.body.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [404],
+    );
+  });
+
+  it("creates exact custom HTTP and MCP connector selections", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const httpConnector = await connectorApi.createCustomConnector(
+      fixture.actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_thread-http-${randomUUID()}`,
+        displayName: "Thread HTTP connector",
+        prefixTemplates: ["https://thread-http.example.test/v1/"],
+      }),
+    );
+    const mcpConnector = await connectorApi.createCustomConnector(
+      fixture.actor,
+      {
+        kind: "mcp",
+        slug: `_thread-mcp-${randomUUID()}`,
+        displayName: "Thread MCP connector",
+        endpoint: "https://thread-mcp.example.test/server",
+        transport: "streamable-http",
+        fields: [
+          {
+            key: "secret",
+            label: "API token",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+    );
+    await connectorApi.setCustomConnectorSecret(
+      fixture.actor,
+      httpConnector.id,
+      "thread-http-secret",
+    );
+    await connectorApi.setCustomConnectorSecret(
+      fixture.actor,
+      mcpConnector.id,
+      "thread-mcp-secret",
+    );
+    await connectorApi.updateAgentCustomConnectors(
+      fixture.actor,
+      fixture.agentId,
+      [httpConnector.id, mcpConnector.id],
+    );
+    const httpState = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        customConnectorId: httpConnector.id,
+      },
+    );
+    const mcpState = await readCustomConnectorCredentialStorageParent(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customConnectorId: mcpConnector.id,
+    });
+    const httpConnectionId = httpState.connector?.id;
+    const mcpConnectionId = mcpState.connector?.id;
+    if (!httpConnectionId || !mcpConnectionId) {
+      throw new Error("Expected custom connector account fixtures");
+    }
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const created = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: httpConnectionId,
+              target: {
+                kind: "custom",
+                customConnectorId: httpConnector.id,
+              },
+            },
+            {
+              connectionId: mcpConnectionId,
+              target: {
+                kind: "custom",
+                customConnectorId: mcpConnector.id,
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const selections = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toHaveLength(2);
+    expect(
+      selections.body.selections.map((selection) => {
+        return selection.connectionId;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([httpConnectionId, mcpConnectionId]),
+    );
+  });
+
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedAgent();
     const token = zeroToken({
@@ -283,6 +689,105 @@ describe("POST /api/zero/chat-threads", () => {
     ).resolves.toMatchObject({
       selectedVideoModel: INHERITED_VIDEO_MODEL,
       selectedImageModel: INHERITED_IMAGE_MODEL,
+    });
+  });
+
+  it("leaves media models unpinned while neither picker is enabled", async () => {
+    const fixture = await seedAgent();
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "No media pickers enabled",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    // A member who cannot reach either picker has no choice worth freezing, so
+    // the thread keeps following the live defaults. A written pin would also
+    // outlive a revert of this behavior.
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: null,
+      selectedImageModel: null,
+    });
+  });
+
+  it("pins each media model whose picker is enabled", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Video picker only",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    // Each switch gates its own pin: the video default freezes, the image one
+    // stays null until its picker ships.
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: MEMBER_VIDEO_MODEL,
+      selectedImageModel: null,
+    });
+  });
+
+  it("pins the member media defaults when the request omits them", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+      [FeatureSwitchKey.ImageModelSelection]: true,
+    });
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Member media defaults",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: MEMBER_VIDEO_MODEL,
+      selectedImageModel: MEMBER_IMAGE_MODEL,
     });
   });
 

@@ -454,7 +454,7 @@ function scopedZeroToken(
   });
 }
 
-describe("GET /api/zero/artifacts/catalog", () => {
+describe("GET /api/artifacts/catalog", () => {
   it("lists an uploaded file as one artifact and hides other callers", async () => {
     const owner = await catalogActor("Artifact catalog owner");
     const outsider = await catalogActor("Artifact catalog outsider");
@@ -1243,7 +1243,7 @@ describe("shared thread routes", () => {
     expect(detail.kind).toBe("shared-thread");
 
     const directCatalogResponse = await sharedThreadTestApp().request(
-      "/api/zero/artifacts/catalog",
+      "/api/artifacts/catalog",
       { headers: authenticateSharedThread(owner.actor) },
     );
     expect(directCatalogResponse.status).toBe(200);
@@ -1254,12 +1254,30 @@ describe("shared thread routes", () => {
       ]),
     );
     const directDetailResponse = await sharedThreadTestApp().request(
-      `/api/zero/artifacts/catalog/${artifactId}`,
+      `/api/artifacts/catalog/${artifactId}`,
       { headers: authenticateSharedThread(owner.actor) },
     );
     expect(directDetailResponse.status).toBe(200);
     const directDetail = asRecord(await directDetailResponse.json());
     expect(directDetail.kind).toBe("shared-thread");
+
+    // #28422 moved this contract to its neutral path. Released CLI and browser
+    // builds still request the branded forms, which `MIGRATED_BRANDED_PATHS`
+    // keeps registered; this is the request that proves they still answer.
+    const brandedStatuses: number[] = [];
+    for (const brandedPath of [
+      "/api/okou/artifacts/catalog",
+      "/api/zero/artifacts/catalog",
+    ]) {
+      const brandedResponse = await sharedThreadTestApp().request(brandedPath, {
+        headers: authenticateSharedThread(owner.actor),
+      });
+      brandedStatuses.push(brandedResponse.status);
+      expect(asRecord(await brandedResponse.json()).artifacts).toStrictEqual(
+        directCatalog.artifacts,
+      );
+    }
+    expect(brandedStatuses).toStrictEqual([200, 200]);
 
     await chat.deleteThread(owner.actor, run.threadId);
     const afterSourceDeletion = await readSharedThreadSnapshot(first.id);

@@ -9,6 +9,7 @@ import {
   networkPolicySchema,
   networkPoliciesSchema,
 } from "@okouai/connectors/firewall-types";
+import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "./connector-catalog";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
@@ -20,13 +21,14 @@ const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
 export const CANONICAL_GUEST_HOME_DIR = "/home/user";
 export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
+export const CANONICAL_CLAUDE_CONFIG_DIR = `${CANONICAL_GUEST_HOME_DIR}/.claude`;
 export const CANONICAL_CODEX_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.codex`;
 export const CANONICAL_CODEX_SESSIONS_DIR = `${CANONICAL_CODEX_HOME_DIR}/sessions`;
 const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
   /^\//,
   "",
 ).replace(/\//g, "-");
-export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
+export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_CLAUDE_CONFIG_DIR}/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
 export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_CODEX_HOME_DIR}/memories`;
 export const PI_AGENT_DIR = `${CANONICAL_GUEST_HOME_DIR}/.pi/agent`;
 export const CANONICAL_PI_SESSION_DIR = `${PI_AGENT_DIR}/sessions/--home-user-workspace--`;
@@ -47,6 +49,8 @@ export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
+export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES =
+  CONNECTOR_CATALOG_MAX_RAW_BYTES;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -246,7 +250,7 @@ function uniqueConnectorRuntimeTargets(
   }
 }
 
-const connectorRuntimeTargetsSchema = z
+export const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetRegistrationSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 

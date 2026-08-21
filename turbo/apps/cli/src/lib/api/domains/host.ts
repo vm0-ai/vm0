@@ -57,7 +57,7 @@ export async function prepareHostedSite(
 ): Promise<HostedSitePrepareResponse> {
   const { baseUrl, token } = await getAuthContext();
   const response = await fetch(
-    new URL("/api/okou/host/deployments/prepare", baseUrl),
+    new URL("/api/host/deployments/prepare", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(authHeaders(token, { json: true })),
@@ -80,7 +80,7 @@ export async function completeHostedSite(
   const { baseUrl, token } = await getAuthContext();
   const response = await fetch(
     new URL(
-      `/api/okou/host/deployments/${encodeURIComponent(deploymentId)}/complete`,
+      `/api/host/deployments/${encodeURIComponent(deploymentId)}/complete`,
       baseUrl,
     ),
     {
@@ -105,7 +105,7 @@ export async function getHostedSiteFiles(
 ): Promise<HostedSiteFilesResponse> {
   const { baseUrl, token } = await getAuthContext();
   const url = new URL(
-    `/api/okou/host/sites/${encodeURIComponent(publicSlug)}/files`,
+    `/api/host/sites/${encodeURIComponent(publicSlug)}/files`,
     baseUrl,
   );
   if (version !== undefined) {
@@ -130,10 +130,7 @@ export async function getHostedSiteDeployments(
 ): Promise<HostedSiteDeploymentsResponse> {
   const { baseUrl, token } = await getAuthContext();
   const response = await fetch(
-    new URL(
-      `/api/okou/host/sites/${encodeURIComponent(site)}/deployments`,
-      baseUrl,
-    ),
+    new URL(`/api/host/sites/${encodeURIComponent(site)}/deployments`, baseUrl),
     {
       method: "GET",
       headers: headersWithCliClientHeaders(authHeaders(token)),

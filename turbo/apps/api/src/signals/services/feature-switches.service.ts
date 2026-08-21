@@ -14,6 +14,7 @@ export const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
   FeatureSwitchKey.ChatErrorRecovery,
+  FeatureSwitchKey.ManagedModelProviderFallback,
   FeatureSwitchKey.PiLoop,
 ];
 
@@ -91,7 +92,7 @@ export function userFeatureSwitchOverridesFromRows(
 }
 
 async function loadUserFeatureSwitchOverrides(
-  db: ReadonlyDb,
+  db: Pick<ReadonlyDb, "select">,
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
@@ -122,7 +123,7 @@ export function userFeatureSwitchOverrides(
 }
 
 export async function loadUserFeatureSwitchContext(
-  db: ReadonlyDb,
+  db: Pick<ReadonlyDb, "select">,
   orgId: string,
   userId: string,
 ): Promise<FeatureSwitchContext> {

@@ -104,6 +104,10 @@ pub mod runners {
     /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
     pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
 
+    /// Maximum builtin firewall catalog response and cache size accepted by runners.
+    /// This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.
+    pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16777216;
+
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
     pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;
@@ -154,6 +158,10 @@ pub mod runners {
 
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
+        /// Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.
+        /// Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.
+        pub const CANONICAL_CLAUDE_CONFIG_DIR: &str = "/home/user/.claude";
+
         /// Canonical directory for VM0-managed Codex state inside runner guests.
         /// Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.
         pub const CANONICAL_CODEX_HOME_DIR: &str = "/home/user/.codex";

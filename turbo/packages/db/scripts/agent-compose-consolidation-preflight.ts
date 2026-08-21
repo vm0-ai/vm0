@@ -114,6 +114,42 @@ const CHECKPOINT_TRANSITION_PARTITIONS = [
 type CheckpointTransitionPartition =
   (typeof CHECKPOINT_TRANSITION_PARTITIONS)[number];
 
+const CHECKPOINT_STORAGE_REFERENCE_REASONS = [
+  "malformedRoot",
+  "malformedMount",
+  "requiredStorageMissing",
+  "optionalStorageMissing",
+  "storageIdentityMismatch",
+  "requiredVersionMissing",
+  "optionalVersionMissing",
+  "crossStorageVersionOwnerMismatch",
+] as const;
+
+export type CheckpointStorageReferenceReason =
+  (typeof CHECKPOINT_STORAGE_REFERENCE_REASONS)[number];
+
+// A hard runtime failure always takes precedence over an accepted optional
+// Storage absence. This order makes each checkpoint's primary reason stable
+// even when different mounts contribute overlapping reasons.
+const CHECKPOINT_STORAGE_REFERENCE_PRIMARY_REASON_PRIORITY = [
+  "malformedRoot",
+  "malformedMount",
+  "requiredStorageMissing",
+  "storageIdentityMismatch",
+  "requiredVersionMissing",
+  "optionalVersionMissing",
+  "crossStorageVersionOwnerMismatch",
+  "optionalStorageMissing",
+] as const satisfies readonly CheckpointStorageReferenceReason[];
+
+const CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS = [
+  "liveCatalogExact",
+  ...CHECKPOINT_STORAGE_REFERENCE_PRIMARY_REASON_PRIORITY,
+] as const;
+
+type CheckpointStorageReferencePrimaryPartition =
+  (typeof CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS)[number];
+
 /** Safe digests of the six #26938-approved compose-only artifact IDs. */
 export const APPROVED_ARTIFACT_MEMBER_DIGESTS = [
   "113ad6becc69859c5d32951a5f1a1f0fa4ba80c0d3db8844aa7d03917265220a",
@@ -505,6 +541,60 @@ const PREFLIGHT_V7_OUTPUT_ALLOWLIST = [
   ),
   ...comparisonOutputPaths("checkpoints.transition.sessionReferenceClosure"),
   ...comparisonOutputPaths("checkpoints.transition.storageReferenceClosure"),
+  ...setOutputPaths(
+    "checkpoints.transition.storageReferences.strictLiveCatalogValid",
+  ),
+  ...setOutputPaths(
+    "checkpoints.transition.storageReferences.strictLiveCatalogInvalid",
+  ),
+  ...setOutputPaths("checkpoints.transition.storageReferences.runtimeValid"),
+  ...setOutputPaths("checkpoints.transition.storageReferences.runtimeInvalid"),
+  ...setOutputPaths(
+    "checkpoints.transition.storageReferences.acceptedOptionalStorageMissing",
+  ),
+  ...setOutputPaths(
+    "checkpoints.transition.storageReferences.overlappingReasons",
+  ),
+  ...CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS.flatMap((partition) => {
+    return setOutputPaths(
+      `checkpoints.transition.storageReferences.primaryPartitions.${partition}`,
+    );
+  }),
+  ...CHECKPOINT_STORAGE_REFERENCE_REASONS.flatMap((reason) => {
+    return setOutputPaths(
+      `checkpoints.transition.storageReferences.reasonMembers.${reason}`,
+    );
+  }),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.primaryCardinalityClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.primaryDisjointnessClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.primaryUnionClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.reasonUnionClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.reasonOverlapClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.runtimeCardinalityClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.runtimeDisjointnessClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.runtimeUnionClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.runtimeSemanticsClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.storageReferences.acceptedOptionalStorageMissingClosure",
+  ),
   ...setOutputPaths("checkpoints.transition.acceptedV6LegacySnapshotEvidence"),
   ...comparisonOutputPaths("checkpoints.transition.legacySnapshotLineage"),
   ...setOutputPaths("checkpoints.transition.legacySnapshotGrowth"),
@@ -563,6 +653,7 @@ export interface CheckpointInventoryRow
   readonly conversationReferenceValid: boolean;
   readonly sessionReferenceValid: boolean;
   readonly storageReferenceValid: boolean;
+  readonly storageReferenceReasons: readonly CheckpointStorageReferenceReason[];
 }
 
 interface CheckpointCoreInventoryRow
@@ -574,8 +665,31 @@ interface CheckpointCoreInventoryRow
   readonly sessionReferenceValid: boolean;
 }
 
-interface InvalidCheckpointStorageReferenceRow extends QueryResultRow {
+interface CheckpointStorageReferenceRow extends QueryResultRow {
   readonly id: string;
+  readonly storageMountsNull: boolean;
+  readonly storageMounts: unknown;
+}
+
+interface StorageReferenceIdentityRow extends QueryResultRow {
+  readonly id: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+interface StorageReferenceVersionRow extends QueryResultRow {
+  readonly id: string;
+  readonly storageId: string;
+}
+
+export interface CheckpointStorageReferenceValidation {
+  readonly checkpointCount: number;
+  readonly invalidCheckpointIds: ReadonlySet<string>;
+  readonly reasonCheckpointIds: Readonly<
+    Record<CheckpointStorageReferenceReason, ReadonlySet<string>>
+  >;
+  readonly expandedMountCount: number;
 }
 
 export type ConversationInventoryRow = QueryResultRow &
@@ -1660,6 +1774,265 @@ function classifyRuns(
   };
 }
 
+function classifyCheckpointStorageReferences(
+  rows: readonly CheckpointInventoryRow[],
+) {
+  const primaryMembers = Object.fromEntries(
+    CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS.map((partition) => {
+      return [partition, [] as CheckpointInventoryRow[]] as const;
+    }),
+  ) as Record<
+    CheckpointStorageReferencePrimaryPartition,
+    CheckpointInventoryRow[]
+  >;
+  const reasonMembers = Object.fromEntries(
+    CHECKPOINT_STORAGE_REFERENCE_REASONS.map((reason) => {
+      return [reason, [] as CheckpointInventoryRow[]] as const;
+    }),
+  ) as Record<CheckpointStorageReferenceReason, CheckpointInventoryRow[]>;
+  const strictLiveCatalogValid: CheckpointInventoryRow[] = [];
+  const strictLiveCatalogInvalid: CheckpointInventoryRow[] = [];
+  const runtimeValid: CheckpointInventoryRow[] = [];
+  const runtimeInvalid: CheckpointInventoryRow[] = [];
+  const acceptedOptionalStorageMissing: CheckpointInventoryRow[] = [];
+  const overlappingReasons: CheckpointInventoryRow[] = [];
+
+  for (const row of rows) {
+    const reasons = new Set(row.storageReferenceReasons);
+    for (const reason of CHECKPOINT_STORAGE_REFERENCE_REASONS) {
+      if (reasons.has(reason)) reasonMembers[reason].push(row);
+    }
+    if (reasons.size > 1) overlappingReasons.push(row);
+    if (reasons.size === 0) {
+      strictLiveCatalogValid.push(row);
+      primaryMembers.liveCatalogExact.push(row);
+    } else {
+      strictLiveCatalogInvalid.push(row);
+      const primaryReason =
+        CHECKPOINT_STORAGE_REFERENCE_PRIMARY_REASON_PRIORITY.find((reason) => {
+          return reasons.has(reason);
+        });
+      if (primaryReason === undefined) {
+        throw new SanitizedPreflightError("probe.inventory");
+      }
+      primaryMembers[primaryReason].push(row);
+    }
+
+    const runtimeReferenceValid = [...reasons].every((reason) => {
+      return reason === "optionalStorageMissing";
+    });
+    if (runtimeReferenceValid) {
+      runtimeValid.push(row);
+      if (reasons.size > 0) acceptedOptionalStorageMissing.push(row);
+    } else {
+      runtimeInvalid.push(row);
+    }
+  }
+
+  const checkpointIds = rows.map((row) => {
+    return row.id;
+  });
+  const primaryAssignments =
+    CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS.flatMap((partition) => {
+      return primaryMembers[partition].map((row) => {
+        return row.id;
+      });
+    });
+  const primaryAssignmentCounts = new Map<string, number>();
+  for (const checkpointId of primaryAssignments) {
+    increment(primaryAssignmentCounts, checkpointId);
+  }
+  const duplicatePrimaryAssignments = [...primaryAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([checkpointId]) => {
+      return checkpointId;
+    });
+  const reasonUnion = [
+    ...new Set(
+      CHECKPOINT_STORAGE_REFERENCE_REASONS.flatMap((reason) => {
+        return reasonMembers[reason].map((row) => {
+          return row.id;
+        });
+      }),
+    ),
+  ];
+  const reasonAssignmentCounts = new Map<string, number>();
+  for (const reason of CHECKPOINT_STORAGE_REFERENCE_REASONS) {
+    for (const row of reasonMembers[reason]) {
+      increment(reasonAssignmentCounts, row.id);
+    }
+  }
+  const overlappingReasonAssignments = [...reasonAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([checkpointId]) => {
+      return checkpointId;
+    });
+  const runtimeAssignments = [...runtimeValid, ...runtimeInvalid].map((row) => {
+    return row.id;
+  });
+  const runtimeAssignmentCounts = new Map<string, number>();
+  for (const checkpointId of runtimeAssignments) {
+    increment(runtimeAssignmentCounts, checkpointId);
+  }
+  const duplicateRuntimeAssignments = [...runtimeAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([checkpointId]) => {
+      return checkpointId;
+    });
+  const actualRuntimeValidIds = rows
+    .filter((row) => {
+      return row.storageReferenceValid;
+    })
+    .map((row) => {
+      return row.id;
+    });
+  const acceptedOptionalExpected = runtimeValid
+    .filter((row) => {
+      return row.storageReferenceReasons.length > 0;
+    })
+    .map((row) => {
+      return row.id;
+    });
+
+  const primaryCardinalityClosure = cardinalityComparison(
+    "checkpoints:transition:storage-references:primary-cardinality-closure:v7",
+    checkpointIds,
+    primaryAssignments,
+  );
+  const primaryDisjointnessClosure = comparison(
+    "checkpoints:transition:storage-references:primary-disjointness-closure:v7",
+    [],
+    duplicatePrimaryAssignments,
+  );
+  const primaryUnionClosure = comparison(
+    "checkpoints:transition:storage-references:primary-union-closure:v7",
+    checkpointIds,
+    primaryAssignments,
+  );
+  const reasonUnionClosure = comparison(
+    "checkpoints:transition:storage-references:reason-union-closure:v7",
+    strictLiveCatalogInvalid.map((row) => {
+      return row.id;
+    }),
+    reasonUnion,
+  );
+  const reasonOverlapClosure = comparison(
+    "checkpoints:transition:storage-references:reason-overlap-closure:v7",
+    overlappingReasons.map((row) => {
+      return row.id;
+    }),
+    overlappingReasonAssignments,
+  );
+  const runtimeCardinalityClosure = cardinalityComparison(
+    "checkpoints:transition:storage-references:runtime-cardinality-closure:v7",
+    checkpointIds,
+    runtimeAssignments,
+  );
+  const runtimeDisjointnessClosure = comparison(
+    "checkpoints:transition:storage-references:runtime-disjointness-closure:v7",
+    [],
+    duplicateRuntimeAssignments,
+  );
+  const runtimeUnionClosure = comparison(
+    "checkpoints:transition:storage-references:runtime-union-closure:v7",
+    checkpointIds,
+    runtimeAssignments,
+  );
+  const runtimeSemanticsClosure = comparison(
+    "checkpoints:transition:storage-references:runtime-semantics-closure:v7",
+    runtimeValid.map((row) => {
+      return row.id;
+    }),
+    actualRuntimeValidIds,
+  );
+  const acceptedOptionalStorageMissingClosure = comparison(
+    "checkpoints:transition:storage-references:accepted-optional-storage-missing-closure:v7",
+    acceptedOptionalExpected,
+    acceptedOptionalStorageMissing.map((row) => {
+      return row.id;
+    }),
+  );
+
+  return {
+    output: {
+      strictLiveCatalogValid: recordSet(
+        "checkpoints:transition:storage-references:strict-live-catalog-valid:v7",
+        strictLiveCatalogValid,
+      ),
+      strictLiveCatalogInvalid: recordSet(
+        "checkpoints:transition:storage-references:strict-live-catalog-invalid:v7",
+        strictLiveCatalogInvalid,
+      ),
+      runtimeValid: recordSet(
+        "checkpoints:transition:storage-references:runtime-valid:v7",
+        runtimeValid,
+      ),
+      runtimeInvalid: recordSet(
+        "checkpoints:transition:storage-references:runtime-invalid:v7",
+        runtimeInvalid,
+      ),
+      acceptedOptionalStorageMissing: recordSet(
+        "checkpoints:transition:storage-references:accepted-optional-storage-missing:v7",
+        acceptedOptionalStorageMissing,
+      ),
+      overlappingReasons: recordSet(
+        "checkpoints:transition:storage-references:overlapping-reasons:v7",
+        overlappingReasons,
+      ),
+      primaryPartitions: Object.fromEntries(
+        CHECKPOINT_STORAGE_REFERENCE_PRIMARY_PARTITIONS.map((partition) => {
+          return [
+            partition,
+            recordSet(
+              `checkpoints:transition:storage-references:primary:${partition}:v7`,
+              primaryMembers[partition],
+            ),
+          ];
+        }),
+      ) as Record<CheckpointStorageReferencePrimaryPartition, SetFingerprint>,
+      reasonMembers: Object.fromEntries(
+        CHECKPOINT_STORAGE_REFERENCE_REASONS.map((reason) => {
+          return [
+            reason,
+            recordSet(
+              `checkpoints:transition:storage-references:reason:${reason}:v7`,
+              reasonMembers[reason],
+            ),
+          ];
+        }),
+      ) as Record<CheckpointStorageReferenceReason, SetFingerprint>,
+      primaryCardinalityClosure,
+      primaryDisjointnessClosure,
+      primaryUnionClosure,
+      reasonUnionClosure,
+      reasonOverlapClosure,
+      runtimeCardinalityClosure,
+      runtimeDisjointnessClosure,
+      runtimeUnionClosure,
+      runtimeSemanticsClosure,
+      acceptedOptionalStorageMissingClosure,
+    },
+    closures: [
+      primaryCardinalityClosure,
+      primaryDisjointnessClosure,
+      primaryUnionClosure,
+      reasonUnionClosure,
+      reasonOverlapClosure,
+      runtimeCardinalityClosure,
+      runtimeDisjointnessClosure,
+      runtimeUnionClosure,
+      runtimeSemanticsClosure,
+      acceptedOptionalStorageMissingClosure,
+    ],
+  };
+}
+
 function classifyCheckpoints(
   rows: readonly CheckpointInventoryRow[],
   versionIds: ReadonlySet<string>,
@@ -1800,6 +2173,7 @@ function classifyCheckpoints(
     checkpointIds,
     referenceMembers("storageReferenceValid"),
   );
+  const storageReferences = classifyCheckpointStorageReferences(rows);
   const referencesValid = (row: CheckpointInventoryRow): boolean => {
     return (
       row.runReferenceValid &&
@@ -1842,6 +2216,7 @@ function classifyCheckpoints(
     partitionCardinalityClosure,
     partitionDisjointnessClosure,
     partitionUnionClosure,
+    ...storageReferences.closures,
   ];
   if (
     closureResults.some((closure) => {
@@ -1925,6 +2300,7 @@ function classifyCheckpoints(
       conversationReferenceClosure,
       sessionReferenceClosure,
       storageReferenceClosure,
+      storageReferences: storageReferences.output,
       acceptedV6LegacySnapshotEvidence: ACCEPTED_V6_CHECKPOINT_LINEAGE_EVIDENCE,
       legacySnapshotLineage,
       legacySnapshotGrowth: recordSet(
@@ -2202,6 +2578,287 @@ WHERE "compose"."head_version_id" IS NOT NULL
 ORDER BY "compose"."id"
 `;
 
+// Stream each source relation exactly once inside the owning read-only snapshot.
+// PostgreSQL never expands mounts or joins catalogs; the exact mount shape and
+// reference closure are validated in one linear in-process pass with only the
+// two bounded reference catalogs retained between rows.
+export const STORAGE_REFERENCE_IDENTITY_QUERY = `
+SELECT
+  "storage"."id"::text AS "id",
+  "storage"."org_id" AS "orgId",
+  "storage"."user_id" AS "userId",
+  "storage"."name"::text AS "name"
+FROM "storages" AS "storage"
+`;
+
+export const STORAGE_REFERENCE_VERSION_QUERY = `
+SELECT
+  "storage_version"."id" AS "id",
+  "storage_version"."storage_id"::text AS "storageId"
+FROM "storage_versions" AS "storage_version"
+`;
+
+export const CHECKPOINT_STORAGE_REFERENCE_QUERY = `
+SELECT
+  "checkpoint"."id"::text AS "id",
+  "checkpoint"."storage_mounts" IS NULL AS "storageMountsNull",
+  "checkpoint"."storage_mounts" AS "storageMounts"
+FROM "checkpoints" AS "checkpoint"
+`;
+
+const REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS = [
+  "orgId",
+  "userId",
+  "name",
+  "storageId",
+  "version",
+  "mountPath",
+] as const;
+const ALLOWED_CHECKPOINT_STORAGE_MOUNT_KEYS: ReadonlySet<string> = new Set([
+  ...REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS,
+  "optional",
+  "writeback",
+  "instructionsTargetFilename",
+  "missingRootPolicy",
+]);
+
+interface ValidCheckpointStorageMount {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly storageId: string;
+  readonly version: string;
+  readonly mountPath: string;
+  readonly optional?: boolean;
+  readonly writeback?: boolean;
+  readonly instructionsTargetFilename?: string;
+  readonly missingRootPolicy?: "fail" | "preserveParentVersion";
+}
+
+function isJsonObject(
+  value: unknown,
+): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidCheckpointStorageMount(
+  value: unknown,
+): value is ValidCheckpointStorageMount {
+  if (!isJsonObject(value)) return false;
+  const keys = Object.keys(value);
+  if (
+    !REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS.every((key) => {
+      return Object.hasOwn(value, key);
+    }) ||
+    !keys.every((key) => {
+      return ALLOWED_CHECKPOINT_STORAGE_MOUNT_KEYS.has(key);
+    })
+  ) {
+    return false;
+  }
+  if (
+    typeof value.orgId !== "string" ||
+    typeof value.userId !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.storageId !== "string" ||
+    typeof value.version !== "string" ||
+    typeof value.mountPath !== "string"
+  ) {
+    return false;
+  }
+  if (
+    (Object.hasOwn(value, "optional") && typeof value.optional !== "boolean") ||
+    (Object.hasOwn(value, "writeback") &&
+      typeof value.writeback !== "boolean") ||
+    (Object.hasOwn(value, "instructionsTargetFilename") &&
+      typeof value.instructionsTargetFilename !== "string")
+  ) {
+    return false;
+  }
+  return (
+    !Object.hasOwn(value, "missingRootPolicy") ||
+    value.missingRootPolicy === "fail" ||
+    value.missingRootPolicy === "preserveParentVersion"
+  );
+}
+
+function storageReferenceLookupKey(mount: ValidCheckpointStorageMount): string {
+  return frameTuple([mount.orgId, mount.userId, mount.name]);
+}
+
+function checkpointStorageMountReferenceReason(
+  mount: ValidCheckpointStorageMount,
+  storageIdsByLookup: ReadonlyMap<string, string>,
+  storageVersionOwners: ReadonlyMap<string, string>,
+): CheckpointStorageReferenceReason | null {
+  const liveStorageId = storageIdsByLookup.get(
+    storageReferenceLookupKey(mount),
+  );
+  if (liveStorageId === undefined) {
+    return mount.optional === true
+      ? "optionalStorageMissing"
+      : "requiredStorageMissing";
+  }
+  // The runtime resolves by (orgId, userId, name), then verifies the persisted
+  // immutable identity. A same-key replacement must fail even when optional.
+  if (liveStorageId !== mount.storageId) return "storageIdentityMismatch";
+
+  const versionStorageId = storageVersionOwners.get(mount.version);
+  if (versionStorageId === undefined) {
+    // Checkpoint mounts carry exact pinned versions. The runtime's
+    // isMissingStorageError does not accept its "version ... not found"
+    // failure, so optional does not weaken this closure.
+    return mount.optional === true
+      ? "optionalVersionMissing"
+      : "requiredVersionMissing";
+  }
+  return versionStorageId === mount.storageId
+    ? null
+    : "crossStorageVersionOwnerMismatch";
+}
+
+function emptyCheckpointStorageReferenceReasonSets(): Record<
+  CheckpointStorageReferenceReason,
+  Set<string>
+> {
+  return Object.fromEntries(
+    CHECKPOINT_STORAGE_REFERENCE_REASONS.map((reason) => {
+      return [reason, new Set<string>()] as const;
+    }),
+  ) as Record<CheckpointStorageReferenceReason, Set<string>>;
+}
+
+const STORAGE_REFERENCE_CURSOR_BATCH_SIZE = 512;
+type StorageReferenceCursorName =
+  | "checkpointStorageIdentities"
+  | "checkpointStorageVersions"
+  | "checkpointStorageMounts";
+
+async function streamCursorRows<Row extends QueryResultRow>(
+  client: Client,
+  signal: AbortSignal | undefined,
+  cursorName: StorageReferenceCursorName,
+  text: string,
+  consume: (row: Row) => void,
+): Promise<number> {
+  assertNotAborted(signal);
+  let declared = false;
+  let queryFailed = false;
+  try {
+    await client.query(`DECLARE "${cursorName}" NO SCROLL CURSOR FOR ${text}`);
+    declared = true;
+    let rowCount = 0;
+    for (;;) {
+      assertNotAborted(signal);
+      let result: { readonly rows: readonly Row[] };
+      try {
+        result = await client.query<Row>(
+          `FETCH FORWARD ${STORAGE_REFERENCE_CURSOR_BATCH_SIZE} FROM "${cursorName}"`,
+        );
+      } catch (error) {
+        queryFailed = true;
+        throw error;
+      }
+      if (result.rows.length === 0) break;
+      rowCount += result.rows.length;
+      for (const row of result.rows) {
+        assertNotAborted(signal);
+        consume(row);
+      }
+    }
+    assertNotAborted(signal);
+    return rowCount;
+  } finally {
+    if (declared && !queryFailed) {
+      await client.query(`CLOSE "${cursorName}"`);
+    }
+  }
+}
+
+export async function validateCheckpointStorageReferences(
+  client: Client,
+  signal: AbortSignal | undefined,
+  expectedCheckpointIds: ReadonlySet<string>,
+): Promise<CheckpointStorageReferenceValidation> {
+  const storageIdsByLookup = new Map<string, string>();
+  const storageVersionOwners = new Map<string, string>();
+  await streamCursorRows<StorageReferenceIdentityRow>(
+    client,
+    signal,
+    "checkpointStorageIdentities",
+    STORAGE_REFERENCE_IDENTITY_QUERY,
+    (row) => {
+      storageIdsByLookup.set(
+        frameTuple([row.orgId, row.userId, row.name]),
+        row.id,
+      );
+    },
+  );
+  await streamCursorRows<StorageReferenceVersionRow>(
+    client,
+    signal,
+    "checkpointStorageVersions",
+    STORAGE_REFERENCE_VERSION_QUERY,
+    (row) => {
+      storageVersionOwners.set(row.id, row.storageId);
+    },
+  );
+
+  const invalidCheckpointIds = new Set<string>();
+  const reasonCheckpointIds = emptyCheckpointStorageReferenceReasonSets();
+  let expandedMountCount = 0;
+  const checkpointCount = await streamCursorRows<CheckpointStorageReferenceRow>(
+    client,
+    signal,
+    "checkpointStorageMounts",
+    CHECKPOINT_STORAGE_REFERENCE_QUERY,
+    (row) => {
+      if (!expectedCheckpointIds.has(row.id)) {
+        throw new SanitizedPreflightError("probe.inventory");
+      }
+      if (row.storageMountsNull) return;
+      if (!Array.isArray(row.storageMounts)) {
+        reasonCheckpointIds.malformedRoot.add(row.id);
+        invalidCheckpointIds.add(row.id);
+        return;
+      }
+      const checkpointReasons = new Set<CheckpointStorageReferenceReason>();
+      for (const mount of row.storageMounts) {
+        expandedMountCount += 1;
+        if (!isValidCheckpointStorageMount(mount)) {
+          checkpointReasons.add("malformedMount");
+          continue;
+        }
+        const reason = checkpointStorageMountReferenceReason(
+          mount,
+          storageIdsByLookup,
+          storageVersionOwners,
+        );
+        if (reason !== null) checkpointReasons.add(reason);
+      }
+      for (const reason of checkpointReasons) {
+        reasonCheckpointIds[reason].add(row.id);
+      }
+      if (
+        [...checkpointReasons].some((reason) => {
+          return reason !== "optionalStorageMissing";
+        })
+      ) {
+        invalidCheckpointIds.add(row.id);
+      }
+    },
+  );
+  if (checkpointCount !== expectedCheckpointIds.size) {
+    throw new SanitizedPreflightError("probe.inventory");
+  }
+  return {
+    checkpointCount,
+    invalidCheckpointIds,
+    reasonCheckpointIds,
+    expandedMountCount,
+  };
+}
+
 async function collectDatabaseInventory(
   client: Client,
   signal: AbortSignal | undefined,
@@ -2411,111 +3068,35 @@ async function collectDatabaseInventory(
      ORDER BY "checkpoint"."id"`,
     [CHECKPOINT_PRE_CUTOVER_BOUNDARY],
   );
-  const invalidCheckpointStorageReferences =
-    await safeQuery<InvalidCheckpointStorageReferenceRow>(
-      client,
-      signal,
-      phaseRecorder,
-      "checkpointStorageReferences",
-      `WITH "invalidCheckpointStorageReferences" AS (
-         SELECT "checkpoint"."id"
-         FROM "checkpoints" AS "checkpoint"
-         WHERE
-           "checkpoint"."storage_mounts" IS NOT NULL AND
-           jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
-         UNION
-         SELECT "checkpoint"."id"
-         FROM "checkpoints" AS "checkpoint"
-         CROSS JOIN LATERAL jsonb_array_elements(
-           CASE
-             WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
-               THEN "checkpoint"."storage_mounts"
-             ELSE '[]'::jsonb
-           END
-         ) AS "entry"("mount")
-         LEFT JOIN "storages" AS "storage"
-           ON "storage"."id"::text = "entry"."mount" ->> 'storageId'
-             AND "storage"."org_id" = "entry"."mount" ->> 'orgId'
-             AND "storage"."user_id" = "entry"."mount" ->> 'userId'
-             AND "storage"."name" = "entry"."mount" ->> 'name'
-         LEFT JOIN "storage_versions" AS "storage_version"
-           ON "storage_version"."id" = "entry"."mount" ->> 'version'
-           AND "storage_version"."storage_id" = "storage"."id"
-         WHERE
-           jsonb_typeof("entry"."mount") <> 'object' OR
-           NOT (
-             "entry"."mount" ?& ARRAY[
-               'orgId',
-               'userId',
-               'name',
-               'storageId',
-               'version',
-               'mountPath'
-             ]
-           ) OR
-           (
-             "entry"."mount" -
-             'orgId' -
-             'userId' -
-             'name' -
-             'storageId' -
-             'version' -
-             'mountPath' -
-             'optional' -
-             'writeback' -
-             'instructionsTargetFilename' -
-             'missingRootPolicy'
-           ) <> '{}'::jsonb OR
-           jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
-           (
-             "entry"."mount" ? 'optional' AND
-             jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
-           ) OR
-           (
-             "entry"."mount" ? 'writeback' AND
-             jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
-           ) OR
-           (
-             "entry"."mount" ? 'instructionsTargetFilename' AND
-             jsonb_typeof(
-               "entry"."mount" -> 'instructionsTargetFilename'
-             ) <> 'string'
-           ) OR
-           (
-             "entry"."mount" ? 'missingRootPolicy' AND
-             (
-               jsonb_typeof(
-                 "entry"."mount" -> 'missingRootPolicy'
-               ) <> 'string' OR
-               "entry"."mount" ->> 'missingRootPolicy' NOT IN (
-                 'fail',
-                 'preserveParentVersion'
-               )
-             )
-           ) OR
-           "storage"."id" IS NULL OR
-           "storage_version"."id" IS NULL
-       )
-       SELECT "invalid"."id"::text AS "id"
-       FROM "invalidCheckpointStorageReferences" AS "invalid"
-       ORDER BY "invalid"."id"`,
-    );
-  const invalidCheckpointStorageReferenceIds = new Set(
-    invalidCheckpointStorageReferences.map((row) => {
-      return row.id;
-    }),
+  const checkpointStorageReferenceValidation = await phaseRecorder.measure(
+    "checkpointStorageReferences",
+    async () => {
+      const expectedCheckpointIds = new Set(
+        checkpointCoreRows.map((row) => {
+          return row.id;
+        }),
+      );
+      return validateCheckpointStorageReferences(
+        client,
+        signal,
+        expectedCheckpointIds,
+      );
+    },
   );
   const checkpoints: CheckpointInventoryRow[] = checkpointCoreRows.map(
     (row) => {
       return {
         ...row,
-        storageReferenceValid: !invalidCheckpointStorageReferenceIds.has(
-          row.id,
+        storageReferenceValid:
+          !checkpointStorageReferenceValidation.invalidCheckpointIds.has(
+            row.id,
+          ),
+        storageReferenceReasons: CHECKPOINT_STORAGE_REFERENCE_REASONS.filter(
+          (reason) => {
+            return checkpointStorageReferenceValidation.reasonCheckpointIds[
+              reason
+            ].has(row.id);
+          },
         ),
       };
     },

@@ -35,7 +35,7 @@ describe("agent usage event webhook", () => {
               kind: "connector",
               provider: "x",
               category: "tweet.read",
-              quantity: 1,
+              quantity: Number.MAX_SAFE_INTEGER,
             },
           ],
         },
@@ -56,5 +56,35 @@ describe("agent usage event webhook", () => {
         eventCount: 1,
       }),
     );
+  });
+
+  it("rejects a usage quantity above the exact integer range", async () => {
+    const runId = randomUUID();
+    const orgId = `org_usage_unsafe_${randomUUID().slice(0, 8)}`;
+    const userId = `user_usage_unsafe_${randomUUID().slice(0, 8)}`;
+    const sandboxToken = generateSandboxToken(userId, runId, orgId);
+
+    await accept(
+      setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+        webhookUsageEventContract,
+      ).send({
+        headers: { authorization: `Bearer ${sandboxToken}` },
+        body: {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              kind: "connector",
+              provider: "x",
+              category: "tweet.read",
+              quantity: Number.MAX_SAFE_INTEGER + 1,
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
   });
 });

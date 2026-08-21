@@ -6,8 +6,8 @@
 mod common;
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::Duration;
+use tokio::process::Command;
 
 const ISOLATED_CHILD_TEST: &str = "process_control_endpoint_is_not_inherited_by_cli_child_isolated";
 const ISOLATED_CHILD_GUARD: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_CHILD";
@@ -15,16 +15,22 @@ const ISOLATED_CHILD_GUARD_VALUE: &str = "1";
 const ISOLATED_CHILD_MOCK_PATH: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_MOCK_PATH";
 const ISOLATED_CHILD_MARKER: &str = "vm0 process-control env isolated child active";
 const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
-const ISOLATED_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
+const PROCESS_CONTROL_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[test]
-fn process_control_endpoint_without_workload_capability_fails_closed() {
-    let output = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+#[tokio::test]
+async fn process_control_endpoint_without_workload_capability_fails_closed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
         .env(process_control_ipc::BOOTSTRAP_ENV, "missing-capability")
         .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL")
-        .output()
-        .expect("spawn guest-agent");
+        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+    let output = common::command_output_with_timeout(
+        &mut command,
+        PROCESS_CONTROL_CHILD_TIMEOUT,
+        "missing-workload-capability guest-agent scenario did not finish",
+    )
+    .await?;
 
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -33,10 +39,12 @@ fn process_control_endpoint_without_workload_capability_fails_closed() {
         "stderr: {stderr}"
     );
     assert!(stderr.contains("is required with"), "stderr: {stderr}");
+    Ok(())
 }
 
-#[test]
-fn workload_capability_is_received_over_scm_rights_and_validated() {
+#[tokio::test]
+async fn workload_capability_is_received_over_scm_rights_and_validated()
+-> Result<(), Box<dyn std::error::Error>> {
     let nonce = *b"workload-fd-test";
     let endpoint = format!(
         "{}-workload-placement",
@@ -55,7 +63,8 @@ fn workload_capability_is_received_over_scm_rights_and_validated() {
         process_control_ipc::send_workload_placement(&stream, invalid_placement.as_fd()).unwrap();
     });
 
-    let output = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
         .env(
             process_control_ipc::BOOTSTRAP_ENV,
             "process-control-present",
@@ -64,10 +73,16 @@ fn workload_capability_is_received_over_scm_rights_and_validated() {
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             endpoint,
         )
-        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL")
-        .output()
-        .expect("spawn guest-agent");
-    broker.join().unwrap();
+        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+    let output_result = common::command_output_with_timeout(
+        &mut command,
+        PROCESS_CONTROL_CHILD_TIMEOUT,
+        "workload-capability-validation guest-agent scenario did not finish",
+    )
+    .await;
+    let broker_result = broker.join();
+    let output = output_result?;
+    broker_result.expect("workload capability broker thread panicked");
 
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -75,13 +90,14 @@ fn workload_capability_is_received_over_scm_rights_and_validated() {
         stderr.contains("workload placement fd is not on cgroup v2"),
         "stderr: {stderr}"
     );
+    Ok(())
 }
 
 #[tokio::test]
 async fn process_control_endpoint_is_not_inherited_by_cli_child()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
-    let mut command = tokio::process::Command::new(std::env::current_exe()?);
+    let mut command = Command::new(std::env::current_exe()?);
     command
         .arg("--exact")
         .arg(ISOLATED_CHILD_TEST)
@@ -97,7 +113,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
 
     let output = common::command_output_with_timeout(
         &mut command,
-        ISOLATED_CHILD_TIMEOUT,
+        PROCESS_CONTROL_CHILD_TIMEOUT,
         "isolated process-control environment test did not finish",
     )
     .await?;
@@ -109,7 +125,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
         output.status
     );
     assert!(
-        stdout.lines().any(|line| line == ISOLATED_CHILD_MARKER),
+        stdout.contains(ISOLATED_CHILD_MARKER),
         "isolated process-control environment test did not activate; stdout:\n{stdout}\nstderr:\n{stderr}"
     );
     Ok(())
@@ -122,7 +138,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     if std::env::var(ISOLATED_CHILD_GUARD).ok().as_deref() != Some(ISOLATED_CHILD_GUARD_VALUE) {
         return Ok(());
     }
-    println!("{ISOLATED_CHILD_MARKER}");
+    println!("isolated child output: {ISOLATED_CHILD_MARKER}; continuing");
 
     let mock = std::env::var_os(ISOLATED_CHILD_MOCK_PATH)
         .map(PathBuf::from)

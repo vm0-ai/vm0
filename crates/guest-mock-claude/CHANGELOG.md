@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.21.71](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.70...guest-mock-claude-v0.21.71) (2026-08-20)
+
+## [0.21.70](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.69...guest-mock-claude-v0.21.70) (2026-08-20)
+
+
+### Bug Fixes
+
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+
 ## [0.21.69](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.68...guest-mock-claude-v0.21.69) (2026-08-20)
 
 ## [0.21.68](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.67...guest-mock-claude-v0.21.68) (2026-08-18)

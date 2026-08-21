@@ -14,6 +14,7 @@ import {
 } from "../shared/resource-listing";
 import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 import { dispatchGenerate } from "./lib/dispatch";
+import { getCliPublicBrand } from "../../lib/api/config";
 
 const WEBSITE_TARGET = "website";
 const WEBSITE_USAGE_COMMAND = "okou generate website";
@@ -164,6 +165,7 @@ ${formatRegistryListing(templates, "website templates")}`;
 
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
+        publicBrand: getCliPublicBrand(),
         prompt,
         slugSource: options.title,
         siteSlug: options.siteSlug,

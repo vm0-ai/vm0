@@ -1,6 +1,6 @@
 """Model-provider WebSocket usage lifecycle state and settlement."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from mitmproxy import http
@@ -12,6 +12,7 @@ from logging_utils import log_proxy_entry
 
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _MODEL_WEBSOCKET_PREWARM_STATE = "_model_websocket_prewarm_state"
+_MAX_IGNORED_RESPONSE_IDS = 100
 
 
 @dataclass(slots=True)
@@ -19,10 +20,9 @@ class _OpenAIResponsesPrewarmState:
     pending_intent: Literal["normal", "prewarm"] | None = None
     active_intent: Literal["normal", "prewarm"] | None = None
     active_response_id: str | None = None
-    ignored_response_id: str | None = None
+    ignored_response_diagnostics: dict[str, bool] = field(default_factory=dict)
     ambiguous: bool = False
     ambiguity_diagnostic_emitted: bool = False
-    ignored_diagnostic_emitted: bool = False
 
 
 _WebSocketCorrelationReason = Literal[
@@ -73,16 +73,6 @@ def _clear_correlation_candidate(state: _OpenAIResponsesPrewarmState) -> None:
     state.active_response_id = None
 
 
-def _retain_ignored_response_id(
-    state: _OpenAIResponsesPrewarmState,
-    response_id: str,
-) -> None:
-    if state.ignored_response_id == response_id:
-        return
-    state.ignored_response_id = response_id
-    state.ignored_diagnostic_emitted = False
-
-
 def _lifecycle_ambiguity_reason(
     lifecycle: usage.OpenAIResponsesServerLifecycle,
 ) -> _WebSocketCorrelationReason:
@@ -99,9 +89,9 @@ def _mark_correlation_ambiguous(
     """Disable prewarm exclusion after ownership can no longer be proven."""
     state.ambiguous = True
     _clear_correlation_candidate(state)
-    # Fail-open is sticky for the rest of the flow. A previously ignored ID
+    # Fail-open is sticky for the rest of the flow. Previously ignored IDs
     # must not remain capable of suppressing usage after that transition.
-    state.ignored_response_id = None
+    state.ignored_response_diagnostics.clear()
     if state.ambiguity_diagnostic_emitted:
         return
     log_proxy_entry(
@@ -117,6 +107,20 @@ def _mark_correlation_ambiguous(
         firewall_name=flow_metadata.firewall_name(flow.metadata),
     )
     state.ambiguity_diagnostic_emitted = True
+
+
+def _retain_ignored_response_id(
+    flow: http.HTTPFlow,
+    state: _OpenAIResponsesPrewarmState,
+    response_id: str,
+) -> bool:
+    if response_id in state.ignored_response_diagnostics:
+        return True
+    if len(state.ignored_response_diagnostics) >= _MAX_IGNORED_RESPONSE_IDS:
+        _mark_correlation_ambiguous(flow, state, "correlation_cap")
+        return False
+    state.ignored_response_diagnostics[response_id] = False
+    return True
 
 
 def observe_client_event(
@@ -162,7 +166,7 @@ def _observe_server_lifecycle(
                 _lifecycle_ambiguity_reason(lifecycle),
             )
             return
-        if lifecycle.response_id == state.ignored_response_id:
+        if lifecycle.response_id in state.ignored_response_diagnostics:
             # A retained ID only proves duplicate terminal ownership. Reusing it
             # at a new created boundary cannot be correlated safely.
             _mark_correlation_ambiguous(flow, state, "invalid_lifecycle")
@@ -183,7 +187,7 @@ def _observe_server_lifecycle(
                     _lifecycle_ambiguity_reason(lifecycle),
                 )
             return
-        if lifecycle.response_id == state.ignored_response_id:
+        if lifecycle.response_id in state.ignored_response_diagnostics:
             # A pending request has no bound ID yet, so this could be either an
             # old duplicate or that request's terminal after a missing created
             # boundary. Only an idle flow or a differently bound active response
@@ -194,7 +198,7 @@ def _observe_server_lifecycle(
         if (
             state.active_intent is None
             and state.pending_intent is not None
-            and lifecycle.response_id != state.ignored_response_id
+            and lifecycle.response_id not in state.ignored_response_diagnostics
         ):
             _mark_correlation_ambiguous(flow, state, "invalid_lifecycle")
             return
@@ -232,7 +236,7 @@ def feed_usage(
         and (
             prewarm_state.pending_intent is not None
             or prewarm_state.active_intent is not None
-            or prewarm_state.ignored_response_id is not None
+            or bool(prewarm_state.ignored_response_diagnostics)
             or event.event_type is None
             or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
         )
@@ -248,7 +252,9 @@ def feed_usage(
     usage_result = inspection.usage
     inspection_error = inspection.usage_error
     if inspection_error is not None:
-        if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
+        if inspection_error == usage.OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR and isinstance(
+            prewarm_state, _OpenAIResponsesPrewarmState
+        ):
             _mark_correlation_ambiguous(flow, prewarm_state, "correlation_cap")
         log_proxy_entry(
             flow_metadata.proxy_log_path(flow.metadata),
@@ -280,13 +286,15 @@ def feed_usage(
                 and prewarm_state.active_intent == "prewarm"
                 and prewarm_state.active_response_id == message_id
             ):
-                _retain_ignored_response_id(prewarm_state, message_id)
-                suppressed = True
-            elif not prewarm_state.ambiguous and prewarm_state.ignored_response_id == message_id:
+                suppressed = _retain_ignored_response_id(flow, prewarm_state, message_id)
+            elif (
+                not prewarm_state.ambiguous
+                and message_id in prewarm_state.ignored_response_diagnostics
+            ):
                 suppressed = True
             if (
                 suppressed
-                and not prewarm_state.ignored_diagnostic_emitted
+                and not prewarm_state.ignored_response_diagnostics[message_id]
                 and usage.has_positive_model_provider_usage(usage_result)
             ):
                 usage.log_ignored_model_provider_usage_source(
@@ -296,7 +304,7 @@ def feed_usage(
                     usage_result,
                     reason="responses_generate_false",
                 )
-                prewarm_state.ignored_diagnostic_emitted = True
+                prewarm_state.ignored_response_diagnostics[message_id] = True
         if (
             not suppressed
             and usage_result is not None
@@ -364,6 +372,6 @@ def feed_usage(
         and active_response_id == lifecycle.response_id
     ):
         if prewarm_state.active_intent == "prewarm":
-            _retain_ignored_response_id(prewarm_state, active_response_id)
+            _retain_ignored_response_id(flow, prewarm_state, active_response_id)
         prewarm_state.active_intent = None
         prewarm_state.active_response_id = None

@@ -339,6 +339,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stale_loaded_drain_override_reloads_with_bounded_and_unbounded_lock_modes() {
+        for lock_timeout in [None, Some(Duration::from_secs(1))] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = HomePaths::with_root(dir.path().join("home"));
+            let unit = RunnerServiceUnit::from_suffix("test").unwrap();
+            let mut ops = fake_ops(false);
+            ops.drain_override_loaded = true;
+
+            assert!(
+                coordinate_systemd_reload_with_ops(
+                    &unit,
+                    &home,
+                    SystemdReloadRequirement::dirty().with_drain_override(false),
+                    lock_timeout,
+                    &mut ops,
+                )
+                .await
+                .unwrap()
+            );
+            assert_eq!(ops.reload_count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
     async fn different_units_coalesce_one_dirty_generation_under_real_flock() {
         const RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(5);
 

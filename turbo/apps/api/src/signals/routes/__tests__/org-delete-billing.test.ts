@@ -454,6 +454,48 @@ test("cancels trials and unpaid subscriptions without inventing a refund", async
   expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
 });
 
+test("cancels fully discounted subscriptions without inventing a refund", async () => {
+  const deletionTimestamp = 1_800_000_000;
+  const periodStart = deletionTimestamp - 500;
+  const periodEnd = deletionTimestamp + 500;
+  const subscriptionId = "sub_delete_fully_discounted";
+  const fixture = createOrgDeleteBillingFixture();
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  mockNow(deletionTimestamp * 1000);
+  mockOrgDeletion(fixture);
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    data: [subscription(subscriptionId, fixture.customerId)],
+    has_more: false,
+  });
+  const invoiceLine = {
+    ...subscriptionLine(1000, periodStart, periodEnd),
+    discount_amounts: [{ amount: 1000 }],
+  };
+  context.mocks.stripe.invoices.list.mockResolvedValue({
+    data: [
+      {
+        ...paidInvoice(
+          "in_delete_fully_discounted",
+          fixture.customerId,
+          subscriptionId,
+          [invoiceLine],
+        ),
+        amount_due: 0,
+      },
+    ],
+    has_more: false,
+  });
+
+  await accept(requestOrgDeletion(), [200]);
+
+  expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
+  expect(context.mocks.stripe.creditNotes.preview).not.toHaveBeenCalled();
+  expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  expect(
+    context.mocks.clerk.organizations.deleteOrganization,
+  ).toHaveBeenCalledOnce();
+});
+
 test("nets upgrade credits and excludes one-time invoice items from proration", async () => {
   const deletionTimestamp = 1_800_000_000;
   const originalStart = deletionTimestamp - 600;

@@ -7,6 +7,7 @@ from typing import Literal, Never
 import pytest
 
 from usage.json_selective import (
+    JSON_INTEGER_VALUE_LIMIT_EXCEEDED,
     JsonExtractionResult,
     JsonSelectiveExtractor,
     Path,
@@ -247,6 +248,53 @@ def test_rejects_oversized_number_with_field_limit():
 
     assert result.complete is False
     assert result.error == "number limit exceeded"
+
+
+@pytest.mark.parametrize("feed_mode", ["whole", "bytewise"])
+def test_selected_integer_value_limit_accepts_boundary_and_rejects_larger_value(
+    feed_mode: _NumberFeedMode,
+):
+    maximum = 9_007_199_254_740_991
+    scalar_fields = {("usage", "input_tokens"): ScalarField("int", max_int_value=maximum)}
+
+    accepted = JsonSelectiveExtractor(scalar_fields=scalar_fields)
+    accepted_payload = f'{{"usage":{{"input_tokens":{maximum}}}}}'.encode()
+    for chunk in _number_chunks(
+        accepted_payload,
+        accepted_payload.index(str(maximum).encode()),
+        len(str(maximum)),
+        (),
+        feed_mode,
+    ):
+        accepted.feed(chunk)
+
+    accepted_result = accepted.finish()
+    assert accepted_result.complete is True
+    assert accepted_result.values == {("usage", "input_tokens"): maximum}
+
+    rejected = JsonSelectiveExtractor(scalar_fields=scalar_fields)
+    rejected_payload = f'{{"usage":{{"input_tokens":{maximum + 1}}}}}'.encode()
+    for chunk in _number_chunks(
+        rejected_payload,
+        rejected_payload.index(str(maximum + 1).encode()),
+        len(str(maximum + 1)),
+        (),
+        feed_mode,
+    ):
+        rejected.feed(chunk)
+
+    rejected_result = rejected.finish()
+    assert rejected_result.complete is False
+    assert rejected_result.error == JSON_INTEGER_VALUE_LIMIT_EXCEEDED
+    _assert_no_observations(rejected_result)
+
+
+def test_integer_value_limit_requires_integer_field():
+    with pytest.raises(
+        ValueError,
+        match="scalar field max_int_value requires an integer field",
+    ):
+        ScalarField("string", max_int_value=10)
 
 
 def test_rejects_oversized_unselected_number():

@@ -1,11 +1,6 @@
 """Shared OpenAI-compatible token normalization."""
 
-from typing import TypeGuard
-
-
-def is_usage_quantity(value: object) -> TypeGuard[int]:
-    """Return whether a provider value is a nonnegative integer token count."""
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+from .quantities import is_usage_quantity
 
 
 def partition_input_tokens(

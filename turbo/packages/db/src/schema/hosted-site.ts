@@ -1,18 +1,21 @@
 import {
   bigint,
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { HostedSiteManifest } from "@okouai/db/jsonb-contracts/hosted-site";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 export type {
   HostedSiteManifest,
   HostedSiteManifestFile,
@@ -37,6 +40,13 @@ export const hostedSites = pgTable(
     // versions that still identify sites by (org_id, slug).
     slug: varchar("slug", { length: 64 }).notNull(),
     requestedSlug: varchar("requested_slug", { length: 64 }),
+    // DB/API rollout fallback (observed maximum: ~102 minutes): existing rows
+    // and writes from the previous API release are VM0. Remove this default
+    // after that release is outside the rollback window; tracked by #27750.
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     // Deliberately denormalized: deleting the originating thread must not
     // erase the site's ownership boundary.
     chatThreadId: uuid("chat_thread_id"),
@@ -66,6 +76,10 @@ export const hostedSites = pgTable(
           sql`${table.chatThreadId} IS NULL AND ${table.requestedSlug} IS NOT NULL`,
         ),
       uniqueIndex("idx_hosted_sites_public_slug").on(table.publicSlug),
+      unique("idx_hosted_sites_id_public_brand").on(
+        table.id,
+        table.publicBrand,
+      ),
     ];
   },
 );
@@ -85,6 +99,13 @@ export const hostedDeployments = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     runId: text("run_id"),
+    // DB/API rollout fallback (observed maximum: ~102 minutes): the previous
+    // API omits this field and writes VM0. The composite foreign key below
+    // fails closed for Okou sites. Remove after that API cannot return; #27750.
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     status: varchar("status", { length: 32 })
       .$type<HostedDeploymentStatus>()
       .notNull()
@@ -113,6 +134,11 @@ export const hostedDeployments = pgTable(
         .where(sql`${table.deploymentVersion} IS NOT NULL`),
       index("idx_hosted_deployments_org").on(table.orgId),
       index("idx_hosted_deployments_status").on(table.status),
+      foreignKey({
+        name: "fk_hosted_deployments_site_public_brand",
+        columns: [table.siteId, table.publicBrand],
+        foreignColumns: [hostedSites.id, hostedSites.publicBrand],
+      }).onDelete("cascade"),
     ];
   },
 );

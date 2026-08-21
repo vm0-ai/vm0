@@ -1,3 +1,5 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+
 export interface HostedSiteManifestFile {
   readonly path: string;
   readonly size: number;
@@ -8,6 +10,7 @@ export interface HostedSiteManifestFile {
 
 export interface HostedSiteManifest {
   readonly version: 1;
+  readonly publicBrand?: PublicBrand;
   readonly deploymentId: string;
   readonly siteId: string;
   readonly site?: string;

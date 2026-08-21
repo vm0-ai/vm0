@@ -16,6 +16,8 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_SESSIONS_DIR,
   CANONICAL_GUEST_HOME_DIR,
@@ -281,6 +283,15 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
+    value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
+    rustDoc: [
+      "Maximum builtin firewall catalog response and cache size accepted by runners.",
+      "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
     rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
     value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
     rustDoc: [
@@ -395,6 +406,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Canonical home directory path expected for the sandbox user inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_CLAUDE_CONFIG_DIR",
+    value: rustString(CANONICAL_CLAUDE_CONFIG_DIR),
+    rustDoc: [
+      "Canonical directory for VM0-managed Claude Code configuration and session state inside runner guests.",
+      "Guest launch, session capture, runner restore, and API-managed mounts use this shared path independently of the user HOME environment.",
     ],
   },
   {

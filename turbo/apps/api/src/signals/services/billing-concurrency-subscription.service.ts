@@ -66,10 +66,6 @@ interface ConfirmedConcurrencySubscriptionChangeArgs extends ConcurrencySubscrip
   readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
-interface ReduceConcurrencySubscriptionArgs extends ConcurrencySubscriptionChangeArgs {
-  readonly successUrl: string;
-}
-
 interface StripeConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionArgs {
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
@@ -133,18 +129,6 @@ type StripeConcurrencySubscriptionChangeResult =
   | {
       readonly ok: false;
       readonly reason: "invalid_quantity" | "pending_update" | "plan_ending";
-    };
-
-type ReduceConcurrencySubscriptionResult =
-  | { readonly ok: true; readonly url: string }
-  | {
-      readonly ok: false;
-      readonly reason:
-        | "not_found"
-        | "canceling"
-        | "not_reduction"
-        | "pending_update"
-        | "plan_ending";
     };
 
 async function findActiveConcurrencySubscription(
@@ -433,6 +417,46 @@ function scheduleEndBehavior(
   return schedule.end_behavior;
 }
 
+function scheduleFinalEnd(schedule: StripeSubscriptionSchedule): number {
+  const finalEnd = schedule.phases.reduce<number | null>((latest, phase) => {
+    return latest === null || phase.end_date > latest ? phase.end_date : latest;
+  }, schedule.current_phase?.end_date ?? null);
+  if (finalEnd === null) {
+    throw new Error("Stripe subscription schedule has no end date");
+  }
+  return finalEnd;
+}
+
+async function planConcurrencyEnd(
+  db: ReadonlyDb,
+  orgId: string,
+  schedule: StripeSubscriptionSchedule,
+): Promise<number | null> {
+  if (schedule.end_behavior === "cancel") {
+    return scheduleFinalEnd(schedule);
+  }
+
+  const [org] = await db
+    .select({
+      pendingScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+      pendingTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+      pendingChangeAt: orgMetadata.pendingSubscriptionChangeAt,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (
+    org?.pendingScheduleId !== schedule.id ||
+    (org.pendingTargetTier !== "pro" &&
+      org.pendingTargetTier !== "limited-free-1" &&
+      org.pendingTargetTier !== "pro-suspend") ||
+    org.pendingChangeAt === null
+  ) {
+    return null;
+  }
+  return Math.floor(org.pendingChangeAt.getTime() / 1000);
+}
+
 function currentAndFutureSchedulePhases(
   schedule: StripeSubscriptionSchedule,
 ): readonly StripeSchedulePhase[] {
@@ -565,6 +589,70 @@ function concurrencyScheduleMergeParams(args: {
         ),
         metadataOverlay,
       });
+    }),
+  };
+}
+
+function planEndingConcurrencyScheduleMergeParams(args: {
+  readonly subscription: StripeSubscription;
+  readonly schedule: StripeSubscriptionSchedule;
+  readonly priceId: string;
+  readonly targetQuantity: number;
+  readonly endsAt: number;
+  readonly prorationBehavior: "always_invoice" | "none";
+}): NonNullable<StripeInvoiceCreatePreviewParams["schedule_details"]> {
+  const phases = currentAndFutureSchedulePhases(args.schedule);
+  const firstPhase = phases[0];
+  const finalPhase = phases[phases.length - 1];
+  if (
+    !firstPhase ||
+    !finalPhase ||
+    args.endsAt <= firstPhase.start_date ||
+    args.endsAt > finalPhase.end_date
+  ) {
+    throw new Error("Stripe subscription schedule cannot be safely updated");
+  }
+  const metadataOverlay = canceledUsageAllowanceScheduleMetadata(
+    args.subscription,
+  );
+  return {
+    end_behavior: scheduleEndBehavior(args.schedule),
+    proration_behavior: args.prorationBehavior,
+    phases: phases.flatMap((phase) => {
+      const activeItems = concurrencySchedulePhaseItems(
+        phase,
+        args.priceId,
+        args.targetQuantity,
+      );
+      if (phase.end_date <= args.endsAt) {
+        return [
+          schedulePhaseParams(phase, {
+            items: activeItems,
+            metadataOverlay,
+          }),
+        ];
+      }
+      const endedItems = concurrencySchedulePhaseItems(phase, args.priceId, 0);
+      if (phase.start_date >= args.endsAt) {
+        return [
+          schedulePhaseParams(phase, {
+            items: endedItems,
+            metadataOverlay,
+          }),
+        ];
+      }
+      return [
+        schedulePhaseParams(phase, {
+          items: activeItems,
+          metadataOverlay,
+          period: { start: phase.start_date, end: args.endsAt },
+        }),
+        schedulePhaseParams(phase, {
+          items: endedItems,
+          metadataOverlay,
+          period: { start: args.endsAt, end: phase.end_date },
+        }),
+      ];
     }),
   };
 }
@@ -892,7 +980,7 @@ async function appliedScheduledConcurrencyChangeResponse(
   };
 }
 
-async function applyConcurrencyToSharedSchedule(
+async function applyConcurrencyToAttachedSchedule(
   stripe: StripeClient,
   args: {
     readonly subscription: StripeSubscription;
@@ -901,6 +989,7 @@ async function applyConcurrencyToSharedSchedule(
     readonly priceId: string;
     readonly targetQuantity: number;
     readonly prorationBehavior: "always_invoice" | "none";
+    readonly planEndsAt?: number;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -910,13 +999,22 @@ async function applyConcurrencyToSharedSchedule(
   const previousInvoiceId = latestInvoiceId(args.subscription);
   await stripe.subscriptionSchedules.update(
     args.scheduleId,
-    concurrencyScheduleMergeParams({
-      subscription: args.subscription,
-      schedule: args.schedule,
-      priceId: args.priceId,
-      targetQuantity: args.targetQuantity,
-      prorationBehavior: args.prorationBehavior,
-    }),
+    args.planEndsAt === undefined
+      ? concurrencyScheduleMergeParams({
+          subscription: args.subscription,
+          schedule: args.schedule,
+          priceId: args.priceId,
+          targetQuantity: args.targetQuantity,
+          prorationBehavior: args.prorationBehavior,
+        })
+      : planEndingConcurrencyScheduleMergeParams({
+          subscription: args.subscription,
+          schedule: args.schedule,
+          priceId: args.priceId,
+          targetQuantity: args.targetQuantity,
+          endsAt: args.planEndsAt,
+          prorationBehavior: args.prorationBehavior,
+        }),
     {
       idempotencyKey: `concurrency-change:${args.subscription.id}:${randomUUID()}:schedule-update`,
     },
@@ -1032,8 +1130,11 @@ export const addStripeConcurrencySubscriptionItem$ = command(
     if (!schedulePreparation.ok) {
       return { ok: false, reason: "pending_update" };
     }
-    if (schedulePreparation.kind === "shared") {
-      const applied = await applyConcurrencyToSharedSchedule(
+    if (
+      schedulePreparation.kind === "plan" ||
+      schedulePreparation.kind === "shared"
+    ) {
+      const applied = await applyConcurrencyToAttachedSchedule(
         stripe,
         {
           subscription,
@@ -1042,6 +1143,9 @@ export const addStripeConcurrencySubscriptionItem$ = command(
           priceId: currentItem?.price.id ?? args.priceId,
           targetQuantity: args.quantity,
           prorationBehavior: "always_invoice",
+          ...(schedulePreparation.kind === "plan"
+            ? { planEndsAt: schedulePreparation.endsAt }
+            : {}),
         },
         signal,
       );
@@ -1146,6 +1250,7 @@ async function listCompleteInvoiceLines(
 function recurringConcurrencyAmount(
   invoice: StripeInvoice,
   lines: readonly StripeInvoiceLine[],
+  allowNoConcurrencyLines = false,
 ): number {
   const concurrencyLines = lines.filter((line) => {
     const priceId = invoiceLinePriceId(line);
@@ -1156,7 +1261,7 @@ function recurringConcurrencyAmount(
   }, 0);
   if (
     invoice.currency.length !== 3 ||
-    concurrencyLines.length === 0 ||
+    (!allowNoConcurrencyLines && concurrencyLines.length === 0) ||
     !Number.isSafeInteger(amount) ||
     amount < 0
   ) {
@@ -1165,6 +1270,18 @@ function recurringConcurrencyAmount(
     );
   }
   return amount;
+}
+
+function preparedScheduleEndsConcurrency(
+  schedule: AvailableConcurrencySchedule,
+): boolean {
+  if (schedule.kind === "plan") {
+    return true;
+  }
+  return (
+    (schedule.kind === "concurrency" || schedule.kind === "shared") &&
+    schedule.schedule.end_behavior === "cancel"
+  );
 }
 
 function immediateProrationAmount(
@@ -1273,9 +1390,43 @@ function deferredConcurrencyPreviewResponse(
 interface ScheduledConcurrencyPreview {
   readonly id: string;
   readonly item: StripeSubscriptionItem | null;
-  readonly kind: "concurrency" | "shared";
+  readonly kind: "concurrency" | "plan" | "shared";
   readonly priceId: string;
   readonly schedule: StripeSubscriptionSchedule;
+  readonly planEndsAt?: number;
+}
+
+function scheduledConcurrencyPreview(
+  schedule: AvailableConcurrencySchedule,
+  item: StripeSubscriptionItem | undefined,
+  priceId: string,
+): ScheduledConcurrencyPreview | null {
+  switch (schedule.kind) {
+    case "concurrency":
+    case "shared": {
+      return {
+        id: schedule.id,
+        item: item ?? null,
+        kind: schedule.kind,
+        priceId,
+        schedule: schedule.schedule,
+      };
+    }
+    case "plan": {
+      return {
+        id: schedule.id,
+        item: item ?? null,
+        kind: schedule.kind,
+        priceId,
+        schedule: schedule.schedule,
+        planEndsAt: schedule.endsAt,
+      };
+    }
+    case "neutral":
+    case "none": {
+      return null;
+    }
+  }
 }
 
 function concurrencyRecurringPreviewParams(
@@ -1321,6 +1472,23 @@ function concurrencyRecurringPreviewParams(
       }),
     };
   }
+  if (scheduledPreview.kind === "plan") {
+    if (scheduledPreview.planEndsAt === undefined) {
+      throw new Error("Plan schedule has no concurrency end date");
+    }
+    return {
+      schedule: scheduledPreview.id,
+      preview_mode: "next",
+      schedule_details: planEndingConcurrencyScheduleMergeParams({
+        subscription,
+        schedule: scheduledPreview.schedule,
+        priceId: scheduledPreview.priceId,
+        targetQuantity,
+        endsAt: scheduledPreview.planEndsAt,
+        prorationBehavior: "none",
+      }),
+    };
+  }
   if (!scheduledPreview.item) {
     throw new Error("Concurrency schedule has no active concurrency item");
   }
@@ -1354,6 +1522,13 @@ type PreparedConcurrencySchedule =
       readonly id: string;
       readonly schedule: StripeSubscriptionSchedule;
     }
+  | {
+      readonly ok: true;
+      readonly kind: "plan";
+      readonly id: string;
+      readonly schedule: StripeSubscriptionSchedule;
+      readonly endsAt: number;
+    }
   | { readonly ok: false };
 
 type AvailableConcurrencySchedule = Exclude<
@@ -1367,21 +1542,15 @@ function concurrencySubscriptionCancellationEnd(
   schedule: AvailableConcurrencySchedule,
 ): number | null {
   if (
-    (schedule.kind === "concurrency" || schedule.kind === "shared") &&
+    (schedule.kind === "concurrency" ||
+      schedule.kind === "plan" ||
+      schedule.kind === "shared") &&
     schedule.schedule.end_behavior === "cancel"
   ) {
-    const finalEnd = schedule.schedule.phases.reduce<number | null>(
-      (latest, phase) => {
-        return latest === null || phase.end_date > latest
-          ? phase.end_date
-          : latest;
-      },
-      schedule.schedule.current_phase?.end_date ?? null,
-    );
-    if (finalEnd === null) {
-      throw new Error("Canceling Stripe schedule has no end date");
-    }
-    return finalEnd;
+    return scheduleFinalEnd(schedule.schedule);
+  }
+  if (schedule.kind === "plan") {
+    return schedule.endsAt;
   }
   if (subscription.cancel_at !== null && subscription.cancel_at !== undefined) {
     return subscription.cancel_at;
@@ -1396,6 +1565,9 @@ function planEndsBeforeDeferredConcurrencyChange(
   item: StripeSubscriptionItem,
   schedule: AvailableConcurrencySchedule,
 ): boolean {
+  if (schedule.kind === "plan") {
+    return true;
+  }
   const cancellationEnd = concurrencySubscriptionCancellationEnd(
     subscription,
     item,
@@ -1431,7 +1603,11 @@ async function prepareConcurrencySchedule(
   );
   signal.throwIfAborted();
   if (owner === "plan") {
-    return { ok: false };
+    const endsAt = await planConcurrencyEnd(db, args.orgId, schedule);
+    signal.throwIfAborted();
+    return endsAt === null
+      ? { ok: false }
+      : { ok: true, kind: "plan", id: scheduleId, schedule, endsAt };
   }
   if (owner === "shared") {
     return { ok: true, kind: "shared", id: scheduleId, schedule };
@@ -1486,6 +1662,10 @@ async function previewConcurrencyIncrease(
   },
   signal: AbortSignal,
 ): Promise<PreviewConcurrencySubscriptionChangeResult> {
+  const subscriptionWillEnd =
+    args.subscription.cancel_at_period_end ||
+    (args.subscription.cancel_at !== null &&
+      args.subscription.cancel_at !== undefined);
   const [immediatePreview, recurringPreviewResult] = await Promise.all([
     stripe.invoices.createPreview({
       subscription: args.subscription.id,
@@ -1502,24 +1682,35 @@ async function previewConcurrencyIncrease(
         proration_date: args.prorationTimestamp,
       },
     }),
-    settle(stripe.invoices.createPreview(args.recurringPreviewParams), signal),
+    subscriptionWillEnd
+      ? null
+      : settle(
+          stripe.invoices.createPreview(args.recurringPreviewParams),
+          signal,
+        ),
   ]);
   signal.throwIfAborted();
-  if (!recurringPreviewResult.ok) {
+  let recurringPreview: StripeInvoice | null;
+  if (recurringPreviewResult === null) {
+    recurringPreview = null;
+  } else if (!recurringPreviewResult.ok) {
     const cancellationSchedule =
       (args.schedulePreparation.kind === "concurrency" ||
+        args.schedulePreparation.kind === "plan" ||
         args.schedulePreparation.kind === "shared") &&
       args.schedulePreparation.schedule.end_behavior === "cancel";
     if (
       stripeErrorInfo(recurringPreviewResult.error)?.code !==
         "invoice_upcoming_none" ||
-      (!args.subscription.cancel_at_period_end &&
-        (args.subscription.cancel_at === null ||
-          args.subscription.cancel_at === undefined) &&
-        !cancellationSchedule)
+      !cancellationSchedule
     ) {
       throw recurringPreviewResult.error;
     }
+    recurringPreview = null;
+  } else {
+    recurringPreview = recurringPreviewResult.value;
+  }
+  if (!recurringPreview) {
     const immediateLines = await listCompleteInvoiceLines(
       stripe,
       immediatePreview,
@@ -1540,7 +1731,6 @@ async function previewConcurrencyIncrease(
     };
   }
 
-  const recurringPreview = recurringPreviewResult.value;
   const [immediateLines, recurringLines] = await concurrencyPreviewLines(
     stripe,
     immediatePreview,
@@ -1559,6 +1749,7 @@ async function previewConcurrencyIncrease(
       nextRecurringAmountCents: recurringConcurrencyAmount(
         recurringPreview,
         recurringLines,
+        preparedScheduleEndsConcurrency(args.schedulePreparation),
       ),
       currency: recurringPreview.currency,
     },
@@ -1616,17 +1807,11 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         ? { id: item.id, quantity: targetQuantity }
         : { price: args.priceId, quantity: targetQuantity },
     ];
-    const scheduledPreview =
-      schedulePreparation.kind === "concurrency" ||
-      schedulePreparation.kind === "shared"
-        ? {
-            id: schedulePreparation.id,
-            item: item ?? null,
-            kind: schedulePreparation.kind,
-            priceId: concurrencyPriceId,
-            schedule: schedulePreparation.schedule,
-          }
-        : null;
+    const scheduledPreview = scheduledConcurrencyPreview(
+      schedulePreparation,
+      item,
+      concurrencyPriceId,
+    );
     if (
       item &&
       targetQuantity < currentQuantity &&
@@ -1779,7 +1964,46 @@ async function appliedPendingConcurrencyChange(
     : { ok: false, reason: "pending_update" };
 }
 
-export const applyStripeConcurrencySubscriptionChange$ = command(
+async function applyConcurrencyToPreparedSchedule(
+  stripe: StripeClient,
+  args: {
+    readonly subscription: StripeSubscription;
+    readonly item: NonNullable<ReturnType<typeof concurrencySubscriptionItem>>;
+    readonly targetQuantity: number;
+    readonly schedule: AvailableConcurrencySchedule;
+  },
+  signal: AbortSignal,
+): Promise<StripeConcurrencySubscriptionChangeResult | null> {
+  if (
+    (args.schedule.kind !== "plan" && args.schedule.kind !== "shared") ||
+    args.targetQuantity < args.item.quantity
+  ) {
+    return null;
+  }
+  const applied = await applyConcurrencyToAttachedSchedule(
+    stripe,
+    {
+      subscription: args.subscription,
+      scheduleId: args.schedule.id,
+      schedule: args.schedule.schedule,
+      priceId: args.item.priceId,
+      targetQuantity: args.targetQuantity,
+      prorationBehavior:
+        args.targetQuantity > args.item.quantity ? "always_invoice" : "none",
+      ...(args.schedule.kind === "plan"
+        ? { planEndsAt: args.schedule.endsAt }
+        : {}),
+    },
+    signal,
+  );
+  return {
+    ok: true,
+    response: applied.response,
+    subscription: applied.subscription,
+  };
+}
+
+const applyStripeConcurrencySubscriptionChange$ = command(
   async (
     { get },
     args: StripeConcurrencySubscriptionChangeArgs,
@@ -1847,28 +2071,18 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       return { ok: false, reason: "plan_ending" };
     }
 
-    if (
-      schedulePreparation.kind === "shared" &&
-      targetQuantity >= item.quantity
-    ) {
-      const applied = await applyConcurrencyToSharedSchedule(
-        stripe,
-        {
-          subscription,
-          scheduleId: schedulePreparation.id,
-          schedule: schedulePreparation.schedule,
-          priceId: item.priceId,
-          targetQuantity,
-          prorationBehavior:
-            targetQuantity > item.quantity ? "always_invoice" : "none",
-        },
-        signal,
-      );
-      return {
-        ok: true,
-        response: applied.response,
-        subscription: applied.subscription,
-      };
+    const scheduledChange = await applyConcurrencyToPreparedSchedule(
+      stripe,
+      {
+        subscription,
+        item,
+        targetQuantity,
+        schedule: schedulePreparation,
+      },
+      signal,
+    );
+    if (scheduledChange) {
+      return scheduledChange;
     }
 
     if (targetQuantity < item.quantity) {
@@ -2095,78 +2309,11 @@ export const cancelConcurrencySubscription$ = command(
   },
 );
 
-// Old web/app clients can call this legacy reduction endpoint for the ~2-day
-// client version-skew window. Remove the route, contract, and client fallback
-// with #26152 after #26116 has been deployed beyond that window.
-export const reduceConcurrencySubscription$ = command(
-  async (
-    { get, set },
-    args: ReduceConcurrencySubscriptionArgs,
-    signal: AbortSignal,
-  ): Promise<ReduceConcurrencySubscriptionResult> => {
-    const subscription = await findActiveConcurrencySubscription(
-      get(db$),
-      args,
-    );
-    signal.throwIfAborted();
-    if (!subscription) {
-      return { ok: false, reason: "not_found" };
-    }
-    if (subscription.cancelAtPeriodEnd) {
-      return { ok: false, reason: "canceling" };
-    }
-    if (args.quantity >= subscription.quantity) {
-      return { ok: false, reason: "not_reduction" };
-    }
-
-    const result = await set(
-      applyStripeConcurrencySubscriptionChange$,
-      {
-        orgId: args.orgId,
-        subscriptionId: args.subscriptionId,
-        quantity: args.quantity,
-        mode: "reduce",
-        hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
-      },
-      signal,
-    );
-    if (!result.ok) {
-      return {
-        ok: false,
-        reason:
-          result.reason === "pending_update"
-            ? "pending_update"
-            : result.reason === "plan_ending"
-              ? "plan_ending"
-              : "not_reduction",
-      };
-    }
-    if (result.response.status === "checkout_required") {
-      throw new Error(
-        "Stripe concurrency reduction unexpectedly required Checkout",
-      );
-    }
-    await writeScheduledConcurrencyChange(set(writeDb$), {
-      orgId: args.orgId,
-      subscriptionId: args.subscriptionId,
-      quantity: args.quantity,
-      effectiveAt: result.response.effectiveAt ?? null,
-    });
-    signal.throwIfAborted();
-    return {
-      ok: true,
-      url:
-        result.response.status === "pending_payment"
-          ? result.response.hostedInvoiceUrl
-          : args.successUrl,
-    };
-  },
-);
-
 type RestoreConcurrencyStripeResult =
   | "restored"
   | "not_found"
-  | "pending_update";
+  | "pending_update"
+  | "plan_ending";
 
 async function restoreScheduledConcurrencyChange(
   stripe: StripeClient,
@@ -2215,8 +2362,29 @@ async function restoreScheduledConcurrencyChange(
     schedule,
   );
   signal.throwIfAborted();
-  if (owner === "plan" || owner === "shared") {
-    await applyConcurrencyToSharedSchedule(
+  if (owner === "plan") {
+    const planEndsAt = await planConcurrencyEnd(db, args.orgId, schedule);
+    signal.throwIfAborted();
+    if (planEndsAt === null) {
+      return "plan_ending";
+    }
+    await applyConcurrencyToAttachedSchedule(
+      stripe,
+      {
+        subscription: stripeSubscription,
+        scheduleId,
+        schedule,
+        priceId: item.priceId,
+        targetQuantity: args.quantity,
+        prorationBehavior: "none",
+        planEndsAt,
+      },
+      signal,
+    );
+    return "restored";
+  }
+  if (owner === "shared") {
+    await applyConcurrencyToAttachedSchedule(
       stripe,
       {
         subscription: stripeSubscription,
