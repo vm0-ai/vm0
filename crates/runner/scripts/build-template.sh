@@ -113,8 +113,8 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.7"
-CLAUDE_CODE_VERSION="2.1.237"
-CODEX_CLI_VERSION="0.148.0"
+CLAUDE_CODE_VERSION="2.1.238"
+CODEX_CLI_VERSION="0.149.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
 AGENT_BROWSER_VERSION="0.33.0-vm0.1"
