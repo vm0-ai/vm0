@@ -120,7 +120,10 @@ describe("buildGenerationTemplatePrompt", () => {
           templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
         },
       },
-      { presentationTemplatesEnabled: true },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [USER_TEMPLATE_ROW_ID],
+      },
     );
 
     expect(result.status).toBe("resolved");
@@ -161,13 +164,72 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.status).toBe("invalid");
   });
 
+  it("emits no guidance for a private template the run does not mount", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+        },
+      },
+      // A prompt steered into an already-running run cannot add a volume to
+      // it, so naming the package would send the agent to a path that is not
+      // there.
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
+    );
+
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
+  it("emits guidance only for the mounted one when several are selected", () => {
+    const mounted = USER_TEMPLATE_ROW_ID;
+    const unmounted = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+
+    const result = buildGenerationTemplatesPrompt(
+      [
+        {
+          type: "presentation",
+          selection: { templateId: formatUserPresentationTemplateId(mounted) },
+        },
+        {
+          type: "presentation",
+          selection: {
+            templateId: formatUserPresentationTemplateId(unmounted),
+          },
+        },
+      ],
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [mounted],
+      },
+    );
+
+    // One unmountable selection invalidates the whole message rather than
+    // silently dropping a template the user attached on purpose.
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
   it("rejects a private template id that is not a row id", () => {
     const result = buildGenerationTemplatePrompt(
       {
         type: "presentation",
         selection: { templateId: "user-template:not-a-uuid" },
       },
-      { presentationTemplatesEnabled: true },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
     );
 
     // Distinct from an unknown built-in: the caller named the private

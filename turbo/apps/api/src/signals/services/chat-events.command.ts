@@ -136,14 +136,14 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  parseUserPresentationTemplateId,
-  userPresentationTemplateDirectory,
-} from "@okouai/core/presentation-template-selection";
-import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
-import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
-import { loadOwnedPresentationTemplate } from "./presentation-template-data.service";
+import {
+  additionalVolumesForRun,
+  authorizedUserPresentationTemplateIds,
+  selectedUserPresentationTemplateIds,
+  userPresentationTemplateVolumes,
+  type PresentationTemplateVolume,
+} from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
@@ -250,10 +250,7 @@ interface PreparedNormalSend {
    * Guidance packages to mount for this run, one per private template the
    * message selected and this caller was authorised for.
    */
-  readonly presentationTemplateVolumes: {
-    name: string;
-    mountPath: string;
-  }[];
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -1076,6 +1073,7 @@ async function resolveNormalSendFeatureSwitches(
 function resolveSelectedTemplateContext(
   runtimeBody: RuntimeNormalSendBody,
   featureSwitches: NormalSendFeatureSwitches,
+  mountedUserPresentationTemplateIds: readonly string[],
 ): {
   readonly generationTemplatePrompt: string;
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
@@ -1088,6 +1086,7 @@ function resolveSelectedTemplateContext(
         featureSwitches.latestWebsiteTemplatesEnabled,
       presentationTemplatesEnabled:
         featureSwitches.presentationTemplatesEnabled,
+      mountedUserPresentationTemplateIds,
     }),
     // Gated with the composer control that produces it, so a client that keeps
     // sending the field after the switch is turned off stops being honoured.
@@ -1095,23 +1094,6 @@ function resolveSelectedTemplateContext(
       ? (runtimeBody.runOptions?.video ?? null)
       : null,
   };
-}
-
-function presentationTemplateVolumes(
-  templateIds: readonly string[],
-): { name: string; mountPath: string }[] {
-  return templateIds.map((templateId) => {
-    return {
-      name: getPresentationTemplateStorageName(templateId),
-      mountPath: `${CANONICAL_WORKING_DIR}/${userPresentationTemplateDirectory(templateId)}`,
-    };
-  });
-}
-
-function additionalVolumesForRun(
-  volumes: readonly { name: string; mountPath: string }[],
-): { additionalVolumes?: { name: string; mountPath: string }[] } {
-  return volumes.length === 0 ? {} : { additionalVolumes: [...volumes] };
 }
 
 /**
@@ -1133,41 +1115,31 @@ async function validateGenerationTemplatePrompt(
   if (generationTemplates.length === 0) {
     return { userPresentationTemplateIds: [] };
   }
-  const userPresentationTemplateIds: string[] = [];
+  // Syntax first: every selection this message names is a candidate mount, so
+  // the builder can reject a malformed or switched-off private id here without
+  // the database having been consulted yet.
+  const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
       presentationTemplatesEnabled:
         featureSwitches.presentationTemplatesEnabled,
+      mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
     }
-    if (template.type !== "presentation") {
-      continue;
-    }
-    const rowId = parseUserPresentationTemplateId(
-      template.selection.templateId,
-    );
-    if (rowId !== undefined) {
-      userPresentationTemplateIds.push(rowId);
-    }
   }
-  for (const templateId of userPresentationTemplateIds) {
-    // The row is the authority for its own existence and ownership. A miss is
-    // the same answer for a deleted template and for someone else's, so the
-    // message cannot be used to probe which one it was.
-    const row = await loadOwnedPresentationTemplate(db, {
-      orgId: args.orgId,
-      ownerUserId: args.userId,
-      templateId,
-    });
-    if (!row) {
-      return badRequestMessage("Presentation template not found");
-    }
+  const authorizedIds = await authorizedUserPresentationTemplateIds(db, {
+    orgId: args.orgId,
+    ownerUserId: args.userId,
+    templateIds: selectedIds,
+  });
+  if (authorizedIds.length !== selectedIds.length) {
+    return badRequestMessage("Presentation template not found");
   }
-  return { userPresentationTemplateIds };
+  return { userPresentationTemplateIds: authorizedIds };
 }
 
 async function updateUserModelPreference(
@@ -2615,7 +2587,11 @@ const prepareNormalSend$ = command(
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
     const { generationTemplatePrompt, videoRunOptions } =
-      resolveSelectedTemplateContext(runtimeBody, featureSwitches);
+      resolveSelectedTemplateContext(
+        runtimeBody,
+        featureSwitches,
+        authorizedTemplates.userPresentationTemplateIds,
+      );
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(
         args,
@@ -2646,7 +2622,7 @@ const prepareNormalSend$ = command(
       thread,
       body: runtimeBody,
       generationTemplatePrompt,
-      presentationTemplateVolumes: presentationTemplateVolumes(
+      presentationTemplateVolumes: userPresentationTemplateVolumes(
         authorizedTemplates.userPresentationTemplateIds,
       ),
       videoRunOptions,

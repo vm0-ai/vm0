@@ -16,10 +16,16 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
+  /**
+   * Private template row ids whose packages the run being built will mount.
+   * Required rather than optional so every caller states what its run carries.
+   */
+  readonly mountedUserPresentationTemplateIds: readonly string[];
 }): string {
   const options = {
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,
   };
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
     const built = buildGenerationTemplatesPrompt(

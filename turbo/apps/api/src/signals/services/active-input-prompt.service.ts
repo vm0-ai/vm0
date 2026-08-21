@@ -296,6 +296,10 @@ async function materializeActiveInputPrompt(
     explicitTemplates: projection.templates,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    // Steered into a run that is already executing, whose volumes were fixed
+    // when it was created. There is no package to point the agent at, so a
+    // private template contributes no guidance rather than a dangling path.
+    mountedUserPresentationTemplateIds: [],
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

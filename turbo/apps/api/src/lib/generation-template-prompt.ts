@@ -101,12 +101,25 @@ function generationTemplateTypeLabel(
   return generationTemplate.type;
 }
 
+/**
+ * What a caller must tell the prompt builder about the run it is building for.
+ *
+ * `mountedUserPresentationTemplateIds` is the set of private template row ids
+ * whose packages that run will actually carry. Guidance for a private template
+ * is emitted only for an id in this set, so a prompt can never name a package
+ * the run does not mount. Callers that cannot mount anything — a prompt
+ * steered into an already-running run, whose volumes were fixed at creation —
+ * leave it empty and lose the guidance rather than point at nothing.
+ */
+interface GenerationTemplatePromptOptions {
+  readonly latestWebsiteTemplatesEnabled?: boolean;
+  readonly presentationTemplatesEnabled?: boolean;
+  readonly mountedUserPresentationTemplateIds?: readonly string[];
+}
+
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
-  options: {
-    readonly latestWebsiteTemplatesEnabled?: boolean;
-    readonly presentationTemplatesEnabled?: boolean;
-  } = {},
+  options: GenerationTemplatePromptOptions = {},
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -131,6 +144,7 @@ export function buildGenerationTemplatePrompt(
   return buildPresentationGenerationTemplatePrompt(
     generationTemplate,
     options.presentationTemplatesEnabled === true,
+    options.mountedUserPresentationTemplateIds ?? [],
   );
 }
 
@@ -150,10 +164,7 @@ function stripGenerationTemplateContext(prompt: string): string {
 
 export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
-  options: {
-    readonly latestWebsiteTemplatesEnabled?: boolean;
-    readonly presentationTemplatesEnabled?: boolean;
-  } = {},
+  options: GenerationTemplatePromptOptions = {},
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
     return { status: "resolved", prompt: "" };
@@ -212,6 +223,7 @@ function buildWorkflowGenerationTemplatePrompt(
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   presentationTemplatesEnabled: boolean,
+  mountedUserPresentationTemplateIds: readonly string[],
 ): GenerationTemplatePromptResult {
   const { templateId } = generationTemplate.selection;
   if (isUserPresentationTemplateId(templateId)) {
@@ -224,6 +236,11 @@ function buildPresentationGenerationTemplatePrompt(
     const rowId = parseUserPresentationTemplateId(templateId);
     if (rowId === undefined) {
       return { status: "invalid", message: "Malformed presentation template" };
+    }
+    // The guidance is worth nothing without the package it tells the agent to
+    // read, so it is emitted only for a row this run actually mounts.
+    if (!mountedUserPresentationTemplateIds.includes(rowId)) {
+      return { status: "invalid", message: "Presentation template not found" };
     }
     return buildUserPresentationTemplatePrompt(rowId);
   }
