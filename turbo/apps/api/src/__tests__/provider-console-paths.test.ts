@@ -14,26 +14,28 @@ interface FinalConsoleRoute {
   readonly finalPath: string;
 }
 
-// The URLs the Feishu and Slack consoles hold after #28278 Stage 0 and whose
-// contracts still declare the branded path. Restated here so the registration
-// is asserted against the issue table rather than against the map the
-// production code reads.
+// The URLs the Slack console holds after #28278 Stage 0 and whose contracts
+// still declare the branded path. Restated here so the registration is asserted
+// against the issue table rather than against the map the production code
+// reads.
 //
-// The two Microsoft rows are gone: #28545 moved those contracts onto their
-// final console paths, so `MIGRATED_BRANDED_PATHS` owes their branded forms
-// now and `migrated-branded-paths.test.ts` is what covers them. A row that
-// migrates has to leave this list, because the last assertion below pins that
-// this table adds exactly these registrations and nothing else.
+// The Microsoft rows left in #28545 and the two Feishu rows in #28544, so
+// `MIGRATED_BRANDED_PATHS` owes their branded forms now and
+// `migrated-branded-paths.test.ts` is what covers them. A row that migrates has
+// to leave this list, because the last assertion below pins that this table
+// adds exactly these registrations and nothing else, and `requireSourceRoute`
+// needs the branded path to still be declared by a contract.
+//
+// Deleting the production row is separately required, and not because the two
+// tables would collide: `FINAL_PROVIDER_CONSOLE_PATHS` is keyed by the branded
+// path a contract declares, so once that contract declares its neutral path the
+// row stops matching rather than double-registering. A row left behind is dead
+// configuration that reads as a live console commitment.
 const FINAL_CONSOLE_ROUTES: readonly FinalConsoleRoute[] = [
   {
     method: "GET",
     brandedPath: "/api/okou/slack/oauth/callback",
     finalPath: "/api/integrations/slack/oauth/callback",
-  },
-  {
-    method: "GET",
-    brandedPath: "/api/okou/feishu/oauth/callback",
-    finalPath: "/api/integrations/feishu/oauth/callback",
   },
   {
     method: "POST",
@@ -49,11 +51,6 @@ const FINAL_CONSOLE_ROUTES: readonly FinalConsoleRoute[] = [
     method: "POST",
     brandedPath: "/api/okou/slack/interactive",
     finalPath: "/api/webhooks/slack/interactive",
-  },
-  {
-    method: "POST",
-    brandedPath: "/api/okou/feishu/events/:installationId",
-    finalPath: "/api/webhooks/feishu/events/:installationId",
   },
 ];
 

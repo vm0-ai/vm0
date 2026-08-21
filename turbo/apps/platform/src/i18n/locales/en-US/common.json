@@ -1507,7 +1507,7 @@
         "connect": "Connect",
         "credits": "Credits",
         "inSlack": "{{assistantName}} is in Slack",
-        "inviteMember": "Invite member",
+        "inviteMember": "Invite humans 🤝",
         "otherChannels": "Telegram and phone"
       },
       "invitePeople": "Invite people",

@@ -30,8 +30,16 @@ interface ResponseSnapshot {
 }
 
 // Every request below is replayed on the branded paths that serve it today and
-// on the final console path from #28278, so the assertion is that all three
-// produce the same response rather than merely that the final path is routed.
+// on the neutral path from #28278, so the assertion is that all three produce
+// the same response rather than merely that the neutral path is routed.
+//
+// Which table produces which registration is deliberately not asserted here,
+// and the split is no longer uniform. The Slack routes are still declared
+// branded and gain their neutral path from `FINAL_PROVIDER_CONSOLE_PATHS`,
+// while the Teams OAuth callback (#28545) and the Feishu OAuth callback
+// (#28544) moved the other way: they declare the neutral path and gain both
+// branded forms from `MIGRATED_BRANDED_PATHS`. What a caller can reach is the
+// same either way, and that is the property this file exists to pin.
 function namespacePaths(
   brandedSuffix: string,
   finalPath: string,
@@ -213,6 +221,11 @@ describe("final provider console paths", () => {
     });
   });
 
+  // Like the Teams callback above, this one is no longer console-held: #28544
+  // moved the contract to the neutral path, so the two branded forms below are
+  // the ones that now depend on a `MIGRATED_BRANDED_PATHS` row rather than on a
+  // contract declaration. Kept here because the property being pinned — all
+  // three forms produce the same response — is unchanged.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
     const paths = namespacePaths(
       "/feishu/oauth/callback",

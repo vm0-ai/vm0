@@ -47,8 +47,8 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * Final paths that the Feishu and Slack consoles hold after #28278 Stage 0,
- * keyed by the branded path that serves them today. OAuth callbacks join
+ * Final paths that the Slack console holds after #28278 Stage 0, keyed by the
+ * branded path that serves them today. OAuth callbacks join
  * `/api/integrations/**` beside the IM connect routes, and inbound webhooks
  * join `/api/webhooks/**` beside the other providers.
  *
@@ -61,28 +61,34 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  *
  * A row leaves this table when #28278 moves its contract onto the final path,
  * because from then on the contract declares that path and this table has
- * nothing left to add. The two Microsoft rows left in #28545, and
- * `MIGRATED_BRANDED_PATHS` below owes their branded forms instead. That
- * deletion is not optional: a row kept alongside a migrated contract makes both
- * tables produce the same registration, which `assertUniqueRouteRegistrations`
- * throws on at startup.
+ * nothing left to add. The two Microsoft rows left in #28545, and the two
+ * Feishu rows in #28544 once it established that no Feishu console holds
+ * either path: the console registers the frontend-forwarding OAuth target from
+ * `feishuOAuthAppCallbackUrl()` rather than the API callback, and #28338
+ * already moved the events URL shown to operators. `MIGRATED_BRANDED_PATHS`
+ * below owes all four branded forms instead.
+ *
+ * That deletion is required, though not because the two tables would collide.
+ * This table is keyed by the branded path a contract declares, and it runs on
+ * `ROUTES` before the namespace expansion, so once a contract declares its
+ * neutral path its old row stops matching and produces nothing —
+ * `assertUniqueRouteRegistrations` never sees a duplicate. A row left behind is
+ * dead configuration that reads as a live console commitment, which is why the
+ * restated list in `provider-console-paths.test.ts` is the record of which
+ * paths a console still holds.
  */
 const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
   "GET /api/okou/slack/oauth/callback":
     "/api/integrations/slack/oauth/callback",
-  "GET /api/okou/feishu/oauth/callback":
-    "/api/integrations/feishu/oauth/callback",
   "POST /api/okou/slack/events": "/api/webhooks/slack/events",
   "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
   "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
-  "POST /api/okou/feishu/events/:installationId":
-    "/api/webhooks/feishu/events/:installationId",
 };
 
 /**
- * Adds the six final provider console paths still served from a branded
- * contract. Unlike the namespace aliases below, this expands an explicit list
- * and never derives a path, so no other route gains a second registration.
+ * Adds the final provider console paths still served from a branded contract.
+ * Unlike the namespace aliases below, this expands an explicit list and never
+ * derives a path, so no other route gains a second registration.
  */
 export function withFinalProviderConsolePaths(
   routes: readonly RouteEntry[],
@@ -160,13 +166,16 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/logs/:id": "/api/zero/logs/:id",
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
 
-  // Held by a provider console, so measured traffic cannot retire them. Every
-  // branded path in `FINAL_PROVIDER_CONSOLE_PATHS` is listed, plus the Teams
-  // OAuth callback below and the `/api/okou/teams/bot` row above: #28545 moved
-  // both contracts onto their final console paths, so those two rows are served
-  // by `MIGRATED_BRANDED_PATHS` rather than by the expansion. They stay listed,
-  // because a row records that a path is owed rather than which table serves it
-  // — see the ordering constraint recorded on #26701.
+  // Seeded rather than measured, because a provider console — not a client we
+  // control — held the URL when the row was written. Every branded path in
+  // `FINAL_PROVIDER_CONSOLE_PATHS` is listed, plus four rows whose contracts
+  // have since moved: the Teams OAuth callback below and the
+  // `/api/okou/teams/bot` row above (#28545), and the Feishu OAuth callback
+  // below and the `/api/okou/feishu/events/:installationId` row above (#28544,
+  // which established that no Feishu console holds either path). Those four are
+  // served by `MIGRATED_BRANDED_PATHS` rather than by the expansion. They stay
+  // listed, because a row records that a path is owed rather than which table
+  // serves it — see the ordering constraint recorded on #26701.
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
   "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
@@ -1219,8 +1228,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/user-permission-grants/apply",
   ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
-  // eight paths a provider console holds stay branded and are not moved here —
-  // they are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  // paths a provider console holds stay branded and are not moved here — they
+  // are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
   //
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
@@ -1615,6 +1624,41 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/web/download-file",
   ],
   "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
+  // #28544: the two Feishu routes `FINAL_PROVIDER_CONSOLE_PATHS` carried
+  // without a console actually holding them, arriving here from that table like
+  // the Microsoft rows above rather than from the branded namespace. Their rows
+  // were deleted there in the same commit, for the reason recorded on that
+  // table: a row whose contract has moved stops matching rather than colliding,
+  // so what it leaves behind is dead configuration reading as a live console
+  // commitment.
+  //
+  // The events row is the load-bearing one. Each Feishu installation registered
+  // its event subscription URL in its own Feishu app console, which we cannot
+  // edit, so an installation created before #28338 still posts to the branded
+  // form it was given. That holder has no drain window at all — it changes when
+  // its operator edits their own console — so these rows retire under #26701's
+  // evidence rules rather than on any client clock.
+  //
+  // The OAuth callback row covers a time-boxed surface instead. Its caller is
+  // `feishu-oauth-callback-page.ts`, which forwards the code it received from
+  // the Feishu console's `app.vm0.ai` target to whichever path the contract
+  // declared when that bundle was built — so an already-loaded platform tab
+  // keeps posting the branded form for the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7. The `oauthRedirectUri()` branch that this
+  // slice's `feishuOAuthCallbackUrl()` change moves is the other holder, and a
+  // narrower one: it is reached only when `callbackTarget` is absent, which
+  // neither frontend entry point does.
+  //
+  // Each key holds its path parameter verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/integrations/feishu/oauth/callback": [
+    "/api/okou/feishu/oauth/callback",
+    "/api/zero/feishu/oauth/callback",
+  ],
+  "/api/webhooks/feishu/events/:installationId": [
+    "/api/okou/feishu/events/:installationId",
+    "/api/zero/feishu/events/:installationId",
+  ],
 };
 
 /**
