@@ -150,7 +150,6 @@ interface StartUsagePackPurchaseArgs extends CreateUsagePackCheckoutSessionArgs 
 
 type StartUsagePackPurchaseResult =
   | { readonly status: "checkout"; readonly url: string }
-  | { readonly status: "purchase_in_progress" }
   | {
       readonly status: "preview";
       readonly preview: UsagePackPurchasePreviewResponse;
@@ -678,27 +677,9 @@ async function retireUsagePackCheckout(
 
 type PendingUsagePackCheckoutResolution =
   | { readonly kind: "create" }
-  | { readonly kind: "previous_writer_pending" }
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "retry" }
   | { readonly kind: "reuse"; readonly usagePackSubscriptionId: string };
-
-function previousUsagePackCheckoutWriterPending(
-  snapshot: UsagePackContext,
-  at: Date,
-): boolean {
-  // DB/API revisions have overlapped for an observed maximum of ~102 minutes.
-  // Previous API versions only write checkout_pending and may still create a
-  // Stripe Session after releasing the organization lock. New snapshots use
-  // purchase_pending so the previous reader cannot take them over. Preserve
-  // every fresh legacy-visible writer for the 15-minute snapshot TTL. Remove
-  // this compatibility branch after the rollback/drain window: #28372.
-  return (
-    snapshot.subscription.subscriptionStatus === "checkout_pending" &&
-    snapshot.subscription.updatedAt.getTime() >
-      at.getTime() - USAGE_PACK_PENDING_SNAPSHOT_STALE_MS
-  );
-}
 
 async function resolvePendingUsagePackSnapshots(
   tx: WriteTx,
@@ -770,14 +751,6 @@ async function resolvePendingUsagePackCheckout(
   const snapshots = contexts.filter((context) => {
     return !context.subscription.stripeCheckoutSessionId;
   });
-  const at = nowDate();
-  if (
-    snapshots.some((snapshot) => {
-      return previousUsagePackCheckoutWriterPending(snapshot, at);
-    })
-  ) {
-    return { kind: "previous_writer_pending" };
-  }
   const resolved: {
     readonly context: UsagePackContext;
     readonly session: UsagePackCheckoutSessionInput;
@@ -888,7 +861,6 @@ async function insertUsagePackPurchaseSnapshot(
 }
 
 type PreparedUsagePackPurchaseSnapshot =
-  | { readonly kind: "previous_writer_pending" }
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "snapshot"; readonly usagePackSubscriptionId: string };
 
@@ -908,10 +880,7 @@ async function prepareUsagePackPurchaseSnapshot(
       undefined,
       signal,
     );
-    if (
-      resolution.kind === "redirect" ||
-      resolution.kind === "previous_writer_pending"
-    ) {
+    if (resolution.kind === "redirect") {
       return resolution;
     }
     if (resolution.kind === "retry") {
@@ -1011,9 +980,6 @@ async function createSerializedUsagePackCheckout(
       if (resolution.kind === "redirect") {
         return { kind: "complete" as const, url: resolution.url };
       }
-      if (resolution.kind === "previous_writer_pending") {
-        return { kind: "previous_writer_pending" as const };
-      }
       if (resolution.kind !== "reuse") {
         return { kind: "retry" as const };
       }
@@ -1028,9 +994,6 @@ async function createSerializedUsagePackCheckout(
         }),
       };
     });
-    if (attempt.kind === "previous_writer_pending") {
-      return { status: "purchase_in_progress" };
-    }
     if (attempt.kind === "complete") {
       return { status: "checkout", url: attempt.url };
     }
@@ -1042,9 +1005,6 @@ async function createSerializedUsagePackCheckout(
     );
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
-    }
-    if (prepared.kind === "previous_writer_pending") {
-      return { status: "purchase_in_progress" };
     }
     preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
@@ -1079,9 +1039,6 @@ const createUsagePackCheckoutSession$ = command(
     );
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
-    }
-    if (prepared.kind === "previous_writer_pending") {
-      return { status: "purchase_in_progress" };
     }
     return await createSerializedUsagePackCheckout(
       db,
@@ -1142,12 +1099,6 @@ async function createSerializedUsagePackPurchasePreviewAttempt(
       return {
         kind: "complete",
         result: { status: "checkout", url: resolution.url },
-      };
-    }
-    if (resolution.kind === "previous_writer_pending") {
-      return {
-        kind: "complete",
-        result: { status: "purchase_in_progress" },
       };
     }
     if (resolution.kind !== "reuse") {
@@ -1259,9 +1210,6 @@ async function createSerializedUsagePackPurchasePreview(
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
     }
-    if (prepared.kind === "previous_writer_pending") {
-      return { status: "purchase_in_progress" };
-    }
     preferredSnapshotId = prepared.usagePackSubscriptionId;
   }
 }
@@ -1308,9 +1256,6 @@ export const startUsagePackPurchase$ = command(
     );
     if (prepared.kind === "redirect") {
       return { status: "checkout", url: prepared.url };
-    }
-    if (prepared.kind === "previous_writer_pending") {
-      return { status: "purchase_in_progress" };
     }
     if (route.kind === "checkout") {
       return await createSerializedUsagePackCheckout(

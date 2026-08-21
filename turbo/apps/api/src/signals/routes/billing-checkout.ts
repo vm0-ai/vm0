@@ -838,9 +838,6 @@ const usagePackCheckoutAuthed$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (result.status === "purchase_in_progress") {
-      return conflict("Another usage pack purchase is still being prepared");
-    }
     return {
       status: 200 as const,
       body: result.status === "preview" ? result.preview : { url: result.url },
