@@ -63,7 +63,15 @@ const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
 const FAL_FLUX_MEDIA_URL = "https://fal.media/files/test/flux-redux.jpg";
+const FAL_QWEN_IMAGE_3_URL =
+  "https://queue.fal.run/alibaba/qwen-image-3/text-to-image";
+const FAL_QWEN_IMAGE_3_MEDIA_URL =
+  "https://fal.media/files/test/qwen-image-3.png";
 const FAL_NANO_BANANA_2_URL = "https://queue.fal.run/fal-ai/nano-banana-2";
+const FAL_NANO_BANANA_2_LITE_URL =
+  "https://queue.fal.run/google/nano-banana-2-lite";
+const FAL_NANO_BANANA_2_LITE_MEDIA_URL =
+  "https://fal.media/files/test/nano-banana-2-lite.png";
 const FAL_NANO_BANANA_2_EDIT_URL =
   "https://queue.fal.run/fal-ai/nano-banana-2/edit";
 const FAL_NANO_BANANA_2_MEDIA_URL =
@@ -86,6 +94,17 @@ const FAL_NANO_BANANA_2_PROVIDER_CREDITS_PER_IMAGE = 80;
 const FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE = Math.ceil(
   FAL_NANO_BANANA_2_PROVIDER_CREDITS_PER_IMAGE *
     IMAGE_PRICING_MARKUP_MULTIPLIER,
+);
+// $0.042 per fixed-1K image, marked up and rounded as the seeded price is.
+const FAL_NANO_BANANA_2_LITE_CREDITS_PER_IMAGE = Math.round(
+  42 * IMAGE_PRICING_MARKUP_MULTIPLIER,
+);
+// $0.04 up to 2,250,000 output pixels, $0.075 above it.
+const FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS = Math.round(
+  40 * IMAGE_PRICING_MARKUP_MULTIPLIER,
+);
+const FAL_QWEN_IMAGE_3_HIGH_TIER_CREDITS = Math.round(
+  75 * IMAGE_PRICING_MARKUP_MULTIPLIER,
 );
 const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
@@ -365,6 +384,33 @@ const NANO_BANANA_2_IMAGE_PRICING = [
     provider: "fal-ai/nano-banana-2",
     category: "output_image",
     unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+    unitSize: 1,
+  },
+] satisfies readonly UsagePricingRow[];
+
+const NANO_BANANA_2_LITE_IMAGE_PRICING = [
+  {
+    kind: "image",
+    provider: "google/nano-banana-2-lite",
+    category: "output_image",
+    unitPrice: FAL_NANO_BANANA_2_LITE_CREDITS_PER_IMAGE,
+    unitSize: 1,
+  },
+] satisfies readonly UsagePricingRow[];
+
+const QWEN_IMAGE_3_PRICING = [
+  {
+    kind: "image",
+    provider: "alibaba/qwen-image-3/text-to-image",
+    category: "output_image.1k",
+    unitPrice: FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "alibaba/qwen-image-3/text-to-image",
+    category: "output_image.2k",
+    unitPrice: FAL_QWEN_IMAGE_3_HIGH_TIER_CREDITS,
     unitSize: 1,
   },
 ] satisfies readonly UsagePricingRow[];
@@ -1836,6 +1882,238 @@ describe("POST /api/image-io/generate", () => {
     // The marked-up charge (2 megapixels at 48/megapixel) is asserted through
     // the result body above and the exact org balance drop.
     await expect(orgCredits(fixture)).resolves.toBe(1000 - 96);
+  });
+
+  it("generates Qwen Image 3 images through fal and bills the standard resolution tier", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: QWEN_IMAGE_3_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_3_URL, async ({ request }) => {
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("qwen-image-3-request"));
+      }),
+      http.get(FAL_QWEN_IMAGE_3_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a bilingual conference poster with dense legible typography",
+        model: "qwen-image-3",
+        size: "1024x1024",
+        outputFormat: "png",
+        seed: 7,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_QWEN_IMAGE_3_MEDIA_URL,
+          width: 1024,
+          height: 1024,
+          content_type: "image/png",
+        },
+      ],
+      seed: 7,
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      contentType: "image/png",
+      creditsCharged: FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
+      model: "alibaba/qwen-image-3/text-to-image",
+      provider: "fal",
+      imageSize: "1024x1024",
+      outputFormat: "png",
+      billingCategory: "output_image.1k",
+      billingQuantity: 1,
+      sourceUrl: FAL_QWEN_IMAGE_3_MEDIA_URL,
+      seed: 7,
+    });
+    expect(observedBody).toStrictEqual({
+      prompt: "a bilingual conference poster with dense legible typography",
+      image_size: { width: 1024, height: 1024 },
+      num_images: 1,
+      output_format: "png",
+      seed: 7,
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
+    );
+  });
+
+  it("bills Qwen Image 3 at the high resolution tier above 2,250,000 output pixels", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: QWEN_IMAGE_3_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_3_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json(falQueueHandle("qwen-image-3-2k-request"));
+      }),
+      http.get(FAL_QWEN_IMAGE_3_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a 2K keynote backdrop",
+        model: "qwen-image-3",
+        size: "2048x2048",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_QWEN_IMAGE_3_MEDIA_URL,
+          width: 2048,
+          height: 2048,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      creditsCharged: FAL_QWEN_IMAGE_3_HIGH_TIER_CREDITS,
+      model: "alibaba/qwen-image-3/text-to-image",
+      billingCategory: "output_image.2k",
+      billingQuantity: 1,
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_QWEN_IMAGE_3_HIGH_TIER_CREDITS,
+    );
+  });
+
+  it("generates Nano Banana 2 Lite images through fal at its fixed 1K price", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: NANO_BANANA_2_LITE_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_NANO_BANANA_2_LITE_URL, async ({ request }) => {
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("nano-banana-2-lite-request"));
+      }),
+      http.get(FAL_NANO_BANANA_2_LITE_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a bright thumbnail for a launch recap",
+        model: "nano-banana-2-lite",
+        size: "1024x1024",
+        outputFormat: "png",
+        safetyTolerance: "5",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_NANO_BANANA_2_LITE_MEDIA_URL,
+          width: 1024,
+          height: 1024,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      contentType: "image/png",
+      creditsCharged: FAL_NANO_BANANA_2_LITE_CREDITS_PER_IMAGE,
+      model: "google/nano-banana-2-lite",
+      provider: "fal",
+      outputFormat: "png",
+      billingCategory: "output_image",
+      billingQuantity: 1,
+      sourceUrl: FAL_NANO_BANANA_2_LITE_MEDIA_URL,
+    });
+    // Lite always renders 1K, so it takes no resolution parameter.
+    expect(observedBody).toStrictEqual({
+      prompt: "a bright thumbnail for a launch recap",
+      aspect_ratio: "1:1",
+      num_images: 1,
+      output_format: "png",
+      safety_tolerance: "5",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_NANO_BANANA_2_LITE_CREDITS_PER_IMAGE,
+    );
   });
 
   it("generates Nano Banana 2 images through fal with 20 percent markup pricing", async () => {

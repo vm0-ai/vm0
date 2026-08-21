@@ -420,7 +420,7 @@ describe("chat composer models", () => {
         selectedModel: "claude-opus-4-8",
         serviceTier: null,
         selectedVideoModel: "fal-ai/veo3.1/fast",
-        selectedImageModel: "fal-ai/qwen-image",
+        selectedImageModel: "alibaba/qwen-image-3/text-to-image",
         updatedAt: "2026-03-10T00:01:00Z",
       });
       await waitFor(() => {
@@ -440,7 +440,7 @@ describe("chat composer models", () => {
         ).resolves.toMatchObject({
           selectedModel: "claude-opus-4-8",
           selectedVideoModel: "fal-ai/veo3.1/fast",
-          selectedImageModel: "fal-ai/qwen-image",
+          selectedImageModel: "alibaba/qwen-image-3/text-to-image",
         });
       });
       await expectComposerModel("Claude Opus 4.8");
@@ -3615,7 +3615,7 @@ describe("chat composer image model", () => {
     const initialPreference: UserModelPreferenceResponse = {
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       updatedAt: "2026-08-18T00:00:00Z",
     };
     let createdImageModel: string | undefined;
@@ -3637,7 +3637,7 @@ describe("chat composer image model", () => {
 
     await openImageModels(user);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Qwen Image 3");
     });
 
     context.mocks.data.userModelPreference({
@@ -3684,7 +3684,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3719,7 +3719,7 @@ describe("chat composer image model", () => {
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
     expect(
-      screen.queryByText("Temporarily switched to Qwen Image for images"),
+      screen.queryByText("Temporarily switched to Qwen Image 3 for images"),
     ).not.toBeInTheDocument();
     await user.click(await findMediaPanelButton("GPT Image 2"));
 
@@ -3757,7 +3757,7 @@ describe("chat composer image model", () => {
     });
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
-    await expect(findMediaPanelButton("Qwen Image")).resolves.toHaveAttribute(
+    await expect(findMediaPanelButton("Qwen Image 3")).resolves.toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -3774,7 +3774,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3831,7 +3831,7 @@ describe("chat composer image model", () => {
     let stored: UserModelPreferenceResponse = {
       selectedModel: "claude-fable-5",
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     };
@@ -3919,7 +3919,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-fable-5",
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3998,7 +3998,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       updatedAt: "2026-08-18T00:00:00Z",
     });
     context.mocks.api(
@@ -4053,7 +4053,7 @@ describe("chat composer image model", () => {
       selectedModel: null,
       serviceTier: null,
       selectedVideoModel: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       updatedAt: "2026-08-18T00:00:00Z",
     });
     mockAgent();
@@ -4083,7 +4083,7 @@ describe("chat composer image model", () => {
 
     expect(imageTab).toHaveAttribute("aria-checked", "true");
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Qwen Image 3");
     });
     const listbox = screen.getByRole("listbox");
     // Both variants are on the row at once, and neither is marked while a
@@ -4102,6 +4102,8 @@ describe("chat composer image model", () => {
         return candidate.getAttribute("aria-label");
       }),
     ).toStrictEqual([
+      "Nano Banana 2",
+      "Nano Banana 2 Lite",
       "Flux Pro v1.1",
       "Flux Pro v1.1 Ultra",
       "Seedream 5 Pro",
@@ -4111,7 +4113,7 @@ describe("chat composer image model", () => {
       variantSegments.map((candidate) => {
         return candidate.textContent;
       }),
-    ).toStrictEqual(["Standard", "Ultra", "Pro", "Lite"]);
+    ).toStrictEqual(["Standard", "Lite", "Standard", "Ultra", "Pro", "Lite"]);
     // Qwen is the selection, so no family carries the checkmark, yet each
     // segment still fills its base variant so the control never reads as empty.
     expect(
@@ -4122,14 +4124,15 @@ describe("chat composer image model", () => {
         .map((candidate) => {
           return candidate.getAttribute("aria-label");
         }),
-    ).toStrictEqual(["Flux Pro v1.1", "Seedream 5 Pro"]);
+    ).toStrictEqual(["Nano Banana 2", "Flux Pro v1.1", "Seedream 5 Pro"]);
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
+    expect(within(listbox).queryByText("Nano Banana 2 Lite")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
-    const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
+    const qwenIcon = imageModelBrandIcon("Qwen Image 3").outerHTML;
     expect(qwenIcon).toContain("image-model-qwen-gradient");
     const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
     expect(nanoBananaIcon).toContain("#f94543");
@@ -4178,7 +4181,7 @@ describe("chat composer image model", () => {
       "aria-pressed",
       "true",
     );
-    expect(mediaPanelButton("Qwen Image")).toHaveAttribute(
+    expect(mediaPanelButton("Qwen Image 3")).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -4271,7 +4274,7 @@ describe("chat composer image model", () => {
 
     await openImageModels(user);
     await waitFor(() => {
-      expect(mediaPanelButton("Qwen Image")).toBeInTheDocument();
+      expect(mediaPanelButton("Qwen Image 3")).toBeInTheDocument();
     });
     const listbox = screen.getByRole("listbox");
     // Nothing claims the pin, so no row is current and every family shows its
@@ -4349,7 +4352,7 @@ describe("chat composer image model", () => {
         agentId: AGENT_ID,
         title: "Second image thread",
         selectedModel: "claude-fable-5",
-        selectedImageModel: "fal-ai/qwen-image",
+        selectedImageModel: "alibaba/qwen-image-3/text-to-image",
       },
     ]);
     context.mocks.api(
@@ -4398,7 +4401,7 @@ describe("chat composer image model", () => {
 
     await openImageModels(user, secondThread);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Qwen Image 3");
     });
   });
 });

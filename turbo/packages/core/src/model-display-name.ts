@@ -38,9 +38,12 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Built-in image generation
   "nano-banana-2": "Nano Banana 2",
   "fal-ai/nano-banana-2": "Nano Banana 2",
+  "nano-banana-2-lite": "Nano Banana 2 Lite",
+  "google/nano-banana-2-lite": "Nano Banana 2 Lite",
   "fal-ai/flux-pro/v1.1": "Flux Pro v1.1",
   "fal-ai/flux-pro/v1.1-ultra": "Flux Pro v1.1 Ultra",
   "fal-ai/qwen-image": "Qwen Image",
+  "alibaba/qwen-image-3/text-to-image": "Qwen Image 3",
   "fal-ai/bytedance/seedream/v4/text-to-image": "Seedream 4",
   "dola-seedream-5-0-pro-260628": "Seedream 5 Pro",
   "seedream-5-0-lite-260128": "Seedream 5 Lite",

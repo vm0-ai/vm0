@@ -90,6 +90,13 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     },
     {
       label: "Built-in fal.ai",
+      model: "alibaba/qwen-image-3/text-to-image",
+      command:
+        "okou generate image --provider built-in --model qwen-image-3 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
       model: "fal-ai/bytedance/seedream/v4/text-to-image",
       command: "okou generate image --provider built-in --model seedream4 -h",
       reason: "available without connector setup",
@@ -113,6 +120,13 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       model: "fal-ai/nano-banana-2",
       command:
         "okou generate image --provider built-in --model nano-banana-2 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "google/nano-banana-2-lite",
+      command:
+        "okou generate image --provider built-in --model nano-banana-2-lite -h",
       reason: "available without connector setup",
     },
   ],
@@ -193,7 +207,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "okou generate image --provider built-in -h",
     models:
-      "fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, nano-banana-2, nano-banana-2-lite; BytePlus: seedream5-pro, seedream5-lite",
   },
   video: {
     label: "Built-in video generation",

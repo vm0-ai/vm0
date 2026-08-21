@@ -243,7 +243,7 @@ describe("okou generate lister", () => {
     expect(text).toContain("Okou  Built-in image generation");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
-      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
+      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, nano-banana-2, nano-banana-2-lite; BytePlus: seedream5-pro, seedream5-lite",
     );
     expect(text).toContain("Use: okou generate image --provider built-in -h");
     expect(text).not.toContain(

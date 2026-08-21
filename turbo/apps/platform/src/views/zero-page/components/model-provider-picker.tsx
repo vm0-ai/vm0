@@ -859,7 +859,8 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
     case "fal-ai/flux-pro/v1.1-ultra": {
       return <ImageModelBrandSvg path={FLUX_ICON_PATH} />;
     }
-    case "fal-ai/qwen-image": {
+    case "fal-ai/qwen-image":
+    case "alibaba/qwen-image-3/text-to-image": {
       return <QwenImageModelIcon />;
     }
     case "fal-ai/bytedance/seedream/v4/text-to-image": {
@@ -869,7 +870,8 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
     case "seedream-5-0-lite-260128": {
       return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
     }
-    case "fal-ai/nano-banana-2": {
+    case "fal-ai/nano-banana-2":
+    case "google/nano-banana-2-lite": {
       return <GeminiImageModelIcon />;
     }
   }

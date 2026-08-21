@@ -42,6 +42,10 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "qwen-image",
     label: "Qwen Image",
   },
+  "alibaba/qwen-image-3/text-to-image": {
+    alias: "qwen-image-3",
+    label: "Qwen Image 3",
+  },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
     label: "Seedream 4",
@@ -59,6 +63,12 @@ export const IMAGE_MODEL_CONFIGS = {
   "fal-ai/nano-banana-2": {
     alias: "nano-banana-2",
     label: "Nano Banana 2",
+    variantLabel: "Standard",
+  },
+  "google/nano-banana-2-lite": {
+    alias: "nano-banana-2-lite",
+    label: "Nano Banana 2 Lite",
+    variantLabel: "Lite",
   },
 } as const satisfies Record<ImageModelId, ImageModelConfig>;
 
@@ -72,19 +82,21 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 
 /**
  * Catalog models offered by the user-facing picker, in display order. Seedream 4
- * is deliberately absent: it stays generatable through its `seedream4` alias and
- * through defaults that already point at it, but it is superseded by Seedream 5
- * as a choice worth presenting.
+ * and Qwen Image are deliberately absent: they stay generatable through their
+ * `seedream4` and `qwen-image` aliases and through defaults that already point
+ * at them, but they are superseded by Seedream 5 and Qwen Image 3 as choices
+ * worth presenting.
  */
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-2",
   "fal-ai/nano-banana-2",
+  "google/nano-banana-2-lite",
   "fal-ai/flux-pro/v1.1",
   "fal-ai/flux-pro/v1.1-ultra",
   "dola-seedream-5-0-pro-260628",
   "seedream-5-0-lite-260128",
-  "fal-ai/qwen-image",
+  "alibaba/qwen-image-3/text-to-image",
 ] as const satisfies readonly ImageModel[];
 
 interface ImageModelVariantGroup {
@@ -104,6 +116,10 @@ interface ImageModelVariantGroup {
  */
 export const IMAGE_MODEL_VARIANT_GROUPS = [
   {
+    label: "Nano Banana 2",
+    models: ["fal-ai/nano-banana-2", "google/nano-banana-2-lite"],
+  },
+  {
     label: "Flux Pro v1.1",
     models: ["fal-ai/flux-pro/v1.1", "fal-ai/flux-pro/v1.1-ultra"],
   },
@@ -119,11 +135,14 @@ export const IMAGE_MODEL_ALIASES = {
   "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
   "qwen-image": "fal-ai/qwen-image",
+  "qwen-image-3": "alibaba/qwen-image-3/text-to-image",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
   "seedream5-pro": "dola-seedream-5-0-pro-260628",
   "seedream5-lite": "seedream-5-0-lite-260128",
   "nano-banana-2": "fal-ai/nano-banana-2",
   "nano-banana2": "fal-ai/nano-banana-2",
+  "nano-banana-2-lite": "google/nano-banana-2-lite",
+  "nano-banana2-lite": "google/nano-banana-2-lite",
 } as const satisfies Readonly<Record<string, ImageModel>>;
 
 /** Global fallback when no more specific image model default exists. */
