@@ -492,20 +492,16 @@ describe("organization billing settings", () => {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Nine rows on each side, aligned row for row: Team leads with the
-       entitlement differences, then the capability a team puts ten concurrent
-       slots to work on. */
+    /* Team is a strict delta -- every row is something Pro cannot do. Its five
+       rows are the whole of what ORG_PLAN_ENTITLEMENT_TIER_VALUES varies between
+       the plans, plus the support tier. */
     expect(
-      within(teamPlan).getByText("Everything in Pro, built for teams"),
+      within(teamPlan).getByText("Everything in Pro, plus"),
     ).toBeInTheDocument();
     for (const item of [
       "10 agents running at once",
       "Add more concurrency any time",
-      "Agents hand work to each other and run in parallel",
-      "One agent can split a job and collect every result",
-      "Watch and take over an agent's live browser",
-      "Agents operate apps on your own desktop",
-      "Turn a repeated job into a reusable workflow",
+      "Trigger agents from any system via webhook",
       "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {

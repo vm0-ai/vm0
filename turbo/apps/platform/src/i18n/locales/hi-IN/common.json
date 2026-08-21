@@ -1251,22 +1251,18 @@
       },
       "highlights": {
         "addOnConcurrency": "जब चाहें और समवर्तिता जोड़ें",
-        "agentFanOut": "एक एजेंट काम बाँटकर सभी नतीजे इकट्ठा कर सकता है",
-        "agentHandoff": "एजेंट आपस में काम सौंपते हैं और साथ-साथ चलते हैं",
         "automations": "शेड्यूल और इवेंट ऑटोमेशन",
         "builtInResearchData": "बिल्ट-इन SEO, लीड, वेब और मार्केट डेटा",
         "chatIntegrations": "Slack और Telegram इंटीग्रेशन",
-        "computerUse": "एजेंट आपके अपने डेस्कटॉप पर ऐप चलाते हैं",
         "concurrentAgents": "{{slots}} एजेंट एक साथ",
-        "everythingInBuiltForTeams": "{{plan}} की हर सुविधा, टीमों के लिए तैयार",
+        "everythingInPlus": "{{plan}} का सब कुछ, साथ में",
         "included": "शामिल",
-        "liveBrowser": "एजेंट का लाइव ब्राउज़र देखें और कंट्रोल लें",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
-        "reusableWorkflows": "बार-बार का काम दोबारा इस्तेमाल होने वाला वर्कफ़्लो बनाएँ",
         "supportEmail": "ईमेल सहायता",
         "supportPriority": "प्राथमिकता सहायता",
         "videoGeneration": "वीडियो और अवतार जनरेशन",
-        "voiceInput": "वॉइस इनपुट: रोज़ {{requests}} रिक्वेस्ट और {{minutes}} मिनट"
+        "voiceInput": "वॉइस इनपुट: रोज़ {{requests}} रिक्वेस्ट और {{minutes}} मिनट",
+        "webhookAutomations": "किसी भी सिस्टम से webhook के ज़रिए एजेंट ट्रिगर करें"
       },
       "legacy": "पुराना",
       "limitedFree": {

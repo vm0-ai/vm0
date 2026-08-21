@@ -792,19 +792,22 @@ function PlanPrice({
    covers SEO, lead, web, and market data instead of three, which names the
    whole capability without pushing Pro's list past a scannable length.
 
-   The label is "Everything in Pro, built for teams", so Team's list is read as
-   inherited, not exclusive. Only baseConcurrencyLimit, canBuyConcurrency,
-   audioDailyRateLimit and audioDailyDurationSeconds actually differ in
-   ORG_PLAN_ENTITLEMENT_TIER_VALUES; the rest of Team's column is capability the
-   two plans share, chosen because it is what a team puts ten slots to work on.
-   Concurrency is what makes those lines land differently: a fan-out that runs
-   in parallel on Team queues two at a time on Pro.
+   Team is a strict delta: every row is something Pro cannot do, and the label
+   says "plus" rather than "built for teams" so it reads that way.
+   ORG_PLAN_ENTITLEMENT_TIER_VALUES is the whole difference between the plans --
+   baseConcurrencyLimit 2/10, canBuyConcurrency, workflowWebhookAutomationAllowed,
+   audioDailyRateLimit 300/500, audioDailyDurationSeconds 200/500 -- plus the
+   support tier, which is policy rather than a flag. Five rows, and there is no
+   sixth to write. A capability that ships on both plans belongs in Pro's column,
+   however team-shaped it sounds; putting it here is what made this dialog claim
+   Pro features as Team entitlements in the first place.
 
-   Both lists run nine rows and every row holds a single line at this width, so
-   the two columns align row for row across the divider. The dialog is a fixed
-   43rem, which leaves 570px for the columns, and nine rows sit exactly on that
-   limit -- a tenth has to replace one, and a row that wraps breaks the
-   alignment as surely as it breaks the height. */
+   Lengthening this column means gating something in
+   ORG_PLAN_ENTITLEMENT_TIER_VALUES first, then adding the row.
+
+   The dialog is a fixed 43rem, leaving 570px for the columns, which Pro's nine
+   rows sit exactly on. A tenth row has to replace one, and any row that wraps
+   costs the same height as a new row. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const concurrentAgents = i18n.t(
     ($) => {
@@ -828,19 +831,7 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.agentHandoff;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.agentFanOut;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.liveBrowser;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.computerUse;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.reusableWorkflows;
+        return $.billing.plans.highlights.webhookAutomations;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -879,7 +870,7 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
   return tier === "team"
     ? i18n.t(
         ($) => {
-          return $.billing.plans.highlights.everythingInBuiltForTeams;
+          return $.billing.plans.highlights.everythingInPlus;
         },
         { plan: planName("pro") },
       )
