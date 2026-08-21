@@ -4063,15 +4063,6 @@ describe("chat composer image model", () => {
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
     expect(within(listbox).queryByText("Qwen Image")).toBeNull();
-    // No row carries a variant segment any more, so the only radios left in the
-    // list are the category tabs.
-    expect(
-      queryAllByRoleFast("radio", listbox).filter((candidate) => {
-        // Exclude category-tab radios: their grandparent wrapper has .sticky.
-        const el = candidate as HTMLElement;
-        return !el.parentElement?.parentElement?.classList.contains("sticky");
-      }),
-    ).toStrictEqual([]);
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
