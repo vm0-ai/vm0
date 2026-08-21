@@ -1,5 +1,5 @@
 {
-  "id": "ae8fa5f2-7009-49cb-8ac0-d3b216c3c60e",
+  "id": "67db9fcc-f7dc-4c5e-a52e-2adeedd36449",
   "prevId": "11acebf1-429f-4f20-8ece-c2442edb42c9",
   "version": "7",
   "dialect": "postgresql",
@@ -4073,7 +4073,8 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'vm0'"
         },
         "name": {
           "name": "name",
