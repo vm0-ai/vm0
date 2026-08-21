@@ -11,6 +11,7 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
+import { refreshOwnPresentationTemplates$ } from "./presentation-template-library.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
@@ -357,6 +358,11 @@ function createTemplatePickerDialogSignals() {
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
     set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalTemplatePickerOpen$, open);
+    if (open) {
+      // Opening is the moment the imported catalog has to be current: an import
+      // started here finishes later in another thread, and cover URLs expire.
+      set(refreshOwnPresentationTemplates$);
+    }
   });
 
   const internalTemplatePickerReferenceValue$ =
