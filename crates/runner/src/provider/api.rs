@@ -1564,7 +1564,6 @@ mod tests {
     use httpmock::MockServer;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
-    use tokio::sync::mpsc;
     use tracing::{Level, instrument::WithSubscriber};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -2030,13 +2029,6 @@ mod tests {
                 .collect(),
         )
         .await
-    }
-
-    async fn next_request(requests: &mut mpsc::UnboundedReceiver<String>) -> String {
-        requests
-            .recv()
-            .await
-            .expect("complete request should reach the server")
     }
 
     fn assert_complete_authorization(request: &str, token: &str) {
@@ -2997,38 +2989,19 @@ mod tests {
 
     #[tokio::test]
     async fn transient_claim_failure_repolls_when_cooldown_expires_during_excluded_poll() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut first_claim).await.unwrap();
-            first_claim.write_all(&status_response(503)).await.unwrap();
-            request_tx.send(request).unwrap();
-
-            let (mut excluded_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut excluded_poll).await.unwrap();
-            request_tx.send(request).unwrap();
-            tokio::time::sleep(CLAIM_TRANSIENT_COOLDOWN + Duration::from_millis(50)).await;
-            excluded_poll
-                .write_all(&json_response("200 OK", r#"{"job":null}"#))
-                .await
-                .unwrap();
-
-            let (mut retry_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut retry_poll).await.unwrap();
-            write_poll_job_response(&mut retry_poll, run_id).await;
-            request_tx.send(request).unwrap();
-
-            let (mut second_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut second_claim).await.unwrap();
-            second_claim
-                .write_all(&json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE))
-                .await
-                .unwrap();
-            request_tx.send(request).unwrap();
-        });
+        let (release_excluded_poll_tx, release_excluded_poll_rx) = tokio::sync::oneshot::channel();
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(status_response(503)),
+            RawHttpAction::WaitThenRespond {
+                release: release_excluded_poll_rx,
+                response: json_response("200 OK", r#"{"job":null}"#),
+            },
+            RawHttpAction::Respond(poll_job_response(run_id)),
+            RawHttpAction::Respond(json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE)),
+        ])
+        .await;
+        let api_url = server.url();
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial_poll = wakeups
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
@@ -3047,29 +3020,40 @@ mod tests {
 
         let direct = provider.discover().await.unwrap();
         assert!(provider.claim(direct).await.is_none());
-        let first_claim_request = next_request(&mut requests).await;
+        let first_claim_request = server.next_request("initial transient claim request").await;
         assert!(first_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
         let provider_for_discover = Arc::clone(&provider);
-        let discover_task =
-            tokio::spawn(async move { provider_for_discover.discover().await.unwrap() });
-        let excluded_poll_request = next_request(&mut requests).await;
+        let discover_task = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+            provider_for_discover.discover().await.unwrap()
+        }));
+        let excluded_poll_request = server
+            .next_request("poll request excluding the transiently failed claim")
+            .await;
+        let excluded_poll_observed_at = tokio::time::Instant::now();
         assert!(excluded_poll_request.contains(r#""excludedRunIds":["#));
         assert!(excluded_poll_request.contains(&run_id.to_string()));
         assert!(
-            tokio::time::timeout(Duration::from_millis(100), requests.recv())
-                .await
-                .is_err(),
+            tokio::time::timeout(
+                Duration::from_millis(100),
+                server.next_request("claim retry before its transient cooldown"),
+            )
+            .await
+            .is_err(),
             "claim retry must wait for its transient cooldown"
         );
 
-        let retry_poll_request = tokio::time::timeout(
-            CLAIM_TRANSIENT_COOLDOWN + Duration::from_secs(1),
-            requests.recv(),
+        tokio::time::sleep_until(
+            excluded_poll_observed_at + CLAIM_TRANSIENT_COOLDOWN + Duration::from_millis(50),
         )
-        .await
-        .expect("runner should poll after the transient cooldown")
-        .expect("request channel should remain open");
+        .await;
+        release_excluded_poll_tx
+            .send(())
+            .expect("excluded poll response should still be waiting for release");
+
+        let retry_poll_request = server
+            .next_request("poll request after the transient cooldown")
+            .await;
         assert!(!retry_poll_request.contains(r#""excludedRunIds""#));
         let retry_candidate = tokio::time::timeout(Duration::from_secs(1), discover_task)
             .await
@@ -3082,14 +3066,12 @@ mod tests {
                 .expect("retry claim should receive its response")
                 .is_some()
         );
-        let second_claim_request = tokio::time::timeout(Duration::from_secs(1), requests.recv())
-            .await
-            .expect("retry claim request should reach the server")
-            .expect("request channel should remain open");
+        let second_claim_request = server
+            .next_request("claim request after the transient cooldown")
+            .await;
         assert!(second_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
-        join_raw_http_task(server_task, "transient sequence server").await;
-        assert!(requests.recv().await.is_none());
+        server.assert_finished().await;
     }
 
     #[tokio::test]
