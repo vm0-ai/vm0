@@ -66,10 +66,6 @@ impl CacheEntryPaths {
         Self::child_path(entry_dir, &format!("{file_name}.tmp.{run_id}"))
     }
 
-    fn temporary_for(cache_dir: &Path, cache_key: &str, file_name: &str, run_id: RunId) -> PathBuf {
-        Self::temporary_path(Self::entry_dir_for(cache_dir, cache_key), file_name, run_id)
-    }
-
     pub(super) fn lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
         workspace_image_cache_lock_path(lock_dir, cache_key)
     }
@@ -133,9 +129,8 @@ impl WorkspaceImageCache {
         cache_key: &str,
         run_id: RunId,
     ) -> PathBuf {
-        CacheEntryPaths::temporary_for(
-            self.workspace_image_cache_dir(),
-            cache_key,
+        CacheEntryPaths::temporary_path(
+            CacheEntryPaths::entry_dir_for(self.workspace_image_cache_dir(), cache_key),
             SESSION_HISTORY_SIDECAR_FILE_NAME,
             run_id,
         )
