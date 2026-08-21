@@ -31,7 +31,7 @@ const AVATAR_VIDEO_RESULT = {
 } as const;
 
 function stubBillingStatus() {
-  return http.get("http://localhost:3000/api/okou/billing/status", () => {
+  return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
       tier: "team",
       canBuyCredits: true,

@@ -9,6 +9,7 @@ from mitmproxy import http
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_websocket_usage
+import openai_responses_events
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
@@ -61,17 +62,21 @@ class TestModelProviderWebSocketPrewarmUsage:
     def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
         self._usage_webhook_api = usage_webhook_api
 
+    @pytest.mark.parametrize("terminal_event", sorted(openai_responses_events.TERMINAL_EVENTS))
     def test_model_websocket_dense_terminal_uses_one_full_body_parse(
         self,
         tmp_path,
         real_flow,
         monkeypatch: pytest.MonkeyPatch,
+        terminal_event: str,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         dense_terminal = (
-            b'{"type":"response.completed","padding":['
+            b'{"type":"'
+            + terminal_event.encode()
+            + b'","padding":['
             + b",".join([b"0"] * 20_000)
             + b'],"response":{"id":"dense-prewarm","model":"gpt-5.5",'
             b'"usage":{"input_tokens":9,"output_tokens":4}}}'

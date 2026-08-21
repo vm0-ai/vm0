@@ -617,6 +617,8 @@
       "illustrationPreview": "{{title}} illustration preview",
       "importDeck": "Import your own deck",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} slide",
+      "importedSlides_other": "{{count}} slides",
       "multiAccent": "Multi-accent",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
@@ -4607,7 +4609,6 @@
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "modelVariants": "{{model}} variants",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",

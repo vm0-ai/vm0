@@ -634,6 +634,9 @@
       "illustrationPreview": "Visualização da ilustração {{title}}",
       "importDeck": "Importe sua própria apresentação",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} slide",
+      "importedSlides_many": "{{count}} slides",
+      "importedSlides_other": "{{count}} slides",
       "multiAccent": "Várias cores de destaque",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
@@ -4657,7 +4660,6 @@
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
         "models": "Modelos",
-        "modelVariants": "Variantes de {{model}}",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
           "balanced": "Custo e desempenho equilibrados",

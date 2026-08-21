@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from mitmproxy import http
 
 import flow_metadata
+import openai_responses_events
 import provider_timing_store
 
 FIRST_GENERATED_RESPONSE_CREATE_SENT = "codex_proxy_first_generated_response_create_sent"
@@ -31,13 +32,6 @@ FIRST_OUTPUT_TEXT_DELTA = "codex_proxy_first_output_text_delta"
 FIRST_TEXT_IN_FIRST_GENERATED_RESPONSE = "codex_proxy_first_text_in_first_generated_response"
 FIRST_TEXT_IN_LATER_GENERATED_RESPONSE = "codex_proxy_first_text_in_later_generated_response"
 
-_RESPONSE_CREATE_EVENT = "response.create"
-_RESPONSE_CREATED_EVENT = "response.created"
-_OUTPUT_ITEM_ADDED_EVENT = "response.output_item.added"
-_OUTPUT_TEXT_DELTA_EVENT = "response.output_text.delta"
-_TERMINAL_EVENTS = frozenset(
-    ("response.completed", "response.done", "response.incomplete", "response.failed")
-)
 _MAX_TRACKED_RUNS = 10_000
 _LOG_TYPE = "codex_output_timing"
 
@@ -64,7 +58,7 @@ def observe_client_event(
     received_at: float,
 ) -> None:
     """Advance one run's timing state from a received client Responses event."""
-    if event_type != _RESPONSE_CREATE_EVENT:
+    if event_type != openai_responses_events.CLIENT_CREATE_EVENT:
         return
 
     run_id = flow_metadata.run_id(flow.metadata)
@@ -103,7 +97,7 @@ def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
         return
 
     with _store.locked():
-        if event_type == _RESPONSE_CREATED_EVENT:
+        if event_type == openai_responses_events.SERVER_CREATED_EVENT:
             state = _store.state_for_run_locked(run_id)
             if not state.generated_response_selected:
                 state.candidate_response_created_at = _observation_time()
@@ -113,7 +107,7 @@ def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
             return
 
         state = _store.get_locked(run_id)
-        if event_type == _OUTPUT_ITEM_ADDED_EVENT:
+        if event_type == openai_responses_events.OUTPUT_ITEM_ADDED_EVENT:
             if state is None:
                 state = _store.state_for_run_locked(run_id)
             else:
@@ -134,7 +128,7 @@ def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
                 _store.admit_pending_locked(flow, run_id, state)
             return
 
-        if event_type == _OUTPUT_TEXT_DELTA_EVENT:
+        if event_type == openai_responses_events.OUTPUT_TEXT_DELTA_EVENT:
             if state is None or not state.generated_response_selected:
                 return
             _store.touch_locked(run_id)
@@ -151,7 +145,7 @@ def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
                 _store.admit_pending_locked(flow, run_id, state)
             return
 
-        if event_type not in _TERMINAL_EVENTS or state is None:
+        if event_type not in openai_responses_events.TERMINAL_EVENTS or state is None:
             return
 
         _store.touch_locked(run_id)

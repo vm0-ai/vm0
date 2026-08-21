@@ -617,6 +617,8 @@
       "illustrationPreview": "{{title}} 일러스트레이션 미리보기",
       "importDeck": "내 덱 가져오기",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}}장",
+      "importedSlides_other": "{{count}}장",
       "multiAccent": "다중 악센트",
       "nextSlide": "다음 슬라이드 미리보기",
       "noMatches": "일치하는 항목 없음",
@@ -4606,7 +4608,6 @@
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
         "models": "모델",
-        "modelVariants": "{{model}} 변형",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
           "balanced": "비용과 성능의 균형",

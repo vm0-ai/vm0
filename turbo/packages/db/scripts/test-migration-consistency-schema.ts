@@ -2941,15 +2941,16 @@ async function validatePermanentArtifactTriggerBehavior(
     await client.query(
       `INSERT INTO "hosted_sites" (
          "id", "org_id", "user_id", "slug", "public_slug",
-         "requested_slug", "chat_thread_id", "created_from_run_id"
+         "requested_slug", "chat_thread_id", "created_from_run_id",
+         "public_brand"
        )
        VALUES
          ($1, $4, $5, 'permanent-hosted-site', 'permanent-hosted-site',
-          'permanent-hosted-site', NULL, $7),
+          'permanent-hosted-site', NULL, $7, 'vm0'),
          ($2, $4, $5, 'permanent-presentation', 'permanent-presentation',
-          'permanent-presentation', NULL, NULL),
+          'permanent-presentation', NULL, NULL, 'vm0'),
          ($3, $4, $5, 'permanent-scoped-site', 'permanent-scoped-site',
-          'permanent-scoped-site', $6, NULL)`,
+          'permanent-scoped-site', $6, NULL, 'vm0')`,
       [
         fixture.hostedSiteId,
         fixture.presentationSiteId,
@@ -3040,12 +3041,12 @@ async function validatePermanentArtifactTriggerBehavior(
       query: `INSERT INTO "hosted_deployments" (
         "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
         "manifest", "manifest_hash", "content_hash", "file_count",
-        "size_bytes", "url"
+        "size_bytes", "url", "public_brand"
       )
       VALUES (
         $1, $2, $3, $4, 'uploading', 'permanent-out-of-scope', '{}'::jsonb,
         repeat('0', 64), repeat('0', 64), 0, 0,
-        'https://out-of-scope.invalid'
+        'https://out-of-scope.invalid', 'vm0'
       )`,
       values: [
         fixture.scopedSiteId,

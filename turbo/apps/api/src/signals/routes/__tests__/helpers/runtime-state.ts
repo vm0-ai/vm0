@@ -186,34 +186,6 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
-export async function validateBrowserPublicBrandRollout(
-  context: TestContext,
-): Promise<{
-  readonly schemaAvailable: boolean;
-  readonly previousApiPublicBrand: "vm0" | "okou" | undefined;
-  readonly newApiPublicBrandPersisted: boolean;
-  readonly newApiPublicBrand: "vm0" | "okou" | undefined;
-  readonly newApiPublicBrandAfterSchemaArrival: "vm0" | "okou" | undefined;
-}> {
-  const response = await postAction(context, {
-    action: "validate-browser-public-brand-rollout",
-  });
-  if (response.browser_public_brand_schema_available === undefined) {
-    throw new Error(
-      "validateBrowserPublicBrandRollout missing schema availability",
-    );
-  }
-  return {
-    schemaAvailable: response.browser_public_brand_schema_available,
-    previousApiPublicBrand: response.previous_api_browser_public_brand,
-    newApiPublicBrandPersisted:
-      response.new_api_browser_public_brand_persisted ?? false,
-    newApiPublicBrand: response.new_api_browser_public_brand,
-    newApiPublicBrandAfterSchemaArrival:
-      response.new_api_browser_public_brand_after_schema_arrival,
-  };
-}
-
 export async function readUsagePackInvitationSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {

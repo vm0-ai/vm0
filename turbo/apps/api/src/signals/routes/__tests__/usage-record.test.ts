@@ -323,7 +323,7 @@ function uniqueProvider(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
 }
 
-describe("GET /api/zero/usage/record", () => {
+describe("GET /api/usage/record", () => {
   afterEach(() => {
     clearMockNow();
   });

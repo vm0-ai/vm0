@@ -617,6 +617,8 @@
       "illustrationPreview": "{{title}} イラストのプレビュー",
       "importDeck": "自分のデッキをインポート",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} 枚",
+      "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
@@ -4606,7 +4608,6 @@
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "models": "モデル",
-        "modelVariants": "{{model}} のバリエーション",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",

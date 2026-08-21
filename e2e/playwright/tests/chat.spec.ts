@@ -220,7 +220,7 @@ async function enableFeatureSwitch(
   page: Page,
   key: "chatForward" | "imageModelSelection" | "responsiveFollowupCards",
 ): Promise<void> {
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -248,7 +248,7 @@ async function enableChatForward(page: Page): Promise<void> {
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
-  await page.route("**/api/okou/billing/status", async (route) => {
+  await page.route("**/api/billing/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body)) {
@@ -267,7 +267,7 @@ async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
 
 async function mockSelectedFastModel(page: Page): Promise<void> {
   const policyId = "00000000-0000-4000-a000-000000000736";
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -285,7 +285,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
     });
   });
   await mockUnrestrictedModelBilling(page);
-  await page.route("**/api/okou/model-policies", async (route) => {
+  await page.route("**/api/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -352,7 +352,7 @@ async function mockModelPickerBoundary(page: Page): Promise<{
 
   await enableFeatureSwitch(page, "imageModelSelection");
   await mockUnrestrictedModelBilling(page);
-  await page.route("**/api/okou/model-policies", async (route) => {
+  await page.route("**/api/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -1823,7 +1823,7 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     await route.fulfill({
       json: {
         switches: {},

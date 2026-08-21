@@ -27,23 +27,9 @@ export const REQUIRED_PRESENTATION_TEMPLATE_PACKAGE_FILES = [
   "design-system.md",
 ] as const;
 
-export const presentationTemplateStatusSchema = z.enum([
-  "pending",
-  "processing",
-  "ready",
-  "failed",
-]);
-
-const presentationTemplateErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-});
-
 const presentationTemplateSummarySchema = z.object({
   id: z.uuid(),
   title: z.string(),
-  status: presentationTemplateStatusSchema,
-  error: presentationTemplateErrorSchema.nullable(),
   sourceFilename: z.string(),
   coverUrl: z.string().url().nullable(),
   pageCount: z.number().int().nonnegative(),

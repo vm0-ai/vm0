@@ -29,6 +29,7 @@ from typing import Literal
 from mitmproxy import http
 
 import body_decoding
+import openai_responses_events
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
@@ -51,71 +52,6 @@ from .openai_tokens import partition_input_tokens as _partition_input_tokens
 from .quantities import MAX_USAGE_QUANTITY
 from .sse import SseUsageScanner
 
-# Terminal Responses events whose Response object may carry usage. WebSocket
-# source eviction relies on these events being final for the logical response id;
-# protocols with mutable post-terminal usage snapshots need a source-upsert
-# contract instead of source-preserving append-only events.
-_RESPONSES_TERMINAL_USAGE_EVENTS = frozenset(
-    ("response.completed", "response.done", "response.incomplete", "response.failed")
-)
-# Keep exact current official Responses stream event literals plus established
-# compatibility literals. Unknown names intentionally retain full extraction so
-# schema drift cannot silently skip a future usage-bearing event.
-_RESPONSES_KNOWN_NON_USAGE_EVENTS = frozenset(
-    (
-        "error",
-        "response.audio.delta",
-        "response.audio.done",
-        "response.audio.transcript.delta",
-        "response.audio.transcript.done",
-        "response.code_interpreter_call.code.delta",
-        "response.code_interpreter_call.completed",
-        "response.code_interpreter_call.in_progress",
-        "response.code_interpreter_call.interpreting",
-        "response.code_interpreter_call_code.delta",
-        "response.code_interpreter_call_code.done",
-        "response.content_part.added",
-        "response.content_part.done",
-        "response.created",
-        "response.custom_tool_call_input.delta",
-        "response.custom_tool_call_input.done",
-        "response.file_search_call.completed",
-        "response.file_search_call.in_progress",
-        "response.file_search_call.searching",
-        "response.function_call_arguments.delta",
-        "response.function_call_arguments.done",
-        "response.image_generation_call.completed",
-        "response.image_generation_call.generating",
-        "response.image_generation_call.in_progress",
-        "response.image_generation_call.partial_image",
-        "response.in_progress",
-        "response.mcp_call.completed",
-        "response.mcp_call.failed",
-        "response.mcp_call.in_progress",
-        "response.mcp_call_arguments.delta",
-        "response.mcp_call_arguments.done",
-        "response.mcp_list_tools.completed",
-        "response.mcp_list_tools.failed",
-        "response.mcp_list_tools.in_progress",
-        "response.output_item.added",
-        "response.output_item.done",
-        "response.output_text.annotation.added",
-        "response.output_text.delta",
-        "response.output_text.done",
-        "response.queued",
-        "response.reasoning_summary_part.added",
-        "response.reasoning_summary_part.done",
-        "response.reasoning_summary_text.delta",
-        "response.reasoning_summary_text.done",
-        "response.reasoning_text.delta",
-        "response.reasoning_text.done",
-        "response.refusal.delta",
-        "response.refusal.done",
-        "response.web_search_call.completed",
-        "response.web_search_call.in_progress",
-        "response.web_search_call.searching",
-    )
-)
 _SseUsageParseErrorCallback = Callable[[str, str], None]
 _SseTerminalUsageCallback = Callable[[dict], None]
 _ResponsesEventTypeClassification = Literal[
@@ -141,13 +77,6 @@ _RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
 # parser's bulk-scan path for ordinary large content strings.
 _RESPONSES_MAX_WORK_UNITS = 65_536
 OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
-_RESPONSES_CREATE_EVENT = "response.create"
-_RESPONSES_CREATED_EVENT = "response.created"
-_RESPONSES_ERROR_EVENT = "error"
-_RESPONSES_SERVER_LIFECYCLE_EVENTS = _RESPONSES_TERMINAL_USAGE_EVENTS | {
-    _RESPONSES_CREATED_EVENT,
-    _RESPONSES_ERROR_EVENT,
-}
 
 
 @dataclass(frozen=True)
@@ -171,15 +100,15 @@ class OpenAIResponsesServerLifecycle:
 
     @property
     def is_created(self) -> bool:
-        return self.event_type == _RESPONSES_CREATED_EVENT
+        return self.event_type == openai_responses_events.SERVER_CREATED_EVENT
 
     @property
     def is_terminal(self) -> bool:
-        return self.event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
+        return self.event_type in openai_responses_events.TERMINAL_EVENTS
 
     @property
     def is_error(self) -> bool:
-        return self.event_type == _RESPONSES_ERROR_EVENT
+        return self.event_type == openai_responses_events.SERVER_ERROR_EVENT
 
 
 @dataclass(frozen=True)
@@ -262,7 +191,7 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
     event_type = result.values.get(("type",))
     if not type_is_consistent or not isinstance(event_type, str):
         return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
-    if event_type != _RESPONSES_CREATE_EVENT:
+    if event_type != openai_responses_events.CLIENT_CREATE_EVENT:
         return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
     if not generate_is_consistent:
         return OpenAIResponsesClientEvent(observed_event_type, False, "unknown")
@@ -313,9 +242,9 @@ def _lifecycle_from_extraction(
     event_type = result.values.get(("type",))
     if not isinstance(event_type, str):
         return OpenAIResponsesServerLifecycle(event.event_type, None, False)
-    if event_type == _RESPONSES_ERROR_EVENT:
+    if event_type == openai_responses_events.SERVER_ERROR_EVENT:
         return OpenAIResponsesServerLifecycle(event_type, None, True)
-    if event_type not in _RESPONSES_SERVER_LIFECYCLE_EVENTS:
+    if event_type not in openai_responses_events.SERVER_LIFECYCLE_EVENTS:
         return OpenAIResponsesServerLifecycle(event_type, None, True)
     response_id = result.values.get(("response", "id"))
     if (
@@ -364,7 +293,7 @@ def inspect_openai_responses_server_event(
     if (
         include_lifecycle
         and event.event_type is not None
-        and event.event_type not in _RESPONSES_SERVER_LIFECYCLE_EVENTS
+        and event.event_type not in openai_responses_events.SERVER_LIFECYCLE_EVENTS
     ):
         lifecycle = OpenAIResponsesServerLifecycle(event.event_type, None, True)
         needs_lifecycle_parse = False
@@ -431,9 +360,9 @@ def _classify_responses_event_type_result(
 
 
 def _classify_responses_event_name(event_name: str) -> _ResponsesEventTypeClassification:
-    if event_name in _RESPONSES_TERMINAL_USAGE_EVENTS:
+    if event_name in openai_responses_events.TERMINAL_EVENTS:
         return _RESPONSES_EVENT_TERMINAL
-    if event_name in _RESPONSES_KNOWN_NON_USAGE_EVENTS:
+    if event_name in openai_responses_events.KNOWN_NON_USAGE_EVENTS:
         return _RESPONSES_EVENT_KNOWN_NON_USAGE
     return _RESPONSES_EVENT_UNKNOWN
 
@@ -447,11 +376,11 @@ def _resolved_data_event_type(
 
 
 def _is_known_terminal_usage_event(value: object) -> bool:
-    return isinstance(value, str) and value in _RESPONSES_TERMINAL_USAGE_EVENTS
+    return isinstance(value, str) and value in openai_responses_events.TERMINAL_EVENTS
 
 
 def _is_known_non_usage_event(value: object) -> bool:
-    return isinstance(value, str) and value in _RESPONSES_KNOWN_NON_USAGE_EVENTS
+    return isinstance(value, str) and value in openai_responses_events.KNOWN_NON_USAGE_EVENTS
 
 
 def _store_quantity(target: dict, category: str, value: object) -> None:
@@ -687,9 +616,8 @@ def create_openai_responses_sse_usage_extractor(
 
     When captured event JSON cannot be parsed or exceeds an extractor bound,
     ``on_parse_error(event_type, error)`` is called only if the final event
-    identity is ``response.completed``, ``response.done``,
-    ``response.incomplete``, or ``response.failed``. Known non-usage events and
-    malformed non-terminal or unknown events remain silent. HTTP content
+    identity is a canonical terminal Responses event. Known non-usage events
+    and malformed non-terminal or unknown events remain silent. HTTP content
     decoding and its errors are outside this parser; callers feed decoded output
     and handle decoder completion separately.
 
@@ -797,7 +725,7 @@ class _OpenAIResponsesSseUsageHandler:
                 event_type = data_type
         if (
             event_type is not None
-            and event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
+            and event_type in openai_responses_events.TERMINAL_EVENTS
             and result.error
             and self._on_parse_error is not None
         ):

@@ -634,6 +634,9 @@
       "illustrationPreview": "{{title}} anteprima dell'illustrazione",
       "importDeck": "Importa la tua presentazione",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} diapositiva",
+      "importedSlides_many": "{{count}} diapositive",
+      "importedSlides_other": "{{count}} diapositive",
       "multiAccent": "Multiaccento",
       "nextSlide": "Anteprima della diapositiva successiva",
       "noMatches": "Nessuna corrispondenza",
@@ -4657,7 +4660,6 @@
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
         "models": "Modelli",
-        "modelVariants": "Varianti di {{model}}",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
           "balanced": "Costo e prestazioni equilibrati",

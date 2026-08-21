@@ -53,6 +53,7 @@ vi.stubEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.okou.io");
 vi.stubEnv("R2_HOSTED_SITES_BUCKET_NAME", "test-hosted-sites");
 vi.stubEnv("R2_HOSTED_SITES_ACCESS_KEY_ID", "test-hosted-sites-access-key");
 vi.stubEnv("R2_HOSTED_SITES_SECRET_ACCESS_KEY", "test-hosted-sites-secret-key");
+vi.stubEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
 vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");

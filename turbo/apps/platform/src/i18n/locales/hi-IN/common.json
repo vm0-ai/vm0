@@ -617,6 +617,8 @@
       "illustrationPreview": "{{title}} चित्रण पूर्वावलोकन",
       "importDeck": "अपना डेक इंपोर्ट करें",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} स्लाइड",
+      "importedSlides_other": "{{count}} स्लाइड",
       "multiAccent": "बहु-उच्चारण",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
@@ -4607,7 +4609,6 @@
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
         "models": "मॉडल",
-        "modelVariants": "{{model}} के वेरिएंट",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {
           "balanced": "संतुलित लागत और प्रदर्शन",

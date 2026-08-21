@@ -1,7 +1,7 @@
 /**
  * Usage Record API Handlers
  *
- * Mock handler for /api/okou/usage/record endpoint.
+ * Mock handler for /api/usage/record endpoint.
  */
 
 import {

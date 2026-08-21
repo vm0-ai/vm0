@@ -173,7 +173,7 @@ function putObjectInput(): PutObjectCommandInput {
 async function orgCredits(fixture: ImageFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const app = createImageIoTestApp();
-  const response = await app.request("/api/zero/billing/status", {
+  const response = await app.request("/api/billing/status", {
     headers: authHeaders(),
   });
   expect(response.status).toBe(200);
@@ -1200,7 +1200,7 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - creditsCharged);
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const usageResponse = await app.request("/api/zero/usage/record", {
+    const usageResponse = await app.request("/api/usage/record", {
       headers: authHeaders(),
     });
     expect(usageResponse.status).toBe(200);
