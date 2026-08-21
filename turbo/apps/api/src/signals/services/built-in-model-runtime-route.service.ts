@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   getVm0ManagedRouteCandidates,
   type Vm0ManagedRouteProviderType,
@@ -7,6 +9,7 @@ import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import { and, eq, gt, sql } from "drizzle-orm";
 
+import { singleton } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
@@ -27,6 +30,36 @@ interface ManagedModelCandidateIdentity {
   readonly selectedModel: string;
   readonly providerType: string;
   readonly upstreamModel: string;
+}
+
+const unavailableRuntimeRouteModelsForTest = singleton(() => {
+  return new AsyncLocalStorage<ReadonlySet<string>>();
+});
+
+/**
+ * Operator-managed model keys are global rows, so a missing-key API test cannot
+ * safely delete them while other test workers are running. Keep that impossible
+ * external state scoped to the calling async chain instead of mutating shared
+ * database state.
+ */
+export async function withBuiltInModelRuntimeRouteUnavailableForTest<T>(
+  selectedModel: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const inherited = unavailableRuntimeRouteModelsForTest.peek()?.getStore();
+  return await unavailableRuntimeRouteModelsForTest().run(
+    new Set([...(inherited ?? []), selectedModel]),
+    work,
+  );
+}
+
+function runtimeRouteUnavailableForTest(selectedModel: string): boolean {
+  return (
+    unavailableRuntimeRouteModelsForTest
+      .peek()
+      ?.getStore()
+      ?.has(selectedModel) === true
+  );
 }
 
 function routeFromTarget(
@@ -69,6 +102,9 @@ export async function resolveBuiltInModelRuntimeRoute(
   selectedModel: string,
   fallbackEnabled = false,
 ): Promise<BuiltInModelRuntimeRoute | null> {
+  if (runtimeRouteUnavailableForTest(selectedModel)) {
+    return null;
+  }
   if (!fallbackEnabled) {
     return await resolvePrimaryRoute(db, selectedModel);
   }
