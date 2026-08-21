@@ -154,28 +154,75 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
     'cd /home/user/workspace && exec 3>>live-writer && printf "writer-start\n" >&3 && while :; do printf x >&3; sleep 0.05; done' &
   WRITER_EXEC_PID=$!
 
-  WRITER_READY=false
-  for _ in $(seq 1 30); do
-    if ! kill -0 "$WRITER_EXEC_PID" 2>/dev/null; then
+  set +e
+  WRITER_PROBE_OUTPUT=$(sudo timeout 17 "$BIN_DIR/runner" exec --timeout 10 \
+    --sandbox "$SANDBOX_ID" -- sh -c \
+    'writer_attempt=0
+while [ "$writer_attempt" -lt 50 ]; do
+  writer_size=$(stat -c %s /home/user/workspace/live-writer 2>/dev/null || printf 0)
+  case "$writer_size" in
+    ''|*[!0-9]*) ;;
+    *) [ "$writer_size" -gt 13 ] && exit 0 ;;
+  esac
+  writer_attempt=$((writer_attempt + 1))
+  sleep 0.1
+done
+printf "Independent workspace writer did not become active within 5 seconds\n" >&2
+exit 42' 2>&1)
+  WRITER_PROBE_STATUS=$?
+  set -e
+
+  if [ "$WRITER_PROBE_STATUS" -ne 0 ]; then
+    printf '%s\n' "$WRITER_PROBE_OUTPUT"
+
+    CONTROL_DEADLINE=false
+    if grep -F 'failed to connect to sandbox: connect timed out' \
+      <<<"$WRITER_PROBE_OUTPUT" >/dev/null \
+      || grep -F 'failed to connect to sandbox: request timed out' \
+        <<<"$WRITER_PROBE_OUTPUT" >/dev/null \
+      || grep -F 'exec failed: exec start timeout' \
+        <<<"$WRITER_PROBE_OUTPUT" >/dev/null; then
+      CONTROL_DEADLINE=true
+    elif [ "$WRITER_PROBE_STATUS" -eq 124 ] \
+      && ! grep -Fx 'Timeout' <<<"$WRITER_PROBE_OUTPUT" >/dev/null; then
+      CONTROL_DEADLINE=true
+    fi
+
+    if [ "$CONTROL_DEADLINE" = true ]; then
+      echo "--- Control exec diagnostics for invocation ${TURN1_INVOCATION_ID} ---"
+      CONTROL_LINES=$(sudo journalctl --no-pager \
+        "_SYSTEMD_INVOCATION_ID=$TURN1_INVOCATION_ID" 2>&1 \
+        | grep -E 'control socket|exec operation|runner-exec' || true)
+      if [ -n "$CONTROL_LINES" ]; then
+        printf '%s\n' "$CONTROL_LINES"
+      else
+        echo "No control exec diagnostics found"
+      fi
+
+      if [ "$ATTEMPT" -eq "$MAX_ATTEMPTS" ]; then
+        fail "Concurrent control exec remained unavailable after ${MAX_ATTEMPTS} attempts"
+      fi
+
+      echo "RETRY: concurrent control exec missed its deadline on attempt ${ATTEMPT}"
+      sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+      wait_for_unit_inactive
+      kill "$WRITER_EXEC_PID" 2>/dev/null || true
       wait "$WRITER_EXEC_PID" 2>/dev/null || true
       WRITER_EXEC_PID=""
-      fail "Independent workspace writer exited before promotion"
+      kill "$SUBMIT_PID" 2>/dev/null || true
+      wait "$SUBMIT_PID" 2>/dev/null || true
+      SUBMIT_PID=""
+      continue
     fi
-    WRITER_SIZE=$(sudo "$BIN_DIR/runner" exec --timeout 2 \
-      --sandbox "$SANDBOX_ID" -- stat -c %s /home/user/workspace/live-writer \
-      2>/dev/null || true)
-    case "$WRITER_SIZE" in
-      ''|*[!0-9]*) ;;
-      *)
-        if [ "$WRITER_SIZE" -gt 13 ]; then
-          WRITER_READY=true
-          break
-        fi
-        ;;
-    esac
-    sleep 1
-  done
-  [ "$WRITER_READY" = true ] || fail "Independent workspace writer did not become active"
+
+    if [ "$WRITER_PROBE_STATUS" -eq 42 ]; then
+      fail "Independent workspace writer did not become active"
+    fi
+    if [ "$WRITER_PROBE_STATUS" -eq 124 ]; then
+      fail "Independent workspace writer readiness command timed out in the guest"
+    fi
+    fail "Independent workspace writer readiness probe failed with status ${WRITER_PROBE_STATUS}"
+  fi
 
   # Enter draining while both the supervised turn and independent writer are
   # live. Releasing the turn then drives freeze, stop, and promotion without
