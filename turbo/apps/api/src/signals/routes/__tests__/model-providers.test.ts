@@ -236,7 +236,7 @@ async function markOrgCodexProviderStaleViaFirewall(
   expect(failed.body.error.failureReason).toBe("reconnect_required");
 }
 
-describe("GET /api/zero/model-providers", () => {
+describe("GET /api/model-providers", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context, routes: modelProvidersRoutes })(
       modelProvidersMainContract,
@@ -492,7 +492,7 @@ describe("GET /api/zero/model-providers", () => {
   });
 });
 
-describe("POST /api/zero/model-providers", () => {
+describe("POST /api/model-providers", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context, routes: modelProvidersRoutes })(
       modelProvidersMainContract,
@@ -1088,7 +1088,7 @@ describe("POST /api/zero/model-providers", () => {
   });
 });
 
-describe("DELETE /api/zero/model-providers/:type", () => {
+describe("DELETE /api/model-providers/:type", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context, routes: modelProvidersRoutes })(
       modelProvidersByTypeContract,

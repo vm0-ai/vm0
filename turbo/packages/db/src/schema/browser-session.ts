@@ -83,9 +83,10 @@ export const browserSessions = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    // Old API after migration compatibility for the observed ~102-minute
-    // DB/API rollout window. Remove the default after old writers and rollback
-    // have drained; tracked by #28449.
+    // DB/API rollout compatibility: the immediately preceding API omits this
+    // field when it creates a browser session. Keep the default while that API
+    // can still serve or be rolled back; remove it in a later release after the
+    // explicit writer has deployed and the prior API has drained. #28449.
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
       .default("vm0")

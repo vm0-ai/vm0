@@ -1279,6 +1279,87 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/desktop/updates/:channel/:platform/:arch/release",
     "/api/zero/desktop/updates/:channel/:platform/:arch/release",
   ],
+  // #28462: feature switches, model policies, org-level model providers and
+  // their device-auth sessions, the org profile and membership routes, and the
+  // usage reads. Three surfaces hold these branded paths open, and the widest
+  // one is why the rows matter more here than in most slices:
+  //
+  // - An installed desktop build, which hardcodes `/api/okou/org` and
+  //   `/api/okou/feature-switches` rather than deriving them from a contract.
+  //   It has no window at all: it holds those paths until its user updates.
+  // - An open platform page, which keeps the bundle it loaded for about the
+  //   ~2 day old-web-client window in `docs/fallback.md` section 7.
+  // - A commit-addressed CLI package pinned by an execution context's
+  //   `CLI_PKG_URL`, draining over that context's queue lifetime plus claimed
+  //   execution bounded by the runner's 2h `JOB_TIMEOUT`.
+  //
+  // The CI bootstrap steps in `.github/workflows/turbo.yml` also call the
+  // branded forms on purpose: they exercise the compatibility these rows
+  // guarantee. None of those windows is the removal condition — a row retires
+  // under #26701's evidence rules like every other row in this file.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/feature-switches": [
+    "/api/okou/feature-switches",
+    "/api/zero/feature-switches",
+  ],
+  "/api/model-policies": [
+    "/api/okou/model-policies",
+    "/api/zero/model-policies",
+  ],
+  "/api/model-providers": [
+    "/api/okou/model-providers",
+    "/api/zero/model-providers",
+  ],
+  "/api/model-providers/:type": [
+    "/api/okou/model-providers/:type",
+    "/api/zero/model-providers/:type",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions",
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/complete": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+  ],
+  "/api/model-providers/codex/device-auth/sessions": [
+    "/api/okou/model-providers/codex/device-auth/sessions",
+    "/api/zero/model-providers/codex/device-auth/sessions",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
+    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/complete": [
+    "/api/okou/model-providers/codex/device-auth/sessions/complete",
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+  ],
+  "/api/org": ["/api/okou/org", "/api/zero/org"],
+  "/api/org/delete": ["/api/okou/org/delete", "/api/zero/org/delete"],
+  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
+  "/api/org/invite/purchase/:purchaseId/confirm": [
+    "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    "/api/zero/org/invite/purchase/:purchaseId/confirm",
+  ],
+  "/api/org/invite/purchase/preview": [
+    "/api/okou/org/invite/purchase/preview",
+    "/api/zero/org/invite/purchase/preview",
+  ],
+  "/api/org/leave": ["/api/okou/org/leave", "/api/zero/org/leave"],
+  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
+  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
+  "/api/org/membership-requests": [
+    "/api/okou/org/membership-requests",
+    "/api/zero/org/membership-requests",
+  ],
+  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
+  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
   // #28461: the agent reads and writes, the manual Morning Brief trigger, and
   // the workflow and workflow-automation management routes. Every caller in
   // this repository derives its URL from the contract, so nothing here still

@@ -254,7 +254,7 @@ runner_e2e_wait_for_usage_event() {
 }
 
 runner_e2e_usage_record() {
-    runner_api_curl "/api/okou/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
+    runner_api_curl "/api/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
 }
 
 runner_e2e_wait_for_usage_record() {

@@ -7,6 +7,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import openai_responses_events
 import usage
 from logging_utils import log_proxy_entry
 
@@ -32,16 +33,6 @@ _WebSocketCorrelationReason = Literal[
     "server_error",
     "correlation_cap",
 ]
-_WEBSOCKET_LIFECYCLE_EVENT_TYPES = frozenset(
-    (
-        "response.created",
-        "response.completed",
-        "response.done",
-        "response.incomplete",
-        "response.failed",
-        "error",
-    )
-)
 
 
 def activate(flow: http.HTTPFlow) -> None:
@@ -238,7 +229,7 @@ def feed_usage(
             or prewarm_state.active_intent is not None
             or bool(prewarm_state.ignored_response_diagnostics)
             or event.event_type is None
-            or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
+            or event.event_type in openai_responses_events.SERVER_LIFECYCLE_EVENTS
         )
     )
     inspection = usage.inspect_openai_responses_server_event(

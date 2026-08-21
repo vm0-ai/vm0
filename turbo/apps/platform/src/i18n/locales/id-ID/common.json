@@ -617,6 +617,8 @@
       "illustrationPreview": "pratinjau ilustrasi {{title}}",
       "importDeck": "Impor dek Anda sendiri",
       "importDeckHint": "(.pptx, .pdf)",
+      "importedSlides_one": "{{count}} slide",
+      "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",

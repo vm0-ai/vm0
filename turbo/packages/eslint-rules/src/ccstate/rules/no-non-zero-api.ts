@@ -74,6 +74,13 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   // parameters are already substituted by the time the download button builds
   // its URL.
   "/api/desktop/updates",
+  // #28462
+  "/api/feature-switches",
+  "/api/model-policies",
+  "/api/model-providers",
+  "/api/org",
+  "/api/usage/members",
+  "/api/usage/record",
   // #28461
   "/api/agents",
   "/api/morning-brief",

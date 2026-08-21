@@ -68,13 +68,6 @@ import {
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { browserScreenshotSchemaAvailable } from "./browser-screenshot-schema.service";
 import {
-  browserSessionCreationPublicBrandSelection,
-  browserSessionPublicBrandSelection,
-  browserSessionsBeforePublicBrandMigration,
-  effectiveBrowserSessionPublicBrand,
-  persistBrowserPublicBrandIfAvailable,
-} from "./browser-public-brand-schema.service";
-import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
@@ -120,8 +113,7 @@ const BROWSER_SESSION_SELECTION = {
   runId: browserSessions.runId,
   orgId: browserSessions.orgId,
   userId: browserSessions.userId,
-  publicBrand: browserSessionPublicBrandSelection,
-  creationPublicBrand: browserSessionCreationPublicBrandSelection,
+  publicBrand: browserSessions.publicBrand,
   name: browserSessions.name,
   browserProfileId: browserSessions.browserProfileId,
   browserThreadProfileId: browserSessions.browserThreadProfileId,
@@ -135,27 +127,10 @@ const BROWSER_SESSION_SELECTION = {
 } as const;
 
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
-type RawBrowserSessionRow = Omit<BrowserSessionRow, "publicBrand"> & {
-  readonly publicBrand: unknown;
-  readonly creationPublicBrand: unknown;
-};
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
 type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
 type DbTransaction = Tx;
 type InactiveBrowserStatus = (typeof INACTIVE_BROWSER_STATUSES)[number];
-
-function resolvedBrowserSessionRow(
-  row: RawBrowserSessionRow,
-): BrowserSessionRow {
-  const { creationPublicBrand, ...browser } = row;
-  return {
-    ...browser,
-    publicBrand: effectiveBrowserSessionPublicBrand(
-      row.publicBrand,
-      creationPublicBrand,
-    ),
-  };
-}
 
 export interface BrowserServiceError {
   readonly kind: "error";
@@ -765,7 +740,7 @@ async function suspendBrowserWithoutActiveInstance(
         ),
       )
       .returning(BROWSER_SESSION_SELECTION);
-    return next ? resolvedBrowserSessionRow(next) : null;
+    return next ?? null;
   });
   signal.throwIfAborted();
   if (!suspended) {
@@ -1198,7 +1173,7 @@ async function loadOwnedBrowser(
       ),
     )
     .limit(1);
-  return row ? resolvedBrowserSessionRow(row.browser) : null;
+  return row?.browser ?? null;
 }
 
 async function loadCurrentBrowser(
@@ -1216,7 +1191,7 @@ async function loadCurrentBrowser(
       ),
     )
     .limit(1);
-  return row ? resolvedBrowserSessionRow(row) : null;
+  return row ?? null;
 }
 
 async function loadOwnedThreadBrowser(
@@ -1233,7 +1208,7 @@ async function loadOwnedThreadBrowser(
       ),
     )
     .limit(1);
-  return row ? resolvedBrowserSessionRow(row) : null;
+  return row ?? null;
 }
 
 async function loadActiveInstance(
@@ -1532,14 +1507,11 @@ async function claimStartedProviderInstance(
 ) {
   const claimed = await db.transaction(async (tx) => {
     await lockBrowserThread(tx, args.context.chatThreadId);
-    const [rawCurrent] = await tx
+    const [current] = await tx
       .select(BROWSER_SESSION_SELECTION)
       .from(browserSessions)
       .where(eq(browserSessions.chatThreadId, args.browser.chatThreadId))
       .limit(1);
-    const current = rawCurrent
-      ? resolvedBrowserSessionRow(rawCurrent)
-      : undefined;
     if (!current || current.runId !== args.context.runId) {
       return { kind: "rejected" as const };
     }
@@ -1573,7 +1545,7 @@ async function claimStartedProviderInstance(
       }
       return {
         kind: "cleanup" as const,
-        browser: resolvedBrowserSessionRow(browser),
+        browser,
         instance,
       };
     }
@@ -1592,19 +1564,12 @@ async function claimStartedProviderInstance(
     }
     return {
       kind: "active" as const,
-      browser: resolvedBrowserSessionRow(browser),
+      browser,
       instance,
       screen,
     };
   });
   if (claimed.kind === "cleanup" || claimed.kind === "active") {
-    // Persist only after the immutable first provider-instance run is
-    // available to recover the logical browser's creation brand. This keeps a
-    // later resume run from replacing it during the schema rollout.
-    await persistBrowserPublicBrandIfAvailable(db, {
-      chatThreadId: claimed.browser.chatThreadId,
-      publicBrand: claimed.browser.publicBrand,
-    });
     await publishBrowserSessionChangedSafely(args.browser.userId, {
       threadId: args.browser.chatThreadId,
     });
@@ -1808,12 +1773,13 @@ async function claimFreshBrowser(
       );
     }
     const [browser] = await tx
-      .insert(browserSessionsBeforePublicBrandMigration)
+      .insert(browserSessions)
       .values({
         chatThreadId: context.chatThreadId,
         runId: context.runId,
         orgId: context.orgId,
         userId: context.userId,
+        publicBrand: context.publicBrand,
         name: args.name,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
@@ -1825,10 +1791,7 @@ async function claimFreshBrowser(
     }
     return {
       kind: "ok",
-      value: {
-        ...resolvedBrowserSessionRow(browser),
-        publicBrand: context.publicBrand,
-      },
+      value: browser,
     };
   });
 }
@@ -1858,16 +1821,6 @@ const createBrowserForContext$ = command(
     if (claimed.kind === "error") {
       return claimed;
     }
-    // Before migration 0956, the chat callback is the durable creation-brand
-    // source used by reads and by the migration backfill. Once the column is
-    // present this writes it directly, including the ALTER/INSERT race where
-    // the old statement shape receives the VM0 database default.
-    await persistBrowserPublicBrandIfAvailable(db, {
-      chatThreadId: claimed.value.chatThreadId,
-      publicBrand: claimed.value.publicBrand,
-    });
-    signal.throwIfAborted();
-
     const connection = await set(
       startProviderInstance$,
       {
@@ -1995,16 +1948,13 @@ const inspectActiveConnection$ = command(
       return {
         kind: "ok",
         value: {
-          browser: publicBrowser(
-            owner ? resolvedBrowserSessionRow(owner) : browser,
-            {
-              publicBrand: args.context.publicBrand,
-              liveUrl,
-              screenshotUrl,
-              idleExpiresAt: leased?.idleExpiresAt ?? instance.idleExpiresAt,
-              screen,
-            },
-          ),
+          browser: publicBrowser(owner ?? browser, {
+            publicBrand: args.context.publicBrand,
+            liveUrl,
+            screenshotUrl,
+            idleExpiresAt: leased?.idleExpiresAt ?? instance.idleExpiresAt,
+            screen,
+          }),
           cdpUrl,
           lifecycleEventId: null,
         },
@@ -2022,18 +1972,18 @@ const inspectActiveConnection$ = command(
       { stopProvider: false },
     );
     signal.throwIfAborted();
-    const [rawSuspended] = await db
+    const [suspended] = await db
       .select(BROWSER_SESSION_SELECTION)
       .from(browserSessions)
       .where(eq(browserSessions.chatThreadId, browser.chatThreadId))
       .limit(1);
     signal.throwIfAborted();
-    if (!rawSuspended) {
+    if (!suspended) {
       throw new Error("Managed browser disappeared during mutation");
     }
     return {
       kind: "resume",
-      browser: resolvedBrowserSessionRow(rawSuspended),
+      browser: suspended,
     };
   },
 );
@@ -2096,7 +2046,7 @@ async function claimBrowserForResume(
       )
       .returning(BROWSER_SESSION_SELECTION);
     return claimed
-      ? { kind: "claimed", browser: resolvedBrowserSessionRow(claimed) }
+      ? { kind: "claimed", browser: claimed }
       : conflict("The managed browser is busy", "BROWSER_BUSY");
   });
 }
@@ -3643,11 +3593,7 @@ const reconcileZeroBrowsersWithScope$ = command(
     let errors = 0;
     let healthy = 0;
     for (const row of rows) {
-      const outcome = await set(
-        reconcileBrowserInstance$,
-        { ...row, browser: resolvedBrowserSessionRow(row.browser) },
-        signal,
-      );
+      const outcome = await set(reconcileBrowserInstance$, row, signal);
       stopped += outcome.stopped;
       errors += outcome.errors;
       healthy += outcome.healthy;

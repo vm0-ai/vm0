@@ -20,15 +20,9 @@ export function sanitizeArtifactFilename(filename: string): string {
 export function publicArtifactsBaseUrlForBrand(
   publicBrand: PublicBrand,
 ): string {
-  // API/config rollout compatibility: environments that predate the branded
-  // CDN config still have only PUBLIC_ARTIFACTS_BASE_URL. Remove after every
-  // supported API environment provides OKOU_PUBLIC_ARTIFACTS_BASE_URL and the
-  // prior API is outside the observed ~102-minute rollout/rollback window.
-  // Tracked by #28449.
   const configuredUrl =
     publicBrand === "okou"
-      ? (env("OKOU_PUBLIC_ARTIFACTS_BASE_URL") ??
-        env("PUBLIC_ARTIFACTS_BASE_URL"))
+      ? env("OKOU_PUBLIC_ARTIFACTS_BASE_URL")
       : env("PUBLIC_ARTIFACTS_BASE_URL");
   return configuredUrl.replace(/\/+$/, "");
 }
