@@ -56,7 +56,14 @@ describe("branded API namespace declarations", () => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    expect(brandedRoutes.length).toBeGreaterThan(100);
+    // A floor, not an inventory. #28278 moves product routes off the brand
+    // namespace one slice at a time, so this count only ever falls — it was
+    // over 100 when this test was written and is 83 once #28462 lands. Any
+    // specific number is a snapshot that a later slice turns red for reasons
+    // that have nothing to do with the enumeration this test covers, so the
+    // floor is what proves the barrel walk still finds branded routes at all.
+    // The declaration asserted below is what gives the test its teeth.
+    expect(brandedRoutes.length).toBeGreaterThan(0);
     expect(
       brandedRoutes.some(({ method, path }) => {
         return (
