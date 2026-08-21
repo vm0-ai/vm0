@@ -3542,6 +3542,7 @@ describe("workflow detail page", () => {
       name: "Test Org",
       role: "admin",
     });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     const workflow = {
       ...salesResearch(),
       automations: [
