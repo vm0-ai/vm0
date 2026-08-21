@@ -8,7 +8,7 @@ const c = initContract();
 export const webFilesContract = c.router({
   download: {
     method: "GET",
-    path: "/api/okou/web/download-file",
+    path: "/api/web/download-file",
     headers: authHeadersSchema,
     query: z.object({ file_id: z.string().min(1) }),
     responses: {
@@ -25,7 +25,7 @@ export const webFilesContract = c.router({
   },
   fileUrl: {
     method: "GET",
-    path: "/api/okou/web/file-url",
+    path: "/api/web/file-url",
     headers: authHeadersSchema,
     query: z.object({ file_id: z.string().min(1) }),
     responses: {

@@ -927,25 +927,22 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/okou/uploads/prepare",
-      async ({ request }) => {
-        await expect(request.json()).resolves.toMatchObject({
-          filename: "photo.png",
-        });
-        return HttpResponse.json({
-          id: "upload-photo",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 1024,
-          uploadUrl: "https://mock-upload.example.com/photo.png",
-          uploadHeaders: {
-            "x-amz-meta-artifact-id": "upload-photo",
-          },
-          url: "https://example.com/photo.png",
-        });
-      },
-    );
+    context.mocks.http.post("*/api/uploads/prepare", async ({ request }) => {
+      await expect(request.json()).resolves.toMatchObject({
+        filename: "photo.png",
+      });
+      return HttpResponse.json({
+        id: "upload-photo",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 1024,
+        uploadUrl: "https://mock-upload.example.com/photo.png",
+        uploadHeaders: {
+          "x-amz-meta-artifact-id": "upload-photo",
+        },
+        url: "https://example.com/photo.png",
+      });
+    });
     context.mocks.http.put(
       "https://mock-upload.example.com/photo.png",
       ({ deferred, request }) => {
@@ -1007,23 +1004,20 @@ describe("chat drafts", () => {
         submittedPrompts.push(body.prompt ?? "");
       },
     });
-    context.mocks.http.post(
-      "*/api/okou/uploads/prepare",
-      async ({ request }) => {
-        await expect(request.json()).resolves.toMatchObject({
-          filename: "pending.txt",
-        });
-        return HttpResponse.json({
-          id: "upload-pending-send",
-          filename: "pending.txt",
-          contentType: "text/plain",
-          size: 7,
-          uploadUrl: "https://mock-upload.example.com/pending.txt",
-          uploadHeaders: {},
-          url: "https://example.com/pending.txt",
-        });
-      },
-    );
+    context.mocks.http.post("*/api/uploads/prepare", async ({ request }) => {
+      await expect(request.json()).resolves.toMatchObject({
+        filename: "pending.txt",
+      });
+      return HttpResponse.json({
+        id: "upload-pending-send",
+        filename: "pending.txt",
+        contentType: "text/plain",
+        size: 7,
+        uploadUrl: "https://mock-upload.example.com/pending.txt",
+        uploadHeaders: {},
+        url: "https://example.com/pending.txt",
+      });
+    });
     context.mocks.http.put(
       "https://mock-upload.example.com/pending.txt",
       () => {
@@ -1086,32 +1080,29 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/okou/uploads/prepare",
-      async ({ request }) => {
-        const body = (await request.json()) as { filename: string };
-        if (body.filename === "ok.txt") {
-          return HttpResponse.json({
-            id: "upload-ok",
-            filename: "ok.txt",
-            contentType: "text/plain",
-            size: 2,
-            uploadUrl: "https://mock-upload.example.com/ok.txt",
-            uploadHeaders: {},
-            url: "https://example.com/ok.txt",
-          });
-        }
+    context.mocks.http.post("*/api/uploads/prepare", async ({ request }) => {
+      const body = (await request.json()) as { filename: string };
+      if (body.filename === "ok.txt") {
         return HttpResponse.json({
-          id: "upload-failed",
-          filename: "failed.txt",
+          id: "upload-ok",
+          filename: "ok.txt",
           contentType: "text/plain",
-          size: 6,
-          uploadUrl: "https://mock-upload.example.com/failed.txt",
+          size: 2,
+          uploadUrl: "https://mock-upload.example.com/ok.txt",
           uploadHeaders: {},
-          url: "https://example.com/failed.txt",
+          url: "https://example.com/ok.txt",
         });
-      },
-    );
+      }
+      return HttpResponse.json({
+        id: "upload-failed",
+        filename: "failed.txt",
+        contentType: "text/plain",
+        size: 6,
+        uploadUrl: "https://mock-upload.example.com/failed.txt",
+        uploadHeaders: {},
+        url: "https://example.com/failed.txt",
+      });
+    });
     context.mocks.http.put("https://mock-upload.example.com/ok.txt", () => {
       return new HttpResponse(null, { status: 200 });
     });
@@ -1155,33 +1146,30 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/okou/uploads/prepare",
-      async ({ request }) => {
-        preparedBodies.push(await request.json());
-        return HttpResponse.json({
-          id: "f58e50a2-5546-4ac9-8713-13443e726241",
-          filename: "recording.mp4",
-          contentType: "video/mp4",
-          size: 5 * 1024 * 1024 + 1,
-          url: "https://example.com/recording.mp4",
-          multipart: {
-            uploadId: "multipart-upload-1",
-            partSize: 5 * 1024 * 1024,
-            parts: [
-              {
-                partNumber: 1,
-                uploadUrl: "https://mock-upload.example.com/recording-part-1",
-              },
-              {
-                partNumber: 2,
-                uploadUrl: "https://mock-upload.example.com/recording-part-2",
-              },
-            ],
-          },
-        });
-      },
-    );
+    context.mocks.http.post("*/api/uploads/prepare", async ({ request }) => {
+      preparedBodies.push(await request.json());
+      return HttpResponse.json({
+        id: "f58e50a2-5546-4ac9-8713-13443e726241",
+        filename: "recording.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024 + 1,
+        url: "https://example.com/recording.mp4",
+        multipart: {
+          uploadId: "multipart-upload-1",
+          partSize: 5 * 1024 * 1024,
+          parts: [
+            {
+              partNumber: 1,
+              uploadUrl: "https://mock-upload.example.com/recording-part-1",
+            },
+            {
+              partNumber: 2,
+              uploadUrl: "https://mock-upload.example.com/recording-part-2",
+            },
+          ],
+        },
+      });
+    });
     context.mocks.http.put(
       "https://mock-upload.example.com/recording-part-1",
       async ({ request }) => {
@@ -1201,7 +1189,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/okou/uploads/multipart/complete",
+      "*/api/uploads/multipart/complete",
       async ({ request }) => {
         completeBody = await request.json();
         return HttpResponse.json({
@@ -1257,7 +1245,7 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
+    context.mocks.http.post("*/api/uploads/prepare", () => {
       return HttpResponse.json({
         id: "5bd696af-2b93-4fe7-b75d-df3671be17f2",
         filename: "finalizing-recording.mp4",
@@ -1294,7 +1282,7 @@ describe("chat drafts", () => {
         return new HttpResponse(null, { status: 200 });
       },
     );
-    context.mocks.http.post("*/api/okou/uploads/multipart/complete", () => {
+    context.mocks.http.post("*/api/uploads/multipart/complete", () => {
       return HttpResponse.json(
         {
           error: {
@@ -1306,7 +1294,7 @@ describe("chat drafts", () => {
       );
     });
     context.mocks.http.post(
-      "*/api/okou/uploads/multipart/abort",
+      "*/api/uploads/multipart/abort",
       async ({ request }) => {
         abortBody = await request.json();
         return HttpResponse.json({
@@ -1351,7 +1339,7 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
+    context.mocks.http.post("*/api/uploads/prepare", () => {
       return HttpResponse.json({
         id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
         filename: "failed-recording.mp4",
@@ -1384,7 +1372,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/okou/uploads/multipart/abort",
+      "*/api/uploads/multipart/abort",
       async ({ request }) => {
         abortBody = await request.json();
         return HttpResponse.json({
@@ -1446,7 +1434,7 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
+    context.mocks.http.post("*/api/uploads/prepare", () => {
       return HttpResponse.json({
         id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
         filename: "cancelled-recording.mp4",
@@ -1479,7 +1467,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/okou/uploads/multipart/abort",
+      "*/api/uploads/multipart/abort",
       async ({ request }) => {
         abortRequestWasCancelled = request.signal.aborted;
         abortBody = await request.json();
@@ -1546,21 +1534,18 @@ describe("chat drafts", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       });
       mockThreadDetails();
-      context.mocks.http.post(
-        "*/api/okou/uploads/prepare",
-        async ({ request }) => {
-          capturedPrepareBody = await request.json();
-          return HttpResponse.json({
-            id: `upload-${filename}`,
-            filename,
-            contentType: expectedContentType,
-            size: contents.length,
-            uploadUrl,
-            uploadHeaders: {},
-            url: `https://example.com/${filename}`,
-          });
-        },
-      );
+      context.mocks.http.post("*/api/uploads/prepare", async ({ request }) => {
+        capturedPrepareBody = await request.json();
+        return HttpResponse.json({
+          id: `upload-${filename}`,
+          filename,
+          contentType: expectedContentType,
+          size: contents.length,
+          uploadUrl,
+          uploadHeaders: {},
+          url: `https://example.com/${filename}`,
+        });
+      });
       context.mocks.http.put(uploadUrl, () => {
         return new HttpResponse(null, { status: 200 });
       });

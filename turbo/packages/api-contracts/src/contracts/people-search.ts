@@ -68,7 +68,7 @@ export type PeopleSearchResponse = z.infer<typeof peopleSearchResponseSchema>;
 export const peopleSearchContract = c.router({
   search: {
     method: "POST",
-    path: "/api/okou/people-search",
+    path: "/api/people-search",
     headers: authHeadersSchema,
     body: peopleSearchRequestSchema,
     responses: {

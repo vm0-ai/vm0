@@ -86,6 +86,12 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/morning-brief",
   "/api/workflow-automations",
   "/api/workflows",
+  // #28463
+  "/api/mail/drafts",
+  "/api/uploads",
+  "/api/voice-io",
+  "/api/web/download-file",
+  "/api/web/file-url",
 ];
 
 /**

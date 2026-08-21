@@ -63,14 +63,11 @@ export async function callBanking(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const response = await fetch(
-    new URL(`/api/okou/banking/${operation}`, baseUrl),
-    {
-      method: "POST",
-      headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),
-      body: JSON.stringify(body),
-    },
-  );
+  const response = await fetch(new URL(`/api/banking/${operation}`, baseUrl), {
+    method: "POST",
+    headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),
+    body: JSON.stringify(body),
+  });
 
   if (!response.ok) {
     const { message, code } = await parseErrorBody(response);

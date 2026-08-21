@@ -1494,6 +1494,127 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/teams/oauth/callback",
   ],
   "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
+  // #28463: avatar video, banking, the browser authorization requests, inbound
+  // email, the GitHub user-connect start, mail drafts, people search,
+  // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
+  // the web file reads.
+  //
+  // Every surface this table protects is represented here at once. Published CLI
+  // builds hold the `okou` form directly: `domains/web.ts` and `domains/banking.ts`
+  // build ten of these URLs by hand rather than from the contract, so the path
+  // they carry shipped independently of this table, and a run execution context
+  // pins its commit-addressed `CLI_PKG_URL` at creation — the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. A released
+  // platform build holds `/api/okou/web/download-file`, `/api/okou/web/file-url`
+  // and `/api/okou/voice-io/stt` until a refresh loads a build that derives the
+  // neutral path (~2 days). The Strapi webhook URL sits in a customer's Strapi
+  // console, and every `zero` form was reachable through the blanket expansion
+  // until these contracts moved; neither has a window at all. Removal therefore
+  // follows the #26701 evidence gate above rather than any of those clocks.
+  "/api/avatar-video/avatars": [
+    "/api/okou/avatar-video/avatars",
+    "/api/zero/avatar-video/avatars",
+  ],
+  "/api/avatar-video/generate": [
+    "/api/okou/avatar-video/generate",
+    "/api/zero/avatar-video/generate",
+  ],
+  "/api/avatar-video/voices": [
+    "/api/okou/avatar-video/voices",
+    "/api/zero/avatar-video/voices",
+  ],
+  "/api/banking/accounts": [
+    "/api/okou/banking/accounts",
+    "/api/zero/banking/accounts",
+  ],
+  "/api/banking/balances": [
+    "/api/okou/banking/balances",
+    "/api/zero/banking/balances",
+  ],
+  "/api/banking/transactions": [
+    "/api/okou/banking/transactions",
+    "/api/zero/banking/transactions",
+  ],
+  "/api/browser/authorization-requests": [
+    "/api/okou/browser/authorization-requests",
+    "/api/zero/browser/authorization-requests",
+  ],
+  "/api/browser/authorization-requests/:requestToken": [
+    "/api/okou/browser/authorization-requests/:requestToken",
+    "/api/zero/browser/authorization-requests/:requestToken",
+  ],
+  "/api/browser/authorization-requests/:requestToken/apply": [
+    "/api/okou/browser/authorization-requests/:requestToken/apply",
+    "/api/zero/browser/authorization-requests/:requestToken/apply",
+  ],
+  "/api/email/inbound": ["/api/okou/email/inbound", "/api/zero/email/inbound"],
+  "/api/github/oauth/connect": [
+    "/api/okou/github/oauth/connect",
+    "/api/zero/github/oauth/connect",
+  ],
+  "/api/mail/drafts/:mailDraftId": [
+    "/api/okou/mail/drafts/:mailDraftId",
+    "/api/zero/mail/drafts/:mailDraftId",
+  ],
+  "/api/mail/drafts/:mailDraftId/attachments/:partId": [
+    "/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
+    "/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
+  ],
+  "/api/mail/drafts/:mailDraftId/send": [
+    "/api/okou/mail/drafts/:mailDraftId/send",
+    "/api/zero/mail/drafts/:mailDraftId/send",
+  ],
+  "/api/mail/drafts/link": [
+    "/api/okou/mail/drafts/link",
+    "/api/zero/mail/drafts/link",
+  ],
+  "/api/people-search": ["/api/okou/people-search", "/api/zero/people-search"],
+  "/api/presentation-templates": [
+    "/api/okou/presentation-templates",
+    "/api/zero/presentation-templates",
+  ],
+  "/api/presentation-templates/:templateId": [
+    "/api/okou/presentation-templates/:templateId",
+    "/api/zero/presentation-templates/:templateId",
+  ],
+  "/api/strapi/events/:integrationId": [
+    "/api/okou/strapi/events/:integrationId",
+    "/api/zero/strapi/events/:integrationId",
+  ],
+  "/api/uploads/complete": [
+    "/api/okou/uploads/complete",
+    "/api/zero/uploads/complete",
+  ],
+  "/api/uploads/multipart/abort": [
+    "/api/okou/uploads/multipart/abort",
+    "/api/zero/uploads/multipart/abort",
+  ],
+  "/api/uploads/multipart/complete": [
+    "/api/okou/uploads/multipart/complete",
+    "/api/zero/uploads/multipart/complete",
+  ],
+  "/api/uploads/prepare": [
+    "/api/okou/uploads/prepare",
+    "/api/zero/uploads/prepare",
+  ],
+  "/api/video-io/generate": [
+    "/api/okou/video-io/generate",
+    "/api/zero/video-io/generate",
+  ],
+  "/api/voice-io/quota": [
+    "/api/okou/voice-io/quota",
+    "/api/zero/voice-io/quota",
+  ],
+  "/api/voice-io/speech": [
+    "/api/okou/voice-io/speech",
+    "/api/zero/voice-io/speech",
+  ],
+  "/api/voice-io/stt": ["/api/okou/voice-io/stt", "/api/zero/voice-io/stt"],
+  "/api/web/download-file": [
+    "/api/okou/web/download-file",
+    "/api/zero/web/download-file",
+  ],
+  "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
 };
 
 /**

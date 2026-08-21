@@ -122,7 +122,7 @@ function artifactKey(userId: string, fileId: string, filename: string): string {
   return `artifacts/${userId}/${fileId}/${filename}`;
 }
 
-describe("GET /api/okou/web/file-url", () => {
+describe("GET /api/web/file-url", () => {
   it("returns 401 when no auth token is provided", async () => {
     const response = await accept(
       client().fileUrl({ headers: {}, query: { file_id: "abc" } }),

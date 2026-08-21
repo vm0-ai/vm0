@@ -100,6 +100,17 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/workflows/${workflowId}/publish`)",
     },
+    // #28463 moved the upload, voice-io and web file paths, which the platform
+    // writes as a plain request, an MSW pattern, and a query-carrying URL.
+    {
+      code: 'fetchFn("/api/voice-io/stt")',
+    },
+    {
+      code: 'context.mocks.http.post("*/api/uploads/multipart/abort", handler)',
+    },
+    {
+      code: 'context.mocks.http.get("/api/web/file-url?file_id=photo", handler)',
+    },
   ],
   invalid: [
     {
