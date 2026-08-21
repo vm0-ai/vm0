@@ -10,13 +10,13 @@ const queuePositionResponseSchema = z.object({
 });
 
 /**
- * Queue position contract (GET /api/okou/queue-position)
+ * Queue position contract (GET /api/queue-position)
  * Returns the position of a queued run within its org queue.
  */
 export const queuePositionContract = c.router({
   getPosition: {
     method: "GET",
-    path: "/api/okou/queue-position",
+    path: "/api/queue-position",
     headers: authHeadersSchema,
     query: z.object({
       runId: z.string().min(1, "runId is required"),
