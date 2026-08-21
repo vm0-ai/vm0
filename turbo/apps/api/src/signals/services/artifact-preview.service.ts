@@ -1,9 +1,11 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { publicArtifactsBaseUrlForBrand } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -57,6 +59,7 @@ export interface RenderArtifactPreviewArgs {
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
   readonly contentType: string | null;
+  readonly publicBrand: PublicBrand;
   // Versions the preview key so each deployment gets a fresh, CDN-cache-busting
   // URL instead of overwriting a stale object at a fixed key.
   readonly deploymentId?: string;
@@ -80,9 +83,10 @@ function isVideoContentType(contentType: string | null): boolean {
 // sibling of the `/cdn-cgi/image/` resizing already used for images.
 async function extractVideoPoster(
   videoUrl: string,
+  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const base = env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
+  const base = publicArtifactsBaseUrlForBrand(publicBrand);
   const transformUrl = `${base}/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoUrl}`;
   const response = await fetch(transformUrl, { signal });
   if (!response.ok) {
@@ -123,14 +127,20 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
-  const hostDomain = env("OKOU_HOST_DOMAIN");
+  // API/config rollout fallback (bounded by the ~102-minute API rollout
+  // exposure): accept the legacy Okou host setting until every supported API
+  // environment provides OKOU_PUBLIC_HOST_DOMAIN; remove under #27750.
+  const hostDomains = [
+    env("ZERO_HOST_DOMAIN"),
+    env("OKOU_PUBLIC_HOST_DOMAIN") ?? env("OKOU_HOST_DOMAIN"),
+  ];
   if (
     previewUrl.protocol !== "https:" ||
-    !previewUrl.hostname.endsWith(`.${hostDomain}`)
+    !hostDomains.some((hostDomain) => {
+      return previewUrl.hostname.endsWith(`.${hostDomain}`);
+    })
   ) {
-    throw new Error(
-      `artifact preview URL must be a subdomain of ${hostDomain}`,
-    );
+    throw new Error("artifact preview URL must use a hosted-site domain");
   }
 
   const accountId = env("R2_ACCOUNT_ID");
@@ -201,7 +211,7 @@ const renderAndStoreArtifactPreview$ = command(
     let filename: string;
     let contentType: string;
     if (isVideo) {
-      image = await extractVideoPoster(args.url, signal);
+      image = await extractVideoPoster(args.url, args.publicBrand, signal);
       filename = VIDEO_POSTER_FILENAME;
       contentType = VIDEO_POSTER_CONTENT_TYPE;
     } else {
@@ -228,6 +238,7 @@ const renderAndStoreArtifactPreview$ = command(
         id: args.id,
         filename,
         variant: filename,
+        publicBrand: args.publicBrand,
       },
       signal,
     );

@@ -282,6 +282,28 @@ export const usagePackSubscriptions = pgTable(
 );
 
 /**
+ * One database-owned pending count per organization. Migration 0954 preserves
+ * the exact count when legacy writers already left competing snapshots. New
+ * writers may claim the organization only after reconciliation reaches zero.
+ */
+export const usagePackPendingSnapshotGuards = pgTable(
+  "usage_pack_pending_snapshot_guards",
+  {
+    orgId: text("org_id").notNull(),
+    pendingSnapshotCount: integer("pending_snapshot_count").notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_subscriptions_pending_org").on(table.orgId),
+      check(
+        "chk_usage_pack_pending_snapshot_guard_count",
+        sql`${table.pendingSnapshotCount} >= 0`,
+      ),
+    ];
+  },
+);
+
+/**
  * One persisted plan/package operation. Stripe applies upgrades in one pending
  * update; plan and package downgrades remain represented until the next billing
  * boundary.

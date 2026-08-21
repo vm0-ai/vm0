@@ -9,6 +9,7 @@ import {
   networkPolicySchema,
   networkPoliciesSchema,
 } from "@okouai/connectors/firewall-types";
+import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "./connector-catalog";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
@@ -48,6 +49,8 @@ export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
+export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES =
+  CONNECTOR_CATALOG_MAX_RAW_BYTES;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -247,7 +250,7 @@ function uniqueConnectorRuntimeTargets(
   }
 }
 
-const connectorRuntimeTargetsSchema = z
+export const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetRegistrationSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 

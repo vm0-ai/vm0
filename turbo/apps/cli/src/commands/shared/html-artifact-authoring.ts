@@ -2,6 +2,8 @@ import type {
   GenerationOutputKind,
   GenerationTarget,
 } from "@okouai/core/resource-registry";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 
 /** Generation targets authored as static HTML from a target-specific resource index. */
 export type HtmlArtifactKind = Extract<
@@ -30,6 +32,7 @@ const HTML_RESOURCE_INDEX_URLS: Record<HtmlArtifactKind, string> = {
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
+  readonly publicBrand: PublicBrand;
   readonly prompt: string;
   readonly slugSource?: string;
   readonly siteSlug?: string;
@@ -115,10 +118,14 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const resourceIndexUrl =
+  const canonicalResourceIndexUrl =
     options.kind === "website" && options.latestWebsiteTemplatesEnabled
       ? LATEST_WEBSITE_RESOURCE_INDEX_URL
       : HTML_RESOURCE_INDEX_URLS[options.kind];
+  const resourceIndexUrl = staticUrlForPublicBrand(
+    canonicalResourceIndexUrl,
+    options.publicBrand,
+  );
   const selectionSchema: HtmlArtifactSelectionOutputSchema = {
     skills: "string[]",
     templates: "string[]",

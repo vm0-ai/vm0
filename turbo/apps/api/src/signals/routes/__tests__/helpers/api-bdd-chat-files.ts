@@ -1315,6 +1315,7 @@ export function createChatFilesBddApi(context: TestContext) {
         | 409
         | 422
         | 429
+        | 503
       )[],
       signal?: AbortSignal,
       publicBrand: PublicBrand = "vm0",

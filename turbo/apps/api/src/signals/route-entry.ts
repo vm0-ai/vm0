@@ -251,29 +251,145 @@ export function withApiNamespaceAliases(
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
  *
- * The table ships empty. Each #28278 slice adds the rows for the paths it
- * moves, so a move and the compatibility it owes land in one commit.
+ * Each #28278 slice adds the rows for the paths it moves, so a move and the
+ * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
  * request log retains about three days, which by itself cannot prove a row is
  * drained — it cannot tell a caller that left from one that calls weekly.
+ *
+ * The surfaces a row holds open, and the window each one bounds: an open web or
+ * app page keeps the bundle it loaded for about two days, and an execution
+ * context pins its commit-addressed CLI package at creation, so a run queued
+ * before this deploy can still start the older CLI and hold it for the two-hour
+ * `JOB_TIMEOUT` drain. An installed CLI or desktop build has no window at all,
+ * which is why removal is gated on #26701's request-log evidence rather than on
+ * a date.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
+  // the URL by hand rather than from the contract, so the path it holds shipped
+  // independently of this table — and the `zero` form was reachable through the
+  // blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages, not web clients. A run execution
+  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
+  // a later API deploy, so the exposure is the context drain described in
+  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
+  // claimed execution and finalization lifetime, with execution bounded by the
+  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
+  // drain is the floor for removal, not the condition: these rows retire under
+  // #26701's evidence rules like every other row in this file.
+  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
+  "/api/maps/reverse-geocode": [
+    "/api/okou/maps/reverse-geocode",
+    "/api/zero/maps/reverse-geocode",
+  ],
+  "/api/maps/directions": [
+    "/api/okou/maps/directions",
+    "/api/zero/maps/directions",
+  ],
+  "/api/maps/places/search": [
+    "/api/okou/maps/places/search",
+    "/api/zero/maps/places/search",
+  ],
+  "/api/maps/places/details": [
+    "/api/okou/maps/places/details",
+    "/api/zero/maps/places/details",
+  ],
+  "/api/maps/osm/download": [
+    "/api/okou/maps/osm/download",
+    "/api/zero/maps/osm/download",
+  ],
+  "/api/maps/osm/render": [
+    "/api/okou/maps/osm/render",
+    "/api/zero/maps/osm/render",
+  ],
+  // #28421: personal model providers, onboarding, team, and user preferences.
+  "/api/me/model-provider-accounts/:id": [
+    "/api/okou/me/model-provider-accounts/:id",
+    "/api/zero/me/model-provider-accounts/:id",
+  ],
+  "/api/me/model-provider-accounts/:id/activate": [
+    "/api/okou/me/model-provider-accounts/:id/activate",
+    "/api/zero/me/model-provider-accounts/:id/activate",
+  ],
+  "/api/me/model-provider-accounts/:id/subscription-reset": [
+    "/api/okou/me/model-provider-accounts/:id/subscription-reset",
+    "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+  ],
+  "/api/me/model-providers": [
+    "/api/okou/me/model-providers",
+    "/api/zero/me/model-providers",
+  ],
+  "/api/me/model-providers/:type": [
+    "/api/okou/me/model-providers/:type",
+    "/api/zero/me/model-providers/:type",
+  ],
+  "/api/me/model-providers/:type/subscription-reset": [
+    "/api/okou/me/model-providers/:type/subscription-reset",
+    "/api/zero/me/model-providers/:type/subscription-reset",
+  ],
+  "/api/onboarding/complete": [
+    "/api/okou/onboarding/complete",
+    "/api/zero/onboarding/complete",
+  ],
+  "/api/onboarding/status": [
+    "/api/okou/onboarding/status",
+    "/api/zero/onboarding/status",
+  ],
+  "/api/team": ["/api/okou/team", "/api/zero/team"],
+  "/api/user-model-preference": [
+    "/api/okou/user-model-preference",
+    "/api/zero/user-model-preference",
+  ],
+  "/api/user-preferences": [
+    "/api/okou/user-preferences",
+    "/api/zero/user-preferences",
+  ],
+  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
+  // form (`callWeather` built it by hand rather than from the contract, so it
+  // shipped independently of this path), and the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages pinned by run contexts created
+  // before this deploy, so the branded form outlives the deploy by the queue
+  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
+  // external holder of the `zero` brand path, which has no time box. Removal
+  // therefore follows the table's #26701 evidence gate above, not a clock.
+  "/api/weather/current": [
+    "/api/okou/weather/current",
+    "/api/zero/weather/current",
+  ],
+  "/api/weather/forecast/hourly": [
+    "/api/okou/weather/forecast/hourly",
+    "/api/zero/weather/forecast/hourly",
+  ],
+  "/api/weather/forecast/daily": [
+    "/api/okou/weather/forecast/daily",
+    "/api/zero/weather/forecast/daily",
+  ],
+  "/api/weather/history/hourly": [
+    "/api/okou/weather/history/hourly",
+    "/api/zero/weather/history/hourly",
+  ],
+  "/api/weather/air-quality/current": [
+    "/api/okou/weather/air-quality/current",
+    "/api/zero/weather/air-quality/current",
+  ],
   // #28415. Published CLI builds poll generation status and post image
   // generations at the `okou` form — `getBuiltInGenerationStatus` and
   // `generateWebImage` build those URLs by hand rather than from the contract,
   // so they shipped independently of this path. The `zero` form was reachable
   // through the blanket expansion until the contract moved. Both are owed.
   //
-  // Surface: a run context holding an older commit-addressed CLI package.
-  // `CLI_PKG_URL` is chosen from the API's environment when the run is created,
-  // so a run queued before this deploy keeps calling the branded path for the
-  // queue lifetime plus its claimed execution, bounded by the runner's
-  // `JOB_TIMEOUT` of 2 hours. Removable under #26701's evidence rules, the same
-  // gate as `LEGACY_ZERO_PATHS` above.
+  // Same surface as the rows above: commit-addressed CLI packages pinned by run
+  // contexts created before this deploy, draining over the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. Removal follows
+  // the table's #26701 evidence gate, not that clock.
   "/api/built-in-generations/:generationId": [
     "/api/okou/built-in-generations/:generationId",
     "/api/zero/built-in-generations/:generationId",

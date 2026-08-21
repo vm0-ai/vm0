@@ -35,7 +35,6 @@ import {
   setConcurrencyTargetQuantity$,
   startCheckout$,
   startConcurrencyCheckout$,
-  startConcurrencyReduction$,
   openBillingPortal$,
   setConcurrencySubscriptionQuantity$,
   apiTierToBillingTier,
@@ -1590,7 +1589,6 @@ function ConcurrencySubscriptionRow({
     readonly subscriptionId: string;
     readonly currentQuantity: number;
     readonly canReduce: boolean;
-    readonly canChangeInApp: boolean;
   }) => void;
   onRestorePlan: () => void;
   planEndAt: string | null;
@@ -1611,10 +1609,6 @@ function ConcurrencySubscriptionRow({
       subscriptionId: subscription.id,
       currentQuantity: subscription.quantity,
       canReduce: subscription.canReduce === true && !planEnding,
-      // Old API responses omit this during the ~2-day web/app client
-      // version-skew window. Remove the legacy Stripe branch with #26152
-      // after #26116 has been deployed beyond that window.
-      canChangeInApp: subscription.canChangeInApp === true,
     });
   };
   return (
@@ -1778,18 +1772,13 @@ function concurrencyChangeQuantityValid(
 function concurrencyConfirmButtonLabel(
   action: "change" | "restore",
   changeMode: ConcurrencyChangeMode,
-  canChangeInApp: boolean,
   preview: ConcurrencySubscriptionChangePreviewResponse | null,
   loading: boolean,
 ): string {
   if (loading) {
-    return action === "change" && changeMode === "quantity" && !canChangeInApp
-      ? i18n.t(($) => {
-          return $.billing.common.redirecting;
-        })
-      : i18n.t(($) => {
-          return $.billing.common.updating;
-        });
+    return i18n.t(($) => {
+      return $.billing.common.updating;
+    });
   }
   if (action === "restore") {
     return i18n.t(($) => {
@@ -1815,13 +1804,9 @@ function concurrencyConfirmButtonLabel(
           return $.billing.concurrency.updateSlots;
         });
   }
-  return canChangeInApp
-    ? i18n.t(($) => {
-        return $.billing.concurrency.reviewChange;
-      })
-    : i18n.t(($) => {
-        return $.billing.concurrency.continueToStripe;
-      });
+  return i18n.t(($) => {
+    return $.billing.concurrency.reviewChange;
+  });
 }
 
 function concurrencyConfirmDisabled(
@@ -1963,33 +1948,24 @@ function ConcurrencyConfirmDialogContent({
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
     cancelConcurrencySubscription$,
   );
-  const [checkoutLoadable, checkout] = useLoadableSet(
-    startConcurrencyCheckout$,
-  );
   const [previewLoadable, previewChange] = useLoadableSet(
     previewConcurrencySubscriptionChange$,
   );
   const [confirmLoadable, confirmChange] = useLoadableSet(
     confirmConcurrencySubscriptionChange$,
   );
-  const [reduceLoadable, reduceSubscription] = useLoadableSet(
-    startConcurrencyReduction$,
-  );
   const [restoreLoadable, restoreSubscription] = useLoadableSet(
     restoreConcurrencySubscription$,
   );
   const loading = [
     cancelLoadable.state,
-    checkoutLoadable.state,
     previewLoadable.state,
     confirmLoadable.state,
-    reduceLoadable.state,
     restoreLoadable.state,
   ].includes("loading");
   const action = dialog.action;
   const changeMode = dialog.changeMode;
   const targetQuantity = dialog.targetQuantity;
-  const canChangeInApp = dialog.canChangeInApp;
   const preview = dialog.preview;
   const reviewing = preview !== null;
   const changeQuantityValid = concurrencyChangeQuantityValid(
@@ -2021,36 +1997,13 @@ function ConcurrencyConfirmDialogContent({
         detach(confirmChange(pageSignal), Reason.DomCallback);
         return;
       }
-      if (canChangeInApp) {
-        detach(
-          previewChange(
-            {
-              subscriptionId: dialog.subscriptionId,
-              quantity: targetQuantity,
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-        return;
-      }
-      if (targetQuantity > dialog.currentQuantity) {
-        detach(
-          checkout(targetQuantity - dialog.currentQuantity, false, pageSignal),
-          Reason.DomCallback,
-        );
-      } else {
-        detach(
-          reduceSubscription(
-            {
-              subscriptionId: dialog.subscriptionId,
-              quantity: targetQuantity,
-            },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-        );
-      }
+      detach(
+        previewChange(
+          { subscriptionId: dialog.subscriptionId, quantity: targetQuantity },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
       return;
     }
     detach(
@@ -2092,13 +2045,7 @@ function ConcurrencyConfirmDialogContent({
         )}
         onClick={handleConfirm}
       >
-        {concurrencyConfirmButtonLabel(
-          action,
-          changeMode,
-          canChangeInApp,
-          preview,
-          loading,
-        )}
+        {concurrencyConfirmButtonLabel(action, changeMode, preview, loading)}
       </Button>
     </>
   );
@@ -2106,7 +2053,7 @@ function ConcurrencyConfirmDialogContent({
     action === "change" &&
     changeMode === "quantity" &&
     !reviewing &&
-    (dialog.canReduce || !dialog.canChangeInApp);
+    dialog.canReduce;
 
   return (
     <DialogContent className="sm:max-w-[480px]">

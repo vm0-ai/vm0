@@ -20,6 +20,10 @@ surface; the index does not replace their detailed rules.
 - [Testing](./testing.md): testing strategy, patterns, and anti-patterns.
 - [Deployment compatibility](./deployment-compatibility.md): compatibility
   requirements for independently deployed components and persisted state.
+- [Externally managed references](./externally-managed-references.md): how to
+  resolve identifiers whose entities are owned by another authority without
+  conflating missing entities, invalid input, dependency failures, and local
+  invariant violations.
 
 ## Specialized Guidance
 

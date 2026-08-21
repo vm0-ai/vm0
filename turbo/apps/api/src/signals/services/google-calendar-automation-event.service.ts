@@ -2751,7 +2751,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
             summary: event.summary,
           });
         }
-      : async ({ automation, event, eventChangeKey, timing }) => {
+      : async ({ automation, state, event, eventChangeKey, timing }) => {
           const runInput = await timing.measure(
             "api_dispatch_pre_create_zero_automation_event_build_run_input",
             () => {
@@ -2773,6 +2773,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
                 chatThreadId: automation.chatThreadId,
               },
               automationContext: runInput.context,
+              connectorSourceId: state.connectorId,
               apiStartTime: args.apiStartTime,
               triggerSource: "automation-event",
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,

@@ -1151,7 +1151,6 @@
       "concurrentRun_one": "{{value}} ejecución simultánea",
       "concurrentRun_many": "{{value}} ejecuciones simultáneas",
       "concurrentRun_other": "{{value}} ejecuciones simultáneas",
-      "continueToStripe": "Continuar a Stripe",
       "decreaseAria": "Reducir la cantidad adicional de concurrencia",
       "dueNow": "A pagar ahora",
       "dueToday": "A pagar hoy",
