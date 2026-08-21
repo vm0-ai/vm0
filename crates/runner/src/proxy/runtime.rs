@@ -317,7 +317,9 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
                 )));
             }
         };
-        if !same_process(&before, &after) || !seen.insert((pid, after.starttime)) {
+        if before.procfs_generation() != after.procfs_generation()
+            || !seen.insert((pid, after.starttime))
+        {
             continue;
         }
         let command = read_process_comm(pid);
@@ -379,10 +381,6 @@ fn runtime_marker(environ: &[u8]) -> Option<&[u8]> {
     environ
         .split(|byte| *byte == 0)
         .find_map(|entry| entry.strip_prefix(RUNTIME_MARKER_PREFIX))
-}
-
-fn same_process(before: &ProcessStat, after: &ProcessStat) -> bool {
-    before.pgid == after.pgid && before.starttime == after.starttime
 }
 
 fn is_launch_path(root: &Path, path: &Path) -> bool {
