@@ -327,7 +327,6 @@ describe("presentation template publish", () => {
     );
     expect(published.body).toMatchObject({
       title: "Brand system",
-      status: "ready",
       sourceFilename: "brand-system.pptx",
       pageCount: 2,
     });
@@ -356,6 +355,44 @@ describe("presentation template publish", () => {
         return key.endsWith("/archive.tar.gz");
       }),
     ).toBeTruthy();
+  });
+
+  it("deletes a template exactly once when two requests race", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const inputs = await uploadInputs(actor, fixture, tarGz(guidance()));
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const published = await accept(
+      templateClient().publish({
+        headers: webHeaders(),
+        body: { title: "Brand system", ...inputs },
+      }),
+      [200],
+    );
+
+    const params = { templateId: published.body.id };
+    const [first, second] = await Promise.all([
+      accept(
+        templateClient().delete({ headers: webHeaders(), params }),
+        [204, 404],
+      ),
+      accept(
+        templateClient().delete({ headers: webHeaders(), params }),
+        [204, 404],
+      ),
+    ]);
+    const statuses = [first.status, second.status].sort((left, right) => {
+      return left - right;
+    });
+    expect(statuses).toStrictEqual([204, 404]);
+
+    const listed = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(listed.body).toHaveLength(0);
   });
 
   it("refuses a package that omits its required guidance", async () => {

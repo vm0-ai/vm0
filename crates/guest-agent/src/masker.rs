@@ -183,8 +183,34 @@ impl SecretMasker {
         self.masked_string(s).unwrap_or_else(|| s.to_string())
     }
 
-    pub(crate) fn mask_owned_string(&self, s: String) -> String {
-        self.masked_string(&s).unwrap_or(s)
+    /// Mask diagnostic text while preserving embedded line separators.
+    pub(crate) fn mask_diagnostic_string(&self, s: String) -> String {
+        if self.diagnostic_matcher.is_none() && self.diagnostic_url_encoded_matcher.is_none() {
+            return s;
+        }
+
+        let mut line_endings = Vec::new();
+        let lines = s
+            .split_inclusive('\n')
+            .map(|segment| {
+                let (line, line_ending) = if let Some(line) = segment.strip_suffix("\r\n") {
+                    (line, "\r\n")
+                } else if let Some(line) = segment.strip_suffix('\n') {
+                    (line, "\n")
+                } else {
+                    (segment, "")
+                };
+                line_endings.push(line_ending);
+                line.to_string()
+            })
+            .collect();
+        let lines = self.mask_diagnostic_lines(lines);
+        let mut masked = String::with_capacity(s.len());
+        for (line, line_ending) in lines.into_iter().zip(line_endings) {
+            masked.push_str(&line);
+            masked.push_str(line_ending);
+        }
+        masked
     }
 
     /// Mask diagnostic text while preserving the caller's line boundaries.
@@ -700,27 +726,17 @@ mod tests {
     }
 
     #[test]
-    fn mask_owned_string_preserves_unmatched_allocation() {
-        let masker = masker_with(vec!["secret123"]);
-        let value = String::from("ordinary stderr line");
+    fn diagnostic_string_preserves_allocation_without_matchers() {
+        let masker = SecretMasker::empty();
+        let value = String::from("ordinary diagnostic text");
         let original_ptr = value.as_ptr();
         let original_capacity = value.capacity();
 
-        let masked = masker.mask_owned_string(value);
+        let masked = masker.mask_diagnostic_string(value);
 
-        assert_eq!(masked, "ordinary stderr line");
+        assert_eq!(masked, "ordinary diagnostic text");
         assert_eq!(masked.as_ptr(), original_ptr);
         assert_eq!(masked.capacity(), original_capacity);
-    }
-
-    #[test]
-    fn mask_owned_string_masks_matched_string() {
-        let masker = masker_with(vec!["secret123"]);
-
-        assert_eq!(
-            masker.mask_owned_string("stderr has secret123".to_string()),
-            "stderr has ***"
-        );
     }
 
     #[test]
@@ -747,6 +763,21 @@ mod tests {
                 "***".to_string(),
                 "after".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn diagnostic_string_preserves_crlf_blank_lines_and_terminal_newline() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "first-secret-line\r\nsecond-secret-line";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_string(
+                "before\r\nfirst-secret-line\r\n\r\nsecond-secret-line\r\nafter\n".to_string(),
+            ),
+            "before\r\n***\r\n\r\n***\r\nafter\n"
         );
     }
 
@@ -964,19 +995,6 @@ mod tests {
         masker.mask_value(&mut val);
 
         assert_eq!(val["outer"]["inner"], "contains *** here");
-    }
-
-    #[test]
-    fn mask_owned_string_masks_lowercase_percent_encoded_variant() {
-        let engine = base64::engine::general_purpose::STANDARD;
-        let secret = "token/a";
-        let encoded = engine.encode(secret);
-        let masker = SecretMasker::from_raw(&encoded);
-
-        assert_eq!(
-            masker.mask_owned_string("system log token%2fa".to_string()),
-            "system log ***"
-        );
     }
 
     #[test]

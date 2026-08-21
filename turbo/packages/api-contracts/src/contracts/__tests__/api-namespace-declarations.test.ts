@@ -52,10 +52,14 @@ function declaredRoutes(): readonly DeclaredRoute[] {
  * A lower bound on how many routes the barrel walk must find.
  *
  * It counts every declared route rather than only the branded ones. #28278 is
- * driving the branded count to zero deliberately, so a floor measured against
- * the set being removed is guaranteed to fail — first at the threshold, then
- * once more per merged slice. Migrating a path rewrites its namespace without
- * dropping the declaration, so the total does not fall as that work lands.
+ * driving the branded count to zero deliberately, one slice at a time — the
+ * billing slice #28457 alone dropped 34 routes — so a floor measured against
+ * the set being removed is guaranteed to fail, first at the threshold and then
+ * once more per merged slice. Lowering it again only buys another slice.
+ *
+ * Migrating a path rewrites its namespace without dropping the declaration, so
+ * the total does not fall as that work lands, and it still proves the barrel
+ * walk reaches a broad set of declarations rather than a handful of samples.
  */
 const MINIMUM_DECLARED_ROUTES = 100;
 
@@ -65,9 +69,10 @@ const MINIMUM_DECLARED_ROUTES = 100;
  *
  * `POST /api/okou/slack/events` is one of the eight
  * `FINAL_PROVIDER_CONSOLE_PATHS` in `apps/api`. A third-party provider console
- * holds each of those URLs, which is why #28278 excludes them: they keep their
- * branded form after every migrating path has left, making them the most
- * stable branded declarations in the package. Any of the eight works here.
+ * holds each of those URLs, which is why #28278 excludes them and why they stay
+ * branded under #26701: they keep their branded form after every migrating path
+ * has left, making them the most stable branded declarations in the package.
+ * Any of the eight works here.
  *
  * If those eight ever move as well, re-anchor this on a path the package still
  * declares — do not delete the sentinel. Without it, the legacy-namespace

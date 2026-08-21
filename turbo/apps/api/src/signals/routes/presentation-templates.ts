@@ -79,9 +79,6 @@ async function signedPageUrls(
   row: PresentationTemplateRow,
   sign: (key: string, index: number) => Promise<string>,
 ): Promise<readonly string[]> {
-  if (row.status !== "processing" && row.status !== "ready") {
-    return [];
-  }
   return await Promise.all(
     row.pageKeys.map(async (key, index) => {
       return await sign(key, index);
@@ -149,18 +146,17 @@ const listInner$ = computed(async (get) => {
   const summaries = await Promise.all(
     rows.map(async (row) => {
       const coverKey = row.pageKeys[0];
-      const coverUrl =
-        coverKey && (row.status === "processing" || row.status === "ready")
-          ? await get(
-              generatePresignedGetUrl(
-                bucket,
-                coverKey,
-                PRESIGNED_URL_TTL_SECONDS,
-                presentationTemplatePageFilename(0),
-                true,
-              ),
-            )
-          : null;
+      const coverUrl = coverKey
+        ? await get(
+            generatePresignedGetUrl(
+              bucket,
+              coverKey,
+              PRESIGNED_URL_TTL_SECONDS,
+              presentationTemplatePageFilename(0),
+              true,
+            ),
+          )
+        : null;
       return presentationTemplateSummary(row, coverUrl);
     }),
   );
@@ -236,18 +232,17 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return templateNotFound(params.templateId);
   }
   const coverKey = row.pageKeys[0];
-  const coverUrl =
-    coverKey && (row.status === "processing" || row.status === "ready")
-      ? await get(
-          generatePresignedGetUrl(
-            env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-            coverKey,
-            PRESIGNED_URL_TTL_SECONDS,
-            presentationTemplatePageFilename(0),
-            true,
-          ),
-        )
-      : null;
+  const coverUrl = coverKey
+    ? await get(
+        generatePresignedGetUrl(
+          env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+          coverKey,
+          PRESIGNED_URL_TTL_SECONDS,
+          presentationTemplatePageFilename(0),
+          true,
+        ),
+      )
+    : null;
   return {
     status: 200 as const,
     body: presentationTemplateSummary(row, coverUrl),
