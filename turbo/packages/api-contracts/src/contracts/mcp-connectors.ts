@@ -22,7 +22,7 @@ export const mcpConnectorListResponseSchema = z.object({
 export const mcpConnectorsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/mcp-connectors",
+    path: "/api/mcp-connectors",
     headers: authHeadersSchema,
     responses: {
       200: mcpConnectorListResponseSchema,
