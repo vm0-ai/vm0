@@ -17,6 +17,7 @@ import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import {
   downloadFeishuMessageResource,
@@ -406,6 +407,8 @@ const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       filename: bodyResult.data.filename,
+      publicBrand:
+        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );
@@ -539,6 +542,7 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     contentType,
     sizeBytes: object.size,
     url: fileUrl,
+    publicBrand: object.publicBrand,
     metadata: uploadMetadata({
       body,
       installationId: installation.id,

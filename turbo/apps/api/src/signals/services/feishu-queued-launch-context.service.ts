@@ -14,6 +14,7 @@ export interface FeishuQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
   readonly publicBrand: PublicBrand;
+  readonly connectorSourceId: string;
   readonly feishuDelivery: FeishuDeliveryTarget;
   readonly userInfoExtras: {
     readonly feishuDisplayName?: string;
@@ -40,6 +41,7 @@ type FeishuLaunchContextRow = Pick<
   readonly routeThreadId: string;
   readonly feishuDisplayName: string | null;
   readonly publicBrand: PublicBrand;
+  readonly connectorSourceId: string | null;
 };
 
 function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
@@ -56,6 +58,7 @@ function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
     row.replyInThread === null ||
     row.senderOpenId === null ||
     row.connectionId === null ||
+    row.connectorSourceId === null ||
     row.installationId === null
   ) {
     return null;
@@ -73,6 +76,7 @@ function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
     replyInThread: row.replyInThread,
     senderOpenId: row.senderOpenId,
     connectionId: row.connectionId,
+    connectorSourceId: row.connectorSourceId,
     installationId: row.installationId,
   };
 }
@@ -100,6 +104,7 @@ async function loadFeishuLaunchContext(
       reactionId: chatFeishuContext.reactionId,
       senderOpenId: chatFeishuContext.senderOpenId,
       connectionId: chatFeishuContext.connectionId,
+      connectorSourceId: feishuOrgConnections.connectorId,
       installationId: chatFeishuContext.installationId,
       routeThreadId: feishuChatThreadRoutes.threadId,
       feishuDisplayName: feishuOrgConnections.feishuUserName,
@@ -177,6 +182,7 @@ export async function loadFeishuQueuedLaunchMaterial(
       history: context.conversationHistory,
     }),
     publicBrand: context.publicBrand,
+    connectorSourceId: context.connectorSourceId,
     feishuDelivery: {
       installationId: context.installationId,
       connectionId: context.connectionId,

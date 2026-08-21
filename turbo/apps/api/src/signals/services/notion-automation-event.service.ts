@@ -2189,6 +2189,7 @@ async function startNotionWorkflowRun(
   args: {
     readonly row: DueNotionAutomationRow;
     readonly chatThreadId: string;
+    readonly connectorSourceId: string;
     readonly context: WorkflowAutomationContext;
     readonly triggerBrief: string;
     readonly startRun: NotionRunStarter;
@@ -2203,6 +2204,7 @@ async function startNotionWorkflowRun(
         chatThreadId: args.chatThreadId,
       },
       automationContext: args.context,
+      connectorSourceId: args.connectorSourceId,
       apiStartTime: now(),
       triggerSource: "automation-event",
       triggerBrief: args.triggerBrief,
@@ -2312,6 +2314,7 @@ async function processClaimedNotionChildPagePendingEvent(
     {
       row: args.row,
       chatThreadId: args.row.chatThreadId,
+      connectorSourceId: config.data.connectorId,
       context: notionChildPageTriggerContext({
         workflowName: args.row.workflowName,
         automationId: args.row.automation.id,
@@ -2434,6 +2437,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(
     {
       row: args.row,
       chatThreadId: args.row.chatThreadId,
+      connectorSourceId: config.data.connectorId,
       context: notionDatabaseItemTriggerContext({
         workflowName: args.row.workflowName,
         automationId: args.row.automation.id,
@@ -2602,6 +2606,7 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
     {
       row: args.row,
       chatThreadId: args.row.chatThreadId,
+      connectorSourceId: config.data.connectorId,
       context: notionPageContentUpdatedTriggerContext({
         workflowName: args.row.workflowName,
         automationId: args.row.automation.id,

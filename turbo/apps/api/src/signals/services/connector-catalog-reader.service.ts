@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import type {
   PublicConnectorCatalogListResponse,
@@ -30,11 +31,15 @@ interface ConnectorCatalogReadArgs {
   readonly featureStates: ConnectorFeatureStates;
 }
 
+interface BrandedConnectorCatalogReadArgs extends ConnectorCatalogReadArgs {
+  readonly publicBrand: PublicBrand;
+}
+
 interface ConnectorCatalogSearchArgs extends ConnectorCatalogReadArgs {
   readonly keyword: string | undefined;
 }
 
-interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
+interface ConnectorCatalogConnectorReadArgs extends BrandedConnectorCatalogReadArgs {
   readonly connectorSlug: string;
 }
 
@@ -45,13 +50,13 @@ export async function searchConnectorCatalog(
 }
 
 export async function listPublicConnectorCatalog(
-  args: ConnectorCatalogReadArgs,
+  args: BrandedConnectorCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
   return await listExternalPublicConnectorCatalog(args);
 }
 
 export async function readPublicConnectorCatalogStatus(
-  args: ConnectorCatalogReadArgs & {
+  args: BrandedConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
     readonly referenceConnectorSlugs: readonly string[];
   },
@@ -60,7 +65,7 @@ export async function readPublicConnectorCatalogStatus(
 }
 
 export async function listPublicConnectorCatalogStatus(
-  args: ConnectorCatalogReadArgs & {
+  args: BrandedConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
@@ -72,7 +77,7 @@ export async function listPublicConnectorCatalogStatus(
 }
 
 export async function discoverPublicConnectorCatalogStatus(
-  args: ConnectorCatalogReadArgs & {
+  args: BrandedConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
     readonly keyword: string | undefined;
   },

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.16...runner-rs-v0.169.17) (2026-08-20)
+
+
+### Bug Fixes
+
+* **runner:** bound firewall catalog response bodies ([#28399](https://github.com/vm0-ai/vm0/issues/28399)) ([1732568](https://github.com/vm0-ai/vm0/commit/17325687f4950e089ce565d1e33737b5822b19be))
+
 ## [0.169.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.15...runner-rs-v0.169.16) (2026-08-20)
 
 

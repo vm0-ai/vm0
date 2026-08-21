@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -21,6 +22,7 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGoogleFormsRoutes } from "../webhooks-google-forms";
 
@@ -60,6 +62,12 @@ function authHeaders() {
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -270,6 +278,7 @@ describe("Google Forms Pub/Sub webhook", () => {
       { orgId: actor.orgId, userId: actor.userId },
       {
         [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+        [FeatureSwitchKey.ConnectorAccounts]: true,
       },
     );
     mockGoogleFormsConnectorOAuth();
@@ -339,6 +348,14 @@ describe("Google Forms Pub/Sub webhook", () => {
     expect(chatEventDisplayText(visibleEvent)).toBe(
       `A new response from respondent@example.test was submitted to Google Form "${FORM_TITLE}".`,
     );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
     const runId = events.find((event) => {
       return event.eventType === "input.prompt" && event.runId;
     })?.runId;

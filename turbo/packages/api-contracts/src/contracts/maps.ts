@@ -160,7 +160,7 @@ const mapsResponses = {
 export const mapsContract = c.router({
   geocode: {
     method: "POST",
-    path: "/api/okou/maps/geocode",
+    path: "/api/maps/geocode",
     headers: authHeadersSchema,
     body: mapsGeocodeRequestSchema,
     responses: mapsResponses,
@@ -168,7 +168,7 @@ export const mapsContract = c.router({
   },
   reverseGeocode: {
     method: "POST",
-    path: "/api/okou/maps/reverse-geocode",
+    path: "/api/maps/reverse-geocode",
     headers: authHeadersSchema,
     body: mapsReverseGeocodeRequestSchema,
     responses: mapsResponses,
@@ -176,7 +176,7 @@ export const mapsContract = c.router({
   },
   directions: {
     method: "POST",
-    path: "/api/okou/maps/directions",
+    path: "/api/maps/directions",
     headers: authHeadersSchema,
     body: mapsDirectionsRequestSchema,
     responses: mapsResponses,
@@ -184,7 +184,7 @@ export const mapsContract = c.router({
   },
   placesSearch: {
     method: "POST",
-    path: "/api/okou/maps/places/search",
+    path: "/api/maps/places/search",
     headers: authHeadersSchema,
     body: mapsPlacesSearchRequestSchema,
     responses: mapsResponses,
@@ -192,7 +192,7 @@ export const mapsContract = c.router({
   },
   placesDetails: {
     method: "POST",
-    path: "/api/okou/maps/places/details",
+    path: "/api/maps/places/details",
     headers: authHeadersSchema,
     body: mapsPlacesDetailsRequestSchema,
     responses: mapsResponses,
@@ -200,7 +200,7 @@ export const mapsContract = c.router({
   },
   osmDownload: {
     method: "POST",
-    path: "/api/okou/maps/osm/download",
+    path: "/api/maps/osm/download",
     headers: authHeadersSchema,
     body: mapsOsmDownloadRequestSchema,
     responses: mapsResponses,
@@ -208,7 +208,7 @@ export const mapsContract = c.router({
   },
   osmRender: {
     method: "POST",
-    path: "/api/okou/maps/osm/render",
+    path: "/api/maps/osm/render",
     headers: authHeadersSchema,
     body: mapsOsmRenderRequestSchema,
     responses: mapsResponses,

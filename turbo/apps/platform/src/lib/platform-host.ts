@@ -1,3 +1,5 @@
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
+
 type PlatformEnvironment = "development" | "preview" | "production";
 type PlatformPublicBrand = "vm0" | "okou";
 
@@ -8,6 +10,7 @@ interface PlatformRuntimeConfig {
   readonly publicBrand: PlatformPublicBrand;
   readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
+  readonly publicStaticAssetsBaseUrl: string;
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
   readonly postHogKey: string | null;
@@ -174,6 +177,10 @@ function requiredBuildValue(value: unknown, name: string): string {
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
+  const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
+    "https://static.vm0.io",
+    publicBrand,
+  );
 
   if (environment === "production") {
     return {
@@ -184,6 +191,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
         "VITE_CLERK_PUBLISHABLE_KEY_PROD",
       ),
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
+      publicStaticAssetsBaseUrl,
       zeroHostDomain: "sites.vm0.io",
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
@@ -204,6 +212,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
     ),
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
+    publicStaticAssetsBaseUrl,
     zeroHostDomain: "sites.vm7.io",
     plausibleScriptUrl:
       environment === "preview"

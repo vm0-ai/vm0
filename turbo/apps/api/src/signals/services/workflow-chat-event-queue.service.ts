@@ -116,6 +116,7 @@ interface WorkflowQueueAdmissionArgs {
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   readonly workflowAutomationEventType?: WorkflowAutomationEventType;
   readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
+  readonly connectorSourceId?: string;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
@@ -167,6 +168,7 @@ async function attemptWorkflowQueueAdmission(
       workflowName: args.workflowName,
       workflowAutomationEventType: args.workflowAutomationEventType,
       workflowAutomationEventPayload: args.workflowAutomationEventPayload,
+      connectorSourceId: args.connectorSourceId,
       triggerBrief: args.triggerBrief ?? null,
     });
     if (!inserted) {
@@ -199,6 +201,7 @@ export interface PendingWorkflowQueueEvent {
   readonly workflowName: string | null;
   readonly workflowAutomationEventType: string | null;
   readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
+  readonly connectorSourceId: string | undefined;
 }
 
 /**
@@ -244,6 +247,7 @@ export async function loadNextWorkflowQueueEvent(
         workflowName: chatAutomationContext.workflowName,
         workflowAutomationEventType: chatAutomationContext.eventType,
         workflowAutomationEventPayload: chatAutomationContext.eventPayload,
+        connectorSourceId: chatAutomationContext.connectorSourceId,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -265,6 +269,7 @@ export async function loadNextWorkflowQueueEvent(
     }
     return {
       ...event,
+      connectorSourceId: event.connectorSourceId ?? undefined,
       triggerSource:
         event.automationKind === null
           ? null

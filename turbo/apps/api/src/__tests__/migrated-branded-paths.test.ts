@@ -1,10 +1,10 @@
-import { brandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { computed } from "ccstate";
 import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { weatherRoutes } from "../signals/routes/weather";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -17,9 +17,9 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
-// empty, so no real route can exercise the mechanism yet, and a fixture keeps a
-// later migration slice from quietly changing what these tests assert.
+// Synthetic contracts rather than real ones, so a later migration slice cannot
+// quietly change what these mechanism tests assert. The shipped table is
+// covered separately, against the real route table, further down.
 const migrationContract = c.router({
   // The shape a migrated contract has: the neutral path it declares after
   // #28278 moves it off `/api/okou/**`.
@@ -117,6 +117,30 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// The seven operations #28417 moved off `/api/okou/maps/**`, written out rather
+// than read from `mapsContract` or `MIGRATED_BRANDED_PATHS`, so dropping a
+// contract path or a table row fails the test that uses this.
+const MAPS_OPERATIONS = [
+  "geocode",
+  "reverse-geocode",
+  "directions",
+  "places/search",
+  "places/details",
+  "osm/download",
+  "osm/render",
+] as const;
+
+// The five operations #28357 moved off `/api/okou/weather/**`, written out
+// rather than read from `weatherContract` or `MIGRATED_BRANDED_PATHS`, so
+// dropping a contract path or a table row fails the test that uses this.
+const WEATHER_OPERATIONS = [
+  "current",
+  "forecast/hourly",
+  "forecast/daily",
+  "history/hourly",
+  "air-quality/current",
+] as const;
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
@@ -130,6 +154,96 @@ const BRANDED_PATHS_OWED = [
   "/api/okou/synthetic/thing",
   "/api/zero/synthetic/thing",
 ] as const;
+
+// Every route a #28278 slice has moved off `/api/okou/**`, keyed by the
+// neutral path its contract declares now and holding the two branded paths
+// released callers still reach it at. Restated here rather than read back
+// from `MIGRATED_BRANDED_PATHS` or derived from `apiNamespaceAliasPaths`: the
+// table is what a migration edits, and the function returns a neutral path
+// unchanged, so an expectation taken from either asserts nothing. Each slice
+// appends its own rows.
+const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // #28421
+  "/api/me/model-provider-accounts/:id": [
+    "/api/okou/me/model-provider-accounts/:id",
+    "/api/zero/me/model-provider-accounts/:id",
+  ],
+  "/api/me/model-provider-accounts/:id/activate": [
+    "/api/okou/me/model-provider-accounts/:id/activate",
+    "/api/zero/me/model-provider-accounts/:id/activate",
+  ],
+  "/api/me/model-provider-accounts/:id/subscription-reset": [
+    "/api/okou/me/model-provider-accounts/:id/subscription-reset",
+    "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+  ],
+  "/api/me/model-providers": [
+    "/api/okou/me/model-providers",
+    "/api/zero/me/model-providers",
+  ],
+  "/api/me/model-providers/:type": [
+    "/api/okou/me/model-providers/:type",
+    "/api/zero/me/model-providers/:type",
+  ],
+  "/api/me/model-providers/:type/subscription-reset": [
+    "/api/okou/me/model-providers/:type/subscription-reset",
+    "/api/zero/me/model-providers/:type/subscription-reset",
+  ],
+  "/api/onboarding/complete": [
+    "/api/okou/onboarding/complete",
+    "/api/zero/onboarding/complete",
+  ],
+  "/api/onboarding/status": [
+    "/api/okou/onboarding/status",
+    "/api/zero/onboarding/status",
+  ],
+  "/api/team": ["/api/okou/team", "/api/zero/team"],
+  "/api/user-model-preference": [
+    "/api/okou/user-model-preference",
+    "/api/zero/user-model-preference",
+  ],
+  "/api/user-preferences": [
+    "/api/okou/user-preferences",
+    "/api/zero/user-preferences",
+  ],
+  // #28418
+  "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
+  "/api/browsers/current": [
+    "/api/okou/browsers/current",
+    "/api/zero/browsers/current",
+  ],
+  "/api/browsers/lease": [
+    "/api/okou/browsers/lease",
+    "/api/zero/browsers/lease",
+  ],
+  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
+  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
+  "/api/finance/profile": [
+    "/api/okou/finance/profile",
+    "/api/zero/finance/profile",
+  ],
+  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
+  "/api/finance/search": [
+    "/api/okou/finance/search",
+    "/api/zero/finance/search",
+  ],
+  "/api/mcp-connectors": [
+    "/api/okou/mcp-connectors",
+    "/api/zero/mcp-connectors",
+  ],
+  "/api/seo/backlinks-summary": [
+    "/api/okou/seo/backlinks-summary",
+    "/api/zero/seo/backlinks-summary",
+  ],
+  "/api/seo/keyword-ideas": [
+    "/api/okou/seo/keyword-ideas",
+    "/api/zero/seo/keyword-ideas",
+  ],
+  "/api/seo/ranked-keywords": [
+    "/api/okou/seo/ranked-keywords",
+    "/api/zero/seo/ranked-keywords",
+  ],
+  "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
+};
 
 function missingBrandedPaths(
   routes: readonly RouteEntry[],
@@ -266,31 +380,124 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The shipped table gains rows one #28278 slice at a time, so this cannot
-  // name them; which paths a slice owes is restated literally in that slice's
-  // own test file. What holds for every row is that it only ever adds a branded
-  // registration, and never disturbs one an earlier stage produced.
-  it("only adds branded registrations to the shipped route table", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
+  // #28417 fills the table for maps. The contract declares the neutral paths,
+  // so the blanket expansion no longer derives a branded form for them and
+  // every branded maps path below exists only because of a table row. The paths
+  // are written out here rather than derived from the table, so deleting a row
+  // fails this test instead of changing what it asserts.
+  it("serves the migrated maps routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
     );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
-    const declared = new Set(beforeTable);
-    const added = afterTable.filter((entry) => {
-      return !declared.has(entry);
-    });
 
-    expect(
-      afterTable.filter((entry) => {
-        return declared.has(entry);
-      }),
-    ).toStrictEqual(beforeTable);
-    // A migration slice has landed, so the mechanism runs over the real route
-    // table rather than only over the synthetic ones above.
-    expect(added.length).toBeGreaterThan(0);
-    for (const entry of added) {
-      expect(brandedApiNamespace(entry.route.path)).toBeDefined();
-      expect(entry.viaNamespaceAliasFallback).toBeUndefined();
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing maps registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of MAPS_OPERATIONS) {
+      const neutral = requireRoute(`/api/maps/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/maps/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
+  });
+
+  // The weather twin of the assertion above (#28357). Kept as its own test so a
+  // failure names the family that regressed, and so the paths stay written out
+  // per family rather than derived from the table under test.
+  it("serves the migrated weather routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing weather registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = requireRoute(`/api/weather/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/weather/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
+  });
+
+  // The synthetic cases above cover the mechanism; this runs the real route
+  // table through the composition production registers, so a moved contract
+  // that lost its rows fails here rather than 404ing a released caller.
+  it("serves every migrated route at its neutral path and both branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    for (const [neutral, brandedPaths] of Object.entries(
+      MIGRATED_ROUTE_PATHS,
+    )) {
+      const declared = ROUTES.filter((entry) => {
+        return entry.route.path === neutral;
+      });
+      expect(
+        declared.length,
+        `Expected a contract declaring ${neutral}`,
+      ).toBeGreaterThan(0);
+
+      for (const source of declared) {
+        for (const path of [neutral, ...brandedPaths]) {
+          const key = `${source.route.method} ${path}`;
+          const matches = registered.filter((entry) => {
+            return (
+              entry.route.method === source.route.method &&
+              entry.route.path === path
+            );
+          });
+          expect(matches, `Missing registration for ${key}`).toHaveLength(1);
+          const match = matches[0];
+          if (!match) {
+            throw new Error(`Missing registration for ${key}`);
+          }
+          expect(match.handler).toBe(source.handler);
+          expect(match.route).toStrictEqual({ ...source.route, path });
+          // A row is compatibility promised on purpose, so it must not be
+          // reported as a gap the compatibility table missed.
+          expect(match.viaNamespaceAliasFallback).toBeUndefined();
+        }
+      }
     }
   });
 
@@ -310,6 +517,43 @@ describe("branded paths for migrated neutral routes", () => {
         ),
       );
     }).not.toThrow();
+  });
+
+  // The route-table assertion above rebuilds the composition itself, so it
+  // cannot see how `createAppWithRoutes` wires it. This one goes through the
+  // app factory production uses: if `withMigratedBrandedPaths` were dropped
+  // from or reordered in that chain, the branded weather paths would 404 here
+  // while the table assertion still passed. Requests are unauthenticated, so
+  // the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated weather paths through the production app factory", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: weatherRoutes,
+    });
+
+    async function statusFor(path: string): Promise<number> {
+      const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      return response.status;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = await statusFor(`/api/weather/${operation}`);
+      const okou = await statusFor(`/api/okou/weather/${operation}`);
+      const zero = await statusFor(`/api/zero/weather/${operation}`);
+
+      expect({ operation, neutral, okou, zero }).toStrictEqual({
+        operation,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
   });
 
   it("builds an app that serves every path it registers", async () => {

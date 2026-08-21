@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { VM0_MODEL_TO_PROVIDER } from "@okouai/api-contracts/contracts/model-providers";
+import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
   getSkillStorageName,
@@ -677,21 +677,15 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from VM0_MODEL_TO_PROVIDER so new providers are
+ * Vendors are derived from all VM0 managed candidates so new providers are
  * automatically picked up.
  */
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
-  const vendors = new Set(
-    Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
-      return vendor;
-    }),
-  );
-
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of vendors) {
+  for (const vendor of getVm0ManagedRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {

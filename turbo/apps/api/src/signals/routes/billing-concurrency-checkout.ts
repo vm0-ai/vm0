@@ -409,7 +409,6 @@ const concurrencyCheckoutAuthed$ = command(
         orgId: auth.orgId,
         quantity,
         priceId: target.priceId,
-        existingSubscriptionId: target.existingSubscription?.id,
         hasScheduledConcurrencyChange:
           target.existingSubscription?.scheduledQuantity !== null &&
           target.existingSubscription?.scheduledQuantity !== undefined,

@@ -3,6 +3,8 @@ import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
@@ -23,6 +25,7 @@ import {
 } from "./api-dispatch-timing.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
@@ -86,6 +89,8 @@ export interface RunWorkflowAutomationNowArgs {
   readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
+  /** Exact member connector that durably delivered this provider event. */
+  readonly connectorSourceId?: string;
   // Display-only trigger summary used by workflow annotations and run history.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
@@ -107,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly prompt: string;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
+  readonly connectorSourceId?: string;
   readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
@@ -301,9 +307,20 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
+  const fallbackEnabled =
+    effectiveModelProvider === "vm0"
+      ? isFeatureEnabled(
+          FeatureSwitchKey.ManagedModelProviderFallback,
+          await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
+        )
+      : false;
   const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
+      ? await resolveBuiltInModelRuntimeRoute(
+          args.db,
+          selectedModel,
+          fallbackEnabled,
+        )
       : undefined;
   signal.throwIfAborted();
   if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
@@ -315,9 +332,12 @@ async function resolveModelContext(
           status: 503,
           body: {
             error: {
-              code: "PROVIDER_UNAVAILABLE",
-              message:
-                "No model provider configured: no VM0 managed model key is configured",
+              code: fallbackEnabled
+                ? "MODEL_PROVIDER_UNAVAILABLE"
+                : "PROVIDER_UNAVAILABLE",
+              message: fallbackEnabled
+                ? "Every managed route for this model is temporarily unavailable"
+                : "No model provider configured: no VM0 managed model key is configured",
             },
           },
         },
@@ -640,6 +660,9 @@ export const launchQueuedWorkflowAutomation$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
+        ...(args.connectorSourceId
+          ? { connectorSourceId: args.connectorSourceId }
+          : {}),
         computerUseHostId: computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

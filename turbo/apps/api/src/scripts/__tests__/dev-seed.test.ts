@@ -67,6 +67,20 @@ describe("buildVm0ApiKeys", () => {
     ]);
   });
 
+  it("builds the secondary OpenRouter managed key row", () => {
+    const openRouterKeys = buildVendorKeys("openrouter", {
+      DEV_MODEL_OPENROUTER_KEY: "dev-openrouter-key",
+    });
+
+    expect(openRouterKeys).toStrictEqual([
+      {
+        apiKey: "dev-openrouter-key",
+        label: "dev-seed",
+        vendor: "openrouter",
+      },
+    ]);
+  });
+
   it("requires DEV_MODEL_DEEPSEEK_KEY for DeepSeek dev seed rows", () => {
     const deepSeekKeys = buildVendorKeys("deepseek", {
       DEEPSEEK_API_KEY: "provider-deepseek-key",

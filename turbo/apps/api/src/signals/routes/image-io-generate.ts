@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
@@ -15,6 +16,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { settle } from "../utils";
@@ -73,6 +75,7 @@ interface ImageJobArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
+  readonly publicBrand: PublicBrand;
   readonly admission: RunBuiltInAdmission | null;
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
@@ -281,6 +284,7 @@ const executeBytePlusImageProviderJob$ = command(
         orgId: args.orgId,
         userId: args.userId,
         runId: args.runId,
+        publicBrand: args.publicBrand,
         pricing: args.pricing,
         generation,
         usageIdempotency: {
@@ -373,6 +377,8 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const runImageModelDefault = await loadRunImageModelDefault(
     db,
     auth.orgId,
@@ -450,6 +456,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         imageRequestRecord(options),
         {
           admissionId: admission?.id,
+          publicBrand,
           provider: options.provider,
           providerTask: "image",
         },
@@ -465,6 +472,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId,
+      publicBrand,
       admission,
       options,
       pricing,

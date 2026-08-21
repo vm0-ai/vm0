@@ -88,7 +88,109 @@ describe("POST /api/zero/uploads/prepare", () => {
       /^https?:\/\//,
     );
     expect(response.body.url).toMatch(/^https?:\/\//);
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+    );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("uses the zero token brand instead of the request origin", async () => {
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const runId = `run_${randomUUID()}`;
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId,
+      capabilities: ["file:write"],
+      publicBrand: "okou",
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
+    ).prepare({
+      body: validBody(),
+      headers: { authorization: `Bearer ${token}` },
+      extraHeaders: { origin: "https://app.vm0.ai" },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+    );
+    expect(response.body).toMatchObject({
+      uploadHeaders: { "x-amz-meta-public-brand": "okou" },
+    });
+  });
+
+  it("falls back to the VM0 CDN until the Okou CDN config is deployed", async () => {
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const runId = `run_${randomUUID()}`;
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId,
+      capabilities: ["file:write"],
+      publicBrand: "okou",
+      iat: seconds,
+      exp: seconds + 60,
+    });
+    mockEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", undefined);
+
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
+    ).prepare({
+      body: validBody(),
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+    );
+    expect(response.body).toMatchObject({
+      uploadHeaders: { "x-amz-meta-public-brand": "okou" },
+    });
+  });
+
+  it("uses the trusted request brand when no zero token is present", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
+    ).prepare({
+      body: validBody(),
+      headers: { authorization: "Bearer clerk-session" },
+      extraHeaders: { origin: "https://app.okou.ai" },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+    );
+    expect(response.body).toMatchObject({
+      uploadHeaders: { "x-amz-meta-public-brand": "okou" },
+    });
   });
 
   it("rejects invalid body shape with 400", async () => {
@@ -191,6 +293,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.uploadHeaders).toMatchObject({
       "x-amz-meta-artifact-id": response.body.id,
       "x-amz-meta-filename": "hello.txt",
+      "x-amz-meta-public-brand": "vm0",
       "x-amz-meta-user-id": encodeURIComponent(userId),
     });
   });
@@ -223,6 +326,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       uploadHeaders: {
         "x-amz-meta-artifact-id": response.body.id,
         "x-amz-meta-filename": encodeURIComponent("财务 报告.PDF"),
+        "x-amz-meta-public-brand": "vm0",
         "x-amz-meta-user-id": encodeURIComponent(peer.userId),
       },
     });
@@ -237,6 +341,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       Metadata: {
         "artifact-id": response.body.id,
         filename: encodeURIComponent("财务 报告.PDF"),
+        "public-brand": "vm0",
         "user-id": encodeURIComponent(peer.userId),
       },
     });
@@ -244,6 +349,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       unhoistableHeaders: new Set([
         "x-amz-meta-artifact-id",
         "x-amz-meta-filename",
+        "x-amz-meta-public-brand",
         "x-amz-meta-user-id",
       ]),
     });
@@ -467,6 +573,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(command.input.Key).not.toContain(userId);
     expect(command.input.Metadata).toMatchObject({
       filename: encodeURIComponent("my file (1).txt"),
+      "public-brand": "vm0",
       "user-id": encodeURIComponent(userId),
     });
   });

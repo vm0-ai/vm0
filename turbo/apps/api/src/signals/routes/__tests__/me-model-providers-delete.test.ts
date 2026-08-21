@@ -39,7 +39,7 @@ function uniqueOrgUser(prefix: string): UserModelProviderFixture {
   };
 }
 
-describe("DELETE /api/zero/me/model-providers/:type", () => {
+describe("DELETE /api/me/model-providers/:type", () => {
   async function upsertPersonalProvider(
     fixture: UserModelProviderFixture,
   ): Promise<void> {

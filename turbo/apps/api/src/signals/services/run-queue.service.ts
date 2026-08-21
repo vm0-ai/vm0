@@ -220,28 +220,24 @@ async function loadDrainCandidates(
   db: Db,
   orgId: string,
 ): Promise<readonly QueueCandidate[]> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+  const concurrency = await effectiveOrgConcurrencyState(db, orgId);
+  if (concurrency.activeRunCount >= concurrency.limit) {
+    return [];
+  }
 
-    const concurrency = await effectiveOrgConcurrencyState(tx, orgId);
-    if (concurrency.activeRunCount >= concurrency.limit) {
-      return [];
-    }
-
-    return await tx
-      .select({
-        runId: agentRunQueue.runId,
-        userId: agentRunQueue.userId,
-        createdAt: agentRunQueue.createdAt,
-        encryptedParams: agentRunQueue.encryptedParams,
-        runStatus: agentRuns.status,
-        chatThreadId: agentRuns.chatThreadId,
-      })
-      .from(agentRunQueue)
-      .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
-      .where(eq(agentRunQueue.orgId, orgId))
-      .orderBy(agentRunQueue.createdAt);
-  });
+  return await db
+    .select({
+      runId: agentRunQueue.runId,
+      userId: agentRunQueue.userId,
+      createdAt: agentRunQueue.createdAt,
+      encryptedParams: agentRunQueue.encryptedParams,
+      runStatus: agentRuns.status,
+      chatThreadId: agentRuns.chatThreadId,
+    })
+    .from(agentRunQueue)
+    .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+    .where(eq(agentRunQueue.orgId, orgId))
+    .orderBy(agentRunQueue.createdAt);
 }
 
 async function promoteQueuedCandidate(
@@ -422,9 +418,9 @@ async function promoteQueuedCandidateWithSideEffects(
  * can claim it. A queued run without that payload violates the owning writer's
  * invariant and fails before any state transition.
  *
- * Acquires `pg_advisory_xact_lock(hashtext(orgId))` — same hash key as
- * web's `drainOrgQueue` so the two backends serialize correctly on the
- * same org during rollout.
+ * Candidate discovery is an unlocked snapshot. Final promotion acquires
+ * `pg_advisory_xact_lock(hashtext(orgId))` and revalidates concurrency and
+ * queue ownership before changing state.
  *
  * Returns the number of runs transitioned (0 if queue empty or
  * concurrency full).
