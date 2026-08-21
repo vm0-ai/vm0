@@ -292,13 +292,15 @@ async function expectExactFeishuMemberConnector(args: {
     connectorId: memberConnectorId,
     externalId: null,
   });
-  const historicalExactLink = await accept(
+  const missingExternalIdentity = await accept(
     args.client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
   );
-  expect(historicalExactLink.body.installations?.[0]?.isConnected).toBeTruthy();
+  expect(
+    missingExternalIdentity.body.installations?.[0]?.isConnected,
+  ).toBeFalsy();
 
   await setConnectorExternalIdState(context, {
     orgId,
@@ -345,13 +347,26 @@ async function expectExactFeishuMemberConnector(args: {
     installationId: args.installationId,
     connectorId: null,
   });
-  const legacyUnlinked = await accept(
+  const unlinked = await accept(
     args.client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
   );
-  expect(legacyUnlinked.body.installations?.[0]?.isConnected).toBeTruthy();
+  expect(unlinked.body.installations?.[0]?.isConnected).toBeFalsy();
+
+  await setFeishuMemberConnectorLink(context, {
+    userId: args.member.userId,
+    installationId: args.installationId,
+    connectorId: memberConnectorId,
+  });
+  const restored = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(restored.body.installations?.[0]?.isConnected).toBeTruthy();
 }
 
 function feishuConnectBody(connectUrl: string) {
