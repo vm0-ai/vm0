@@ -4,6 +4,7 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@okouai/core";
 import { Check, ChevronDown, Coins, PlusCircle, UserPlus } from "lucide-react";
@@ -305,13 +306,26 @@ function InviteButton({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function InviteHeader({ isAdmin }: { isAdmin: boolean }) {
+/**
+ * The corner both entries sit in.
+ *
+ * The row spans the page rather than the 900px content column, so the entry
+ * lands in the top-right corner — the position the invite button has always
+ * held, and the one the menu's `align="end"` is drawn against.
+ */
+function CornerHeader({ children }: { children: ReactNode }) {
   return (
     <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
-      <div className="flex items-center justify-end gap-2">
-        <InviteButton isAdmin={isAdmin} />
-      </div>
+      <div className="flex items-center justify-end gap-2">{children}</div>
     </header>
+  );
+}
+
+function InviteHeader({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <CornerHeader>
+      <InviteButton isAdmin={isAdmin} />
+    </CornerHeader>
   );
 }
 
@@ -321,11 +335,9 @@ function EnabledGrowthEntryHeader() {
     return null;
   }
   return (
-    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
-      <div className="mx-auto flex w-full max-w-[900px] items-center justify-end gap-2">
-        <GrowthEntry slackInstalled={slackInstalled} />
-      </div>
-    </header>
+    <CornerHeader>
+      <GrowthEntry slackInstalled={slackInstalled} />
+    </CornerHeader>
   );
 }
 

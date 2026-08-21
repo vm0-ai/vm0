@@ -131,7 +131,7 @@ describe("home growth entry", () => {
     setupGrowthEntry({ isConnected: false, isInstalled: true });
 
     const entry = await screen.findByTestId("growth-entry");
-    expect(entry).toHaveTextContent("Invite member");
+    expect(entry).toHaveTextContent("Invite teammates");
 
     await user.click(entry);
     const menu = await screen.findByRole("menu");

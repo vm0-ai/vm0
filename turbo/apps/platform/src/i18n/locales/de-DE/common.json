@@ -1505,7 +1505,7 @@
         "connect": "Verbinden",
         "credits": "Guthaben",
         "inSlack": "{{assistantName}} ist in Slack",
-        "inviteMember": "Mitglied einladen",
+        "inviteMember": "Teammitglieder einladen",
         "otherChannels": "Telegram und Telefon"
       },
       "invitePeople": "Personen einladen",
