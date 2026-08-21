@@ -60,7 +60,7 @@ function sandboxToken(args: {
   });
 }
 
-describe("POST /api/okou/integrations/slack/message", () => {
+describe("POST /api/integrations/slack/message", () => {
   beforeEach(() => {
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
