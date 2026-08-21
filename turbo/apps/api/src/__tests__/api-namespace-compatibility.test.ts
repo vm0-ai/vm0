@@ -129,16 +129,15 @@ function requireBrandedRoute(): RouteEntry {
 // table owes on purpose, and which exist only because the fallback derived
 // them.
 describe("API namespace compatibility", () => {
-  // Composed the way production does, because #28278 moves listed contracts to
-  // neutral paths: once a contract declares one, the expansion alone produces
-  // neither branded path and `MIGRATED_BRANDED_PATHS` is what still serves the
-  // legacy callers this file is about.
-  const registeredRoutes = withMigratedBrandedPaths(
-    withApiNamespaceAliases(ROUTES),
-  );
+  const registeredRoutes = withApiNamespaceAliases(ROUTES);
+  // Composed the way production registers routes. The expansion above is the
+  // mechanism this file pins; this is what a caller actually reaches, and it is
+  // the only composition that still finds a #28278-migrated contract at the
+  // branded paths its released callers hold.
+  const servedRoutes = withMigratedBrandedPaths(registeredRoutes);
 
   function registrationsFor(path: string): readonly RouteEntry[] {
-    return registeredRoutes.filter((entry) => {
+    return servedRoutes.filter((entry) => {
       return entry.route.path === path;
     });
   }
@@ -231,7 +230,7 @@ describe("API namespace compatibility", () => {
 
       for (const source of sources) {
         const key = `${source.route.method} ${legacy}`;
-        const matches = registeredRoutes.filter((entry) => {
+        const matches = servedRoutes.filter((entry) => {
           return routeKey(entry) === key;
         });
         expect(matches, `Missing registration for ${key}`).toHaveLength(1);
@@ -257,9 +256,8 @@ describe("API namespace compatibility", () => {
   // every mechanism assertion in this file still passes. This pins that the
   // literal list is what fails, so such a migration cannot go green and then
   // 404 in production. Removing the path from the list is the way out, and it
-  // has to be deliberate. The subject is a path a provider console holds, so
-  // #28278 leaves it branded and this guard keeps a contract to move
-  // hypothetically.
+  // has to be deliberate. The subject must be a path #28278 has not moved yet,
+  // so it is one a provider console holds: those stay branded under #26701.
   it("reports the branded registrations a neutral contract migration would drop", () => {
     const canonical = "/api/okou/slack/events";
     const legacy = "/api/zero/slack/events";
@@ -298,19 +296,20 @@ describe("API namespace compatibility", () => {
     );
   });
 
-  it("keeps every listed legacy path backed by a declared contract", () => {
-    // A migrated contract declares its neutral path, so the canonical branded
-    // path it still answers on comes from `MIGRATED_BRANDED_PATHS` rather than
-    // from the declaration. Both count as backing the listed legacy path.
-    const declaredCanonicalPaths = new Set(
-      withMigratedBrandedPaths(ROUTES).map(({ route }) => {
+  // A row whose canonical path nothing answers is a row no caller can use. Read
+  // from the served composition rather than from `ROUTES`: once a #28278 slice
+  // moves a contract to its neutral path, the canonical branded path is served
+  // by the migrated-branded table instead of being declared by the contract.
+  it("keeps every listed legacy path backed by a served canonical path", () => {
+    const servedCanonicalPaths = new Set(
+      servedRoutes.map(({ route }) => {
         return canonicalPath(route.path);
       }),
     );
 
     expect(
       Object.keys(LEGACY_ZERO_PATHS).filter((path) => {
-        return !declaredCanonicalPaths.has(path);
+        return !servedCanonicalPaths.has(path);
       }),
     ).toStrictEqual([]);
   });

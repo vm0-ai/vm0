@@ -107,7 +107,7 @@ const scrapeResponses = {
 export const scrapeContract = c.router({
   scrape: {
     method: "POST",
-    path: "/api/okou/scrape",
+    path: "/api/scrape",
     headers: authHeadersSchema,
     body: scrapeRequestSchema,
     responses: scrapeResponses,

@@ -106,13 +106,10 @@ describe("okou web-search command", () => {
   it("posts default requests and prints JSON", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/web-search",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json(responseBody);
-        },
-      ),
+      http.post("http://localhost:3000/api/web-search", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json(responseBody);
+      }),
     );
 
     await webSearchCommand.parseAsync([
@@ -132,18 +129,15 @@ describe("okou web-search command", () => {
   it("translates filters and renders ranked results", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/web-search",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json({
-            ...responseBody,
-            limit: 3,
-            recency: "week",
-            domains: ["example.com", "docs.example.com"],
-          });
-        },
-      ),
+      http.post("http://localhost:3000/api/web-search", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          ...responseBody,
+          limit: 3,
+          recency: "week",
+          domains: ["example.com", "docs.example.com"],
+        });
+      }),
     );
 
     await webSearchCommand.parseAsync([
@@ -178,7 +172,7 @@ describe("okou web-search command", () => {
 
   it("guides users when no results are returned", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/web-search", () => {
+      http.post("http://localhost:3000/api/web-search", () => {
         return HttpResponse.json({ ...responseBody, results: [] });
       }),
     );
@@ -205,7 +199,7 @@ describe("okou web-search command", () => {
   ])("rejects %s before calling the API", async (_name, args, message) => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/web-search", () => {
+      http.post("http://localhost:3000/api/web-search", () => {
         apiRequests += 1;
         return HttpResponse.json(responseBody);
       }),
@@ -222,7 +216,7 @@ describe("okou web-search command", () => {
 
   it("prints API error messages", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/web-search", () => {
+      http.post("http://localhost:3000/api/web-search", () => {
         return HttpResponse.json(
           {
             error: {
