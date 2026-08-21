@@ -205,6 +205,11 @@ class UsageEventBuffer:
         """
         return self._flush_usage_events(trigger=trigger)
 
+    def seen_source_idempotency_keys(self, source_keys: Iterable[str]) -> set[str]:
+        """Return candidate source keys retained by admission history."""
+        with self._lock:
+            return self._state.seen_source_idempotency_keys(source_keys)
+
     def drain_usage_events_after_executor_shutdown(self) -> None:
         """Synchronously drain work retained by completed executor callbacks.
 

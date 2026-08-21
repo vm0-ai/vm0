@@ -174,8 +174,11 @@ Model-provider usage
 - ``MODEL_PROVIDER_USAGE_TIERS``: bounded insertion-ordered mapping from
   WebSocket response id to the concrete billing tier decision selected from
   its input partition. Zero-only decisions remain provisional until the first
-  positive billing item. Written by model-provider billing and cleared at the
-  WebSocket terminal lifecycle boundary.
+  positive billing item. Evicted decisions can be recovered while their
+  concrete source keys remain in the separately bounded usage admission
+  history; otherwise positive usage uses a conservative tier. Written by
+  model-provider billing and cleared at the WebSocket terminal lifecycle
+  boundary.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
   info. Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
