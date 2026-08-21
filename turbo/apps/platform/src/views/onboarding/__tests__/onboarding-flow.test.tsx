@@ -397,22 +397,45 @@ describe("onboarding flow", () => {
       category: "engineering",
       workflow: "post-github-updates-slack",
       title: "Audit Google Cloud IAM and services",
+      requiredConnectorSlug: "google-cloud",
+      requiredCatalogLabel: "Catalog Google Cloud",
+      diagramLabel: "Google Cloud",
       optionalConnector: "github",
     },
     {
       category: "data",
       workflow: "track-signup-sources-sheets",
       title: "Analyze BigQuery data in Sheets",
+      requiredConnectorSlug: "google-cloud",
+      requiredCatalogLabel: "Catalog Google Cloud",
+      diagramLabel: "Google Cloud",
       optionalConnector: "google-analytics",
     },
-  ])(
-    "renders Google Cloud as required for $category workflows",
-    async ({ category, workflow, title, optionalConnector }) => {
+    {
+      category: "ceo",
+      workflow: "daily-industry-news-slack",
+      title: "Alert on cash flow and overdue invoices",
+      requiredConnectorSlug: "quickbooks",
+      requiredCatalogLabel: "Catalog QuickBooks",
+      diagramLabel: "QuickBooks",
+      optionalConnector: "gmail",
+    },
+  ] as const)(
+    "renders the canonical $diagramLabel label for $category workflows",
+    async ({
+      category,
+      workflow,
+      title,
+      requiredConnectorSlug,
+      requiredCatalogLabel,
+      diagramLabel,
+      optionalConnector,
+    }) => {
       mockCatalogItem({
-        slug: "google-cloud",
-        label: "Catalog Google Cloud",
+        slug: requiredConnectorSlug,
+        label: requiredCatalogLabel,
         icon: {
-          url: "https://icons.example.test/onboarding-google-cloud.svg",
+          url: `https://icons.example.test/onboarding-${requiredConnectorSlug}.svg`,
           invertInDarkMode: false,
         },
       });
@@ -426,10 +449,10 @@ describe("onboarding flow", () => {
         screen.findByRole("heading", { name: title }),
       ).resolves.toBeInTheDocument();
 
-      const requiredLabel = await screen.findByText("Catalog Google Cloud");
+      const requiredLabel = await screen.findByText(requiredCatalogLabel);
       const requiredRow = requiredLabel.parentElement?.parentElement;
       if (!requiredRow) {
-        throw new Error("Expected Google Cloud connector row");
+        throw new Error(`Expected ${diagramLabel} connector row`);
       }
       expect(within(requiredRow).getByText(/^Required\s+·/u)).toBeVisible();
 
@@ -439,6 +462,16 @@ describe("onboarding flow", () => {
         throw new Error(`Expected ${optionalConnector} connector row`);
       }
       expect(within(optionalRow).getByText(/^Optional\s+·/u)).toBeVisible();
+
+      click(buttonByAriaLabel("Preview workflow details"));
+      const preview = await screen.findByRole("dialog", { name: title });
+      expect(
+        within(preview).getByText((content) => {
+          return (
+            content === diagramLabel || content.startsWith(`${diagramLabel} + `)
+          );
+        }),
+      ).toBeVisible();
     },
   );
 
