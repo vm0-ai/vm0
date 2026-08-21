@@ -425,6 +425,24 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/seo/ranked-keywords",
   ],
   "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
+  // #28415. Published CLI builds poll generation status and post image
+  // generations at the `okou` form — `getBuiltInGenerationStatus` and
+  // `generateWebImage` build those URLs by hand rather than from the contract,
+  // so they shipped independently of this path. The `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Same surface as the rows above: commit-addressed CLI packages pinned by run
+  // contexts created before this deploy, draining over the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. Removal follows
+  // the table's #26701 evidence gate, not that clock.
+  "/api/built-in-generations/:generationId": [
+    "/api/okou/built-in-generations/:generationId",
+    "/api/zero/built-in-generations/:generationId",
+  ],
+  "/api/image-io/generate": [
+    "/api/okou/image-io/generate",
+    "/api/zero/image-io/generate",
+  ],
   // #28422: artifact catalog, logs, push subscriptions, the platform realtime
   // token, and the run reads.
   "/api/artifacts/catalog": [

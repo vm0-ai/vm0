@@ -554,7 +554,7 @@ async function getBuiltInGenerationStatus(
   generationId: string,
 ): Promise<BuiltInGenerationResponse> {
   const response = await fetch(
-    new URL(`/api/okou/built-in-generations/${generationId}`, baseUrl),
+    new URL(`/api/built-in-generations/${generationId}`, baseUrl),
     { headers: authenticatedJsonHeaders(token) },
   );
 
@@ -866,42 +866,39 @@ export async function generateWebImage(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(
-    new URL("/api/okou/image-io/generate", baseUrl),
-    {
-      method: "POST",
-      headers: headersWithCliClientHeaders(headers),
-      body: JSON.stringify({
-        prompt: options.prompt,
-        ...(options.model ? { model: options.model } : {}),
-        ...(options.size ? { size: options.size } : {}),
-        ...(options.quality ? { quality: options.quality } : {}),
-        ...(options.background ? { background: options.background } : {}),
-        ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
-        ...(options.outputCompression !== undefined
-          ? { outputCompression: options.outputCompression }
-          : {}),
-        ...(options.moderation ? { moderation: options.moderation } : {}),
-        ...(options.seed !== undefined ? { seed: options.seed } : {}),
-        ...(options.safetyTolerance
-          ? { safetyTolerance: options.safetyTolerance }
-          : {}),
-        ...(options.enhancePrompt !== undefined
-          ? { enhancePrompt: options.enhancePrompt }
-          : {}),
-        ...(options.imageUrls && options.imageUrls.length > 0
-          ? { imageUrls: options.imageUrls }
-          : {}),
-        ...(options.maskImageUrl ? { maskImageUrl: options.maskImageUrl } : {}),
-        ...(options.inputFidelity
-          ? { inputFidelity: options.inputFidelity }
-          : {}),
-        ...(options.imagePromptStrength !== undefined
-          ? { imagePromptStrength: options.imagePromptStrength }
-          : {}),
-      }),
-    },
-  );
+  const response = await fetch(new URL("/api/image-io/generate", baseUrl), {
+    method: "POST",
+    headers: headersWithCliClientHeaders(headers),
+    body: JSON.stringify({
+      prompt: options.prompt,
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.size ? { size: options.size } : {}),
+      ...(options.quality ? { quality: options.quality } : {}),
+      ...(options.background ? { background: options.background } : {}),
+      ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
+      ...(options.outputCompression !== undefined
+        ? { outputCompression: options.outputCompression }
+        : {}),
+      ...(options.moderation ? { moderation: options.moderation } : {}),
+      ...(options.seed !== undefined ? { seed: options.seed } : {}),
+      ...(options.safetyTolerance
+        ? { safetyTolerance: options.safetyTolerance }
+        : {}),
+      ...(options.enhancePrompt !== undefined
+        ? { enhancePrompt: options.enhancePrompt }
+        : {}),
+      ...(options.imageUrls && options.imageUrls.length > 0
+        ? { imageUrls: options.imageUrls }
+        : {}),
+      ...(options.maskImageUrl ? { maskImageUrl: options.maskImageUrl } : {}),
+      ...(options.inputFidelity
+        ? { inputFidelity: options.inputFidelity }
+        : {}),
+      ...(options.imagePromptStrength !== undefined
+        ? { imagePromptStrength: options.imagePromptStrength }
+        : {}),
+    }),
+  });
 
   if (!response.ok) {
     const { message, code } = await parseErrorBody(
