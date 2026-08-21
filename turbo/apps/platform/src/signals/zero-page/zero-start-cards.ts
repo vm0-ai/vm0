@@ -84,18 +84,34 @@ export const startCardWorkflowConnectorIcons$ = computed(
   },
 );
 
+/** The one setup step the Slack card offers, and where it goes. */
+export interface SlackStartCardStep {
+  readonly kind: "install" | "connect";
+  readonly url: string;
+}
+
 /**
- * The OAuth URL the Slack card sends the member to, or `null` when the card
- * has nothing to offer: the workspace is already connected, or this member is
- * not an admin and the app has not been installed yet.
+ * The step this member can take, or `null` when the card has nothing to offer:
+ * the workspace is already connected, or they are not an admin and the app has
+ * not been installed yet.
+ *
+ * The label and the URL come out together so a dialog cannot read one from a
+ * stale status and the other from a fresh one.
  */
-export const slackStartCardUrl$ = computed(
-  async (get): Promise<string | null> => {
+export const slackStartCardStep$ = computed(
+  async (get): Promise<SlackStartCardStep | null> => {
     const status = await get(slackOrgData$);
     if (status.isConnected) {
       return null;
     }
-    return (status.isInstalled ? status.connectUrl : status.installUrl) ?? null;
+    if (status.isInstalled) {
+      return status.connectUrl
+        ? { kind: "connect", url: status.connectUrl }
+        : null;
+    }
+    return status.installUrl
+      ? { kind: "install", url: status.installUrl }
+      : null;
   },
 );
 
@@ -126,7 +142,7 @@ export const startCardKinds$ = computed(
   async (get): Promise<readonly StartCardKind[]> => {
     const avatarEnabled = get(avatarTemplatesEnabled$);
     const workflowTemplate = get(startCardWorkflowTemplate$);
-    const slackUrl = await get(slackStartCardUrl$);
+    const slackStep = await get(slackStartCardStep$);
     return get(internalStartCardOrder$)
       .filter((kind) => {
         if (kind === "avatar") {
@@ -136,7 +152,7 @@ export const startCardKinds$ = computed(
           return workflowTemplate !== undefined;
         }
         if (kind === "slack") {
-          return slackUrl !== null;
+          return slackStep !== null;
         }
         return true;
       })

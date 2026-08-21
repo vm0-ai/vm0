@@ -16,14 +16,14 @@ import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-compose
 import {
   setSlackHowItWorksOpen$,
   slackHowItWorksOpen$,
-  slackStartCardUrl$,
+  slackStartCardStep$,
   startCardKinds$,
   startCardWorkflowConnectorIcons$,
   startCardWorkflowTemplate$,
+  type SlackStartCardStep,
   type StartCardConnectorIcon,
   type StartCardKind,
 } from "../../signals/zero-page/zero-start-cards.ts";
-import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -568,13 +568,12 @@ function SlackStartCard({ art }: { art: ReactNode }) {
  * and loops, so it needs no controls; the two actions underneath are the only
  * places the install actually starts.
  */
-function SlackHowItWorksDialog({ setupUrl }: { setupUrl: string }) {
+function SlackHowItWorksDialog({ step }: { step: SlackStartCardStep }) {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const navigate = useSet(detachedNavigateTo$);
   const open = useGet(slackHowItWorksOpen$);
   const setOpen = useSet(setSlackHowItWorksOpen$);
-  const installed = useLastResolved(slackOrgData$)?.isInstalled ?? false;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {/* Wider than the default dialog: at `max-w-lg` the 16:10 clip is only
@@ -624,10 +623,10 @@ function SlackHowItWorksDialog({ setupUrl }: { setupUrl: string }) {
           <Button
             type="button"
             onClick={() => {
-              openFreshOAuth(setupUrl);
+              openFreshOAuth(step.url);
             }}
           >
-            {installed
+            {step.kind === "connect"
               ? t(($) => {
                   return $.chat.startCards.slack.connect;
                 })
@@ -648,7 +647,7 @@ export function StartCards({
 }) {
   const { t } = useTranslation();
   const kinds = useLastResolved(startCardKinds$);
-  const setupUrl = useLastResolved(slackStartCardUrl$) ?? null;
+  const slackStep = useLastResolved(slackStartCardStep$) ?? null;
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
   const setTemplateCategory = useSet(
@@ -740,8 +739,8 @@ export function StartCards({
         );
       })}
       {/* Only mounted alongside its card: nothing else on the page opens it. */}
-      {kinds?.includes("slack") && setupUrl !== null && (
-        <SlackHowItWorksDialog setupUrl={setupUrl} />
+      {kinds?.includes("slack") && slackStep !== null && (
+        <SlackHowItWorksDialog step={slackStep} />
       )}
     </div>
   );
