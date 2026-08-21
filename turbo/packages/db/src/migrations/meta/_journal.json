@@ -1086,6 +1086,13 @@
       "when": 1787295804775,
       "tag": "0962_add_qwen_image_3_and_nano_banana_2_lite_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 963,
+      "version": "7",
+      "when": 1787299741784,
+      "tag": "0963_youthful_fenris",
+      "breakpoints": true
     }
   ]
 }
