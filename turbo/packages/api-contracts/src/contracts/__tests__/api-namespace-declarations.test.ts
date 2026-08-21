@@ -121,25 +121,17 @@ describe("branded API namespace declarations", () => {
     ).toStrictEqual([]);
   });
 
-  it("keeps the sentinel true once every migrating path is neutral", () => {
-    const migrated: readonly DeclaredRoute[] = Array.from(
-      { length: MINIMUM_DECLARED_ROUTES + 1 },
-      (_value, index) => {
-        return {
-          declaration: `migratedContract.route${index}`,
-          method: "GET",
-          path: `/api/migrated/${index}`,
-        };
-      },
-    );
-    const endState: readonly DeclaredRoute[] = [
-      ...migrated,
-      { declaration: "slackEventsContract.post", ...RETAINED_BRANDED_ROUTE },
-    ];
+  // Shows the floor above survives #28278 finishing, without waiting for it.
+  // A migrating route does not disappear, it becomes neutral, so the routes
+  // already neutral today are a lower bound on the total once the branded
+  // count reaches the eight retained paths. Clearing the floor on that subset
+  // alone means draining the branded set cannot reach it.
+  it("clears the floor on neutral routes alone", () => {
+    const neutralRoutes = routes.filter(({ path }) => {
+      return brandedApiNamespace(path) === undefined;
+    });
 
-    expect(endState.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
-    expect(declaresRetainedBrandedRoute(endState)).toBe(true);
-    expect(legacyNamespaceDeclarations(endState)).toStrictEqual([]);
+    expect(neutralRoutes.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
   });
 
   it("reports a contract that declares a legacy namespace path", () => {
