@@ -711,6 +711,10 @@ async function processInvoiceRefund(
   row: UsagePackCreditRefundRow,
 ): Promise<void> {
   const stripe = getStripeClient();
+  // The previous API could persist a failed or processing invoice refund after
+  // issuing its Credit Note. This is backend persisted-state compatibility for
+  // the documented ~102-minute rollout exposure. Remove with #28580 only after
+  // that API has drained and production has zero unresolved Credit-Note rows.
   const existingCreditNote = row.stripeCreditNoteId
     ? await stripe.creditNotes.retrieve(row.stripeCreditNoteId)
     : null;
@@ -792,6 +796,8 @@ async function processCreditRefund(
 }
 
 function retryableFailedInvoiceRefundCondition() {
+  // Keep the legacy failed rows described in processInvoiceRefund eligible
+  // until the bounded compatibility cleanup tracked by #28580.
   return and(
     eq(usagePackCreditRefunds.sourceType, "invoice"),
     eq(usagePackCreditRefunds.status, "failed"),
