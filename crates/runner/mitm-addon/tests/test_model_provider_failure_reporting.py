@@ -476,6 +476,44 @@ def test_websocket_failure_is_reported(
     assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
 
 
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (429, {"failureKind": "rate_limit", "retryAfterSeconds": 120}),
+        (400, None),
+    ],
+)
+def test_websocket_upgrade_http_outcome_is_classified(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    status: int,
+    expected: dict[str, str | int] | None,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
+    assert flow.response is not None
+    flow.response.status_code = status
+    flow.response.headers = header_map({"retry-after": "120"})
+
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    if expected is None:
+        assert not failure_path.exists()
+    else:
+        assert json.loads(failure_path.read_text()) == expected
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    if expected is None:
+        assert not failure_path.exists()
+    else:
+        assert json.loads(failure_path.read_text()) == expected
+
+
 def test_websocket_top_level_error_is_reported(
     tmp_path,
     real_flow,

@@ -51,6 +51,7 @@ _MAX_SELECTED_STRING_BYTES = 128
 _MAX_RETRY_AFTER_SECONDS = 300
 _DONE_SENTINEL = b"[DONE]"
 
+_HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_PAYMENT_REQUIRED = 402
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
@@ -192,7 +193,10 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
     if (
         flow_state is None
         or response is None
-        or flow_state.protocol == "openai_responses_websocket"
+        or (
+            flow_state.protocol == "openai_responses_websocket"
+            and response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
+        )
         or not _response_can_have_body(flow, response)
     ):
         return None
@@ -253,7 +257,10 @@ def finish_http_response(flow: http.HTTPFlow) -> None:
     if (
         flow_state is None
         or response is None
-        or flow_state.protocol == "openai_responses_websocket"
+        or (
+            flow_state.protocol == "openai_responses_websocket"
+            and response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
+        )
     ):
         return
 
