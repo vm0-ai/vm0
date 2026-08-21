@@ -92,9 +92,13 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // fixture is deliberately not a real route: #28278 runs many slices at
+    // once, so any real path named here becomes a false expectation the moment
+    // its slice lands. `/api/chat-threads/snapshot` was this case until #28459
+    // migrated it and left the assertion behind.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/unmigrated-example/thing")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],
