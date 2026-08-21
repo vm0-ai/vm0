@@ -1762,6 +1762,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_provider_treats_missing_model_provider_failure_endpoint_as_best_effort() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = "00000000-0000-4000-8000-000000020995".parse().unwrap();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(format!(
+                    "/api/runners/runs/{run_id}/model-provider-failures"
+                ));
+                then.status(404).json_body(serde_json::json!({
+                    "error": {"message": "route not found"},
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let request = ModelProviderFailureRequest {
+            failure_kind: api_contracts::generated::types::runners::runs::model_provider_failures::RequestFailureKind::Connection,
+            retry_after_seconds: None,
+        };
+
+        let (_, events) =
+            capture_api_provider_events(provider.report_model_provider_failure(run_id, &request))
+                .await;
+
+        mock.assert_async().await;
+        let event = captured_event(&events, "model provider failure report failed");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "run_id"), run_id.to_string());
+    }
+
+    #[tokio::test]
     async fn api_client_resolves_builtin_firewall_catalog() {
         let server = MockServer::start_async().await;
         let mock = server
