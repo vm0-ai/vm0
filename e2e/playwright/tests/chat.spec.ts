@@ -87,7 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
