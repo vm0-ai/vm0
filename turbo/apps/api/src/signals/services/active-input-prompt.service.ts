@@ -27,11 +27,7 @@ type ChatEventContextType = NonNullable<
 >;
 
 type ContextBackedContextType =
-  | "slack"
-  | "feishu"
-  | "teams"
-  | "telegram"
-  | "agentphone";
+  "slack" | "feishu" | "teams" | "telegram" | "agentphone";
 
 interface ActiveInputPromptEvent {
   readonly id: string;
@@ -202,6 +198,10 @@ export async function materializePendingActiveInputPrompts(
           FeatureSwitchKey.LatestWebsiteTemplates,
           featureSwitchContext,
         ),
+        presentationTemplatesEnabled: isFeatureEnabled(
+          FeatureSwitchKey.PresentationTemplates,
+          featureSwitchContext,
+        ),
       }),
     );
     signal.throwIfAborted();
@@ -270,6 +270,7 @@ async function materializeActiveInputPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly latestWebsiteTemplatesEnabled: boolean;
+    readonly presentationTemplatesEnabled: boolean;
   },
 ): Promise<string> {
   const userMessage = requiredUserMessageForEvent(
@@ -290,6 +291,7 @@ async function materializeActiveInputPrompt(
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

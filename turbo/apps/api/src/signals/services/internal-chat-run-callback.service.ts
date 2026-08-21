@@ -14,7 +14,10 @@ import {
   publicBrandSchema,
   type PublicBrand,
 } from "@okouai/api-contracts/contracts/public-brand";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -854,8 +857,7 @@ interface TerminalChatCallbackWork {
 }
 
 type DrainOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly error: unknown };
+  { readonly ok: true } | { readonly ok: false; readonly error: unknown };
 
 function isCreatedQueuedRunStatus(
   status: string,
@@ -3044,9 +3046,9 @@ function queuedIntegrationPrompt(args: {
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly input: CreateQueuedChatRunInputArgs;
   readonly userMessageProjection:
-    | ReturnType<typeof projectUserMessage>
-    | undefined;
+    ReturnType<typeof projectUserMessage> | undefined;
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3057,9 +3059,37 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+        presentationTemplatesEnabled: args.presentationTemplatesEnabled,
       });
     },
   );
+}
+
+/**
+ * The template switches a queued message resolves under, read once from the
+ * context this dispatch already loaded.
+ */
+function resolveQueuedMessageTemplateContext(args: {
+  readonly input: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["input"];
+  readonly userMessageProjection: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["userMessageProjection"];
+  readonly featureSwitchContext: FeatureSwitchContext;
+}) {
+  return resolveQueuedMessageGenerationTemplatePrompt({
+    input: args.input,
+    userMessageProjection: args.userMessageProjection,
+    latestWebsiteTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.LatestWebsiteTemplates,
+      args.featureSwitchContext,
+    ),
+    presentationTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplates,
+      args.featureSwitchContext,
+    ),
+  });
 }
 
 async function loadQueuedRunMaterial(
@@ -3163,15 +3193,11 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const generationTemplatePrompt =
-    await resolveQueuedMessageGenerationTemplatePrompt({
-      input: args,
-      userMessageProjection,
-      latestWebsiteTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.LatestWebsiteTemplates,
-        featureSwitchContext,
-      ),
-    });
+  const generationTemplatePrompt = await resolveQueuedMessageTemplateContext({
+    input: args,
+    userMessageProjection,
+    featureSwitchContext,
+  });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",

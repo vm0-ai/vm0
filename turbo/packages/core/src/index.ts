@@ -624,6 +624,12 @@ export {
   SYSTEM_ORG_ID,
 } from "./storage-names";
 export {
+  formatUserPresentationTemplateId,
+  isUserPresentationTemplateId,
+  parseUserPresentationTemplateId,
+  userPresentationTemplateDirectory,
+} from "./presentation-template-selection";
+export {
   parseGitHubTreeUrl,
   getSkillNameFromPath,
   parseGitHubUrl,

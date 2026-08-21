@@ -14,6 +14,11 @@ import {
 } from "@okouai/core/website-template-items";
 import { findWorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import {
+  isUserPresentationTemplateId,
+  parseUserPresentationTemplateId,
+  userPresentationTemplateDirectory,
+} from "@okouai/core/presentation-template-selection";
+import {
   parseAvatarTemplateStylePresetId,
   readAvatarTemplateOptions,
   type AvatarTemplateOptions,
@@ -100,6 +105,7 @@ export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
   options: {
     readonly latestWebsiteTemplatesEnabled?: boolean;
+    readonly presentationTemplatesEnabled?: boolean;
   } = {},
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
@@ -122,7 +128,10 @@ export function buildGenerationTemplatePrompt(
     );
   }
 
-  return buildPresentationGenerationTemplatePrompt(generationTemplate);
+  return buildPresentationGenerationTemplatePrompt(
+    generationTemplate,
+    options.presentationTemplatesEnabled === true,
+  );
 }
 
 function stripGenerationTemplateContext(prompt: string): string {
@@ -143,6 +152,7 @@ export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
   options: {
     readonly latestWebsiteTemplatesEnabled?: boolean;
+    readonly presentationTemplatesEnabled?: boolean;
   } = {},
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
@@ -201,17 +211,66 @@ function buildWorkflowGenerationTemplatePrompt(
 
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
+  presentationTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
+  const { templateId } = generationTemplate.selection;
+  if (isUserPresentationTemplateId(templateId)) {
+    // Gated here rather than at the composer alone: an API version that still
+    // accepts the field must not honour a private id once the switch is off,
+    // and a run cannot mount a package the caller was never authorised for.
+    if (!presentationTemplatesEnabled) {
+      return { status: "invalid", message: "Unknown generation template" };
+    }
+    const rowId = parseUserPresentationTemplateId(templateId);
+    if (rowId === undefined) {
+      return { status: "invalid", message: "Malformed presentation template" };
+    }
+    return buildUserPresentationTemplatePrompt(rowId);
+  }
   // Presentation picker selections are valid only when they resolve to a
   // self-contained runbook package. The legacy multi-resource registry flow has
   // been retired, so ids without a runbook package are rejected.
-  const runbookPackage = findPresentationRunbookPackage(
-    generationTemplate.selection.templateId,
-  );
+  const runbookPackage = findPresentationRunbookPackage(templateId);
   if (!runbookPackage) {
     return { status: "invalid", message: "Unknown generation template" };
   }
   return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
+}
+
+/**
+ * Guidance for a deck the user imported.
+ *
+ * The package is mounted as an ordinary skill, so the prompt names the skill
+ * rather than a path: the skills root differs per framework and the prompt is
+ * built before a framework is chosen.
+ *
+ * The authoring rules are the point of the whole feature. The package
+ * describes a visual language, not a renderer: there is no deck schema, no
+ * layout id service, and no JSON-to-HTML compiler behind it, so an agent that
+ * reaches for its usual intermediate representation produces something the
+ * package cannot inform.
+ */
+function buildUserPresentationTemplatePrompt(
+  rowId: string,
+): GenerationTemplatePromptResult {
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("a presentation"),
+      `Selected presentation template: the user's own imported deck, mounted at ./${userPresentationTemplateDirectory(rowId)}.`,
+      "",
+      "To produce the presentation:",
+      `- Read ./${userPresentationTemplateDirectory(rowId)}/SKILL.md and ./${userPresentationTemplateDirectory(rowId)}/design-system.md before authoring anything. Consult the package's colour CSS and assets only as that guidance calls for them.`,
+      "- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.",
+      "- Do not produce slide JSON, read a `tokens.json`, call a layout-id API, or run a template-specific JSON-to-HTML renderer first. None of those exist for this package; the guidance describes a visual language, not a renderer.",
+      "- Lay out live rows, columns, and text flow with CSS Grid or Flexbox. Absolute positioning is for backgrounds, fixed chrome, decoration, and intentional overlays.",
+      "- Background images from the package are optional visual material. New text, charts, tables, labels, and diagrams stay live HTML or SVG so they reflow and stay legible.",
+      "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+      "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
+      "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
+      "- Return only the generated HTML deck as the final deliverable.",
+    ].join("\n"),
+  };
 }
 
 function buildPresentationRunbookPrompt(

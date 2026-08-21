@@ -136,7 +136,14 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  parseUserPresentationTemplateId,
+  userPresentationTemplateDirectory,
+} from "@okouai/core/presentation-template-selection";
+import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
+import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
+import { loadOwnedPresentationTemplate } from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
@@ -239,6 +246,14 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  /**
+   * Guidance packages to mount for this run, one per private template the
+   * message selected and this caller was authorised for.
+   */
+  readonly presentationTemplateVolumes: {
+    name: string;
+    mountPath: string;
+  }[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -247,8 +262,7 @@ interface PreparedNormalSend {
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientEventPrechecked: boolean;
   readonly preflightClientEventConflict:
-    | ReturnType<typeof duplicateClientEventIdResponse>
-    | undefined;
+    ReturnType<typeof duplicateClientEventIdResponse> | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
 }
@@ -420,6 +434,7 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly videoModelSelectionEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
   /**
    * Carried whole so thread creation can resolve its media pins without
    * reloading the switches this request already read.
@@ -465,8 +480,7 @@ interface CreatedChatEventResponse {
 }
 
 type ClientSendResolution =
-  | CreatedChatEventResponse
-  | ReturnType<typeof conflict>;
+  CreatedChatEventResponse | ReturnType<typeof conflict>;
 
 type CreateChatThreadResult =
   | {
@@ -1041,6 +1055,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.VideoModelSelection,
       context,
     ),
+    presentationTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplates,
+      context,
+    ),
     featureSwitchContext: context,
     managedModelProviderFallbackEnabled: isFeatureEnabled(
       FeatureSwitchKey.ManagedModelProviderFallback,
@@ -1049,23 +1067,105 @@ async function resolveNormalSendFeatureSwitches(
   };
 }
 
-function validateGenerationTemplatePrompt(
+/**
+ * The two things this message's own selections contribute to its run: the
+ * template guidance block and the video options the composer sent with it.
+ */
+function resolveSelectedTemplateContext(
+  runtimeBody: RuntimeNormalSendBody,
+  featureSwitches: NormalSendFeatureSwitches,
+): {
+  readonly generationTemplatePrompt: string;
+  readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
+} {
+  return {
+    generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
+      explicit: runtimeBody.primaryTemplate,
+      explicitTemplates: runtimeBody.templates,
+      latestWebsiteTemplatesEnabled:
+        featureSwitches.latestWebsiteTemplatesEnabled,
+      presentationTemplatesEnabled:
+        featureSwitches.presentationTemplatesEnabled,
+    }),
+    // Gated with the composer control that produces it, so a client that keeps
+    // sending the field after the switch is turned off stops being honoured.
+    videoRunOptions: featureSwitches.videoModelSelectionEnabled
+      ? (runtimeBody.runOptions?.video ?? null)
+      : null,
+  };
+}
+
+function presentationTemplateVolumes(
+  templateIds: readonly string[],
+): { name: string; mountPath: string }[] {
+  return templateIds.map((templateId) => {
+    return {
+      name: getPresentationTemplateStorageName(templateId),
+      mountPath: `${CANONICAL_WORKING_DIR}/${userPresentationTemplateDirectory(templateId)}`,
+    };
+  });
+}
+
+function additionalVolumesForRun(
+  volumes: readonly { name: string; mountPath: string }[],
+): { additionalVolumes?: { name: string; mountPath: string }[] } {
+  return volumes.length === 0 ? {} : { additionalVolumes: [...volumes] };
+}
+
+/**
+ * Row ids for the private templates a message selected, in selection order.
+ *
+ * Authorised here rather than at dispatch: the run mounts one storage volume
+ * per id, and a volume the caller may not read must never be assembled at all.
+ */
+interface AuthorizedGenerationTemplates {
+  readonly userPresentationTemplateIds: readonly string[];
+}
+
+async function validateGenerationTemplatePrompt(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
   generationTemplates: readonly GenerationTemplateRequest[],
   featureSwitches: NormalSendFeatureSwitches,
-): NormalSendFailure | undefined {
+): Promise<NormalSendFailure | AuthorizedGenerationTemplates> {
   if (generationTemplates.length === 0) {
-    return undefined;
+    return { userPresentationTemplateIds: [] };
   }
+  const userPresentationTemplateIds: string[] = [];
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
+      presentationTemplatesEnabled:
+        featureSwitches.presentationTemplatesEnabled,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
     }
+    if (template.type !== "presentation") {
+      continue;
+    }
+    const rowId = parseUserPresentationTemplateId(
+      template.selection.templateId,
+    );
+    if (rowId !== undefined) {
+      userPresentationTemplateIds.push(rowId);
+    }
   }
-  return undefined;
+  for (const templateId of userPresentationTemplateIds) {
+    // The row is the authority for its own existence and ownership. A miss is
+    // the same answer for a deleted template and for someone else's, so the
+    // message cannot be used to probe which one it was.
+    const row = await loadOwnedPresentationTemplate(db, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      templateId,
+    });
+    if (!row) {
+      return badRequestMessage("Presentation template not found");
+    }
+  }
+  return { userPresentationTemplateIds };
 }
 
 async function updateUserModelPreference(
@@ -1531,8 +1631,7 @@ async function resolveThread(params: {
 
   let runConfiguration = params.explicitRunConfiguration;
   let persistedModelResolutionPath:
-    | PersistedChatThreadModelResolutionPath
-    | undefined;
+    PersistedChatThreadModelResolutionPath | undefined;
   if (!runConfiguration) {
     const persisted = await measureApiDispatchTiming(
       params.timing,
@@ -2469,12 +2568,15 @@ const prepareNormalSend$ = command(
     const runtimeBody = resolveRuntimeNormalSendBody(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
     );
-    const generationTemplateError = validateGenerationTemplatePrompt(
+    const authorizedTemplates = await validateGenerationTemplatePrompt(
+      db,
+      args,
       runtimeBody.templates,
       featureSwitches,
     );
-    if (generationTemplateError) {
-      return generationTemplateError;
+    signal.throwIfAborted();
+    if ("status" in authorizedTemplates) {
+      return authorizedTemplates;
     }
 
     const explicitRunConfiguration = await resolveTimedExplicitRunConfiguration(
@@ -2509,17 +2611,8 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.primaryTemplate,
-      explicitTemplates: runtimeBody.templates,
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
-    });
-    // Gated with the composer control that produces it, so a client that keeps
-    // sending the field after the switch is turned off stops being honoured.
-    const videoRunOptions = featureSwitches.videoModelSelectionEnabled
-      ? (runtimeBody.runOptions?.video ?? null)
-      : null;
+    const { generationTemplatePrompt, videoRunOptions } =
+      resolveSelectedTemplateContext(runtimeBody, featureSwitches);
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(
         args,
@@ -2550,6 +2643,9 @@ const prepareNormalSend$ = command(
       thread,
       body: runtimeBody,
       generationTemplatePrompt,
+      presentationTemplateVolumes: presentationTemplateVolumes(
+        authorizedTemplates.userPresentationTemplateIds,
+      ),
       videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
@@ -3105,6 +3201,7 @@ function buildCreateZeroRunArgs(params: {
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
       ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),
+      ...additionalVolumesForRun(prepared.presentationTemplateVolumes),
     },
     triggerSource: prepared.triggerSource,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,

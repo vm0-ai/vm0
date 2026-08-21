@@ -15,18 +15,22 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
 }): string {
+  const options = {
+    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+  };
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
-    const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
-      latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-    });
+    const built = buildGenerationTemplatesPrompt(
+      args.explicitTemplates,
+      options,
+    );
     return built.status === "resolved" ? built.prompt : "";
   }
   if (!args.explicit) {
     return "";
   }
-  const built = buildGenerationTemplatePrompt(args.explicit, {
-    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-  });
+  const built = buildGenerationTemplatePrompt(args.explicit, options);
   return built.status === "resolved" ? built.prompt : "";
 }
