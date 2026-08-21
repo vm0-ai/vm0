@@ -130,6 +130,10 @@ impl Decoder {
     ///
     /// Protocol errors are detected before any complete frame in the current
     /// buffered data is visited, preserving the all-or-error behavior of [`Self::decode`].
+    /// When a protocol error is returned, all currently buffered data is
+    /// discarded, including complete frames that were preflighted before the
+    /// invalid frame. The decoder is left empty and can be reused with
+    /// subsequent input.
     /// If the visitor returns an error, frames through the rejected frame are
     /// consumed and later complete frames remain buffered.
     pub fn decode_with<E>(

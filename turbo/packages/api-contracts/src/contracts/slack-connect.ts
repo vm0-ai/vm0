@@ -18,13 +18,13 @@ const slackConnectResponseSchema = z.object({
 });
 
 /**
- * Slack connect contract (GET/POST /api/okou/integrations/slack/connect)
+ * Slack connect contract (GET/POST /api/integrations/slack/connect)
  * Manages per-user Slack connection.
  */
 export const slackConnectContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/okou/integrations/slack/connect",
+    path: "/api/integrations/slack/connect",
     headers: authHeadersSchema,
     responses: {
       200: slackConnectStatusSchema,
@@ -34,7 +34,7 @@ export const slackConnectContract = c.router({
   },
   connect: {
     method: "POST",
-    path: "/api/okou/integrations/slack/connect",
+    path: "/api/integrations/slack/connect",
     headers: authHeadersSchema,
     body: z.object({
       workspaceId: z.string().min(1),
