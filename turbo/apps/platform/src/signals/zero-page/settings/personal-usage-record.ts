@@ -2,11 +2,12 @@ import { command, computed, state } from "ccstate";
 import {
   usageRecordContract,
   type UsageRecordRange,
-  type UsageRecordScope,
+  type UsageRecordResponse,
 } from "@okouai/api-contracts/contracts/usage-record";
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
+import { onRejection } from "../../utils.ts";
 
 export type CreditBalanceTab = "mine" | "team";
 
@@ -55,12 +56,27 @@ export const toggleUsagePackMemberAdditions$ = command(
   },
 );
 
-const PAGE_STEP = 20;
+const PAGE_SIZE = 20;
+
+type LoadUsageRecordPage = (
+  page: number,
+  signal?: AbortSignal,
+) => Promise<UsageRecordResponse>;
 
 const usageRecordReload$ = state(0);
-const myUsagePageSize$ = state(PAGE_STEP);
+const myUsageRecordPages$ = state<readonly UsageRecordResponse[]>([]);
+const myUsageRecordRequestedPages$ = state<ReadonlySet<number>>(new Set());
+const myUsageRecordGeneration$ = state(0);
 const myUsageRangeState$ = state<UsageRecordRange>("today");
 const teamUsageRangeState$ = state<UsageRecordRange>("billingPeriod");
+
+const resetMyUsageRecordPages$ = command(({ set }) => {
+  set(myUsageRecordPages$, []);
+  set(myUsageRecordRequestedPages$, new Set());
+  set(myUsageRecordGeneration$, (generation) => {
+    return generation + 1;
+  });
+});
 
 export const myUsageRange$ = computed((get) => {
   return get(myUsageRangeState$);
@@ -72,7 +88,7 @@ export const teamUsageRange$ = computed((get) => {
 
 export const setMyUsageRange$ = command(({ set }, range: UsageRecordRange) => {
   set(myUsageRangeState$, range);
-  set(myUsagePageSize$, PAGE_STEP);
+  set(resetMyUsageRecordPages$);
 });
 
 export const setTeamUsageRange$ = command(
@@ -81,41 +97,100 @@ export const setTeamUsageRange$ = command(
   },
 );
 
-export const loadMoreUsageRecord$ = command(
-  ({ get, set }, _scope: UsageRecordScope) => {
-    set(myUsagePageSize$, get(myUsagePageSize$) + PAGE_STEP);
-  },
-);
-
-export const reloadUsageRecords$ = command(({ set }) => {
-  set(usageRecordReload$, (value) => {
-    return value + 1;
-  });
+const loadMyUsageRecordPage$ = computed((get): LoadUsageRecordPage => {
+  const range = get(myUsageRangeState$);
+  const client = get(zeroClient$)(usageRecordContract);
+  return async (page, signal) => {
+    const result = await accept(
+      client.get({
+        query: {
+          page,
+          pageSize: PAGE_SIZE,
+          scope: "mine",
+          range,
+          tz: currentTimeZone(),
+        },
+        ...(signal ? { fetchOptions: { signal } } : {}),
+      }),
+      [200],
+      signal,
+    );
+    return result.body;
+  };
 });
 
 function currentTimeZone(): string {
   return new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
+const firstMyUsageRecordPage$ = computed(
+  (get): Promise<UsageRecordResponse> => {
+    get(usageRecordReload$);
+    return get(loadMyUsageRecordPage$)(1);
+  },
+);
+
 export const myUsageRecordAsync$ = computed(async (get) => {
-  get(usageRecordReload$);
-  const pageSize = get(myUsagePageSize$);
-  const range = get(myUsageRangeState$);
-  const createClient = get(zeroClient$);
-  const client = createClient(usageRecordContract);
-  const result = await accept(
-    client.get({
-      query: {
-        page: 1,
-        pageSize,
-        scope: "mine",
-        range,
-        tz: currentTimeZone(),
-      },
-    }),
-    [200],
-  );
-  return result.body;
+  const firstPage = await get(firstMyUsageRecordPage$);
+  const appendedPages = get(myUsageRecordPages$);
+  const latestPage = appendedPages.at(-1) ?? firstPage;
+  return {
+    ...latestPage,
+    rows: [
+      ...firstPage.rows,
+      ...appendedPages.flatMap((page) => {
+        return page.rows;
+      }),
+    ],
+  };
+});
+
+export const loadMoreUsageRecord$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const generation = get(myUsageRecordGeneration$);
+    const loaded = await get(myUsageRecordAsync$);
+    signal.throwIfAborted();
+    if (
+      get(myUsageRecordGeneration$) !== generation ||
+      loaded.rows.length >= loaded.pagination.total
+    ) {
+      return;
+    }
+
+    const nextPage = get(myUsageRecordPages$).length + 2;
+    if (get(myUsageRecordRequestedPages$).has(nextPage)) {
+      return;
+    }
+    set(myUsageRecordRequestedPages$, (pages) => {
+      return new Set([...pages, nextPage]);
+    });
+
+    const loadPage = get(loadMyUsageRecordPage$);
+    const next = await onRejection(loadPage(nextPage, signal), () => {
+      if (get(myUsageRecordGeneration$) !== generation) {
+        return;
+      }
+      set(myUsageRecordRequestedPages$, (pages) => {
+        const retryablePages = new Set(pages);
+        retryablePages.delete(nextPage);
+        return retryablePages;
+      });
+    });
+    signal.throwIfAborted();
+    if (get(myUsageRecordGeneration$) !== generation) {
+      return;
+    }
+    set(myUsageRecordPages$, (pages) => {
+      return [...pages, next];
+    });
+  },
+);
+
+export const reloadUsageRecords$ = command(({ set }) => {
+  set(resetMyUsageRecordPages$);
+  set(usageRecordReload$, (value) => {
+    return value + 1;
+  });
 });
 
 export const teamMemberUsageAsync$ = computed(async (get) => {
