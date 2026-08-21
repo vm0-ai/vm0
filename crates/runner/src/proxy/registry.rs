@@ -1,8 +1,10 @@
 //! Proxy registry schema and file persistence.
 //!
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -156,6 +158,13 @@ fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
 pub struct ProxyRegistryHandle {
     pub(super) registry_path: PathBuf,
     pub(super) lock_path: PathBuf,
+    #[cfg(test)]
+    pub(super) connector_runtime_update_attempt_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+}
+
+pub(crate) struct ConnectorRuntimeRegistryTransaction<'a> {
+    registry_path: &'a Path,
+    _guard: Flock<File>,
 }
 
 #[derive(Clone)]
@@ -557,7 +566,17 @@ impl ProxyRegistryHandle {
         Self {
             registry_path,
             lock_path,
+            connector_runtime_update_attempt_tx: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_connector_runtime_update_attempt_tx(
+        mut self,
+        tx: tokio::sync::mpsc::UnboundedSender<()>,
+    ) -> Self {
+        self.connector_runtime_update_attempt_tx = Some(tx);
+        self
     }
 
     /// Register a VM in the proxy registry.
@@ -631,52 +650,32 @@ impl ProxyRegistryHandle {
     /// run; otherwise each boolean reports whether the same-index update was
     /// accepted. Accepted batches persist only when the resulting VM state
     /// changes.
+    #[cfg(test)]
     pub(crate) async fn apply_connector_runtime_updates_if_run_matches(
         &self,
         source_ip: &str,
         run_id: &str,
         updates: &[ConnectorRuntimeRegistryUpdate],
     ) -> RunnerResult<Option<Vec<bool>>> {
-        let _guard = lock::acquire(self.lock_path.clone()).await?;
-        let mut registry = read_registry(&self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
-            return Ok(None);
-        };
-        if vm.run_id != run_id {
-            return Ok(None);
-        }
+        self.connector_runtime_registry_transaction()
+            .await?
+            .apply_updates_if_run_matches(source_ip, run_id, updates)
+            .await
+    }
 
-        // Keep this snapshot aligned with every VM field mutated by
-        // `apply_connector_runtime_update`.
-        let previous_firewalls = vm.firewalls.clone();
-        let previous_network_policies = vm.network_policies.clone();
-        let previous_omitted_custom_connector_ids = vm.omitted_custom_connector_ids.clone();
-        let previous_connector_routing_variables = vm.connector_routing_variables.clone();
-        let accepted = updates
-            .iter()
-            .map(|update| apply_connector_runtime_update(vm, update))
-            .collect::<RunnerResult<Vec<_>>>()?;
-        if !accepted.iter().any(|accepted| *accepted) {
-            return Ok(Some(accepted));
+    pub(crate) async fn connector_runtime_registry_transaction(
+        &self,
+    ) -> RunnerResult<ConnectorRuntimeRegistryTransaction<'_>> {
+        #[cfg(test)]
+        if let Some(tx) = &self.connector_runtime_update_attempt_tx {
+            tx.send(())
+                .expect("connector runtime update observer should remain available");
         }
-
-        validate_custom_connector_resource_ownership(vm.firewalls.as_deref().unwrap_or_default())?;
-        if previous_firewalls == vm.firewalls
-            && previous_network_policies == vm.network_policies
-            && previous_omitted_custom_connector_ids == vm.omitted_custom_connector_ids
-            && previous_connector_routing_variables == vm.connector_routing_variables
-        {
-            return Ok(Some(accepted));
-        }
-        registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry(&self.registry_path, &registry).await?;
-        info!(
-            source_ip,
-            run_id,
-            update_count = updates.len(),
-            "applied connector runtime updates to proxy registry"
-        );
-        Ok(Some(accepted))
+        let guard = lock::acquire(self.lock_path.clone()).await?;
+        Ok(ConnectorRuntimeRegistryTransaction {
+            registry_path: &self.registry_path,
+            _guard: guard,
+        })
     }
 
     #[cfg(test)]
@@ -779,6 +778,55 @@ impl ProxyRegistryHandle {
             "failed closed connector runtime targets in proxy registry"
         );
         Ok(Some(outcomes))
+    }
+}
+
+impl ConnectorRuntimeRegistryTransaction<'_> {
+    pub(crate) async fn apply_updates_if_run_matches(
+        self,
+        source_ip: &str,
+        run_id: &str,
+        updates: &[ConnectorRuntimeRegistryUpdate],
+    ) -> RunnerResult<Option<Vec<bool>>> {
+        let mut registry = read_registry(self.registry_path).await?;
+        let Some(vm) = registry.vms.get_mut(source_ip) else {
+            return Ok(None);
+        };
+        if vm.run_id != run_id {
+            return Ok(None);
+        }
+
+        // Keep this snapshot aligned with every VM field mutated by
+        // `apply_connector_runtime_update`.
+        let previous_firewalls = vm.firewalls.clone();
+        let previous_network_policies = vm.network_policies.clone();
+        let previous_omitted_custom_connector_ids = vm.omitted_custom_connector_ids.clone();
+        let previous_connector_routing_variables = vm.connector_routing_variables.clone();
+        let accepted = updates
+            .iter()
+            .map(|update| apply_connector_runtime_update(vm, update))
+            .collect::<RunnerResult<Vec<_>>>()?;
+        if !accepted.iter().any(|accepted| *accepted) {
+            return Ok(Some(accepted));
+        }
+
+        validate_custom_connector_resource_ownership(vm.firewalls.as_deref().unwrap_or_default())?;
+        if previous_firewalls == vm.firewalls
+            && previous_network_policies == vm.network_policies
+            && previous_omitted_custom_connector_ids == vm.omitted_custom_connector_ids
+            && previous_connector_routing_variables == vm.connector_routing_variables
+        {
+            return Ok(Some(accepted));
+        }
+        registry.updated_at = chrono::Utc::now().timestamp_millis();
+        write_registry(self.registry_path, &registry).await?;
+        info!(
+            source_ip,
+            run_id,
+            update_count = updates.len(),
+            "applied connector runtime updates to proxy registry"
+        );
+        Ok(Some(accepted))
     }
 }
 
