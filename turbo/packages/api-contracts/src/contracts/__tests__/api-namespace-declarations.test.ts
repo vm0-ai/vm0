@@ -56,7 +56,18 @@ describe("branded API namespace declarations", () => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    expect(brandedRoutes.length).toBeGreaterThan(100);
+    // The guard here is that the barrel walk still finds routes at all: if
+    // `toDeclaredRoute` stopped matching, or the barrel stopped re-exporting
+    // the contracts, both counts would collapse and every assertion below
+    // would pass vacuously. It is sized against the total rather than the
+    // branded subset because #28278 is deliberately driving the branded count
+    // to zero — it was 78 of 407 when this slice moved 22 routes, already
+    // under the previous branded-only floor of 100. The total does not shrink
+    // as routes migrate, so it keeps measuring what this assertion is for.
+    expect(routes.length).toBeGreaterThan(100);
+    // Still non-empty, so the branded filter itself stays exercised. This one
+    // retires with the last branded contract path under #26701.
+    expect(brandedRoutes.length).toBeGreaterThan(0);
     expect(
       brandedRoutes.some(({ method, path }) => {
         return (
