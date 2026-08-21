@@ -895,7 +895,7 @@ export function createRunsApi(context: TestContext) {
 
     /**
      * Replaces the caller's enabled connector slugs for an agent through
-     * PUT /api/zero/agents/:id/user-connectors and returns the visible set.
+     * PUT /api/agents/:id/user-connectors and returns the visible set.
      */
     async enableAgentConnectors(
       actor: ApiTestUser,

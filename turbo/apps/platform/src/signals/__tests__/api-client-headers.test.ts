@@ -468,7 +468,7 @@ describe("api client headers", () => {
   it("opens the force upgrade dialog for contract client responses", async () => {
     context.store.set(listenForceUpgradeDialog$, context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    context.mocks.http.get("*/api/okou/agents/:id/user-connectors", () => {
+    context.mocks.http.get("*/api/agents/:id/user-connectors", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },

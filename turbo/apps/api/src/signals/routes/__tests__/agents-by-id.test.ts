@@ -146,7 +146,7 @@ function zeroTokenFor(
   });
 }
 
-describe("GET /api/zero/agents/:id", () => {
+describe("GET /api/agents/:id", () => {
   it("keeps session, PAT, and run-capability auth in parity across namespaces", async () => {
     const actor = bdd.user({ orgRole: "org:member" });
     const agent = await createAgent(actor, {
@@ -347,7 +347,7 @@ describe("GET /api/zero/agents/:id", () => {
   });
 });
 
-describe("DELETE /api/zero/agents/:id", () => {
+describe("DELETE /api/agents/:id", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await bdd.requestDeleteAgent(null, randomUUID(), [401]);
     expect(response.body).toStrictEqual({

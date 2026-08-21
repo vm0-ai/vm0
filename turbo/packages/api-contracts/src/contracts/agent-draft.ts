@@ -26,7 +26,7 @@ export const agentDraftRequestSchema = z
 export const agentDraftContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id/draft",
+    path: "/api/agents/:id/draft",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -40,7 +40,7 @@ export const agentDraftContract = c.router({
   },
   patch: {
     method: "PATCH",
-    path: "/api/okou/agents/:id/draft",
+    path: "/api/agents/:id/draft",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentDraftRequestSchema,

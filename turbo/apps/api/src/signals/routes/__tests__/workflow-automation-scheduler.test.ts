@@ -266,7 +266,7 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(`/api/zero/workflows/${scenario.workflowId}`, {
+  }).request(`/api/workflows/${scenario.workflowId}`, {
     method: "DELETE",
     headers: { authorization: "Bearer clerk-session" },
   });

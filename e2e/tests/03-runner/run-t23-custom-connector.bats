@@ -85,7 +85,7 @@ teardown() {
                 permissionNames: []
             }]
         }')
-    run runner_api_curl "/api/okou/agents/${AGENT_ID}/custom-connectors" \
+    run runner_api_curl "/api/agents/${AGENT_ID}/custom-connectors" \
         -X PUT \
         -d "$grants_payload"
     echo "$output"

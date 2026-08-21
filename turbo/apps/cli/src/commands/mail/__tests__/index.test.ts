@@ -16,7 +16,7 @@ const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
 function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
   return [
-    http.get(`http://localhost:3000/api/okou/agents/${AGENT_ID}`, () => {
+    http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
       return HttpResponse.json({
         agentId: AGENT_ID,
         ownerId: "owner-1",
@@ -27,7 +27,7 @@ function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
       });
     }),
     http.get(
-      `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
+      `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
       () => {
         return HttpResponse.json({
           enabledConnectorSlugs: [...enabledConnectorSlugs],
