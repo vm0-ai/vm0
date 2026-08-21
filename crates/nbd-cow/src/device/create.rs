@@ -8,13 +8,13 @@ use crate::{
 };
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use super::NbdCowDevice;
 use super::connection::{
     ConnectedDevice, OwnedDisconnectState, connect_device_with_state_critical_section,
     disconnect_connected_if_owned, disconnect_connected_if_owned_result_critical_section,
     disconnect_connected_if_owned_result_with_lease_critical_section,
-    disconnect_device_with_lease_critical_section,
 };
 use super::create_timing::{
     NbdCowCreateObserver, NbdCowCreateStage, NbdCowCreateTiming, NbdNetlinkConnectTiming,
@@ -56,14 +56,7 @@ impl CreateDisconnectStatus {
             Ok(OwnedDisconnectState::Disconnected) => Self::Disconnected,
             // In create cleanup, a foreign owner means this attempt did not
             // prove its provisional device was disconnected.
-            Ok(OwnedDisconnectState::Foreign(_)) | Err(_) => Self::Uncertain,
-        }
-    }
-
-    fn from_unconditional_result(result: &Result<()>) -> Self {
-        match result {
-            Ok(()) => Self::Disconnected,
-            Err(_) => Self::Uncertain,
+            Ok(OwnedDisconnectState::Foreign) | Err(_) => Self::Uncertain,
         }
     }
 
@@ -191,7 +184,7 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             let connect_result = connect_attempt.result;
             match connect_result {
                 Ok(connected) => {
-                    attempt.mark_connected(connected.connect_tid);
+                    attempt.mark_connected(connected.connection_id);
                     return Ok(attempt);
                 }
                 Err(netlink::ConnectDeviceError::DefiniteAfterSend {
@@ -226,14 +219,14 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
                     );
                 }
                 Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
-                    connect_tid,
+                    connection_id,
                     source,
                 }) => {
                     // The kernel may have accepted NBD_CMD_CONNECT even
                     // though userspace failed while observing completion.
                     // Record a provisional candidate so cleanup can
                     // disconnect only if sysfs still proves we own it.
-                    attempt.mark_connected(connect_tid);
+                    attempt.mark_connected(connection_id);
                     attempt.disconnect_owned_and_release().await;
                     return Err(source);
                 }
@@ -335,10 +328,10 @@ impl CreateAttemptGuard {
         self.server_handles.push(handle);
     }
 
-    fn mark_connected(&mut self, connect_tid: u32) {
+    fn mark_connected(&mut self, connection_id: Uuid) {
         self.connected = Some(ConnectedDevice {
             index: self.device_index(),
-            connect_tid,
+            connection_id,
         });
     }
 
@@ -410,60 +403,7 @@ impl CreateAttemptGuard {
         mode: CreateDisconnectCleanupMode,
         connected: ConnectedDevice,
     ) -> CreateDisconnectStatus {
-        match mode {
-            CreateDisconnectCleanupMode::AmbiguousConnect => {
-                self.disconnect_owned_for_cleanup(mode, connected).await
-            }
-            CreateDisconnectCleanupMode::SizeRetry => {
-                self.disconnect_size_retry_for_cleanup(connected).await
-            }
-        }
-    }
-
-    async fn disconnect_size_retry_for_cleanup(
-        &mut self,
-        connected: ConnectedDevice,
-    ) -> CreateDisconnectStatus {
-        let Some(lease) = self.take_lease() else {
-            tracing::warn!(
-                device_index = connected.index,
-                "pool lease missing during create retry cleanup; using owned NBD disconnect fallback"
-            );
-            return self
-                .disconnect_owned_for_cleanup(CreateDisconnectCleanupMode::SizeRetry, connected)
-                .await;
-        };
-
-        match disconnect_device_with_lease_critical_section(
-            connected.index,
-            self.pool.clone(),
-            lease,
-        )
-        .await
-        {
-            Ok(outcome) => match outcome.into_parts() {
-                Ok((lease, disconnect_result)) => {
-                    self.restore_lease(lease);
-                    self.unconditional_disconnect_status(connected, disconnect_result)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        device_index = connected.index,
-                        error = %e,
-                        "NBD disconnect result failed during create retry cleanup"
-                    );
-                    CreateDisconnectStatus::Uncertain
-                }
-            },
-            Err(e) => {
-                tracing::warn!(
-                    device_index = connected.index,
-                    error = %e,
-                    "NBD disconnect task failed during create retry cleanup"
-                );
-                CreateDisconnectStatus::Uncertain
-            }
-        }
+        self.disconnect_owned_for_cleanup(mode, connected).await
     }
 
     async fn disconnect_owned_for_cleanup(
@@ -517,28 +457,12 @@ impl CreateAttemptGuard {
         let status = CreateDisconnectStatus::from_owned_result(&disconnect_result);
         match disconnect_result {
             Ok(OwnedDisconnectState::Disconnected) => {}
-            Ok(OwnedDisconnectState::Foreign(pid)) => {
-                log_owned_disconnect_foreign(mode, connected, pid);
+            Ok(OwnedDisconnectState::Foreign) => {
+                log_owned_disconnect_foreign(mode, connected);
             }
             Err(e) => {
                 log_owned_disconnect_failed(mode, connected, &e);
             }
-        }
-        status
-    }
-
-    fn unconditional_disconnect_status(
-        &self,
-        connected: ConnectedDevice,
-        disconnect_result: Result<()>,
-    ) -> CreateDisconnectStatus {
-        let status = CreateDisconnectStatus::from_unconditional_result(&disconnect_result);
-        if let Err(e) = disconnect_result {
-            tracing::warn!(
-                device_index = connected.index,
-                error = %e,
-                "NBD disconnect failed during create retry cleanup"
-            );
         }
         status
     }
@@ -571,7 +495,7 @@ impl CreateAttemptGuard {
                 server_handles,
                 shutdown,
                 disconnected: false,
-                connect_tid: connected.connect_tid,
+                connection_id: connected.connection_id,
             },
             lease,
         ))
@@ -647,23 +571,17 @@ fn log_owned_disconnect_failed(
     }
 }
 
-fn log_owned_disconnect_foreign(
-    mode: CreateDisconnectCleanupMode,
-    connected: ConnectedDevice,
-    foreign_pid: u32,
-) {
+fn log_owned_disconnect_foreign(mode: CreateDisconnectCleanupMode, connected: ConnectedDevice) {
     match mode {
         CreateDisconnectCleanupMode::AmbiguousConnect => {
             tracing::warn!(
                 device_index = connected.index,
-                foreign_pid,
                 "skipping create cleanup disconnect: device recycled by another process"
             );
         }
         CreateDisconnectCleanupMode::SizeRetry => {
             tracing::warn!(
                 device_index = connected.index,
-                foreign_pid,
                 "skipping create retry cleanup disconnect: device recycled by another process"
             );
         }
@@ -761,7 +679,7 @@ mod tests {
         );
         assert!(CreateDisconnectStatus::from_owned_result(&disconnected).is_clean());
 
-        let foreign: Result<OwnedDisconnectState> = Ok(OwnedDisconnectState::Foreign(100));
+        let foreign: Result<OwnedDisconnectState> = Ok(OwnedDisconnectState::Foreign);
         assert_eq!(
             CreateDisconnectStatus::from_owned_result(&foreign),
             CreateDisconnectStatus::Uncertain
@@ -776,25 +694,6 @@ mod tests {
             CreateDisconnectStatus::Uncertain
         );
         assert!(!CreateDisconnectStatus::from_owned_result(&unknown).is_clean());
-    }
-
-    #[test]
-    fn create_disconnect_status_maps_unconditional_results() {
-        let disconnected: Result<()> = Ok(());
-        assert_eq!(
-            CreateDisconnectStatus::from_unconditional_result(&disconnected),
-            CreateDisconnectStatus::Disconnected
-        );
-        assert!(CreateDisconnectStatus::from_unconditional_result(&disconnected).is_clean());
-
-        let failed: Result<()> = Err(error::NbdCowError::Io(std::io::Error::other(
-            "disconnect failed",
-        )));
-        assert_eq!(
-            CreateDisconnectStatus::from_unconditional_result(&failed),
-            CreateDisconnectStatus::Uncertain
-        );
-        assert!(!CreateDisconnectStatus::from_unconditional_result(&failed).is_clean());
     }
 
     #[tokio::test]

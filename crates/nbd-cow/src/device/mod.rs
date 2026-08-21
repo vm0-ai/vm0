@@ -4,6 +4,7 @@ use crate::error::Result;
 use crate::{cow, cow_io, error, netlink};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 mod connection;
 mod create;
@@ -43,11 +44,8 @@ pub struct NbdCowDevice {
     shutdown: CancellationToken,
     /// Set to true after shutdown_inner completes, so Drop doesn't double-disconnect.
     disconnected: bool,
-    /// TID of the thread that called netlink::connect_device(). The kernel
-    /// records this in `/sys/block/nbdN/pid`. We save it so we can still
-    /// identify the device as ours even after the connecting tokio worker
-    /// thread has exited (at which point `/proc/self/task/{tid}` disappears).
-    connect_tid: u32,
+    /// Unique identity recorded by the kernel in `/sys/block/nbdN/backend`.
+    connection_id: Uuid,
 }
 
 impl NbdCowDevice {
@@ -167,7 +165,7 @@ impl NbdCowDevice {
         if !self.disconnected {
             let connected = ConnectedDevice {
                 index: self.device_index,
-                connect_tid: self.connect_tid,
+                connection_id: self.connection_id,
             };
             let state = disconnect_connected_if_owned_result_critical_section(connected).await?;
             self.apply_owned_disconnect_state(state);
@@ -181,11 +179,10 @@ impl NbdCowDevice {
             OwnedDisconnectState::Disconnected => {
                 self.disconnected = true;
             }
-            OwnedDisconnectState::Foreign(pid) => {
+            OwnedDisconnectState::Foreign => {
                 self.disconnected = true;
                 tracing::warn!(
                     device_index = self.device_index,
-                    foreign_pid = pid,
                     "skipping disconnect: device recycled by another process"
                 );
             }
@@ -209,17 +206,10 @@ impl NbdCowDevice {
         }
     }
 
-    /// Check if we still own the NBD device by comparing the sysfs PID
-    /// against the TID we recorded at connect time.
-    ///
-    /// The kernel records the connecting thread's TID (via `task_pid_nr`) in
-    /// `/sys/block/nbdN/pid`. We compare it to `self.connect_tid` rather than
-    /// probing `/proc/self/task/` because the connecting tokio worker thread
-    /// may have exited by the time we clean up, which would make the old
-    /// `is_our_thread()` check return false and skip disconnect — leaking the
-    /// device.
+    /// Check if we still own the NBD device by comparing the sysfs backend
+    /// identifier against the UUID recorded at connect time.
     fn device_ownership(&self) -> DeviceOwnership {
-        device_ownership(self.device_index, self.connect_tid)
+        device_ownership(self.device_index, self.connection_id)
     }
 
     fn bitmap_path(&self) -> PathBuf {
