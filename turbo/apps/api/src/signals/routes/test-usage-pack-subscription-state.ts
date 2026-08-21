@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { testOverride } from "../../lib/singleton";
+import { nowDate } from "../../lib/time";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
@@ -108,6 +109,17 @@ const actionBodySchema = z.discriminatedUnion("action", [
     userId: z.string().min(1),
     grantType: z.enum(["purchased", "bonus"]),
     remainingAmount: z.number().int().nonnegative(),
+    prepareRefund: z.boolean().optional(),
+    refundState: z
+      .object({
+        status: z.enum(["pending", "processing", "succeeded", "failed"]),
+        refundedAmountCents: z.number().int().nonnegative().nullable(),
+        stripeCreditNoteId: z.string().nullable(),
+        stripeRefundId: z.string().nullable(),
+        attempt: z.number().int().positive(),
+        failureReason: z.string().nullable(),
+      })
+      .optional(),
   }),
   z.object({
     action: z.literal("delete-refund-source"),
@@ -229,6 +241,9 @@ const readStateSchema = z.object({
       creditGrantId: z.string().uuid(),
       userId: z.string(),
       sourceType: z.enum(["invoice", "payment_intent"]),
+      stripeInvoiceId: z.string().nullable(),
+      stripeInvoiceLineId: z.string().nullable(),
+      stripePaymentIntentId: z.string().nullable(),
       sourceAmountCents: z.number().int().nonnegative(),
       status: z.enum([
         "available",
@@ -242,6 +257,8 @@ const readStateSchema = z.object({
       refundedAmountCents: z.number().int().nonnegative().nullable(),
       stripeCreditNoteId: z.string().nullable(),
       stripeRefundId: z.string().nullable(),
+      attempt: z.number().int().positive(),
+      failureReason: z.string().nullable(),
     }),
   ),
   fulfillmentInvoiceIds: z.array(z.string()),
@@ -718,6 +735,9 @@ async function readUsagePackCreditRefunds(db: Db, orgId: string) {
       creditGrantId: refund.creditGrantId,
       userId: refund.userId,
       sourceType: refund.sourceType,
+      stripeInvoiceId: refund.stripeInvoiceId,
+      stripeInvoiceLineId: refund.stripeInvoiceLineId,
+      stripePaymentIntentId: refund.stripePaymentIntentId,
       sourceAmountCents: refund.sourceAmountCents,
       status: refund.status,
       refundCredits: refund.refundCredits,
@@ -725,6 +745,8 @@ async function readUsagePackCreditRefunds(db: Db, orgId: string) {
       refundedAmountCents: refund.refundedAmountCents,
       stripeCreditNoteId: refund.stripeCreditNoteId,
       stripeRefundId: refund.stripeRefundId,
+      attempt: refund.attempt,
+      failureReason: refund.failureReason,
     };
   });
 }
@@ -1089,6 +1111,29 @@ async function setGrantRemaining(
   signal.throwIfAborted();
   if (rows.length !== 1) {
     throw new Error("Expected one usage pack credit grant to update");
+  }
+  if (body.prepareRefund) {
+    await prepareUsagePackMemberCreditRefunds(db, body);
+    signal.throwIfAborted();
+  }
+  if (body.refundState) {
+    const refunds = await db
+      .update(usagePackCreditRefunds)
+      .set({
+        ...body.refundState,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(usagePackCreditRefunds.orgId, body.orgId),
+          eq(usagePackCreditRefunds.userId, body.userId),
+        ),
+      )
+      .returning({ creditGrantId: usagePackCreditRefunds.creditGrantId });
+    signal.throwIfAborted();
+    if (refunds.length !== 1) {
+      throw new Error("Expected one usage pack credit refund to update");
+    }
   }
 }
 

@@ -49,7 +49,10 @@ import {
 import { nowDate } from "../../lib/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  listAllStripeSubscriptions,
+} from "../external/stripe-client";
 import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -271,26 +274,12 @@ async function cancelStripeSubscriptionsForDeletedOrg(
   };
 
   if (meta.stripeCustomerId) {
-    let startingAfter: string | undefined;
-
-    while (true) {
-      const subscriptions = await stripe.subscriptions.list({
-        customer: meta.stripeCustomerId,
-        status: "all",
-        limit: 100,
-        ...(startingAfter ? { starting_after: startingAfter } : {}),
-      });
-
-      for (const subscription of subscriptions.data) {
-        queueStripeSubscriptionCleanup(targets, subscription);
-      }
-
-      const lastSubscription =
-        subscriptions.data[subscriptions.data.length - 1];
-      if (!subscriptions.has_more || !lastSubscription) {
-        break;
-      }
-      startingAfter = lastSubscription.id;
+    const subscriptions = await listAllStripeSubscriptions(stripe, {
+      customer: meta.stripeCustomerId,
+      status: "all",
+    });
+    for (const subscription of subscriptions) {
+      queueStripeSubscriptionCleanup(targets, subscription);
     }
   }
 
