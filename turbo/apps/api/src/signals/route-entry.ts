@@ -1667,13 +1667,15 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // `contracts/__tests__/api-namespace-declarations.test.ts` lands with this
   // slice so the next late contract is rejected rather than migrated later.
   //
-  // Surfaces: a released platform build holds the connector-account paths until
-  // a refresh loads one that derives the neutral form (~2 days), and a
-  // commit-addressed CLI package pinned by a run execution context holds
-  // `/api/okou/social/request` for that context's queue and claimed-execution
-  // lifetime, bounded by the runner's 2h `JOB_TIMEOUT`. Both windows are a floor
-  // rather than the removal condition: these rows retire under #26701's evidence
-  // rules like every other row in this file.
+  // Surfaces: a commit-addressed CLI package pinned by a run execution context
+  // holds `/api/okou/social/request` for that context's queue and
+  // claimed-execution lifetime, bounded by the runner's 2h `JOB_TIMEOUT`. The
+  // connector-account paths have no caller in this repository at all — no
+  // platform, desktop or CLI code references them — so what they owe is the
+  // `zero` form the blanket expansion served until this move, plus any external
+  // holder of either branded form, neither of which has a window. That is a
+  // floor rather than the removal condition either way: these rows retire under
+  // #26701's evidence rules like every other row in this file.
   "/api/connector-accounts": [
     "/api/okou/connector-accounts",
     "/api/zero/connector-accounts",
