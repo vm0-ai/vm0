@@ -3,14 +3,14 @@
 //! This module owns the low-level invariant for opening directory trees
 //! without following symlinks: root directories are opened with
 //! `O_NOFOLLOW`, children are opened relative to their parent fd with
-//! `openat`, and directory iteration goes through `/proc/self/fd/{fd}`.
+//! `openat`, and standard-library directory reads are anchored through
+//! `/proc/self/fd/{fd}`.
 //!
 //! Recursive removal copies one bounded `getdents64` chunk at a time from the
 //! live directory descriptor. A continuing cursor avoids rescanning removed
 //! slots, and full passes restart from offset zero until one removes nothing.
-//! Callers still own business error handling. This module should only expose
-//! the primitive operations needed to safely open directories and regular-file
-//! candidates.
+//! Callers still own business error handling. This module owns the no-follow
+//! filesystem primitives and bounded recursive removal needed by those callers.
 
 #[cfg(target_os = "linux")]
 use std::ffi::{CString, OsStr, OsString};
