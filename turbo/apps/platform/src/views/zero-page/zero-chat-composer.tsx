@@ -23,6 +23,10 @@ import {
   presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/zero-page/presentation-template-import.ts";
+import {
+  ownPresentationTemplates$,
+  type PresentationTemplateSummary,
+} from "../../signals/zero-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -4889,6 +4893,65 @@ function PptImportCard({
   );
 }
 
+/**
+ * A deck this user already imported, drawn from its persisted page images.
+ *
+ * The card carries no `Use` control yet. A private template is selected as
+ * `user-template:<uuid>`, and the API that resolves that id for a generation
+ * run is #26238; offering the button first would move the failure from a
+ * disabled control into the run the user just paid for.
+ */
+function ImportedPptCard({
+  template,
+}: {
+  template: PresentationTemplateSummary;
+}) {
+  const { t } = useTranslation();
+  const label = t(
+    ($) => {
+      return $.artifacts.templates.slidePreview;
+    },
+    {
+      title: template.title,
+    },
+  );
+  return (
+    <div
+      className="group/tile relative"
+      data-imported-presentation-template={template.id}
+    >
+      <div
+        className={cn(TEMPLATE_TILE_MEDIA, TEMPLATE_TILE_RING, "aspect-[16/9]")}
+      >
+        {template.coverUrl === null ? null : (
+          <img
+            alt={label}
+            title={label}
+            src={template.coverUrl}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="pointer-events-none h-full w-full bg-background object-cover"
+          />
+        )}
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{template.title}</p>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {t(
+            ($) => {
+              return $.artifacts.templates.importedSlides;
+            },
+            {
+              count: template.pageCount,
+            },
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function PptTemplateGrid({
   items,
   runtime,
@@ -4907,11 +4970,17 @@ function PptTemplateGrid({
   signals: ComposerSignals;
 }) {
   const importEnabled = useGet(presentationTemplateImportEnabled$);
+  // Import tile, then this user's own decks, then the built-in templates: the
+  // decks a user made are the ones they came back for.
+  const importedTemplates = useLastResolved(ownPresentationTemplates$) ?? [];
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {importEnabled ? (
         <PptImportCard signals={signals} onImported={onImported} />
       ) : null}
+      {importedTemplates.map((template) => {
+        return <ImportedPptCard key={template.id} template={template} />;
+      })}
       {items.map((item) => {
         return (
           <PptCard
