@@ -15,18 +15,28 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
+  /**
+   * Private template row ids whose packages the run being built will mount.
+   * Required rather than optional so every caller states what its run carries.
+   */
+  readonly mountedUserPresentationTemplateIds: readonly string[];
 }): string {
+  const options = {
+    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,
+  };
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
-    const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
-      latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-    });
+    const built = buildGenerationTemplatesPrompt(
+      args.explicitTemplates,
+      options,
+    );
     return built.status === "resolved" ? built.prompt : "";
   }
   if (!args.explicit) {
     return "";
   }
-  const built = buildGenerationTemplatePrompt(args.explicit, {
-    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-  });
+  const built = buildGenerationTemplatePrompt(args.explicit, options);
   return built.status === "resolved" ? built.prompt : "";
 }

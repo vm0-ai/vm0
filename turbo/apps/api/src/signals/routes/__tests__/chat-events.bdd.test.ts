@@ -124,6 +124,7 @@ import {
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import {
@@ -9010,6 +9011,66 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
+
+  it("rejects a private presentation template the caller cannot read", async () => {
+    const actor = bdd.user();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Private template selection requires an organization");
+    }
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Private template agent",
+    });
+    // Well formed and syntactically a row id, but no such row exists for this
+    // owner. A deleted template and someone else's template are the same
+    // answer on purpose: neither may be distinguished from the outside.
+    const templateId = formatUserPresentationTemplateId(randomUUID());
+    const selection: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: { templateId },
+    };
+
+    const switchedOff = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(switchedOff.body);
+    // While the switch is off the private namespace does not exist at all, so
+    // the id is not a template this API knows about.
+    expect(switchedOff.body.error.message).toBe("Unknown generation template");
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PresentationTemplates]: true },
+    );
+
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe("Presentation template not found");
+
+    // Rejected before dispatch: no event is persisted and no run starts.
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(events.status).toBe(200);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
+  }, 60_000);
 
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
