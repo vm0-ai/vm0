@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.780.0](https://github.com/vm0-ai/vm0/compare/app-v0.779.1...app-v0.780.0) (2026-08-21)
+
+
+### Features
+
+* add qwen image 3 and nano banana 2 lite built-in image models ([#28518](https://github.com/vm0-ai/vm0/issues/28518)) ([9691fc3](https://github.com/vm0-ai/vm0/commit/9691fc30b999724efd07d2d82c384c47ff59c150))
+* **platform:** rebalance the pro and team plan highlight lists ([#28540](https://github.com/vm0-ai/vm0/issues/28540)) ([de72f0c](https://github.com/vm0-ai/vm0/commit/de72f0c0208fe1a1d0ec48695434f1dbc43d357c))
+
+
+### Refactoring
+
+* **api:** move web, uploads, voice-io and more off the brand namespace ([#28496](https://github.com/vm0-ai/vm0/issues/28496)) ([911553c](https://github.com/vm0-ai/vm0/commit/911553c29ebada5da274bdcaf647272e1f3aa8dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.349.0
+    * @okouai/core bumped to 8.580.0
+
 ## [0.779.1](https://github.com/vm0-ai/vm0/compare/app-v0.779.0...app-v0.779.1) (2026-08-21)
 
 

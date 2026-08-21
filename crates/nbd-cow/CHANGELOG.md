@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.78](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.77...nbd-cow-v0.4.78) (2026-08-21)
+
+
+### Bug Fixes
+
+* **nbd-cow:** prevent stale disconnects after tid reuse ([#28541](https://github.com/vm0-ai/vm0/issues/28541)) ([4a8bf0c](https://github.com/vm0-ai/vm0/commit/4a8bf0cba369d67b648f888a55c554eb3bbd27cd))
+
+
+### Performance Improvements
+
+* **nbd-cow:** share scans across acquire waiters ([#28539](https://github.com/vm0-ai/vm0/issues/28539)) ([02a08ae](https://github.com/vm0-ai/vm0/commit/02a08ae4bbe4418bbec825d4a07e3baaf6c72bd7))
+
 ## [0.4.77](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.76...nbd-cow-v0.4.77) (2026-08-20)
 
 

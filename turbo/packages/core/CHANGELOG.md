@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.580.0](https://github.com/vm0-ai/vm0/compare/core-v8.579.0...core-v8.580.0) (2026-08-21)
+
+
+### Features
+
+* add qwen image 3 and nano banana 2 lite built-in image models ([#28518](https://github.com/vm0-ai/vm0/issues/28518)) ([9691fc3](https://github.com/vm0-ai/vm0/commit/9691fc30b999724efd07d2d82c384c47ff59c150))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.349.0
+
 ## [8.579.0](https://github.com/vm0-ai/vm0/compare/core-v8.578.0...core-v8.579.0) (2026-08-21)
 
 

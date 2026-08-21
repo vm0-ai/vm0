@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.31...vsock-proto-v0.18.32) (2026-08-21)
+
+
+### Documentation
+
+* **rust:** specify vsock frame buffer state on encode errors ([#28537](https://github.com/vm0-ai/vm0/issues/28537)) ([28b5965](https://github.com/vm0-ai/vm0/commit/28b596527eaff3854a5dd6c03fae3a9a5b6b5006))
+
 ## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.30...vsock-proto-v0.18.31) (2026-08-21)
 
 
