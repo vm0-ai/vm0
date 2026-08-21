@@ -137,7 +137,11 @@ impl HttpClient {
     /// [`Self::for_config`] for production guest-agent initialization.
     #[doc(hidden)]
     pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
-        Self::build(None, retry_delay)
+        Self::build(
+            None,
+            retry_delay,
+            Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS),
+        )
     }
 
     #[doc(hidden)]
@@ -148,6 +152,29 @@ impl HttpClient {
         client_session_id: impl Into<String>,
         retry_delay: Duration,
     ) -> Result<Self, AgentError> {
+        Self::with_api_config_and_connect_timeout(
+            base_url,
+            token,
+            vercel_bypass,
+            client_session_id,
+            retry_delay,
+            Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS),
+        )
+    }
+
+    /// Build an API-configured client with a custom connection timeout.
+    ///
+    /// Integration tests use this to exercise stalled connection setup without
+    /// advancing the runtime's global clock.
+    #[doc(hidden)]
+    pub fn with_api_config_and_connect_timeout(
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        vercel_bypass: impl Into<String>,
+        client_session_id: impl Into<String>,
+        retry_delay: Duration,
+        connect_timeout: Duration,
+    ) -> Result<Self, AgentError> {
         Self::build(
             Some(ApiHttpConfig::new(
                 base_url.into(),
@@ -156,12 +183,17 @@ impl HttpClient {
                 client_session_id.into(),
             )?),
             retry_delay,
+            connect_timeout,
         )
     }
 
-    fn build(api: Option<ApiHttpConfig>, retry_delay: Duration) -> Result<Self, AgentError> {
+    fn build(
+        api: Option<ApiHttpConfig>,
+        retry_delay: Duration,
+        connect_timeout: Duration,
+    ) -> Result<Self, AgentError> {
         let inner = Client::builder()
-            .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
+            .connect_timeout(connect_timeout)
             .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
             .build()
             .map_err(|e| {
@@ -204,7 +236,11 @@ impl HttpClient {
                 DEFAULT_RETRY_DELAY
             }
         };
-        Self::build(Some(api), retry_delay)
+        Self::build(
+            Some(api),
+            retry_delay,
+            Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS),
+        )
     }
 
     pub fn has_api(&self) -> bool {

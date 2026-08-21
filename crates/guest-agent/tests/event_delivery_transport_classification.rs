@@ -9,8 +9,6 @@ use guest_contracts::diagnostics::{
 };
 use serde_json::json;
 use std::io;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[tokio::test]
@@ -159,13 +157,14 @@ async fn run_connect_timeout_failure() -> Result<EventDeliveryDiagnostic, Box<dy
     let tmp = tempfile::tempdir()?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base_url = format!("https://{}", listener.local_addr()?);
-    let accepted_count = Arc::new(AtomicUsize::new(0));
-    let server_accepted_count = Arc::clone(&accepted_count);
+    let (accepted_tx, mut accepted_rx) = tokio::sync::mpsc::unbounded_channel();
     let server = tokio::spawn(async move {
         let mut connections = Vec::new();
         while let Ok((connection, _)) = listener.accept().await {
-            server_accepted_count.fetch_add(1, Ordering::SeqCst);
             connections.push(connection);
+            if accepted_tx.send(()).is_err() {
+                break;
+            }
         }
     });
     let prompt = format!(
@@ -180,15 +179,16 @@ async fn run_connect_timeout_failure() -> Result<EventDeliveryDiagnostic, Box<dy
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     let run_id = runtime.config.run_id.clone();
-    runtime.http = guest_agent::http::HttpClient::with_api_config(
+    runtime.http = guest_agent::http::HttpClient::with_api_config_and_connect_timeout(
         &base_url,
         "test-token",
         "",
         run_id,
         Duration::ZERO,
+        Duration::from_millis(250),
     )?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
-    let execution = tokio::spawn(async move {
+    let mut execution = tokio::spawn(async move {
         common::execute_cli_for_runtime(
             &runtime,
             &SecretMasker::from_raw(""),
@@ -197,30 +197,25 @@ async fn run_connect_timeout_failure() -> Result<EventDeliveryDiagnostic, Box<dy
         .await
     });
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while accepted_count.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
+    let bounded_execution = tokio::time::timeout(Duration::from_secs(5), async {
+        for attempt in 1..=3 {
+            accepted_rx.recv().await.ok_or_else(|| {
+                io::Error::other(format!(
+                    "connect-timeout server stopped before accepting attempt {attempt}"
+                ))
+            })?;
         }
+        Ok::<_, io::Error>((&mut execution).await)
     })
-    .await
-    .map_err(|_| io::Error::other("connect-timeout server accepted no request"))?;
-
-    tokio::time::pause();
-    for _ in 0..35 {
-        if execution.is_finished() {
-            break;
-        }
-        tokio::time::advance(Duration::from_secs(1)).await;
-        tokio::task::yield_now().await;
-    }
-    assert!(
-        execution.is_finished(),
-        "connect-timeout delivery should exhaust three attempts"
-    );
-    assert_eq!(accepted_count.load(Ordering::SeqCst), 3);
-    let joined = execution.await;
-    tokio::time::resume();
+    .await;
+    execution.abort();
     server.abort();
+    let joined = bounded_execution
+        .map_err(|_| io::Error::other("connect-timeout delivery exceeded its retry budget"))??;
+    assert!(
+        accepted_rx.try_recv().is_err(),
+        "connect-timeout delivery should make exactly three attempts"
+    );
     let result = joined??;
 
     result
