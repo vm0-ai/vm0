@@ -28,17 +28,20 @@ state creation inside React render.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
+https://app.vm0.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
+[Review permission](https://app.vm0.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
 
 Absolute URLs must use an allowed VM0 platform origin. Relative paths resolve
 against the configured platform origin. A URL becomes a card only when its path
-and required parameters match a card parser exactly. An unrecognized or invalid
-link remains ordinary Markdown.
+and required parameters match a card parser exactly. Unrecognized links remain
+ordinary Markdown. Recognized connector and permission actions are different:
+their URL targets are untrusted claims and must match the authenticated chat
+thread's agent and optional callback thread. A mismatch renders an inert
+unavailable card instead of a link or command.
 
 Current link-backed card patterns include:
 
@@ -67,9 +70,11 @@ that card type exists.
 
 ### 1. Parse content into pure descriptors
 
-`parseChatEventBodyBlocks` extracts renderable content from a `ChatEvent`
-and passes it to `parseBodyBlocks`. The parser separates normal Markdown from
-recognized cards.
+`chatEventTreePlan` extracts renderable content from a `ChatEvent` and passes it
+to `eventBodyPlan`. The parser separates normal Markdown from recognized cards.
+The current thread ID and server-derived primary agent ID are supplied as
+immutable planning context. Parsing is synchronous and does not query an API or
+database.
 
 A recognized card is first represented as a pure `ParsedBodyBlock`:
 
@@ -85,6 +90,13 @@ The descriptor contains parsed domain data only. It must not create `state`,
 `computed`, `command`, subscriptions, or other runtime resources. This keeps
 parsing deterministic and safe to run for persistent, IndexedDB, realtime, and
 optimistic messages.
+
+Connector and permission descriptors are created only after their URL agent ID
+matches the context agent ID and any callback contains both a non-empty prompt
+and the context thread ID. Valid descriptors use the context identities rather
+than copying URL claims. Recognized context-invalid actions produce only a
+static unavailable descriptor, so they register no action signals and cannot
+fall back to a clickable Markdown slot.
 
 ### 2. Derive a stable resource key
 
@@ -356,7 +368,8 @@ When adding a new link-backed card:
 7. Add the React component case and pass only the typed signals object.
 8. Cover absolute, relative, and Markdown link forms that the card accepts.
 9. Test repeated-resource sharing, persistent and optimistic message paths,
-   loading and mutation behavior, and invalid links falling back to Markdown.
+   loading and mutation behavior. Define explicitly whether invalid recognized
+   links remain Markdown or render inertly; mutating actions must fail closed.
 
 Do not create signals in the parser, transcript computed, or React component.
 Do not use a root-lifetime URL cache. Do not add a card to a shared aggregate
@@ -365,10 +378,12 @@ registry.
 ## Relevant Implementation Files
 
 - `turbo/apps/platform/src/signals/chat-page/chat-event-body-blocks.ts`
+- `turbo/apps/platform/src/signals/chat-page/chat-action-context.ts`
 - `turbo/apps/platform/src/signals/chat-page/parse-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/create-chat-thread.ts`
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
+- `turbo/apps/platform/src/signals/chat-page/permission-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
 - `turbo/apps/platform/src/signals/chat-page/browser-session-block.ts`

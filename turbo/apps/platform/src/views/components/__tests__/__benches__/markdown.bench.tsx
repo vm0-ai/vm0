@@ -206,7 +206,10 @@ function ensurePass(
     if (content === null || cache.get(event.id)?.content === content) {
       continue;
     }
-    const plan = chatEventTreePlan(event, THREAD_ID);
+    const plan = chatEventTreePlan(event, {
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      threadId: THREAD_ID,
+    });
     if (plan === null) {
       continue;
     }

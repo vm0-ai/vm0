@@ -9,10 +9,14 @@ import { parseBodyBlocks } from "../parse-body-blocks.ts";
  * the same card for the same source once the scanner is gone.
  */
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
 const CONNECTOR_URL = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
 
 function shapeOf(content: string): string {
-  return parseBodyBlocks(content, { previews: true })
+  return parseBodyBlocks(content, {
+    previews: true,
+    chatActionContext: { agentId: AGENT_ID, threadId: THREAD_ID },
+  })
     .blocks.map((block) => {
       return block.type === "markdown"
         ? `markdown(${JSON.stringify(block.content)})`
@@ -54,9 +58,9 @@ describe("card recognition in a message body", () => {
     );
   });
 
-  it("leaves a connector-shaped url without an agent id as prose", () => {
+  it("makes a connector-shaped url without an agent id unavailable", () => {
     const url = `${window.location.origin}/connectors/github/authorize`;
 
-    expect(shapeOf(url)).toBe(`markdown(${JSON.stringify(url)})`);
+    expect(shapeOf(url)).toBe("unavailable-action");
   });
 });

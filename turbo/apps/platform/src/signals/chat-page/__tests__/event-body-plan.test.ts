@@ -14,10 +14,18 @@ import {
 } from "../parse-body-blocks.ts";
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
 const CONNECTOR_URL = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
 
 const store = createStore();
 const connectorRegistry = createConnectorCardSignalsRegistry();
+
+function planBody(content: string) {
+  return eventBodyPlan(content, {
+    previews: true,
+    chatActionContext: { agentId: AGENT_ID, threadId: THREAD_ID },
+  });
+}
 
 function connectorRef(descriptor: CardDescriptorBlock): MarkdownCardRef {
   if (descriptor.type !== "connector-action") {
@@ -31,9 +39,7 @@ function connectorRef(descriptor: CardDescriptorBlock): MarkdownCardRef {
 
 describe("eventBodyPlan", () => {
   it("plans one document with the card standing on its own link paragraph", () => {
-    const plan = eventBodyPlan(`before\n\n${CONNECTOR_URL}\n\nafter`, {
-      previews: true,
-    });
+    const plan = planBody(`before\n\n${CONNECTOR_URL}\n\nafter`);
 
     expect(
       plan.descriptors.map((descriptor) => {
@@ -46,10 +52,7 @@ describe("eventBodyPlan", () => {
   });
 
   it("keeps an inline label in prose and plans the card after it", () => {
-    const plan = eventBodyPlan(
-      `Please [connect GitHub](${CONNECTOR_URL}) first.`,
-      { previews: true },
-    );
+    const plan = planBody(`Please [connect GitHub](${CONNECTOR_URL}) first.`);
 
     expect(plan.treeSource).toBe(
       `Please connect GitHub first.\n\n[${CONNECTOR_URL}](<${CONNECTOR_URL}>)`,
@@ -57,7 +60,7 @@ describe("eventBodyPlan", () => {
   });
 
   it("plans a body without cards as the prose itself", () => {
-    const plan = eventBodyPlan("just some **prose**", { previews: true });
+    const plan = planBody("just some **prose**");
 
     expect(plan.descriptors).toStrictEqual([]);
     expect(plan.treeSource).toBe("just some **prose**");
@@ -66,9 +69,7 @@ describe("eventBodyPlan", () => {
 
 describe("card slots in the tree", () => {
   it("replaces a registered slot with a card node and keeps prose around it", () => {
-    const plan = eventBodyPlan(`before\n\n${CONNECTOR_URL}\n\nafter`, {
-      previews: true,
-    });
+    const plan = planBody(`before\n\n${CONNECTOR_URL}\n\nafter`);
     const ref = connectorRef(plan.descriptors[0]!);
     const cards = new Map([
       [markdownCardKey(cardSlotUrl(plan.descriptors[0]!)), ref],
@@ -95,7 +96,7 @@ describe("card slots in the tree", () => {
   });
 
   it("keeps an unresolved slot as an ordinary link", () => {
-    const plan = eventBodyPlan(CONNECTOR_URL, { previews: true });
+    const plan = planBody(CONNECTOR_URL);
 
     const tree = parseMarkdownTree(plan.treeSource, {
       mathEnabled: true,
@@ -121,9 +122,7 @@ describe("card slots in the tree", () => {
         cards: new Map([
           [
             markdownCardKey(CONNECTOR_URL),
-            connectorRef(
-              eventBodyPlan(CONNECTOR_URL, { previews: true }).descriptors[0]!,
-            ),
+            connectorRef(planBody(CONNECTOR_URL).descriptors[0]!),
           ],
         ]),
       },

@@ -3,16 +3,36 @@ import { zeroClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
+import {
+  chatActionIdMatches,
+  type ChatActionContext,
+} from "./chat-action-context.ts";
 
 export interface ChatActionCallback {
   readonly callbackPrompt: string | null;
   readonly threadId: string | null;
 }
 
-export function chatActionCallbackFromUrl(url: URL): ChatActionCallback {
+export function chatActionCallbackFromUrl(
+  url: URL,
+  context: ChatActionContext,
+): ChatActionCallback | null {
+  const callbackPrompt = url.searchParams.get("callbackPrompt");
+  const threadId = url.searchParams.get("threadId");
+  if (callbackPrompt === null && threadId === null) {
+    return { callbackPrompt: null, threadId: null };
+  }
+  if (
+    callbackPrompt === null ||
+    callbackPrompt.trim() === "" ||
+    threadId === null ||
+    !chatActionIdMatches(threadId, context.threadId)
+  ) {
+    return null;
+  }
   return {
-    callbackPrompt: url.searchParams.get("callbackPrompt"),
-    threadId: url.searchParams.get("threadId"),
+    callbackPrompt,
+    threadId: context.threadId,
   };
 }
 

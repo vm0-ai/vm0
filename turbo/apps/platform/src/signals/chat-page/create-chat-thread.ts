@@ -149,6 +149,7 @@ import {
   chatEventTreeContent,
   chatEventTreePlan,
 } from "./chat-event-body-blocks.ts";
+import type { ChatActionContext } from "./chat-action-context.ts";
 import type { Root } from "hast";
 import {
   markdownCardKey,
@@ -1771,7 +1772,7 @@ function createArtifactPreviewImageUrls(
 }
 
 interface EventTreeRegistries {
-  readonly threadId: string;
+  readonly chatActionContext: ChatActionContext;
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
   readonly connectorCardSignals: ReturnType<
     typeof createConnectorCardSignalsRegistry
@@ -1794,7 +1795,7 @@ interface EventTreeRegistries {
 }
 
 function createEventTreeSignals({
-  threadId,
+  chatActionContext,
   artifactCardSignals,
   connectorCardSignals,
   permissionCardSignals,
@@ -1826,7 +1827,7 @@ function createEventTreeSignals({
           return {
             kind: descriptor.type,
             signals: set(artifactCardSignals.register$, descriptor.descriptor),
-            threadId,
+            threadId: chatActionContext.threadId,
           };
         }
         case "connector-action": {
@@ -1843,6 +1844,9 @@ function createEventTreeSignals({
               descriptor.descriptor,
             ),
           };
+        }
+        case "unavailable-action": {
+          return { kind: descriptor.type };
         }
         case "computer-use-authorization": {
           return {
@@ -1893,7 +1897,7 @@ function createEventTreeSignals({
         if (content === null || current.get(event.id)?.content === content) {
           continue;
         }
-        const plan = chatEventTreePlan(event, threadId);
+        const plan = chatEventTreePlan(event, chatActionContext);
         if (plan === null) {
           continue;
         }
@@ -1928,12 +1932,13 @@ function createEventTreeSignals({
 }
 
 function createPagedEventResources(
-  threadId: string,
+  chatActionContext: ChatActionContext,
   chatEvents$: Computed<ChatEvent[]>,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
   ownerSignal: AbortSignal,
 ) {
+  const { threadId } = chatActionContext;
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const browserSessionSignals = createBrowserSessionSignals(
     threadId,
@@ -1970,7 +1975,7 @@ function createPagedEventResources(
   );
 
   const { eventTrees$, ensureEventTrees$ } = createEventTreeSignals({
-    threadId,
+    chatActionContext,
     artifactCardSignals,
     connectorCardSignals,
     permissionCardSignals,
@@ -2268,16 +2273,17 @@ function createReadyScrollAfterRenderRequest(
 
 function createChatThreadMessagePipeline(
   {
-    threadId,
+    chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
   }: {
-    threadId: string;
+    chatActionContext: ChatActionContext;
     chatEvents: ChatEventSignals;
     previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
   },
   ownerSignal: AbortSignal,
 ) {
+  const { threadId } = chatActionContext;
   const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
     append$: command(
       async (
@@ -2299,7 +2305,7 @@ function createChatThreadMessagePipeline(
   // with the window's ensure step.
   const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
-    threadId,
+    chatActionContext,
     chatEvents.chatEvents$,
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
@@ -4000,7 +4006,7 @@ function createChatPanelSignalsWithDraft(
   const messages: MessageListSignals = {
     ...createChatThreadMessagePipeline(
       {
-        threadId,
+        chatActionContext: { threadId, agentId },
         chatEvents,
         previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
           artifact.artifacts$,

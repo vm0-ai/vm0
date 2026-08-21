@@ -1501,6 +1501,10 @@
       "stop": "रोकें",
       "view": "देखें"
     },
+    "actionUnavailable": {
+      "description": "यह कार्रवाई इस चैट से संबंधित नहीं है या अब मान्य नहीं है।",
+      "title": "कार्रवाई उपलब्ध नहीं है"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Slack में {{assistantName}} जोड़ें",

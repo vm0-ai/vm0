@@ -2,6 +2,7 @@ import {
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
 } from "./connector-action-block.ts";
+import type { ChatActionContext } from "./chat-action-context.ts";
 import {
   parsePermissionActionUrl,
   permissionActionResourceKey,
@@ -61,6 +62,11 @@ export type ParsedBodyBlock =
       descriptor: PermissionActionDescriptor;
     }
   | {
+      type: "unavailable-action";
+      resourceKey: string;
+      descriptor: { readonly originalUrl: string };
+    }
+  | {
       type: "computer-use-authorization";
       resourceKey: string;
       descriptor: ComputerUseAuthorizationDescriptor;
@@ -103,7 +109,7 @@ type OpenMarkdownFence = {
 
 interface ParseBodyBlocksOptions {
   readonly previews?: boolean;
-  readonly browserThreadId?: string;
+  readonly chatActionContext?: ChatActionContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -782,13 +788,14 @@ function extractActionUrlFromLine(line: string): string | null {
 
 function createActionBlockFromLine(
   line: string,
-  browserThreadId: string | undefined,
+  chatActionContext: ChatActionContext | undefined,
 ): Extract<
   ParsedBodyBlock,
   {
     type:
       | "connector-action"
       | "permission-action"
+      | "unavailable-action"
       | "computer-use-authorization"
       | "plan-upgrade"
       | "mail-draft"
@@ -800,21 +807,35 @@ function createActionBlockFromLine(
     return null;
   }
 
-  const connectorAction = parseConnectorAuthorizeUrl(url);
-  if (connectorAction) {
+  const connectorAction = parseConnectorAuthorizeUrl(url, chatActionContext);
+  if (connectorAction.status === "valid") {
     return {
       type: "connector-action",
+      resourceKey: connectorAction.descriptor.originalUrl,
+      descriptor: connectorAction.descriptor,
+    };
+  }
+  if (connectorAction.status === "invalid") {
+    return {
+      type: "unavailable-action",
       resourceKey: connectorAction.originalUrl,
-      descriptor: connectorAction,
+      descriptor: { originalUrl: connectorAction.originalUrl },
     };
   }
 
-  const permissionAction = parsePermissionActionUrl(url);
-  if (permissionAction) {
+  const permissionAction = parsePermissionActionUrl(url, chatActionContext);
+  if (permissionAction.status === "valid") {
     return {
       type: "permission-action",
-      resourceKey: permissionActionResourceKey(permissionAction),
-      descriptor: permissionAction,
+      resourceKey: permissionActionResourceKey(permissionAction.descriptor),
+      descriptor: permissionAction.descriptor,
+    };
+  }
+  if (permissionAction.status === "invalid") {
+    return {
+      type: "unavailable-action",
+      resourceKey: permissionAction.originalUrl,
+      descriptor: { originalUrl: permissionAction.originalUrl },
     };
   }
 
@@ -846,7 +867,10 @@ function createActionBlockFromLine(
   }
 
   const browserSession = parseBrowserSessionUrl(url);
-  if (browserSession && browserSession.threadId === browserThreadId) {
+  if (
+    browserSession &&
+    browserSession.threadId === chatActionContext?.threadId
+  ) {
     return {
       type: "browser-session",
       resourceKey: browserSession.href,
@@ -857,9 +881,9 @@ function createActionBlockFromLine(
   return null;
 }
 
-function retainedConnectorActionMarkdown(
+function retainedActionMarkdown(
   line: string,
-  action: ConnectorActionDescriptor,
+  originalUrl: string,
 ): string | null {
   const candidate = stripMarkdownLineDecorations(line);
   const standaloneMarkdownLink = candidate.match(
@@ -875,7 +899,7 @@ function retainedConnectorActionMarkdown(
   return line.replace(
     new RegExp(String.raw`\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)`),
     (match: string, label: string, url: string) => {
-      return trimPreviewUrl(url) === action.originalUrl ? label : match;
+      return trimPreviewUrl(url) === originalUrl ? label : match;
     },
   );
 }
@@ -1038,13 +1062,16 @@ export function parseBodyBlocks(
     }
 
     const actionBlock = previews
-      ? createActionBlockFromLine(line, options.browserThreadId)
+      ? createActionBlockFromLine(line, options.chatActionContext)
       : null;
     if (actionBlock) {
-      if (actionBlock.type === "connector-action") {
-        const retainedMarkdown = retainedConnectorActionMarkdown(
+      if (
+        actionBlock.type === "connector-action" ||
+        actionBlock.type === "unavailable-action"
+      ) {
+        const retainedMarkdown = retainedActionMarkdown(
           line,
-          actionBlock.descriptor,
+          actionBlock.descriptor.originalUrl,
         );
         if (retainedMarkdown) {
           pushMarkdownLines([retainedMarkdown]);
@@ -1106,6 +1133,9 @@ export function cardSlotUrl(block: CardDescriptorBlock): string {
       return block.descriptor.originalUrl;
     }
     case "permission-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "unavailable-action": {
       return block.descriptor.originalUrl;
     }
     case "computer-use-authorization": {
