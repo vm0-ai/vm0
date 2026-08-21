@@ -1529,7 +1529,7 @@
         "connect": "Connecter",
         "credits": "Crédits",
         "inSlack": "{{assistantName}} est dans Slack",
-        "inviteMember": "Inviter un humain à collaborer 🤝",
+        "inviteMember": "Inviter des humains 🤝",
         "otherChannels": "Telegram et téléphone"
       },
       "invitePeople": "Inviter des personnes",

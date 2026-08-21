@@ -1505,7 +1505,7 @@
         "connect": "接続",
         "credits": "クレジット",
         "inSlack": "{{assistantName}} は Slack にいます",
-        "inviteMember": "人間を招待してコラボ 🤝",
+        "inviteMember": "人間を招待 🤝",
         "otherChannels": "Telegram、電話"
       },
       "invitePeople": "人を招待する",
