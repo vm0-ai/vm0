@@ -173,7 +173,7 @@ function putObjectInput(): PutObjectCommandInput {
 async function orgCredits(fixture: ImageFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const app = createImageIoTestApp();
-  const response = await app.request("/api/zero/billing/status", {
+  const response = await app.request("/api/billing/status", {
     headers: authHeaders(),
   });
   expect(response.status).toBe(200);

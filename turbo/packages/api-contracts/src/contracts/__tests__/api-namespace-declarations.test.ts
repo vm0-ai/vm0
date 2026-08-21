@@ -51,25 +51,24 @@ function declaredRoutes(): readonly DeclaredRoute[] {
 describe("branded API namespace declarations", () => {
   const routes = declaredRoutes();
 
+  // The named sample proves the walk above actually reaches a declaration
+  // rather than passing on an empty list. It must be a path #28278 does not
+  // move, or the sample rots the moment that slice lands: a provider console
+  // holds this URL, so it stays branded under #26701.
   it("enumerates branded contract routes through the package barrel", () => {
     const brandedRoutes = routes.filter(({ path }) => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    // A floor, not an inventory. #28278 moves product routes off the brand
-    // namespace one slice at a time, so this count only ever falls — it was
-    // over 100 when this test was written and is 83 once #28462 lands. Any
-    // specific number is a snapshot that a later slice turns red for reasons
-    // that have nothing to do with the enumeration this test covers, so the
-    // floor is what proves the barrel walk still finds branded routes at all.
-    // The declaration asserted below is what gives the test its teeth.
-    expect(brandedRoutes.length).toBeGreaterThan(0);
+    // A floor, not a snapshot: #28278 moves branded families off the namespace
+    // one slice at a time (the billing slice #28457 alone dropped 34 routes),
+    // so the exact count shrinks as slices land. The floor must stay below the
+    // remaining branded count while still proving the barrel walk reaches a
+    // broad set of declarations rather than a handful of samples.
+    expect(brandedRoutes.length).toBeGreaterThan(50);
     expect(
       brandedRoutes.some(({ method, path }) => {
-        return (
-          method === "POST" &&
-          path === "/api/okou/billing/concurrency-checkout/preview"
-        );
+        return method === "POST" && path === "/api/okou/slack/events";
       }),
     ).toBe(true);
   });

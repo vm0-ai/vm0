@@ -606,12 +606,12 @@ const redeemCodeRequestSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Zero contract for GET /api/okou/billing/status
+ * Zero contract for GET /api/billing/status
  */
 export const billingStatusContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/status",
+    path: "/api/billing/status",
     headers: authHeadersSchema,
     responses: {
       200: billingStatusResponseSchema,
@@ -626,12 +626,12 @@ export const billingStatusContract = c.router({
 export type BillingStatusContract = typeof billingStatusContract;
 
 /**
- * Zero contract for POST /api/okou/billing/checkout
+ * Zero contract for POST /api/billing/checkout
  */
 export const billingCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/checkout",
+    path: "/api/billing/checkout",
     headers: authHeadersSchema,
     body: checkoutRequestSchema,
     responses: {
@@ -651,7 +651,7 @@ export const billingCheckoutContract = c.router({
   },
   confirm: {
     method: "POST",
-    path: "/api/okou/billing/checkout/confirm",
+    path: "/api/billing/checkout/confirm",
     headers: authHeadersSchema,
     body: z.object({ previewToken: z.string().min(1) }),
     responses: {
@@ -667,7 +667,7 @@ export const billingCheckoutContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/okou/billing/checkout/complete",
+    path: "/api/billing/checkout/complete",
     headers: authHeadersSchema,
     body: checkoutCompleteRequestSchema,
     responses: {
@@ -685,12 +685,12 @@ export const billingCheckoutContract = c.router({
 export type BillingCheckoutContract = typeof billingCheckoutContract;
 
 /**
- * Zero contract for POST /api/okou/billing/usage-pack-checkout
+ * Zero contract for POST /api/billing/usage-pack-checkout
  */
 export const billingUsagePackCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-checkout",
+    path: "/api/billing/usage-pack-checkout",
     headers: authHeadersSchema,
     body: usagePackCheckoutRequestSchema,
     responses: {
@@ -710,7 +710,7 @@ export const billingUsagePackCheckoutContract = c.router({
   },
   confirm: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-checkout/confirm",
+    path: "/api/billing/usage-pack-checkout/confirm",
     headers: authHeadersSchema,
     body: z.object({ previewToken: z.string().min(1) }),
     responses: {
@@ -732,7 +732,7 @@ export type BillingUsagePackCheckoutContract =
 export const billingUsagePackCatalogContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/usage-pack-catalog",
+    path: "/api/billing/usage-pack-catalog",
     headers: authHeadersSchema,
     responses: {
       200: usagePackCatalogResponseSchema,
@@ -751,7 +751,7 @@ export type BillingUsagePackCatalogContract =
 export const billingUsagePackManagementContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/usage-pack-subscription",
+    path: "/api/billing/usage-pack-subscription",
     headers: authHeadersSchema,
     responses: {
       200: usagePackManagementResponseSchema,
@@ -765,7 +765,7 @@ export const billingUsagePackManagementContract = c.router({
   },
   previewChange: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-subscription/changes/preview",
+    path: "/api/billing/usage-pack-subscription/changes/preview",
     headers: authHeadersSchema,
     body: usagePackChangePreviewRequestSchema,
     responses: {
@@ -782,7 +782,7 @@ export const billingUsagePackManagementContract = c.router({
   },
   confirmChange: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
+    path: "/api/billing/usage-pack-subscription/changes/:changeId/confirm",
     pathParams: z.object({ changeId: z.uuid() }),
     headers: authHeadersSchema,
     body: z.object({
@@ -802,7 +802,7 @@ export const billingUsagePackManagementContract = c.router({
   },
   previewSubscriptionChange: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
+    path: "/api/billing/usage-pack-subscription/subscription-change/preview",
     headers: authHeadersSchema,
     body: usagePackSubscriptionChangePreviewRequestSchema,
     responses: {
@@ -819,7 +819,7 @@ export const billingUsagePackManagementContract = c.router({
   },
   confirmSubscriptionChange: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
+    path: "/api/billing/usage-pack-subscription/subscription-change/confirm",
     headers: authHeadersSchema,
     body: usagePackSubscriptionChangeConfirmRequestSchema,
     responses: {
@@ -842,7 +842,7 @@ export type BillingUsagePackManagementContract =
 export const billingUsagePackCreditsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/usage-pack-credits",
+    path: "/api/billing/usage-pack-credits",
     headers: authHeadersSchema,
     responses: {
       200: usagePackCreditsResponseSchema,
@@ -864,7 +864,7 @@ export type UsagePackCreditsResponse = z.infer<
 export const billingUsagePackMigrationContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/usage-pack-migration",
+    path: "/api/billing/usage-pack-migration",
     headers: authHeadersSchema,
     responses: {
       200: usagePackMigrationStateResponseSchema,
@@ -879,7 +879,7 @@ export const billingUsagePackMigrationContract = c.router({
   },
   preview: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-migration/preview",
+    path: "/api/billing/usage-pack-migration/preview",
     headers: authHeadersSchema,
     body: usagePackMigrationPreviewRequestSchema,
     responses: {
@@ -896,7 +896,7 @@ export const billingUsagePackMigrationContract = c.router({
   },
   confirm: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-migration/:migrationId/confirm",
+    path: "/api/billing/usage-pack-migration/:migrationId/confirm",
     pathParams: z.object({ migrationId: z.uuid() }),
     headers: authHeadersSchema,
     body: z.object({}),
@@ -914,7 +914,7 @@ export const billingUsagePackMigrationContract = c.router({
   },
   previewRevision: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-migration/:migrationId/revision/preview",
+    path: "/api/billing/usage-pack-migration/:migrationId/revision/preview",
     pathParams: z.object({ migrationId: z.uuid() }),
     headers: authHeadersSchema,
     body: usagePackMigrationPreviewRequestSchema,
@@ -932,7 +932,7 @@ export const billingUsagePackMigrationContract = c.router({
   },
   confirmRevision: {
     method: "POST",
-    path: "/api/okou/billing/usage-pack-migration/:migrationId/revision/confirm",
+    path: "/api/billing/usage-pack-migration/:migrationId/revision/confirm",
     pathParams: z.object({ migrationId: z.uuid() }),
     headers: authHeadersSchema,
     body: usagePackMigrationRevisionConfirmRequestSchema,
@@ -954,12 +954,12 @@ export type BillingUsagePackMigrationContract =
   typeof billingUsagePackMigrationContract;
 
 /**
- * Zero contract for POST /api/okou/billing/concurrency-checkout
+ * Zero contract for POST /api/billing/concurrency-checkout
  */
 export const billingConcurrencyCheckoutContract = c.router({
   preview: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-checkout/preview",
+    path: "/api/billing/concurrency-checkout/preview",
     headers: authHeadersSchema,
     body: concurrencyCheckoutPreviewRequestSchema,
     responses: {
@@ -975,7 +975,7 @@ export const billingConcurrencyCheckoutContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-checkout",
+    path: "/api/billing/concurrency-checkout",
     headers: authHeadersSchema,
     body: concurrencyCheckoutRequestSchema,
     responses: {
@@ -1000,7 +1000,7 @@ export type BillingConcurrencyCheckoutContract =
 export const billingConcurrencySubscriptionContract = c.router({
   previewChange: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+    path: "/api/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -1020,7 +1020,7 @@ export const billingConcurrencySubscriptionContract = c.router({
   },
   confirmChange: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+    path: "/api/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -1040,7 +1040,7 @@ export const billingConcurrencySubscriptionContract = c.router({
   },
   cancel: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/cancel",
+    path: "/api/billing/concurrency-subscriptions/:subscriptionId/cancel",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -1059,7 +1059,7 @@ export const billingConcurrencySubscriptionContract = c.router({
   },
   restore: {
     method: "POST",
-    path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/restore",
+    path: "/api/billing/concurrency-subscriptions/:subscriptionId/restore",
     pathParams: z.object({
       subscriptionId: z.string().min(1),
     }),
@@ -1082,12 +1082,12 @@ export type BillingConcurrencySubscriptionContract =
   typeof billingConcurrencySubscriptionContract;
 
 /**
- * Zero contract for POST /api/okou/billing/credit-checkout
+ * Zero contract for POST /api/billing/credit-checkout
  */
 export const billingCreditCheckoutContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/credit-checkout",
+    path: "/api/billing/credit-checkout",
     headers: authHeadersSchema,
     body: creditCheckoutRequestSchema,
     responses: {
@@ -1102,7 +1102,7 @@ export const billingCreditCheckoutContract = c.router({
   },
   confirm: {
     method: "POST",
-    path: "/api/okou/billing/credit-checkout/confirm",
+    path: "/api/billing/credit-checkout/confirm",
     headers: authHeadersSchema,
     body: z.object({ previewToken: z.string().min(1) }),
     responses: {
@@ -1122,12 +1122,12 @@ export type BillingCreditCheckoutContract =
   typeof billingCreditCheckoutContract;
 
 /**
- * Zero contract for POST /api/okou/billing/portal
+ * Zero contract for POST /api/billing/portal
  */
 export const billingPortalContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/portal",
+    path: "/api/billing/portal",
     headers: authHeadersSchema,
     body: portalRequestSchema,
     responses: {
@@ -1145,12 +1145,12 @@ export const billingPortalContract = c.router({
 export type BillingPortalContract = typeof billingPortalContract;
 
 /**
- * Zero contract for /api/okou/billing/auto-recharge
+ * Zero contract for /api/billing/auto-recharge
  */
 export const billingAutoRechargeContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/auto-recharge",
+    path: "/api/billing/auto-recharge",
     headers: authHeadersSchema,
     responses: {
       200: autoRechargeSchema,
@@ -1161,7 +1161,7 @@ export const billingAutoRechargeContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/billing/auto-recharge",
+    path: "/api/billing/auto-recharge",
     headers: authHeadersSchema,
     body: autoRechargeUpdateRequestSchema,
     responses: {
@@ -1178,7 +1178,7 @@ export const billingAutoRechargeContract = c.router({
 export type BillingAutoRechargeContract = typeof billingAutoRechargeContract;
 
 /**
- * Zero contract for GET /api/okou/billing/invoices
+ * Zero contract for GET /api/billing/invoices
  */
 const invoiceSchema = z.object({
   id: z.string(),
@@ -1204,7 +1204,7 @@ function billingMonthIndex(month: string): number {
 export const billingInvoicesContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/billing/invoices",
+    path: "/api/billing/invoices",
     headers: authHeadersSchema,
     responses: {
       200: billingInvoicesResponseSchema,
@@ -1216,7 +1216,7 @@ export const billingInvoicesContract = c.router({
   },
   downloadReceipts: {
     method: "GET",
-    path: "/api/okou/billing/invoices/receipts",
+    path: "/api/billing/invoices/receipts",
     headers: authHeadersSchema,
     query: z
       .object({
@@ -1285,12 +1285,12 @@ const restoreResponseSchema = z.discriminatedUnion("status", [
 ]);
 
 /**
- * Zero contract for POST /api/okou/billing/downgrade
+ * Zero contract for POST /api/billing/downgrade
  */
 export const billingDowngradeContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/downgrade",
+    path: "/api/billing/downgrade",
     headers: authHeadersSchema,
     body: downgradeRequestSchema,
     responses: {
@@ -1309,12 +1309,12 @@ export const billingDowngradeContract = c.router({
 export type BillingDowngradeContract = typeof billingDowngradeContract;
 
 /**
- * Zero contract for POST /api/okou/billing/restore
+ * Zero contract for POST /api/billing/restore
  */
 export const billingRestoreContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/restore",
+    path: "/api/billing/restore",
     headers: authHeadersSchema,
     body: restoreRequestSchema,
     responses: {
@@ -1332,7 +1332,7 @@ export const billingRestoreContract = c.router({
 export type BillingRestoreContract = typeof billingRestoreContract;
 
 /**
- * Zero contract for POST /api/okou/billing/redeem/:campaign
+ * Zero contract for POST /api/billing/redeem/:campaign
  *
  * One-time campaign redemption. The handler validates the campaign whitelist,
  * creates (or resumes) a Stripe Checkout session, and returns a discriminated
@@ -1342,7 +1342,7 @@ export type BillingRestoreContract = typeof billingRestoreContract;
 export const billingRedeemContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/redeem/:campaign",
+    path: "/api/billing/redeem/:campaign",
     pathParams: z.object({
       campaign: z.string(),
     }),
@@ -1361,7 +1361,7 @@ export const billingRedeemContract = c.router({
 export type BillingRedeemContract = typeof billingRedeemContract;
 
 /**
- * Zero contract for POST /api/okou/billing/redeem-code
+ * Zero contract for POST /api/billing/redeem-code
  *
  * Proxies onboarding invite codes to the Atom redeem endpoint. The platform
  * waits for billing status to update through realtime before completing
@@ -1370,7 +1370,7 @@ export type BillingRedeemContract = typeof billingRedeemContract;
 export const billingRedeemCodeContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/billing/redeem-code",
+    path: "/api/billing/redeem-code",
     headers: authHeadersSchema,
     body: redeemCodeRequestSchema,
     responses: {

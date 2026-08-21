@@ -92,7 +92,7 @@ function acceptAutoRechargeStripeInvoice(customerId: string): string {
   return invoiceId;
 }
 
-describe("GET /api/zero/billing/auto-recharge", () => {
+describe("GET /api/billing/auto-recharge", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const client = autoRechargeClient();
 
@@ -163,7 +163,7 @@ describe("GET /api/zero/billing/auto-recharge", () => {
   });
 });
 
-describe("PUT /api/zero/billing/auto-recharge", () => {
+describe("PUT /api/billing/auto-recharge", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const client = autoRechargeClient();
 

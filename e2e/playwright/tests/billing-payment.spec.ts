@@ -90,7 +90,7 @@ async function enableUsagePackPlans(page: Page): Promise<void> {
 }
 
 async function mockCreditBalance(page: Page): Promise<void> {
-  await page.route("**/api/okou/billing/status", async (route) => {
+  await page.route("**/api/billing/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body)) {
@@ -188,7 +188,7 @@ async function renderedCornerRadii(locator: Locator): Promise<CornerRadii> {
 
 async function expectLimitedFreeBillingStatus(page: Page): Promise<void> {
   const token = await currentClerkSessionToken(page);
-  const response = await page.request.get(`${apiUrl}/api/okou/billing/status`, {
+  const response = await page.request.get(`${apiUrl}/api/billing/status`, {
     headers: authHeadersForToken(token),
   });
   if (response.status() !== 200) {

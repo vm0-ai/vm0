@@ -22,7 +22,7 @@ function stubBillingStatus(
     readonly videoGenerationAllowed?: boolean;
   } = {},
 ) {
-  return http.get("http://localhost:3000/api/okou/billing/status", () => {
+  return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
       tier: overrides.tier ?? "pro",
       canBuyCredits: overrides.canBuyCredits ?? true,
