@@ -48,18 +48,8 @@ impl CacheEntryPaths {
         entry_dir
     }
 
-    fn metadata_for(cache_dir: &Path, cache_key: &str) -> PathBuf {
-        Self::child_path(
-            Self::entry_dir_for(cache_dir, cache_key),
-            METADATA_FILE_NAME,
-        )
-    }
-
-    fn current_image_for(cache_dir: &Path, cache_key: &str) -> PathBuf {
-        Self::child_path(
-            Self::entry_dir_for(cache_dir, cache_key),
-            CURRENT_IMAGE_FILE_NAME,
-        )
+    fn child_for(cache_dir: &Path, cache_key: &str, file_name: &str) -> PathBuf {
+        Self::child_path(Self::entry_dir_for(cache_dir, cache_key), file_name)
     }
 
     fn temporary_path(entry_dir: PathBuf, file_name: &str, run_id: RunId) -> PathBuf {
@@ -117,11 +107,19 @@ impl WorkspaceImageCache {
     }
 
     pub(super) fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        CacheEntryPaths::metadata_for(self.workspace_image_cache_dir(), cache_key)
+        CacheEntryPaths::child_for(
+            self.workspace_image_cache_dir(),
+            cache_key,
+            METADATA_FILE_NAME,
+        )
     }
 
     pub(super) fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        CacheEntryPaths::current_image_for(self.workspace_image_cache_dir(), cache_key)
+        CacheEntryPaths::child_for(
+            self.workspace_image_cache_dir(),
+            cache_key,
+            CURRENT_IMAGE_FILE_NAME,
+        )
     }
 
     pub(super) fn workspace_image_cache_tmp_sidecar(
