@@ -172,7 +172,7 @@ export async function connectorCatalogRuntimeProjectionSchemaAvailable(
     .from(sql`(SELECT 1) AS connector_catalog_projection_schema_probe`)
     .limit(1);
   const available = state?.available ?? false;
-  // New API instances can serve before migration 0960. Cache only success so
+  // New API instances can serve before migration 0961. Cache only success so
   // an already-warm instance observes the schema as soon as migration arrives.
   cache.available = available;
   return available;

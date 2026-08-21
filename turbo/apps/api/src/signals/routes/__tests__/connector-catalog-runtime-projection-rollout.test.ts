@@ -16,7 +16,7 @@ function preMigrationDatabaseUrl(): string {
 }
 
 describe("connector catalog runtime projection rollout compatibility", () => {
-  it("reports unavailable before migration 0960 and detects schema arrival", async () => {
+  it("reports unavailable before migration 0961 and detects schema arrival", async () => {
     const migratedDatabaseUrl = env("DATABASE_URL");
     await resetDatabasePool(context);
     mockEnv("DATABASE_URL", preMigrationDatabaseUrl());
