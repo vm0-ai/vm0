@@ -163,7 +163,9 @@ function contractSourcesDeclaringBrandedPath(): readonly string[] {
       return entry.endsWith(".ts");
     })
     .filter((entry) => {
-      return /path:\s*"\/api\/okou\//.test(
+      // Matches the namespace root as well as a path below it, because
+      // `brandedApiNamespace` treats a bare `/api/okou` as branded too.
+      return /path:\s*"\/api\/okou(?:\/|")/.test(
         readFileSync(`${CONTRACTS_DIR}${entry}`, "utf8"),
       );
     })
