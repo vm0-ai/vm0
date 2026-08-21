@@ -32,7 +32,7 @@ export const feishuOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/okou/feishu/oauth/callback",
+    path: "/api/integrations/feishu/oauth/callback",
     query: feishuOauthCallbackQuerySchema,
     responses: {
       200: z.object({ redirectUrl: z.url() }),

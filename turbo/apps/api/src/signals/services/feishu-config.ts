@@ -76,9 +76,17 @@ export function feishuCallbackUrl(installationId: string): string {
   ).toString();
 }
 
+/**
+ * The redirect URI for the OAuth branch that does not hand off to the frontend,
+ * reached only when `callbackTarget` is absent. The Feishu console holds
+ * `feishuOAuthAppCallbackUrl()` instead, so nothing outside this service pins
+ * this path; #28544 moved it off the legacy `/api/zero/**` namespace it had
+ * kept, to the neutral path its contract now declares. Both branded forms stay
+ * routable through `MIGRATED_BRANDED_PATHS`.
+ */
 export function feishuOAuthCallbackUrl(): string {
   return new URL(
-    "/api/zero/feishu/oauth/callback",
+    "/api/integrations/feishu/oauth/callback",
     env("FEISHU_CALLBACK_BASE_URL"),
   ).toString();
 }
