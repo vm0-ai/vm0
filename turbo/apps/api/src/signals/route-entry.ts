@@ -1106,15 +1106,23 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28461: the agent reads and writes, the manual Morning Brief trigger, and
   // the workflow and workflow-automation management routes. Every caller in
   // this repository derives its URL from the contract, so nothing here still
-  // asks for a branded form; released builds do. A published CLI package
-  // embeds the contract path it was built from and stays pinned by an
-  // execution context's `CLI_PKG_URL` — `okou agent`, `okou workflow`, and
-  // `okou workflow automation` are the commands behind these paths — while a
-  // browser tab holding already-loaded platform code keeps calling the `okou`
-  // path it was built against until it navigates or reloads, the ~2 day
-  // old-web-client window in `docs/fallback.md` section 7. The `zero` form was
-  // reachable through the blanket expansion until the contract moved. Both are
-  // owed, and both retire under #26701's evidence rules rather than on a clock.
+  // asks for a branded form; released builds do. Two surfaces hold these paths,
+  // and each has its own window.
+  //
+  // A published CLI package embeds the contract path it was built from and
+  // stays pinned by an execution context's `CLI_PKG_URL` — `okou agent`,
+  // `okou workflow`, and `okou workflow automation` are the commands behind
+  // these paths. That artifact drains over the maximum queue lifetime plus the
+  // maximum claimed execution and finalization lifetime, with execution bounded
+  // by the runner's 2h `JOB_TIMEOUT`, as `docs/deployment-compatibility.md`
+  // describes for commit-addressed CLI artifacts.
+  //
+  // A browser tab holding already-loaded platform code keeps calling the `okou`
+  // path it was built against until it navigates or reloads: the ~2 day
+  // old-web-client window in `docs/fallback.md` section 7, and the longer of
+  // the two. The `zero` form was reachable through the blanket expansion until
+  // the contract moved. Both forms are owed, and both retire under #26701's
+  // evidence rules rather than on either clock.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
