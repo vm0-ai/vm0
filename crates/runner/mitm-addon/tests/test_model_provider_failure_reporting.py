@@ -53,7 +53,7 @@ def _make_flow(
 @pytest.fixture(autouse=True)
 def model_provider_failure_api(usage_webhook_server, mitm_ctx, monkeypatch):
     bearer_credential = str(id(usage_webhook_server))
-    monkeypatch.setenv(model_provider_failure.REPORT_AUTH_ENV, bearer_credential)
+    monkeypatch.setenv(model_provider_failure.SERVER_AUTH_ENV, bearer_credential)
     with mitm_ctx(api_url=usage_webhook_server.api_url):
         mitm_addon.configure(set())
         yield usage_webhook_server
