@@ -80,7 +80,7 @@ function stubDiagnostic(
 ): void {
   server.use(
     http.post(
-      `${baseUrl}/api/okou/connectors/diagnostics/check`,
+      `${baseUrl}/api/connectors/diagnostics/check`,
       async ({ request }) => {
         const body: unknown = await request.json();
         const parsed = connectorCheckRequestSchema.parse(body);

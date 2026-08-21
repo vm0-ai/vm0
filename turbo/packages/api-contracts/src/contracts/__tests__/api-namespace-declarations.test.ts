@@ -56,7 +56,11 @@ describe("branded API namespace declarations", () => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    expect(brandedRoutes.length).toBeGreaterThan(100);
+    // A smoke floor on the barrel walk, not a target: it catches an
+    // enumeration that silently stops finding routes. #28278 drains the branded
+    // surface toward zero, so the floor comes down as slices land and is never
+    // raised — #28463 took the count under the previous 100.
+    expect(brandedRoutes.length).toBeGreaterThan(50);
     expect(
       brandedRoutes.some(({ method, path }) => {
         return (

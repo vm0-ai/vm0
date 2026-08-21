@@ -1259,7 +1259,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       throw new Error("Expected Slack member status to include connectUrl");
     }
     expect(memberOrgStatus.body.connectUrl).toContain(
-      "/api/okou/slack/oauth/connect",
+      "/api/slack/oauth/connect",
     );
 
     const memberConnectStatus = await integrations.requestSlackConnectStatus(

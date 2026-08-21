@@ -67,12 +67,9 @@ function stubConnector(
       }),
     ]);
   }
-  return http.get(
-    "http://localhost:3000/api/okou/connector-catalog/status",
-    () => {
-      return HttpResponse.json(body, { status });
-    },
-  );
+  return http.get("http://localhost:3000/api/connector-catalog/status", () => {
+    return HttpResponse.json(body, { status });
+  });
 }
 
 function stubAgent(

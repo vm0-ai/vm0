@@ -402,27 +402,24 @@ describe("zero user permission grants", () => {
     });
 
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
-    const askResponse = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorSlug: SLACK_CONNECTOR,
-          mode: "patch",
-          grants: [
-            {
-              permission: SLACK_READ_PERMISSION,
-              action: "ask",
-            },
-          ],
-        }),
+    const askResponse = await app.request("/api/user-permission-grants/apply", {
+      method: "PUT",
+      headers: {
+        authorization: AUTH_HEADERS.authorization,
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        agentId,
+        connectorSlug: SLACK_CONNECTOR,
+        mode: "patch",
+        grants: [
+          {
+            permission: SLACK_READ_PERMISSION,
+            action: "ask",
+          },
+        ],
+      }),
+    });
     expect(askResponse.status).toBe(400);
   });
 
@@ -658,7 +655,7 @@ describe("zero user permission grants", () => {
 
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const denyExpiration = await app.request(
-      "/api/zero/user-permission-grants/apply",
+      "/api/user-permission-grants/apply",
       {
         method: "PUT",
         headers: {
@@ -977,28 +974,25 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
-    const response = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorSlug: SLACK_CONNECTOR,
-          mode: "patch",
-          grants: [
-            {
-              permission: SLACK_READ_PERMISSION,
-              action: "allow",
-              expiresIn: "2h",
-            },
-          ],
-        }),
+    const response = await app.request("/api/user-permission-grants/apply", {
+      method: "PUT",
+      headers: {
+        authorization: AUTH_HEADERS.authorization,
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        agentId,
+        connectorSlug: SLACK_CONNECTOR,
+        mode: "patch",
+        grants: [
+          {
+            permission: SLACK_READ_PERMISSION,
+            action: "allow",
+            expiresIn: "2h",
+          },
+        ],
+      }),
+    });
     expect(response.status).toBe(400);
   });
 
@@ -1008,28 +1002,25 @@ describe("zero user permission grants", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
-    const response = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorSlug: SLACK_CONNECTOR,
-          mode: "patch",
-          grants: [
-            {
-              permission: SLACK_READ_PERMISSION,
-              action: "deny",
-              expiresIn: "1h",
-            },
-          ],
-        }),
+    const response = await app.request("/api/user-permission-grants/apply", {
+      method: "PUT",
+      headers: {
+        authorization: AUTH_HEADERS.authorization,
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        agentId,
+        connectorSlug: SLACK_CONNECTOR,
+        mode: "patch",
+        grants: [
+          {
+            permission: SLACK_READ_PERMISSION,
+            action: "deny",
+            expiresIn: "1h",
+          },
+        ],
+      }),
+    });
     expect(response.status).toBe(400);
   });
 });

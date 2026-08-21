@@ -75,7 +75,7 @@ export type UpdateModelProviderConnectionRequest = z.infer<
 export const modelProviderConnectionsMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/model-provider-connections",
+    path: "/api/model-provider-connections",
     headers: authHeadersSchema,
     responses: {
       200: modelProviderConnectionsResponseSchema,
@@ -87,7 +87,7 @@ export const modelProviderConnectionsMainContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/okou/model-provider-connections",
+    path: "/api/model-provider-connections",
     headers: authHeadersSchema,
     body: createModelProviderConnectionRequestSchema,
     responses: {
@@ -104,7 +104,7 @@ export const modelProviderConnectionsMainContract = c.router({
 export const modelProviderConnectionsByIdContract = c.router({
   update: {
     method: "PUT",
-    path: "/api/okou/model-provider-connections/:id",
+    path: "/api/model-provider-connections/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: updateModelProviderConnectionRequestSchema,
@@ -120,7 +120,7 @@ export const modelProviderConnectionsByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/model-provider-connections/:id",
+    path: "/api/model-provider-connections/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {

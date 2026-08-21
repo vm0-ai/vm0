@@ -27,7 +27,7 @@ export const teamsBrowserConnectQuerySchema = z.object({
 export const teamsBrowserConnectContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/okou/teams/connect",
+    path: "/api/teams/connect",
     query: teamsBrowserConnectQuerySchema,
     responses: {
       307: c.noBody(),

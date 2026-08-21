@@ -111,7 +111,7 @@ async function createPermissionedCustomConnector(
   );
 }
 
-describe("GET /api/zero/custom-connectors/:id/permissions", () => {
+describe("GET /api/custom-connectors/:id/permissions", () => {
   it("returns permission metadata for a custom connector with a bundle", async () => {
     const actor = bdd.user();
     const connector = await createPermissionedCustomConnector(
