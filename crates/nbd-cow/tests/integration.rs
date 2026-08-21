@@ -1013,22 +1013,37 @@ fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
         .expect("replacement COW layer");
         let replacement_io = nbd_cow::cow_io::CowIo::new(replacement_layer);
         let replacement_shutdown = tokio_util::sync::CancellationToken::new();
-        let (client_fd, server_fd) =
-            nbd_cow::netlink::create_socketpair().expect("replacement socketpair");
-        let server_io = replacement_io.clone();
-        let server_shutdown = replacement_shutdown.clone();
-        let replacement_server = tokio::spawn(async move {
-            let _ = nbd_cow::server::dispatch(server_fd, server_io, server_shutdown).await;
-        });
+        let mut client_fds = Vec::with_capacity(nbd_cow::NUM_CONNECTIONS);
+        let mut replacement_servers = Vec::with_capacity(nbd_cow::NUM_CONNECTIONS);
+        for _ in 0..nbd_cow::NUM_CONNECTIONS {
+            let (client_fd, server_fd) =
+                nbd_cow::netlink::create_socketpair().expect("replacement socketpair");
+            client_fds.push(client_fd);
+            let server_io = replacement_io.clone();
+            let server_shutdown = replacement_shutdown.clone();
+            replacement_servers.push(tokio::spawn(async move {
+                let _ = nbd_cow::server::dispatch(server_fd, server_io, server_shutdown).await;
+            }));
+        }
         let size = fixture.size();
         let replacement_connect_tid = tokio::task::spawn_blocking(move || {
             let tid = unsafe { libc::gettid() } as u32;
-            let result = nbd_cow::netlink::connect_device(
-                device_index,
-                &[client_fd],
-                size,
-                nbd_cow::BLOCK_SIZE as u64,
-            );
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let result = loop {
+                match nbd_cow::netlink::connect_device(
+                    device_index,
+                    &client_fds,
+                    size,
+                    nbd_cow::BLOCK_SIZE as u64,
+                ) {
+                    Err(nbd_cow::error::NbdCowError::NetlinkErrno { errno, .. })
+                        if errno == libc::EBUSY && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    result => break result,
+                }
+            };
             (tid, result)
         })
         .await
@@ -1040,22 +1055,29 @@ fn stale_cleanup_rejects_recycled_tid_with_different_backend_identity() {
         let replacement_backend = nbd_backend(device_index).expect("replacement sysfs backend");
         let replacement_size_matches =
             nbd_cow::netlink::verify_device_size(device_index, fixture.size()).await;
+        let mut replacement_device = tokio::time::timeout(Duration::from_secs(5), async move {
+            tokio::fs::File::open(format!("/dev/nbd{device_index}")).await
+        })
+        .await
+        .expect("replacement open should not time out")
+        .expect("replacement open should succeed");
 
         let stale_cleanup_result = original.destroy_with_retries(destroy_policy()).await;
         let backend_after_stale_cleanup = nbd_backend(device_index);
         let pid_after_stale_cleanup = nbd_pid(device_index);
-        let replacement_read = tokio::time::timeout(Duration::from_secs(5), async {
-            let mut device = tokio::fs::File::open(format!("/dev/nbd{device_index}")).await?;
+        let replacement_read = tokio::time::timeout(Duration::from_secs(5), async move {
             let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
-            device.read_exact(&mut block).await?;
+            replacement_device.read_exact(&mut block).await?;
             Ok::<_, std::io::Error>(block)
         })
         .await;
 
         let replacement_disconnect_result = nbd_cow::netlink::disconnect(device_index);
         replacement_shutdown.cancel();
-        replacement_server.abort();
-        let _ = replacement_server.await;
+        for server in replacement_servers {
+            server.abort();
+            let _ = server.await;
+        }
         pool.cleanup().await;
 
         assert_eq!(original_tid, replacement_connect_tid.0);
