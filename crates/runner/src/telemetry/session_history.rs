@@ -9,6 +9,12 @@ use crate::types::{
     SessionHistorySizeBucket,
 };
 
+/// Low-cardinality session-history telemetry fields emitted with a sandbox op.
+///
+/// The ref observation fields are produced by the runner-local
+/// [`SessionHistoryProbe`](crate::executor::SessionHistoryProbe). They describe
+/// probe state at materializer start, not a storage-cache hit or global
+/// download coordination state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct SessionHistoryTelemetryFields {
     encoding: &'static str,
@@ -22,11 +28,15 @@ pub(crate) struct SessionHistoryTelemetryFields {
         rename = "session_history_ref_seen_recently",
         skip_serializing_if = "Option::is_none"
     )]
+    /// Whether a matching ref identity had a prior observation within the
+    /// probe's one-hour default window at materializer start.
     ref_seen_recently: Option<&'static str>,
     #[serde(
         rename = "session_history_ref_download_inflight",
         skip_serializing_if = "Option::is_none"
     )]
+    /// Whether a prior matching probe registration was active before the
+    /// current materializer registered its own download.
     ref_download_inflight: Option<&'static str>,
     #[serde(
         rename = "session_history_content_length_state",
@@ -61,6 +71,21 @@ pub(crate) struct SessionHistoryTelemetryMetadata {
     response: Option<SessionHistoryResponseTelemetryMetadata>,
 }
 
+/// Best-effort, runner-local observation attached to a session-history download.
+///
+/// The probe identity is the tuple of hash, encoding, raw size, and encoded
+/// size. URL and download source are not part of the identity. The default
+/// probe retains observations for one hour and tracks at most 4,096 identities;
+/// expiry and capacity eviction can therefore make either observation false,
+/// including for an entry that was previously active. This metadata does not
+/// indicate that history bytes are cached or that a download was suppressed.
+///
+/// Both values are sampled before the current materializer adds its
+/// registration. `seen_recently` means that the prior matching entry was seen
+/// within the observation window. `download_inflight` means that the prior
+/// matching entry had an active registration at that moment. Registrations are
+/// cleared by the materializer/worker lifecycle and shared guard cleanup on
+/// completion, cancellation, abort, and drop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SessionHistoryCacheProbeMetadata {
     seen_recently: bool,

@@ -12,6 +12,24 @@
 //! single point that consumes the task result, and cancellation takes priority
 //! over a completed download so cancelled runs do not proceed into restore.
 //!
+//! `SessionHistoryProbe` is runner-process-local, in-memory telemetry
+//! observation for hash-backed references. It does not cache session-history
+//! bytes, suppress or deduplicate downloads, or coordinate observations across
+//! runners. A reference identity is the tuple of hash, encoding, raw size, and
+//! encoded size; URL and download source are not part of that identity. The
+//! default probe treats observations as recent for one hour and bounds the
+//! tracked set to 4,096 identities.
+//!
+//! Probe observations are sampled before the current materializer registers its
+//! download. `session_history_ref_seen_recently` therefore reports whether a
+//! matching identity had a prior observation within the probe window, while
+//! `session_history_ref_download_inflight` reports whether a prior matching
+//! registration was active at that sampling point. Expiry and bounded capacity
+//! eviction make both fields best-effort signals; they do not establish byte
+//! availability or authoritative global activity. Registrations are released
+//! through the shared guard across task completion, cancellation, task abort,
+//! and materializer or guard drop.
+//!
 //! Download diagnostics must not expose presigned URL query strings, and the
 //! downloaded bytes must satisfy the declared size, byte cap, and hash contract
 //! before they are restored into the sandbox.
@@ -56,6 +74,13 @@ pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
 }
 
+/// Runner-process-local, in-memory observation of session-history ref activity.
+///
+/// The probe exists only to annotate download telemetry. It does not store
+/// history bytes, suppress downloads, deduplicate requests, or share state
+/// across runners. Its default one-hour observation window and 4,096-entry
+/// capacity bound the state, so observations can be lost through expiry or
+/// eviction and must be interpreted as best-effort signals.
 #[derive(Clone)]
 pub(crate) struct SessionHistoryProbe {
     inner: Arc<Mutex<SessionHistoryProbeState>>,
