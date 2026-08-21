@@ -90,14 +90,20 @@ type WorkflowArtIcon = StartCardConnectorIcon | undefined;
 /**
  * A reply beside the mark: the same two-part build as the avatar card's
  * portrait and waveform, which is what lets a brand mark sit in this row
- * without reading as a pasted-in logo. The mark's artwork covers 45% of its
- * own canvas, so the box is scaled up to land it at 28px.
+ * without reading as a pasted-in logo.
+ *
+ * The mark is not framed. A round chip made the square four-colour logo read as
+ * a cropped profile picture, and the bubble beside it already supplies the
+ * white bordered object every other tile is built from. The artwork covers 45%
+ * of its own canvas, so the box is scaled up to land the mark at 26px — under
+ * the avatar tile's 32px portrait, which is the largest anything in this row
+ * gets.
  */
 function SlackArt({ accent }: { accent: string }) {
   return (
-    <div className="relative h-[34px] w-[52px]">
+    <div className="relative h-[32px] w-[52px]">
       <span
-        className="absolute right-0 top-px flex w-[30px] flex-col gap-[3px] rounded-[7px] border bg-card px-[5px] py-1.5"
+        className="absolute right-0 top-0 flex w-[28px] flex-col gap-[3px] rounded-[7px] border bg-card px-[5px] py-1.5"
         style={{ borderColor: `${accent}${LINE_ALPHA}` }}
       >
         <span
@@ -109,11 +115,8 @@ function SlackArt({ accent }: { accent: string }) {
           style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
         />
       </span>
-      <span
-        className="absolute bottom-0 left-0 grid size-[30px] place-items-center overflow-hidden rounded-full border bg-card"
-        style={{ borderColor: `${accent}${LINE_ALPHA}` }}
-      >
-        <img src={slackIconImg} alt="" className="size-7 scale-[2.2]" />
+      <span className="absolute bottom-0 left-0 grid size-[26px] place-items-center">
+        <img src={slackIconImg} alt="" className="size-[26px] scale-[2.2]" />
       </span>
     </div>
   );
@@ -597,10 +600,12 @@ function SlackHowItWorksDialog({ step }: { step: SlackStartCardStep }) {
             )}
           </DialogDescription>
         </DialogHeader>
-        <div className="overflow-hidden rounded-xl border-[0.7px] border-border">
+        {/* The clip's own ratio. Without it the slot takes the browser's
+            300x150 default until metadata lands, and the dialog jumps. */}
+        <div className="aspect-[76/47] overflow-hidden rounded-xl border-[0.7px] border-border">
           <video
             src={slackHowItWorksVideo}
-            className="block w-full"
+            className="block size-full object-cover"
             autoPlay
             loop
             muted
@@ -713,13 +718,14 @@ export function StartCards({
     return art[kind];
   };
 
-  // The draw waits on the Slack integration status, and a card's height is the
-  // 72px tile plus its padding — holding that height keeps the composer above
-  // from jumping when the row lands.
+  // The draw waits on the Slack integration status, so the grid holds a card's
+  // measured height while it resolves — the composer above must not jump when
+  // the row lands. 124px, not the 104px a 72px tile plus padding suggests: the
+  // two-line description at `leading-relaxed` is the taller of the two.
   return (
     <div
       data-testid="start-cards"
-      className="grid min-h-[104px] w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid min-h-[124px] w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
     >
       {(kinds ?? []).map((kind) => {
         if (kind === "slack") {
