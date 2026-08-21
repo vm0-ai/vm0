@@ -354,18 +354,22 @@ async function validateStatementShapes(
 
   const updatedAt = new Date("2026-08-21T00:00:00.000Z");
   const updatedLabel = `${relation}-runtime-state-fixture`;
-  const updated = await client.query(
+  const updated = await client.query<KeyRow>(
     `
       UPDATE ${relationIdentifier}
       SET "label" = $1, "updated_at" = $2
       WHERE ${relationIdentifier}."id" = $3
+      RETURNING "id", "api_key", "label"
     `,
     [updatedLabel, updatedAt, insertedRow.id],
   );
   assert.equal(updated.rowCount, 1);
-  assert.deepEqual(await selectKeyByVendor(client, counterpart, vendor), [
-    { ...insertedRow, label: updatedLabel },
-  ]);
+  const updatedRows = [{ ...insertedRow, label: updatedLabel }];
+  assert.deepEqual(updated.rows, updatedRows);
+  assert.deepEqual(
+    await selectKeyByVendor(client, counterpart, vendor),
+    updatedRows,
+  );
 
   await validateCrossRelationLock(
     client,
@@ -376,14 +380,16 @@ async function validateStatementShapes(
     updatedLabel,
   );
 
-  const deleted = await client.query(
+  const deleted = await client.query<KeyRow>(
     `
       DELETE FROM ${relationIdentifier}
       WHERE ${relationIdentifier}."id" = $1
+      RETURNING "id", "api_key", "label"
     `,
     [insertedRow.id],
   );
   assert.equal(deleted.rowCount, 1);
+  assert.deepEqual(deleted.rows, updatedRows);
   assert.deepEqual(await selectKeyByVendor(client, counterpart, vendor), []);
 }
 
@@ -440,7 +446,7 @@ export async function validateBuiltInModelKeysCompatibilityRelation(): Promise<v
     console.log("   ✅ the legacy table remains the physical relation");
     console.log("   ✅ the canonical view exposes the six explicit columns");
     console.log(
-      "   ✅ both identities support SELECT, INSERT RETURNING, targeted conflict handling, UPDATE, DELETE, and cross-relation row locking\n",
+      "   ✅ both identities support SELECT, INSERT RETURNING, targeted conflict handling, UPDATE RETURNING, DELETE RETURNING, and cross-relation row locking\n",
     );
   } finally {
     await client.end();
