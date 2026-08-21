@@ -14,19 +14,21 @@ interface FinalConsoleRoute {
   readonly finalPath: string;
 }
 
-// The eight URLs the Feishu, Slack, and Microsoft consoles hold after #28278
-// Stage 0. Restated here so the registration is asserted against the issue
-// table rather than against the map the production code reads.
+// The URLs the Feishu and Slack consoles hold after #28278 Stage 0 and whose
+// contracts still declare the branded path. Restated here so the registration
+// is asserted against the issue table rather than against the map the
+// production code reads.
+//
+// The two Microsoft rows are gone: #28545 moved those contracts onto their
+// final console paths, so `MIGRATED_BRANDED_PATHS` owes their branded forms
+// now and `migrated-branded-paths.test.ts` is what covers them. A row that
+// migrates has to leave this list, because the last assertion below pins that
+// this table adds exactly these registrations and nothing else.
 const FINAL_CONSOLE_ROUTES: readonly FinalConsoleRoute[] = [
   {
     method: "GET",
     brandedPath: "/api/okou/slack/oauth/callback",
     finalPath: "/api/integrations/slack/oauth/callback",
-  },
-  {
-    method: "GET",
-    brandedPath: "/api/okou/teams/oauth/callback",
-    finalPath: "/api/integrations/teams/oauth/callback",
   },
   {
     method: "GET",
@@ -47,11 +49,6 @@ const FINAL_CONSOLE_ROUTES: readonly FinalConsoleRoute[] = [
     method: "POST",
     brandedPath: "/api/okou/slack/interactive",
     finalPath: "/api/webhooks/slack/interactive",
-  },
-  {
-    method: "POST",
-    brandedPath: "/api/okou/teams/bot",
-    finalPath: "/api/webhooks/teams/bot",
   },
   {
     method: "POST",
@@ -93,9 +90,9 @@ function requireRegistration(
 
 // Per-endpoint behaviour is covered through the endpoints themselves in
 // routes/__tests__/provider-console-paths.test.ts. This file asserts the one
-// property no endpoint can express: over the whole route table, exactly these
-// eight registrations are added and none of the other product routes gains a
-// second path.
+// property no endpoint can express: over the whole route table, exactly the
+// registrations listed above are added and none of the other product routes
+// gains a second path.
 describe("final provider console paths", () => {
   const registeredRoutes = withApiNamespaceAliases(
     withFinalProviderConsolePaths(ROUTES),
@@ -130,7 +127,7 @@ describe("final provider console paths", () => {
     }
   });
 
-  it("adds only these eight paths and keeps every registration unique", () => {
+  it("adds only these listed paths and keeps every registration unique", () => {
     const brandedOnlyKeys = new Set(
       withApiNamespaceAliases(ROUTES).map(routeKey),
     );
