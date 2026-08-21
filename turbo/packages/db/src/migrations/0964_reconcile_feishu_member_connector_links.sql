@@ -13,6 +13,11 @@ BEGIN
     )
   )
   FROM "feishu_org_installations" AS "installation"
+  WHERE EXISTS (
+    SELECT 1
+    FROM "feishu_org_connections" AS "feishu_connection"
+    WHERE "feishu_connection"."installation_id" = "installation"."id"
+  )
   ORDER BY "installation"."id";
 END;
 $$;
