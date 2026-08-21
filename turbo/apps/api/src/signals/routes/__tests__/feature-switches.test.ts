@@ -15,7 +15,7 @@ function client() {
   );
 }
 
-describe("/api/zero/feature-switches", () => {
+describe("/api/feature-switches", () => {
   it("persists and activates a user override for a non-staff org", async () => {
     createRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",

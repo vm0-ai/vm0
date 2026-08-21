@@ -179,6 +179,112 @@ async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
 }
 
 #[tokio::test]
+async fn workspace_sidecar_probe_miss_falls_back_and_records_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let server = MockServer::start_async().await;
+    let history = br#"{"type":"init"}"#;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    set_reuse_and_session_history_ref(
+        &mut ctx,
+        "sess-cache-sidecar-missing-metadata",
+        history,
+        server.url("/history.blob?token=secret"),
+    );
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    seed_workspace_image_cache_with_sidecar(
+        &cache,
+        &runner_paths,
+        &ctx,
+        params.workspace_disk_mb,
+        history,
+        WorkspaceSessionHistorySidecarRepresentation::Raw,
+    )
+    .await;
+    let cache_key = scoped_workspace_image_cache_key(
+        "",
+        "vm0/default",
+        ctx.reuse_key.as_deref().unwrap(),
+        CANONICAL_WORKING_DIR,
+        u64::from(params.workspace_disk_mb) * 1024 * 1024,
+    );
+    tokio::fs::remove_file(
+        cache
+            .entry_paths(&cache_key)
+            .session_history_sidecar_metadata(),
+    )
+    .await
+    .unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox_with_prepared_notifier(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            NewSandboxHooks {
+                controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                    .with_session_history_restore_plan(
+                        SessionHistoryRestorePlan::DeferredHashBacked {
+                            fallback: Some(SessionHistoryRestoreFallback::NonReuse),
+                        },
+                    ),
+                prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
+                sandbox_prepared: None,
+            },
+        ),
+    )
+    .await
+    .expect("sandbox creation should fall back from the missing sidecar metadata")
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_some());
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::Reused),
+    );
+    assert_eq!(overrides.create_configs().len(), 1);
+    let writes = overrides.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].content, history);
+    history_mock.assert_calls_async(1).await;
+    assert_telemetry_action(
+        &telemetry,
+        "session_history_workspace_cache_probe",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "session_history_workspace_cache_miss",
+        true,
+        Some("missing"),
+    );
+}
+
+#[tokio::test]
 async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidation() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));

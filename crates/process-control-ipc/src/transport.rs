@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Read, Write};
 use std::mem::{MaybeUninit, size_of};
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -8,7 +8,11 @@ const ENDPOINT_PREFIX: &str = "vm0-process-control-";
 const MAX_U32_DECIMAL_DIGITS: usize = 10;
 const NONCE_HEX_LEN: usize = 16 * 2;
 const WORKLOAD_PLACEMENT_MARKER: u8 = 0x57;
+const TOOL_PLACEMENT_MARKER: u8 = 0x54;
+const TOOL_PLACEMENT_CONFIRM_MARKER: u8 = 0x43;
+const TOOL_PLACEMENT_ACK_MARKER: u8 = 0x41;
 const ANCILLARY_BUFFER_WORDS: usize = 8;
+const LISTENER_BACKLOG: libc::c_int = 128;
 
 /// Build the abstract socket name for an operation-control endpoint.
 ///
@@ -79,7 +83,7 @@ pub fn bind_abstract_listener(name: &str) -> io::Result<UnixListener> {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: fd is a valid bound AF_UNIX socket.
-    let ret = unsafe { libc::listen(fd.as_raw_fd(), 1) };
+    let ret = unsafe { libc::listen(fd.as_raw_fd(), LISTENER_BACKLOG) };
     if ret != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -129,7 +133,21 @@ pub fn connect_abstract(name: &str) -> io::Result<UnixStream> {
 /// Socket errors are returned as standard [`io::Error`] values. A short send
 /// is reported as [`io::ErrorKind::WriteZero`].
 pub fn send_workload_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -> io::Result<()> {
-    let marker = [WORKLOAD_PLACEMENT_MARKER];
+    send_placement(stream, placement, WORKLOAD_PLACEMENT_MARKER)
+}
+
+/// Send one tool-placement descriptor over an authenticated broker stream.
+///
+/// # Errors
+///
+/// Socket and ancillary-data errors are returned as standard [`io::Error`]
+/// values.
+pub fn send_tool_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -> io::Result<()> {
+    send_placement(stream, placement, TOOL_PLACEMENT_MARKER)
+}
+
+fn send_placement(stream: &UnixStream, placement: BorrowedFd<'_>, marker: u8) -> io::Result<()> {
+    let marker = [marker];
     let mut iov = libc::iovec {
         iov_base: marker.as_ptr().cast_mut().cast(),
         iov_len: marker.len(),
@@ -202,6 +220,20 @@ pub fn send_workload_placement(stream: &UnixStream, placement: BorrowedFd<'_>) -
 /// truncated, or malformed descriptor bootstrap data returns
 /// [`io::ErrorKind::InvalidData`].
 pub fn receive_workload_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
+    receive_placement(stream, WORKLOAD_PLACEMENT_MARKER)
+}
+
+/// Receive one close-on-exec tool-placement descriptor.
+///
+/// # Errors
+///
+/// Socket errors and malformed ancillary data are returned as standard
+/// [`io::Error`] values.
+pub fn receive_tool_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
+    receive_placement(stream, TOOL_PLACEMENT_MARKER)
+}
+
+fn receive_placement(stream: &UnixStream, expected_marker: u8) -> io::Result<OwnedFd> {
     let mut marker = [0_u8; 1];
     let mut iov = libc::iovec {
         iov_base: marker.as_mut_ptr().cast(),
@@ -231,7 +263,7 @@ pub fn receive_workload_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
 
     let descriptors = received_rights_descriptors(&message);
     let valid = received == 1
-        && marker == [WORKLOAD_PLACEMENT_MARKER]
+        && marker == [expected_marker]
         && message.msg_flags & (libc::MSG_CTRUNC | libc::MSG_TRUNC) == 0
         && descriptors.len() == 1;
     if !valid {
@@ -252,6 +284,63 @@ pub fn receive_workload_placement(stream: &UnixStream) -> io::Result<OwnedFd> {
     // appears exactly once in the validated rights message, and ownership is
     // transferred to the returned OwnedFd.
     Ok(unsafe { OwnedFd::from_raw_fd(descriptor) })
+}
+
+/// Confirm that the launcher wrote itself into the supplied tool cgroup.
+///
+/// # Errors
+///
+/// Stream write errors are returned unchanged.
+pub fn write_tool_placement_confirmation(stream: &UnixStream) -> io::Result<()> {
+    write_marker(stream, TOOL_PLACEMENT_CONFIRM_MARKER)
+}
+
+/// Read the launcher's tool-placement confirmation.
+///
+/// # Errors
+///
+/// EOF, stream errors, and an unexpected marker are returned as
+/// [`io::Error`] values.
+pub fn read_tool_placement_confirmation(stream: &UnixStream) -> io::Result<()> {
+    read_marker(stream, TOOL_PLACEMENT_CONFIRM_MARKER)
+}
+
+/// Acknowledge that root revalidated the launcher's tool membership.
+///
+/// # Errors
+///
+/// Stream write errors are returned unchanged.
+pub fn write_tool_placement_ack(stream: &UnixStream) -> io::Result<()> {
+    write_marker(stream, TOOL_PLACEMENT_ACK_MARKER)
+}
+
+/// Wait for root to acknowledge exact tool placement.
+///
+/// # Errors
+///
+/// EOF, stream errors, and an unexpected marker are returned as
+/// [`io::Error`] values.
+pub fn read_tool_placement_ack(stream: &UnixStream) -> io::Result<()> {
+    read_marker(stream, TOOL_PLACEMENT_ACK_MARKER)
+}
+
+fn write_marker(stream: &UnixStream, marker: u8) -> io::Result<()> {
+    let mut stream = stream;
+    stream.write_all(&[marker])
+}
+
+fn read_marker(stream: &UnixStream, expected: u8) -> io::Result<()> {
+    let mut stream = stream;
+    let mut marker = [0_u8; 1];
+    stream.read_exact(&mut marker)?;
+    if marker == [expected] {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid tool placement handshake marker",
+        ))
+    }
 }
 
 fn cmsg_space_for_one_fd() -> usize {
@@ -553,6 +642,26 @@ mod tests {
         let flags = unsafe { libc::fcntl(received.as_raw_fd(), libc::F_GETFD) };
         assert!(flags >= 0);
         assert_ne!(flags & libc::FD_CLOEXEC, 0);
+    }
+
+    #[test]
+    fn tool_placement_descriptor_and_handshake_round_trip() {
+        let (server, client) = UnixStream::pair().unwrap();
+        let placement = std::fs::File::open("/dev/null").unwrap();
+        let expected = placement.metadata().unwrap();
+        let server = std::thread::spawn(move || {
+            send_tool_placement(&server, placement.as_fd()).unwrap();
+            read_tool_placement_confirmation(&server).unwrap();
+            write_tool_placement_ack(&server).unwrap();
+        });
+
+        let received = receive_tool_placement(&client).unwrap();
+        let actual = std::fs::File::from(received).metadata().unwrap();
+        assert_eq!(actual.dev(), expected.dev());
+        assert_eq!(actual.ino(), expected.ino());
+        write_tool_placement_confirmation(&client).unwrap();
+        read_tool_placement_ack(&client).unwrap();
+        server.join().unwrap();
     }
 
     #[test]

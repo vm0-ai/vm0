@@ -8,7 +8,7 @@ import {
 import { singleFlight } from "./desktop-async-control";
 
 const AUTH_ME_PATH = "/api/auth/me";
-const ZERO_ORG_PATH = "/api/okou/org";
+const ZERO_ORG_PATH = "/api/org";
 
 interface AuthMeResponse {
   readonly userId: string;

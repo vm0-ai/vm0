@@ -17,6 +17,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-init**        | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest                 |
 | **guest-agent**       | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM                              |
 | **guest-contracts**   | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers                     |
+| **guest-tool-exec**   | Explicit shell-tool launcher and runtime hook adapter for per-tool cgroup placement                                                |
 | **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                |
 | **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                      |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                            |
@@ -88,7 +89,7 @@ TARGET_TRIPLE=aarch64-unknown-linux-musl
 
 # Step 1: build guest binaries
 cargo build --target "$TARGET_TRIPLE" \
-  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file \
+  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-tool-exec -p guest-write-file \
   --profile ci
 
 # Step 2: build runner with embedded guests
@@ -98,6 +99,7 @@ GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
 GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
 GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
 GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+GUEST_TOOL_EXEC_PATH="target/$TARGET_TRIPLE/ci/guest-tool-exec" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```

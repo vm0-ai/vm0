@@ -313,7 +313,7 @@ describe("ORG-01: org update and delete error matrix", () => {
     context.mocks.clerk.organizations.updateOrganization.mockClear();
     const legacySlugBody = await api.requestRawJson(
       admin,
-      "/api/zero/org",
+      "/api/org",
       "PUT",
       { slug: slug("bdd-r5-next"), force: true },
       [400],
@@ -375,7 +375,7 @@ describe("ORG-01: org update and delete error matrix", () => {
 
     const wrongConfirm = await api.requestRawJson(
       admin,
-      "/api/zero/org/delete",
+      "/api/org/delete",
       "POST",
       { confirm: "delete" },
       [400],
@@ -384,7 +384,7 @@ describe("ORG-01: org update and delete error matrix", () => {
 
     const rawDelete = await api.requestRawJson(
       admin,
-      "/api/zero/org/delete",
+      "/api/org/delete",
       "POST",
       {},
       [400],
@@ -731,7 +731,7 @@ describe("ORG-02: membership admin matrix", () => {
     expect(invalidInvite.body.error.code).toBe("BAD_REQUEST");
     const rawRevoke = await api.requestRawJson(
       admin,
-      "/api/zero/org/invite",
+      "/api/org/invite",
       "DELETE",
       {},
       [400],
@@ -785,7 +785,7 @@ describe("ORG-02: membership admin matrix", () => {
 
     const rawAccept = await api.requestRawJson(
       admin,
-      "/api/zero/org/membership-requests",
+      "/api/org/membership-requests",
       "POST",
       {},
       [400],
@@ -793,7 +793,7 @@ describe("ORG-02: membership admin matrix", () => {
     expect(rawAccept.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
     const rawReject = await api.requestRawJson(
       admin,
-      "/api/zero/org/membership-requests",
+      "/api/org/membership-requests",
       "DELETE",
       {},
       [400],

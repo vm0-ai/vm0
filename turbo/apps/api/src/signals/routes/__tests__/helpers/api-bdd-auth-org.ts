@@ -647,7 +647,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           headers.authorization = auth.authorization;
         }
       }
-      const response = await testApp().request("/api/zero/org/logo", {
+      const response = await testApp().request("/api/org/logo", {
         method: "POST",
         headers,
         body: form,
@@ -655,7 +655,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       const body: unknown = await response.json();
       if (!(statuses as readonly number[]).includes(response.status)) {
         throw new Error(
-          `Expected POST /api/zero/org/logo status to be one of ${statuses.join(
+          `Expected POST /api/org/logo status to be one of ${statuses.join(
             ", ",
           )}, received ${response.status}. Body: ${JSON.stringify(body)}`,
         );
@@ -1170,7 +1170,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       bearer: string,
       statuses: readonly number[],
     ): Promise<RawJsonResponse> {
-      const response = await testApp().request("/api/zero/org/delete", {
+      const response = await testApp().request("/api/org/delete", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -1181,7 +1181,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       const responseBody: unknown = await response.json();
       if (!statuses.includes(response.status)) {
         throw new Error(
-          `Expected POST /api/zero/org/delete status to be one of ${statuses.join(
+          `Expected POST /api/org/delete status to be one of ${statuses.join(
             ", ",
           )}, received ${response.status}. Body: ${JSON.stringify(
             responseBody,

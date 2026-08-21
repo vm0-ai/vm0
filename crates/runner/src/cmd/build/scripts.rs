@@ -731,6 +731,34 @@ wait
         );
     }
 
+    #[test]
+    fn rootfs_scripts_install_explicit_runtime_tool_hooks_without_replacing_bash() {
+        assert!(
+            CUSTOMIZE_SCRIPT.contains("TOOL_EXEC_DEST=\"/usr/local/bin/guest-tool-exec\""),
+            "customize-rootfs.sh should use the canonical tool executor path"
+        );
+        assert!(
+            CUSTOMIZE_SCRIPT.contains("\"command\": \"/usr/local/bin/guest-tool-exec hook\""),
+            "customize-rootfs.sh should configure the Claude Code tool hook"
+        );
+        assert!(
+            CUSTOMIZE_SCRIPT.contains("command = \"/usr/local/bin/guest-tool-exec hook\""),
+            "customize-rootfs.sh should configure the Codex tool hook"
+        );
+        assert!(
+            !CUSTOMIZE_SCRIPT.contains("/bin/bash.vm0-real"),
+            "customize-rootfs.sh should leave the distribution Bash executable untouched"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains("check_required_file_contains \"$CLAUDE_TOOL_HOOK_DEST\""),
+            "verify-rootfs.sh should verify the Claude Code tool hook"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains("check_required_file_contains \"$CODEX_TOOL_HOOK_DEST\""),
+            "verify-rootfs.sh should verify the Codex tool hook"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn verify_script_resolves_rootfs_symlinks_without_host_paths() {

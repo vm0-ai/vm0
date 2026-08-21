@@ -39,6 +39,11 @@ _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
+_STREAM_ZLIB_WBITS_BY_ENCODING = {
+    "gzip": 16 + zlib.MAX_WBITS,
+    "deflate": zlib.MAX_WBITS,
+}
+_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "identity")
 _SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
@@ -98,11 +103,11 @@ def _no_stream_decode_error() -> str | None:
 def _create_zlib_stream_decode_session(
     feed: _StreamDecodeFeed,
     *,
-    encoding: Literal["gzip", "deflate"],
+    encoding_label: str,
+    wbits: int,
     max_decoded_chunk: int,
     should_continue: _StreamDecodeShouldContinue | None,
 ) -> StreamDecodeSession:
-    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
     obj = zlib.decompressobj(wbits)
     compressed_bytes_seen = 0
     decode_error: str | None = None
@@ -150,7 +155,7 @@ def _create_zlib_stream_decode_session(
                         inspection_stopped = True
                         return
                 decode_error = INVALID_COMPRESSED_BODY
-                _log_streaming_decode_error(encoding, exc)
+                _log_streaming_decode_error(encoding_label, exc)
                 return
             if probing_for_additional_output and decoded:
                 if pending_decoded:
@@ -202,10 +207,13 @@ def _create_zlib_stream_decode_session(
     return StreamDecodeSession(decode, finish_error)
 
 
+def stream_decodable_content_encodings() -> tuple[str, ...]:
+    """Return ordered content codings supported by bounded streaming decode."""
+    return _STREAM_DECODABLE_CONTENT_ENCODINGS
+
+
 def _stream_decode_skip_reason(encoding: str) -> str | None:
-    if not encoding or encoding == "identity":
-        return None
-    if encoding in ("gzip", "deflate"):
+    if not encoding or encoding in stream_decodable_content_encodings():
         return None
     if encoding == "zstd":
         return "zstd streaming output cannot be hard-bounded"
@@ -281,14 +289,13 @@ def create_stream_decode_session(
                 inspection_stopped = True
 
         return StreamDecodeSession(feed_until_stopped, _no_stream_decode_error)
-    if encoding in ("gzip", "deflate"):
-        return _create_zlib_stream_decode_session(
-            feed,
-            encoding=encoding,
-            max_decoded_chunk=max_decoded_chunk,
-            should_continue=should_continue,
-        )
-    return None
+    return _create_zlib_stream_decode_session(
+        feed,
+        encoding_label=encoding,
+        wbits=_STREAM_ZLIB_WBITS_BY_ENCODING[encoding],
+        max_decoded_chunk=max_decoded_chunk,
+        should_continue=should_continue,
+    )
 
 
 def decompress_body(
