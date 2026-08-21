@@ -74,6 +74,7 @@ export type ReadyConnectorConnectionMutation =
   | {
       readonly kind: "insert";
       readonly displayName: string | null;
+      readonly isDefault: boolean;
     }
   | {
       readonly kind: "update";
@@ -129,6 +130,7 @@ export async function resolveConnectorConnectionMutation(
     readonly userId: string;
     readonly target: ConnectorAccountTarget;
     readonly mutation: ConnectorAccountMutation;
+    readonly allowSiblings: boolean;
   },
 ): Promise<ConnectorConnectionMutationResolution> {
   await lockConnectorAccountTarget(db, args);
@@ -166,15 +168,17 @@ export async function resolveConnectorConnectionMutation(
     .for("update")
     .limit(2);
   if (args.mutation.intent === "add") {
-    return existing.length === 0
-      ? {
-          kind: "ready",
-          mutation: {
-            kind: "insert",
-            displayName: args.mutation.displayName ?? null,
-          },
-        }
-      : { kind: "sibling-disabled" };
+    if (existing.length > 0 && !args.allowSiblings) {
+      return { kind: "sibling-disabled" };
+    }
+    return {
+      kind: "ready",
+      mutation: {
+        kind: "insert",
+        displayName: args.mutation.displayName ?? null,
+        isDefault: existing.length === 0,
+      },
+    };
   }
   if (existing.length > 1) {
     return { kind: "ambiguous" };
@@ -184,7 +188,7 @@ export async function resolveConnectorConnectionMutation(
     ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
     : {
         kind: "ready",
-        mutation: { kind: "insert", displayName: null },
+        mutation: { kind: "insert", displayName: null, isDefault: true },
       };
 }
 
@@ -234,7 +238,7 @@ export async function writeConnectorConnectionMetadata(
             orgId: args.orgId,
             userId: args.userId,
             displayName: args.resolution.displayName,
-            isDefault: true,
+            isDefault: args.resolution.isDefault,
             ...targetValues,
             ...replacementValues,
           })

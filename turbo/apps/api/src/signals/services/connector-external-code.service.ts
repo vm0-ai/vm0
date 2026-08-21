@@ -56,12 +56,14 @@ import {
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
 import {
+  connectorAccountSiblingWritesEnabled,
   normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
   storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES = ["pending"] as const;
 const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
@@ -823,6 +825,7 @@ async function createExternalCodeSession(
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly account?: ConnectorAccountMutationIntent;
+    readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly authorizationUrl: string;
@@ -844,6 +847,7 @@ async function createExternalCodeSession(
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
       mutation: normalizeConnectorAccountMutation(args.account),
+      allowSiblings: args.allowSiblings,
     });
     signal.throwIfAborted();
     if (mutationResolution.kind !== "ready") {
@@ -951,6 +955,10 @@ export const startConnectorExternalCodeSession$ = command(
     );
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     const sessionResult = await createExternalCodeSession(
       set(writeDb$),
       {
@@ -961,6 +969,8 @@ export const startConnectorExternalCodeSession$ = command(
         agentId: args.agentId,
         authorizeAgent: args.authorizeAgent,
         account: args.account,
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
         authorizationUrl: startResult.authorizationUrl,

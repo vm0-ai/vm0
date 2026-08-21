@@ -10,6 +10,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "0945_add_byteplus_seedream_5_pricing";
 const expansionMigration = "0946_connector_account_expansion";
+const contractionMigration = "0958_giant_cyclops";
 const testDatabase = "migration_connector_account_expansion";
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -679,6 +680,122 @@ async function validateFeishuLinks(
   assert.deepEqual(cleared.rows, [{ connectorId: null }]);
 }
 
+async function validateConnectorAccountContraction(
+  client: Client,
+  fixture: Awaited<ReturnType<typeof seedPreExpansionState>>,
+): Promise<void> {
+  const column = await client.query<{ isNullable: string }>(`
+    SELECT "is_nullable" AS "isNullable"
+    FROM "information_schema"."columns"
+    WHERE "table_schema" = 'public'
+      AND "table_name" = 'connectors'
+      AND "column_name" = 'is_default'
+  `);
+  assert.deepEqual(column.rows, [{ isNullable: "NO" }]);
+
+  const indexes = await client.query<{ name: string }>(`
+    SELECT "indexname" AS "name"
+    FROM "pg_indexes"
+    WHERE "schemaname" = 'public'
+      AND "indexname" LIKE 'idx_connectors_org_user_%'
+    ORDER BY "indexname"
+  `);
+  assert.deepEqual(
+    indexes.rows.map((row) => {
+      return row.name;
+    }),
+    [
+      "idx_connectors_org_user_custom_connector_default",
+      "idx_connectors_org_user_slug_default",
+    ],
+  );
+
+  const siblingBuiltInId = "00000000-0000-4000-8000-000000276881";
+  const siblingCustomId = "00000000-0000-4000-8000-000000276882";
+  await client.query(
+    `
+      INSERT INTO "connectors" (
+        "id", "connector_slug", "auth_method", "storage_version",
+        "user_id", "org_id", "is_default"
+      ) VALUES ($1, 'github', 'oauth', 1,
+        'user_connector_account_expansion',
+        'org_connector_account_expansion', false)
+    `,
+    [siblingBuiltInId],
+  );
+  await client.query(
+    `
+      INSERT INTO "connectors" (
+        "id", "custom_connector_id", "auth_method", "storage_version",
+        "user_id", "org_id", "is_default"
+      ) VALUES ($1, $2, 'manual', 1,
+        'user_connector_account_expansion',
+        'org_connector_account_expansion', false)
+    `,
+    [siblingCustomId, fixture.customHttpDefinitionId],
+  );
+
+  await expectDatabaseFailure(
+    client.query(
+      `
+        UPDATE "connectors"
+        SET "is_default" = true
+        WHERE "id" = $1
+      `,
+      [siblingBuiltInId],
+    ),
+    "23505",
+    "idx_connectors_org_user_slug_default",
+  );
+  await expectDatabaseFailure(
+    client.query(
+      `
+        UPDATE "connectors"
+        SET "is_default" = NULL
+        WHERE "id" = $1
+      `,
+      [siblingCustomId],
+    ),
+    "23502",
+  );
+
+  const defaults = await client.query<{
+    connectorSlug: string | null;
+    customConnectorId: string | null;
+    defaultCount: number;
+    totalCount: number;
+  }>(`
+    SELECT
+      "connector_slug" AS "connectorSlug",
+      "custom_connector_id" AS "customConnectorId",
+      count(*) FILTER (WHERE "is_default")::integer AS "defaultCount",
+      count(*)::integer AS "totalCount"
+    FROM "connectors"
+    WHERE "org_id" = 'org_connector_account_expansion'
+      AND "user_id" = 'user_connector_account_expansion'
+      AND (
+        "connector_slug" = 'github'
+        OR "custom_connector_id" = '${fixture.customHttpDefinitionId}'::uuid
+      )
+    GROUP BY "connector_slug", "custom_connector_id"
+    ORDER BY "connector_slug" NULLS LAST
+  `);
+  assert.deepEqual(defaults.rows, [
+    {
+      connectorSlug: "github",
+      customConnectorId: null,
+      defaultCount: 1,
+      totalCount: 2,
+    },
+    {
+      connectorSlug: null,
+      customConnectorId: fixture.customHttpDefinitionId,
+      defaultCount: 1,
+      totalCount: 2,
+    },
+  ]);
+}
+
 export async function validateConnectorAccountExpansion(): Promise<void> {
   console.log("=== Validate connector account expansion ===\n");
 
@@ -703,6 +820,21 @@ export async function validateConnectorAccountExpansion(): Promise<void> {
     /"connector"\."custom_connector_id" = "installation"\."custom_connector_id"/u,
   );
   assert.doesNotMatch(migrationSql, /'_feishu-' \|\|/u);
+
+  const contractionSql = await fs.readFile(
+    path.join(migrationsDirectory, `${contractionMigration}.sql`),
+    "utf8",
+  );
+  assert.match(contractionSql, /^-- vm0:non-transactional/u);
+  assert.match(contractionSql, /ALTER COLUMN "is_default" SET NOT NULL/u);
+  assert.match(
+    contractionSql,
+    /DROP INDEX CONCURRENTLY IF EXISTS "idx_connectors_org_user_slug"/u,
+  );
+  assert.match(
+    contractionSql,
+    /DROP INDEX CONCURRENTLY IF EXISTS "idx_connectors_org_user_custom_connector"/u,
+  );
 
   const admin = new Client({ connectionString: adminUrl.toString() });
   await admin.connect();
@@ -730,6 +862,24 @@ export async function validateConnectorAccountExpansion(): Promise<void> {
     await validateSelections(client, fixture);
     await validateFeishuLinks(client, fixture);
 
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractionMigration,
+    );
+    await validateConnectorAccountContraction(client, fixture);
+
+    for (const statement of contractionSql
+      .split("--> statement-breakpoint")
+      .map((value) => {
+        return value.trim();
+      })
+      .filter((value) => {
+        return value.length > 0;
+      })) {
+      await client.query(statement);
+    }
+
     console.log("   ✅ existing connector identities and values survive");
     console.log("   ✅ old singleton writers receive default membership");
     console.log("   ✅ exact target selection constraints fail closed");
@@ -738,6 +888,8 @@ export async function validateConnectorAccountExpansion(): Promise<void> {
     console.log(
       "   ✅ Feishu exact, unmatched, and ambiguous links are safe\n",
     );
+    console.log("   ✅ account contraction is retry-safe and permits siblings");
+    console.log("   ✅ non-empty targets retain one database-unique default\n");
   } finally {
     await client.end();
     await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
