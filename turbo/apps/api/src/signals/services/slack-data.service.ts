@@ -54,7 +54,7 @@ function buildSlackInstallUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/okou/slack/oauth/install`,
+    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/slack/oauth/install`,
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
@@ -74,7 +74,7 @@ function buildSlackConnectUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/okou/slack/oauth/connect`,
+    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/slack/oauth/connect`,
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);

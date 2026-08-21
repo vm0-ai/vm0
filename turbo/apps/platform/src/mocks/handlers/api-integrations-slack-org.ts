@@ -53,7 +53,7 @@ export const apiIntegrationsSlackOrgHandlers = [
     return respond(200, { ok: true });
   }),
 
-  // GET /api/okou/slack/channels
+  // GET /api/slack/channels
   mockApi(slackChannelsContract.list, ({ respond }) => {
     if (!mockSlackOrgData.isInstalled) {
       return respond(404, {

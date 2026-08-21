@@ -552,6 +552,48 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds stay branded and are not moved here —
+  // they are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  //
+  // These rows hold two surfaces open. A released web or app build keeps the
+  // branded path it was compiled against until a refresh loads a build that
+  // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
+  // The OAuth-start paths have a second holder that no client version bounds: a
+  // connect or install link the API handed out earlier lives in a Slack, Teams,
+  // or Feishu message a user can still click, and `/api/okou/slack/oauth/install`
+  // is measured traffic listed in `LEGACY_ZERO_PATHS` above, which after this
+  // move only these rows can serve. Removal follows the #26701 evidence gate
+  // like every other row, not either clock.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
 };
 
 /**

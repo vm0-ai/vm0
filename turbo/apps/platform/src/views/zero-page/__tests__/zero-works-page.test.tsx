@@ -85,7 +85,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
     isAdmin: true,
     installUrl:
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
-    connectUrl: "/api/okou/teams/oauth/connect?orgId=org_1&userId=user_1",
+    connectUrl: "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
   };
   context.mocks.api(teamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
@@ -692,7 +692,7 @@ describe("works page", () => {
           appId: "cli_member",
           callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
           connectUrl:
-            "https://www.vm0.test/api/okou/feishu/oauth/connect?state=incomplete",
+            "https://www.vm0.test/api/feishu/oauth/connect?state=incomplete",
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-member",
@@ -885,7 +885,7 @@ describe("works page", () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     const connectUrl =
-      "https://www.vm0.test/api/okou/feishu/oauth/connect?state=member";
+      "https://www.vm0.test/api/feishu/oauth/connect?state=member";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
     mockFeishuAPI({
       isConnected: false,
@@ -1137,7 +1137,7 @@ describe("works page", () => {
     expect(typeof openedUrl).toBe("string");
     expect(target).toBe("_blank");
     const url = new URL(String(openedUrl), window.location.origin);
-    expect(url.pathname).toBe("/api/okou/teams/oauth/connect");
+    expect(url.pathname).toBe("/api/teams/oauth/connect");
     expect(url.searchParams.get("orgId")).toBe("org_1");
     expect(url.searchParams.get("userId")).toBe("user_1");
   });
