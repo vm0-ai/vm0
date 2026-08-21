@@ -60,6 +60,7 @@ import { validateBuiltInModelKeysCompatibilityRelation } from "./test-built-in-m
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
+import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -11750,6 +11751,7 @@ async function main(): Promise<void> {
     await validateBuiltInModelKeysCompatibilityRelation();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
+    await validateFeishuMemberConnectorReconciliation();
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();
 
