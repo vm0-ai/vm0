@@ -5,7 +5,7 @@
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
  * NOT AN AUTHORIZATION BOUNDARY. Every registered switch accepts user overrides
- * through `POST /api/zero/feature-switches`. For money-granting, credential, or
+ * through `POST /api/feature-switches`. For money-granting, credential, or
  * privilege-escalation endpoints, gate with a hard identity check (e.g.
  * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
@@ -417,6 +417,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Replace the chat landing page's suggested prompts with entry cards for each thing the agent can make.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.HomeGrowthEntry]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the home growth entry for Slack, Telegram, phone, member invites, and credits.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

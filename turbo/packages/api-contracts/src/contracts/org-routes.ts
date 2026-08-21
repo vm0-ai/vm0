@@ -7,13 +7,12 @@ import { orgMessageResponseSchema } from "./org-members";
 const c = initContract();
 
 /**
- * Zero contract for /api/okou/org
- * Proxies to /api/org
+ * Org contract for /api/org
  */
 export const orgContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/org",
+    path: "/api/org",
     headers: authHeadersSchema,
     responses: {
       200: orgResponseSchema,
@@ -25,7 +24,7 @@ export const orgContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/org",
+    path: "/api/org",
     headers: authHeadersSchema,
     body: updateOrgRequestSchema,
     responses: {
@@ -43,13 +42,12 @@ export const orgContract = c.router({
 export type OrgContract = typeof orgContract;
 
 /**
- * Zero contract for POST /api/okou/org/leave
- * Proxies to POST /api/org/leave
+ * Org contract for POST /api/org/leave
  */
 export const orgLeaveContract = c.router({
   leave: {
     method: "POST",
-    path: "/api/okou/org/leave",
+    path: "/api/org/leave",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -66,12 +64,12 @@ export const orgLeaveContract = c.router({
 export type OrgLeaveContract = typeof orgLeaveContract;
 
 /**
- * Zero contract for DELETE /api/okou/org/delete
+ * Org contract for POST /api/org/delete
  */
 export const orgDeleteContract = c.router({
   delete: {
     method: "POST",
-    path: "/api/okou/org/delete",
+    path: "/api/org/delete",
     headers: authHeadersSchema,
     body: z.object({ confirm: z.literal("confirm") }),
     responses: {

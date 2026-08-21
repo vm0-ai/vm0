@@ -130,6 +130,9 @@ fi
 # Enforced by the `ca_constants_in_sync_across_scripts` test in cmd/build.rs.
 CA_CERT_FILE="mitmproxy-ca-cert.pem"
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+TOOL_EXEC_DEST="/usr/local/bin/guest-tool-exec"
+CLAUDE_TOOL_HOOK_DEST="/etc/claude-code/managed-settings.d/90-tool-containment.json"
+CODEX_TOOL_HOOK_DEST="/etc/codex/requirements.toml"
 
 ca_cert="${CA_DIR}/${CA_CERT_FILE}"
 [[ -f "$ca_cert" ]] || { echo "error: CA cert not found: $ca_cert" >&2; exit 1; }
@@ -254,6 +257,42 @@ printf '%s\n' \
 for index in "${!GUEST_SOURCES[@]}"; do
   install_host_file "${GUEST_SOURCES[$index]}" "${GUEST_DESTINATIONS[$index]}" 755
 done
+
+if ! sudo chroot "$MOUNT_DIR" test -x "$(resolve_chroot_dest "$TOOL_EXEC_DEST")"; then
+  echo "error: tool executor guest destination is required: ${TOOL_EXEC_DEST}" >&2
+  exit 1
+fi
+
+printf '%s\n' \
+  '{' \
+  '  "hooks": {' \
+  '    "PreToolUse": [' \
+  '      {' \
+  '        "matcher": "Bash",' \
+  '        "hooks": [' \
+  '          {' \
+  '            "type": "command",' \
+  '            "command": "/usr/local/bin/guest-tool-exec hook",' \
+  '            "timeout": 5' \
+  '          }' \
+  '        ]' \
+  '      }' \
+  '    ]' \
+  '  }' \
+  '}' \
+  | install_inline_file "$CLAUDE_TOOL_HOOK_DEST" 644
+
+printf '%s\n' \
+  '[hooks]' \
+  '' \
+  '[[hooks.PreToolUse]]' \
+  'matcher = "^Bash$"' \
+  '' \
+  '[[hooks.PreToolUse.hooks]]' \
+  'type = "command"' \
+  'command = "/usr/local/bin/guest-tool-exec hook"' \
+  'timeout = 5' \
+  | install_inline_file "$CODEX_TOOL_HOOK_DEST" 644
 
 install_host_file "$ca_cert" "/${CA_ROOTFS_DEST}" 644
 

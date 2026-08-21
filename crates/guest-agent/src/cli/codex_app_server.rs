@@ -375,6 +375,10 @@ impl CodexAppServerClient {
             "CODEX_HOME".to_string(),
             config.codex_home.to_string_lossy().into_owned(),
         ));
+        if let Some(containment) = config.workload_containment.as_ref() {
+            let (key, value) = containment.tool_placement_env();
+            child_env_values.push((key.to_string(), value));
+        }
         let child_env_values = child_env::normalize_values(child_env_values);
         let args = app_server_args(&config.config_overrides);
         let binary = config.binary.to_string_lossy();

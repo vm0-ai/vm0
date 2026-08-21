@@ -85,8 +85,8 @@ export function OnboardingFooter({
   busy = false,
 }: {
   readonly onBack?: () => void;
-  readonly onPrimary: () => void;
-  readonly primaryLabel: string;
+  readonly onPrimary?: () => void;
+  readonly primaryLabel?: string;
   readonly primaryDisabled?: boolean;
   readonly busy?: boolean;
 }) {
@@ -107,20 +107,22 @@ export function OnboardingFooter({
       ) : (
         <span />
       )}
-      <Button
-        type="button"
-        onClick={onPrimary}
-        disabled={primaryDisabled || busy}
-        aria-busy={busy}
-        variant="default"
-        size="lg"
-        className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
-      >
-        {busy ? (
-          <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-        ) : null}
-        {primaryLabel}
-      </Button>
+      {onPrimary && primaryLabel ? (
+        <Button
+          type="button"
+          onClick={onPrimary}
+          disabled={primaryDisabled || busy}
+          aria-busy={busy}
+          variant="default"
+          size="lg"
+          className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
+        >
+          {busy ? (
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+          ) : null}
+          {primaryLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -195,7 +197,7 @@ export function OnboardingShell({
   readonly title: string;
   readonly description: string;
   readonly children: ReactNode;
-  readonly footer: ReactNode;
+  readonly footer?: ReactNode;
   readonly preview?: ReactNode;
 }) {
   const settingsOpen = useGet(settingsDialogOpen$);
@@ -242,9 +244,11 @@ export function OnboardingShell({
           </header>
           {children}
         </main>
-        <footer className="shrink-0 border-t border-border/40 px-5 py-5 sm:px-10">
-          {footer}
-        </footer>
+        {footer ? (
+          <footer className="shrink-0 border-t border-border/40 px-5 py-5 sm:px-10">
+            {footer}
+          </footer>
+        ) : null}
       </section>
     </div>
   );

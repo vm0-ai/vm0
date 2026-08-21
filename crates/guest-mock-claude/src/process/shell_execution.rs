@@ -1,3 +1,4 @@
+use super::bash_tool_command;
 use crate::transcript::{
     JsonlTranscript, assistant_text_event, create_session_history, generate_session_id, init_event,
     result_event, tool_result_event, tool_use_event,
@@ -7,7 +8,7 @@ use serde_json::json;
 use std::io::{ErrorKind, Read};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{ExitCode, Stdio};
 #[cfg(unix)]
 use std::sync::{
     Arc,
@@ -32,7 +33,7 @@ pub(super) fn run(prompt: &str, output_format: &str) -> ExitCode {
 
 /// Execute prompt in text mode: inherited stdio, propagate exit code.
 fn run_text_mode(prompt: &str) -> ExitCode {
-    match Command::new("bash")
+    match bash_tool_command()
         .args(["-c", prompt])
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -189,7 +190,7 @@ fn join_captured_shell_stream(
 }
 
 fn spawn_captured_shell(prompt: &str) -> std::io::Result<ProcessGroupChild> {
-    let mut command = Command::new("bash");
+    let mut command = bash_tool_command();
     command
         .args(["-c", prompt])
         .stdin(Stdio::null())

@@ -1,12 +1,14 @@
 //! Secure workload-cgroup placement owned by Guest Agent.
 //!
 //! The root guest supervisor places Guest Agent in an operation's `control`
-//! leaf and transfers a write-only descriptor for the sibling `workload` leaf
-//! over a nonce-authenticated local socket with `SCM_RIGHTS`. Guest Agent adopts
-//! that descriptor before starting its async runtime and uses a cloned
-//! descriptor only in each CLI child's `pre_exec` hook. The descriptor is never
-//! inherited through the sandbox-user launch chain or copied into a workload
-//! environment.
+//! leaf and transfers a write-only descriptor for `workload/runtime` over a
+//! nonce-authenticated local socket with `SCM_RIGHTS`. Guest Agent adopts that
+//! descriptor before starting its async runtime and uses a cloned descriptor
+//! only in each CLI child's `pre_exec` hook. The descriptor is never inherited
+//! through the sandbox-user launch chain or copied into a workload environment.
+//! Guest Agent separately injects the operation-local tool-placement broker
+//! endpoint into the managed CLI environment so the Bash launcher can request
+//! one root-owned tool cgroup before executing user code.
 
 use std::fs;
 use std::io;
@@ -17,7 +19,8 @@ use std::sync::Arc;
 
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, WORKLOAD_CGROUP_NAME,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME,
+    TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOLS_CGROUP_NAME, WORKLOAD_CGROUP_NAME,
     WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, WorkloadResourceEvents,
 };
 
@@ -28,11 +31,12 @@ const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration
 #[cfg(debug_assertions)]
 const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
 
-/// Root-opened capability used only to place CLI children in `workload`.
+/// Root-opened capability used only to place CLI children in `workload/runtime`.
 #[derive(Clone, Debug)]
 pub struct WorkloadContainment {
     placement: Arc<OwnedFd>,
     workload_path: Arc<PathBuf>,
+    tool_placement_endpoint: Arc<str>,
 }
 
 /// Resource enforcement observed for a completed workload.
@@ -64,35 +68,49 @@ impl WorkloadContainment {
             Some(_) => true,
         };
         let placement_endpoint = std::env::var_os(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
+        let tool_endpoint = std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
 
-        match (process_control_present, placement_endpoint) {
-            (false, None) => Ok(None),
-            (true, None) if test_allows_unmanaged_process_control() => Ok(None),
-            (true, None) => Err(format!(
-                "{} is required with {}",
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
-            )),
-            (false, Some(_)) => Err(format!(
-                "{} requires {}",
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
-            )),
-            (true, Some(value)) => {
+        match (process_control_present, placement_endpoint, tool_endpoint) {
+            (false, None, None) => Ok(None),
+            (true, None, None) if test_allows_unmanaged_process_control() => Ok(None),
+            (true, Some(placement), Some(tool)) => {
                 // SAFETY: production calls this before constructing the Tokio
                 // runtime, so no other thread can access the environment.
-                unsafe { std::env::remove_var(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV) };
-                let value = value.into_string().map_err(|_| {
+                unsafe {
+                    std::env::remove_var(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
+                    std::env::remove_var(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
+                }
+                let placement = placement.into_string().map_err(|_| {
                     format!("{WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV} must be valid UTF-8")
                 })?;
-                Self::receive(&value).map(Some).map_err(|error| {
+                let tool = tool
+                    .into_string()
+                    .map_err(|_| format!("{TOOL_CGROUP_PROCS_ENDPOINT_ENV} must be valid UTF-8"))?;
+                if tool.is_empty() {
+                    return Err(format!(
+                        "{TOOL_CGROUP_PROCS_ENDPOINT_ENV} must not be empty"
+                    ));
+                }
+                Self::receive(&placement, tool).map(Some).map_err(|error| {
                     format!("invalid {WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV}: {error}")
                 })
             }
+            (true, _, _) => Err(format!(
+                "{} and {} are required with {}",
+                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                process_control_ipc::BOOTSTRAP_ENV
+            )),
+            (false, _, _) => Err(format!(
+                "{} and {} require {}",
+                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                process_control_ipc::BOOTSTRAP_ENV
+            )),
         }
     }
 
-    /// Install workload placement on a Tokio child command.
+    /// Install runtime placement on a Tokio child command.
     ///
     /// The cloned descriptor remains close-on-exec. The pre-exec write moves
     /// the child before its program starts, and exec then closes the capability.
@@ -113,7 +131,14 @@ impl WorkloadContainment {
         let cpu = fs::read_to_string(self.workload_path.join("cpu.stat"))?;
         let memory = fs::read_to_string(self.workload_path.join("memory.events"))?;
         let pids = fs::read_to_string(self.workload_path.join("pids.events"))?;
-        let events = WorkloadResourceEvents::from_file_contents(&cpu, &memory, &pids)?;
+        let tool_pids = fs::read_to_string(
+            self.workload_path
+                .join(TOOLS_CGROUP_NAME)
+                .join("pids.events"),
+        )?;
+        let mut events = WorkloadResourceEvents::from_file_contents(&cpu, &memory, &pids)?;
+        let tool_events = WorkloadResourceEvents::from_file_contents("", "", &tool_pids)?;
+        events.pids_max = events.pids_max.max(tool_events.pids_max);
 
         let hard_limit = events.hard_limit_diagnostic();
         let pressure = events.has_material_pressure().then(|| {
@@ -128,26 +153,39 @@ impl WorkloadContainment {
         })
     }
 
-    fn receive(endpoint: &str) -> io::Result<Self> {
+    /// Runner-owned endpoint injected into managed CLI environments.
+    pub(crate) fn tool_placement_env(&self) -> (&'static str, String) {
+        (
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            self.tool_placement_endpoint.to_string(),
+        )
+    }
+
+    fn receive(endpoint: &str, tool_endpoint: String) -> io::Result<Self> {
         let stream = process_control_ipc::connect_abstract(endpoint)?;
         stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_READ_TIMEOUT))?;
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
-        Self::adopt(placement)
+        Self::adopt(placement, tool_endpoint)
     }
 
-    fn adopt(placement: OwnedFd) -> io::Result<Self> {
+    fn adopt(placement: OwnedFd, tool_endpoint: String) -> io::Result<Self> {
         // SAFETY: F_GETFD only inspects the supplied descriptor.
         let descriptor_flags = unsafe { libc::fcntl(placement.as_raw_fd(), libc::F_GETFD) };
         if descriptor_flags < 0 {
             return Err(io::Error::last_os_error());
         }
         deny_peer_process_inspection()?;
-        let workload_path = validate_descriptor(&placement)?;
+        let runtime_path = validate_descriptor(&placement)?;
+        let workload_path = runtime_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| io::Error::other("runtime cgroup has no workload parent"))?;
         set_close_on_exec(placement.as_raw_fd(), descriptor_flags)?;
 
         Ok(Self {
             placement: Arc::new(placement),
             workload_path: Arc::new(workload_path),
+            tool_placement_endpoint: Arc::from(tool_endpoint),
         })
     }
 }
@@ -262,6 +300,7 @@ fn expected_workload_procs_path() -> io::Result<PathBuf> {
         .join(base)
         .join(operation)
         .join(WORKLOAD_CGROUP_NAME)
+        .join(RUNTIME_CGROUP_NAME)
         .join(CGROUP_PROCS_FILE))
 }
 
@@ -305,6 +344,7 @@ mod tests {
         let containment = WorkloadContainment {
             placement: Arc::new(placement.try_clone().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
+            tool_placement_endpoint: Arc::from("test-tool-endpoint"),
         };
         let placement_fd = containment.placement.as_raw_fd();
         let mut command = tokio::process::Command::new("/bin/sh");
@@ -331,6 +371,23 @@ mod tests {
     }
 
     #[test]
+    fn exposes_runner_owned_tool_endpoint_for_cli_environment() {
+        let containment = WorkloadContainment {
+            placement: Arc::new(tempfile::tempfile().unwrap().into()),
+            workload_path: Arc::new(PathBuf::from("/unused")),
+            tool_placement_endpoint: Arc::from("runner-tool-endpoint"),
+        };
+
+        assert_eq!(
+            containment.tool_placement_env(),
+            (
+                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                "runner-tool-endpoint".to_string()
+            )
+        );
+    }
+
+    #[test]
     fn reports_hard_limits_and_pressure_from_cgroup_counters() {
         let directory = tempfile::tempdir().unwrap();
         fs::write(
@@ -344,9 +401,16 @@ mod tests {
         )
         .unwrap();
         fs::write(directory.path().join("pids.events"), "max 6\n").unwrap();
+        fs::create_dir(directory.path().join(TOOLS_CGROUP_NAME)).unwrap();
+        fs::write(
+            directory.path().join(TOOLS_CGROUP_NAME).join("pids.events"),
+            "max 7\n",
+        )
+        .unwrap();
         let containment = WorkloadContainment {
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
+            tool_placement_endpoint: Arc::from("test-tool-endpoint"),
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();
@@ -358,7 +422,7 @@ mod tests {
                 memory_oom_events: 1,
                 memory_oom_kill_events: 1,
                 memory_oom_group_kill_events: 1,
-                pids_max_events: 6,
+                pids_max_events: 7,
             })
         );
         assert_eq!(
@@ -386,9 +450,16 @@ mod tests {
         )
         .unwrap();
         fs::write(directory.path().join("pids.events"), "max 0\n").unwrap();
+        fs::create_dir(directory.path().join(TOOLS_CGROUP_NAME)).unwrap();
+        fs::write(
+            directory.path().join(TOOLS_CGROUP_NAME).join("pids.events"),
+            "max 0\n",
+        )
+        .unwrap();
         let containment = WorkloadContainment {
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
+            tool_placement_endpoint: Arc::from("test-tool-endpoint"),
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();

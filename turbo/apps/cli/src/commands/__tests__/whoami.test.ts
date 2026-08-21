@@ -202,7 +202,7 @@ describe("okou whoami command", () => {
       );
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
       server.use(
-        http.get("http://localhost:3000/api/okou/org", () => {
+        http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.json(
             { error: { message: "Organization not found", code: "NOT_FOUND" } },
             { status: 404 },

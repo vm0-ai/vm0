@@ -135,13 +135,19 @@ function usePortugueseLocale(): void {
   );
 }
 
-function mockGithubCatalogItem(
-  icon: PublicConnectorCatalogStatusItem["icon"],
-): void {
-  const github: PublicConnectorCatalogStatusItem = {
-    slug: "github",
-    label: "Catalog GitHub",
-    description: "Connect Catalog GitHub to continue",
+function mockCatalogItem({
+  slug,
+  label,
+  icon,
+}: {
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
+  readonly label: string;
+  readonly icon: PublicConnectorCatalogStatusItem["icon"];
+}): void {
+  const connector: PublicConnectorCatalogStatusItem = {
+    slug,
+    label,
+    description: `Connect ${label} to continue`,
     icon,
     category: "developer-tools",
     generation: [],
@@ -172,7 +178,7 @@ function mockGithubCatalogItem(
     connectNotice: null,
   };
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: [github] });
+    return respond(200, { connectors: [connector] });
   });
 }
 
@@ -201,7 +207,6 @@ async function openGithubWorkflowRun(): Promise<void> {
 
 function chooseMakeOption(name: string): void {
   click(screen.getByRole("radio", { name: new RegExp(name, "u") }));
-  click(buttonByText("Continue"));
 }
 
 function buttonByText(
@@ -272,7 +277,6 @@ describe("onboarding flow", () => {
         name: /Automação de fluxo de trabalho/u,
       }),
     );
-    click(buttonByText("Continuar"));
 
     await expect(
       screen.findByRole("heading", {
@@ -290,18 +294,16 @@ describe("onboarding flow", () => {
       queryAllByRoleFast("button").some((candidate) => {
         return candidate
           .getAttribute("aria-label")
-          ?.startsWith("Mesclar PRs do GitHub automaticamente");
+          ?.startsWith("Auto-mergimento de PRs do GitHub");
       }),
     ).toBeTruthy();
 
     click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
     const preview = await screen.findByRole("dialog", {
-      name: "Mesclar PRs do GitHub automaticamente",
+      name: "Auto-mergimento de PRs do GitHub",
     });
     expect(within(preview).getByText("Como funciona")).toBeVisible();
-    expect(
-      within(preview).getByText("Zero revisa e aguarda o CI"),
-    ).toBeVisible();
+    expect(within(preview).getByText("Zero revisa a mudança")).toBeVisible();
   });
 
   it("renders localized onboarding template titles in Brazilian Portuguese", async () => {
@@ -351,10 +353,14 @@ describe("onboarding flow", () => {
   });
 
   it("renders workflow connector marks from catalog metadata", async () => {
-    mockGithubCatalogItem({
-      url: "https://icons.example.test/onboarding-github.svg",
-      invertInDarkMode: true,
-      scale: 1.4,
+    mockCatalogItem({
+      slug: "github",
+      label: "Catalog GitHub",
+      icon: {
+        url: "https://icons.example.test/onboarding-github.svg",
+        invertInDarkMode: true,
+        scale: 1.4,
+      },
     });
 
     await openGithubWorkflowRun();
@@ -384,6 +390,215 @@ describe("onboarding flow", () => {
     );
     expect(previewIcon).toHaveClass("zero-icon-mono");
     expect(previewIcon).toHaveStyle({ transform: "scale(1.4)" });
+  });
+
+  it.each([
+    {
+      category: "engineering",
+      workflow: "post-github-updates-slack",
+      title: "Audit Google Cloud IAM and services",
+      requiredConnectorSlug: "google-cloud",
+      requiredCatalogLabel: "Catalog Google Cloud",
+      diagramLabel: "Google Cloud",
+      optionalConnector: "github",
+    },
+    {
+      category: "data",
+      workflow: "track-signup-sources-sheets",
+      title: "Analyze BigQuery data in Sheets",
+      requiredConnectorSlug: "google-cloud",
+      requiredCatalogLabel: "Catalog Google Cloud",
+      diagramLabel: "Google Cloud",
+      optionalConnector: "google-analytics",
+    },
+    {
+      category: "ceo",
+      workflow: "daily-industry-news-slack",
+      title: "Alert on cash flow and overdue invoices",
+      requiredConnectorSlug: "quickbooks",
+      requiredCatalogLabel: "Catalog QuickBooks",
+      diagramLabel: "QuickBooks",
+      optionalConnector: "gmail",
+    },
+  ] as const)(
+    "renders the canonical $diagramLabel label for $category workflows",
+    async ({
+      category,
+      workflow,
+      title,
+      requiredConnectorSlug,
+      requiredCatalogLabel,
+      diagramLabel,
+      optionalConnector,
+    }) => {
+      mockCatalogItem({
+        slug: requiredConnectorSlug,
+        label: requiredCatalogLabel,
+        icon: {
+          url: `https://icons.example.test/onboarding-${requiredConnectorSlug}.svg`,
+          invertInDarkMode: false,
+        },
+      });
+      mockOnboardingNeeded();
+      detachedSetupPage({
+        context,
+        path: `/onboarding/workflow-run?choice=workflow&category=${category}&workflow=${workflow}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: title }),
+      ).resolves.toBeInTheDocument();
+
+      const requiredLabel = await screen.findByText(requiredCatalogLabel);
+      const requiredRow = requiredLabel.parentElement?.parentElement;
+      if (!requiredRow) {
+        throw new Error(`Expected ${diagramLabel} connector row`);
+      }
+      expect(within(requiredRow).getByText(/^Required\s+·/u)).toBeVisible();
+
+      const optionalLabel = screen.getByText(optionalConnector);
+      const optionalRow = optionalLabel.parentElement?.parentElement;
+      if (!optionalRow) {
+        throw new Error(`Expected ${optionalConnector} connector row`);
+      }
+      expect(within(optionalRow).getByText(/^Optional\s+·/u)).toBeVisible();
+
+      click(buttonByAriaLabel("Preview workflow details"));
+      const preview = await screen.findByRole("dialog", { name: title });
+      expect(
+        within(preview).getByText((content) => {
+          return (
+            content === diagramLabel || content.startsWith(`${diagramLabel} + `)
+          );
+        }),
+      ).toBeVisible();
+    },
+  );
+
+  it.each([
+    {
+      category: "marketing",
+      workflow: "track-keyword-ranks-ahrefs",
+      title: "Audit a website's technical SEO",
+      evidence: /built-in Firecrawl and DataForSEO/u,
+    },
+    {
+      category: "support",
+      workflow: "summarize-zendesk-tickets-daily",
+      title: "Turn FAQs into digital-human support videos",
+      evidence: /built-in avatar-video/u,
+    },
+  ])(
+    "renders $category built-in workflow without connector setup",
+    async ({ category, workflow, title, evidence }) => {
+      mockOnboardingNeeded();
+      context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+        return respond(200, { connectors: [] });
+      });
+      detachedSetupPage({
+        context,
+        path: `/onboarding/workflow-run?choice=workflow&category=${category}&workflow=${workflow}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: title }),
+      ).resolves.toBeInTheDocument();
+      expect(screen.queryAllByTestId("connector-card-label")).toHaveLength(0);
+      expect(queryButtonByText("Connect")).toBeNull();
+
+      click(buttonByAriaLabel("Preview workflow details"));
+      const preview = await screen.findByRole("dialog", { name: title });
+      expect(within(preview).getByText(evidence)).toBeVisible();
+      expect(preview.querySelector(".owf-diagram-node-source")).toBeNull();
+      expect(preview.querySelector(".owf-diagram-dot-source")).toBeNull();
+      expect(preview.querySelector('path[d="M170 81H277"]')).toBeNull();
+    },
+  );
+
+  it("renders exactly six workflows for each role", async () => {
+    await openMakePage();
+    chooseMakeOption("Workflow automation");
+
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+
+    const roles = [
+      "Everyone",
+      "Engineer",
+      "Product",
+      "Data",
+      "Marketing",
+      "Sales",
+      "Support",
+      "CEO",
+      "Operations",
+    ] as const;
+    let workflowCount = 0;
+    for (const role of roles) {
+      click(buttonByText(role));
+      await expect(
+        screen.findByRole("heading", { name: `${role} workflows` }),
+      ).resolves.toBeInTheDocument();
+
+      const workflowCards = screen.getAllByRole("article");
+      expect(workflowCards).toHaveLength(6);
+      workflowCount += workflowCards.length;
+
+      click(buttonByText("Back"));
+      await expect(
+        screen.findByRole("heading", { name: "What do you work on?" }),
+      ).resolves.toBeInTheDocument();
+    }
+    expect(workflowCount).toBe(54);
+  });
+
+  it("uses card actions throughout workflow onboarding", async () => {
+    mockCatalogItem({
+      slug: "github",
+      label: "Catalog GitHub",
+      icon: {
+        url: "https://icons.example.test/onboarding-github.svg",
+        invertInDarkMode: true,
+      },
+    });
+    await openMakePage();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    click(screen.getByRole("radio", { name: /Workflow automation/u }));
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    const everyoneCard = buttonByText("Everyone");
+    expect(everyoneCard.parentElement?.firstElementChild).toBe(everyoneCard);
+    const engineerCard = buttonByText("Engineer");
+    expect(
+      engineerCard.querySelector(
+        'img[src="https://icons.example.test/onboarding-github.svg"]',
+      ),
+    ).not.toBeNull();
+    click(buttonByText("Marketing"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Marketing workflows" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("No connector required")).toBeNull();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    const workflowButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate
+        .getAttribute("aria-label")
+        ?.startsWith("Audit a website's technical SEO");
+    });
+    if (!workflowButton) {
+      throw new Error("Expected technical SEO workflow card");
+    }
+    click(workflowButton);
+    await expect(
+      screen.findByRole("heading", { name: "Review your workflow draft" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("moves from workflow selection to a connector-aware first run", async () => {
@@ -419,7 +634,6 @@ describe("onboarding flow", () => {
     });
     expect(within(preview).getByText("How it works")).toBeVisible();
     click(buttonByText("Select this template", preview));
-    click(buttonByText("Continue"));
 
     await expect(
       screen.findByRole("heading", {
@@ -454,7 +668,7 @@ describe("onboarding flow", () => {
       }),
     ).resolves.toBeInTheDocument();
 
-    expect(buttonByText("Create draft")).not.toBeDisabled();
+    expect(buttonByText("Create workflow")).not.toBeDisabled();
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
 
@@ -488,7 +702,7 @@ describe("onboarding flow", () => {
     ).resolves.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(buttonByText("Create draft")).not.toBeDisabled();
+      expect(buttonByText("Create workflow")).not.toBeDisabled();
     });
     expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
@@ -507,7 +721,6 @@ describe("onboarding flow", () => {
     ).resolves.toBeInTheDocument();
 
     click(buttonByText("Talk to Zero and make my own"));
-    click(buttonByText("Continue"));
 
     await waitFor(() => {
       expect(pathname()).not.toMatch(/^\/onboarding/u);
