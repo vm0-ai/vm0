@@ -27,6 +27,7 @@ import {
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import {
   createClerkReadContext,
@@ -70,13 +71,14 @@ import {
   loadBillingOrganizationMemberships,
   loadBillingOrganizationPendingInvitations,
 } from "./billing-clerk-directory.service";
-import { onRejection } from "../utils";
+import { onRejection, settle } from "../utils";
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const MIN_CHECKOUT_DURATION_SECONDS = 30 * 60;
 const MAX_CHECKOUT_DURATION_SECONDS = 24 * 60 * 60;
+const L = logger("UsagePackInvitationPurchase");
 const OPEN_INVITATION_PURCHASE_STATUSES = [
   "checkout_pending",
   "payment_succeeded",
@@ -2323,6 +2325,66 @@ export async function revokeUsagePackInvitationPurchase(
   return { status: result };
 }
 
+async function reconcileUsagePackInvitationPurchaseCandidate(
+  db: Db,
+  clerk: ClerkClient,
+  purchase: UsagePackInvitationPurchaseRow,
+  at: Date,
+  signal: AbortSignal,
+): Promise<boolean> {
+  switch (purchase.status) {
+    case "payment_succeeded":
+    case "creating_invitation": {
+      await ensurePaidInvitationCreated(db, clerk, purchase.id, true, signal);
+      return true;
+    }
+    case "invitation_pending": {
+      if (purchase.currentPeriodEnd <= at) {
+        await revokeAndRefundPurchase(db, clerk, purchase, signal);
+        return true;
+      }
+      const membership = await membershipForPurchase(
+        clerk,
+        purchase,
+        createClerkReadContext(),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!membership || !purchase.clerkInvitationId) {
+        return false;
+      }
+      await handleUsagePackInvitationAccepted(
+        db,
+        {
+          orgId: purchase.orgId,
+          invitationId: purchase.clerkInvitationId,
+          userId: membership.userId,
+          acceptedAt: membership.createdAt,
+          normalizedEmail: membership.email,
+        },
+        signal,
+      );
+      return true;
+    }
+    case "accepted_pending_activation":
+    case "activating": {
+      await activateAcceptedPurchase(db, purchase.id, signal, true);
+      return true;
+    }
+    case "refund_pending":
+    case "refunding": {
+      await refundPurchase(db, purchase.id, true);
+      return true;
+    }
+    case "checkout_pending":
+    case "accepted":
+    case "refunded":
+    case "failed": {
+      return false;
+    }
+  }
+}
+
 export async function reconcileUsagePackInvitationPurchases(
   db: Db,
   clerk: ClerkClient,
@@ -2372,62 +2434,29 @@ export async function reconcileUsagePackInvitationPurchases(
   signal.throwIfAborted();
   let reconciled = 0;
   for (const purchase of candidates) {
-    switch (purchase.status) {
-      case "payment_succeeded":
-      case "creating_invitation": {
-        await ensurePaidInvitationCreated(db, clerk, purchase.id, true, signal);
-        reconciled += 1;
-        break;
-      }
-      case "invitation_pending": {
-        if (purchase.currentPeriodEnd <= at) {
-          await revokeAndRefundPurchase(db, clerk, purchase, signal);
-          reconciled += 1;
-          break;
-        }
-        const membership = await membershipForPurchase(
-          clerk,
-          purchase,
-          createClerkReadContext(),
-          signal,
-        );
-        signal.throwIfAborted();
-        if (membership && purchase.clerkInvitationId) {
-          await handleUsagePackInvitationAccepted(
-            db,
-            {
-              orgId: purchase.orgId,
-              invitationId: purchase.clerkInvitationId,
-              userId: membership.userId,
-              acceptedAt: membership.createdAt,
-              normalizedEmail: membership.email,
-            },
-            signal,
-          );
-          reconciled += 1;
-        }
-        break;
-      }
-      case "accepted_pending_activation":
-      case "activating": {
-        await activateAcceptedPurchase(db, purchase.id, signal, true);
-        reconciled += 1;
-        break;
-      }
-      case "refund_pending":
-      case "refunding": {
-        await refundPurchase(db, purchase.id, true);
-        reconciled += 1;
-        break;
-      }
-      case "checkout_pending":
-      case "accepted":
-      case "refunded":
-      case "failed": {
-        break;
-      }
+    const result = await settle(
+      reconcileUsagePackInvitationPurchaseCandidate(
+        db,
+        clerk,
+        purchase,
+        at,
+        signal,
+      ),
+      signal,
+    );
+    if (!result.ok) {
+      L.error("usage pack invitation purchase reconciliation failed", {
+        purchaseId: purchase.id,
+        orgId: purchase.orgId,
+        clerkInvitationId: purchase.clerkInvitationId,
+        status: purchase.status,
+        error: result.error,
+      });
+      continue;
     }
-    signal.throwIfAborted();
+    if (result.value) {
+      reconciled += 1;
+    }
   }
   return reconciled;
 }

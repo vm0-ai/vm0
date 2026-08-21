@@ -11730,6 +11730,31 @@ describe("usage pack allocation management", () => {
       post_payment_amount: 2500,
       refunds: [],
     });
+    const invoicePaymentIntentId = "pi_usage_pack_removal";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_usage_pack_removal",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 5000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: invoicePaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({
+        id: "re_usage_pack_removal_failed",
+        status: "failed",
+      })
+      .mockResolvedValueOnce({
+        id: "re_usage_pack_removal",
+        status: "succeeded",
+      });
     context.mocks.stripe.creditNotes.create.mockResolvedValue({
       id: "cn_usage_pack_removal",
       status: "issued",
@@ -11741,10 +11766,6 @@ describe("usage pack allocation management", () => {
           refund: "re_usage_pack_removal",
         },
       ],
-    });
-    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
-      id: "re_usage_pack_removal",
-      status: "succeeded",
     });
 
     const responsePromise = setupApp({ context, routes: orgMembersRoutes })(
@@ -11774,6 +11795,22 @@ describe("usage pack allocation management", () => {
 
     const response = await accept(responsePromise, [200]);
     expect(response.body.message).toBe(`Removed ${targetEmail} from org`);
+    const retryPending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(retryPending.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        status: "pending",
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+
+    await runBillingReconciliation(fixture.orgId);
+
     const duplicateEvent = {
       type: "organizationMembership.deleted",
       data: {
@@ -11842,6 +11879,31 @@ describe("usage pack allocation management", () => {
       context.mocks.stripe.subscriptionSchedules.create,
     ).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:refund$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:refund$/u,
+        ),
+      }),
+    );
     expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(1);
     expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -11853,11 +11915,16 @@ describe("usage pack allocation management", () => {
             amount: 2500,
           }),
         ],
-        refund_amount: 2500,
+        refunds: [
+          {
+            refund: "re_usage_pack_removal",
+            amount_refunded: 2500,
+          },
+        ],
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringMatching(
-          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:credit-note$/u,
         ),
       }),
     );
@@ -11959,6 +12026,26 @@ describe("usage pack allocation management", () => {
       post_payment_amount: 2000,
       refunds: [],
     });
+    const invoicePaymentIntentId = "pi_last_usage_pack_removal";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_last_usage_pack_removal",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: invoicePaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_last_usage_pack_removal",
+      status: "succeeded",
+    });
     context.mocks.stripe.creditNotes.create.mockResolvedValue({
       id: "cn_last_usage_pack_removal",
       status: "issued",
@@ -11970,10 +12057,6 @@ describe("usage pack allocation management", () => {
           refund: "re_last_usage_pack_removal",
         },
       ],
-    });
-    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
-      id: "re_last_usage_pack_removal",
-      status: "succeeded",
     });
 
     await accept(
@@ -12017,11 +12100,27 @@ describe("usage pack allocation management", () => {
       expect.objectContaining({
         invoice: expect.stringMatching(/^in_/u),
         amount: 2000,
-        refund_amount: 2000,
+        refunds: [
+          {
+            refund: "re_last_usage_pack_removal",
+            amount_refunded: 2000,
+          },
+        ],
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringMatching(
-          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:credit-note$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:refund$/u,
         ),
       }),
     );
@@ -12117,6 +12216,295 @@ describe("usage pack allocation management", () => {
     expect(state.changes[0]).toStrictEqual(
       expect.objectContaining({ kind: "removal", status: "scheduled" }),
     );
+  });
+
+  it("recovers a failed refund from an already-issued invoice credit note", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+      refundState: {
+        status: "failed",
+        refundedAmountCents: 1000,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: "re_historical_failed",
+        attempt: 1,
+        failureReason: "stripe_refund_failed",
+      },
+    });
+    context.mocks.stripe.creditNotes.retrieve.mockResolvedValue({
+      id: "cn_historical_failed",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [{ amount_refunded: 1000, refund: "re_historical_failed" }],
+    });
+    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
+      id: "re_historical_failed",
+      status: "failed",
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const retryPending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(retryPending.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "pending",
+        attempt: 2,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: null,
+      }),
+    );
+
+    const recoveryPaymentIntentId = "pi_historical_recovery";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_historical_recovery",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: recoveryPaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_historical_recovery",
+      status: "succeeded",
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const recovered = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(recovered.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "succeeded",
+        attempt: 2,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: "re_historical_recovery",
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: recoveryPaymentIntentId,
+        amount: 1000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:refund$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("stops retrying an invoice refund after the third failed attempt", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+    });
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_terminal_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_terminal_refund",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: "pi_terminal_refund",
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({ id: "re_failed_1", status: "failed" })
+      .mockResolvedValueOnce({ id: "re_failed_2", status: "canceled" })
+      .mockResolvedValueOnce({
+        id: "re_failed_3",
+        status: "failed",
+        failure_reason: "declined",
+      });
+
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+
+    const failed = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(failed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "failed",
+        attempt: 3,
+        failureReason: "stripe_refund_failed:declined",
+        stripeCreditNoteId: null,
+        stripeRefundId: "re_failed_3",
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(3);
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an invoice has multiple refundable PaymentIntents", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+    });
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_ambiguous_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_ambiguous_refund",
+      payments: {
+        data: ["first", "second"].map((suffix) => {
+          return {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: `pi_ambiguous_${suffix}`,
+            },
+          };
+        }),
+      },
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const failed = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(failed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "failed",
+        attempt: 1,
+        failureReason: "invoice_refund_payment_intent_count_2",
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("continues reconciling refunds after one candidate throws", async () => {
+    const firstUserId = `user_${randomUUID()}`;
+    const secondUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: firstUserId, usagePackUsd: 20 },
+      { userId: secondUserId, usagePackUsd: 20 },
+    ]);
+    for (const userId of [firstUserId, secondUserId]) {
+      await usagePackStateAction({
+        action: "set-grant-remaining",
+        orgId: fixture.orgId,
+        userId,
+        grantType: "purchased",
+        remainingAmount: 10_000,
+        prepareRefund: true,
+      });
+    }
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_isolated_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve
+      .mockRejectedValueOnce(new Error("bad Stripe invoice"))
+      .mockResolvedValueOnce({
+        id: "in_isolated_refund",
+        payments: {
+          data: [
+            {
+              status: "paid",
+              amount_paid: 4000,
+              payment: {
+                type: "payment_intent",
+                payment_intent: "pi_isolated_refund",
+              },
+            },
+          ],
+        },
+      });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_isolated_refund",
+      status: "succeeded",
+    });
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: "cn_isolated_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [{ amount_refunded: 1000, refund: "re_isolated_refund" }],
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(
+      state.refunds.filter((refund) => {
+        return refund.status === "processing";
+      }),
+    ).toHaveLength(1);
+    expect(
+      state.refunds.filter((refund) => {
+        return refund.status === "succeeded";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(1);
   });
 
   it.each(["pro", "team"] as const)(

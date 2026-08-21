@@ -25,6 +25,7 @@ import { clerk$ } from "../external/clerk";
 import {
   getStripeClient,
   isStripeResourceMissingError,
+  listAllStripeSubscriptions,
   listUndeliveredStripePaidCheckoutSessions,
   listUndeliveredStripePaidInvoices,
   type StripeInvoice,
@@ -274,28 +275,14 @@ async function listStripeSubscriptionPages(
   },
   signal: AbortSignal,
 ): Promise<readonly StripeSubscription[]> {
-  const subscriptions: StripeSubscription[] = [];
-  let startingAfter: string | undefined;
-  while (true) {
-    const page = await stripe.subscriptions.list({
+  return await listAllStripeSubscriptions(
+    stripe,
+    {
       ...params,
-      limit: 100,
       expand: ["data.latest_invoice"],
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    });
-    signal.throwIfAborted();
-    subscriptions.push(...page.data);
-    if (!page.has_more) {
-      return subscriptions;
-    }
-    const last = page.data.at(-1);
-    if (!last) {
-      throw new Error(
-        "Stripe returned an empty subscription page with has_more",
-      );
-    }
-    startingAfter = last.id;
-  }
+    },
+    signal,
+  );
 }
 
 async function loadScopedStripeCustomerIds(

@@ -236,6 +236,7 @@ export interface StripePaymentIntent {
 export interface StripeRefund {
   readonly id: string;
   readonly status: string | null;
+  readonly failure_reason?: string | null;
 }
 
 export interface StripeCreditNote {
@@ -261,6 +262,10 @@ export interface StripeCreditNoteParams {
   readonly amount?: number;
   readonly lines?: StripeCreditNoteLineParam[];
   readonly refund_amount?: number;
+  readonly refunds?: {
+    readonly refund: string;
+    readonly amount_refunded?: number;
+  }[];
   readonly email_type?: "credit_note" | "none";
   readonly metadata?: StripeMetadataParam;
   readonly reason?:
@@ -426,6 +431,13 @@ export type StripeSubscriptionListStatus =
   | "trialing"
   | "unpaid";
 
+export interface StripeSubscriptionListParams {
+  readonly customer?: string;
+  readonly status?: StripeSubscriptionListStatus;
+  readonly price?: string;
+  readonly expand?: string[];
+}
+
 export interface StripeSubscriptionsApi {
   create(
     params: StripeSubscriptionCreateParams,
@@ -440,14 +452,12 @@ export interface StripeSubscriptionsApi {
     params: StripeSubscriptionUpdateParams,
     options?: StripeRequestOptions,
   ): Promise<StripeSubscription>;
-  list(params: {
-    customer?: string;
-    status?: StripeSubscriptionListStatus;
-    price?: string;
-    limit?: number;
-    starting_after?: string;
-    expand?: string[];
-  }): Promise<StripeList<StripeSubscription>>;
+  list(
+    params: StripeSubscriptionListParams & {
+      readonly limit?: number;
+      readonly starting_after?: string;
+    },
+  ): Promise<StripeList<StripeSubscription>>;
   cancel(
     id: string,
     params?: { invoice_now?: boolean; prorate?: boolean },
@@ -821,6 +831,34 @@ function stripeSdk(): StripeSDK {
  */
 export function getStripeClient(): StripeClient {
   return stripeSdk();
+}
+
+export async function listAllStripeSubscriptions(
+  stripe: StripeClient,
+  params: StripeSubscriptionListParams,
+  signal?: AbortSignal,
+): Promise<readonly StripeSubscription[]> {
+  const subscriptions: StripeSubscription[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.subscriptions.list({
+      ...params,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal?.throwIfAborted();
+    subscriptions.push(...page.data);
+    if (!page.has_more) {
+      return subscriptions;
+    }
+    const last = page.data.at(-1);
+    if (!last) {
+      throw new Error(
+        "Stripe returned an empty subscription page with has_more",
+      );
+    }
+    startingAfter = last.id;
+  }
 }
 
 export function mockStripeClient(fakeSdk: unknown): void {
