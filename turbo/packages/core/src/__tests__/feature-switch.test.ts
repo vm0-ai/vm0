@@ -124,7 +124,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
       true,
     );

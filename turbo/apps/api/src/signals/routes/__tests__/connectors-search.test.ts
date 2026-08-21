@@ -59,7 +59,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-describe("GET /api/zero/connectors/search", () => {
+describe("GET /api/connectors/search", () => {
   const seededFeatureSwitches: {
     readonly orgId: string;
     readonly userId: string;

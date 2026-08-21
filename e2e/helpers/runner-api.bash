@@ -40,14 +40,14 @@ runner_e2e_connect_manual_connector() {
         --arg agentId "$agent_id" \
         --argjson values "$values" \
         '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, values: $values}')
-    runner_api_curl "/api/okou/connectors/${connector_slug}/manual-grant" \
+    runner_api_curl "/api/connectors/${connector_slug}/manual-grant" \
         -X POST \
         -d "$payload"
 }
 
 runner_e2e_delete_connector() {
     local connector_slug="$1"
-    runner_api_curl "/api/okou/connectors/${connector_slug}" -X DELETE
+    runner_api_curl "/api/connectors/${connector_slug}" -X DELETE
 }
 
 runner_e2e_upload_text() {

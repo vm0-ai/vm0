@@ -80,7 +80,7 @@ export type SteamPlayerResponse = z.infer<typeof steamPlayerResponseSchema>;
 export const steamPlayerContract = c.router({
   getPlayer: {
     method: "GET",
-    path: "/api/okou/connectors/steam/player",
+    path: "/api/connectors/steam/player",
     headers: authHeadersSchema,
     responses: {
       200: steamPlayerResponseSchema,
