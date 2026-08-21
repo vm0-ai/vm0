@@ -9,10 +9,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
-import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
@@ -74,11 +70,9 @@ interface TelegramMessageFixture {
  * Seeds an org with a Telegram installation and a real run created through
  * the product agent + run APIs (agent label and selected model on the footer
  * both resolve from the run). Run admission needs org credits, granted via
- * the Stripe webhook product path. Without `withOrgModelProvider`, a narrow
- * historical Compose fixture adds the legacy inline ANTHROPIC_API_KEY state
- * that the current Agent API cannot express, so the run records no selected
- * model. With it, the org model provider path records the provider's selected
- * model (claude-sonnet-5).
+ * the Stripe webhook product path. The provider-only branch records no
+ * selected model; the model-policy branch records claude-sonnet-5. Neither
+ * branch reads legacy Compose content.
  */
 async function seedSendableContext(args: {
   readonly agentName?: string;
@@ -120,31 +114,21 @@ async function seedSendableContext(args: {
 
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
-  let runRequest: {
-    readonly agentId: string;
-    readonly prompt: string;
-    readonly modelProvider?: string;
-  } = { agentId: agent.agentId, prompt: "send telegram message" };
   if (args.withOrgModelProvider) {
     await api.ensureOrgModelProvider(actor);
-    runRequest = { ...runRequest, modelProvider: "anthropic-api-key" };
   } else {
-    const compose = await readHistoricalAgentComposeHeadFixture(agent.agentId);
-    await createHistoricalAgentComposeFixture({
-      actor: { userId, orgId },
-      content: {
-        version: "1.0",
-        agents: {
-          [compose.name]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-          },
-        },
-      },
-      signal: context.signal,
+    await api.createOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
     });
   }
-  const run = await api.createRun(actor, runRequest);
+  const run = await api.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "send telegram message",
+    modelProvider: args.withOrgModelProvider
+      ? "anthropic-api-key"
+      : "openrouter-api-key",
+  });
 
   // Product run creation authenticates through the Clerk session mocks;
   // restore the membership-list mock the zero-token auth path relies on.

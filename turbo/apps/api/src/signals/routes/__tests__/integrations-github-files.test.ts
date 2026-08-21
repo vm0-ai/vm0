@@ -14,10 +14,6 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
@@ -109,36 +105,24 @@ describe("GitHub file integration routes", () => {
   /**
    * Creates a real run for the fixture agent through the test-only adapter.
    * Run admission needs org credits, granted through the Stripe webhook
-   * product path. The current Agent API cannot express the legacy inline
-   * ANTHROPIC_API_KEY state, so a narrow historical Compose fixture supplies
-   * it and run creation does not require an org model provider.
+   * product path. A provider-only fixture admits the run without selecting a
+   * model and without reading legacy Compose content.
    */
   async function seedRunForFixture(
     fixture: GitHubFileFixture,
   ): Promise<{ readonly runId: string }> {
     bdd.acceptAgentStorageWrites();
     await api.grantProEntitlement(fixture.actor);
-    const compose = await readHistoricalAgentComposeHeadFixture(
-      fixture.composeId,
-    );
-    await createHistoricalAgentComposeFixture({
-      actor: { userId: fixture.userId, orgId: fixture.orgId },
-      content: {
-        version: "1.0",
-        agents: {
-          [compose.name]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-          },
-        },
-      },
-      signal: context.signal,
+    await api.createOrgModelProvider(fixture.actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     const run = await api.createRun(fixture.actor, {
       agentId: fixture.composeId,
       prompt: "deliver github file",
+      modelProvider: "openrouter-api-key",
     });
     return { runId: run.runId };
   }
