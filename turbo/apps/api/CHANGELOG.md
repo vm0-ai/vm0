@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.471.0](https://github.com/vm0-ai/vm0/compare/api-v1.470.0...api-v1.471.0) (2026-08-21)
+
+
+### Features
+
+* **api:** add managed socialkit service ([#28343](https://github.com/vm0-ai/vm0/issues/28343)) ([94f6768](https://github.com/vm0-ai/vm0/commit/94f67682a19fd19310449075a7cf9bcf40e5a52f))
+* **api:** resolve a user's own presentation template for a generation run ([#28536](https://github.com/vm0-ai/vm0/issues/28536)) ([1db3d99](https://github.com/vm0-ai/vm0/commit/1db3d99c96b5a2fa8fec2324d644f073a9622912))
+
+
+### Refactoring
+
+* **run:** finish the version-independent runtime cutover ([#28517](https://github.com/vm0-ai/vm0/issues/28517)) ([d6a1f75](https://github.com/vm0-ai/vm0/commit/d6a1f753c2146b421c09ce8cd0cae59212d169f0))
+* **teams:** move the teams routes off the brand namespace ([#28553](https://github.com/vm0-ai/vm0/issues/28553)) ([7cadbba](https://github.com/vm0-ai/vm0/commit/7cadbba2aa63e8e91a88fd25c4762cf5458042bf)), closes [#28545](https://github.com/vm0-ai/vm0/issues/28545)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.348.0
+    * @okouai/core bumped to 8.579.0
+    * @okouai/db bumped to 1.213.1
+
 ## [1.470.0](https://github.com/vm0-ai/vm0/compare/api-v1.469.0...api-v1.470.0) (2026-08-21)
 
 
