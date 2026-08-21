@@ -1,6 +1,6 @@
 import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/presentation-templates";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -10,16 +10,12 @@ export function presentationTemplateSummary(
   row: PresentationTemplateRow,
   coverUrl: string | null,
 ): PresentationTemplateSummary {
-  const hasCommittedPages =
-    row.status === "processing" || row.status === "ready";
   return {
     id: row.id,
     title: row.title,
-    status: row.status,
-    error: row.error,
     sourceFilename: row.sourceFilename,
-    coverUrl: hasCommittedPages ? coverUrl : null,
-    pageCount: hasCommittedPages ? row.pageKeys.length : 0,
+    coverUrl,
+    pageCount: row.pageKeys.length,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -58,7 +54,6 @@ export async function listOwnedPresentationTemplates(
       and(
         eq(presentationTemplates.orgId, args.orgId),
         eq(presentationTemplates.ownerUserId, args.ownerUserId),
-        ne(presentationTemplates.status, "pending"),
       ),
     )
     .orderBy(desc(presentationTemplates.createdAt));
