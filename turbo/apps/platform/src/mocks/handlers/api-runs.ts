@@ -82,7 +82,7 @@ export const apiRunsHandlers = [
     respond(200, { networkLogs: [], hasMore: false }),
   ),
 
-  // POST /api/okou/chat/events
+  // POST /api/chat/events
   mockApi(chatEventsContract.send, ({ respond }) =>
     respond(201, {
       runId: "a0000000-0000-4000-a000-000000000001",
@@ -92,7 +92,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/okou/queue-position
+  // GET /api/queue-position
   mockApi(queuePositionContract.getPosition, ({ respond }) =>
     respond(200, { position: 0, total: 0 }),
   ),

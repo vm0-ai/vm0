@@ -552,6 +552,147 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28459: the chat threads themselves, the chat event and search readers,
+  // shared threads, per-thread browser sessions, per-thread goals, workflow
+  // automations, queue position, and the X image share. Every caller in this
+  // repository derives its URL from the contract, so nothing here still asks
+  // for a branded form. Released builds do: a browser tab holding
+  // already-loaded platform code keeps calling the `okou` path it was built
+  // against until it navigates or reloads, the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7; a commit-addressed CLI package pinned by an
+  // execution context's `CLI_PKG_URL` holds it for that context's queue and
+  // claimed-run lifetime; and the `okou-app` share worker deployed to
+  // Cloudflare Pages reads `shared-threads/:id/meta` from a build that ships
+  // separately from this one. The `zero` form was reachable through the
+  // blanket expansion until the contract moved. All of it is owed, and a row
+  // retires under #26701's evidence rules rather than on any of those clocks.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/chat-threads": ["/api/okou/chat-threads", "/api/zero/chat-threads"],
+  "/api/chat-threads/:id": [
+    "/api/okou/chat-threads/:id",
+    "/api/zero/chat-threads/:id",
+  ],
+  "/api/chat-threads/:id/computer-use-host": [
+    "/api/okou/chat-threads/:id/computer-use-host",
+    "/api/zero/chat-threads/:id/computer-use-host",
+  ],
+  "/api/chat-threads/:id/connector-selections": [
+    "/api/okou/chat-threads/:id/connector-selections",
+    "/api/zero/chat-threads/:id/connector-selections",
+  ],
+  "/api/chat-threads/:id/draft": [
+    "/api/okou/chat-threads/:id/draft",
+    "/api/zero/chat-threads/:id/draft",
+  ],
+  "/api/chat-threads/:id/image-model": [
+    "/api/okou/chat-threads/:id/image-model",
+    "/api/zero/chat-threads/:id/image-model",
+  ],
+  "/api/chat-threads/:id/mark-read": [
+    "/api/okou/chat-threads/:id/mark-read",
+    "/api/zero/chat-threads/:id/mark-read",
+  ],
+  "/api/chat-threads/:id/mark-unread": [
+    "/api/okou/chat-threads/:id/mark-unread",
+    "/api/zero/chat-threads/:id/mark-unread",
+  ],
+  "/api/chat-threads/:id/metadata": [
+    "/api/okou/chat-threads/:id/metadata",
+    "/api/zero/chat-threads/:id/metadata",
+  ],
+  "/api/chat-threads/:id/model-selection": [
+    "/api/okou/chat-threads/:id/model-selection",
+    "/api/zero/chat-threads/:id/model-selection",
+  ],
+  "/api/chat-threads/:id/pin": [
+    "/api/okou/chat-threads/:id/pin",
+    "/api/zero/chat-threads/:id/pin",
+  ],
+  "/api/chat-threads/:id/rename": [
+    "/api/okou/chat-threads/:id/rename",
+    "/api/zero/chat-threads/:id/rename",
+  ],
+  "/api/chat-threads/:id/unpin": [
+    "/api/okou/chat-threads/:id/unpin",
+    "/api/zero/chat-threads/:id/unpin",
+  ],
+  "/api/chat-threads/:id/video-model": [
+    "/api/okou/chat-threads/:id/video-model",
+    "/api/zero/chat-threads/:id/video-model",
+  ],
+  "/api/chat-threads/:threadId/artifacts": [
+    "/api/okou/chat-threads/:threadId/artifacts",
+    "/api/zero/chat-threads/:threadId/artifacts",
+  ],
+  "/api/chat-threads/:threadId/browser": [
+    "/api/okou/chat-threads/:threadId/browser",
+    "/api/zero/chat-threads/:threadId/browser",
+  ],
+  "/api/chat-threads/:threadId/browser/close": [
+    "/api/okou/chat-threads/:threadId/browser/close",
+    "/api/zero/chat-threads/:threadId/browser/close",
+  ],
+  "/api/chat-threads/:threadId/browser/lease": [
+    "/api/okou/chat-threads/:threadId/browser/lease",
+    "/api/zero/chat-threads/:threadId/browser/lease",
+  ],
+  "/api/chat-threads/:threadId/browser/open": [
+    "/api/okou/chat-threads/:threadId/browser/open",
+    "/api/zero/chat-threads/:threadId/browser/open",
+  ],
+  "/api/chat-threads/:threadId/browser/resize": [
+    "/api/okou/chat-threads/:threadId/browser/resize",
+    "/api/zero/chat-threads/:threadId/browser/resize",
+  ],
+  "/api/chat-threads/:threadId/event-rows": [
+    "/api/okou/chat-threads/:threadId/event-rows",
+    "/api/zero/chat-threads/:threadId/event-rows",
+  ],
+  "/api/chat-threads/:threadId/event-snapshot": [
+    "/api/okou/chat-threads/:threadId/event-snapshot",
+    "/api/zero/chat-threads/:threadId/event-snapshot",
+  ],
+  "/api/chat-threads/:threadId/goal": [
+    "/api/okou/chat-threads/:threadId/goal",
+    "/api/zero/chat-threads/:threadId/goal",
+  ],
+  "/api/chat-threads/:threadId/goal/pause": [
+    "/api/okou/chat-threads/:threadId/goal/pause",
+    "/api/zero/chat-threads/:threadId/goal/pause",
+  ],
+  "/api/chat-threads/:threadId/shared-threads": [
+    "/api/okou/chat-threads/:threadId/shared-threads",
+    "/api/zero/chat-threads/:threadId/shared-threads",
+  ],
+  "/api/chat-threads/:threadId/workflow-automations": [
+    "/api/okou/chat-threads/:threadId/workflow-automations",
+    "/api/zero/chat-threads/:threadId/workflow-automations",
+  ],
+  "/api/chat-threads/events": [
+    "/api/okou/chat-threads/events",
+    "/api/zero/chat-threads/events",
+  ],
+  "/api/chat-threads/snapshot": [
+    "/api/okou/chat-threads/snapshot",
+    "/api/zero/chat-threads/snapshot",
+  ],
+  "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
+  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
+  "/api/image-share/x": ["/api/okou/image-share/x", "/api/zero/image-share/x"],
+  "/api/queue-position": [
+    "/api/okou/queue-position",
+    "/api/zero/queue-position",
+  ],
+  "/api/shared-threads/:id": [
+    "/api/okou/shared-threads/:id",
+    "/api/zero/shared-threads/:id",
+  ],
+  "/api/shared-threads/:id/meta": [
+    "/api/okou/shared-threads/:id/meta",
+    "/api/zero/shared-threads/:id/meta",
+  ],
   // #28457: the billing surface — plan and usage-pack checkout, concurrency
   // subscriptions, credit purchase, the Stripe portal, invoices, and code
   // redemption. Every caller derives its URL from the contract, so nothing in

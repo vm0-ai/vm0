@@ -94,9 +94,13 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject must be one #28278 does not move, or the case flips to valid
+    // under a later slice the way `/api/chat-threads/snapshot` did once #28459
+    // landed: a provider console holds this URL, so it stays branded
+    // under #26701.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/slack/events")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

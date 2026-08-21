@@ -843,7 +843,7 @@ const authHeaders = { authorization: "Bearer clerk-session" } as const;
 
 describe("bench side-effect-free GET API routes", () => {
   bench(
-    "GET /api/okou/chat-threads/:id",
+    "GET /api/chat-threads/:id",
     async () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({

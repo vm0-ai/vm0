@@ -41,6 +41,13 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28459
+  "/api/chat-threads",
+  "/api/chat/events",
+  "/api/chat/search",
+  "/api/image-share/x",
+  "/api/queue-position",
+  "/api/shared-threads",
   // #28457. One prefix rather than the 34 moved paths: every one of them sits
   // under `/api/billing/`, and nothing else does.
   "/api/billing",
