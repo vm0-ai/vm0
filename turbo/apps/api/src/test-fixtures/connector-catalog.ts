@@ -31,7 +31,9 @@ import {
 } from "../signals/services/connector-catalog-compatibility.service";
 import {
   CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+  clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest,
   persistConnectorCatalogRuntimeProjection,
+  setConnectorCatalogRuntimeProjectionIdentityReadHookForTest,
 } from "../signals/services/connector-catalog-runtime-projection.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
 import {
@@ -182,6 +184,27 @@ export async function installApiTestConnectorCatalog(
       });
     }
   });
+}
+
+export function setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(
+  catalogVersions: readonly string[],
+): void {
+  let nextIndex = 0;
+  setConnectorCatalogRuntimeProjectionIdentityReadHookForTest(async () => {
+    const catalogVersion = catalogVersions[nextIndex];
+    if (catalogVersion === undefined) {
+      return;
+    }
+    nextIndex += 1;
+    await installApiTestConnectorCatalog({
+      catalogVersion,
+      runtimeProjection: true,
+    });
+  });
+}
+
+export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(): void {
+  clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest();
 }
 
 interface ApiTestConnectorCatalogIdentity {

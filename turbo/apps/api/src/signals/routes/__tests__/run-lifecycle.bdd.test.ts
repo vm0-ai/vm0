@@ -58,6 +58,7 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   corruptApiTestConnectorCatalogRuntimeProjectionDigest,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
@@ -66,6 +67,7 @@ import {
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -2614,6 +2616,52 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, repairedRun.runId, [200]);
+  });
+
+  it("bounds repeated projection identity replacement with full fallback", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-unstable-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-unstable-runtime-projection-initial-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements([
+      `api-test-unstable-runtime-projection-first-${randomUUID()}`,
+      `api-test-unstable-runtime-projection-second-${randomUUID()}`,
+    ]);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "bound repeated runtime projection identity replacement",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(run.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "unstable",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("falls back when a selected projection row fails digest verification", async () => {
@@ -10709,6 +10757,39 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(restoredSkillMount?.versionId).toBe(updatedSkill.versionId);
 
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
+
+    const directRun = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "use the direct scoped custom connector",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: [],
+        allowedCustomConnectorIds: [custom.id],
+      },
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(directRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "hit",
+        connector_catalog_requested_connector_count_bucket: "0",
+        connector_catalog_metadata_connector_count_bucket: "1",
+      }),
+    );
+    const directClaim = await api.claimRunnerJob(directRun.runId);
+    expect(
+      inlineFirewallApis(directClaim.firewalls, internalName)[0]?.permissions,
+    ).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(findFirewallEntry(directClaim.firewalls, "slack")).toBeUndefined();
+    expect(directClaim.networkPolicies ?? {}).not.toHaveProperty("slack");
+    await api.requestCancelRun(actor, directRun.runId, [200]);
   });
 
   it("fails closed when a custom skill version belongs to another storage", async () => {

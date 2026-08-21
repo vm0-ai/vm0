@@ -12,7 +12,7 @@ import { command } from "ccstate";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
-import { singleton } from "../../lib/singleton";
+import { singleton, testOverride } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
@@ -103,6 +103,24 @@ const projectionSchemaAvailabilityCache = singleton(
     return { available: false };
   },
 );
+
+type ConnectorCatalogRuntimeProjectionIdentityReadHook = () => Promise<void>;
+
+const projectionIdentityReadHook = testOverride<
+  ConnectorCatalogRuntimeProjectionIdentityReadHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setConnectorCatalogRuntimeProjectionIdentityReadHookForTest(
+  hook: ConnectorCatalogRuntimeProjectionIdentityReadHook,
+): void {
+  projectionIdentityReadHook.set(hook);
+}
+
+export function clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest(): void {
+  projectionIdentityReadHook.clear();
+}
 
 function authMethodKey(connectorSlug: string, authMethodId: string): string {
   return `${connectorSlug}\0${authMethodId}`;
@@ -296,6 +314,9 @@ async function readProjectionIdentity(
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityState().digest;
   const row = await queryProjectionIdentity(db, sourceId, capabilityDigest);
+  // Route integration tests use this seam to replace the active identity after
+  // the read, making both retry generations deterministic without timing sleeps.
+  await projectionIdentityReadHook.get()?.();
   if (row === undefined || row.projectionVersion === null) {
     return { kind: "fallback", reason: "not_ready" };
   }
