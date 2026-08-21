@@ -13,7 +13,7 @@ import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/
 import { and, asc, eq } from "drizzle-orm";
 
 import { mockOptionalEnv } from "../lib/env";
-import { writeDb$ } from "../signals/external/db";
+import { writeDb$, type Db } from "../signals/external/db";
 import { nowDate } from "../lib/time";
 import {
   connectorCatalogArtifactSchema,
@@ -180,7 +180,6 @@ export async function installApiTestConnectorCatalog(
         sourceId: source.sourceId,
         identity: { catalogVersion, catalogDigest },
         artifact: catalog,
-        projectedAt: activatedAt,
       });
     }
   });
@@ -212,6 +211,59 @@ interface ApiTestConnectorCatalogIdentity {
   readonly catalogVersion: string;
   readonly catalogDigest: string;
   readonly capabilityDigest: string;
+}
+
+function currentApiTestConnectorCatalogRuntimeProjectionSetWhere(
+  identity: ApiTestConnectorCatalogIdentity,
+) {
+  return and(
+    eq(connectorCatalogRuntimeProjectionSets.sourceId, identity.sourceId),
+    eq(
+      connectorCatalogRuntimeProjectionSets.schemaVersion,
+      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+    ),
+    eq(
+      connectorCatalogRuntimeProjectionSets.catalogVersion,
+      identity.catalogVersion,
+    ),
+    eq(
+      connectorCatalogRuntimeProjectionSets.catalogDigest,
+      identity.catalogDigest,
+    ),
+    eq(
+      connectorCatalogRuntimeProjectionSets.projectionVersion,
+      CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+    ),
+  );
+}
+
+async function currentApiTestConnectorCatalogRuntimeProjectionSet(
+  db: Db,
+  identity: ApiTestConnectorCatalogIdentity,
+): Promise<
+  { readonly id: string; readonly connectorCount: number } | undefined
+> {
+  const [projectionSet] = await db
+    .select({
+      id: connectorCatalogRuntimeProjectionSets.id,
+      connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
+    })
+    .from(connectorCatalogRuntimeProjectionSets)
+    .where(currentApiTestConnectorCatalogRuntimeProjectionSetWhere(identity))
+    .limit(1);
+  return projectionSet;
+}
+
+async function requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+  db: Db,
+  identity: ApiTestConnectorCatalogIdentity,
+): Promise<{ readonly id: string; readonly connectorCount: number }> {
+  const projectionSet =
+    await currentApiTestConnectorCatalogRuntimeProjectionSet(db, identity);
+  if (projectionSet === undefined) {
+    throw new Error("API test connector runtime projection set is unavailable");
+  }
+  return projectionSet;
 }
 
 async function currentApiTestConnectorCatalogIdentity(): Promise<ApiTestConnectorCatalogIdentity> {
@@ -510,26 +562,18 @@ export async function deleteApiTestConnectorCatalogRuntimeProjectionRow(
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
+  const projectionSet =
+    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+      db,
+      identity,
+    );
   const deleted = await db
     .delete(connectorCatalogRuntimeProjections)
     .where(
       and(
-        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
         eq(
-          connectorCatalogRuntimeProjections.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogVersion,
-          identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogDigest,
-          identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.projectionVersion,
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+          connectorCatalogRuntimeProjections.projectionSetId,
+          projectionSet.id,
         ),
         eq(connectorCatalogRuntimeProjections.connectorSlug, connectorSlug),
       ),
@@ -545,27 +589,19 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionDigest(
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
+  const projectionSet =
+    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+      db,
+      identity,
+    );
   const updated = await db
     .update(connectorCatalogRuntimeProjections)
     .set({ connectorDigest: `sha256:${"0".repeat(64)}` })
     .where(
       and(
-        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
         eq(
-          connectorCatalogRuntimeProjections.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogVersion,
-          identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogDigest,
-          identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.projectionVersion,
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+          connectorCatalogRuntimeProjections.projectionSetId,
+          projectionSet.id,
         ),
         eq(connectorCatalogRuntimeProjections.connectorSlug, connectorSlug),
       ),
@@ -582,60 +618,17 @@ export async function readApiTestConnectorCatalogRuntimeProjection(): Promise<{
 } | null> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
-  const [setRow] = await db
-    .select({
-      connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
-    })
-    .from(connectorCatalogRuntimeProjectionSets)
-    .where(
-      and(
-        eq(connectorCatalogRuntimeProjectionSets.sourceId, identity.sourceId),
-        eq(
-          connectorCatalogRuntimeProjectionSets.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.catalogVersion,
-          identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.catalogDigest,
-          identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.projectionVersion,
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
-        ),
-      ),
-    )
-    .limit(1);
+  const setRow = await currentApiTestConnectorCatalogRuntimeProjectionSet(
+    db,
+    identity,
+  );
   if (setRow === undefined) {
     return null;
   }
   const rows = await db
     .select({ connectorSlug: connectorCatalogRuntimeProjections.connectorSlug })
     .from(connectorCatalogRuntimeProjections)
-    .where(
-      and(
-        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
-        eq(
-          connectorCatalogRuntimeProjections.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogVersion,
-          identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.catalogDigest,
-          identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogRuntimeProjections.projectionVersion,
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
-        ),
-      ),
-    )
+    .where(eq(connectorCatalogRuntimeProjections.projectionSetId, setRow.id))
     .orderBy(asc(connectorCatalogRuntimeProjections.connectorSlug));
   return {
     connectorCount: setRow.connectorCount,
@@ -650,27 +643,7 @@ export async function deleteApiTestConnectorCatalogRuntimeProjectionSet(): Promi
   const db = store.set(writeDb$);
   const deleted = await db
     .delete(connectorCatalogRuntimeProjectionSets)
-    .where(
-      and(
-        eq(connectorCatalogRuntimeProjectionSets.sourceId, identity.sourceId),
-        eq(
-          connectorCatalogRuntimeProjectionSets.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.catalogVersion,
-          identity.catalogVersion,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.catalogDigest,
-          identity.catalogDigest,
-        ),
-        eq(
-          connectorCatalogRuntimeProjectionSets.projectionVersion,
-          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
-        ),
-      ),
-    )
+    .where(currentApiTestConnectorCatalogRuntimeProjectionSetWhere(identity))
     .returning({ sourceId: connectorCatalogRuntimeProjectionSets.sourceId });
   requireSingleCatalogMutation(deleted, "runtime projection set deletion");
 }

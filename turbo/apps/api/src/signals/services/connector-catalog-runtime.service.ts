@@ -637,6 +637,7 @@ function projectionIdentityKey(
   identity: ConnectorCatalogRuntimeProjectionIdentity,
 ): string {
   return [
+    identity.projectionSetId,
     identity.sourceId,
     identity.schemaVersion,
     identity.catalogVersion,

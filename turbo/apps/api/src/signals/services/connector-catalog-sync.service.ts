@@ -816,7 +816,6 @@ async function commitCandidate(
           sourceId: args.sourceId,
           identity: args.candidate.identity,
           artifact: args.candidate.artifact,
-          projectedAt: args.attemptedAt,
         });
       }
       return "accepted" as const;

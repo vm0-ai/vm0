@@ -10,6 +10,8 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 import type {
@@ -242,26 +244,19 @@ export const connectorCatalogActiveSnapshot = pgTable(
 export const connectorCatalogRuntimeProjectionSets = pgTable(
   "connector_catalog_runtime_projection_sets",
   {
+    id: uuid("id").defaultRandom().primaryKey(),
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
     catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     projectionVersion: integer("projection_version").notNull(),
     connectorCount: integer("connector_count").notNull(),
-    projectedAt: timestamp("projected_at").notNull(),
   },
   (table) => {
     return [
-      primaryKey({
-        name: "connector_catalog_runtime_projection_sets_pk",
-        columns: [
-          table.sourceId,
-          table.schemaVersion,
-          table.catalogVersion,
-          table.catalogDigest,
-          table.projectionVersion,
-        ],
-      }),
+      uniqueIndex(
+        "connector_catalog_runtime_projection_sets_source_schema_unique",
+      ).on(table.sourceId, table.schemaVersion),
       foreignKey({
         name: "connector_catalog_runtime_projection_sets_sync_state_fk",
         columns: [table.sourceId, table.schemaVersion],
@@ -293,11 +288,7 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
 export const connectorCatalogRuntimeProjections = pgTable(
   "connector_catalog_runtime_projections",
   {
-    sourceId: varchar("source_id", { length: 64 }).notNull(),
-    schemaVersion: integer("schema_version").notNull(),
-    catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
-    projectionVersion: integer("projection_version").notNull(),
+    projectionSetId: uuid("projection_set_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     connectorDigest: varchar("connector_digest", { length: 71 }).notNull(),
     connector: jsonb("connector")
@@ -308,44 +299,13 @@ export const connectorCatalogRuntimeProjections = pgTable(
     return [
       primaryKey({
         name: "connector_catalog_runtime_projections_pk",
-        columns: [
-          table.sourceId,
-          table.schemaVersion,
-          table.catalogVersion,
-          table.catalogDigest,
-          table.projectionVersion,
-          table.connectorSlug,
-        ],
+        columns: [table.projectionSetId, table.connectorSlug],
       }),
       foreignKey({
         name: "connector_catalog_runtime_projections_set_fk",
-        columns: [
-          table.sourceId,
-          table.schemaVersion,
-          table.catalogVersion,
-          table.catalogDigest,
-          table.projectionVersion,
-        ],
-        foreignColumns: [
-          connectorCatalogRuntimeProjectionSets.sourceId,
-          connectorCatalogRuntimeProjectionSets.schemaVersion,
-          connectorCatalogRuntimeProjectionSets.catalogVersion,
-          connectorCatalogRuntimeProjectionSets.catalogDigest,
-          connectorCatalogRuntimeProjectionSets.projectionVersion,
-        ],
+        columns: [table.projectionSetId],
+        foreignColumns: [connectorCatalogRuntimeProjectionSets.id],
       }).onDelete("cascade"),
-      check(
-        "connector_catalog_projections_schema_positive",
-        sql`${table.schemaVersion} > 0`,
-      ),
-      check(
-        "connector_catalog_projections_version_positive",
-        sql`${table.projectionVersion} > 0`,
-      ),
-      check(
-        "connector_catalog_projections_catalog_digest_valid",
-        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
-      ),
       check(
         "connector_catalog_projections_connector_digest_valid",
         sql`${table.connectorDigest} ~ '^sha256:[a-f0-9]{64}$'`,

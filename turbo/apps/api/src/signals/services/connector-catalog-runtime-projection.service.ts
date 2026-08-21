@@ -13,7 +13,6 @@ import { and, count, eq, inArray, sql } from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { singleton, testOverride } from "../../lib/singleton";
-import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   connectorCatalogArtifactConnectorSchema,
@@ -50,6 +49,7 @@ interface ConnectorCatalogRuntimeProjectionRowSetIdentity extends Omit<
   ExternalCatalogIdentity,
   "capabilityDigest"
 > {
+  readonly projectionSetId: string;
   readonly projectionVersion: number;
   readonly connectorCount: number;
 }
@@ -186,7 +186,6 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
     readonly catalogDigest: string;
   };
   readonly artifact: ConnectorCatalogArtifact;
-  readonly projectedAt?: Date;
 }): Promise<void> {
   await args.db
     .delete(connectorCatalogRuntimeProjectionSets)
@@ -199,22 +198,24 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
         ),
       ),
     );
-  const setIdentity = {
-    sourceId: args.sourceId,
-    schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-    catalogVersion: args.identity.catalogVersion,
-    catalogDigest: args.identity.catalogDigest,
-    projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
-  };
-  await args.db.insert(connectorCatalogRuntimeProjectionSets).values({
-    ...setIdentity,
-    connectorCount: args.artifact.connectors.length,
-    projectedAt: args.projectedAt ?? nowDate(),
-  });
+  const [projectionSet] = await args.db
+    .insert(connectorCatalogRuntimeProjectionSets)
+    .values({
+      sourceId: args.sourceId,
+      schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+      catalogVersion: args.identity.catalogVersion,
+      catalogDigest: args.identity.catalogDigest,
+      projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+      connectorCount: args.artifact.connectors.length,
+    })
+    .returning({ id: connectorCatalogRuntimeProjectionSets.id });
+  if (projectionSet === undefined) {
+    throw new Error("Connector runtime projection set insert returned no row");
+  }
   await args.db.insert(connectorCatalogRuntimeProjections).values(
     args.artifact.connectors.map((connector) => {
       return {
-        ...setIdentity,
+        projectionSetId: projectionSet.id,
         connectorSlug: connector.slug,
         connectorDigest: connectorCatalogRuntimeProjectionDigest(connector),
         connector,
@@ -230,6 +231,7 @@ async function queryProjectionIdentity(
 ) {
   const [row] = await db
     .select({
+      projectionSetId: connectorCatalogRuntimeProjectionSets.id,
       schemaVersion: connectorCatalogActiveSnapshot.schemaVersion,
       catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
       catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
@@ -317,7 +319,11 @@ async function readProjectionIdentity(
   // Route integration tests use this seam to replace the active identity after
   // the read, making both retry generations deterministic without timing sleeps.
   await projectionIdentityReadHook.get()?.();
-  if (row === undefined || row.projectionVersion === null) {
+  if (
+    row === undefined ||
+    row.projectionSetId === null ||
+    row.projectionVersion === null
+  ) {
     return { kind: "fallback", reason: "not_ready" };
   }
   if (
@@ -353,6 +359,7 @@ async function readProjectionIdentity(
     kind: "ready",
     projection: {
       identity: {
+        projectionSetId: row.projectionSetId,
         sourceId,
         schemaVersion: row.schemaVersion,
         catalogVersion: row.catalogVersion,
@@ -379,24 +386,12 @@ export async function readConnectorCatalogRuntimeProjectionIdentity(
 function projectionIdentityWhere(
   identity: ConnectorCatalogRuntimeProjectionRowSetIdentity,
 ) {
-  return and(
-    eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
-    eq(
-      connectorCatalogRuntimeProjections.schemaVersion,
-      identity.schemaVersion,
-    ),
-    eq(
-      connectorCatalogRuntimeProjections.catalogVersion,
-      identity.catalogVersion,
-    ),
-    eq(
-      connectorCatalogRuntimeProjections.catalogDigest,
-      identity.catalogDigest,
-    ),
-    eq(
-      connectorCatalogRuntimeProjections.projectionVersion,
-      identity.projectionVersion,
-    ),
+  // The opaque set ID is the projection generation boundary. Querying child
+  // rows by source/schema would allow a concurrent replacement to mix the
+  // identity read from one generation with connector rows from the next.
+  return eq(
+    connectorCatalogRuntimeProjections.projectionSetId,
+    identity.projectionSetId,
   );
 }
 
@@ -521,6 +516,7 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
       }
       const [ready] = await tx
         .select({
+          projectionSetId: connectorCatalogRuntimeProjectionSets.id,
           connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
         })
         .from(connectorCatalogRuntimeProjectionSets)
@@ -550,6 +546,7 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
         const actualCount = await countConnectorCatalogRuntimeProjectionRows({
           db: tx,
           identity: {
+            projectionSetId: ready.projectionSetId,
             sourceId,
             schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
             catalogVersion: snapshot.catalogVersion,
