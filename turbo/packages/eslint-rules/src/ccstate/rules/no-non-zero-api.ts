@@ -51,6 +51,14 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   // #28457. One prefix rather than the 34 moved paths: every one of them sits
   // under `/api/billing/`, and nothing else does.
   "/api/billing",
+  // #28460. `/api/connectors` also covers the OAuth callback below it, which
+  // was already neutral: once the connector family moves, the prefix a caller
+  // writes no longer distinguishes the two.
+  "/api/connector-catalog",
+  "/api/connectors",
+  "/api/custom-connectors",
+  "/api/model-provider-connections",
+  "/api/user-permission-grants",
 ];
 
 /**

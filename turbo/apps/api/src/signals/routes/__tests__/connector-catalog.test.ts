@@ -132,7 +132,7 @@ function stateFromAuthorizationUrl(authorizationUrl: string): string {
   return state;
 }
 
-describe("GET /api/zero/connector-catalog", () => {
+describe("GET /api/connector-catalog", () => {
   const seededFeatureSwitches: {
     readonly orgId: string;
     readonly userId: string;

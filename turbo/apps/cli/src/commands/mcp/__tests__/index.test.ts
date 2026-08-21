@@ -468,7 +468,7 @@ describe("okou mcp command", () => {
     await writeFile(inputPath, "{}", "utf8");
     let apiCalls = 0;
     server.use(
-      http.get("http://localhost:3000/api/okou/custom-connectors", () => {
+      http.get("http://localhost:3000/api/custom-connectors", () => {
         apiCalls++;
         return HttpResponse.json({ connectors: [] });
       }),

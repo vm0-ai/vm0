@@ -380,8 +380,8 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/okou/connectors/github",
-      "https://api.example.test/api/okou/connector-catalog/github/permissions",
+      "https://api.example.test/api/connectors/github",
+      "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",
     ]);
   });

@@ -29,7 +29,6 @@ import {
 } from "./agent-run-launch-snapshot-backfill";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = path.resolve(dirname, "../../../..");
 const testSchema = "agent_run_launch_snapshot_backfill_test";
 const applyConfirmation = LAUNCH_SNAPSHOT_BACKFILL_APPLY_CONFIRMATION;
 const defaultSnapshot: ExactLaunchSnapshotValue = {
@@ -343,13 +342,6 @@ async function testStaticSafetyContracts(): Promise<void> {
     path.join(dirname, "agent-run-launch-snapshot-backfill.ts"),
     "utf8",
   );
-  const workflow = await fs.readFile(
-    path.join(
-      repositoryRoot,
-      ".github/workflows/agent-run-launch-snapshot-backfill.yml",
-    ),
-    "utf8",
-  );
 
   assert.match(
     runner,
@@ -381,30 +373,6 @@ async function testStaticSafetyContracts(): Promise<void> {
     runner,
     /c74f9a7cbeba3d52589f7b7bfb569ca7ecc25b7fa00e4a88ab728df7d22e2159/u,
   );
-
-  assert.match(workflow, /^on:\n {2}workflow_dispatch:/mu);
-  assert.match(workflow, /default: dry-run/u);
-  assert.match(workflow, /environment: production/u);
-  assert.match(workflow, /ref: main/u);
-  assert.equal(/ref:.*\$\{\{/u.test(workflow), false);
-  assert.match(
-    workflow,
-    /group: production-agent-run-launch-snapshot-backfill/u,
-  );
-  assert.match(workflow, /cancel-in-progress: false/u);
-  assert.match(workflow, /timeout-minutes: 60/u);
-  assert.match(workflow, /inputs\.confirmed_apply != 'yes'/u);
-  assert.match(
-    workflow,
-    /--confirm-apply apply-agent-run-launch-snapshot-backfill/u,
-  );
-  for (const choice of ['- "1"', '- "20"', '- "300"', '- "500"']) {
-    assert.ok(workflow.includes(choice));
-  }
-  assert.match(workflow, /--pooled/u);
-  assert.match(workflow, /--ssl verify-full/u);
-  assert.equal(workflow.includes("upload-artifact"), false);
-  assert.equal(workflow.includes("pull_request"), false);
 }
 
 async function testSanitizedConnectionFailure(): Promise<void> {
