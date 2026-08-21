@@ -67,6 +67,45 @@ class TestLoadRegistry:
         assert state.invalid_vms["10.200.0.6"].reason == "empty_run_id"
         assert state.invalid_vms["10.200.0.7"].reason == "invalid_run_id"
 
+    @pytest.mark.parametrize(
+        "failure_path_kind",
+        ["relative", "root", "parent", "nul"],
+    )
+    def test_rejects_invalid_model_provider_failure_file_path(
+        self,
+        tmp_path,
+        failure_path_kind: str,
+    ):
+        path = tmp_path / "registry.json"
+        failure_paths = {
+            "relative": "relative.json",
+            "root": os.sep,
+            "parent": str(tmp_path / ".."),
+            "nul": f"{tmp_path}/failure\x00.json",
+        }
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-active",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
+                            "modelProviderFailurePath": failure_paths[failure_path_kind],
+                        }
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.vms == {}
+        assert state.invalid_vms["10.200.0.1"].reason == "invalid_model_provider_failure_path"
+
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
         with patch.object(registry.ctx, "log", MagicMock(), create=True):

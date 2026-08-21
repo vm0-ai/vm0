@@ -292,11 +292,14 @@ def _classify_registry_vms(
         if model_provider_failure_path is not None and (
             not isinstance(model_provider_failure_path, str)
             or not model_provider_failure_path
+            or "\x00" in model_provider_failure_path
             or not Path(model_provider_failure_path).is_absolute()
+            or Path(model_provider_failure_path).name in ("", ".", "..")
         ):
             invalid_vms[client_ip] = InvalidVmEntry(
                 "invalid_model_provider_failure_path",
-                "proxy registry VM entry modelProviderFailurePath must be an absolute path",
+                "proxy registry VM entry modelProviderFailurePath must be a valid "
+                "absolute file path",
             )
             continue
 
