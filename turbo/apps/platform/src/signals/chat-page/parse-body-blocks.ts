@@ -1065,10 +1065,7 @@ export function parseBodyBlocks(
       ? createActionBlockFromLine(line, options.chatActionContext)
       : null;
     if (actionBlock) {
-      if (
-        actionBlock.type === "connector-action" ||
-        actionBlock.type === "unavailable-action"
-      ) {
+      if (actionBlock.type === "connector-action") {
         const retainedMarkdown = retainedActionMarkdown(
           line,
           actionBlock.descriptor.originalUrl,

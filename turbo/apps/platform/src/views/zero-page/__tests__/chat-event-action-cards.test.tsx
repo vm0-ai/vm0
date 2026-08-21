@@ -1160,6 +1160,12 @@ describe("chat event action cards", () => {
       threadOnlyUrl,
       missingAgentUrl,
     ];
+    const invalidActionLines = [
+      `Please use ${wrongThreadUrl} to continue.`,
+      promptOnlyUrl,
+      threadOnlyUrl,
+      missingAgentUrl,
+    ];
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Invalid action callbacks",
@@ -1167,7 +1173,7 @@ describe("chat event action cards", () => {
         {
           id: "msg-assistant-invalid-action-callbacks",
           role: "assistant",
-          content: invalidUrls.join("\n\n"),
+          content: invalidActionLines.join("\n\n"),
           runId: "run-invalid-action-callbacks",
           createdAt: "2026-08-21T10:01:00Z",
         },
