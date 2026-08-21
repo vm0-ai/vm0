@@ -1884,7 +1884,7 @@ export function createConnectorBddApi(context: TestContext) {
         signal: context.signal,
         routes: customConnectorsRoutes,
       });
-      return await app.request("/api/zero/custom-connectors", {
+      return await app.request("/api/custom-connectors", {
         method: "POST",
         headers: {
           ...authenticate(actor),

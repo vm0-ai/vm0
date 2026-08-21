@@ -140,7 +140,7 @@ async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
   }
 }
 
-describe("DELETE /api/zero/connectors/:connectorSlug", () => {
+describe("DELETE /api/connectors/:connectorSlug", () => {
   const track = createFixtureTracker<AuthenticatedFixture>(cleanupFixture);
 
   it("returns 401 when not authenticated", async () => {

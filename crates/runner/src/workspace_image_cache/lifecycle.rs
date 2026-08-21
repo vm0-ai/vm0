@@ -753,10 +753,15 @@ impl WorkspaceImageCache {
                 Ok(crate::lock::TryLock::Busy) => {
                     if collect_locked_commits
                         && locked_commit_keys.len() < MAX_HELD_WORKSPACE_STATES
-                        && self.classify_metadata_scope(cache_key).await
-                            == WorkspaceCacheScopeClassification::Relevant
                     {
-                        locked_commit_keys.insert(cache_key.to_owned());
+                        let metadata_path = self.workspace_image_cache_metadata(cache_key);
+                        if self
+                            .classify_metadata_scope(cache_key, &metadata_path)
+                            .await
+                            == WorkspaceCacheScopeClassification::Relevant
+                        {
+                            locked_commit_keys.insert(cache_key.to_owned());
+                        }
                     }
                     continue;
                 }
@@ -871,8 +876,9 @@ impl WorkspaceImageCache {
         input: WorkspaceImagePromotionInput<'_>,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let promotion_started = Instant::now();
-        let cache_dir = self.workspace_image_cache_entry_dir(input.cache_key);
-        if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
+        let entry_paths = self.entry_paths(input.cache_key);
+        let cache_dir = entry_paths.entry_dir();
+        if remove_non_directory_workspace_cache_entry(cache_dir).await? {
             info!(
                 run_id = %input.run_id,
                 cache_key = input.cache_key,
@@ -880,10 +886,10 @@ impl WorkspaceImageCache {
                 "removed non-directory workspace image cache entry before promotion"
             );
         }
-        let metadata_path = self.workspace_image_cache_metadata(input.cache_key);
+        let metadata_path = entry_paths.metadata();
         match self
             .read_valid_metadata(
-                &metadata_path,
+                metadata_path,
                 input.profile_name,
                 input.reuse_key,
                 input.working_dir,
@@ -983,7 +989,7 @@ impl WorkspaceImageCache {
         self.ensure_workspace_cache_entry_dir(input.cache_key)
             .await?;
         secure_workspace_cache_publication_file(input.active_image)?;
-        let tmp = self.workspace_image_cache_tmp_image(input.cache_key, input.run_id);
+        let tmp = entry_paths.tmp_image(input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         let rename_started = Instant::now();
         let (transfer_mode, transfer_duration) = match fs::rename(input.active_image, &tmp).await {
@@ -1070,28 +1076,28 @@ impl WorkspaceImageCache {
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
-        let current = self.workspace_image_cache_current_image(input.cache_key);
-        match fs::symlink_metadata(&current).await {
+        let current = entry_paths.current_image();
+        match fs::symlink_metadata(current).await {
             Ok(metadata) if metadata.is_dir() => {
-                remove_workspace_cache_path_if_exists(&current).await?;
+                remove_workspace_cache_path_if_exists(current).await?;
             }
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
-        if let Err(e) = fs::rename(&tmp, &current).await {
+        if let Err(e) = fs::rename(&tmp, current).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }
-        let current_metadata = match fs::symlink_metadata(&current).await {
+        let current_metadata = match fs::symlink_metadata(current).await {
             Ok(metadata) => metadata,
             Err(e) => {
-                let _ = remove_workspace_cache_path_if_exists(&current).await;
+                let _ = remove_workspace_cache_path_if_exists(current).await;
                 return Err(e.into());
             }
         };
         if !current_metadata.is_file() {
-            let _ = remove_workspace_cache_path_if_exists(&current).await;
+            let _ = remove_workspace_cache_path_if_exists(current).await;
             return Err(RunnerError::Internal(format!(
                 "workspace image cache current image is not a file: {}",
                 current.display()
@@ -1137,7 +1143,7 @@ impl WorkspaceImageCache {
             .write_metadata(input.cache_key, input.run_id, metadata)
             .await
         {
-            let _ = remove_workspace_cache_path_if_exists(&current).await;
+            let _ = remove_workspace_cache_path_if_exists(current).await;
             let _ = self.prune_session_history_sidecar(input.cache_key).await;
             return Err(e);
         }
