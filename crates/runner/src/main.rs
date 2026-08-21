@@ -31,7 +31,6 @@ mod live_runner_instances;
 mod local_queue;
 mod lock;
 mod log_file;
-mod model_provider_failure;
 mod network_log_drain;
 mod network_log_manager;
 mod network_log_process;

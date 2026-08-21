@@ -453,7 +453,6 @@ define_per_run_logs! {
     system_stream_log => ("system-stream-", ".log"),
     metrics_log => ("metrics-", ".jsonl"),
     sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
-    model_provider_failure => ("model-provider-failure-", ".json"),
 }
 
 const RUNNER_INSTANCE_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {

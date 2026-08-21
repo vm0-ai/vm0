@@ -646,9 +646,6 @@ def _store_registered_request_metadata(
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
     flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
     flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
-    failure_path = vm_info.get("modelProviderFailurePath")
-    if isinstance(failure_path, str):
-        flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = failure_path
     flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info["cliAgentType"]
 
 

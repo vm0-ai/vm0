@@ -42,10 +42,6 @@ def sandbox_auth_key(meta: Mapping[str, object]) -> str:
     return _metadata_str(meta, metadata_keys.VM_SANDBOX_AUTH_KEY)
 
 
-def model_provider_failure_path(meta: Mapping[str, object]) -> str:
-    return _metadata_str(meta, metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH)
-
-
 def cli_agent_type(meta: Mapping[str, object]) -> str:
     return _metadata_str(meta, metadata_keys.CLI_AGENT_TYPE)
 

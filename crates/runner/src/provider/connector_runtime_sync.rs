@@ -2122,7 +2122,6 @@ mod tests {
                         capture_network_bodies: false,
                         billable_firewalls: &billable_firewalls,
                         model_usage_provider: None,
-                        model_provider_failure_path: None,
                     },
                 )
                 .await
@@ -2400,7 +2399,6 @@ mod tests {
                     capture_network_bodies: false,
                     billable_firewalls: &[],
                     model_usage_provider: None,
-                    model_provider_failure_path: None,
                 },
             )
             .await
@@ -2498,7 +2496,6 @@ mod tests {
                     capture_network_bodies: false,
                     billable_firewalls: &[],
                     model_usage_provider: None,
-                    model_provider_failure_path: None,
                 },
             )
             .await

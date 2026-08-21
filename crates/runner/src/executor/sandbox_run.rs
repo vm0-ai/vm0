@@ -1582,14 +1582,6 @@ pub(super) async fn register_proxy(
 ) -> RunnerResult<NetworkLogSession> {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
-    let model_provider_failure_path = context
-        .billable_firewalls
-        .iter()
-        .any(|name| name.starts_with("model-provider:"))
-        .then(|| config.log_paths.model_provider_failure(context.run_id));
-    if let Some(path) = model_provider_failure_path.as_deref() {
-        crate::model_provider_failure::remove(path).await?;
-    }
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
     let registration = proxy::VmRegistration {
@@ -1608,7 +1600,6 @@ pub(super) async fn register_proxy(
         capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
         billable_firewalls: &context.billable_firewalls,
         model_usage_provider: context.model_usage_provider.as_deref(),
-        model_provider_failure_path: model_provider_failure_path.as_deref(),
     };
     config
         .registry

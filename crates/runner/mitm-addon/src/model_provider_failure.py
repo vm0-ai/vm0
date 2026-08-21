@@ -1,13 +1,12 @@
-"""Trusted, bounded model-provider failure reduction for one runner job."""
+"""Trusted, bounded model-provider failure reduction and reporting."""
 
 import json
-import os
 import threading
-import uuid
+import urllib.error
+import urllib.parse
 from collections.abc import Callable, Mapping
-from contextlib import suppress
-from dataclasses import dataclass, field
-from pathlib import Path
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
 from typing import Literal
 
 from mitmproxy import http
@@ -16,6 +15,7 @@ import body_decoding
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import openai_responses_events
+import platform_api
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
 from usage.json_selective import (
@@ -49,7 +49,11 @@ _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
 _MAX_SELECTED_STRING_BYTES = 128
 _MAX_RETRY_AFTER_SECONDS = 300
+_REPORT_TIMEOUT_SECONDS = 3
+_REPORT_WORKERS = 4
+_MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
 _DONE_SENTINEL = b"[DONE]"
+REPORT_AUTH_ENV = "VM0_MITM_MODEL_PROVIDER_FAILURE_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -138,7 +142,7 @@ class _Outcome:
 
 @dataclass
 class _FlowState:
-    path: str
+    run_id: str
     protocol: _Protocol
     terminal_observed: bool = False
     websocket_ambiguous: bool = False
@@ -147,43 +151,65 @@ class _FlowState:
     active_response_id: str | None = None
 
 
-@dataclass
-class _RunState:
-    active_flow_ids: set[str] = field(default_factory=set)
-    ambiguous: bool = False
+_report_lock = threading.Lock()
+_report_api_url = ""
+_report_bearer_credential = ""
+_report_slots = threading.BoundedSemaphore(_MAX_PENDING_REPORTS)
+_report_executor = ThreadPoolExecutor(
+    max_workers=_REPORT_WORKERS,
+    thread_name_prefix="model-provider-failure",
+)
+_report_futures: set[Future[int]] = set()
 
 
-_state_lock = threading.Lock()
-_run_states: dict[str, _RunState] = {}
+@dataclass(frozen=True)
+class _ReportContext:
+    run_id: str
+    flow_id: str
+    firewall_name: str
+    proxy_log_path: str
+    failure_kind: FailureKind
+
+
+def configure_reporting(*, api_url: str, bearer_credential: str) -> None:
+    """Configure the host-owned control-plane reporting destination."""
+    global _report_api_url, _report_bearer_credential
+    with _report_lock:
+        _report_api_url = api_url.rstrip("/")
+        _report_bearer_credential = bearer_credential
 
 
 def reset_for_tests() -> None:
-    with _state_lock:
-        _run_states.clear()
+    drain_reports_for_tests()
+    configure_reporting(api_url="", bearer_credential="")
+
+
+def drain_reports_for_tests(timeout: float = 5.0) -> None:
+    """Wait for reports admitted before this call to finish."""
+    with _report_lock:
+        pending = tuple(_report_futures)
+    if pending:
+        _, not_done = wait(pending, timeout=timeout)
+        if not_done:
+            raise TimeoutError(f"{len(not_done)} model-provider failure reports did not finish")
 
 
 def admit_flow(flow: http.HTTPFlow) -> None:
     """Admit one exact managed inference flow after upstream auth succeeds."""
     if isinstance(flow.metadata.get(_FLOW_STATE), _FlowState):
         return
-    path = flow_metadata.model_provider_failure_path(flow.metadata)
+    run_id = flow_metadata.run_id(flow.metadata)
     protocol = _protocol_for_flow(flow)
     if (
-        not path
+        not run_id
         or protocol is None
         or not flow_metadata.is_firewall_billable(flow.metadata)
         or not flow_metadata.firewall_name(flow.metadata).startswith("model-provider:")
     ):
         return
 
-    flow_state = _FlowState(path=path, protocol=protocol)
+    flow_state = _FlowState(run_id=run_id, protocol=protocol)
     flow.metadata[_FLOW_STATE] = flow_state
-    with _state_lock:
-        run_state = _run_states.setdefault(path, _RunState())
-        if run_state.active_flow_ids:
-            run_state.ambiguous = True
-            _clear_summary(flow, path, "overlapping_inference_flows")
-        run_state.active_flow_ids.add(flow.id)
 
 
 def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | None:
@@ -287,6 +313,8 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
     flow_state = _flow_state(flow)
     if flow_state is None:
         return
+    if flow_state.protocol != "openai_responses_websocket" and flow_state.terminal_observed:
+        return
     if flow_state.protocol == "openai_responses_websocket":
         if flow_state.pending_intent == "normal" or flow_state.active_intent == "normal":
             _apply_outcome(flow, flow_state, _failure_outcome("connection"))
@@ -376,29 +404,17 @@ def finish_websocket(flow: http.HTTPFlow) -> None:
 
 
 def release_flow(flow: http.HTTPFlow) -> None:
-    flow_state = flow.metadata.pop(_FLOW_STATE, None)
+    flow.metadata.pop(_FLOW_STATE, None)
     flow.metadata.pop(_RESPONSE_FINISH, None)
-    if not isinstance(flow_state, _FlowState):
-        return
-    with _state_lock:
-        run_state = _run_states.get(flow_state.path)
-        if run_state is None:
-            return
-        if not flow_state.terminal_observed or run_state.ambiguous:
-            _clear_summary(flow, flow_state.path, "untrusted_terminal_state")
-        run_state.active_flow_ids.discard(flow.id)
-        if not run_state.active_flow_ids:
-            del _run_states[flow_state.path]
 
 
 def shutdown() -> None:
-    """Suppress unfinished flow state before the proxy process exits."""
-    with _state_lock:
-        active_paths = tuple(_run_states)
-        _run_states.clear()
-    for path in active_paths:
-        with suppress(OSError):
-            Path(path).unlink()
+    """Stop admitting reports and drain already-submitted best-effort work."""
+    configure_reporting(api_url="", bearer_credential="")
+    with _report_lock:
+        pending = tuple(_report_futures)
+    if pending:
+        wait(pending, timeout=_REPORT_TIMEOUT_SECONDS)
 
 
 class _JsonResponseParser:
@@ -741,20 +757,19 @@ def _unknown_outcome() -> _Outcome:
 
 
 def _settle_http_flow(flow: http.HTTPFlow, flow_state: _FlowState, outcome: _Outcome) -> None:
+    if flow_state.terminal_observed:
+        return
     _apply_outcome(flow, flow_state, outcome)
     flow_state.terminal_observed = True
 
 
 def _apply_outcome(flow: http.HTTPFlow, flow_state: _FlowState, outcome: _Outcome) -> None:
-    with _state_lock:
-        run_state = _run_states.get(flow_state.path)
-        if run_state is None or run_state.ambiguous or flow_state.websocket_ambiguous:
-            _clear_summary(flow, flow_state.path, "ambiguous_inference_ordering")
-            return
-        if outcome.kind == "failure" and outcome.failure is not None:
-            _write_summary(flow, flow_state.path, outcome.failure)
-        else:
-            _clear_summary(flow, flow_state.path, f"terminal_{outcome.kind}")
+    if (
+        outcome.kind == "failure"
+        and outcome.failure is not None
+        and not flow_state.websocket_ambiguous
+    ):
+        _enqueue_report(flow, flow_state.run_id, outcome.failure)
 
 
 def _settle_websocket_terminal(
@@ -809,37 +824,75 @@ def _mark_websocket_ambiguous(
     flow_state.pending_intent = None
     flow_state.active_intent = None
     flow_state.active_response_id = None
-    _clear_summary(flow, flow_state.path, reason)
     _log_suppressed(flow, reason)
 
 
-def _write_summary(flow: http.HTTPFlow, path_value: str, failure: Failure) -> None:
-    path = Path(path_value)
+def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
+    with _report_lock:
+        api_url = _report_api_url
+        bearer_credential = _report_bearer_credential
+    report_context = _ReportContext(
+        run_id=run_id,
+        flow_id=flow.id,
+        firewall_name=flow_metadata.firewall_name(flow.metadata),
+        proxy_log_path=flow_metadata.proxy_log_path(flow.metadata),
+        failure_kind=failure.failure_kind,
+    )
+    if not api_url or not bearer_credential:
+        _log_report_omitted(report_context, "reporting_not_configured")
+        return
+    if not _report_slots.acquire(blocking=False):
+        _log_report_omitted(report_context, "delivery_saturated")
+        return
+
     payload: dict[str, str | int] = {"failureKind": failure.failure_kind}
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    temporary = path.with_name(f".{path.name}.vm0tmp-{uuid.uuid4()}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    report_url = (
+        f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
+    )
     try:
-        descriptor = os.open(temporary, flags, 0o600)
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(content)
-        temporary.replace(path)
-    except OSError as error:
-        with suppress(FileNotFoundError):
-            temporary.unlink()
-        _log_state_file_error(flow, "write_failed", error)
-
-
-def _clear_summary(flow: http.HTTPFlow, path_value: str, reason: str) -> None:
-    try:
-        Path(path_value).unlink()
-    except FileNotFoundError:
+        future = _report_executor.submit(
+            _post_report,
+            report_url,
+            bearer_credential,
+            content,
+        )
+    except RuntimeError:
+        _report_slots.release()
+        _log_report_omitted(report_context, "reporter_shut_down")
         return
-    except OSError as error:
-        _log_state_file_error(flow, f"clear_failed_{reason}", error)
+    with _report_lock:
+        _report_futures.add(future)
+    future.add_done_callback(lambda completed: _finish_report(completed, report_context))
+
+
+def _post_report(url: str, bearer_credential: str, content: bytes) -> int:
+    request = platform_api.make_api_request(url, content, bearer_credential)
+    try:
+        with platform_api.build_api_opener().open(
+            request,
+            timeout=_REPORT_TIMEOUT_SECONDS,
+        ) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        with error:
+            return error.code
+
+
+def _finish_report(future: Future[int], context: _ReportContext) -> None:
+    try:
+        status = future.result()
+    except Exception as error:
+        _log_report_omitted(context, "delivery_failed", error_type=type(error).__name__)
+    else:
+        if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECT_MIN:
+            _log_report_omitted(context, "http_error", http_status=status)
+    finally:
+        with _report_lock:
+            _report_futures.discard(future)
+        _report_slots.release()
 
 
 def _log_suppressed(flow: http.HTTPFlow, reason: str) -> None:
@@ -856,15 +909,28 @@ def _log_suppressed(flow: http.HTTPFlow, reason: str) -> None:
     )
 
 
-def _log_state_file_error(flow: http.HTTPFlow, reason: str, error: OSError) -> None:
+def _log_report_omitted(
+    context: _ReportContext,
+    reason: str,
+    *,
+    error_type: str | None = None,
+    http_status: int | None = None,
+) -> None:
+    extra: dict[str, str | int] = {}
+    if error_type is not None:
+        extra["error_type"] = error_type
+    if http_status is not None:
+        extra["http_status"] = http_status
     log_proxy_entry(
-        flow_metadata.proxy_log_path(flow.metadata),
+        context.proxy_log_path,
         "warn",
-        "Model provider failure state update failed",
+        "Model provider failure report omitted",
         type="model_provider_failure",
         disposition="omitted",
         reason=reason,
-        error_type=type(error).__name__,
-        run_id=flow_metadata.run_id(flow.metadata),
-        flow_id=flow.id,
+        run_id=context.run_id,
+        flow_id=context.flow_id,
+        firewall_name=context.firewall_name,
+        failure_kind=context.failure_kind,
+        **extra,
     )

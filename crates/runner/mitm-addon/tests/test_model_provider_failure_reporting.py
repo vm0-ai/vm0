@@ -1,8 +1,7 @@
 """Integration tests for trusted model-provider failure reduction."""
 
-import json
-import stat
 from pathlib import Path
+from typing import Any
 
 import pytest
 from mitmproxy import http
@@ -22,7 +21,7 @@ from tests.model_provider_websocket_helpers import (
 
 def _make_flow(
     real_flow,
-    failure_path: Path,
+    proxy_log_path: Path,
     *,
     firewall_name: str = "model-provider:openai-api-key",
     request_path: str = "/v1/chat/completions",
@@ -41,7 +40,7 @@ def _make_flow(
     flow.metadata.update(
         {
             metadata_keys.VM_RUN_ID: "run-model-failure",
-            metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH: str(failure_path),
+            metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
             metadata_keys.ORIGINAL_URL: f"https://api.openai.com{request_path}",
             metadata_keys.FIREWALL_NAME: firewall_name,
             metadata_keys.FIREWALL_BILLABLE: True,
@@ -49,6 +48,21 @@ def _make_flow(
         }
     )
     return flow
+
+
+@pytest.fixture(autouse=True)
+def model_provider_failure_api(usage_webhook_server, mitm_ctx, monkeypatch):
+    bearer_credential = str(id(usage_webhook_server))
+    monkeypatch.setenv(model_provider_failure.REPORT_AUTH_ENV, bearer_credential)
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.configure(set())
+        yield usage_webhook_server
+    model_provider_failure.drain_reports_for_tests()
+
+
+def _reported_payloads(model_provider_failure_api) -> list[dict[str, Any]]:
+    model_provider_failure.drain_reports_for_tests()
+    return [request.json_body() for request in model_provider_failure_api.requests]
 
 
 def _finish_http_flow(flow, *, body: bytes | None, mitm_ctx) -> None:
@@ -62,11 +76,15 @@ def _finish_http_flow(flow, *, body: bytes | None, mitm_ctx) -> None:
         mitm_addon.response(flow)
 
 
-def test_rate_limit_response_writes_normalized_summary(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
+def test_rate_limit_response_reports_normalized_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         response_status=429,
         response_headers=header_map({"retry-after": "120"}),
     )
@@ -74,14 +92,36 @@ def test_rate_limit_response_writes_normalized_summary(tmp_path, real_flow, mitm
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
 
-    assert json.loads(failure_path.read_text()) == {
-        "failureKind": "rate_limit",
-        "retryAfterSeconds": 120,
-    }
-    assert stat.S_IMODE(failure_path.stat().st_mode) == 0o600
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "rate_limit", "retryAfterSeconds": 120}
+    ]
+    request = model_provider_failure_api.requests[0]
+    assert request.method == "POST"
+    assert request.path == "/api/runners/runs/run-model-failure/model-provider-failures"
+    assert request.header("authorization") == f"Bearer {id(model_provider_failure_api)}"
 
     with mitm_ctx():
         mitm_addon.response(flow)
+
+
+def test_report_http_failure_does_not_affect_flow(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    model_provider_failure_api.queue_response(404)
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=503,
+    )
+
+    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -99,31 +139,37 @@ def test_untrusted_retry_after_is_omitted(
     status: int,
     retry_after: str,
     expected_kind: str,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         response_status=status,
         response_headers=header_map({"retry-after": retry_after}),
     )
 
     _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": expected_kind}
+    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
 
 
-def test_later_success_clears_previous_failure(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    failed_flow = _make_flow(real_flow, failure_path, response_status=503)
+def test_later_success_does_not_retract_report(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    failed_flow = _make_flow(real_flow, proxy_log_path, response_status=503)
     _finish_http_flow(failed_flow, body=None, mitm_ctx=mitm_ctx)
-    assert failure_path.exists()
 
     success_body = b'{"choices":[]}'
-    success_flow = _make_flow(real_flow, failure_path, response_body=success_body)
+    success_flow = _make_flow(real_flow, proxy_log_path, response_body=success_body)
     _finish_http_flow(success_flow, body=success_body, mitm_ctx=mitm_ctx)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -157,11 +203,11 @@ def test_protocol_json_failures_are_reported(
     request_path: str,
     body: bytes,
     expected_kind: str,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         firewall_name=firewall_name,
         request_path=request_path,
         response_body=body,
@@ -169,7 +215,7 @@ def test_protocol_json_failures_are_reported(
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": expected_kind}
+    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
 
 
 @pytest.mark.parametrize(
@@ -185,30 +231,33 @@ def test_ineligible_http_response_is_not_reported(
     mitm_ctx,
     request_path: str,
     response_status: int,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         request_path=request_path,
         response_status=response_status,
     )
 
     _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
-def test_openrouter_schema_error_is_not_reported(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    failure_path.write_text('{"failureKind":"rate_limit"}')
+def test_openrouter_schema_error_is_not_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
     body = (
         b'{"error":{"code":400,"message":"Invalid tool definition: '
         b'function is required","metadata":{"error_type":"invalid_request"}}}'
     )
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         firewall_name="model-provider:openrouter",
         response_status=400,
         response_body=body,
@@ -216,13 +265,18 @@ def test_openrouter_schema_error_is_not_reported(tmp_path, real_flow, mitm_ctx):
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
-def test_overlapping_inference_flows_suppress_failure(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    first_flow = _make_flow(real_flow, failure_path, response_status=429)
-    second_flow = _make_flow(real_flow, failure_path, response_status=503)
+def test_overlapping_inference_flows_report_independent_failures(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    first_flow = _make_flow(real_flow, proxy_log_path, response_status=429)
+    second_flow = _make_flow(real_flow, proxy_log_path, response_status=503)
     model_provider_failure.admit_flow(first_flow)
     model_provider_failure.admit_flow(second_flow)
 
@@ -231,7 +285,10 @@ def test_overlapping_inference_flows_suppress_failure(tmp_path, real_flow, mitm_
         with mitm_ctx():
             mitm_addon.response(flow)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "rate_limit"},
+        {"failureKind": "provider_unavailable"},
+    ]
 
 
 @pytest.mark.parametrize(
@@ -275,11 +332,11 @@ def test_protocol_sse_failures_are_reported(
     request_path: str,
     body: bytes,
     expected_kind: str,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         firewall_name=firewall_name,
         request_path=request_path,
         response_body=body,
@@ -288,12 +345,15 @@ def test_protocol_sse_failures_are_reported(
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": expected_kind}
+    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
 
 
-def test_conflicting_sse_event_type_is_not_reported(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    failure_path.write_text('{"failureKind":"rate_limit"}')
+def test_conflicting_sse_event_type_is_not_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
     body = (
         b"event: response.completed\n"
         b'data: {"type":"response.failed","response":{'
@@ -301,7 +361,7 @@ def test_conflicting_sse_event_type_is_not_reported(tmp_path, real_flow, mitm_ct
     )
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
         response_headers=header_map({"content-type": "text/event-stream"}),
@@ -311,14 +371,18 @@ def test_conflicting_sse_event_type_is_not_reported(tmp_path, real_flow, mitm_ct
     mitm_addon.responseheaders(flow)
     response_stream(flow)(body)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
 
-def test_sse_failure_is_written_before_response_hook(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
+def test_sse_failure_is_reported_before_response_hook(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
     body = (
         b"event: response.failed\n"
         b'data: {"type":"response.failed","response":{'
@@ -326,7 +390,7 @@ def test_sse_failure_is_written_before_response_hook(tmp_path, real_flow, mitm_c
     )
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
         response_headers=header_map({"content-type": "text/event-stream"}),
@@ -335,22 +399,24 @@ def test_sse_failure_is_written_before_response_hook(tmp_path, real_flow, mitm_c
     mitm_addon.responseheaders(flow)
     response_stream(flow)(body)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
 
-def test_json_failure_is_written_at_stream_end_before_response_hook(
+def test_json_failure_is_reported_at_stream_end_before_response_hook(
     tmp_path,
     real_flow,
     mitm_ctx,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     body = b'{"status":"failed","error":{"code":"server_error"}}'
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
     )
@@ -359,19 +425,25 @@ def test_json_failure_is_written_at_stream_end_before_response_hook(
     stream = response_stream(flow)
     stream(body)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
     stream(b"")
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
 
-def test_connection_error_is_reported(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    flow = _make_flow(real_flow, failure_path)
+def test_connection_error_is_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl")
     flow.response = None
     model_provider_failure.admit_flow(flow)
     flow.error = Error("connection reset by peer")
@@ -379,20 +451,19 @@ def test_connection_error_is_reported(tmp_path, real_flow, mitm_ctx):
     with mitm_ctx():
         mitm_addon.error(flow)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "connection"}
+    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": "connection"}]
 
 
 def test_terminal_sse_success_wins_over_late_connection_error(
     tmp_path,
     real_flow,
     mitm_ctx,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
-    failure_path.write_text('{"failureKind":"rate_limit"}')
     body = b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         firewall_name="model-provider:anthropic-api-key",
         request_path="/v1/messages",
         response_body=body,
@@ -406,31 +477,35 @@ def test_terminal_sse_success_wins_over_late_connection_error(
     with mitm_ctx():
         mitm_addon.error(flow)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
-def test_generic_http_error_interruption_is_not_reported(tmp_path, real_flow, mitm_ctx):
-    failure_path = tmp_path / "model-provider-failure.json"
-    flow = _make_flow(real_flow, failure_path, response_status=400)
+def test_generic_http_error_interruption_is_not_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl", response_status=400)
     model_provider_failure.admit_flow(flow)
     flow.error = Error("connection reset while reading error body")
 
     with mitm_ctx():
         mitm_addon.error(flow)
 
-    assert not failure_path.exists()
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
 def test_openrouter_stable_failure_survives_response_interruption(
     tmp_path,
     real_flow,
     mitm_ctx,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     body = b'{"error":{"metadata":{"error_type":"provider_unavailable"}}}'
     flow = _make_flow(
         real_flow,
-        failure_path,
+        tmp_path / "proxy.jsonl",
         firewall_name="model-provider:openrouter",
         response_status=500,
         response_body=body,
@@ -443,7 +518,9 @@ def test_openrouter_stable_failure_survives_response_interruption(
     with mitm_ctx():
         mitm_addon.error(flow)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
 
 def test_websocket_failure_is_reported(
@@ -451,11 +528,10 @@ def test_websocket_failure_is_reported(
     real_flow,
     mitm_ctx,
     monkeypatch: pytest.MonkeyPatch,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     capture_deferred_websocket_trims(monkeypatch)
-    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
 
@@ -473,7 +549,9 @@ def test_websocket_failure_is_reported(
         )
         mitm_addon.websocket_end(flow)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -489,10 +567,9 @@ def test_websocket_upgrade_http_outcome_is_classified(
     mitm_ctx,
     status: int,
     expected: dict[str, str | int] | None,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
     assert flow.response is not None
     flow.response.status_code = status
     flow.response.headers = header_map({"retry-after": "120"})
@@ -500,18 +577,13 @@ def test_websocket_upgrade_http_outcome_is_classified(
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
 
-    if expected is None:
-        assert not failure_path.exists()
-    else:
-        assert json.loads(failure_path.read_text()) == expected
+    expected_reports = [] if expected is None else [expected]
+    assert _reported_payloads(model_provider_failure_api) == expected_reports
 
     with mitm_ctx():
         mitm_addon.response(flow)
 
-    if expected is None:
-        assert not failure_path.exists()
-    else:
-        assert json.loads(failure_path.read_text()) == expected
+    assert _reported_payloads(model_provider_failure_api) == expected_reports
 
 
 def test_websocket_top_level_error_is_reported(
@@ -519,11 +591,10 @@ def test_websocket_top_level_error_is_reported(
     real_flow,
     mitm_ctx,
     monkeypatch: pytest.MonkeyPatch,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     capture_deferred_websocket_trims(monkeypatch)
-    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
 
@@ -536,20 +607,20 @@ def test_websocket_top_level_error_is_reported(
         )
         mitm_addon.websocket_end(flow)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
 
 
-def test_websocket_prewarm_does_not_change_previous_failure(
+def test_websocket_prewarm_is_not_reported(
     tmp_path,
     real_flow,
     mitm_ctx,
     monkeypatch: pytest.MonkeyPatch,
+    model_provider_failure_api,
 ):
-    failure_path = tmp_path / "model-provider-failure.json"
-    failure_path.write_text('{"failureKind":"rate_limit"}')
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     capture_deferred_websocket_trims(monkeypatch)
-    flow.metadata[metadata_keys.VM_MODEL_PROVIDER_FAILURE_PATH] = str(failure_path)
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
 
@@ -561,4 +632,4 @@ def test_websocket_prewarm_does_not_change_previous_failure(
         )
         mitm_addon.websocket_end(flow)
 
-    assert json.loads(failure_path.read_text()) == {"failureKind": "rate_limit"}
+    assert _reported_payloads(model_provider_failure_api) == []

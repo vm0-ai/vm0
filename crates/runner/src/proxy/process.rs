@@ -29,6 +29,7 @@ const ADDON_READY_FILENAME: &str = "addon-ready";
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const MODEL_PROVIDER_FAILURE_TOKEN_ENV: &str = "VM0_MITM_MODEL_PROVIDER_FAILURE_TOKEN";
 
 /// Configuration for starting the proxy.
 #[derive(Clone)]
@@ -55,6 +56,8 @@ pub struct ProxyConfig {
     pub api_url: Option<String>,
     /// Runner-runtime client session id passed to the addon for vm0 API requests.
     pub client_session_id: String,
+    /// Official runner credential used only by the host addon failure reporter.
+    pub model_provider_failure_token: Option<String>,
 }
 
 /// Manages the mitmdump process lifecycle and proxy registry.
@@ -421,6 +424,7 @@ impl MitmProxy {
                     runtime_lock_path: std::path::PathBuf::new(),
                     api_url: None,
                     client_session_id: "runner-session-test".to_string(),
+                    model_provider_failure_token: None,
                 },
                 runtime: None,
                 child: None,
@@ -559,6 +563,11 @@ async fn spawn_mitmdump(
         ));
     if let Some(url) = &config.api_url {
         cmd.arg("--set").arg(format!("vm0_api_url={url}"));
+    }
+    if let Some(token) = &config.model_provider_failure_token {
+        cmd.env(MODEL_PROVIDER_FAILURE_TOKEN_ENV, token);
+    } else {
+        cmd.env_remove(MODEL_PROVIDER_FAILURE_TOKEN_ENV);
     }
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -764,7 +773,8 @@ mod tests {
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
-printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf '%s\n%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" \
+  "${VM0_MITM_MODEL_PROVIDER_FAILURE_TOKEN-}" > "$0.env"
 port=""
 ready_path=""
 usage_state_id=""
@@ -802,6 +812,18 @@ PY
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn embedded_failure_reporter_reads_runner_token_environment() {
+        let source = ADDON_FILES
+            .iter()
+            .find_map(|(name, content)| (*name == "model_provider_failure.py").then_some(*content))
+            .expect("model-provider failure addon source should be embedded");
+
+        assert!(source.contains(&format!(
+            "REPORT_AUTH_ENV = \"{MODEL_PROVIDER_FAILURE_TOKEN_ENV}\""
+        )));
     }
 
     fn write_forking_listening_mitmdump(path: &Path) {
@@ -1103,6 +1125,7 @@ exit 42
             runtime_lock_path: root.join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: None,
         }
     }
 
@@ -1215,6 +1238,7 @@ exit 42
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: None,
         };
 
         let result = MitmProxy::new(config).await;
@@ -1249,6 +1273,7 @@ exit 42
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: None,
         };
 
         let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
@@ -1414,6 +1439,7 @@ exit 42
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: Some("failure-report-token".to_string()),
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
         let stopping = Arc::new(AtomicBool::new(false));
@@ -1436,8 +1462,9 @@ exit 42
         let args = std::fs::read_to_string(fake_mitmdump.with_extension("args")).unwrap();
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let environment: Vec<&str> = environment.lines().collect();
-        assert_eq!(environment.len(), 2);
+        assert_eq!(environment.len(), 3);
         assert_eq!(environment[0], environment[1]);
+        assert_eq!(environment[2], "failure-report-token");
         let launch_path = Path::new(environment[0]);
         assert_eq!(launch_path.parent(), Some(config.runtime_dir.as_path()));
         assert!(
@@ -1491,6 +1518,7 @@ exit 42
                 .any(|arg| arg == format!("vm0_client_version={RUNNER_CLIENT_VERSION}")),
             "mitmdump args should include vm0_client_version option; got:\n{args}",
         );
+        assert!(!args.contains("failure-report-token"));
         assert!(
             args.lines().all(|arg| arg != "connection_strategy=lazy"),
             "mitmdump args must not use global lazy upstream connections because server-first TCP protocols must keep working; got:\n{args}",
@@ -1518,6 +1546,7 @@ exit 42
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: None,
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
         let stopping = Arc::new(AtomicBool::new(false));
@@ -1568,6 +1597,7 @@ exit 42
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
+            model_provider_failure_token: None,
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
         let stopping = Arc::new(AtomicBool::new(false));

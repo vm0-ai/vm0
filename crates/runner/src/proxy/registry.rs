@@ -51,8 +51,6 @@ struct VmEntry {
     billable_firewalls: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model_usage_provider: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    model_provider_failure_path: Option<String>,
 }
 
 /// Parameters for registering a VM in the proxy registry.
@@ -73,7 +71,6 @@ pub struct VmRegistration<'a> {
     pub capture_network_bodies: bool,
     pub billable_firewalls: &'a [String],
     pub model_usage_provider: Option<&'a str>,
-    pub model_provider_failure_path: Option<&'a std::path::Path>,
 }
 
 async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
@@ -624,9 +621,6 @@ impl ProxyRegistryHandle {
                 capture_network_bodies: registration.capture_network_bodies,
                 billable_firewalls: registration.billable_firewalls.to_vec(),
                 model_usage_provider: registration.model_usage_provider.map(String::from),
-                model_provider_failure_path: registration
-                    .model_provider_failure_path
-                    .map(|path| path.to_string_lossy().into_owned()),
             },
         );
         registry.updated_at = now;
@@ -987,7 +981,6 @@ mod tests {
             capture_network_bodies: false,
             billable_firewalls: &[],
             model_usage_provider: None,
-            model_provider_failure_path: None,
         }
     }
 
@@ -1162,7 +1155,6 @@ mod tests {
                 capture_network_bodies: false,
                 billable_firewalls: vec![],
                 model_usage_provider: None,
-                model_provider_failure_path: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -2517,9 +2509,6 @@ mod tests {
             cli_agent_type: "codex",
             billable_firewalls: &billable,
             model_usage_provider: Some("claude-sonnet-4-6"),
-            model_provider_failure_path: Some(Path::new(
-                "/tmp/model-provider-failure-run-test.json",
-            )),
             ..base_registration()
         };
         harness
@@ -2545,10 +2534,6 @@ mod tests {
         assert_eq!(
             value["vms"]["10.200.0.9"]["modelUsageProvider"],
             serde_json::json!("claude-sonnet-4-6")
-        );
-        assert_eq!(
-            value["vms"]["10.200.0.9"]["modelProviderFailurePath"],
-            serde_json::json!("/tmp/model-provider-failure-run-test.json")
         );
     }
 

@@ -106,119 +106,6 @@ async fn nonzero_job_parks_and_successor_reuses_sandbox() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn model_provider_failure_is_consumed_before_completion_and_invalid_state_is_omitted() {
-    let wait_gate = sandbox_mock::MockLifecycleGate::new();
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
-    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
-    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 0, Vec::new(), Vec::new()));
-    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
-    let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 1, Arc::clone(&overrides));
-    let failed_run_id = RunId::new_v4();
-    let failed_path = config
-        .exec_config
-        .log_paths
-        .model_provider_failure(failed_run_id);
-    let successful_run_id = RunId::new_v4();
-    let successful_path = config
-        .exec_config
-        .log_paths
-        .model_provider_failure(successful_run_id);
-    let invalid_run_id = RunId::new_v4();
-    let invalid_path = config
-        .exec_config
-        .log_paths
-        .model_provider_failure(invalid_run_id);
-    let run_handle = tokio::spawn(run(config));
-
-    let mut failed_context = minimal_context(failed_run_id);
-    failed_context.billable_firewalls = vec!["model-provider:openai-api-key".to_string()];
-    push_job(&env, failed_run_id, "vm0/default", Some(failed_context));
-    wait_gate
-        .wait_entered(1, Duration::from_secs(5))
-        .await
-        .expect("failed run should reach process wait after proxy registration");
-    tokio::fs::write(
-        &failed_path,
-        br#"{"failureKind":"rate_limit","retryAfterSeconds":120}"#,
-    )
-    .await
-    .unwrap();
-    wait_gate.release_one();
-
-    let failed_completion = env
-        .handle
-        .wait_completion(failed_run_id, Duration::from_secs(5))
-        .await
-        .expect("failed run should complete");
-    assert_eq!(failed_completion.exit_code, 1);
-    assert!(!failed_path.exists());
-    {
-        let reports = env.handle.model_provider_failures.lock().unwrap();
-        assert_eq!(reports.len(), 1);
-        assert_eq!(reports[0].run_id, failed_run_id);
-        assert_eq!(
-            reports[0].failure_kind,
-            api_contracts::generated::types::runners::runs::model_provider_failures::RequestFailureKind::RateLimit,
-        );
-        assert_eq!(reports[0].retry_after_seconds, Some(120));
-    }
-
-    let mut successful_context = minimal_context(successful_run_id);
-    successful_context.billable_firewalls = vec!["model-provider:openai-api-key".to_string()];
-    push_job(
-        &env,
-        successful_run_id,
-        "vm0/default",
-        Some(successful_context),
-    );
-    wait_gate
-        .wait_entered(2, Duration::from_secs(5))
-        .await
-        .expect("successful run should reach process wait after proxy registration");
-    tokio::fs::write(&successful_path, br#"{"failureKind":"connection"}"#)
-        .await
-        .unwrap();
-    wait_gate.release_one();
-
-    let successful_completion = env
-        .handle
-        .wait_completion(successful_run_id, Duration::from_secs(5))
-        .await
-        .expect("successful run should complete");
-    assert_eq!(successful_completion.exit_code, 0);
-    assert!(!successful_path.exists());
-    assert_eq!(env.handle.model_provider_failures.lock().unwrap().len(), 1);
-
-    let mut invalid_context = minimal_context(invalid_run_id);
-    invalid_context.billable_firewalls = vec!["model-provider:openai-api-key".to_string()];
-    push_job(&env, invalid_run_id, "vm0/default", Some(invalid_context));
-    wait_gate
-        .wait_entered(3, Duration::from_secs(5))
-        .await
-        .expect("invalid-state run should reach process wait after proxy registration");
-    tokio::fs::write(
-        &invalid_path,
-        br#"{"failureKind":"connection","providerBody":"secret"}"#,
-    )
-    .await
-    .unwrap();
-    wait_gate.release_one();
-
-    let invalid_completion = env
-        .handle
-        .wait_completion(invalid_run_id, Duration::from_secs(5))
-        .await
-        .expect("invalid-state run should still complete");
-    assert_eq!(invalid_completion.exit_code, 1);
-    assert!(!invalid_path.exists());
-    assert_eq!(env.handle.model_provider_failures.lock().unwrap().len(), 1);
-
-    shutdown(&env, run_handle).await;
-}
-
-#[tokio::test(start_paused = true)]
 async fn confirmed_execution_timeout_parks_and_successor_reuses_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_wait_process_exit(sandbox::ProcessExit::new(
@@ -312,29 +199,20 @@ async fn cooperative_cancellation_parks_and_successor_reuses_sandbox() {
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let cancel_tokens = config.provider.cancel_tokens.clone();
-    let cancelled_run_id = RunId::new_v4();
-    let failure_path = config
-        .exec_config
-        .log_paths
-        .model_provider_failure(cancelled_run_id);
     let run_handle = tokio::spawn(run(config));
     let reuse_key = "sess-cooperative-cancel";
 
-    let mut cancelled_context = context_with_session(cancelled_run_id, reuse_key);
-    cancelled_context.billable_firewalls = vec!["model-provider:openai-api-key".to_string()];
+    let cancelled_run_id = RunId::new_v4();
     push_job(
         &env,
         cancelled_run_id,
         "vm0/default",
-        Some(cancelled_context),
+        Some(context_with_session(cancelled_run_id, reuse_key)),
     );
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
         .expect("source run should enter process wait");
-    tokio::fs::write(&failure_path, br#"{"failureKind":"connection"}"#)
-        .await
-        .unwrap();
     let cancel_handle =
         wait_cancel_handle(&cancel_tokens, cancelled_run_id, Duration::from_secs(5)).await;
     cancel_handle.request_cooperative_user_cancellation().await;
@@ -354,14 +232,6 @@ async fn cooperative_cancellation_parks_and_successor_reuses_sandbox() {
         .expect("cooperatively cancelled run should complete");
     assert_eq!(cancelled.exit_code, 137);
     assert_eq!(cancelled.error.as_deref(), Some("cancelled by user"));
-    assert!(!failure_path.exists());
-    assert!(
-        env.handle
-            .model_provider_failures
-            .lock()
-            .unwrap()
-            .is_empty()
-    );
     let sandbox_id = cancelled
         .sandbox_id
         .expect("cancelled run should own a sandbox");

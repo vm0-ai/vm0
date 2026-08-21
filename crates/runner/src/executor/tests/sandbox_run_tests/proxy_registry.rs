@@ -146,51 +146,6 @@ async fn proxy_registration_accepts_canonical_targets() {
 }
 
 #[tokio::test]
-async fn proxy_registration_publishes_fresh_failure_path_only_for_managed_runs() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let mut managed_context = minimal_context();
-    managed_context.billable_firewalls = vec!["model-provider:openai-api-key".to_string()];
-    let failure_path = config
-        .log_paths
-        .model_provider_failure(managed_context.run_id);
-    tokio::fs::write(&failure_path, br#"{"failureKind":"rate_limit"}"#)
-        .await
-        .unwrap();
-
-    let _managed_session = register_proxy(&config, &managed_context, "10.200.0.4")
-        .await
-        .unwrap();
-    assert!(!failure_path.exists());
-    let registry: serde_json::Value = serde_json::from_str(
-        &tokio::fs::read_to_string(dir.path().join("proxy-registry.json"))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        registry["vms"]["10.200.0.4"]["modelProviderFailurePath"],
-        serde_json::json!(failure_path)
-    );
-
-    let custom_context = minimal_context();
-    let _custom_session = register_proxy(&config, &custom_context, "10.200.0.5")
-        .await
-        .unwrap();
-    let registry: serde_json::Value = serde_json::from_str(
-        &tokio::fs::read_to_string(dir.path().join("proxy-registry.json"))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert!(
-        registry["vms"]["10.200.0.5"]
-            .get("modelProviderFailurePath")
-            .is_none()
-    );
-}
-
-#[tokio::test]
 async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

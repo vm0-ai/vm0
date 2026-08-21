@@ -145,6 +145,7 @@ pub async fn run_benchmark(
         runtime_lock_path: runner_paths.mitmdump_runtime_lock(),
         api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
         client_session_id: uuid::Uuid::new_v4().to_string(),
+        model_provider_failure_token: None,
     })
     .await?;
     mitm.start().await?;
@@ -401,7 +402,6 @@ async fn run_sandbox(
         capture_network_bodies: false,
         billable_firewalls: &[],
         model_usage_provider: None,
-        model_provider_failure_path: None,
     };
     if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
         warn!(error = %e, "failed to register VM in proxy");
@@ -725,6 +725,7 @@ mod tests {
                 runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
                 api_url: None,
                 client_session_id: "benchmark-lifecycle-test".to_string(),
+                model_provider_failure_token: None,
             })
             .await
             .unwrap();

@@ -159,11 +159,9 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     });
     let cancel_tokens = config.provider.cancel_tokens.clone();
     let status_path = env._temp_dir.path().join("status.json");
-    let run_id = RunId::new_v4();
-    let failure_path = config.exec_config.log_paths.model_provider_failure(run_id);
-    std::fs::write(&failure_path, br#"{"failureKind":"connection"}"#).unwrap();
     let run_handle = tokio::spawn(run(config));
 
+    let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
@@ -176,7 +174,6 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     .await;
 
     shutdown(&env, run_handle).await;
-    assert!(!failure_path.exists());
     wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
         .await;
     assert_no_completion_for_run(

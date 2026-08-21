@@ -21,7 +21,6 @@ pub(crate) use connector_runtime_sync::{
 };
 pub use local::LocalProvider;
 
-use api_contracts::generated::types::runners::runs::model_provider_failures::Request as ModelProviderFailureRequest;
 use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize, de::Error as _};
 use std::path::{Path, PathBuf};
@@ -779,17 +778,6 @@ pub trait JobProvider: Send + Sync {
     /// `completion_auth` is returned by [`claim()`](JobProvider::claim) and
     /// carried by the claimed job lifecycle until completion.
     async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth);
-
-    /// Report one trusted managed model-provider failure before run completion.
-    ///
-    /// Local and test providers do not have the official-runner API transport,
-    /// so omission is the default behavior.
-    async fn report_model_provider_failure(
-        &self,
-        _run_id: RunId,
-        _request: &ModelProviderFailureRequest,
-    ) {
-    }
 
     /// Report runner state to the server as a best-effort operation.
     ///

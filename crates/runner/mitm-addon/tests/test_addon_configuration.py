@@ -67,12 +67,14 @@ class _Options:
         flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
+        api_url: str = "https://api.vm0.ai",
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
         self.vm0_addon_ready_path = addon_ready_path
         self.vm0_usage_flush_interval_seconds = flush_interval_seconds
         self.vm0_client_session_id = client_session_id
         self.vm0_client_version = client_version
+        self.vm0_api_url = api_url
 
 
 def _addon_file_path(tmp_path: Path) -> str:

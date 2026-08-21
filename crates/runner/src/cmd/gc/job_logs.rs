@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_job_logs_deletes_stale_auxiliary_and_model_provider_files() {
+    async fn gc_job_logs_deletes_stale_system_metrics_and_sandbox_ops() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -239,28 +239,10 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let model_provider_failure =
-            logs_dir.join("model-provider-failure-550e8400-e29b-41d4-a716-446655440000.json");
-        std::fs::write(&model_provider_failure, "{}").unwrap();
-        std::fs::File::open(&model_provider_failure)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
-        let model_provider_failure_temp = logs_dir
-            .join(".model-provider-failure-550e8400-e29b-41d4-a716-446655440000.json.vm0tmp-test");
-        std::fs::write(&model_provider_failure_temp, "{}").unwrap();
-        std::fs::File::open(&model_provider_failure_temp)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
         let report = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(report.activity_count, 5);
+        assert_eq!(report.activity_count, 3);
         assert!(!system_log.exists());
         assert!(!metrics_log.exists());
         assert!(!sandbox_ops_log.exists());
-        assert!(!model_provider_failure.exists());
-        assert!(!model_provider_failure_temp.exists());
     }
 }

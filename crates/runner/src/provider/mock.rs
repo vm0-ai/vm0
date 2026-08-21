@@ -32,9 +32,6 @@ use crate::ids::RunId;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, SandboxReuseResult, WorkspaceReuseResult,
 };
-use api_contracts::generated::types::runners::runs::model_provider_failures::{
-    Request as ModelProviderFailureRequest, RequestFailureKind,
-};
 use sandbox::SandboxId;
 
 /// Recorded completion from [`JobProvider::complete`].
@@ -46,14 +43,6 @@ pub struct Completion {
     pub sandbox_id: Option<SandboxId>,
     pub reuse_result: Option<SandboxReuseResult>,
     pub workspace_reuse_result: Option<WorkspaceReuseResult>,
-}
-
-/// Recorded trusted model-provider failure report.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ModelProviderFailureReport {
-    pub run_id: RunId,
-    pub failure_kind: RequestFailureKind,
-    pub retry_after_seconds: Option<i64>,
 }
 
 /// Channel-driven mock provider.
@@ -76,7 +65,6 @@ pub struct MockJobProvider {
     claim_results: StdMutex<HashMap<RunId, Option<ExecutionContext>>>,
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
-    model_provider_failures: Arc<StdMutex<Vec<ModelProviderFailureReport>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     cancel: CancellationToken,
@@ -117,7 +105,6 @@ pub struct MockProviderHandle {
     ready_discovery: Arc<StdMutex<VecDeque<JobCandidate>>>,
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
-    pub model_provider_failures: Arc<StdMutex<Vec<ModelProviderFailureReport>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     deferred_poll_deadlines: Arc<StdMutex<Vec<Instant>>>,
     /// See [`Self::wait_discover_entered`].
@@ -340,7 +327,6 @@ impl MockJobProvider {
         let ready_discovery = Arc::new(StdMutex::new(VecDeque::new()));
         let claim_candidates = Arc::new(StdMutex::new(Vec::new()));
         let completions = Arc::new(StdMutex::new(Vec::new()));
-        let model_provider_failures = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let deferred_poll_deadlines = Arc::new(StdMutex::new(Vec::new()));
         let startup_readiness = Arc::new(MockStartupReadiness::default());
@@ -361,7 +347,6 @@ impl MockJobProvider {
             claim_results: StdMutex::new(HashMap::new()),
             claim_candidates: Arc::clone(&claim_candidates),
             completions: Arc::clone(&completions),
-            model_provider_failures: Arc::clone(&model_provider_failures),
             heartbeats: Arc::clone(&heartbeats),
             deferred_poll_deadlines: Arc::clone(&deferred_poll_deadlines),
             cancel,
@@ -381,7 +366,6 @@ impl MockJobProvider {
             ready_discovery,
             claim_candidates,
             completions,
-            model_provider_failures,
             heartbeats,
             deferred_poll_deadlines,
             discover_entered,
@@ -742,21 +726,6 @@ impl JobProvider for MockJobProvider {
         if self.completion_control.blocked.load(Ordering::SeqCst) {
             release.await;
         }
-    }
-
-    async fn report_model_provider_failure(
-        &self,
-        run_id: RunId,
-        request: &ModelProviderFailureRequest,
-    ) {
-        self.model_provider_failures
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(ModelProviderFailureReport {
-                run_id,
-                failure_kind: request.failure_kind,
-                retry_after_seconds: request.retry_after_seconds,
-            });
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {

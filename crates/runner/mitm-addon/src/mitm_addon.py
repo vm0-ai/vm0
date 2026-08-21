@@ -7,13 +7,14 @@ This addon runs on the runner HOST (not inside VMs) and:
 2. Looks up the source VM's runId from the proxy registry
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
-5. Reports model-provider and connector usage
+5. Reports model-provider failures plus model-provider and connector usage
 6. Participates in runner-triggered webhook delivery drain before proxy shutdown
 """
 
 import asyncio
 import base64
 import binascii
+import os
 import signal
 import tempfile
 from collections.abc import Awaitable
@@ -237,6 +238,10 @@ def configure(updated: set[str]) -> None:
     platform_api.configure_client_headers(
         client_session_id=ctx.options.vm0_client_session_id,
         client_version=ctx.options.vm0_client_version,
+    )
+    model_provider_failure.configure_reporting(
+        api_url=get_api_url(),
+        bearer_credential=os.environ.get(model_provider_failure.REPORT_AUTH_ENV, ""),
     )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
