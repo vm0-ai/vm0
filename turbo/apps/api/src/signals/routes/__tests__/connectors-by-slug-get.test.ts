@@ -87,7 +87,7 @@ async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   );
 }
 
-describe("GET /api/zero/connectors/:connectorSlug", () => {
+describe("GET /api/connectors/:connectorSlug", () => {
   const seededFixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {

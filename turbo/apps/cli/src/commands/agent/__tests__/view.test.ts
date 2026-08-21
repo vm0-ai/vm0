@@ -46,7 +46,7 @@ const defaultPermissionDetails = [
 ];
 
 function mockConnectorListHandler(connectors: Record<string, unknown>[] = []) {
-  return http.get("http://localhost:3000/api/okou/connectors", () => {
+  return http.get("http://localhost:3000/api/connectors", () => {
     return HttpResponse.json({
       connectors,
       connectorProvidedBindings: [],
@@ -57,12 +57,9 @@ function mockConnectorListHandler(connectors: Record<string, unknown>[] = []) {
 function mockUserPermissionGrantsHandler(
   grants: Record<string, unknown>[] = [],
 ) {
-  return http.get(
-    "http://localhost:3000/api/okou/user-permission-grants",
-    () => {
-      return HttpResponse.json(grants);
-    },
-  );
+  return http.get("http://localhost:3000/api/user-permission-grants", () => {
+    return HttpResponse.json(grants);
+  });
 }
 
 function makePermissionGrant(overrides: Record<string, unknown> = {}) {
@@ -253,7 +250,7 @@ describe("okou agent view command", () => {
       });
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/connector-catalog/server-only/permissions",
+          "http://localhost:3000/api/connector-catalog/server-only/permissions",
           () => {
             permissionRequests += 1;
             return HttpResponse.json({ permissions: serverOnlyDetail });
@@ -500,7 +497,7 @@ describe("okou agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        http.get("http://localhost:3000/api/okou/connectors", () => {
+        http.get("http://localhost:3000/api/connectors", () => {
           return HttpResponse.json(
             { error: { message: "Forbidden", code: "FORBIDDEN" } },
             { status: 403 },
@@ -631,7 +628,7 @@ describe("okou agent view command", () => {
         ),
         mockConnectorListHandler(),
         http.get(
-          "http://localhost:3000/api/okou/connector-catalog/github/permissions",
+          "http://localhost:3000/api/connector-catalog/github/permissions",
           () => {
             return HttpResponse.json(
               {

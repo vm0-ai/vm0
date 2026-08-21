@@ -337,20 +337,17 @@ describe("okou connector list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/okou/connector-catalog/status",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Not authenticated",
-                  code: "UNAUTHORIZED",
-                },
+        http.get("http://localhost:3000/api/connector-catalog/status", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Not authenticated",
+                code: "UNAUTHORIZED",
               },
-              { status: 401 },
-            );
-          },
-        ),
+            },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {
