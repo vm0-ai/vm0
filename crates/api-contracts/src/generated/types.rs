@@ -111,16 +111,6 @@ pub mod runners {
 
         /// DTOs for reporting bounded managed model provider failures.
         pub mod model_provider_failures {
-            /// Official runner process identity that won the run claim.
-            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            pub struct RequestRunnerIdentity {
-                /// Stable runner process identifier.
-                pub runner_id: String,
-                /// Runner heartbeat generation active when the run was claimed.
-                pub heartbeat_generation: i64,
-            }
-
             /// Bounded provider-independent failure eligible for route cooldown.
             #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
             pub enum RequestFailureKind {
@@ -148,8 +138,6 @@ pub mod runners {
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct Request {
-                /// Winning runner identity for the reported run.
-                pub runner_identity: RequestRunnerIdentity,
                 /// Normalized eligible provider failure kind.
                 pub failure_kind: RequestFailureKind,
                 /// Optional bounded provider retry delay in seconds.

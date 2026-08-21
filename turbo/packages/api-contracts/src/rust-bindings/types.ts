@@ -197,16 +197,6 @@ export const rustTypeBindings = [
     direction: "request",
     declarations: [
       {
-        rustTypeName: "RequestRunnerIdentity",
-        rustDoc: ["Official runner process identity that won the run claim."],
-        fields: {
-          runnerId: ["Stable runner process identifier."],
-          heartbeatGeneration: [
-            "Runner heartbeat generation active when the run was claimed.",
-          ],
-        },
-      },
-      {
         rustTypeName: "RequestFailureKind",
         rustDoc: [
           "Bounded provider-independent failure eligible for route cooldown.",
@@ -228,7 +218,6 @@ export const rustTypeBindings = [
           "Request body for reporting a managed model provider failure.",
         ],
         fields: {
-          runnerIdentity: ["Winning runner identity for the reported run."],
           failureKind: ["Normalized eligible provider failure kind."],
           retryAfterSeconds: [
             "Optional bounded provider retry delay in seconds.",

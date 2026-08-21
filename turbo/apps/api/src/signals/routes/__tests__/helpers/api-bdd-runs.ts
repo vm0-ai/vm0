@@ -97,12 +97,6 @@ type RunnerJobClaimRequest = z.infer<
 type RunnerModelProviderFailureRequest = z.infer<
   (typeof runnersModelProviderFailuresContract.report)["body"]
 >;
-type RunnerModelProviderFailureInput = Omit<
-  RunnerModelProviderFailureRequest,
-  "runnerIdentity"
-> & {
-  readonly runnerIdentity?: RunnerModelProviderFailureRequest["runnerIdentity"];
-};
 type RunnerConnectorRuntimeSyncRequest = z.input<
   (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
@@ -501,13 +495,13 @@ export function createRunsApi(context: TestContext) {
 
     async reportRunnerModelProviderFailure(
       runId: string,
-      body: RunnerModelProviderFailureInput,
+      body: RunnerModelProviderFailureRequest,
     ) {
       const response = await accept(
         runApp(context)(runnersModelProviderFailuresContract).report({
           headers: runnerHeaders(true),
           params: { runId },
-          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+          body,
         }),
         [200],
       );
@@ -518,13 +512,13 @@ export function createRunsApi(context: TestContext) {
       authorization: string | undefined,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
-      body: RunnerModelProviderFailureInput,
+      body: RunnerModelProviderFailureRequest,
     ) {
       return await accept(
         runApp(context)(runnersModelProviderFailuresContract).report({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+          body,
         }),
         statuses,
       );

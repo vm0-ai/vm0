@@ -1049,7 +1049,6 @@ export const runnersModelProviderFailuresContract = c.router({
     }),
     body: z
       .object({
-        runnerIdentity: runnerProcessIdentitySchema,
         failureKind: managedModelProviderFailureKindSchema,
         retryAfterSeconds: z
           .number()

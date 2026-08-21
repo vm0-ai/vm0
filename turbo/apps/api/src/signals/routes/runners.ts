@@ -2593,8 +2593,6 @@ const modelProviderFailureInner$ = command(
         modelRuntimeProvider: agentRuns.modelRuntimeProvider,
         modelRuntimeModel: agentRuns.modelRuntimeModel,
         vm0ModelKeyId: agentRuns.vm0ModelKeyId,
-        runnerId: agentRuns.runnerId,
-        runnerHeartbeatGeneration: agentRuns.runnerHeartbeatGeneration,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
@@ -2607,11 +2605,7 @@ const modelProviderFailureInner$ = command(
       !run.selectedModel ||
       !run.modelRuntimeProvider ||
       !run.modelRuntimeModel ||
-      !run.vm0ModelKeyId ||
-      run.runnerId?.toLowerCase() !==
-        body.data.runnerIdentity.runnerId.toLowerCase() ||
-      run.runnerHeartbeatGeneration !==
-        body.data.runnerIdentity.heartbeatGeneration
+      !run.vm0ModelKeyId
     ) {
       L.debug("Managed model provider failure report ignored", { runId });
       return { status: 200 as const, body: { outcome: "ignored" as const } };

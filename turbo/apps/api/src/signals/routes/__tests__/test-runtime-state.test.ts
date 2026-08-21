@@ -28,10 +28,6 @@ interface ClaimedVm0Run {
   readonly actor: ReturnType<typeof bdd.user>;
   readonly agentId: string;
   readonly runId: string;
-  readonly runnerIdentity: {
-    readonly runnerId: string;
-    readonly heartbeatGeneration: number;
-  };
   readonly selectedModel: string;
 }
 
@@ -68,7 +64,6 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
     actor,
     agentId: agent.agentId,
     runId: run.runId,
-    runnerIdentity,
     selectedModel: keyFixture.selectedModel,
   };
 }
@@ -283,7 +278,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
       await expect(
         runs.reportRunnerModelProviderFailure(claimed.runId, {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "authentication",
         }),
       ).resolves.toStrictEqual({ outcome: "recorded" });
@@ -351,7 +345,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
       await expect(
         runs.reportRunnerModelProviderFailure(claimed.runId, {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "rate_limit",
           retryAfterSeconds: 300,
         }),
@@ -361,12 +354,10 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         await expect(
           Promise.all([
             runs.reportRunnerModelProviderFailure(claimed.runId, {
-              runnerIdentity: claimed.runnerIdentity,
               failureKind: "timeout",
               retryAfterSeconds: 1,
             }),
             runs.reportRunnerModelProviderFailure(claimed.runId, {
-              runnerIdentity: claimed.runnerIdentity,
               failureKind: "provider_unavailable",
               retryAfterSeconds: 300,
             }),
@@ -404,7 +395,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     });
   });
 
-  it("rejects untrusted evidence and ignores ineligible runs", async () => {
+  it("rejects untrusted or invalid reports and ignores ineligible runs", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 2, 0, 0);
     await withMockNowForTest(startedAt, async () => {
       const claimed = await createClaimedVm0Run();
@@ -427,7 +418,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         claimed.runId,
         [401],
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "connection",
         },
       );
@@ -438,7 +428,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         claimed.runId,
         [401],
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "connection",
         },
       );
@@ -450,43 +439,20 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         claimed.runId,
         [403],
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "connection",
         },
       );
       expectApiError(patAuth.body);
 
-      await expect(
-        runs.reportRunnerModelProviderFailure(claimed.runId, {
-          runnerIdentity: {
-            ...claimed.runnerIdentity,
-            runnerId: randomUUID(),
-          },
-          failureKind: "connection",
-        }),
-      ).resolves.toStrictEqual({ outcome: "ignored" });
-      await expect(
-        runs.reportRunnerModelProviderFailure(claimed.runId, {
-          runnerIdentity: {
-            ...claimed.runnerIdentity,
-            heartbeatGeneration: claimed.runnerIdentity.heartbeatGeneration + 1,
-          },
-          failureKind: "connection",
-        }),
-      ).resolves.toStrictEqual({ outcome: "ignored" });
-
       for (const body of [
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "connection",
           selectedModel: claimed.selectedModel,
         },
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "success",
         },
         {
-          runnerIdentity: claimed.runnerIdentity,
           failureKind: "connection",
           retryAfterSeconds: 301,
         },
@@ -514,7 +480,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           claimed.runId,
           [400],
           {
-            runnerIdentity: claimed.runnerIdentity,
             failureKind,
           },
         );
@@ -538,7 +503,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
       await expect(
         runs.reportRunnerModelProviderFailure(byokRun.runId, {
-          runnerIdentity: byokRunnerIdentity,
           failureKind: "billing",
         }),
       ).resolves.toStrictEqual({ outcome: "ignored" });
