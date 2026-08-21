@@ -1500,6 +1500,14 @@
       "view": "देखें"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Slack में {{assistantName}} जोड़ें",
+        "connect": "कनेक्ट करें",
+        "credits": "क्रेडिट",
+        "inSlack": "{{assistantName}} Slack में है",
+        "inviteMember": "सदस्य को आमंत्रित करें",
+        "otherChannels": "Telegram और फ़ोन"
+      },
       "invitePeople": "लोगों को आमंत्रित करें",
       "taglines": {
         "anonymous": {

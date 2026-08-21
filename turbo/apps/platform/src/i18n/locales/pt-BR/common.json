@@ -1524,6 +1524,14 @@
       "view": "Ver"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Adicionar {{assistantName}} no Slack",
+        "connect": "Conectar",
+        "credits": "Créditos",
+        "inSlack": "{{assistantName}} está no Slack",
+        "inviteMember": "Convidar membro",
+        "otherChannels": "Telegram e telefone"
+      },
       "invitePeople": "Convidar pessoas",
       "taglines": {
         "anonymous": {

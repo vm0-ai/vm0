@@ -1500,6 +1500,14 @@
       "view": "보기"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Slack에 {{assistantName}} 추가",
+        "connect": "연결",
+        "credits": "크레딧",
+        "inSlack": "{{assistantName}}이(가) Slack에 있습니다",
+        "inviteMember": "멤버 초대",
+        "otherChannels": "Telegram, 전화"
+      },
       "invitePeople": "사람 초대",
       "taglines": {
         "anonymous": {

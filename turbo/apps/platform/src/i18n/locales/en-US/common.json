@@ -1500,6 +1500,14 @@
       "view": "View"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Add {{assistantName}} in Slack",
+        "connect": "Connect",
+        "credits": "Credits",
+        "inSlack": "{{assistantName}} is in Slack",
+        "inviteMember": "Invite member",
+        "otherChannels": "Telegram and phone"
+      },
       "invitePeople": "Invite people",
       "taglines": {
         "anonymous": {

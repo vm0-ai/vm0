@@ -1500,6 +1500,14 @@
       "view": "Lihat"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Tambahkan {{assistantName}} di Slack",
+        "connect": "Hubungkan",
+        "credits": "Kredit",
+        "inSlack": "{{assistantName}} ada di Slack",
+        "inviteMember": "Undang anggota",
+        "otherChannels": "Telegram dan telepon"
+      },
       "invitePeople": "Undang orang",
       "taglines": {
         "anonymous": {

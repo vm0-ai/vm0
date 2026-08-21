@@ -1500,6 +1500,14 @@
       "view": "見る"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Slack に {{assistantName}} を追加",
+        "connect": "接続",
+        "credits": "クレジット",
+        "inSlack": "{{assistantName}} は Slack にいます",
+        "inviteMember": "メンバーを招待",
+        "otherChannels": "Telegram、電話"
+      },
       "invitePeople": "人を招待する",
       "taglines": {
         "anonymous": {
