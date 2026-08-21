@@ -64,6 +64,7 @@ __all__ = [
     "drain_usage_events_after_executor_shutdown",
     "flush_usage_events",
     "reset_usage_buffer_for_tests",
+    "seen_source_idempotency_keys",
 ]
 
 _usage_event_buffer = UsageEventBuffer()
@@ -188,6 +189,11 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     schedule another timer.
     """
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
+
+
+def seen_source_idempotency_keys(source_keys: Iterable[str]) -> set[str]:
+    """Return candidate source keys retained by process-local admission history."""
+    return _usage_event_buffer.seen_source_idempotency_keys(source_keys)
 
 
 def drain_usage_events_after_executor_shutdown() -> None:
