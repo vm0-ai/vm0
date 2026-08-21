@@ -353,6 +353,7 @@ runs:
           add_secret "OKOU_${suffix}" "OKOU_${suffix}"
         done
         if [[ "$INPUT_APP" == "api" ]]; then
+          add_secret OKOU_SOCIAL_SOCIALKIT_TOKEN OKOU_SOCIAL_SOCIALKIT_TOKEN
           add_secret OKOU_SEO_DATAFORSEO_LOGIN OKOU_SEO_DATAFORSEO_LOGIN
           add_secret OKOU_SEO_DATAFORSEO_PASSWORD OKOU_SEO_DATAFORSEO_PASSWORD
           add_secret OKOU_BROWSER_USE_API_KEY OKOU_BROWSER_USE_API_KEY

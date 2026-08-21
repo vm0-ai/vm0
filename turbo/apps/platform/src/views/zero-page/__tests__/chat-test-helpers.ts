@@ -847,7 +847,6 @@ export function mockChatLifecycle(
   context.mocks.api(runsByIdContract.getById, ({ respond }) => {
     return respond(200, {
       runId: "a0000000-0000-4000-a000-000000000001",
-      agentComposeVersionId: null,
       status: runStatus,
       prompt: runPrompt ?? "Hello",
       appendSystemPrompt: null,

@@ -386,10 +386,6 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Exact pre-redaction classification and bucket boundaries are a finite,
-      // security-sensitive matrix that cannot be exhaustively observed through
-      // the product Run route without leaking the compared environment maps.
-      "src/signals/services/__tests__/agent-environment-shadow.test.ts",
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",

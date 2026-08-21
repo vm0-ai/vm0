@@ -13,6 +13,10 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate, withMockNowForTest } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
+import {
+  clearAgentRunLaunchSnapshotFixture,
+  clearAgentRunVersionFixture,
+} from "../../../test-fixtures/agent-compose-provenance";
 import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import {
   createBddApi,
@@ -1462,9 +1466,6 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     expect(latestCompose.composeId).toBe(compose.composeId);
 
-    if (!claim1.agentComposeVersionId) {
-      throw new Error("Expected the claim to carry a compose version id");
-    }
     const byAgent = await reads.requestCreateDirectRun(
       actor,
       {
@@ -1478,7 +1479,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       throw new Error("Expected the Agent-backed run create to succeed");
     }
     const byAgentClaim = await api.claimRunnerJob(byAgent.body.runId);
-    expect(byAgentClaim.agentComposeVersionId).toBe(latestCompose.versionId);
+    expect(byAgentClaim).not.toHaveProperty("agentComposeVersionId");
     await api.requestCancelRun(actor, byAgent.body.runId, [200]);
 
     const strictMemory = await api.createDirectRun(actor, {
@@ -1548,7 +1549,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     expect(continued.sessionId).toBe(r1.sessionId);
     const continuedClaim = await api.claimRunnerJob(continued.runId);
-    expect(continuedClaim.agentComposeVersionId).toBe(latestCompose.versionId);
+    expect(continuedClaim).not.toHaveProperty("agentComposeVersionId");
     expect(continuedClaim.vars).toStrictEqual({
       VOL_VERSION: versionPrefix,
     });
@@ -3487,6 +3488,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       triggerSource: "agent",
     });
     await api.requestCancelRun(actor, historicalAgentRun.runId, [200]);
+    await clearAgentRunVersionFixture(historicalAgentRun.runId);
+    await clearAgentRunLaunchSnapshotFixture(historicalAgentRun.runId);
 
     const listed = await reads.requestListLogs(actor, {}, [200]);
     if (listed.status !== 200) {
@@ -3498,6 +3501,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       }),
     ).toMatchObject({
       triggerSource: "agent",
+      framework: null,
     });
     expect(listed.body.filters.sources).toContain("agent");
 
@@ -3509,6 +3513,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(detail.body).toMatchObject({
       id: historicalAgentRun.runId,
       triggerSource: "agent",
+      framework: null,
     });
   });
 

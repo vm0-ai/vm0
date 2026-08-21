@@ -19,6 +19,7 @@ export enum FeatureSwitchKey {
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   JoggAiBuiltIn = "joggAiBuiltIn",
+  ManagedSocialKit = "managedSocialKit",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",

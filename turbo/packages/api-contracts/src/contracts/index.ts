@@ -752,10 +752,17 @@ export {
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
   connectorAccountMutationIntentSchema,
+  connectorAccountTargetQuerySchema,
+  connectorAccountListQuerySchema,
+  connectorAccountSummarySchema,
+  connectorAccountDeleteResolutionSchema,
+  connectorAccountsContract,
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
   type ConnectorAccountSelection,
   type ConnectorAccountMutationIntent,
+  type ConnectorAccountDeleteResolution,
+  type ConnectorAccountSummary,
 } from "./connector-accounts";
 
 export {
@@ -1424,6 +1431,22 @@ export {
   type WebSearchResponse,
   type WebSearchResult,
 } from "./web-search";
+export {
+  MANAGED_SOCIALKIT_BILLING_CATEGORY,
+  MANAGED_SOCIALKIT_OPERATIONS,
+  SOCIALKIT_MAX_PATH_CHARS,
+  SOCIALKIT_MAX_QUERY_ENTRIES,
+  SOCIALKIT_MAX_QUERY_VALUE_CHARS,
+  findManagedSocialKitOperation,
+  socialContract,
+  socialKitRequestSchema,
+  socialKitResponseSchema,
+  type ManagedSocialKitOperation,
+  type SocialContract,
+  type SocialKitRequest,
+  type SocialKitRequestMethod,
+  type SocialKitResponse,
+} from "./social";
 export {
   usageMembersContract,
   type UsageMembersContract,

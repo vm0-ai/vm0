@@ -14,7 +14,7 @@ import {
   classifyAgentExecutionAuthority,
   type AgentExecutionAuthorityDecision,
   type AgentExecutionPlanDimension,
-} from "../../../apps/api/src/signals/services/agent-execution-authority";
+} from "./agent-compose-consolidation-preflight-authority";
 import {
   CATALOG_DEPENDENCY_KINDS,
   CATALOG_DEPENDENCY_QUERY,

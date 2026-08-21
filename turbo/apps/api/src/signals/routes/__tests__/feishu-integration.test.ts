@@ -13,6 +13,7 @@ import {
   chatThreadConnectorSelectionContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -71,6 +72,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 import { chatThreadRoutes } from "../chat-threads";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../custom-connectors-get";
@@ -111,6 +113,12 @@ function feishuConnectClient() {
 function chatThreadConnectorSelectionsClient() {
   return setupApp({ context, routes: chatThreadRoutes })(
     chatThreadConnectorSelectionContract,
+  );
+}
+
+function connectorAccountsClient() {
+  return setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
   );
 }
 
@@ -3580,6 +3588,45 @@ describe("Feishu integration", () => {
     const customConnector = requireValue(
       customConnectors.body.connectors[0],
       "Expected the managed Feishu custom connector",
+    );
+    const accountSummaries = await accept(
+      connectorAccountsClient().summaries({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(accountSummaries.body.summaries).not.toContainEqual(
+      expect.objectContaining({
+        target: {
+          kind: "custom",
+          customConnectorId: customConnector.id,
+        },
+      }),
+    );
+    await accept(
+      connectorAccountsClient().connections({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {
+          kind: "custom",
+          customConnectorId: customConnector.id,
+          limit: 100,
+        },
+      }),
+      [404],
+    );
+    await accept(
+      connectorAccountsClient().rename({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: connectorId },
+        body: {
+          target: {
+            kind: "custom",
+            customConnectorId: customConnector.id,
+          },
+          displayName: "Generic lifecycle must not rename Feishu",
+        },
+      }),
+      [404],
     );
 
     const prompt = "use this Feishu connector account";

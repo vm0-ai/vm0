@@ -18,6 +18,7 @@ import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
+import { teamsBotRoutes } from "../signals/routes/teams-bot";
 import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
@@ -70,13 +71,14 @@ const migrationContract = c.router({
     },
   },
   // A route `FINAL_PROVIDER_CONSOLE_PATHS` also acts on, before and after its
-  // move, so both tables can be run over one pipeline. The Teams bot endpoint
-  // is one of the six the table still holds, chosen because a Microsoft app
-  // registration holds its URL and #28278 therefore cannot move it — the Feishu
-  // events route this used to stand in for left the console table in #28544.
+  // move, so both tables can be run over one pipeline. Slack interactive is one
+  // of the paths that table still holds; the Feishu events route this stood in
+  // for left it in #28544, and the Teams bot endpoint in #28545. Repoint this
+  // pair at another still-branded console path whenever the Slack contracts
+  // move, since the first case below needs the console table to act on it.
   consoleBranded: {
     method: "POST",
-    path: "/api/okou/teams/bot",
+    path: "/api/okou/slack/interactive",
     body: z.object({}),
     responses: {
       200: z.object({ served: z.literal(true) }),
@@ -84,7 +86,7 @@ const migrationContract = c.router({
   },
   consoleFinal: {
     method: "POST",
-    path: "/api/webhooks/teams/bot",
+    path: "/api/webhooks/slack/interactive",
     body: z.object({}),
     responses: {
       200: z.object({ served: z.literal(true) }),
@@ -131,7 +133,10 @@ const MIGRATED_TABLE: Readonly<Record<string, readonly string[]>> = {
 };
 
 const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
-  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
+  "/api/webhooks/slack/interactive": [
+    "/api/okou/slack/interactive",
+    "/api/zero/slack/interactive",
+  ],
 };
 
 // The seven operations #28417 moved off `/api/okou/maps/**`, written out rather
@@ -1130,6 +1135,16 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/workflows/:workflowId/run",
     "/api/zero/workflows/:workflowId/run",
   ],
+  // #28545: the Teams OAuth callback and the Teams bot ingress, moved off
+  // `FINAL_PROVIDER_CONSOLE_PATHS` now that both Microsoft consoles hold the
+  // final URL. `/api/zero/teams/oauth/callback` is still emitted on purpose by
+  // the VM0 brand, so it is a producer target rather than drain-window
+  // compatibility; `route-entry.ts` records why on the row.
+  "/api/integrations/teams/oauth/callback": [
+    "/api/okou/teams/oauth/callback",
+    "/api/zero/teams/oauth/callback",
+  ],
+  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
   // Both branded forms used to be the declared paths, so these rows are the
   // only thing registering them now — the events one is what keeps the two
@@ -1235,17 +1250,17 @@ describe("branded paths for migrated neutral routes", () => {
     );
 
     expect(registeredPaths(registered)).toStrictEqual([
-      "/api/okou/teams/bot",
-      "/api/zero/teams/bot",
-      "/api/webhooks/teams/bot",
+      "/api/okou/slack/interactive",
+      "/api/zero/slack/interactive",
+      "/api/webhooks/slack/interactive",
     ]);
   });
 
   // The same route once it has moved to the final console path — the shape
   // #28544 gave both Feishu routes. This also pins the order the two tables run
   // in: producing the branded paths before the console table would feed
-  // `/api/okou/teams/bot` back into it and register the console path a second
-  // time.
+  // `/api/okou/slack/interactive` back into it and register the console path a
+  // second time.
   it("registers a migrated console route's branded paths exactly once", () => {
     const registered = withMigratedBrandedPaths(
       withApiNamespaceAliases(
@@ -1255,9 +1270,9 @@ describe("branded paths for migrated neutral routes", () => {
     );
 
     expect(registeredPaths(registered)).toStrictEqual([
-      "/api/webhooks/teams/bot",
-      "/api/okou/teams/bot",
-      "/api/zero/teams/bot",
+      "/api/webhooks/slack/interactive",
+      "/api/okou/slack/interactive",
+      "/api/zero/slack/interactive",
     ]);
     expect(() => {
       assertUniqueRouteRegistrations(registered);
@@ -1703,6 +1718,59 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ suffix, neutral, okou, zero }).toStrictEqual({
         suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28545 twin, and the one slice where the branded forms are held by a
+  // provider console rather than by a released client: the Microsoft app
+  // registration still lists both callback URLs and Azure Bot can still be
+  // pointed at either bot URL, so a dropped row 404s Microsoft itself with no
+  // drain window to wait out. Requests carry no credentials, so the status is
+  // whatever the handler returns before it has any — the point is that the
+  // neutral path and both branded forms reach the same handler.
+  it("serves the migrated Teams console paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      {
+        routes: teamsOauthRoutes,
+        method: "GET",
+        neutralSuffix: "integrations/teams/oauth/callback",
+        brandedSuffix: "teams/oauth/callback",
+      },
+      {
+        routes: teamsBotRoutes,
+        method: "POST",
+        neutralSuffix: "webhooks/teams/bot",
+        brandedSuffix: "teams/bot",
+      },
+    ] as const;
+
+    for (const { routes, method, neutralSuffix, brandedSuffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${neutralSuffix}`);
+      const okou = await statusFor(`/api/okou/${brandedSuffix}`);
+      const zero = await statusFor(`/api/zero/${brandedSuffix}`);
+
+      expect({ neutralSuffix, neutral, okou, zero }).toStrictEqual({
+        neutralSuffix,
         neutral,
         okou: neutral,
         zero: neutral,

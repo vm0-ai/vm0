@@ -10,10 +10,13 @@ import {
   findImageStyle,
   findWebsiteTemplatePackage,
 } from "@okouai/core/resource-registry";
+import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
 } from "../../../lib/generation-template-prompt";
+
+const USER_TEMPLATE_ROW_ID = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
 
 describe("buildGenerationTemplatePrompt", () => {
   it("builds one shared context for multiple ordered templates", () => {
@@ -107,6 +110,158 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
     expect(result.prompt).not.toContain("okou generate presentation");
+  });
+
+  it("points a private template at its mounted package and forbids an intermediate representation", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+        },
+      },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [USER_TEMPLATE_ROW_ID],
+      },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("# Artifact Template Context");
+    const packageDir = `./generated/presentation-template/${USER_TEMPLATE_ROW_ID}`;
+    expect(result.prompt).toContain(`mounted at ${packageDir}.`);
+    expect(result.prompt).toContain(
+      `Read ${packageDir}/SKILL.md and ${packageDir}/design-system.md before authoring anything`,
+    );
+    expect(result.prompt).toContain(
+      "Author the finished deck directly as semantic HTML, CSS, and SVG",
+    );
+    // The package is a visual language, not a renderer: an agent that reaches
+    // for slide JSON produces something the guidance cannot inform.
+    expect(result.prompt).toContain("Do not produce slide JSON");
+    expect(result.prompt).toContain("tokens.json");
+    expect(result.prompt).toContain(
+      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
+    );
+    // A private package has no registry resource to pull.
+    expect(result.prompt).not.toContain("okou resource pull");
+    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    // The raw row id may name the mount, but no storage key may leak.
+    expect(result.prompt).not.toContain("presentation-template@");
+  });
+
+  it("rejects a private template while the switch is off", () => {
+    const result = buildGenerationTemplatePrompt({
+      type: "presentation",
+      selection: {
+        templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+      },
+    });
+
+    expect(result.status).toBe("invalid");
+  });
+
+  it("emits no guidance for a private template the run does not mount", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+        },
+      },
+      // A prompt steered into an already-running run cannot add a volume to
+      // it, so naming the package would send the agent to a path that is not
+      // there.
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
+    );
+
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
+  it("emits guidance only for the mounted one when several are selected", () => {
+    const mounted = USER_TEMPLATE_ROW_ID;
+    const unmounted = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+
+    const result = buildGenerationTemplatesPrompt(
+      [
+        {
+          type: "presentation",
+          selection: { templateId: formatUserPresentationTemplateId(mounted) },
+        },
+        {
+          type: "presentation",
+          selection: {
+            templateId: formatUserPresentationTemplateId(unmounted),
+          },
+        },
+      ],
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [mounted],
+      },
+    );
+
+    // One unmountable selection invalidates the whole message rather than
+    // silently dropping a template the user attached on purpose.
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
+  it("rejects a private template id that is not a row id", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: { templateId: "user-template:not-a-uuid" },
+      },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
+    );
+
+    // Distinct from an unknown built-in: the caller named the private
+    // namespace, so it is not silently retried as a registry slug.
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Malformed presentation template");
+  });
+
+  it("still resolves a built-in template while the switch is on", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: item.templateId,
+          colorSystemId: item.colorSystemId,
+        },
+      },
+      { presentationTemplatesEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
   });
 
   it("falls back to the default color token when none is selected", () => {

@@ -5,6 +5,7 @@ import {
   chatThreadMetadataContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -28,6 +29,7 @@ import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { chatThreadGetRoutes } from "../chat-threads-get";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { userModelPreferenceRoutes } from "../user-model-preference";
 
 const context = testContext();
@@ -164,6 +166,12 @@ function connectorSelectionsClient() {
   );
 }
 
+function connectorAccountsClient() {
+  return setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
+  );
+}
+
 async function readCreatedThreadEvent(threadId: string, token: string) {
   const response = await accept(
     threadsClient().events({
@@ -182,6 +190,142 @@ async function readCreatedThreadEvent(threadId: string, token: string) {
 }
 
 describe("POST /api/zero/chat-threads", () => {
+  it("resolves only sparse connector selections during account deletion", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const firstResponse = await connectorApi.requestManualGrant(
+      fixture.actor,
+      "openai",
+      "api-token",
+      { apiKey: "first-openai-key" },
+      {
+        statuses: [200],
+        agentId: fixture.agentId,
+        authorizeAgent: true,
+        account: { intent: "add", displayName: "First" },
+      },
+    );
+    const secondResponse = await connectorApi.requestManualGrant(
+      fixture.actor,
+      "openai",
+      "api-token",
+      { apiKey: "second-openai-key" },
+      {
+        statuses: [200],
+        agentId: fixture.agentId,
+        authorizeAgent: true,
+        account: { intent: "add", displayName: "Second" },
+      },
+    );
+    if (firstResponse.status !== 200 || secondResponse.status !== 200) {
+      throw new Error("Expected connector account creation to succeed");
+    }
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const inheritedThread = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    const selectedThread = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: secondResponse.body.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    const impact = await accept(
+      connectorAccountsClient().deletionImpact({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: secondResponse.body.id },
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [200],
+    );
+    expect(impact.body.explicitSelectionCount).toBe(1);
+
+    const reassigned = await accept(
+      connectorAccountsClient().delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: secondResponse.body.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "openai" },
+          selectionResolution: {
+            kind: "reassign",
+            connectionId: firstResponse.body.id,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(reassigned.body.resolvedSelectionCount).toBe(1);
+
+    const selected = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: selectedThread.body.id },
+      }),
+      [200],
+    );
+    expect(selected.body.selections).toStrictEqual([
+      {
+        connectionId: firstResponse.body.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
+    const inherited = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: inheritedThread.body.id },
+      }),
+      [200],
+    );
+    expect(inherited.body.selections).toStrictEqual([]);
+
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    const cleared = await accept(
+      connectorAccountsClient().delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: firstResponse.body.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "openai" },
+          selectionResolution: { kind: "clear" },
+        },
+      }),
+      [200],
+    );
+    expect(cleared.body.resolvedSelectionCount).toBe(1);
+    const afterClear = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: selectedThread.body.id },
+      }),
+      [200],
+    );
+    expect(afterClear.body.selections).toStrictEqual([]);
+  });
+
   it("creates and reads an exact built-in connector account selection", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {

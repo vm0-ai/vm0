@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
-import { computeComposeVersionId } from "./agent-compose-content";
+import { computeComposeVersionId } from "../../../apps/api/src/signals/services/agent-compose-content";
 
 /**
- * Transition-only evidence for #28056 and #28070. Every definition in this file,
- * including the reviewed source fixture, classifier helpers, and review
- * fingerprint, is owned by #26938 Stage 8 removal.
+ * Aggregate-only migration evidence for #28056 and #28070. Every definition in
+ * this file, including the reviewed source fixture, classifier helpers, and
+ * review fingerprint, is owned by #26938 Stage 8 removal and must not be
+ * imported by product runtime code.
  */
 const REVIEW_FINGERPRINT_DOMAIN =
   "vm0:agent-compose-consolidation:historical-product-builder-review:v1";
