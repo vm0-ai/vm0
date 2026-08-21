@@ -43,6 +43,7 @@ _STREAM_ZLIB_WBITS_BY_ENCODING = {
     "gzip": 16 + zlib.MAX_WBITS,
     "deflate": zlib.MAX_WBITS,
 }
+_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "identity")
 _SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
@@ -208,7 +209,7 @@ def _create_zlib_stream_decode_session(
 
 def stream_decodable_content_encodings() -> tuple[str, ...]:
     """Return ordered content codings supported by bounded streaming decode."""
-    return (*_STREAM_ZLIB_WBITS_BY_ENCODING, "identity")
+    return _STREAM_DECODABLE_CONTENT_ENCODINGS
 
 
 def _stream_decode_skip_reason(encoding: str) -> str | None:
