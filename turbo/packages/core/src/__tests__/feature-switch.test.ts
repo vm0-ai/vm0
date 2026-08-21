@@ -102,7 +102,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
-      true,
+      false,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
@@ -172,6 +172,23 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
       true,
+    );
+  });
+
+  it("should enable composer submit DOM reconciliation only for Bingjie", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+    });
+    expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      true,
+    );
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      false,
     );
   });
 

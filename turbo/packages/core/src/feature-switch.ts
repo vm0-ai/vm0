@@ -383,7 +383,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Re-read every composer block from the live contenteditable before serializing a submission, recovering text a broken mobile composition left only in the DOM, and report each recovery.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
