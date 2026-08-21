@@ -1253,18 +1253,20 @@
         "addOnConcurrency": "同時実行はいつでも追加できます",
         "agentFanOut": "1 つのエージェントが仕事を分担し、結果をまとめて回収",
         "agentHandoff": "エージェント同士が作業を引き渡し、並行して実行",
-        "agents": "共有エージェント {{shared}}、プライベート無制限",
         "automations": "スケジュールとイベントの自動化",
         "builtInResearchData": "組み込みの SEO・リード・ウェブ・市場データ",
+        "chatIntegrations": "Slack・Telegram 連携",
+        "computerUse": "エージェントが自分のデスクトップのアプリを操作",
         "concurrentAgents": "{{slots}} 個のエージェントを同時実行",
         "everythingInBuiltForTeams": "{{plan}} の全機能をチーム向けに",
         "included": "含まれるもの",
+        "liveBrowser": "エージェントのライブブラウザを見て操作を引き継ぐ",
         "models": "Claude Opus 5、GPT 5.6 Sol、DeepSeek V4 Pro",
+        "reusableWorkflows": "繰り返しの作業を再利用できるワークフローに",
         "supportEmail": "メールサポート",
         "supportPriority": "優先サポート",
         "videoGeneration": "動画とアバターの生成",
-        "voiceInput": "音声入力 1 日 {{requests}} 回・{{minutes}} 分",
-        "webhookAutomations": "Webhook でどんなシステムも独自チャネルに"
+        "voiceInput": "音声入力 1 日 {{requests}} 回・{{minutes}} 分"
       },
       "legacy": "旧プラン",
       "limitedFree": {

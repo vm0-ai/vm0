@@ -203,10 +203,6 @@ function planConcurrentSlots(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 2 : 10;
 }
 
-// Both plans carry the same shared-agent allowance; Team only adds concurrency,
-// voice input and support on top of it.
-const SHARED_AGENT_COUNT = 7;
-
 /* Both caps are printed. ORG_PLAN_ENTITLEMENT_TIER_VALUES gives Pro and Team
    exactly five differing fields, and audioDailyDurationSeconds is one of them,
    so a column that hid it would be dropping a fifth of what the upgrade buys. */
@@ -796,21 +792,19 @@ function PlanPrice({
    covers SEO, lead, web, and market data instead of three, which names the
    whole capability without pushing Pro's list past a scannable length.
 
-   Team lists what an upgrade actually buys, and nothing else.
-   ORG_PLAN_ENTITLEMENT_TIER_VALUES is the whole of it: Pro and Team differ on
-   baseConcurrencyLimit, canBuyConcurrency, workflowWebhookAutomationAllowed,
-   audioDailyRateLimit and audioDailyDurationSeconds. Every other capability
-   flag is identical on both plans, so any further "only on Team" line would be
-   false. The two agent-to-agent lines are the exception that earns its place:
-   the mechanism ships on both plans, but ten slots are what let a fan-out run
-   in parallel instead of queueing two at a time behind Pro's limit.
+   The label is "Everything in Pro, built for teams", so Team's list is read as
+   inherited, not exclusive. Only baseConcurrencyLimit, canBuyConcurrency,
+   audioDailyRateLimit and audioDailyDurationSeconds actually differ in
+   ORG_PLAN_ENTITLEMENT_TIER_VALUES; the rest of Team's column is capability the
+   two plans share, chosen because it is what a team puts ten slots to work on.
+   Concurrency is what makes those lines land differently: a fan-out that runs
+   in parallel on Team queues two at a time on Pro.
 
-   Team's column is therefore shorter than Pro's, and that is a fact about the
-   plans rather than a gap in the copy. Padding it would put us back where this
-   started, claiming Pro capabilities as Team entitlements.
-
-   The dialog is a fixed 43rem, which leaves 570px for the columns. Pro's nine
-   rows sit exactly on that limit, so a tenth row has to replace one. */
+   Both lists run nine rows and every row holds a single line at this width, so
+   the two columns align row for row across the divider. The dialog is a fixed
+   43rem, which leaves 570px for the columns, and nine rows sit exactly on that
+   limit -- a tenth has to replace one, and a row that wraps breaks the
+   alignment as surely as it breaks the height. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const concurrentAgents = i18n.t(
     ($) => {
@@ -840,7 +834,13 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.agentFanOut;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.webhookAutomations;
+        return $.billing.plans.highlights.liveBrowser;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.computerUse;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.reusableWorkflows;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -856,12 +856,6 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     i18n.t(($) => {
       return $.billing.plans.features.byok;
     }),
-    i18n.t(
-      ($) => {
-        return $.billing.plans.highlights.agents;
-      },
-      { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
-    ),
     i18n.t(($) => {
       return $.billing.plans.highlights.automations;
     }),
@@ -870,6 +864,9 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     }),
     i18n.t(($) => {
       return $.billing.plans.highlights.builtInResearchData;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.chatIntegrations;
     }),
     voiceInput,
     i18n.t(($) => {

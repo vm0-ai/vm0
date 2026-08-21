@@ -1275,18 +1275,20 @@
         "addOnConcurrency": "Añade concurrencia cuando quieras",
         "agentFanOut": "Un agente divide un trabajo y reúne todos los resultados",
         "agentHandoff": "Los agentes se pasan el trabajo y se ejecutan en paralelo",
-        "agents": "{{shared}} agentes compartidos, privados ilimitados",
         "automations": "Automatizaciones programadas y por eventos",
         "builtInResearchData": "Datos SEO, de leads, web y de mercado integrados",
+        "chatIntegrations": "Integración con Slack y Telegram",
+        "computerUse": "Los agentes manejan apps en tu propio escritorio",
         "concurrentAgents": "{{slots}} agentes a la vez",
         "everythingInBuiltForTeams": "Todo lo de {{plan}}, creado para equipos",
         "included": "Incluido",
+        "liveBrowser": "Observa y toma el control del navegador de un agente",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "reusableWorkflows": "Convierte un trabajo repetido en un flujo reutilizable",
         "supportEmail": "Soporte por correo",
         "supportPriority": "Soporte prioritario",
         "videoGeneration": "Generación de vídeo y avatares",
-        "voiceInput": "Entrada de voz: {{requests}} solicitudes y {{minutes}} minutos al día",
-        "webhookAutomations": "Convierte cualquier sistema en un canal propio con un webhook"
+        "voiceInput": "Entrada de voz: {{requests}} solicitudes y {{minutes}} minutos al día"
       },
       "legacy": "Heredado",
       "limitedFree": {

@@ -1253,18 +1253,20 @@
         "addOnConcurrency": "Tambah konkurensi kapan saja",
         "agentFanOut": "Satu agen bisa membagi pekerjaan dan mengumpulkan semua hasilnya",
         "agentHandoff": "Agen saling mengoper pekerjaan dan berjalan paralel",
-        "agents": "{{shared}} agen bersama, privat tanpa batas",
         "automations": "Otomatisasi terjadwal dan berbasis event",
         "builtInResearchData": "Data SEO, lead, web, dan pasar bawaan",
+        "chatIntegrations": "Integrasi Slack dan Telegram",
+        "computerUse": "Agen mengoperasikan aplikasi di desktop Anda sendiri",
         "concurrentAgents": "{{slots}} agen sekaligus",
         "everythingInBuiltForTeams": "Semua di {{plan}}, dibuat untuk tim",
         "included": "Termasuk",
+        "liveBrowser": "Pantau dan ambil alih browser langsung milik agen",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
+        "reusableWorkflows": "Ubah pekerjaan berulang jadi alur kerja yang bisa dipakai lagi",
         "supportEmail": "Dukungan email",
         "supportPriority": "Dukungan prioritas",
         "videoGeneration": "Pembuatan video dan avatar",
-        "voiceInput": "Input suara: {{requests}} permintaan dan {{minutes}} menit per hari",
-        "webhookAutomations": "Ubah sistem apa pun jadi saluran khusus lewat webhook"
+        "voiceInput": "Input suara: {{requests}} permintaan dan {{minutes}} menit per hari"
       },
       "legacy": "Lama",
       "limitedFree": {

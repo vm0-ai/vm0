@@ -482,19 +482,19 @@ describe("organization billing settings", () => {
       "2 agents running at once",
       "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
       "Bring your own LLM keys",
-      "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
       "Built-in SEO, lead, web, and market data",
+      "Slack and Telegram integration",
       "Voice input, 300 requests and 200 minutes a day",
       "Email support",
     ]) {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team lists the five fields ORG_PLAN_ENTITLEMENT_TIER_VALUES actually
-       varies between the plans, plus what ten concurrent slots make true. It is
-       shorter than Pro's list because the plans differ in five places. */
+    /* Nine rows on each side, aligned row for row: Team leads with the
+       entitlement differences, then the capability a team puts ten concurrent
+       slots to work on. */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
@@ -503,7 +503,9 @@ describe("organization billing settings", () => {
       "Add more concurrency any time",
       "Agents hand work to each other and run in parallel",
       "One agent can split a job and collect every result",
-      "Turn any system into a custom channel via webhook",
+      "Watch and take over an agent's live browser",
+      "Agents operate apps on your own desktop",
+      "Turn a repeated job into a reusable workflow",
       "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {
@@ -513,10 +515,10 @@ describe("organization billing settings", () => {
       "2 agents running at once",
       "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
       "Bring your own LLM keys",
-      "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
       "Built-in SEO, lead, web, and market data",
+      "Slack and Telegram integration",
       "Email support",
     ]) {
       expect(within(teamPlan).queryByText(item)).toBeNull();
