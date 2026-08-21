@@ -1278,17 +1278,15 @@
         "agents": "{{shared}} agentes compartidos, privados ilimitados",
         "automations": "Automatizaciones programadas y por eventos",
         "builtInResearchData": "Datos SEO, de leads, web y de mercado integrados",
-        "chatSurfaces": "Ejecuta agentes desde Slack, Teams o Feishu",
         "concurrentAgents": "{{slots}} agentes a la vez",
-        "customConnectors": "Registra tus APIs internas para que las use todo el equipo",
         "everythingInBuiltForTeams": "Todo lo de {{plan}}, creado para equipos",
         "included": "Incluido",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "Soporte por correo",
         "supportPriority": "Soporte prioritario",
         "videoGeneration": "Generación de vídeo y avatares",
-        "voiceInput": "Entrada de voz, {{requests}} al día",
-        "webhookAutomations": "Activa agentes desde cualquier sistema por webhook"
+        "voiceInput": "Entrada de voz: {{requests}} solicitudes y {{minutes}} minutos al día",
+        "webhookAutomations": "Convierte cualquier sistema en un canal propio con un webhook"
       },
       "legacy": "Heredado",
       "limitedFree": {

@@ -1256,17 +1256,15 @@
         "agents": "공유 에이전트 {{shared}}개, 비공개 무제한",
         "automations": "일정 및 이벤트 자동화",
         "builtInResearchData": "기본 제공 SEO·리드·웹·시장 데이터",
-        "chatSurfaces": "Slack, Teams, Feishu에서 에이전트 실행",
         "concurrentAgents": "에이전트 {{slots}}개 동시 실행",
-        "customConnectors": "사내 API를 등록해 모두가 사용",
         "everythingInBuiltForTeams": "{{plan}}의 모든 기능을 팀 규모로",
         "included": "포함 사항",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "이메일 지원",
         "supportPriority": "우선 지원",
         "videoGeneration": "영상 및 아바타 생성",
-        "voiceInput": "음성 입력 하루 {{requests}}회",
-        "webhookAutomations": "웹훅으로 모든 시스템에서 에이전트 실행"
+        "voiceInput": "음성 입력, 하루 {{requests}}회 · {{minutes}}분",
+        "webhookAutomations": "웹훅으로 어떤 시스템이든 전용 채널로"
       },
       "legacy": "기존",
       "limitedFree": {

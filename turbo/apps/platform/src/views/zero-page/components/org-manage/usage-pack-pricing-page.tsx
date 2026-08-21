@@ -207,10 +207,15 @@ function planConcurrentSlots(tier: UsagePackPlanTier): number {
 // voice input and support on top of it.
 const SHARED_AGENT_COUNT = 7;
 
-// The daily minute cap differs too, but a plan column that prints both caps
-// spends a line on a distinction nobody picks a plan on.
+/* Both caps are printed. ORG_PLAN_ENTITLEMENT_TIER_VALUES gives Pro and Team
+   exactly five differing fields, and audioDailyDurationSeconds is one of them,
+   so a column that hid it would be dropping a fifth of what the upgrade buys. */
 function planVoiceRequests(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 300 : 500;
+}
+
+function planVoiceMinutes(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 200 : 500;
 }
 
 function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
@@ -791,16 +796,21 @@ function PlanPrice({
    covers SEO, lead, web, and market data instead of three, which names the
    whole capability without pushing Pro's list past a scannable length.
 
-   Team answers "what does a team do with this", not "which flags flip". Only
-   add-on concurrency and webhook automations are hard Team gates, so the rest
-   of the column earns its place by being team-shaped rather than exclusive:
-   ten slots make agent-to-agent work actually run in parallel instead of
-   queueing behind Pro's two, chat surfaces are where a team already works, and
-   a custom connector is registered once for every member to use.
+   Team lists what an upgrade actually buys, and nothing else.
+   ORG_PLAN_ENTITLEMENT_TIER_VALUES is the whole of it: Pro and Team differ on
+   baseConcurrencyLimit, canBuyConcurrency, workflowWebhookAutomationAllowed,
+   audioDailyRateLimit and audioDailyDurationSeconds. Every other capability
+   flag is identical on both plans, so any further "only on Team" line would be
+   false. The two agent-to-agent lines are the exception that earns its place:
+   the mechanism ships on both plans, but ten slots are what let a fan-out run
+   in parallel instead of queueing two at a time behind Pro's limit.
 
-   Both lists run nine rows. That is also the ceiling -- the dialog is a fixed
-   43rem, which leaves 570px for the columns, and a tenth row overflows. Any
-   line added here has to replace one, or fit on a single line at this width. */
+   Team's column is therefore shorter than Pro's, and that is a fact about the
+   plans rather than a gap in the copy. Padding it would put us back where this
+   started, claiming Pro capabilities as Team entitlements.
+
+   The dialog is a fixed 43rem, which leaves 570px for the columns. Pro's nine
+   rows sit exactly on that limit, so a tenth row has to replace one. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   const concurrentAgents = i18n.t(
     ($) => {
@@ -812,7 +822,10 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     ($) => {
       return $.billing.plans.highlights.voiceInput;
     },
-    { requests: formatLocalizedNumber(planVoiceRequests(tier)) },
+    {
+      minutes: formatLocalizedNumber(planVoiceMinutes(tier)),
+      requests: formatLocalizedNumber(planVoiceRequests(tier)),
+    },
   );
   if (tier === "team") {
     return [
@@ -828,12 +841,6 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
       }),
       i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.chatSurfaces;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.customConnectors;
       }),
       voiceInput,
       i18n.t(($) => {

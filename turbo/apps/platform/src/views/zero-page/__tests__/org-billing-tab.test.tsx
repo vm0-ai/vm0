@@ -486,15 +486,15 @@ describe("organization billing settings", () => {
       "Scheduled and event automations",
       "Video and avatar generation",
       "Built-in SEO, lead, web, and market data",
-      "Voice input, 300 a day",
+      "Voice input, 300 requests and 200 minutes a day",
       "Email support",
     ]) {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team reads as team-shaped work -- parallel agents handing tasks around,
-       the surfaces a team already sits in, one connector for every member --
-       rather than repeating capability lines Pro already carries. */
+    /* Team lists the five fields ORG_PLAN_ENTITLEMENT_TIER_VALUES actually
+       varies between the plans, plus what ten concurrent slots make true. It is
+       shorter than Pro's list because the plans differ in five places. */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
@@ -503,10 +503,8 @@ describe("organization billing settings", () => {
       "Add more concurrency any time",
       "Agents hand work to each other and run in parallel",
       "One agent can split a job and collect every result",
-      "Trigger agents from any system via webhook",
-      "Run agents from Slack, Teams, or Feishu",
-      "Register your own internal APIs for everyone to use",
-      "Voice input, 500 a day",
+      "Turn any system into a custom channel via webhook",
+      "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {
       expect(within(teamPlan).getByText(item)).toBeInTheDocument();

@@ -1256,17 +1256,15 @@
         "agents": "{{shared}} साझा एजेंट, असीमित निजी",
         "automations": "शेड्यूल और इवेंट ऑटोमेशन",
         "builtInResearchData": "बिल्ट-इन SEO, लीड, वेब और मार्केट डेटा",
-        "chatSurfaces": "Slack, Teams या Feishu से एजेंट चलाएँ",
         "concurrentAgents": "{{slots}} एजेंट एक साथ",
-        "customConnectors": "अपनी इंटरनल API रजिस्टर करें, सब इस्तेमाल कर सकें",
         "everythingInBuiltForTeams": "{{plan}} की हर सुविधा, टीमों के लिए तैयार",
         "included": "शामिल",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "ईमेल सहायता",
         "supportPriority": "प्राथमिकता सहायता",
         "videoGeneration": "वीडियो और अवतार जनरेशन",
-        "voiceInput": "वॉइस इनपुट, {{requests}} रोज़",
-        "webhookAutomations": "वेबहुक से किसी भी सिस्टम से एजेंट चलाएँ"
+        "voiceInput": "वॉइस इनपुट: रोज़ {{requests}} रिक्वेस्ट और {{minutes}} मिनट",
+        "webhookAutomations": "किसी भी सिस्टम को webhook से अपना चैनल बनाएँ"
       },
       "legacy": "पुराना",
       "limitedFree": {

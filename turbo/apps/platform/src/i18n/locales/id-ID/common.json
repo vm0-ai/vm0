@@ -1256,17 +1256,15 @@
         "agents": "{{shared}} agen bersama, privat tanpa batas",
         "automations": "Otomatisasi terjadwal dan berbasis event",
         "builtInResearchData": "Data SEO, lead, web, dan pasar bawaan",
-        "chatSurfaces": "Jalankan agen dari Slack, Teams, atau Feishu",
         "concurrentAgents": "{{slots}} agen sekaligus",
-        "customConnectors": "Daftarkan API internal Anda agar bisa dipakai semua anggota",
         "everythingInBuiltForTeams": "Semua di {{plan}}, dibuat untuk tim",
         "included": "Termasuk",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "Dukungan email",
         "supportPriority": "Dukungan prioritas",
         "videoGeneration": "Pembuatan video dan avatar",
-        "voiceInput": "Input suara, {{requests}} per hari",
-        "webhookAutomations": "Picu agen dari sistem apa pun via webhook"
+        "voiceInput": "Input suara: {{requests}} permintaan dan {{minutes}} menit per hari",
+        "webhookAutomations": "Ubah sistem apa pun jadi saluran khusus lewat webhook"
       },
       "legacy": "Lama",
       "limitedFree": {
