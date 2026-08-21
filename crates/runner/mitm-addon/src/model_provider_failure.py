@@ -15,6 +15,7 @@ from mitmproxy import http
 import body_decoding
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import openai_responses_events
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
 from usage.json_selective import (
@@ -339,7 +340,7 @@ def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
         return
     event_type = _string_value(result.values, ("type",))
     response_id = _string_value(result.values, ("response", "id"))
-    if event_type == "response.created":
+    if event_type == openai_responses_events.SERVER_CREATED_EVENT:
         if (
             response_id is None
             or flow_state.pending_intent is None
@@ -351,15 +352,10 @@ def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
         flow_state.active_response_id = response_id
         flow_state.pending_intent = None
         return
-    if event_type in (
-        "response.completed",
-        "response.done",
-        "response.failed",
-        "response.incomplete",
-    ):
+    if event_type in openai_responses_events.TERMINAL_EVENTS:
         _settle_websocket_terminal(flow, flow_state, event_type, response_id, result)
         return
-    if event_type == "error":
+    if event_type == openai_responses_events.SERVER_ERROR_EVENT:
         _settle_websocket_error(flow, flow_state, result)
 
 
@@ -503,7 +499,11 @@ class _SseEventHandler:
         if self._protocol == "openai_responses":
             if event_type in ("response.completed", "response.done"):
                 self._record_terminal(_success_outcome())
-            elif event_type in ("response.failed", "response.error", "error"):
+            elif event_type in (
+                "response.failed",
+                "response.error",
+                openai_responses_events.SERVER_ERROR_EVENT,
+            ):
                 self._record_terminal(_failure_or_unknown(result))
             elif event_type == "response.incomplete":
                 self._record_terminal(_unknown_outcome())
