@@ -1100,6 +1100,13 @@
       "when": 1787319440280,
       "tag": "0964_reconcile_feishu_member_connector_links",
       "breakpoints": true
+    },
+    {
+      "idx": 965,
+      "version": "7",
+      "when": 1787353806709,
+      "tag": "0965_contract_legacy_built_in_model_key_relation",
+      "breakpoints": true
     }
   ]
 }
