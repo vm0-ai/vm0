@@ -52,6 +52,18 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/runs/${runId}/context`)",
     },
+    // #28460's MSW patterns, and the connector OAuth callback that was neutral
+    // before the slice: `/api/connectors` covers everything below it, so this
+    // path stops being distinguishable once the family moves.
+    {
+      code: 'context.mocks.http.get("*/api/connector-catalog/status", handler)',
+    },
+    {
+      code: "fetchFn(`/api/custom-connectors/${id}/values`)",
+    },
+    {
+      code: 'window.open("/api/connectors/github/callback")',
+    },
     // #28464 moved the IM connect and OAuth-start routes, so a connect URL the
     // API hands back is no longer a violation.
     {
@@ -74,8 +86,9 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'const url = "/api/usage/members"',
       errors: [{ messageId: "nonZeroApi" }],
     },
+    // A longer sibling of a migrated connector path is not itself migrated.
     {
-      code: 'window.open("/api/connectors/github/callback")',
+      code: 'fetchFn("/api/connectors-legacy/github")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
@@ -93,12 +106,11 @@ ruleTester.run("no-non-zero-api", rule, {
       errors: [{ messageId: "nonZeroApi" }],
     },
     // A neutral path whose contract has not moved yet stays a violation. The
-    // fixture is deliberately not a real route: #28278 runs many slices at
-    // once, so any real path named here becomes a false expectation the moment
-    // its slice lands. `/api/chat-threads/snapshot` was this case until #28459
-    // migrated it and left the assertion behind.
+    // subject has to be a family no slice has migrated: #28459 added
+    // `/api/chat-threads` to the allow list, which made the previous subject
+    // legal and left this case asserting the opposite of the rule.
     {
-      code: 'fetchFn("/api/unmigrated-example/thing")',
+      code: 'fetchFn("/api/memory/entries")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

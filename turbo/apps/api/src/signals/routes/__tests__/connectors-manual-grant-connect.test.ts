@@ -129,7 +129,7 @@ async function readConnector(
   );
 }
 
-describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
+describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
   const fixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
@@ -185,17 +185,14 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     await seedFixture();
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
-    const response = await app.request(
-      "/api/zero/connectors/openai/manual-grant",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ values: { apiKey: "sk-test" } }),
+    const response = await app.request("/api/connectors/openai/manual-grant", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ values: { apiKey: "sk-test" } }),
+    });
 
     expect(response.status).toBe(400);
   });
@@ -239,7 +236,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     const response = await app.request(
-      "/api/zero/connectors/invalid_ref/manual-grant",
+      "/api/connectors/invalid_ref/manual-grant",
       {
         method: "POST",
         headers: {

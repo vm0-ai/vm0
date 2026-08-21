@@ -8,7 +8,7 @@ import {
 import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   invalidateApiTestConnectorCatalogCompatibility,
@@ -79,7 +79,7 @@ async function deleteConnector(
   );
 }
 
-describe("GET /api/zero/connectors", () => {
+describe("GET /api/connectors", () => {
   const seededFixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
@@ -254,5 +254,39 @@ describe("GET /api/zero/connectors", () => {
     );
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  // #28460 moved this contract to its neutral path, so the typed client can no
+  // longer express the branded forms a released CLI or browser build still
+  // requests — `MIGRATED_BRANDED_PATHS` is the only thing keeping them
+  // registered. These are the requests that prove they still answer, on a
+  // plain path and on one carrying a path parameter.
+  it("still answers on both branded paths", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const request = setupRawAppRequest({ context, routes: connectorsRoutes });
+    const results: { path: string; status: number }[] = [];
+    for (const path of [
+      "/api/okou/connectors",
+      "/api/zero/connectors",
+      "/api/okou/connectors/gitlab",
+      "/api/zero/connectors/gitlab",
+    ]) {
+      const response = await request(path, {
+        method: "GET",
+        headers: authHeaders(),
+      });
+      results.push({ path, status: response.status });
+    }
+
+    expect(results).toStrictEqual([
+      { path: "/api/okou/connectors", status: 200 },
+      { path: "/api/zero/connectors", status: 200 },
+      { path: "/api/okou/connectors/gitlab", status: 200 },
+      { path: "/api/zero/connectors/gitlab", status: 200 },
+    ]);
   });
 });
