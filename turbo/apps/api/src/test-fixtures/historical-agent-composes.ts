@@ -10,7 +10,6 @@ import type { z } from "zod";
 
 import { db } from "../lib/db";
 import { nowDate } from "../lib/time";
-import { buildHistoricalProductBuilderContent } from "../signals/services/historical-product-builder";
 
 // Production Agent APIs intentionally do not expose internal Compose names,
 // immutable version ids, or arbitrary legacy version content. Surviving tests
@@ -24,16 +23,6 @@ type HistoricalAgentComposeContent = z.infer<
 interface HistoricalAgentComposeActor {
   readonly userId: string;
   readonly orgId: string;
-}
-
-/** Transition-only #28070 fixture; removed by #26938 Stage 8. */
-export function historicalProductBuilderContentFixture(
-  agentName: string,
-): Record<string, unknown> {
-  return buildHistoricalProductBuilderContent(
-    "zero-connector-catalog-at-3b45e4e",
-    agentName,
-  );
 }
 
 function sortObjectKeys(value: unknown): unknown {
@@ -214,6 +203,22 @@ export async function replaceHistoricalAgentComposeHeadFixture(
   });
   signal.throwIfAborted();
   return { versionId };
+}
+
+export async function setHistoricalAgentComposeHeadFixture(
+  composeId: string,
+  headVersionId: string | null,
+  signal: AbortSignal,
+): Promise<void> {
+  const [updated] = await db()
+    .update(agentComposes)
+    .set({ headVersionId, updatedAt: nowDate() })
+    .where(eq(agentComposes.id, composeId))
+    .returning({ id: agentComposes.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a historical Agent Compose fixture");
+  }
 }
 
 export async function readRawHistoricalAgentComposeHeadFixture(

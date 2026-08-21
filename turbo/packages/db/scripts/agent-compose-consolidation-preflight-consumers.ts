@@ -10,13 +10,8 @@ export interface RuntimeContentConsumerManifest {
 }
 
 type RuntimeContentConsumerMode =
-  | "application-authority-classifier"
   | "checkpoint-configuration-independent"
-  | "compose-independent-environment-shadow"
   | "first-plural-schema-parse"
-  | "first-plural-framework-display"
-  | "head-content-selection-and-type-projection"
-  | "historical-product-builder-authority-classifier"
   | "model-provider-binding-authority"
   | "raw-recursive-variable-secret-scan"
   | "recursive-reference-authority"
@@ -60,63 +55,6 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
   },
   {
     relativePath:
-      "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
-    mode: "application-authority-classifier",
-    interfaces: [
-      "AgentExecutionAuthorityDecision",
-      "AgentExecutionAuthorityInput",
-    ],
-    functions: [
-      "classifyAgentExecutionAuthority",
-      "differsOnlyAtSelectedAgentFramework",
-      "hasInvalidActiveVolumeReference",
-      "hasLegacyEnvironmentInfluence",
-      "hasValidCurrentPlanHash",
-      "isMissingCurrentPlanHead",
-      "normalizeSelectedAgentFrameworkFallback",
-      "semanticAgentExecutionPlanDimensions",
-      "validateAgentExecutionPlanRow",
-      "validateFrameworkFallbackAgentExecutionPlanRow",
-    ],
-    variables: ["AGENT_EXECUTION_PLAN_DIMENSIONS"],
-  },
-  {
-    relativePath:
-      "turbo/apps/api/src/signals/services/historical-product-builder.ts",
-    mode: "historical-product-builder-authority-classifier",
-    interfaces: [
-      "HistoricalProductBuilderCandidate",
-      "HistoricalProductBuilderVariant",
-    ],
-    functions: [
-      "buildHistoricalProductBuilderContent",
-      "computeHistoricalProductBuilderReviewFingerprint",
-      "hasReviewedDefinition",
-      "historicalEnvironment",
-      "isExactHistoricalProductBuilderCandidate",
-      "isRecord",
-    ],
-    variables: [
-      "HISTORICAL_PRODUCT_BUILDER_VARIANTS",
-      "REVIEW_AGENT_NAME",
-      "REVIEW_FINGERPRINT_DOMAIN",
-      "ZERO_SECRET_BINDINGS",
-      "ZERO_VARIABLE_BINDINGS",
-    ],
-  },
-  {
-    relativePath:
-      "turbo/apps/api/src/signals/services/agent-environment-shadow.ts",
-    mode: "compose-independent-environment-shadow",
-    interfaces: ["ApplicationOwnedEnvironmentCandidateInput"],
-    functions: [
-      "buildApplicationOwnedEnvironmentCandidate",
-      "compareApplicationOwnedEnvironment",
-    ],
-    variables: ["ENVIRONMENT_SHADOW_COUNT_BUCKETS"],
-  },
-  {
-    relativePath:
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts",
     mode: "first-plural-schema-parse",
     functions: ["agentInstructions"],
@@ -128,8 +66,6 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
     interfaces: ["AgentComposeContent"],
     functions: [
       "buildRunnerJobPayload",
-      "canonicalOkouAgentConfig",
-      "canonicalOkouComposeContent",
       "composeArtifacts",
       "effectiveStoredConnectorEnvironment",
       "environmentTemplates",
@@ -158,11 +94,6 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
     ],
   },
   {
-    relativePath: "turbo/apps/api/src/signals/services/logs.service.ts",
-    mode: "first-plural-framework-display",
-    functions: ["extractFramework"],
-  },
-  {
     relativePath:
       "turbo/apps/api/src/signals/services/teams-connect.service.ts",
     mode: "raw-recursive-variable-secret-scan",
@@ -171,15 +102,6 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
     relativePath:
       "turbo/apps/api/src/signals/services/telegram-data.service.ts",
     mode: "raw-recursive-variable-secret-scan",
-  },
-  {
-    relativePath:
-      "turbo/apps/api/src/signals/services/zero-runs-create.service.ts",
-    mode: "head-content-selection-and-type-projection",
-    interfaces: ["ZeroAgentComposeContent"],
-    interfaceProperties: [
-      { interfaceName: "ZeroAgentRunRecord", propertyName: "content" },
-    ],
   },
   {
     relativePath: "turbo/packages/api-contracts/src/contracts/composes.ts",
@@ -223,7 +145,6 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
     discovery: [
       "contentTypeDeclaration|turbo/apps/api/src/signals/services/agent-run-create.service.ts|1|7cbd1fef5957e98e47ee49a72493aedf1151703a2c2fb31908202001285c968d",
       "contentTypeDeclaration|turbo/apps/api/src/signals/services/agent-run-storage.service.ts|1|613c15a528c571b0128cbcc866f5745f175812cb90bac3e7abc20d74b874a4fa",
-      "contentTypeDeclaration|turbo/apps/api/src/signals/services/zero-runs-create.service.ts|1|64d2a1643c5cb2f1111f904d4428840fee7ca543bddc4f77385a0fc070fba771",
       "legacyVolumeSystemRead|turbo/apps/api/src/signals/services/agent-run-storage.service.ts|1|0330a5d1f37ab9eb618e51d7e8c65eb0d2cc4842da208cb342861397e58e35f1",
       "legacyVolumeSystemRead|turbo/apps/api/src/signals/services/agent-run-storage.service.ts|2|16600c560ff9fea1ec4adc6401abc62e257b4d67d5dc3fdbea1874c8762151e4",
       "legacyVolumeSystemRead|turbo/apps/api/src/signals/services/agent-run-storage.service.ts|3|16600c560ff9fea1ec4adc6401abc62e257b4d67d5dc3fdbea1874c8762151e4",
@@ -233,34 +154,22 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
       "rawContentSource|turbo/apps/api/src/signals/services/agent-instructions.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawContentSource|turbo/apps/api/src/signals/services/agent-run-create.service.ts|1|703de4b3ec6845b843695422610a6df4dcd3b62d7158b9ebb130d306b75a82e2",
       "rawContentSource|turbo/apps/api/src/signals/services/agent-run-create.service.ts|2|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
-      "rawContentSource|turbo/apps/api/src/signals/services/logs.service.ts|1|e023e4f3f81e7dd6271af5bb8cc016593d071b202611ce86e8bf2fd6f1a658ee",
-      "rawContentSource|turbo/apps/api/src/signals/services/logs.service.ts|2|0446280af1a57f17ee19d46ca28e22d7f20093bd508ee20e47c0e14a3063e8f2",
       "rawContentSource|turbo/apps/api/src/signals/services/teams-connect.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawContentSource|turbo/apps/api/src/signals/services/telegram-data.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
-      "rawContentSource|turbo/apps/api/src/signals/services/zero-runs-create.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawRecursiveScan|turbo/apps/api/src/signals/routes/integrations-slack.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "rawRecursiveScan|turbo/apps/api/src/signals/services/teams-connect.service.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "rawRecursiveScan|turbo/apps/api/src/signals/services/telegram-data.service.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
-      "schemaParse|turbo/apps/api/src/signals/services/agent-execution-authority.ts|1|0d5805cb82667cf087cffd9bd41358240d5b1a9ed36aca5617ef782810588ad7",
-      "schemaParse|turbo/apps/api/src/signals/services/agent-execution-authority.ts|2|bc9d01f8197c2f9bc1e86be04a1f255c158608fe252eb6afcdc56c4f0d7bef35",
       "schemaParse|turbo/apps/api/src/signals/services/agent-instructions.service.ts|1|712fe12ea1d29b388940ea5921cabf4e2dd2dbc2229162e5210dba575ac256f9",
-      "schemaParse|turbo/apps/api/src/signals/services/historical-product-builder.ts|1|bc9d01f8197c2f9bc1e86be04a1f255c158608fe252eb6afcdc56c4f0d7bef35",
       "storageForwarding|turbo/apps/api/src/signals/services/agent-run-create.service.ts|1|14ef880a94a1bae38cf026d24cd1a98096a30e4a16df5a32a746f93fee32c04d",
-      "zeroRunRawContentUse|turbo/apps/api/src/signals/services/zero-runs-create.service.ts|1|b59eb415f1b94645a15ac9a30463465caac4a5420b05052a4120ba65c9481e9b",
     ],
     reviewedConsumers: [
       "turbo/apps/api/src/signals/routes/integrations-slack.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
-      "turbo/apps/api/src/signals/services/agent-environment-shadow.ts|compose-independent-environment-shadow|4|bb1c66722499e90deb9a6471567a6d374aefe0f68b878249d0fc4822ddaf3f13",
-      "turbo/apps/api/src/signals/services/agent-execution-authority.ts|application-authority-classifier|15|5ba45d2323d6fc74359a77f3b2c99926ff0ad3dbf8a8e30a523a655cf3149d4a",
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts|first-plural-schema-parse|2|5e0e03733f7327b9e719691adccd8ef9e643f7945e7a2011884b50c17cd0d5ca",
-      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|24972503353839341879362889b070eb2d2874847d7982a03d7f1b70d541ff32",
+      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|15|771ffd52c2a9b3ca2f7c56d44d6b24944bc4989c3ff571f9fdd53913ad5f09cc",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
       "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts|checkpoint-configuration-independent|4|f2f501ed8d094d3edb950966b5a1cee4f149a41f12d10b5cdac55f14b20af714",
-      "turbo/apps/api/src/signals/services/historical-product-builder.ts|historical-product-builder-authority-classifier|14|7b8681f9a1922c125881223a9265b5b3642f5ceb74a410b7f21d1ee3694692f2",
-      "turbo/apps/api/src/signals/services/logs.service.ts|first-plural-framework-display|1|ea68586f0591ce59e883d688f75c0a37ac6022e9eb4e5a2fb2cda1be037123ce",
       "turbo/apps/api/src/signals/services/teams-connect.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "turbo/apps/api/src/signals/services/telegram-data.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
-      "turbo/apps/api/src/signals/services/zero-runs-create.service.ts|head-content-selection-and-type-projection|10|2024999e59b45ad3c3bea825eb72378830fdea625e5e5835da8627d5c17b8f2e",
       "turbo/packages/api-contracts/src/contracts/composes.ts|schema-authority|5|cbd115e5355554442c40dd32d555cf19eda9746e639b83b47ec159f2d647b814",
       "turbo/packages/api-contracts/src/contracts/model-providers.ts|model-provider-binding-authority|11|695fe4feb473e80e1fbe28c0553c8bfea2198e8a88da4d063409e291e516cd76",
       "turbo/packages/api-contracts/src/contracts/runs.ts|run-status-authority|1|4d41dae835d0667075b46527798550126907a3998f179a0939928a00ad9e05bb",
@@ -362,60 +271,6 @@ function isLegacyVolumeSystemRead(
 
 function rawContentSourceNode(node: ts.PropertyAccessExpression): ts.Node {
   return ts.isPropertyAssignment(node.parent) ? node.parent : node;
-}
-
-function isHeadContentJoin(
-  call: ts.CallExpression,
-  source: ts.SourceFile,
-): boolean {
-  if (
-    !ts.isPropertyAccessExpression(call.expression) ||
-    !["innerJoin", "leftJoin"].includes(call.expression.name.text)
-  ) {
-    return false;
-  }
-  const [table, condition] = call.arguments;
-  return (
-    table?.getText(source) === "agentComposeVersions" &&
-    condition?.getText(source).includes("agentComposeVersions.id") === true &&
-    condition.getText(source).includes("agentComposes.headVersionId")
-  );
-}
-
-function isZeroRunForwarding(
-  node: ts.Node,
-  source: ts.SourceFile,
-): node is ts.AsExpression {
-  return (
-    ts.isAsExpression(node) &&
-    node.type.getText(source) === "ZeroAgentComposeContent" &&
-    node.expression.getText(source).endsWith(".content")
-  );
-}
-
-function headContentJoinSemanticNodes(
-  call: ts.CallExpression,
-): readonly ts.Node[] {
-  if (!ts.isPropertyAccessExpression(call.expression)) return [];
-  return [call.expression.name, ...call.arguments];
-}
-
-function isComposeIdentityJoin(
-  call: ts.CallExpression,
-  source: ts.SourceFile,
-): boolean {
-  if (
-    !ts.isPropertyAccessExpression(call.expression) ||
-    !["innerJoin", "leftJoin"].includes(call.expression.name.text)
-  ) {
-    return false;
-  }
-  const [table, condition] = call.arguments;
-  return (
-    table?.getText(source) === "agentComposes" &&
-    condition?.getText(source).includes("agentComposes.id") === true &&
-    condition.getText(source).includes("zeroAgents.id")
-  );
 }
 
 function isZeroRunRawContentUse(
@@ -632,33 +487,6 @@ function sharedConsumerCallNodes(
     : [];
 }
 
-function headContentModeNodes(
-  context: ReviewedNodeContext,
-  node: ts.Node,
-): readonly ts.Node[] {
-  if (context.consumer.mode !== "head-content-selection-and-type-projection") {
-    return [];
-  }
-  if (ts.isCallExpression(node)) {
-    if (
-      isHeadContentJoin(node, context.parsed.source) ||
-      isComposeIdentityJoin(node, context.parsed.source)
-    ) {
-      return headContentJoinSemanticNodes(node);
-    }
-    return [];
-  }
-  if (
-    ts.isPropertyAccessExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "agentComposeVersions" &&
-    node.name.text === "content"
-  ) {
-    return [rawContentSourceNode(node)];
-  }
-  return isZeroRunForwarding(node, context.parsed.source) ? [node] : [];
-}
-
 function reviewedConsumerEntry(args: {
   readonly consumer: ReviewedConsumer;
   readonly parsed: ParsedProductionSource | undefined;
@@ -687,7 +515,6 @@ function reviewedConsumerEntry(args: {
         ...configuredDeclarationNodes(context, node),
         ...modelProviderBindingNodes(args.consumer, node),
         ...sharedConsumerCallNodes(parsed, node),
-        ...headContentModeNodes(context, node),
       );
       ts.forEachChild(node, visit);
     };

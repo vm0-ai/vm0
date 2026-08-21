@@ -304,7 +304,6 @@ export function agentRunById(args: {
     const [run] = await get(db$)
       .select({
         id: agentRuns.id,
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
         status: agentRuns.status,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
@@ -332,7 +331,6 @@ export function agentRunById(args: {
 
     return {
       runId: run.id,
-      agentComposeVersionId: run.agentComposeVersionId,
       status: run.status as RunStatus,
       prompt: run.prompt,
       appendSystemPrompt: run.appendSystemPrompt,

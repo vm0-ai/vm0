@@ -1428,14 +1428,22 @@ async function setRunnerJobContextProfileAsPreviousApi(
   signal: AbortSignal,
 ) {
   // The previous API stored the routing profile in both the dedicated queue
-  // column and execution-context JSON.
+  // column and execution-context JSON. It could also persist the retired
+  // Compose version response field in that JSON; the current reader must strip
+  // both fields before publishing the claim.
+  const legacyVersionId = "a".repeat(64);
   const [updated] = await db
     .update(runnerJobQueue)
     .set({
       executionContext: sql`jsonb_set(
-        ${runnerJobQueue.executionContext},
-        '{experimentalProfile}',
-        to_jsonb(${body.profile}::text),
+        jsonb_set(
+          ${runnerJobQueue.executionContext},
+          '{experimentalProfile}',
+          to_jsonb(${body.profile}::text),
+          true
+        ),
+        '{agentComposeVersionId}',
+        to_jsonb(${legacyVersionId}::text),
         true
       )`,
     })

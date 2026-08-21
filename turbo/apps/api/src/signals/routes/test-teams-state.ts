@@ -44,6 +44,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
+import { ensureAgentInstructionsStorageFixture } from "./test-agent-instructions-storage";
 import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
@@ -223,6 +224,7 @@ interface SeedDefaultAgentInput {
 async function seedDefaultAgent(
   db: Db,
   input: SeedDefaultAgentInput,
+  signal: AbortSignal,
 ): Promise<{ composeId: string; versionId: string; agentId: string }> {
   const compose = await getOrInsertCompose(db, input);
   const composeId = compose.id;
@@ -266,6 +268,16 @@ async function seedDefaultAgent(
   });
 
   await seedVm0ManagedKeys(db, composeId);
+  signal.throwIfAborted();
+  await ensureAgentInstructionsStorageFixture(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.userId,
+      agentName: input.name,
+    },
+    signal,
+  );
   return { composeId, versionId, agentId: composeId };
 }
 
@@ -837,16 +849,21 @@ async function maybeSeedDefaultAgentForPost(
   db: Db,
   body: TestTeamsStatePostBody,
   actor: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
 ): Promise<{ readonly composeId: string } | undefined> {
   if (!body.seed_default_agent) {
     return undefined;
   }
-  return await seedDefaultAgent(db, {
-    orgId: actor.orgId,
-    userId: actor.userId,
-    name: body.default_agent_name ?? DEFAULT_AGENT_NAME,
-    displayName: body.default_agent_display_name,
-  });
+  return await seedDefaultAgent(
+    db,
+    {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      name: body.default_agent_name ?? DEFAULT_AGENT_NAME,
+      displayName: body.default_agent_display_name,
+    },
+    signal,
+  );
 }
 
 const postTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -901,7 +918,12 @@ const postTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
     actor.userId,
   );
   signal.throwIfAborted();
-  const defaultAgent = await maybeSeedDefaultAgentForPost(db, body, actor);
+  const defaultAgent = await maybeSeedDefaultAgentForPost(
+    db,
+    body,
+    actor,
+    signal,
+  );
   signal.throwIfAborted();
 
   return {

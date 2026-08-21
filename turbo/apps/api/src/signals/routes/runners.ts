@@ -699,7 +699,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId: runnerJobQueue.runId,
       prompt: agentRuns.prompt,
       appendSystemPrompt: agentRuns.appendSystemPrompt,
-      agentComposeVersionId: agentRuns.agentComposeVersionId,
       vars: agentRuns.vars,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
@@ -758,7 +757,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         runId: pendingJob.runId,
         prompt: pendingJob.prompt,
         appendSystemPrompt: pendingJob.appendSystemPrompt,
-        agentComposeVersionId: pendingJob.agentComposeVersionId,
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
@@ -796,7 +794,6 @@ interface ClaimedRun {
   readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
-  readonly agentComposeVersionId: string | null;
   readonly vars: unknown;
 }
 
@@ -882,7 +879,6 @@ async function getClaimableJob(
         agentId: agentSessions.agentComposeId,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
       },
     })
@@ -1833,7 +1829,6 @@ async function buildClaimResponseBody(
         reuseKey: args.reuseKey,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
-        agentComposeVersionId: args.run.agentComposeVersionId,
         vars: mergeClaimVars({
           runVars: (args.run.vars as Record<string, string> | null) ?? null,
           connectorVars: args.storedContext.vars,
