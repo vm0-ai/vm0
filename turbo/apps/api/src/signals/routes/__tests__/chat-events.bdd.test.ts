@@ -31,7 +31,6 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
-import { cronSteerRunTimeBudgetContract } from "@okouai/api-contracts/contracts/cron";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
@@ -67,7 +66,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
-  backdateRunStartedAtFixture,
   readRunModelRuntimeRouteFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
@@ -123,8 +121,10 @@ import {
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
+  steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import {
@@ -157,7 +157,6 @@ import {
   setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
-import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { mailRoutes } from "../mail";
@@ -598,26 +597,12 @@ async function expectRunPublicBrandTransport(args: {
   });
 }
 
-/**
- * The time-budget sweep is global, so it can only be driven from a file that
- * ages its own runs through `backdateRunStartedAtFixture`. Every other suite
- * claims runs at the current time and therefore stays outside the window.
- */
-async function runSteerRunTimeBudgetCron(): Promise<void> {
-  await accept(
-    setupApp({ context, routes: cronSteerRunTimeBudgetRoutes })(
-      cronSteerRunTimeBudgetContract,
-    ).steer({ headers: { authorization: "Bearer test-cron-secret" } }),
-    [200],
-  );
-}
-
-/** Age one claimed run to the given elapsed runtime. */
-async function ageClaimedRun(runId: string, elapsedMs: number): Promise<void> {
-  await backdateRunStartedAtFixture({
-    runId,
-    startedAt: new Date(now() - elapsedMs),
-  });
+/** Steer one owned run without scanning rows owned by other test files. */
+async function steerOwnedRunAtElapsedTime(
+  runId: string,
+  elapsedMs: number,
+): Promise<{ readonly scanned: number; readonly steered: number }> {
+  return await steerRunTimeBudgetFixture(context, runId, elapsedMs);
 }
 
 function claimEnvironment(claim: RunnerClaim): Record<string, string> {
@@ -2601,8 +2586,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       },
       [201],
     );
-    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
-    await runSteerRunTimeBudgetCron();
+    await steerOwnedRunAtElapsedTime(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
     const reserved = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
@@ -3147,8 +3131,9 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "reserve the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
-    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
-    await runSteerRunTimeBudgetCron();
+    await expect(
+      steerOwnedRunAtElapsedTime(active.runId, RUN_TIME_BUDGET_STEER_AT_MS),
+    ).resolves.toStrictEqual({ scanned: 1, steered: 1 });
     const reserved = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
@@ -3189,14 +3174,19 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
 
-    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS - 60_000);
-    await runSteerRunTimeBudgetCron();
+    await expect(
+      steerOwnedRunAtElapsedTime(
+        active.runId,
+        RUN_TIME_BUDGET_STEER_AT_MS - 60_000,
+      ),
+    ).resolves.toStrictEqual({ scanned: 0, steered: 0 });
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual({ outcome: "empty" });
 
-    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
-    await runSteerRunTimeBudgetCron();
+    await expect(
+      steerOwnedRunAtElapsedTime(active.runId, RUN_TIME_BUDGET_STEER_AT_MS),
+    ).resolves.toStrictEqual({ scanned: 1, steered: 1 });
     const budgetReservation = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
@@ -3231,7 +3221,9 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toBeFalsy();
 
-    await runSteerRunTimeBudgetCron();
+    await expect(
+      steerOwnedRunAtElapsedTime(active.runId, RUN_TIME_BUDGET_STEER_AT_MS),
+    ).resolves.toStrictEqual({ scanned: 1, steered: 0 });
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual({ outcome: "empty" });
@@ -3248,8 +3240,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "leave the budget input unclaimed",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    await ageClaimedRun(first.runId, RUN_TIME_BUDGET_STEER_AT_MS);
-    await runSteerRunTimeBudgetCron();
+    await steerOwnedRunAtElapsedTime(first.runId, RUN_TIME_BUDGET_STEER_AT_MS);
     const firstBudget = await api.reserveRunnerActiveInputs(
       firstClaim.claim.sandboxToken,
       first.runId,
@@ -4363,8 +4354,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
-      expect(vm0Send.body.error.message).toContain(
-        "No model provider configured",
+      expect(vm0Send.body.error.message).toBe(
+        "No model provider configured: no built-in model key is configured",
       );
     } else {
       const vm0Body = vm0Send.body as { readonly runId: string | null };
@@ -9020,6 +9011,66 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
+
+  it("rejects a private presentation template the caller cannot read", async () => {
+    const actor = bdd.user();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Private template selection requires an organization");
+    }
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Private template agent",
+    });
+    // Well formed and syntactically a row id, but no such row exists for this
+    // owner. A deleted template and someone else's template are the same
+    // answer on purpose: neither may be distinguished from the outside.
+    const templateId = formatUserPresentationTemplateId(randomUUID());
+    const selection: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: { templateId },
+    };
+
+    const switchedOff = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(switchedOff.body);
+    // While the switch is off the private namespace does not exist at all, so
+    // the id is not a template this API knows about.
+    expect(switchedOff.body.error.message).toBe("Unknown generation template");
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PresentationTemplates]: true },
+    );
+
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe("Presentation template not found");
+
+    // Rejected before dispatch: no event is persisted and no run starts.
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(events.status).toBe(200);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
+  }, 60_000);
 
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();

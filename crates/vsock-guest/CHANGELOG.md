@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.95](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.94...vsock-guest-v0.19.95) (2026-08-21)
+
+## [0.19.94](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.93...vsock-guest-v0.19.94) (2026-08-21)
+
+
+### Bug Fixes
+
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
+## [0.19.93](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.92...vsock-guest-v0.19.93) (2026-08-21)
+
 ## [0.19.92](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.91...vsock-guest-v0.19.92) (2026-08-20)
 
 ## [0.19.91](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.90...vsock-guest-v0.19.91) (2026-08-18)

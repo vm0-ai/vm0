@@ -173,13 +173,9 @@ function onboardingFixtureDocument(): string {
       <div role="radio" aria-label="I will explore on my own" aria-checked="false">
         I will explore on my own
       </div>
-      <button>Continue</button>
     \`;
     const option = document.querySelector('[role="radio"]');
     option.addEventListener("click", () => {
-      option.setAttribute("aria-checked", "true");
-    });
-    document.querySelector("button").addEventListener("click", () => {
       history.pushState({}, "", "/agents/agent_default/chat");
     });
   });

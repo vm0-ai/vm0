@@ -22,7 +22,7 @@ export type UpdateFeatureSwitchesRequest = z.infer<
 >;
 
 /**
- * Zero feature switches contract for /api/okou/feature-switches
+ * Feature switches contract for /api/feature-switches
  *
  * GET: Get current user's feature switch overrides plus org-scoped overrides.
  * POST: Update feature switch overrides (merge strategy). Some switches may be
@@ -33,7 +33,7 @@ export type UpdateFeatureSwitchesRequest = z.infer<
 export const zeroFeatureSwitchesContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/feature-switches",
+    path: "/api/feature-switches",
     headers: authHeadersSchema,
     responses: {
       200: featureSwitchesResponseSchema,
@@ -44,7 +44,7 @@ export const zeroFeatureSwitchesContract = c.router({
   },
   update: {
     method: "POST",
-    path: "/api/okou/feature-switches",
+    path: "/api/feature-switches",
     headers: authHeadersSchema,
     body: updateFeatureSwitchesRequestSchema,
     responses: {
@@ -57,7 +57,7 @@ export const zeroFeatureSwitchesContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/feature-switches",
+    path: "/api/feature-switches",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {

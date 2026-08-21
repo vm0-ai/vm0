@@ -277,17 +277,47 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
         EncodedTooLarge,
     }
 
-    for case in [
-        InvalidSidecarCase::MissingMetadata,
-        InvalidSidecarCase::MalformedMetadata,
-        InvalidSidecarCase::UnsupportedRepresentation,
-        InvalidSidecarCase::MetadataSymlink,
-        InvalidSidecarCase::MissingBody,
-        InvalidSidecarCase::BodySymlink,
-        InvalidSidecarCase::SessionMismatch,
-        InvalidSidecarCase::InvalidHash,
-        InvalidSidecarCase::InvalidSize,
-        InvalidSidecarCase::EncodedTooLarge,
+    for (case, expected_miss) in [
+        (
+            InvalidSidecarCase::MissingMetadata,
+            WorkspaceSessionHistorySidecarMiss::Missing,
+        ),
+        (
+            InvalidSidecarCase::MalformedMetadata,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
+        (
+            InvalidSidecarCase::UnsupportedRepresentation,
+            WorkspaceSessionHistorySidecarMiss::UnsupportedFormat,
+        ),
+        (
+            InvalidSidecarCase::MetadataSymlink,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
+        (
+            InvalidSidecarCase::MissingBody,
+            WorkspaceSessionHistorySidecarMiss::BodyMissing,
+        ),
+        (
+            InvalidSidecarCase::BodySymlink,
+            WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::SessionMismatch,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::InvalidHash,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::InvalidSize,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::EncodedTooLarge,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -371,11 +401,12 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
             }
         }
 
-        assert!(
+        assert_eq!(
             cache
                 .probe_session_history_sidecar(&cache_key, &identity)
                 .await
-                .is_err(),
+                .unwrap_err(),
+            expected_miss,
             "case: {case:?}"
         );
     }
@@ -589,8 +620,7 @@ async fn session_history_sidecar_metadata_commit_failure_rolls_back_replacement(
     let history_b = br#"{"type":"message","content":"b"}"#;
     let identity_b = test_restored_session_identity("session-b", history_b);
     let failed_source = cache.workspace_image_cache_tmp_sidecar(&cache_key, failed_run_id);
-    let failed_metadata =
-        cache.workspace_image_cache_tmp_sidecar_metadata(&cache_key, failed_run_id);
+    let failed_metadata = entry_paths.tmp_session_history_sidecar_metadata(failed_run_id);
     let inactive_body = entry_dir.join("session-history.second.blob");
     fs::write(&failed_source, history_b).await.unwrap();
     let replacement = WorkspaceSessionHistorySidecarPromotionSource {
@@ -765,10 +795,10 @@ async fn session_history_sidecar_counts_toward_gc_candidate_and_inspection() {
     )
     .await;
     publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
-    let current_allocated =
-        workspace_cache_path_allocated_bytes(cache.entry_paths(&cache_key).current_image()).await;
+    let entry_paths = cache.entry_paths(&cache_key);
+    let current_allocated = workspace_cache_path_allocated_bytes(entry_paths.current_image()).await;
     let sidecar_allocated = cache
-        .session_history_sidecar_allocated_bytes(&cache_key)
+        .session_history_sidecar_allocated_bytes(&entry_paths)
         .await;
 
     let candidate = cache.gc_candidate(cache_key.clone()).await.unwrap();

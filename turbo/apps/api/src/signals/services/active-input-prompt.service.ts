@@ -202,6 +202,10 @@ export async function materializePendingActiveInputPrompts(
           FeatureSwitchKey.LatestWebsiteTemplates,
           featureSwitchContext,
         ),
+        presentationTemplatesEnabled: isFeatureEnabled(
+          FeatureSwitchKey.PresentationTemplates,
+          featureSwitchContext,
+        ),
       }),
     );
     signal.throwIfAborted();
@@ -270,6 +274,7 @@ async function materializeActiveInputPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly latestWebsiteTemplatesEnabled: boolean;
+    readonly presentationTemplatesEnabled: boolean;
   },
 ): Promise<string> {
   const userMessage = requiredUserMessageForEvent(
@@ -290,6 +295,11 @@ async function materializeActiveInputPrompt(
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    // Steered into a run that is already executing, whose volumes were fixed
+    // when it was created. There is no package to point the agent at, so a
+    // private template contributes no guidance rather than a dangling path.
+    mountedUserPresentationTemplateIds: [],
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

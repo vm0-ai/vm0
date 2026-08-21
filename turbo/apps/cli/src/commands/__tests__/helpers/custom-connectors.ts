@@ -45,7 +45,7 @@ export function stubCustomConnectors(
   connectors: readonly CustomConnectorResponse[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/custom-connectors`, () => {
+  return http.get(`${origin}/api/custom-connectors`, () => {
     return HttpResponse.json({ connectors });
   });
 }
@@ -77,7 +77,7 @@ export function stubAgentCustomConnectors(
   grants: readonly AgentCustomConnectorGrant[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/agents/:id/custom-connectors`, () => {
+  return http.get(`${origin}/api/agents/:id/custom-connectors`, () => {
     return HttpResponse.json({ grants });
   });
 }

@@ -56,13 +56,13 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-browser-screenshot-schema-state"),
   }),
   z.object({
-    action: z.literal("validate-browser-public-brand-rollout"),
-  }),
-  z.object({
     action: z.literal("read-usage-pack-invitation-schema-state"),
   }),
   z.object({
     action: z.literal("read-usage-pack-purchase-serialization-schema-state"),
+  }),
+  z.object({
+    action: z.literal("read-connector-catalog-runtime-projection-schema-state"),
   }),
   z.object({
     action: z.literal("set-run-autonomy-budget"),
@@ -180,6 +180,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("steer-run-time-budget"),
+    run_id: z.uuid(),
+    elapsed_ms: z.int().nonnegative(),
+  }),
+  z.object({
     action: z.literal("read-run-launch-snapshot"),
     run_id: z.uuid(),
   }),
@@ -244,15 +249,9 @@ export const testRuntimeStateActionResponseSchema = z.object({
   selected_model: z.string().optional(),
   managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
-  browser_public_brand_schema_available: z.boolean().optional(),
-  previous_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
-  new_api_browser_public_brand_persisted: z.boolean().optional(),
-  new_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
-  new_api_browser_public_brand_after_schema_arrival: z
-    .enum(["vm0", "okou"])
-    .optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
+  connector_catalog_runtime_projection_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({
@@ -283,6 +282,12 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .nullable()
     .optional(),
   api_started_at: z.string().nullable().optional(),
+  run_time_budget: z
+    .object({
+      scanned: z.int().nonnegative(),
+      steered: z.int().nonnegative(),
+    })
+    .optional(),
   run_launch_snapshot: z
     .object({
       exists: z.boolean(),

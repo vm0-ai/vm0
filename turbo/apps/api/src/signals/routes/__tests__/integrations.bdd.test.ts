@@ -1259,7 +1259,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       throw new Error("Expected Slack member status to include connectUrl");
     }
     expect(memberOrgStatus.body.connectUrl).toContain(
-      "/api/okou/slack/oauth/connect",
+      "/api/slack/oauth/connect",
     );
 
     const memberConnectStatus = await integrations.requestSlackConnectStatus(
@@ -5672,9 +5672,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     if (!redirectUrl) {
       throw new Error("Expected redirect_url query parameter");
     }
-    expect(new URL(redirectUrl).pathname).toBe(
-      "/api/okou/github/oauth/connect",
-    );
+    expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
 
     const actor = integrations.user();
     const invalidSignedConnect = await integrations.requestGithubOauthConnect(

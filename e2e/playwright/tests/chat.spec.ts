@@ -87,7 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
@@ -122,7 +122,7 @@ function isChatThreadEventRowsResponse(
   return (
     response.ok() &&
     request.method() === "GET" &&
-    url.pathname === `/api/okou/chat-threads/${threadId}/event-rows` &&
+    url.pathname === `/api/chat-threads/${threadId}/event-rows` &&
     rawSinceSeqId !== null &&
     Number.isSafeInteger(sinceSeqId) &&
     ((sinceSeqId === 0 && sinceEventId === null) ||
@@ -171,7 +171,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/okou/connector-catalog/status", async (route) => {
+  await page.route("**/api/connector-catalog/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -205,7 +205,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/agents/*/user-connectors", async (route) => {
+  await page.route("**/api/agents/*/user-connectors", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -220,7 +220,7 @@ async function enableFeatureSwitch(
   page: Page,
   key: "chatForward" | "imageModelSelection" | "responsiveFollowupCards",
 ): Promise<void> {
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -248,7 +248,7 @@ async function enableChatForward(page: Page): Promise<void> {
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
-  await page.route("**/api/okou/billing/status", async (route) => {
+  await page.route("**/api/billing/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body)) {
@@ -267,7 +267,7 @@ async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
 
 async function mockSelectedFastModel(page: Page): Promise<void> {
   const policyId = "00000000-0000-4000-a000-000000000736";
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -285,7 +285,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
     });
   });
   await mockUnrestrictedModelBilling(page);
-  await page.route("**/api/okou/model-policies", async (route) => {
+  await page.route("**/api/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -352,7 +352,7 @@ async function mockModelPickerBoundary(page: Page): Promise<{
 
   await enableFeatureSwitch(page, "imageModelSelection");
   await mockUnrestrictedModelBilling(page);
-  await page.route("**/api/okou/model-policies", async (route) => {
+  await page.route("**/api/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -450,7 +450,7 @@ async function mockChatThread(
   const createdEventId = `d${options.threadId.slice(1)}`;
   let createdEventSeqId: number | null = null;
 
-  await page.route("**/api/okou/chat-threads/snapshot", async (route) => {
+  await page.route("**/api/chat-threads/snapshot", async (route) => {
     await route.fulfill({
       json: {
         chatThreads: [],
@@ -460,7 +460,7 @@ async function mockChatThread(
     });
   });
   await page.route(
-    (url) => url.pathname === "/api/okou/chat-threads/events",
+    (url) => url.pathname === "/api/chat-threads/events",
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const rawSinceSeqId = requestUrl.searchParams.get("sinceSeqId");
@@ -497,7 +497,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/event-rows`,
+      url.pathname === `/api/chat-threads/${options.threadId}/event-rows`,
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const sinceSeqId = Number(
@@ -527,8 +527,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/draft`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}/draft`,
     async (route) => {
       await route.fulfill({
         json: { draftUserMessage: null, draftAttachments: null },
@@ -536,8 +535,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/mark-read`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}/mark-read`,
     async (route) => {
       await route.fulfill({
         json: { lastReadAt: options.createdAt, unreads: [] },
@@ -546,8 +544,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname ===
-      `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
+      url.pathname === `/api/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
@@ -557,7 +554,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) => url.pathname === `/api/okou/chat-threads/${options.threadId}`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}`,
     async (route) => {
       await route.fulfill({
         json: {
@@ -850,7 +847,7 @@ async function setupDelayedImageRoutes(
   };
   await routeImage(userImageUrl, userImageRequested);
   await routeImage(assistantImageUrl, assistantImageRequested);
-  await page.route("**/api/okou/web/file-url?*", async (route) => {
+  await page.route("**/api/web/file-url?*", async (route) => {
     const fileId = new URL(route.request().url()).searchParams.get("file_id");
     if (fileId !== "playwright-delayed-user-image") {
       await route.continue();
@@ -874,8 +871,7 @@ async function mockDelayedImageLayoutThread(
 ): Promise<void> {
   await page.route(
     (url) =>
-      url.pathname ===
-      `/api/okou/chat-threads/${imageLayoutThreadId}/artifacts`,
+      url.pathname === `/api/chat-threads/${imageLayoutThreadId}/artifacts`,
     async (route) => {
       await route.fulfill({ json: { runs: [] } });
     },
@@ -1735,7 +1731,7 @@ test("image lightbox centers and pans across the full viewer", async ({
   const imageUrl = new URL("/playwright/lightbox-geometry.svg", appUrl).href;
   const uploadUrl = new URL("/playwright/lightbox-upload", appUrl).href;
 
-  await page.route("**/api/okou/uploads/prepare", async (route) => {
+  await page.route("**/api/uploads/prepare", async (route) => {
     await route.fulfill({
       json: {
         id: "playwright-lightbox-geometry",
@@ -1846,7 +1842,7 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     await route.fulfill({
       json: {
         switches: {},
@@ -1854,7 +1850,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/okou/avatar-video/avatars**", async (route) => {
+  await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {
         avatars: [
@@ -1871,7 +1867,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/okou/avatar-video/voices**", async (route) => {
+  await page.route("**/api/avatar-video/voices**", async (route) => {
     await route.fulfill({
       json: {
         voices: [

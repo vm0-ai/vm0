@@ -1457,6 +1457,7 @@ export function createConnectorBddApi(context: TestContext) {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[];
         readonly agentId?: string;
         readonly authorizeAgent?: true;
+        readonly account?: ConnectorAccountMutationIntent;
       },
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
@@ -1471,6 +1472,7 @@ export function createConnectorBddApi(context: TestContext) {
             values,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+            ...(options.account ? { account: options.account } : {}),
           },
         }),
         options.statuses,
@@ -1884,7 +1886,7 @@ export function createConnectorBddApi(context: TestContext) {
         signal: context.signal,
         routes: customConnectorsRoutes,
       });
-      return await app.request("/api/zero/custom-connectors", {
+      return await app.request("/api/custom-connectors", {
         method: "POST",
         headers: {
           ...authenticate(actor),
@@ -2326,17 +2328,14 @@ export function createConnectorBddApi(context: TestContext) {
         signal: context.signal,
         routes: agentsRoutes,
       });
-      return await app.request(
-        `/api/zero/agents/${agentId}/custom-connectors`,
-        {
-          method: "PUT",
-          headers: {
-            ...authenticate(actor),
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(body),
+      return await app.request(`/api/agents/${agentId}/custom-connectors`, {
+        method: "PUT",
+        headers: {
+          ...authenticate(actor),
+          "content-type": "application/json",
         },
-      );
+        body: JSON.stringify(body),
+      });
     },
 
     async updateAgentCustomConnectors(

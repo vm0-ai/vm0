@@ -180,16 +180,6 @@ import {
   type RunContextAxiomSnapshot,
 } from "./run-context-snapshot.service";
 import {
-  buildApplicationOwnedEnvironmentCandidate,
-  compareApplicationOwnedEnvironment,
-  type EnvironmentShadowObservation,
-} from "./agent-environment-shadow";
-import { buildZeroAgentComposeContent } from "./agent-compose-content";
-import {
-  classifyAgentExecutionAuthority,
-  type AgentExecutionAuthorityDecision,
-} from "./agent-execution-authority";
-import {
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
@@ -211,6 +201,7 @@ import {
   type StoredValueRow,
 } from "./custom-connector.service";
 import {
+  loadCustomConnectorPermissionBundleDependencySlugs,
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
 } from "./custom-connector-permission-bundle.service";
@@ -571,8 +562,7 @@ interface AgentComposeContent {
 }
 
 interface ResolvedCompose {
-  readonly headVersionId: string;
-  readonly agentComposeVersionId: string;
+  readonly agentComposeVersionId: string | null;
   readonly composeId: string;
   readonly composeUserId: string;
   readonly orgId: string;
@@ -587,18 +577,21 @@ interface ResolvedCompose {
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
   readonly resumeSessionModelRoute?: ModelRuntimeSessionRoute;
-  readonly agentExecutionAuthorityObservation?: Pick<
-    AgentExecutionAuthorityDecision,
-    "authority" | "classification"
-  >;
 }
 
-type PersistedPlan = Omit<
-  ResolvedCompose,
-  "content" | "agentExecutionAuthorityObservation"
-> & {
-  readonly content: unknown;
-};
+interface ProductAgentExecutionPlan {
+  readonly content: AgentComposeContent;
+}
+
+interface ProductResolutionOptions {
+  readonly executionPlan: ProductAgentExecutionPlan;
+  readonly timing?: ApiDispatchTimingCollector;
+}
+
+interface ResolveComposeOptions {
+  readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
+  readonly timing?: ApiDispatchTimingCollector;
+}
 
 const MISSING_AGENT_CONFIGURATION_MESSAGE =
   "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
@@ -911,11 +904,6 @@ interface BuiltStoredExecutionContext {
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
-  readonly environmentShadowObservation?: EnvironmentShadowObservation;
-  readonly agentExecutionAuthorityObservation?: Pick<
-    AgentExecutionAuthorityDecision,
-    "authority" | "classification"
-  >;
 }
 
 type BuiltStoredExecutionContextDraft = Omit<
@@ -972,7 +960,7 @@ export interface CreateAgentRunArgs {
   readonly connectorSourceId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
-  readonly productAgentName?: string;
+  readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
   readonly zeroTokenPublicBrand?: PublicBrand;
   readonly zeroTokenComputerUseHostId?: string;
   readonly zeroTokenCloudBrowserEnabled?: boolean;
@@ -1316,88 +1304,6 @@ function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
   }
   const firstKey = Object.keys(content.agents)[0];
   return firstKey ? content.agents[firstKey] : undefined;
-}
-
-function canonicalOkouAgentConfig(config: AgentConfig): AgentConfig {
-  if (
-    !config.environment ||
-    !Object.keys(config.environment).some((key) => {
-      return key.startsWith("ZERO_");
-    })
-  ) {
-    return config;
-  }
-  const environment = withoutLegacyZeroEntries(config.environment);
-  if (environment) {
-    return { ...config, environment };
-  }
-  const { environment: _legacyEnvironment, ...configWithoutEnvironment } =
-    config;
-  return configWithoutEnvironment;
-}
-
-function canonicalOkouComposeContent(
-  content: AgentComposeContent,
-): AgentComposeContent {
-  if (content.agent) {
-    return { ...content, agent: canonicalOkouAgentConfig(content.agent) };
-  }
-  if (!content.agents) {
-    return content;
-  }
-  const firstKey = Object.keys(content.agents)[0];
-  const agent = firstKey ? content.agents[firstKey] : undefined;
-  if (!firstKey || !agent) {
-    return content;
-  }
-  return {
-    ...content,
-    agents: {
-      ...content.agents,
-      [firstKey]: canonicalOkouAgentConfig(agent),
-    },
-  };
-}
-
-// Content-addressed compose versions remain persisted unchanged. New branded
-// contexts interpret legacy versions through this runtime-only projection.
-function runtimeResolvedCompose(
-  resolved: PersistedPlan,
-  productAgentName: string | undefined,
-): ResolvedCompose {
-  if (productAgentName === undefined) {
-    return { ...resolved, content: resolved.content as AgentComposeContent };
-  }
-  const decision = classifyAgentExecutionAuthority({
-    agentName: productAgentName,
-    headVersionId: resolved.headVersionId,
-    versionId: resolved.agentComposeVersionId,
-    content: resolved.content,
-  });
-  const observation = {
-    authority: decision.authority,
-    classification: decision.classification,
-  };
-  if (decision.authority === "application") {
-    // Persisted JSON stops at the classifier. Every downstream launch
-    // consumer receives a fresh projection of the application-owned plan.
-    return {
-      ...resolved,
-      content: buildZeroAgentComposeContent(
-        productAgentName,
-      ) as AgentComposeContent,
-      agentExecutionAuthorityObservation: observation,
-    };
-  }
-  // Stage 4B transition: fail-closed exception domains retain the exact
-  // pre-Stage-4B runtime projection until #26938 Stage 8 removes this path.
-  return {
-    ...resolved,
-    content: canonicalOkouComposeContent(
-      resolved.content as AgentComposeContent,
-    ),
-    agentExecutionAuthorityObservation: observation,
-  };
 }
 
 function resolveFramework(
@@ -5683,7 +5589,7 @@ async function resolveByAgentId(
   db: Db,
   agentId: string,
   timing?: ApiDispatchTimingCollector,
-): Promise<PersistedPlan | CreateRunErrorResult> {
+): Promise<ResolvedCompose | CreateRunErrorResult> {
   const [row] = await measureApiDispatchTiming(
     timing,
     "api_dispatch_resolve_compose_lookup_agent",
@@ -5717,13 +5623,55 @@ async function resolveByAgentId(
   }
 
   return {
-    headVersionId: row.headVersionId,
     agentComposeVersionId: row.versionId,
     composeId: row.composeId,
     composeUserId: row.composeUserId,
     agentName: row.composeName || undefined,
     orgId: row.composeOrgId,
     content: row.versionContent as AgentComposeContent,
+    artifacts: [],
+  };
+}
+
+async function resolveProductByAgentId(
+  db: Db,
+  agentId: string,
+  options: ProductResolutionOptions,
+): Promise<ResolvedCompose | CreateRunErrorResult> {
+  const [row] = await measureApiDispatchTiming(
+    options.timing,
+    "api_dispatch_resolve_compose_lookup_agent",
+    "nested",
+    async () => {
+      return await db
+        .select({
+          composeId: agentComposes.id,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeUserId: agentComposes.userId,
+          versionId: agentComposeVersions.id,
+        })
+        .from(agentComposes)
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentComposeVersions.id, agentComposes.headVersionId),
+        )
+        .where(eq(agentComposes.id, agentId))
+        .limit(1);
+    },
+  );
+
+  if (!row) {
+    return notFound("Agent compose not found");
+  }
+
+  return {
+    agentComposeVersionId: row.versionId,
+    composeId: row.composeId,
+    composeUserId: row.composeUserId,
+    agentName: row.composeName || undefined,
+    orgId: row.composeOrgId,
+    content: options.executionPlan.content,
     artifacts: [],
   };
 }
@@ -5828,8 +5776,8 @@ function resolveBySessionId(
   userId: string,
   orgId: string,
   timing?: ApiDispatchTimingCollector,
-): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
-  return computed(async (): Promise<PersistedPlan | CreateRunErrorResult> => {
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
     const [snapshot] = await measureApiDispatchTiming(
       timing,
       "api_dispatch_resolve_compose_lookup_session_snapshot",
@@ -5928,7 +5876,6 @@ function resolveBySessionId(
       : undefined;
 
     return {
-      headVersionId: snapshot.compose.headVersionId,
       agentComposeVersionId: snapshot.version.id,
       composeId: snapshot.compose.id,
       composeUserId: snapshot.compose.userId,
@@ -5947,25 +5894,157 @@ function resolveBySessionId(
   });
 }
 
+function resolveProductBySessionId(
+  db: Db,
+  agentSessionId: string,
+  userId: string,
+  orgId: string,
+  options: ProductResolutionOptions,
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
+    const [snapshot] = await measureApiDispatchTiming(
+      options.timing,
+      "api_dispatch_resolve_compose_lookup_session_snapshot",
+      "nested",
+      async () => {
+        return await db
+          .select({
+            session: {
+              id: agentSessions.id,
+              storageMounts: agentSessions.storageMounts,
+            },
+            compose: {
+              id: agentComposes.id,
+              name: agentComposes.name,
+              orgId: agentComposes.orgId,
+              userId: agentComposes.userId,
+            },
+            version: {
+              id: agentComposeVersions.id,
+            },
+            conversation: {
+              id: conversations.id,
+              runId: conversations.runId,
+              cliAgentSessionId: conversations.cliAgentSessionId,
+              cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+              cliAgentSessionHistoryHash:
+                conversations.cliAgentSessionHistoryHash,
+            },
+            historyBlob: {
+              hash: blobs.hash,
+              encoding: blobs.encoding,
+            },
+            previousRun: {
+              id: agentRuns.id,
+              vars: agentRuns.vars,
+              modelProvider: agentRuns.modelProvider,
+              modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+              modelRuntimeModel: agentRuns.modelRuntimeModel,
+            },
+          })
+          .from(agentSessions)
+          .leftJoin(
+            agentComposes,
+            eq(agentSessions.agentComposeId, agentComposes.id),
+          )
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposeVersions.id, agentComposes.headVersionId),
+          )
+          .leftJoin(
+            conversations,
+            eq(agentSessions.conversationId, conversations.id),
+          )
+          .leftJoin(
+            blobs,
+            eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+          )
+          .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+          .where(
+            and(
+              eq(agentSessions.id, agentSessionId),
+              eq(agentSessions.userId, userId),
+              eq(agentSessions.orgId, orgId),
+            ),
+          )
+          .limit(1);
+      },
+    );
+
+    if (!snapshot) {
+      return notFound("Agent session not found");
+    }
+    if (!snapshot.compose) {
+      return notFound("Agent compose not found");
+    }
+
+    const conversation = snapshot.conversation;
+    const resumeSession = conversation
+      ? await measureApiDispatchTiming(
+          options.timing,
+          "api_dispatch_resolve_compose_resolve_session_history",
+          "nested",
+          (): StoredExecutionContext["resumeSession"] | undefined => {
+            return resumeSessionFromSnapshot({
+              ...conversation,
+              sessionHistoryBlobEncoding:
+                snapshot.historyBlob?.encoding ?? null,
+            });
+          },
+        )
+      : undefined;
+
+    return {
+      agentComposeVersionId: snapshot.version?.id ?? null,
+      composeId: snapshot.compose.id,
+      composeUserId: snapshot.compose.userId,
+      agentName: snapshot.compose.name || undefined,
+      orgId: snapshot.compose.orgId,
+      content: options.executionPlan.content,
+      ...resolvedSessionStorage(snapshot.session),
+      vars:
+        (snapshot.previousRun?.vars as Record<string, string> | null) ??
+        undefined,
+      agentSessionId: snapshot.session.id,
+      continuedFromAgentSessionId: snapshot.session.id,
+      resumeSession,
+      ...resolvedSessionModelRoute(snapshot.previousRun),
+    };
+  });
+}
+
 function resolveCompose(
   db: Db,
   body: CreateRunBody,
   userId: string,
   orgId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
+  options: ResolveComposeOptions,
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<PersistedPlan | CreateRunErrorResult> => {
+    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
       if (body.sessionId) {
         const sessionId = body.sessionId;
         const resolved = await measureApiDispatchTiming(
-          timing,
+          options.timing,
           "api_dispatch_resolve_compose_by_session_id",
           "nested",
           async () => {
-            return await get(
-              resolveBySessionId(db, sessionId, userId, orgId, timing),
-            );
+            return options.productAgentExecutionPlan
+              ? await get(
+                  resolveProductBySessionId(db, sessionId, userId, orgId, {
+                    executionPlan: options.productAgentExecutionPlan,
+                    timing: options.timing,
+                  }),
+                )
+              : await get(
+                  resolveBySessionId(
+                    db,
+                    sessionId,
+                    userId,
+                    orgId,
+                    options.timing,
+                  ),
+                );
           },
         );
         if (
@@ -5982,11 +6061,16 @@ function resolveCompose(
       }
       const agentId = body.agentId;
       return await measureApiDispatchTiming(
-        timing,
+        options.timing,
         "api_dispatch_resolve_compose_by_agent_id",
         "nested",
         async () => {
-          return await resolveByAgentId(db, agentId, timing);
+          return options.productAgentExecutionPlan
+            ? await resolveProductByAgentId(db, agentId, {
+                executionPlan: options.productAgentExecutionPlan,
+                timing: options.timing,
+              })
+            : await resolveByAgentId(db, agentId, options.timing);
         },
       );
     },
@@ -6333,43 +6417,6 @@ function websiteTemplateArchiveVersionForRun(
     : "previous";
 }
 
-function applicationOwnedEnvironmentShadow(args: {
-  readonly eligible: boolean | undefined;
-  readonly actualEnvironment: Readonly<Record<string, string>>;
-  readonly launch: {
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly body: CreateRunBody;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-  };
-  readonly executionSecrets: StoredExecutionSecrets;
-  readonly runtimeOverrides: Readonly<Record<string, string>>;
-}): EnvironmentShadowObservation | undefined {
-  if (!args.eligible) {
-    return undefined;
-  }
-  const result = safeSync(() => {
-    const candidateEnvironment = buildApplicationOwnedEnvironmentCandidate({
-      modelProviderEnvironment: args.launch.modelProvider?.environment,
-      storedConnectorEnvironment:
-        args.launch.connectorContext.storedEnvironment,
-      vars: args.launch.body.vars,
-      connectorVars: args.launch.connectorContext.vars,
-      secrets: args.executionSecrets.secrets,
-      environmentSecretPlaceholders:
-        args.launch.permissionManifest?.environmentSecretPlaceholders,
-      systemAndRunEnvironment: args.launch.extraEnvironment,
-      runtimeOverrides: args.runtimeOverrides,
-    });
-    return compareApplicationOwnedEnvironment(
-      args.actualEnvironment,
-      candidateEnvironment,
-    );
-  });
-  return "ok" in result ? result.ok : { classification: "shadow_unavailable" };
-}
-
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6428,17 +6475,6 @@ async function buildStoredExecutionContextDraft(args: {
   const environment = args.includeZeroTokenSecret
     ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
     : expandedEnvironment;
-  const environmentShadowObservation = applicationOwnedEnvironmentShadow({
-    eligible: args.includeZeroTokenSecret,
-    actualEnvironment: environment,
-    launch: args,
-    executionSecrets,
-    runtimeOverrides: {
-      CLI_PKG_URL: expandedEnvironment.CLI_PKG_URL,
-      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]:
-        expandedEnvironment[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV],
-    },
-  });
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -6482,9 +6518,6 @@ async function buildStoredExecutionContextDraft(args: {
     },
     secretNames,
     secretValues,
-    environmentShadowObservation,
-    agentExecutionAuthorityObservation:
-      args.resolved.agentExecutionAuthorityObservation,
   };
 }
 
@@ -6541,33 +6574,6 @@ function buildRunContextSnapshot(args: {
   );
   const cliAgentSessionId =
     storedContext.piSessionId ?? storedContext.resumeSession?.sessionId ?? null;
-  const environmentShadow = args.builtContext.environmentShadowObservation;
-  const agentExecutionAuthority =
-    args.builtContext.agentExecutionAuthorityObservation;
-  let environmentShadowFields: Partial<
-    Pick<
-      RunContextAxiomSnapshot,
-      | "environmentShadowClassification"
-      | "environmentShadowLegacyOnlyCountBucket"
-      | "environmentShadowCandidateOnlyCountBucket"
-      | "environmentShadowSharedValueDifferenceCountBucket"
-    >
-  > = {};
-  if (environmentShadow?.classification === "shadow_unavailable") {
-    environmentShadowFields = {
-      environmentShadowClassification: environmentShadow.classification,
-    };
-  } else if (environmentShadow) {
-    environmentShadowFields = {
-      environmentShadowClassification: environmentShadow.classification,
-      environmentShadowLegacyOnlyCountBucket:
-        environmentShadow.legacyOnlyCountBucket,
-      environmentShadowCandidateOnlyCountBucket:
-        environmentShadow.candidateOnlyCountBucket,
-      environmentShadowSharedValueDifferenceCountBucket:
-        environmentShadow.sharedValueDifferenceCountBucket,
-    };
-  }
   const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
@@ -6585,14 +6591,6 @@ function buildRunContextSnapshot(args: {
     volumes: args.builtContext.runContextStorage.volumes,
     artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
-    ...environmentShadowFields,
-    ...(agentExecutionAuthority
-      ? {
-          agentExecutionAuthority: agentExecutionAuthority.authority,
-          agentExecutionAuthorityClassification:
-            agentExecutionAuthority.classification,
-        }
-      : {}),
   };
   return snapshot;
 }
@@ -8630,6 +8628,17 @@ async function prepareRunBodyContext(
   },
   signal: AbortSignal,
 ): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
+  const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
+  const suppliedProductAgentExecutionPlan =
+    args.createArgs.productAgentExecutionPlan;
+  if (canonicalOkouRuntime && suppliedProductAgentExecutionPlan === undefined) {
+    throw new Error(
+      "Product Agent execution plan is required for canonical runtime",
+    );
+  }
+  const productAgentExecutionPlan = canonicalOkouRuntime
+    ? suppliedProductAgentExecutionPlan
+    : undefined;
   const featureSwitchContext = await loadPreparedRunFeatureSwitchContext(
     {
       get: args.get,
@@ -8649,7 +8658,10 @@ async function prepareRunBodyContext(
           args.initialBody,
           args.createArgs.userId,
           args.createArgs.orgId,
-          args.timing,
+          {
+            productAgentExecutionPlan,
+            timing: args.timing,
+          },
         ),
       );
     },
@@ -8658,14 +8670,7 @@ async function prepareRunBodyContext(
   if (isRouteError(persistedResolved)) {
     return persistedResolved;
   }
-  const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
-  if (canonicalOkouRuntime && args.createArgs.productAgentName === undefined) {
-    throw new Error("Product Agent name is required for canonical runtime");
-  }
-  const resolved = runtimeResolvedCompose(
-    persistedResolved,
-    canonicalOkouRuntime ? args.createArgs.productAgentName : undefined,
-  );
+  const resolved = persistedResolved;
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
   }
@@ -8885,7 +8890,10 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
+  const connectorCatalogSelection = await connectorCatalogSelectionForRun({
+    ...args,
+    orgId: args.createArgs.orgId,
+  });
   signal.throwIfAborted();
   const threadConnectorSelectionIds =
     await resolvePreparedThreadConnectorSelections(
@@ -9043,6 +9051,7 @@ async function materializePreparedConnectorContext(args: {
 
 async function connectorCatalogSelectionForRun(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
@@ -9050,12 +9059,22 @@ async function connectorCatalogSelectionForRun(args: {
   if (isEmptyRunConnectorScope(args.connectorScope)) {
     return { kind: "empty" };
   }
-  const selection =
-    args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSelection(args.db, {
-      timing: args.timing,
-      requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-    }));
+  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+    return {
+      kind: "scoped",
+      selection: args.preloadedConnectorCatalogSnapshot,
+    };
+  }
+  const metadataConnectorSlugs =
+    await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
+      orgId: args.orgId,
+      customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+    });
+  const selection = await loadConnectorRuntimeSelection(args.db, {
+    timing: args.timing,
+    requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+    metadataConnectorSlugs,
+  });
   return { kind: "scoped", selection };
 }
 

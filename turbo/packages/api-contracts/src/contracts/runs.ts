@@ -163,7 +163,6 @@ const createRunResponseSchema = z.object({
  */
 const getRunResponseSchema = z.object({
   runId: z.string(),
-  agentComposeVersionId: z.string().nullable(),
   status: runStatusSchema,
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),

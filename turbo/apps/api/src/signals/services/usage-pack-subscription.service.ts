@@ -33,12 +33,14 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   getStripeClient,
+  listAllStripeSubscriptions,
   type StripeClient,
   type StripeInvoice,
   type StripeMetadataParam,
   type StripePrice,
   type StripeSubscription,
 } from "../external/stripe-client";
+import { settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
@@ -1487,19 +1489,18 @@ async function existingUsagePackPurchaseResult(
   ) {
     return { status: "invalid_preview" };
   }
-  const subscriptions = await stripe.subscriptions.list({
-    customer: preview.customerId,
-    status: "all",
-    limit: 100,
-  });
-  signal.throwIfAborted();
-  const existingSummary = subscriptions.data.find((candidate) => {
+  const subscriptions = await listAllStripeSubscriptions(
+    stripe,
+    { customer: preview.customerId, status: "all" },
+    signal,
+  );
+  const existingSummary = subscriptions.find((candidate) => {
     return (
       candidate.metadata?.[USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY] ===
       preview.usagePackSubscriptionId
     );
   });
-  const competing = subscriptions.data.some((candidate) => {
+  const competing = subscriptions.some((candidate) => {
     return (
       candidate.id !== preview.sourceSubscriptionId &&
       candidate.metadata?.orgId === orgId &&
@@ -3593,15 +3594,28 @@ export async function reconcileUsagePackSubscriptions(
   let reconciled =
     subscriptionChanges.reconciled + allocationChanges.reconciled;
   for (const candidate of candidates) {
-    const result = await reconcileUsagePackSubscriptionCandidate(
-      db,
-      stripe,
-      candidate,
-      pendingSnapshotStaleBefore,
+    const result = await settle(
+      reconcileUsagePackSubscriptionCandidate(
+        db,
+        stripe,
+        candidate,
+        pendingSnapshotStaleBefore,
+        signal,
+      ),
       signal,
     );
-    reconciled += result.reconciled;
-    for (const orgId of result.orgIds) {
+    if (!result.ok) {
+      L.error("usage pack subscription reconciliation failed", {
+        usagePackSubscriptionId: candidate.id,
+        orgId: candidate.orgId,
+        stripeSubscriptionId: candidate.stripeSubscriptionId,
+        stripeCheckoutSessionId: candidate.stripeCheckoutSessionId,
+        error: result.error,
+      });
+      continue;
+    }
+    reconciled += result.value.reconciled;
+    for (const orgId of result.value.orgIds) {
       orgIds.add(orgId);
     }
   }

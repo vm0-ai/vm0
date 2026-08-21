@@ -31,7 +31,7 @@ describe("okou connector custom readers", () => {
   it("renders tagged HTTP connectors in list output", async () => {
     const connector = customConnector();
     server.use(
-      http.get("http://localhost:3000/api/okou/custom-connectors", () => {
+      http.get("http://localhost:3000/api/custom-connectors", () => {
         return HttpResponse.json({
           connectors: [connector],
         });
@@ -50,7 +50,7 @@ describe("okou connector custom readers", () => {
     const connector = customConnector();
     server.use(
       stubCustomConnectors([connector]),
-      http.get(`http://localhost:3000/api/okou/agents/${AGENT_ID}`, () => {
+      http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
         return HttpResponse.json({
           agentId: AGENT_ID,
           ownerId: "owner-1",
@@ -90,7 +90,7 @@ describe("okou connector custom readers", () => {
     const connector = customConnector();
     server.use(
       http.get(
-        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
         () => {
           return HttpResponse.json(connector);
         },
@@ -144,7 +144,7 @@ describe("okou connector custom readers", () => {
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(
-        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
         () => {
           return HttpResponse.json(connector);
         },

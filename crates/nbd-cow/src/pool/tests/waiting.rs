@@ -35,6 +35,90 @@ async fn waiting_acquires_spawn_demand_scans_up_to_limit() {
 }
 
 #[tokio::test]
+async fn all_busy_waiter_burst_shares_one_candidate_traversal() {
+    const MAX_TEST_DEVICES: u32 = 64;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let handle = DevicePoolHandle::from_pool(test_pool(
+        MAX_TEST_DEVICES,
+        DevicePoolConfig::default().cooldown,
+        dir.path(),
+        gated_never_free,
+    ));
+    let acquire_tasks = (0..MAX_PENDING)
+        .map(|_| {
+            let handle = handle.clone();
+            tokio::spawn(async move { handle.acquire().await })
+        })
+        .collect::<Vec<_>>();
+
+    wait_for_scan_workers(&BUSY_SCAN_GATE).await;
+    BUSY_SCAN_GATE.release();
+
+    let results = tokio::time::timeout(Duration::from_secs(1), async {
+        let mut results = Vec::with_capacity(MAX_PENDING);
+        for task in acquire_tasks {
+            results.push(task.await.expect("acquire task panicked"));
+        }
+        results
+    })
+    .await
+    .expect("all-busy acquire burst did not finish");
+
+    assert!(
+        results
+            .into_iter()
+            .all(|result| matches!(result, Err(NbdCowError::NoFreeDevice)))
+    );
+    assert_eq!(BUSY_SCAN_GATE.checks(), MAX_TEST_DEVICES as usize);
+    handle.cleanup().await;
+}
+
+#[tokio::test]
+async fn healthy_waiter_burst_keeps_concurrent_workers_and_distinct_claims() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let handle = DevicePoolHandle::from_pool(test_pool(
+        MAX_PENDING as u32,
+        DevicePoolConfig::default().cooldown,
+        dir.path(),
+        gated_always_free,
+    ));
+    let acquire_tasks = (0..MAX_PENDING)
+        .map(|_| {
+            let handle = handle.clone();
+            tokio::spawn(async move { handle.acquire().await })
+        })
+        .collect::<Vec<_>>();
+
+    wait_for_scan_workers(&FREE_SCAN_GATE).await;
+    FREE_SCAN_GATE.release();
+
+    let acquisitions = tokio::time::timeout(Duration::from_secs(1), async {
+        let mut acquisitions = Vec::with_capacity(MAX_PENDING);
+        for task in acquire_tasks {
+            acquisitions.push(
+                task.await
+                    .expect("acquire task panicked")
+                    .expect("acquire failed"),
+            );
+        }
+        acquisitions
+    })
+    .await
+    .expect("healthy acquire burst did not finish");
+
+    let indices = acquisitions
+        .iter()
+        .map(|acquisition| acquisition.index())
+        .collect::<HashSet<_>>();
+    assert_eq!(indices.len(), MAX_PENDING);
+    for acquisition in acquisitions {
+        handle.discard(acquisition.into_lease()).await;
+    }
+    handle.cleanup().await;
+}
+
+#[tokio::test]
 async fn single_waiting_acquire_spawns_single_demand_scan() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut pool = test_pool_for_pending_scan(dir.path());
@@ -113,7 +197,7 @@ async fn separate_pools_do_not_claim_same_locked_index() {
 }
 
 #[tokio::test]
-async fn demand_error_waits_for_pending_success_before_failing_waiter() {
+async fn scan_exhaustion_waits_for_pending_success_before_failing_waiter() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut pool = test_pool_for_pending_scan(dir.path());
     let (mut pending, complete_scan) = pending_controlled_scan();
@@ -122,7 +206,7 @@ async fn demand_error_waits_for_pending_success_before_failing_waiter() {
     pool.waiting_acquires.push_back(first_tx);
     pool.waiting_acquires.push_back(second_tx);
 
-    pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
+    pool.defer_scan_exhaustion();
     pool.ensure_waiting_progress(pending.len());
 
     assert!(matches!(
@@ -131,8 +215,8 @@ async fn demand_error_waits_for_pending_success_before_failing_waiter() {
     ));
 
     complete_scan.send(Ok(claim(4, dir.path()))).unwrap();
-    let scan = pending.join_next().await.unwrap();
-    pool.handle_scan_join(Some(scan));
+    let scanned = pending.join_next().await.unwrap().unwrap().unwrap();
+    pool.handle_scan_claim(scanned);
     pool.ensure_waiting_progress(pending.len());
 
     let first_lease = first_rx.await.unwrap().unwrap();
@@ -146,7 +230,7 @@ async fn demand_error_waits_for_pending_success_before_failing_waiter() {
 }
 
 #[tokio::test]
-async fn deferred_error_starts_new_demand_scan_for_remaining_waiter() {
+async fn deferred_task_error_starts_new_demand_scan_for_remaining_waiter() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut pool = test_pool_for_pending_scan(dir.path());
     let (first_tx, first_rx) = oneshot::channel();
@@ -154,13 +238,12 @@ async fn deferred_error_starts_new_demand_scan_for_remaining_waiter() {
     pool.waiting_acquires.push_back(first_tx);
     pool.waiting_acquires.push_back(second_tx);
 
-    pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
+    pool.defer_acquire_error(NbdCowError::Io(std::io::Error::other(
+        "injected scan task failure",
+    )));
     pool.ensure_waiting_progress(0);
 
-    assert!(matches!(
-        first_rx.await.unwrap(),
-        Err(NbdCowError::NoFreeDevice)
-    ));
+    assert!(matches!(first_rx.await.unwrap(), Err(NbdCowError::Io(_))));
     assert!(matches!(
         second_rx.try_recv(),
         Err(oneshot::error::TryRecvError::Empty)
@@ -180,7 +263,7 @@ fn scan_success_skips_cancelled_waiter_without_leaking_lock() {
     pool.waiting_acquires.push_back(cancelled_tx);
     pool.waiting_acquires.push_back(active_tx);
 
-    pool.handle_scan_join(Some(Ok(Ok(scanned(claim(4, dir.path()))))));
+    pool.handle_scan_claim(scanned(claim(4, dir.path())));
 
     let lease = active_rx.try_recv().unwrap().unwrap();
     assert_eq!(lease.index(), 4);
@@ -198,7 +281,7 @@ fn cancelled_waiter_after_scan_completion_drops_claim() {
     drop(cancelled_rx);
     pool.waiting_acquires.push_back(cancelled_tx);
 
-    pool.handle_scan_join(Some(Ok(Ok(scanned(claim(4, dir.path()))))));
+    pool.handle_scan_claim(scanned(claim(4, dir.path())));
 
     assert!(pool.waiting_acquires.is_empty());
     assert!(pool.in_flight.is_empty());
@@ -219,13 +302,12 @@ async fn deferred_error_skips_cancelled_waiter() {
     pool.waiting_acquires.push_back(cancelled_tx);
     pool.waiting_acquires.push_back(active_tx);
 
-    pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
+    pool.defer_acquire_error(NbdCowError::Io(std::io::Error::other(
+        "injected scan task failure",
+    )));
     pool.ensure_waiting_progress(0);
 
-    assert!(matches!(
-        active_rx.await.unwrap(),
-        Err(NbdCowError::NoFreeDevice)
-    ));
+    assert!(matches!(active_rx.await.unwrap(), Err(NbdCowError::Io(_))));
     assert!(pool.waiting_acquires.is_empty());
     assert!(pool.deferred_acquire_errors.is_empty());
 }

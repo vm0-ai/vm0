@@ -80,8 +80,15 @@ echo "Found sandbox: $SANDBOX_ID"
 
 API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 
-# Keep these recovery expectations aligned with balloon.rs: the controller
-# polls every 5 seconds and inflates only when free_memory is above 384 MiB.
+# Keep these expectations aligned with balloon.rs: the controller polls every
+# 5 seconds, deflates below 192 MiB available, and inflates above 384 MiB free.
+PRESSURE_AVAILABLE_BOUNDARY_MIB=192
+PRESSURE_TARGET_AVAILABLE_MIB=128
+MAX_PRESSURE_ALLOC_MIB=512
+DEFLATE_POLL_SECONDS=2
+DEFLATE_TIMEOUT_SECONDS=60
+PRESSURE_EXEC_TIMEOUT_SECONDS=$(( DEFLATE_TIMEOUT_SECONDS + 30 ))
+PRESSURE_HOLD_SECONDS=$(( PRESSURE_EXEC_TIMEOUT_SECONDS + 30 ))
 INFLATE_FREE_BOUNDARY_MIB=384
 CONTROLLER_OBSERVATION_SECONDS=12
 RECOVERY_POLL_SECONDS=2
@@ -106,6 +113,21 @@ balloon_snapshot() {
           $values[0],
           $values[1],
           ($values[2] / 1048576 | floor)
+        ]
+      | @tsv
+    ' 2>/dev/null
+}
+
+# Helper: read the controller inputs needed during the pressure assertion from
+# one Firecracker response. available_memory is reported in bytes.
+pressure_snapshot() {
+  sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+    | jq -er '
+      [.actual_mib, .available_memory] as $values
+      | select(all($values[]; type == "number" and . >= 0 and . == floor))
+      | [
+          $values[0],
+          ($values[1] / 1048576 | floor)
         ]
       | @tsv
     ' 2>/dev/null
@@ -177,37 +199,64 @@ echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
 # match on to terminate the guest-side allocator below.
 echo "--- Test 2: balloon deflate under memory pressure ---"
-MAX_PRESSURE_ALLOC_MIB=300
-MIN_PRESSURE_REMAINING_MIB=128
-MIN_PRESSURE_AVAIL_KB=$(( MIN_PRESSURE_REMAINING_MIB * 1024 ))
+PRESSURE_TARGET_AVAILABLE_KB=$(( PRESSURE_TARGET_AVAILABLE_MIB * 1024 ))
 ensure_submit_running
 PRE_PRESSURE_AVAIL_KB=$(guest_avail_kb) || fail "failed to read guest MemAvailable before pressure allocation"
-if [ "$PRE_PRESSURE_AVAIL_KB" -le "$MIN_PRESSURE_AVAIL_KB" ]; then
-  fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need > ${MIN_PRESSURE_AVAIL_KB}kB)"
+if [ "$PRE_PRESSURE_AVAIL_KB" -le "$PRESSURE_TARGET_AVAILABLE_KB" ]; then
+  fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need > ${PRESSURE_TARGET_AVAILABLE_KB}kB)"
 fi
 PRE_PRESSURE_AVAIL_MIB=$(( PRE_PRESSURE_AVAIL_KB / 1024 ))
-PRESSURE_ALLOC_MIB=$(( PRE_PRESSURE_AVAIL_MIB - MIN_PRESSURE_REMAINING_MIB ))
+PRESSURE_ALLOC_MIB=$(( PRE_PRESSURE_AVAIL_MIB - PRESSURE_TARGET_AVAILABLE_MIB ))
 if [ "$PRESSURE_ALLOC_MIB" -gt "$MAX_PRESSURE_ALLOC_MIB" ]; then
-  PRESSURE_ALLOC_MIB=$MAX_PRESSURE_ALLOC_MIB
+  fail "required pressure allocation exceeds safety cap: required=${PRESSURE_ALLOC_MIB}MiB cap=${MAX_PRESSURE_ALLOC_MIB}MiB available=${PRE_PRESSURE_AVAIL_MIB}MiB target=${PRESSURE_TARGET_AVAILABLE_MIB}MiB"
 fi
 [ "$PRESSURE_ALLOC_MIB" -gt 0 ] || fail "pressure allocation would be zero: ${PRE_PRESSURE_AVAIL_KB}kB available"
 echo "Pre-pressure guest MemAvailable: ${PRE_PRESSURE_AVAIL_KB}kB; allocating ${PRESSURE_ALLOC_MIB}MiB"
-sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "import ctypes,time; b=bytearray(${PRESSURE_ALLOC_MIB}*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER" &
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" \
+  --timeout "$PRESSURE_EXEC_TIMEOUT_SECONDS" -- \
+  python3 -c "import ctypes,time; b=bytearray(${PRESSURE_ALLOC_MIB}*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(${PRESSURE_HOLD_SECONDS})  # BALLOON_ALLOC_MARKER" &
 ALLOC_PID=$!
 
 # Wait for balloon to deflate (actual_mib decreases)
 DEFLATED=0
-for _ in $(seq 1 30); do
+PRESSURE_OBSERVED=0
+LAST_AVAILABLE_MIB=""
+DEFLATE_DEADLINE=$(( SECONDS + DEFLATE_TIMEOUT_SECONDS ))
+while [ "$SECONDS" -lt "$DEFLATE_DEADLINE" ]; do
   ensure_submit_running
   vm_alive || fail "VM exited during balloon deflate test"
-  ACTUAL=$(balloon_mib)
+
+  if ! kill -0 "$ALLOC_PID" 2>/dev/null; then
+    if wait "$ALLOC_PID"; then
+      ALLOC_STATUS=0
+    else
+      ALLOC_STATUS=$?
+    fi
+    ALLOC_PID=""
+    fail "pressure allocator exec exited before balloon deflated: status=$ALLOC_STATUS"
+  fi
+
+  if ! SNAPSHOT=$(pressure_snapshot); then
+    fail "failed to read valid balloon pressure statistics"
+  fi
+  IFS=$'\t' read -r ACTUAL LAST_AVAILABLE_MIB <<< "$SNAPSHOT"
+  echo "Pressure snapshot: actual=${ACTUAL}MiB available=${LAST_AVAILABLE_MIB}MiB"
+
+  if [ "$LAST_AVAILABLE_MIB" -lt "$PRESSURE_AVAILABLE_BOUNDARY_MIB" ]; then
+    PRESSURE_OBSERVED=1
+  fi
   if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
     DEFLATED=1
     break
   fi
-  sleep 2
+  sleep "$DEFLATE_POLL_SECONDS"
 done
-[ "$DEFLATED" -eq 1 ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $INFLATE_MIB)"
+if [ "$DEFLATED" -ne 1 ]; then
+  if [ "$PRESSURE_OBSERVED" -ne 1 ]; then
+    fail "guest memory pressure was not established: available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB actual=${ACTUAL}MiB"
+  fi
+  fail "balloon controller did not deflate after observed pressure: actual=${ACTUAL}MiB initial=${INFLATE_MIB}MiB available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB"
+fi
 DEFLATE_MIB=$ACTUAL
 echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
 

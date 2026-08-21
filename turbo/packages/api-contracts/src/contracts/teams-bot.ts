@@ -122,7 +122,7 @@ export const teamsBotIngressResponseSchema = z.object({
 export const teamsBotContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/teams/bot",
+    path: "/api/webhooks/teams/bot",
     body: z.unknown(),
     responses: {
       200: teamsBotIngressResponseSchema,

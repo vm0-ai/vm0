@@ -3,6 +3,11 @@ import {
   type ConnectorAccountMutationIntent,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { sql, type SQLWrapper } from "drizzle-orm";
 
 import { zodDriverValueDecoder } from "../../lib/db-structured-result";
@@ -14,6 +19,12 @@ const storedConnectorAccountMutationDecoder = zodDriverValueDecoder(
 export type ConnectorAccountMutation =
   | { readonly intent: "legacy-singleton" }
   | ConnectorAccountMutationIntent;
+
+export function connectorAccountSiblingWritesEnabled(
+  context: FeatureSwitchContext,
+): boolean {
+  return isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, context);
+}
 
 export function normalizeConnectorAccountMutation(
   intent: ConnectorAccountMutationIntent | undefined,

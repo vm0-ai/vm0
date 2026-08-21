@@ -10,6 +10,7 @@ import type { ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
   isStripeResourceMissingError,
+  listAllStripeSubscriptions,
   type StripeClient,
   type StripeCreditNote,
   type StripeInvoice,
@@ -110,26 +111,14 @@ async function listCustomerSubscriptions(
   customerId: string,
   signal: AbortSignal,
 ): Promise<readonly StripeSubscription[]> {
-  const subscriptions: StripeSubscription[] = [];
-  let startingAfter: string | undefined;
-  while (true) {
-    const page = await stripe.subscriptions.list({
+  return await listAllStripeSubscriptions(
+    stripe,
+    {
       customer: customerId,
       status: "all",
-      limit: STRIPE_PAGE_SIZE,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    });
-    signal.throwIfAborted();
-    subscriptions.push(...page.data);
-    const nextCursor = nextPageCursor(
-      page,
-      `Stripe customer ${customerId} subscriptions`,
-    );
-    if (nextCursor === null) {
-      return subscriptions;
-    }
-    startingAfter = nextCursor;
-  }
+    },
+    signal,
+  );
 }
 
 async function retrieveSubscriptionIfPresent(

@@ -184,6 +184,17 @@ pub fn encode_exec_result(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_EXEC_RESULT, seq, &encode_exec_result(...))` without allocating
 /// separate payload and frame vectors.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `diagnostic` or captured stdout/stderr cannot
+/// fit its wire length field, or the encoded payload exceeds the maximum
+/// message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_exec_result_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,

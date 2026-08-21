@@ -302,6 +302,10 @@ class _UsageBufferState:
         while len(self._seen_source_keys) > MAX_SOURCE_IDEMPOTENCY_KEYS:
             self._seen_source_keys.popitem(last=False)
 
+    def seen_source_idempotency_keys(self, source_keys: Iterable[str]) -> set[str]:
+        """Return candidate source keys retained by admission history."""
+        return {source_key for source_key in source_keys if source_key in self._seen_source_keys}
+
     def should_flush(self) -> bool:
         if self._source_event_count >= MAX_BUFFERED_SOURCE_EVENTS:
             return True

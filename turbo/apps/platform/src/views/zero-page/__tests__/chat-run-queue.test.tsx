@@ -1442,48 +1442,6 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
-  it("queues the full composed text with the ime submit flush enabled", async () => {
-    const queuedBodies: QueuedMessageCapture[] = [];
-    mockActiveRunThread(THREAD_ID, {
-      onQueuedEventAppend: (body) => {
-        queuedBodies.push(body);
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.ComposerImeSubmitFlush]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-    const composer = await activeRunComposer();
-    await fill(composer, "que");
-
-    fireEvent.compositionStart(composer, { data: "que" });
-    const paragraph = composer.querySelector("p");
-    if (!paragraph) {
-      throw new Error("Composer paragraph not found");
-    }
-    paragraph.textContent = "queued full composed text";
-
-    fireEvent.click(screen.getByLabelText("Send"));
-    expect(queuedBodies).toHaveLength(0);
-
-    // No input event follows, so the submission depends on the flush rather
-    // than on prosemirror-view's input handler. This does not reproduce the
-    // iOS stall itself: happy-dom delivers the pending mutation as a microtask
-    // before the gate settles, so the document is already current here.
-    fireEvent.compositionEnd(composer, { data: "queued full composed text" });
-
-    await waitFor(() => {
-      expect(queuedBodies).toHaveLength(1);
-    });
-    expect(queuedBodies[0]?.content).toBe("queued full composed text");
-  });
-
   it("renders a server-reconciled follow-up inline", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];

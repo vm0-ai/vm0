@@ -5,10 +5,12 @@ from decimal import Decimal, InvalidOperation
 
 from mitmproxy import http
 
+import body_decoding
+
 _ACCEPT_ENCODING = "Accept-Encoding"
 _IDENTITY = "identity"
 _WILDCARD = "*"
-_SAFE_ENCODINGS = frozenset(("gzip", "deflate", _IDENTITY))
+_STREAM_DECODABLE_ENCODINGS = body_decoding.stream_decodable_content_encodings()
 _INVALID_Q_VALUE = Decimal(-1)
 _MIN_Q_VALUE = Decimal(0)
 _MAX_Q_VALUE = Decimal(1)
@@ -67,7 +69,7 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> None
                     wildcard_accepted = True
                     wildcard_q_text = q_text
 
-            if name in _SAFE_ENCODINGS:
+            if name in _STREAM_DECODABLE_ENCODINGS:
                 if q_value == _MIN_Q_VALUE:
                     rejected_safe.add(name)
                     accepted_safe.pop(name, None)
@@ -157,7 +159,9 @@ def _add_wildcard_safe_compression_encodings(
 ) -> None:
     if not wildcard_accepted:
         return
-    for name in ("gzip", "deflate"):
+    for name in _STREAM_DECODABLE_ENCODINGS:
+        if name == _IDENTITY:
+            continue
         if name not in accepted_safe and name not in rejected_safe:
             accepted_safe[name] = wildcard_q_text
 

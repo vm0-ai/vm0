@@ -163,6 +163,135 @@ fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> 
 }
 
 #[test]
+fn prepare_for_reuse_removes_multiple_wide_parent_chunks() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let runs = dir.path().join("runtime/runs");
+    let current = runs.join("current");
+    let retained = runs.join("retained");
+    std::fs::create_dir_all(&current)?;
+    std::fs::create_dir_all(&retained)?;
+    for index in 0..300 {
+        std::fs::write(runs.join(format!("stale-{index:04}")), b"stale")?;
+    }
+
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: path_string(&current),
+        retained_runtime_dir: Some(path_string(&retained)),
+    })?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = serde_json::from_slice::<ReusePreparationReport>(&output.stdout)?;
+    assert_eq!(report.removed_entries, 300);
+    assert!(current.exists());
+    assert!(retained.exists());
+    assert_eq!(std::fs::read_dir(&runs)?.count(), 2);
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_removes_nested_wide_chunks() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let runs = dir.path().join("runtime/runs");
+    let current = runs.join("current");
+    let stale = runs.join("stale");
+    let nested = stale.join("nested");
+    std::fs::create_dir_all(&current)?;
+    std::fs::create_dir_all(&nested)?;
+    for index in 0..300 {
+        std::fs::write(stale.join(format!("outer-{index:04}")), b"stale")?;
+        std::fs::write(nested.join(format!("inner-{index:04}")), b"stale")?;
+    }
+
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: path_string(&current),
+        retained_runtime_dir: None,
+    })?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = serde_json::from_slice::<ReusePreparationReport>(&output.stdout)?;
+    assert_eq!(report.removed_entries, 1);
+    assert!(current.exists());
+    assert!(!stale.exists());
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_removes_tree_at_cleanup_depth_limit() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let runs = dir.path().join("runtime/runs");
+    let current = runs.join("current");
+    let stale = runs.join("stale");
+    std::fs::create_dir_all(&current)?;
+    std::fs::create_dir_all(&stale)?;
+    let mut deepest = stale.clone();
+    for _ in 1..256 {
+        deepest.push("nested");
+        std::fs::create_dir(&deepest)?;
+    }
+    std::fs::write(deepest.join("stale"), b"stale")?;
+
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: path_string(&current),
+        retained_runtime_dir: None,
+    })?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = serde_json::from_slice::<ReusePreparationReport>(&output.stdout)?;
+    assert_eq!(report.removed_entries, 1);
+    assert!(current.exists());
+    assert!(!stale.exists());
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_tree_beyond_cleanup_depth_limit() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let runs = dir.path().join("runtime/runs");
+    let current = runs.join("current");
+    let stale = runs.join("stale");
+    std::fs::create_dir_all(&current)?;
+    std::fs::create_dir_all(&stale)?;
+    let mut deepest = stale.clone();
+    for _ in 0..256 {
+        deepest.push("nested");
+        std::fs::create_dir(&deepest)?;
+    }
+    std::fs::write(deepest.join("keep"), b"stale")?;
+
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: path_string(&current),
+        retained_runtime_dir: None,
+    })?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("runtime cleanup directory depth exceeds limit")
+    );
+    assert!(current.exists());
+    assert_eq!(std::fs::read(deepest.join("keep"))?, b"stale");
+    Ok(())
+}
+
+#[test]
 fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");

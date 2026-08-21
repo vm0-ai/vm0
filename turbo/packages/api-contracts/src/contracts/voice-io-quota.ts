@@ -14,7 +14,7 @@ export type AudioInputQuotaResponse = z.infer<
 >;
 
 /**
- * Contract for GET /api/okou/voice-io/quota
+ * Contract for GET /api/voice-io/quota
  *
  * Returns the current audio input quota state for the authenticated org/user.
  * Used by the platform to drive mic-button gating without firing a doomed STT
@@ -23,7 +23,7 @@ export type AudioInputQuotaResponse = z.infer<
 export const voiceIoQuotaContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/voice-io/quota",
+    path: "/api/voice-io/quota",
     headers: authHeadersSchema,
     responses: {
       200: audioInputQuotaResponseSchema,

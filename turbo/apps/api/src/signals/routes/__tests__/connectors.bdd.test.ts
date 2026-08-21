@@ -5,7 +5,7 @@
  *   do not have a stable public API constructor/assertion path. They are
  *   intentionally not rebuilt with direct database fixtures here.
  * - Feature switch overrides are configured only through
- *   /api/zero/feature-switches.
+ *   /api/feature-switches.
  */
 
 import { randomInt, randomUUID } from "node:crypto";

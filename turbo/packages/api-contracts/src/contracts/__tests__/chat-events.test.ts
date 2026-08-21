@@ -620,7 +620,7 @@ describe("ChatEvent folds", () => {
 
 describe("ChatEvent HTTP contracts", () => {
   it("uses event naming for the canonical send route", () => {
-    expect(chatEventsContract.send.path).toBe("/api/okou/chat/events");
+    expect(chatEventsContract.send.path).toBe("/api/chat/events");
   });
 
   it("uses event ids in canonical write bodies", () => {

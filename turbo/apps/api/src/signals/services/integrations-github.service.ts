@@ -31,7 +31,7 @@ function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
 }
 
 function githubConnectStartUrl(origin: string): string {
-  return `${origin}/api/okou/github/oauth/connect`;
+  return `${origin}/api/github/oauth/connect`;
 }
 
 async function githubInstallUrl(

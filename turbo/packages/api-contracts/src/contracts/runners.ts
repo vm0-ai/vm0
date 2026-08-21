@@ -107,6 +107,17 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+const managedModelProviderFailureKindSchema = z.enum([
+  "authentication",
+  "billing",
+  "rate_limit",
+  "provider_unavailable",
+  "timeout",
+  "connection",
+]);
+
+const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
@@ -462,7 +473,6 @@ export const jobSchema = z.object({
   runId: z.uuid(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
@@ -881,7 +891,12 @@ export const storedExecutionContextSchema =
  * Tolerant reader for execution contexts already persisted in a database or
  * encrypted queue payload. The optional baseline is derived performance data,
  * so malformed or future versions must remain an independent cache miss rather
- * than invalidating the complete queued execution context.
+ * than invalidating the complete queued execution context. During the Stage 4
+ * API rollout, contexts queued by the previous API may also carry the retired
+ * Compose-version key; Zod's default unknown-key stripping normalizes it out.
+ * Surface: existing runner queue, up to two hours. Remove the Stage 4-specific
+ * comment and fixture after pre-cutover contexts expire; follow-up #26938
+ * Stage 8. The general tolerant reader remains for its existing purpose.
  */
 export const compatibleStoredExecutionContextSchema =
   storedExecutionContextObjectSchema
@@ -902,7 +917,6 @@ const executionContextObjectSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
@@ -1025,6 +1039,40 @@ export const runnersJobClaimContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
+  },
+});
+
+export const runnersModelProviderFailuresContract = c.router({
+  report: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/model-provider-failures",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z
+      .object({
+        failureKind: managedModelProviderFailureKindSchema,
+        retryAfterSeconds: z
+          .number()
+          .int()
+          .positive()
+          .max(MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+          .optional(),
+      })
+      .strict(),
+    responses: {
+      200: z
+        .object({
+          outcome: z.enum(["recorded", "ignored"]),
+        })
+        .strict(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Report a managed model provider failure for a run",
   },
 });
 
@@ -1205,6 +1253,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersModelProviderFailuresContract =
+  typeof runnersModelProviderFailuresContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersConnectorRuntimeSyncContract =
   typeof runnersConnectorRuntimeSyncContract;

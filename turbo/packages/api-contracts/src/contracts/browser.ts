@@ -186,7 +186,7 @@ export const browserContract = c.router({
   },
   leaseByThread: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/browser/lease",
+    path: "/api/chat-threads/:threadId/browser/lease",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: z.object({}),
@@ -198,7 +198,7 @@ export const browserContract = c.router({
   },
   open: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/browser/open",
+    path: "/api/chat-threads/:threadId/browser/open",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
@@ -210,7 +210,7 @@ export const browserContract = c.router({
   },
   close: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/browser/close",
+    path: "/api/chat-threads/:threadId/browser/close",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserLifecycleRequestSchema,
@@ -222,7 +222,7 @@ export const browserContract = c.router({
   },
   resizeByThread: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/browser/resize",
+    path: "/api/chat-threads/:threadId/browser/resize",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     body: browserResizeRequestSchema,
@@ -244,7 +244,7 @@ export const browserContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/chat-threads/:threadId/browser",
+    path: "/api/chat-threads/:threadId/browser",
     headers: authHeadersSchema,
     pathParams: browserThreadParamsSchema,
     responses: {
@@ -258,7 +258,7 @@ export const browserContract = c.router({
 export const browserAuthorizationRequestsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/browser/authorization-requests",
+    path: "/api/browser/authorization-requests",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
@@ -274,7 +274,7 @@ export const browserAuthorizationRequestsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/browser/authorization-requests/:requestToken",
+    path: "/api/browser/authorization-requests/:requestToken",
     headers: authHeadersSchema,
     pathParams: browserAuthorizationRequestTokenPathParamsSchema,
     responses: {
@@ -288,7 +288,7 @@ export const browserAuthorizationRequestsContract = c.router({
   },
   apply: {
     method: "POST",
-    path: "/api/okou/browser/authorization-requests/:requestToken/apply",
+    path: "/api/browser/authorization-requests/:requestToken/apply",
     headers: authHeadersSchema,
     pathParams: browserAuthorizationRequestTokenPathParamsSchema,
     body: z.object({}),

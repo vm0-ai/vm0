@@ -1,5 +1,100 @@
 # Changelog
 
+## [0.780.0](https://github.com/vm0-ai/vm0/compare/app-v0.779.1...app-v0.780.0) (2026-08-21)
+
+
+### Features
+
+* add qwen image 3 and nano banana 2 lite built-in image models ([#28518](https://github.com/vm0-ai/vm0/issues/28518)) ([9691fc3](https://github.com/vm0-ai/vm0/commit/9691fc30b999724efd07d2d82c384c47ff59c150))
+* **platform:** rebalance the pro and team plan highlight lists ([#28540](https://github.com/vm0-ai/vm0/issues/28540)) ([de72f0c](https://github.com/vm0-ai/vm0/commit/de72f0c0208fe1a1d0ec48695434f1dbc43d357c))
+
+
+### Refactoring
+
+* **api:** move web, uploads, voice-io and more off the brand namespace ([#28496](https://github.com/vm0-ai/vm0/issues/28496)) ([911553c](https://github.com/vm0-ai/vm0/commit/911553c29ebada5da274bdcaf647272e1f3aa8dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.349.0
+    * @okouai/core bumped to 8.580.0
+
+## [0.779.1](https://github.com/vm0-ai/vm0/compare/app-v0.779.0...app-v0.779.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **platform:** bold the selected pinned agent label ([#28551](https://github.com/vm0-ai/vm0/issues/28551)) ([a9da8a4](https://github.com/vm0-ai/vm0/commit/a9da8a4bfaa152dea4a9591d6606c3e94108c301))
+
+
+### Refactoring
+
+* **run:** finish the version-independent runtime cutover ([#28517](https://github.com/vm0-ai/vm0/issues/28517)) ([d6a1f75](https://github.com/vm0-ai/vm0/commit/d6a1f753c2146b421c09ce8cd0cae59212d169f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.348.0
+    * @okouai/core bumped to 8.579.0
+
+## [0.779.0](https://github.com/vm0-ai/vm0/compare/app-v0.778.1...app-v0.779.0) (2026-08-21)
+
+
+### Features
+
+* **composer:** offer one model per family in the media pickers ([#28510](https://github.com/vm0-ai/vm0/issues/28510)) ([3389b85](https://github.com/vm0-ai/vm0/commit/3389b85bbb3916d38a71661227ccfc1d02662e75))
+* **onboarding:** refresh oauth workflow templates ([#28371](https://github.com/vm0-ai/vm0/issues/28371)) ([1b42df2](https://github.com/vm0-ai/vm0/commit/1b42df2a8b21728e74a365fc22143031440342db))
+* **platform:** list the user's imported decks in the presentation picker ([#28533](https://github.com/vm0-ai/vm0/issues/28533)) ([e1901a6](https://github.com/vm0-ai/vm0/commit/e1901a6025ef826071a8d21851133536e37263c4))
+* **platform:** turn the home invite button into a growth entry ([#28439](https://github.com/vm0-ai/vm0/issues/28439)) ([632fbb9](https://github.com/vm0-ai/vm0/commit/632fbb9f12b7886dafa5860c778245742e4ad689))
+
+
+### Bug Fixes
+
+* **platform:** narrow the model picker popover back to 260px ([#28542](https://github.com/vm0-ai/vm0/issues/28542)) ([787b8c7](https://github.com/vm0-ai/vm0/commit/787b8c7597206ed952f5fc69c31ec48a5d890a83))
+
+
+### Refactoring
+
+* **api:** move agents, workflows, and workflow automations off the brand namespace ([#28497](https://github.com/vm0-ai/vm0/issues/28497)) ([ee1f56f](https://github.com/vm0-ai/vm0/commit/ee1f56f9a4994b5b6978e6e8515fdbe9df9e6970))
+* **api:** move desktop update routes off the brand namespace ([#28489](https://github.com/vm0-ai/vm0/issues/28489)) ([cef2269](https://github.com/vm0-ai/vm0/commit/cef2269fb823155ef359347544683ed3219149a9)), closes [#28465](https://github.com/vm0-ai/vm0/issues/28465)
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+    * @okouai/core bumped to 8.578.0
+
+## [0.778.1](https://github.com/vm0-ai/vm0/compare/app-v0.778.0...app-v0.778.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **platform:** keep deck import alive across the new-thread navigation ([#28491](https://github.com/vm0-ai/vm0/issues/28491)) ([67e9f2b](https://github.com/vm0-ai/vm0/commit/67e9f2bc40550d2a714964ee0135cc41e2616c75))
+
+
+### Refactoring
+
+* **api:** move artifact catalog, logs, and run reads off the brand namespace ([#28435](https://github.com/vm0-ai/vm0/issues/28435)) ([fa800f0](https://github.com/vm0-ai/vm0/commit/fa800f04ec58ad7835649b2acc6000b8538154c5))
+* **api:** move chat threads, chat events, and shared threads off the brand namespace ([#28471](https://github.com/vm0-ai/vm0/issues/28471)) ([6c2036f](https://github.com/vm0-ai/vm0/commit/6c2036fa7e5f02e01cf163ab1a515364e8ec29d8))
+* **api:** move connectors and catalog off the brand namespace ([#28490](https://github.com/vm0-ai/vm0/issues/28490)) ([942449c](https://github.com/vm0-ai/vm0/commit/942449c2866e51c0d6e7148fc0b4220d1c8feb80))
+* **api:** move integrations off the brand namespace ([#28488](https://github.com/vm0-ai/vm0/issues/28488)) ([cafdde6](https://github.com/vm0-ai/vm0/commit/cafdde60bbdcf29e58a45a0c72ec457103cf8588))
+* **api:** move slack, teams, and feishu connect routes off the brand namespace ([#28485](https://github.com/vm0-ai/vm0/issues/28485)) ([ae6999f](https://github.com/vm0-ai/vm0/commit/ae6999f9a1b4193cdf2bece16d0baba6cf343f30)), closes [#28464](https://github.com/vm0-ai/vm0/issues/28464)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+    * @okouai/core bumped to 8.577.0
+
 ## [0.778.0](https://github.com/vm0-ai/vm0/compare/app-v0.777.0...app-v0.778.0) (2026-08-21)
 
 

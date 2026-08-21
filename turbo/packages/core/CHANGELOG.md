@@ -1,5 +1,69 @@
 # Changelog
 
+## [8.580.0](https://github.com/vm0-ai/vm0/compare/core-v8.579.0...core-v8.580.0) (2026-08-21)
+
+
+### Features
+
+* add qwen image 3 and nano banana 2 lite built-in image models ([#28518](https://github.com/vm0-ai/vm0/issues/28518)) ([9691fc3](https://github.com/vm0-ai/vm0/commit/9691fc30b999724efd07d2d82c384c47ff59c150))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.349.0
+
+## [8.579.0](https://github.com/vm0-ai/vm0/compare/core-v8.578.0...core-v8.579.0) (2026-08-21)
+
+
+### Features
+
+* **api:** add managed socialkit service ([#28343](https://github.com/vm0-ai/vm0/issues/28343)) ([94f6768](https://github.com/vm0-ai/vm0/commit/94f67682a19fd19310449075a7cf9bcf40e5a52f))
+* **api:** resolve a user's own presentation template for a generation run ([#28536](https://github.com/vm0-ai/vm0/issues/28536)) ([1db3d99](https://github.com/vm0-ai/vm0/commit/1db3d99c96b5a2fa8fec2324d644f073a9622912))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.348.0
+
+## [8.578.0](https://github.com/vm0-ai/vm0/compare/core-v8.577.0...core-v8.578.0) (2026-08-21)
+
+
+### Features
+
+* **composer:** offer one model per family in the media pickers ([#28510](https://github.com/vm0-ai/vm0/issues/28510)) ([3389b85](https://github.com/vm0-ai/vm0/commit/3389b85bbb3916d38a71661227ccfc1d02662e75))
+* **platform:** turn the home invite button into a growth entry ([#28439](https://github.com/vm0-ai/vm0/issues/28439)) ([632fbb9](https://github.com/vm0-ai/vm0/commit/632fbb9f12b7886dafa5860c778245742e4ad689))
+
+
+### Refactoring
+
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+
+## [8.577.0](https://github.com/vm0-ai/vm0/compare/core-v8.576.0...core-v8.577.0) (2026-08-21)
+
+
+### Features
+
+* **connectors:** enable box oauth ([#28507](https://github.com/vm0-ai/vm0/issues/28507)) ([59784c7](https://github.com/vm0-ai/vm0/commit/59784c714a10f3e66ee4208fda67ea744cb5241f))
+* **core:** enable usage pack plans for staff ([#28503](https://github.com/vm0-ai/vm0/issues/28503)) ([14a9a65](https://github.com/vm0-ai/vm0/commit/14a9a653f13e028a63e8bfe439fbf9a6c53361c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+
 ## [8.576.0](https://github.com/vm0-ai/vm0/compare/core-v8.575.0...core-v8.576.0) (2026-08-21)
 
 

@@ -12,6 +12,22 @@ pub struct ProcessStat {
     pub starttime: u64,
 }
 
+/// Stable generation of a process observed through procfs.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct ProcfsProcessGeneration {
+    pgid: u32,
+    starttime: u64,
+}
+
+impl ProcessStat {
+    pub(crate) fn procfs_generation(&self) -> ProcfsProcessGeneration {
+        ProcfsProcessGeneration {
+            pgid: self.pgid,
+            starttime: self.starttime,
+        }
+    }
+}
+
 /// Return true when the process stat state still represents a live process.
 ///
 /// `/proc/<pid>/stat` can briefly expose terminal states before the proc entry
@@ -29,6 +45,15 @@ pub struct FirecrackerProcessIdentity {
     pub starttime: u64,
     pub sandbox_id: String,
     pub base_dir: Option<PathBuf>,
+}
+
+impl FirecrackerProcessIdentity {
+    pub(crate) fn procfs_generation(&self) -> ProcfsProcessGeneration {
+        ProcfsProcessGeneration {
+            pgid: self.pgid,
+            starttime: self.starttime,
+        }
+    }
 }
 
 /// Info extracted from a firecracker process cmdline.

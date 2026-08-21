@@ -13,6 +13,7 @@ import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
+import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
 import {
   createActiveGoalQueueEventFixture,
   drainChatThreadQueueFixture,
@@ -70,6 +71,8 @@ const webhooksApi = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
+const NO_BUILT_IN_MODEL_KEY_MESSAGE =
+  "No model provider configured: no built-in model key is configured";
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
@@ -509,6 +512,93 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
+  it("rejects a goal continuation with neutral built-in model copy when the key is unavailable", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "continue without a built-in model key",
+      objectiveBrief: "Continue without a built-in model key",
+    });
+
+    await withBuiltInModelRuntimeRouteUnavailableForTest(
+      "claude-sonnet-5",
+      async () => {
+        await drainChatThreadQueueFixture({
+          threadId: automation.threadId,
+          signal: context.signal,
+        });
+      },
+    );
+
+    const events = await wf.readThreadEvents(automation.threadId);
+    const rejected = events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === goal.eventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the goal continuation to be rejected");
+    }
+    expect(rejected.error).toBe(NO_BUILT_IN_MODEL_KEY_MESSAGE);
+    expect(rejected.error).not.toContain("VM0");
+    await expect(
+      readGoalQueueStateFixture(automation.threadId),
+    ).resolves.toMatchObject({ runIds: [] });
+  });
+
+  it("rejects a workflow automation with neutral built-in model copy when the key is unavailable", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const response = await withBuiltInModelRuntimeRouteUnavailableForTest(
+      "claude-sonnet-5",
+      async () => {
+        return await postWorkflowWebhook(
+          automation,
+          "launch without a built-in model key",
+        );
+      },
+    );
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Failed to start webhook workflow run" },
+    });
+
+    const events = await wf.readThreadEvents(automation.threadId);
+    const rejected = events.find((event) => {
+      return event.eventType === "input.rejected";
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the workflow automation to be rejected");
+    }
+    expect(rejected.error).toBe(NO_BUILT_IN_MODEL_KEY_MESSAGE);
+    expect(rejected.error).not.toContain("VM0");
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
+  });
+
   it("keeps a user prompt ahead of a pending goal continuation", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

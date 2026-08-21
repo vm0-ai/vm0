@@ -22,6 +22,7 @@ const HANG_AFTER_RESULT_PERIODIC_EVENTS_MARKER: &str = "@hang-after-result-perio
 const HANG_AFTER_ERROR_RESULT_MARKER: &str = "@hang-after-error-result";
 const EXIT_AFTER_RESULT_MARKER: &str = "@exit-after-result";
 const WRITE_ENV_JSON_MARKER: &str = "@write-env-json:";
+const PARALLEL_SHELL_TOOL_OOM_MARKER: &str = "@parallel-shell-tool-oom";
 const HANG_AFTER_RESULT_MARKER: &str = "@hang-after-result";
 
 #[derive(Debug, Eq, PartialEq)]
@@ -47,6 +48,7 @@ pub(crate) enum MockScenario<'a> {
     HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson(&'a str),
+    ParallelShellToolOom,
     Shell,
 }
 
@@ -79,6 +81,7 @@ enum ScenarioKind {
     HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson,
+    ParallelShellToolOom,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -214,6 +217,11 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         scenario_kind: ScenarioKind::WriteEnvJson,
     },
     ScenarioRule {
+        marker: PARALLEL_SHELL_TOOL_OOM_MARKER,
+        match_kind: ScenarioMatchKind::Exact,
+        scenario_kind: ScenarioKind::ParallelShellToolOom,
+    },
+    ScenarioRule {
         marker: HANG_AFTER_RESULT_MARKER,
         match_kind: ScenarioMatchKind::Prefix,
         scenario_kind: ScenarioKind::HangAfterResult { deaf: false },
@@ -280,6 +288,9 @@ impl ScenarioKind {
                 MockScenario::HangAfterErrorResult
             }
             (Self::ExitAfterResult, ScenarioMatch::Marker) => MockScenario::ExitAfterResult,
+            (Self::ParallelShellToolOom, ScenarioMatch::Marker) => {
+                MockScenario::ParallelShellToolOom
+            }
             _ => return None,
         };
 
@@ -462,6 +473,10 @@ mod tests {
                 MockScenario::WriteEnvJson("/tmp/env.json"),
             ),
             (
+                "@parallel-shell-tool-oom",
+                MockScenario::ParallelShellToolOom,
+            ),
+            (
                 "@hang-after-result",
                 MockScenario::HangAfterResult { deaf: false },
             ),
@@ -541,6 +556,10 @@ mod tests {
         );
         assert_eq!(
             MockScenario::from_prompt("@stdout-record-boundaries-suffix"),
+            MockScenario::Shell
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@parallel-shell-tool-oom-suffix"),
             MockScenario::Shell
         );
     }

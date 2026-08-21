@@ -12,7 +12,7 @@ ruleTester.run("no-non-zero-api", rule, {
   valid: [
     // Current Platform calls use the canonical Okou namespace.
     {
-      code: 'const url = "/api/okou/billing/status"',
+      code: 'const url = "/api/okou/org"',
     },
     {
       code: "fetchFn(`/api/okou/agents/${agentId}`)",
@@ -52,22 +52,80 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/runs/${runId}/context`)",
     },
-  ],
-  invalid: [
-    {
-      code: 'const url = "/api/zero/billing/status"',
-      errors: [{ messageId: "nonZeroApi" }],
-    },
+    // #28457 moved the whole billing surface, so the prefix covers a nested
+    // path and a substituted parameter alike.
     {
       code: 'fetchFn("/api/billing/status")',
-      errors: [{ messageId: "nonZeroApi" }],
     },
     {
-      code: 'const url = "/api/usage/members"',
-      errors: [{ messageId: "nonZeroApi" }],
+      code: "fetchFn(`/api/billing/redeem/${campaign}`)",
+    },
+    // #28460's MSW patterns, and the connector OAuth callback that was neutral
+    // before the slice: `/api/connectors` covers everything below it, so this
+    // path stops being distinguishable once the family moves.
+    {
+      code: 'context.mocks.http.get("*/api/connector-catalog/status", handler)',
+    },
+    {
+      code: "fetchFn(`/api/custom-connectors/${id}/values`)",
     },
     {
       code: 'window.open("/api/connectors/github/callback")',
+    },
+    // #28464 moved the IM connect and OAuth-start routes, so a connect URL the
+    // API hands back is no longer a violation.
+    {
+      code: 'window.open("/api/teams/oauth/connect?orgId=org_1&userId=user_1")',
+    },
+    {
+      code: 'fetchFn("/api/feishu/connect/status")',
+    },
+    // #28462 moved the org, model provider, and usage routes, which the
+    // platform reaches both directly and through its MSW patterns.
+    {
+      code: 'context.mocks.http.get("*/api/org/logo", handler)',
+    },
+    {
+      code: 'const url = "/api/usage/members"',
+    },
+    {
+      code: 'fetchFn("/api/model-providers/claude-code/device-auth/sessions")',
+    },
+    // #28461 moved the agent, workflow, and workflow-automation routes, so the
+    // MSW patterns the platform tests register are accepted with their route
+    // parameters still in template form.
+    {
+      code: 'context.mocks.http.get("*/api/agents/:id/user-connectors", handler)',
+    },
+    {
+      code: "fetchFn(`/api/workflows/${workflowId}/publish`)",
+    },
+    // #28463 moved the upload, voice-io and web file paths, which the platform
+    // writes as a plain request, an MSW pattern, and a query-carrying URL.
+    {
+      code: 'fetchFn("/api/voice-io/stt")',
+    },
+    {
+      code: 'context.mocks.http.post("*/api/uploads/multipart/abort", handler)',
+    },
+    {
+      code: 'context.mocks.http.get("/api/web/file-url?file_id=photo", handler)',
+    },
+  ],
+  invalid: [
+    {
+      code: 'const url = "/api/zero/org"',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A longer sibling of the billing prefix is a different route family, so
+    // #28457's allow-list entry must not reach it.
+    {
+      code: 'fetchFn("/api/billing-exports/status")',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A longer sibling of a migrated connector path is not itself migrated.
+    {
+      code: 'fetchFn("/api/connectors-legacy/github")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
@@ -84,9 +142,27 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // `/api/org` is a prefix entry, so the rule must still reject a longer
+    // sibling that only looks like it.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/organizations")',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject must be one #28278 does not move, or the case flips to valid
+    // under a later slice the way `/api/chat-threads/snapshot` did once #28459
+    // landed: a provider console holds this URL, so it stays branded
+    // under #26701.
+    {
+      code: 'fetchFn("/api/slack/events")',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject has to be a family no slice has migrated: #28459 added
+    // `/api/chat-threads` to the allow list, which made the previous subject
+    // legal and left this case asserting the opposite of the rule.
+    {
+      code: 'fetchFn("/api/memory/entries")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

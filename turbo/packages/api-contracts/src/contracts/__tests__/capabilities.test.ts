@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { CAPABILITIES, CAPABILITY_META } from "../capabilities";
 
 describe("CAPABILITIES", () => {
-  it("should have exactly 42 capabilities", () => {
-    expect(CAPABILITIES).toHaveLength(42);
+  it("should have exactly 43 capabilities", () => {
+    expect(CAPABILITIES).toHaveLength(43);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -75,6 +75,10 @@ describe("CAPABILITIES", () => {
   it("should include managed web-search read capability", () => {
     expect(CAPABILITIES).toContain("web-search:read");
     expect(CAPABILITIES).toContain("people-search:read");
+  });
+
+  it("should include managed social read capability", () => {
+    expect(CAPABILITIES).toContain("social:read");
   });
 
   it("should include managed image recognition capability", () => {

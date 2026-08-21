@@ -67,12 +67,9 @@ function stubConnector(
       }),
     ]);
   }
-  return http.get(
-    "http://localhost:3000/api/okou/connector-catalog/status",
-    () => {
-      return HttpResponse.json(body, { status });
-    },
-  );
+  return http.get("http://localhost:3000/api/connector-catalog/status", () => {
+    return HttpResponse.json(body, { status });
+  });
 }
 
 function stubAgent(
@@ -80,7 +77,7 @@ function stubAgent(
   displayName: string | null,
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/agents/${id}`, () => {
+  return http.get(`${origin}/api/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -97,7 +94,7 @@ function stubUserConnectors(
   enabledConnectorSlugs: string[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/agents/${id}/user-connectors`, () => {
+  return http.get(`${origin}/api/agents/${id}/user-connectors`, () => {
     return HttpResponse.json({ enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
@@ -495,15 +492,12 @@ describe("okou connector status command", () => {
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, ["github"]),
-        http.get(
-          `http://localhost:3000/api/okou/agents/${ALT_AGENT_UUID}`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "should not be called", code: "ERR" } },
-              { status: 500 },
-            );
-          },
-        ),
+        http.get(`http://localhost:3000/api/agents/${ALT_AGENT_UUID}`, () => {
+          return HttpResponse.json(
+            { error: { message: "should not be called", code: "ERR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await statusCommand.parseAsync([

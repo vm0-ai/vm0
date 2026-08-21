@@ -28,7 +28,7 @@ function strapiWebhookUrl(
   publicBrand: PublicBrand,
 ): string {
   return new URL(
-    `/api/okou/strapi/events/${encodeURIComponent(integrationId)}`,
+    `/api/strapi/events/${encodeURIComponent(integrationId)}`,
     apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand),
   ).toString();
 }

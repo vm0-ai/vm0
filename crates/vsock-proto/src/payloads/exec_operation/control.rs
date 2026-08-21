@@ -389,6 +389,17 @@ pub fn validate_exec_control(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_EXEC_CONTROL, seq, &encode_exec_control(...))` without allocating
 /// a separate exec-control payload vector.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `target_seq` is zero, `message_id` is empty or
+/// too long, `payload` exceeds [`EXEC_CONTROL_MAX_PAYLOAD_BYTES`], or the
+/// encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before request validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_exec_control_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,

@@ -20,6 +20,7 @@ import { writeDb$, type Db } from "../external/db";
 import {
   getStripeClient,
   isStripeResourceMissingError,
+  listAllStripeSubscriptions,
   type StripeCheckoutSession,
   type StripeInvoice,
   type StripePaymentIntent,
@@ -3160,13 +3161,12 @@ async function replacedPlanSubscriptionIdsForCustomer(args: {
   }
 
   const stripe = getStripeClient();
-  const subscriptions = await stripe.subscriptions.list({
+  const subscriptions = await listAllStripeSubscriptions(stripe, {
     customer: args.customerId,
     status: "all",
-    limit: 100,
   });
 
-  return subscriptions.data
+  return subscriptions
     .filter((subscription) => {
       return isReplaceablePlanSubscription({
         newSubscriptionId: args.newSubscriptionId,
@@ -3255,13 +3255,12 @@ async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
   readonly customerId: string;
 }): Promise<readonly string[]> {
   const stripe = getStripeClient();
-  const subscriptions = await stripe.subscriptions.list({
+  const subscriptions = await listAllStripeSubscriptions(stripe, {
     customer: args.customerId,
     status: "all",
-    limit: 100,
   });
 
-  return subscriptions.data
+  return subscriptions
     .filter((subscription) => {
       return isReplaceablePaidSubscriptionForAtomGrant(subscription);
     })

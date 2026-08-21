@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.31...vsock-proto-v0.18.32) (2026-08-21)
+
+
+### Documentation
+
+* **rust:** specify vsock frame buffer state on encode errors ([#28537](https://github.com/vm0-ai/vm0/issues/28537)) ([28b5965](https://github.com/vm0-ai/vm0/commit/28b596527eaff3854a5dd6c03fae3a9a5b6b5006))
+
+## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.30...vsock-proto-v0.18.31) (2026-08-21)
+
+
+### Documentation
+
+* **vsock-proto:** document decoder protocol-error recovery ([#28482](https://github.com/vm0-ai/vm0/issues/28482)) ([5a6748f](https://github.com/vm0-ai/vm0/commit/5a6748fa27000bd654cb00f06039d75f82d1201c))
+
 ## [0.18.30](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.29...vsock-proto-v0.18.30) (2026-08-14)
 
 

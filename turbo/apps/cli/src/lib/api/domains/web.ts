@@ -149,7 +149,7 @@ export async function downloadWebFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/okou/web/download-file", baseUrl);
+  const url = new URL("/api/web/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {
@@ -703,9 +703,9 @@ async function readBuiltInGenerationResponse<T>(args: {
  * PAT / Clerk session.
  *
  * Three-step flow:
- *   1. POST /api/okou/uploads/prepare — server signs a PUT URL for R2
+ *   1. POST /api/uploads/prepare — server signs a PUT URL for R2
  *   2. PUT the file bytes directly to R2
- *   3. POST /api/okou/uploads/complete — server verifies the object and
+ *   3. POST /api/uploads/complete — server verifies the object and
  *      records any run-scoped upload association
  *
  * Step 2 never touches the Next.js runtime, which lifts the cap from
@@ -739,7 +739,7 @@ export async function uploadWebFile(
     "Content-Type": "application/json",
   };
 
-  const prepareUrl = new URL("/api/okou/uploads/prepare", baseUrl);
+  const prepareUrl = new URL("/api/uploads/prepare", baseUrl);
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -778,7 +778,7 @@ export async function uploadWebFile(
     );
   }
 
-  const completeUrl = new URL("/api/okou/uploads/complete", baseUrl);
+  const completeUrl = new URL("/api/uploads/complete", baseUrl);
   const completeRes = await fetch(completeUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -826,7 +826,7 @@ export async function generateWebVoice(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(new URL("/api/okou/voice-io/speech", baseUrl), {
+  const response = await fetch(new URL("/api/voice-io/speech", baseUrl), {
     method: "POST",
     headers: headersWithCliClientHeaders(headers),
     body: JSON.stringify({
@@ -935,14 +935,11 @@ export async function generateWebVideo(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(
-    new URL("/api/okou/video-io/generate", baseUrl),
-    {
-      method: "POST",
-      headers: headersWithCliClientHeaders(headers),
-      body: JSON.stringify(generateWebVideoPayload(options)),
-    },
-  );
+  const response = await fetch(new URL("/api/video-io/generate", baseUrl), {
+    method: "POST",
+    headers: headersWithCliClientHeaders(headers),
+    body: JSON.stringify(generateWebVideoPayload(options)),
+  });
 
   if (!response.ok) {
     const { message, code } = await parseErrorBody(
@@ -971,17 +968,14 @@ export async function generateWebAvatarVideo(
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
-  const response = await fetch(
-    new URL("/api/okou/avatar-video/generate", baseUrl),
-    {
-      method: "POST",
-      headers: headersWithCliClientHeaders({
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      }),
-      body: JSON.stringify(options),
-    },
-  );
+  const response = await fetch(new URL("/api/avatar-video/generate", baseUrl), {
+    method: "POST",
+    headers: headersWithCliClientHeaders({
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(options),
+  });
   if (!response.ok) {
     const { message, code } = await parseErrorBody(
       response,
@@ -1002,7 +996,7 @@ function avatarVideoCollectionUrl(
   collection: "avatars" | "voices",
   query: Record<string, string | number | undefined>,
 ): URL {
-  const url = new URL(`/api/okou/avatar-video/${collection}`, baseUrl);
+  const url = new URL(`/api/avatar-video/${collection}`, baseUrl);
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) {
       url.searchParams.set(key, String(value));
@@ -1080,7 +1074,7 @@ export async function transcribeAudio(
     Authorization: `Bearer ${token}`,
   };
 
-  const url = new URL("/api/okou/voice-io/stt", baseUrl);
+  const url = new URL("/api/voice-io/stt", baseUrl);
   if (options.verbose) {
     url.searchParams.set("verbose", "true");
   }

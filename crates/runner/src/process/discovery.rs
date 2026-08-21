@@ -147,10 +147,6 @@ async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
     stable_live_firecracker_stat(&before, &argv, after)
 }
 
-fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> bool {
-    left.pgid == right.pgid && left.starttime == right.starttime
-}
-
 fn stable_live_firecracker_stat(
     before: &ProcessStat,
     argv: &[String],
@@ -158,7 +154,7 @@ fn stable_live_firecracker_stat(
 ) -> Option<ProcessStat> {
     if process_stat_is_live(before)
         && process_stat_is_live(&after)
-        && process_stat_identity_matches(before, &after)
+        && before.procfs_generation() == after.procfs_generation()
         && is_firecracker_cmdline(argv)
     {
         Some(after)
@@ -214,7 +210,7 @@ fn stable_firecracker_resolution(
     if !process_stat_is_live(&initial_stat) || !process_stat_is_live(&process_stat) {
         return FirecrackerCandidateResolution::NotPresent;
     }
-    if !process_stat_identity_matches(&initial_stat, &process_stat) {
+    if initial_stat.procfs_generation() != process_stat.procfs_generation() {
         let ppid = Some(process_stat.ppid);
         return FirecrackerCandidateResolution::UnidentifiedLive { pid, ppid };
     }
@@ -508,17 +504,26 @@ mod tests {
     }
 
     #[test]
-    fn process_stat_identity_ignores_state_changes() {
+    fn procfs_generation_uses_pgid_and_starttime() {
         let sleeping = stat('S', 1100, 123456);
         let running = stat('R', 1100, 123456);
         let different_group = stat('S', 2200, 123456);
         let different_start = stat('S', 1100, 654321);
         let different_parent = stat_with_ppid('S', 9, 1100, 123456);
 
-        assert!(process_stat_identity_matches(&sleeping, &running));
-        assert!(process_stat_identity_matches(&sleeping, &different_parent));
-        assert!(!process_stat_identity_matches(&sleeping, &different_group));
-        assert!(!process_stat_identity_matches(&sleeping, &different_start));
+        assert_eq!(sleeping.procfs_generation(), running.procfs_generation());
+        assert_eq!(
+            sleeping.procfs_generation(),
+            different_parent.procfs_generation()
+        );
+        assert_ne!(
+            sleeping.procfs_generation(),
+            different_group.procfs_generation()
+        );
+        assert_ne!(
+            sleeping.procfs_generation(),
+            different_start.procfs_generation()
+        );
     }
 
     #[test]

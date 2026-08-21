@@ -54,7 +54,7 @@ function sandboxToken(args: {
   });
 }
 
-describe("POST /api/okou/integrations/slack/upload-file/init", () => {
+describe("POST /api/integrations/slack/upload-file/init", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
 
   beforeEach(() => {

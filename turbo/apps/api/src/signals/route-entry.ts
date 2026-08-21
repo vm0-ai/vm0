@@ -47,10 +47,10 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * Final paths that the Feishu, Slack, and Microsoft consoles hold after #28278
- * Stage 0, keyed by the branded path that serves them today. OAuth callbacks
- * join `/api/integrations/**` beside the IM connect routes, and inbound
- * webhooks join `/api/webhooks/**` beside the other providers.
+ * Final paths that the Slack console holds after #28278 Stage 0, keyed by the
+ * branded path that serves them today. OAuth callbacks join
+ * `/api/integrations/**` beside the IM connect routes, and inbound webhooks
+ * join `/api/webhooks/**` beside the other providers.
  *
  * Step 1 only makes these paths routable: each one adds a second way to reach
  * the handler that already serves its branded path. Producers switch one at a
@@ -58,26 +58,37 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  * Teams OAuth callback switched in #28300 and the Feishu events URL we display
  * to operators in #28338. Every branded path here stays registered: removal is
  * gated on #26701.
+ *
+ * A row leaves this table when #28278 moves its contract onto the final path,
+ * because from then on the contract declares that path and this table has
+ * nothing left to add. The two Microsoft rows left in #28545, and the two
+ * Feishu rows in #28544 once it established that no Feishu console holds
+ * either path: the console registers the frontend-forwarding OAuth target from
+ * `feishuOAuthAppCallbackUrl()` rather than the API callback, and #28338
+ * already moved the events URL shown to operators. `MIGRATED_BRANDED_PATHS`
+ * below owes all four branded forms instead.
+ *
+ * That deletion is required, though not because the two tables would collide.
+ * This table is keyed by the branded path a contract declares, and it runs on
+ * `ROUTES` before the namespace expansion, so once a contract declares its
+ * neutral path its old row stops matching and produces nothing —
+ * `assertUniqueRouteRegistrations` never sees a duplicate. A row left behind is
+ * dead configuration that reads as a live console commitment, which is why the
+ * restated list in `provider-console-paths.test.ts` is the record of which
+ * paths a console still holds.
  */
 const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
   "GET /api/okou/slack/oauth/callback":
     "/api/integrations/slack/oauth/callback",
-  "GET /api/okou/teams/oauth/callback":
-    "/api/integrations/teams/oauth/callback",
-  "GET /api/okou/feishu/oauth/callback":
-    "/api/integrations/feishu/oauth/callback",
   "POST /api/okou/slack/events": "/api/webhooks/slack/events",
   "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
   "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
-  "POST /api/okou/teams/bot": "/api/webhooks/teams/bot",
-  "POST /api/okou/feishu/events/:installationId":
-    "/api/webhooks/feishu/events/:installationId",
 };
 
 /**
- * Adds the eight final provider console paths. Unlike the namespace aliases
- * below, this expands an explicit list and never derives a path, so no other
- * route gains a second registration.
+ * Adds the final provider console paths still served from a branded contract.
+ * Unlike the namespace aliases below, this expands an explicit list and never
+ * derives a path, so no other route gains a second registration.
  */
 export function withFinalProviderConsolePaths(
   routes: readonly RouteEntry[],
@@ -155,10 +166,16 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/logs/:id": "/api/zero/logs/:id",
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
 
-  // Held by a provider console, so measured traffic cannot retire them. Every
-  // branded path in `FINAL_PROVIDER_CONSOLE_PATHS` is listed, including the
-  // Teams OAuth callback that the Microsoft app registration still points at
-  // after #28300 — see the ordering constraint recorded on #26701.
+  // Seeded rather than measured, because a provider console — not a client we
+  // control — held the URL when the row was written. Every branded path in
+  // `FINAL_PROVIDER_CONSOLE_PATHS` is listed, plus four rows whose contracts
+  // have since moved: the Teams OAuth callback below and the
+  // `/api/okou/teams/bot` row above (#28545), and the Feishu OAuth callback
+  // below and the `/api/okou/feishu/events/:installationId` row above (#28544,
+  // which established that no Feishu console holds either path). Those four are
+  // served by `MIGRATED_BRANDED_PATHS` rather than by the expansion. They stay
+  // listed, because a row records that a path is owed rather than which table
+  // serves it — see the ordering constraint recorded on #26701.
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
   "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
@@ -552,6 +569,1137 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28459: the chat threads themselves, the chat event and search readers,
+  // shared threads, per-thread browser sessions, per-thread goals, workflow
+  // automations, queue position, and the X image share. Every caller in this
+  // repository derives its URL from the contract, so nothing here still asks
+  // for a branded form. Released builds do: a browser tab holding
+  // already-loaded platform code keeps calling the `okou` path it was built
+  // against until it navigates or reloads, the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7; a commit-addressed CLI package pinned by an
+  // execution context's `CLI_PKG_URL` holds it for that context's queue and
+  // claimed-run lifetime; and the `okou-app` share worker deployed to
+  // Cloudflare Pages reads `shared-threads/:id/meta` from a build that ships
+  // separately from this one. The `zero` form was reachable through the
+  // blanket expansion until the contract moved. All of it is owed, and a row
+  // retires under #26701's evidence rules rather than on any of those clocks.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/chat-threads": ["/api/okou/chat-threads", "/api/zero/chat-threads"],
+  "/api/chat-threads/:id": [
+    "/api/okou/chat-threads/:id",
+    "/api/zero/chat-threads/:id",
+  ],
+  "/api/chat-threads/:id/computer-use-host": [
+    "/api/okou/chat-threads/:id/computer-use-host",
+    "/api/zero/chat-threads/:id/computer-use-host",
+  ],
+  "/api/chat-threads/:id/connector-selections": [
+    "/api/okou/chat-threads/:id/connector-selections",
+    "/api/zero/chat-threads/:id/connector-selections",
+  ],
+  "/api/chat-threads/:id/draft": [
+    "/api/okou/chat-threads/:id/draft",
+    "/api/zero/chat-threads/:id/draft",
+  ],
+  "/api/chat-threads/:id/image-model": [
+    "/api/okou/chat-threads/:id/image-model",
+    "/api/zero/chat-threads/:id/image-model",
+  ],
+  "/api/chat-threads/:id/mark-read": [
+    "/api/okou/chat-threads/:id/mark-read",
+    "/api/zero/chat-threads/:id/mark-read",
+  ],
+  "/api/chat-threads/:id/mark-unread": [
+    "/api/okou/chat-threads/:id/mark-unread",
+    "/api/zero/chat-threads/:id/mark-unread",
+  ],
+  "/api/chat-threads/:id/metadata": [
+    "/api/okou/chat-threads/:id/metadata",
+    "/api/zero/chat-threads/:id/metadata",
+  ],
+  "/api/chat-threads/:id/model-selection": [
+    "/api/okou/chat-threads/:id/model-selection",
+    "/api/zero/chat-threads/:id/model-selection",
+  ],
+  "/api/chat-threads/:id/pin": [
+    "/api/okou/chat-threads/:id/pin",
+    "/api/zero/chat-threads/:id/pin",
+  ],
+  "/api/chat-threads/:id/rename": [
+    "/api/okou/chat-threads/:id/rename",
+    "/api/zero/chat-threads/:id/rename",
+  ],
+  "/api/chat-threads/:id/unpin": [
+    "/api/okou/chat-threads/:id/unpin",
+    "/api/zero/chat-threads/:id/unpin",
+  ],
+  "/api/chat-threads/:id/video-model": [
+    "/api/okou/chat-threads/:id/video-model",
+    "/api/zero/chat-threads/:id/video-model",
+  ],
+  "/api/chat-threads/:threadId/artifacts": [
+    "/api/okou/chat-threads/:threadId/artifacts",
+    "/api/zero/chat-threads/:threadId/artifacts",
+  ],
+  "/api/chat-threads/:threadId/browser": [
+    "/api/okou/chat-threads/:threadId/browser",
+    "/api/zero/chat-threads/:threadId/browser",
+  ],
+  "/api/chat-threads/:threadId/browser/close": [
+    "/api/okou/chat-threads/:threadId/browser/close",
+    "/api/zero/chat-threads/:threadId/browser/close",
+  ],
+  "/api/chat-threads/:threadId/browser/lease": [
+    "/api/okou/chat-threads/:threadId/browser/lease",
+    "/api/zero/chat-threads/:threadId/browser/lease",
+  ],
+  "/api/chat-threads/:threadId/browser/open": [
+    "/api/okou/chat-threads/:threadId/browser/open",
+    "/api/zero/chat-threads/:threadId/browser/open",
+  ],
+  "/api/chat-threads/:threadId/browser/resize": [
+    "/api/okou/chat-threads/:threadId/browser/resize",
+    "/api/zero/chat-threads/:threadId/browser/resize",
+  ],
+  "/api/chat-threads/:threadId/event-rows": [
+    "/api/okou/chat-threads/:threadId/event-rows",
+    "/api/zero/chat-threads/:threadId/event-rows",
+  ],
+  "/api/chat-threads/:threadId/event-snapshot": [
+    "/api/okou/chat-threads/:threadId/event-snapshot",
+    "/api/zero/chat-threads/:threadId/event-snapshot",
+  ],
+  "/api/chat-threads/:threadId/goal": [
+    "/api/okou/chat-threads/:threadId/goal",
+    "/api/zero/chat-threads/:threadId/goal",
+  ],
+  "/api/chat-threads/:threadId/goal/pause": [
+    "/api/okou/chat-threads/:threadId/goal/pause",
+    "/api/zero/chat-threads/:threadId/goal/pause",
+  ],
+  "/api/chat-threads/:threadId/shared-threads": [
+    "/api/okou/chat-threads/:threadId/shared-threads",
+    "/api/zero/chat-threads/:threadId/shared-threads",
+  ],
+  "/api/chat-threads/:threadId/workflow-automations": [
+    "/api/okou/chat-threads/:threadId/workflow-automations",
+    "/api/zero/chat-threads/:threadId/workflow-automations",
+  ],
+  "/api/chat-threads/events": [
+    "/api/okou/chat-threads/events",
+    "/api/zero/chat-threads/events",
+  ],
+  "/api/chat-threads/snapshot": [
+    "/api/okou/chat-threads/snapshot",
+    "/api/zero/chat-threads/snapshot",
+  ],
+  "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
+  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
+  "/api/image-share/x": ["/api/okou/image-share/x", "/api/zero/image-share/x"],
+  "/api/queue-position": [
+    "/api/okou/queue-position",
+    "/api/zero/queue-position",
+  ],
+  "/api/shared-threads/:id": [
+    "/api/okou/shared-threads/:id",
+    "/api/zero/shared-threads/:id",
+  ],
+  "/api/shared-threads/:id/meta": [
+    "/api/okou/shared-threads/:id/meta",
+    "/api/zero/shared-threads/:id/meta",
+  ],
+  // #28457: the billing surface — plan and usage-pack checkout, concurrency
+  // subscriptions, credit purchase, the Stripe portal, invoices, and code
+  // redemption. Every caller derives its URL from the contract, so nothing in
+  // this repository asks for a branded form, but released builds still do: an
+  // already-loaded platform tab keeps calling the `okou` path it was built
+  // against for the ~2 day old-web-client window in `docs/fallback.md` section
+  // 7, and a CLI package pinned by an execution context's `CLI_PKG_URL` embeds
+  // the contract path it was built from for that context's queue and claimed-run
+  // lifetime. The `zero` form was reachable through the blanket expansion until
+  // the contract moved, and `/api/zero/billing/concurrency-checkout/preview` is
+  // measured traffic in `LEGACY_ZERO_PATHS`, so it is owed by evidence rather
+  // than by symmetry. Both forms are removable only under #26701's evidence
+  // rules, like every other row in this table.
+  "/api/billing/auto-recharge": [
+    "/api/okou/billing/auto-recharge",
+    "/api/zero/billing/auto-recharge",
+  ],
+  "/api/billing/checkout": [
+    "/api/okou/billing/checkout",
+    "/api/zero/billing/checkout",
+  ],
+  "/api/billing/checkout/complete": [
+    "/api/okou/billing/checkout/complete",
+    "/api/zero/billing/checkout/complete",
+  ],
+  "/api/billing/checkout/confirm": [
+    "/api/okou/billing/checkout/confirm",
+    "/api/zero/billing/checkout/confirm",
+  ],
+  "/api/billing/concurrency-checkout": [
+    "/api/okou/billing/concurrency-checkout",
+    "/api/zero/billing/concurrency-checkout",
+  ],
+  "/api/billing/concurrency-checkout/preview": [
+    "/api/okou/billing/concurrency-checkout/preview",
+    "/api/zero/billing/concurrency-checkout/preview",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/cancel": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/cancel",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/cancel",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/confirm": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/preview": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+  ],
+  "/api/billing/concurrency-subscriptions/:subscriptionId/restore": [
+    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/restore",
+    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/restore",
+  ],
+  "/api/billing/credit-checkout": [
+    "/api/okou/billing/credit-checkout",
+    "/api/zero/billing/credit-checkout",
+  ],
+  "/api/billing/credit-checkout/confirm": [
+    "/api/okou/billing/credit-checkout/confirm",
+    "/api/zero/billing/credit-checkout/confirm",
+  ],
+  "/api/billing/downgrade": [
+    "/api/okou/billing/downgrade",
+    "/api/zero/billing/downgrade",
+  ],
+  "/api/billing/invoices": [
+    "/api/okou/billing/invoices",
+    "/api/zero/billing/invoices",
+  ],
+  "/api/billing/invoices/receipts": [
+    "/api/okou/billing/invoices/receipts",
+    "/api/zero/billing/invoices/receipts",
+  ],
+  "/api/billing/portal": [
+    "/api/okou/billing/portal",
+    "/api/zero/billing/portal",
+  ],
+  "/api/billing/redeem-code": [
+    "/api/okou/billing/redeem-code",
+    "/api/zero/billing/redeem-code",
+  ],
+  "/api/billing/redeem/:campaign": [
+    "/api/okou/billing/redeem/:campaign",
+    "/api/zero/billing/redeem/:campaign",
+  ],
+  "/api/billing/restore": [
+    "/api/okou/billing/restore",
+    "/api/zero/billing/restore",
+  ],
+  "/api/billing/status": [
+    "/api/okou/billing/status",
+    "/api/zero/billing/status",
+  ],
+  "/api/billing/usage-pack-catalog": [
+    "/api/okou/billing/usage-pack-catalog",
+    "/api/zero/billing/usage-pack-catalog",
+  ],
+  "/api/billing/usage-pack-checkout": [
+    "/api/okou/billing/usage-pack-checkout",
+    "/api/zero/billing/usage-pack-checkout",
+  ],
+  "/api/billing/usage-pack-checkout/confirm": [
+    "/api/okou/billing/usage-pack-checkout/confirm",
+    "/api/zero/billing/usage-pack-checkout/confirm",
+  ],
+  "/api/billing/usage-pack-credits": [
+    "/api/okou/billing/usage-pack-credits",
+    "/api/zero/billing/usage-pack-credits",
+  ],
+  "/api/billing/usage-pack-migration": [
+    "/api/okou/billing/usage-pack-migration",
+    "/api/zero/billing/usage-pack-migration",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/confirm": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/confirm",
+    "/api/zero/billing/usage-pack-migration/:migrationId/confirm",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/revision/confirm": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/revision/confirm",
+    "/api/zero/billing/usage-pack-migration/:migrationId/revision/confirm",
+  ],
+  "/api/billing/usage-pack-migration/:migrationId/revision/preview": [
+    "/api/okou/billing/usage-pack-migration/:migrationId/revision/preview",
+    "/api/zero/billing/usage-pack-migration/:migrationId/revision/preview",
+  ],
+  "/api/billing/usage-pack-migration/preview": [
+    "/api/okou/billing/usage-pack-migration/preview",
+    "/api/zero/billing/usage-pack-migration/preview",
+  ],
+  "/api/billing/usage-pack-subscription": [
+    "/api/okou/billing/usage-pack-subscription",
+    "/api/zero/billing/usage-pack-subscription",
+  ],
+  "/api/billing/usage-pack-subscription/changes/:changeId/confirm": [
+    "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
+    "/api/zero/billing/usage-pack-subscription/changes/:changeId/confirm",
+  ],
+  "/api/billing/usage-pack-subscription/changes/preview": [
+    "/api/okou/billing/usage-pack-subscription/changes/preview",
+    "/api/zero/billing/usage-pack-subscription/changes/preview",
+  ],
+  "/api/billing/usage-pack-subscription/subscription-change/confirm": [
+    "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
+    "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
+  ],
+  "/api/billing/usage-pack-subscription/subscription-change/preview": [
+    "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
+    "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
+  ],
+  // #28466: the desktop Computer Use family. The highest-traffic branded family
+  // in the repository — about 716,000 requests over the retained request-log
+  // window — and the one with the longest-lived callers: `computer-use-host.ts`
+  // in an installed Desktop build hardcodes the `okou` form of the host
+  // endpoints, and an installed build updates on its owner's schedule rather
+  // than on a deploy, so it has no window at all. The `zero` form carried
+  // measured traffic of its own and was reachable through the blanket expansion
+  // until the contract moved. Both are owed on all sixteen paths.
+  //
+  // The four rows `LEGACY_ZERO_PATHS` lists — `host/commands/next`,
+  // `audit-events`, `heartbeat`, and `hosts/start` — were served by that table
+  // before this move and are served by these rows after it: the contract no
+  // longer declares a branded path for the expansion to classify. The rows
+  // there stay untouched, and removal of either set follows #26701's evidence
+  // rules.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/computer-use/audit-events": [
+    "/api/okou/computer-use/audit-events",
+    "/api/zero/computer-use/audit-events",
+  ],
+  "/api/computer-use/authorization-requests": [
+    "/api/okou/computer-use/authorization-requests",
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken": [
+    "/api/okou/computer-use/authorization-requests/:requestToken",
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken/apply": [
+    "/api/okou/computer-use/authorization-requests/:requestToken/apply",
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+  ],
+  "/api/computer-use/commands": [
+    "/api/okou/computer-use/commands",
+    "/api/zero/computer-use/commands",
+  ],
+  "/api/computer-use/commands/:commandId": [
+    "/api/okou/computer-use/commands/:commandId",
+    "/api/zero/computer-use/commands/:commandId",
+  ],
+  "/api/computer-use/commands/:commandId/plugin-content": [
+    "/api/okou/computer-use/commands/:commandId/plugin-content",
+    "/api/zero/computer-use/commands/:commandId/plugin-content",
+  ],
+  "/api/computer-use/commands/:commandId/screenshot": [
+    "/api/okou/computer-use/commands/:commandId/screenshot",
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+  ],
+  "/api/computer-use/heartbeat": [
+    "/api/okou/computer-use/heartbeat",
+    "/api/zero/computer-use/heartbeat",
+  ],
+  "/api/computer-use/host/commands/:commandId/complete": [
+    "/api/okou/computer-use/host/commands/:commandId/complete",
+    "/api/zero/computer-use/host/commands/:commandId/complete",
+  ],
+  "/api/computer-use/host/commands/next": [
+    "/api/okou/computer-use/host/commands/next",
+    "/api/zero/computer-use/host/commands/next",
+  ],
+  "/api/computer-use/host/stop": [
+    "/api/okou/computer-use/host/stop",
+    "/api/zero/computer-use/host/stop",
+  ],
+  "/api/computer-use/hosts": [
+    "/api/okou/computer-use/hosts",
+    "/api/zero/computer-use/hosts",
+  ],
+  "/api/computer-use/hosts/start": [
+    "/api/okou/computer-use/hosts/start",
+    "/api/zero/computer-use/hosts/start",
+  ],
+  "/api/computer-use/plugin-commands": [
+    "/api/okou/computer-use/plugin-commands",
+    "/api/zero/computer-use/plugin-commands",
+  ],
+  "/api/computer-use/write-commands": [
+    "/api/okou/computer-use/write-commands",
+    "/api/zero/computer-use/write-commands",
+  ],
+  // #28423: the integration control plane and the CLI messaging and file
+  // surfaces for Feishu, Slack, Microsoft Teams, Telegram, GitHub, AgentPhone,
+  // and Strapi. Two callers hold a branded form independently of the contract:
+  // `downloadFeishuFile` and `downloadPhoneFile` in the CLI build their URL by
+  // hand, so a published package keeps asking for the `okou` path it shipped
+  // with. Every other caller derives its URL from the contract, which a
+  // published CLI package still embeds at the version it was built from, and
+  // the `zero` form was reachable through the blanket expansion until the
+  // contract moved. Both are owed.
+  //
+  // Surfaces: commit-addressed CLI packages pinned by execution contexts
+  // created before this deploy, which drain over the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`, and a released
+  // platform tab holding the branded connect and Strapi paths until it
+  // navigates or reloads (~2 days). Neither window is the removal condition:
+  // these rows retire under #26701's evidence rules like every other row here.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/integrations/feishu": [
+    "/api/okou/integrations/feishu",
+    "/api/zero/integrations/feishu",
+  ],
+  "/api/integrations/feishu/app-id": [
+    "/api/okou/integrations/feishu/app-id",
+    "/api/zero/integrations/feishu/app-id",
+  ],
+  "/api/integrations/feishu/connect": [
+    "/api/okou/integrations/feishu/connect",
+    "/api/zero/integrations/feishu/connect",
+  ],
+  "/api/integrations/feishu/download-file": [
+    "/api/okou/integrations/feishu/download-file",
+    "/api/zero/integrations/feishu/download-file",
+  ],
+  "/api/integrations/feishu/installations/:installationId": [
+    "/api/okou/integrations/feishu/installations/:installationId",
+    "/api/zero/integrations/feishu/installations/:installationId",
+  ],
+  "/api/integrations/feishu/installations/:installationId/connect": [
+    "/api/okou/integrations/feishu/installations/:installationId/connect",
+    "/api/zero/integrations/feishu/installations/:installationId/connect",
+  ],
+  "/api/integrations/feishu/message": [
+    "/api/okou/integrations/feishu/message",
+    "/api/zero/integrations/feishu/message",
+  ],
+  "/api/integrations/feishu/upload-file/complete": [
+    "/api/okou/integrations/feishu/upload-file/complete",
+    "/api/zero/integrations/feishu/upload-file/complete",
+  ],
+  "/api/integrations/feishu/upload-file/init": [
+    "/api/okou/integrations/feishu/upload-file/init",
+    "/api/zero/integrations/feishu/upload-file/init",
+  ],
+  "/api/integrations/github/upload-file/complete": [
+    "/api/okou/integrations/github/upload-file/complete",
+    "/api/zero/integrations/github/upload-file/complete",
+  ],
+  "/api/integrations/github/upload-file/init": [
+    "/api/okou/integrations/github/upload-file/init",
+    "/api/zero/integrations/github/upload-file/init",
+  ],
+  "/api/integrations/phone/download-file": [
+    "/api/okou/integrations/phone/download-file",
+    "/api/zero/integrations/phone/download-file",
+  ],
+  "/api/integrations/phone/message": [
+    "/api/okou/integrations/phone/message",
+    "/api/zero/integrations/phone/message",
+  ],
+  "/api/integrations/phone/upload-file/complete": [
+    "/api/okou/integrations/phone/upload-file/complete",
+    "/api/zero/integrations/phone/upload-file/complete",
+  ],
+  "/api/integrations/phone/upload-file/init": [
+    "/api/okou/integrations/phone/upload-file/init",
+    "/api/zero/integrations/phone/upload-file/init",
+  ],
+  "/api/integrations/slack": [
+    "/api/okou/integrations/slack",
+    "/api/zero/integrations/slack",
+  ],
+  "/api/integrations/slack/connect": [
+    "/api/okou/integrations/slack/connect",
+    "/api/zero/integrations/slack/connect",
+  ],
+  "/api/integrations/slack/message": [
+    "/api/okou/integrations/slack/message",
+    "/api/zero/integrations/slack/message",
+  ],
+  "/api/integrations/slack/upload-file/complete": [
+    "/api/okou/integrations/slack/upload-file/complete",
+    "/api/zero/integrations/slack/upload-file/complete",
+  ],
+  "/api/integrations/slack/upload-file/init": [
+    "/api/okou/integrations/slack/upload-file/init",
+    "/api/zero/integrations/slack/upload-file/init",
+  ],
+  "/api/integrations/slack/upload-file/materialize": [
+    "/api/okou/integrations/slack/upload-file/materialize",
+    "/api/zero/integrations/slack/upload-file/materialize",
+  ],
+  "/api/integrations/strapi": [
+    "/api/okou/integrations/strapi",
+    "/api/zero/integrations/strapi",
+  ],
+  "/api/integrations/strapi/:integrationId": [
+    "/api/okou/integrations/strapi/:integrationId",
+    "/api/zero/integrations/strapi/:integrationId",
+  ],
+  "/api/integrations/strapi/:integrationId/check-test": [
+    "/api/okou/integrations/strapi/:integrationId/check-test",
+    "/api/zero/integrations/strapi/:integrationId/check-test",
+  ],
+  "/api/integrations/strapi/:integrationId/secret": [
+    "/api/okou/integrations/strapi/:integrationId/secret",
+    "/api/zero/integrations/strapi/:integrationId/secret",
+  ],
+  "/api/integrations/teams/connect": [
+    "/api/okou/integrations/teams/connect",
+    "/api/zero/integrations/teams/connect",
+  ],
+  "/api/integrations/teams/message": [
+    "/api/okou/integrations/teams/message",
+    "/api/zero/integrations/teams/message",
+  ],
+  "/api/integrations/teams/upload-file/complete": [
+    "/api/okou/integrations/teams/upload-file/complete",
+    "/api/zero/integrations/teams/upload-file/complete",
+  ],
+  "/api/integrations/teams/upload-file/init": [
+    "/api/okou/integrations/teams/upload-file/init",
+    "/api/zero/integrations/teams/upload-file/init",
+  ],
+  "/api/integrations/telegram/bots": [
+    "/api/okou/integrations/telegram/bots",
+    "/api/zero/integrations/telegram/bots",
+  ],
+  "/api/integrations/telegram/message": [
+    "/api/okou/integrations/telegram/message",
+    "/api/zero/integrations/telegram/message",
+  ],
+  "/api/integrations/telegram/upload-file/complete": [
+    "/api/okou/integrations/telegram/upload-file/complete",
+    "/api/zero/integrations/telegram/upload-file/complete",
+  ],
+  "/api/integrations/telegram/upload-file/init": [
+    "/api/okou/integrations/telegram/upload-file/init",
+    "/api/zero/integrations/telegram/upload-file/init",
+  ],
+  // #28460: the connector catalog, the connector connections and their
+  // authorization starts, the custom connectors, the model provider
+  // connections, and the user permission grants. Two surfaces hold these
+  // branded paths. A released web or app build keeps calling the form it was
+  // compiled against until it reloads, the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7; and a commit-addressed CLI package pinned by
+  // an execution context's `CLI_PKG_URL` keeps calling it for that context's
+  // queue lifetime plus claimed execution, bounded by the runner's 2h
+  // `JOB_TIMEOUT`. Neither window is the removal condition on its own: a row
+  // retires under the #26701 evidence gate above, like every other row here.
+  "/api/connector-catalog": [
+    "/api/okou/connector-catalog",
+    "/api/zero/connector-catalog",
+  ],
+  "/api/connector-catalog/:connectorSlug": [
+    "/api/okou/connector-catalog/:connectorSlug",
+    "/api/zero/connector-catalog/:connectorSlug",
+  ],
+  "/api/connector-catalog/:connectorSlug/permissions": [
+    "/api/okou/connector-catalog/:connectorSlug/permissions",
+    "/api/zero/connector-catalog/:connectorSlug/permissions",
+  ],
+  "/api/connector-catalog/diagnostics": [
+    "/api/okou/connector-catalog/diagnostics",
+    "/api/zero/connector-catalog/diagnostics",
+  ],
+  "/api/connector-catalog/discovery": [
+    "/api/okou/connector-catalog/discovery",
+    "/api/zero/connector-catalog/discovery",
+  ],
+  "/api/connector-catalog/status": [
+    "/api/okou/connector-catalog/status",
+    "/api/zero/connector-catalog/status",
+  ],
+  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
+  "/api/connectors/:connectorSlug": [
+    "/api/okou/connectors/:connectorSlug",
+    "/api/zero/connectors/:connectorSlug",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+  ],
+  "/api/connectors/:connectorSlug/manual-grant": [
+    "/api/okou/connectors/:connectorSlug/manual-grant",
+    "/api/zero/connectors/:connectorSlug/manual-grant",
+  ],
+  "/api/connectors/:connectorSlug/no-auth": [
+    "/api/okou/connectors/:connectorSlug/no-auth",
+    "/api/zero/connectors/:connectorSlug/no-auth",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+  ],
+  "/api/connectors/:connectorSlug/oauth/start": [
+    "/api/okou/connectors/:connectorSlug/oauth/start",
+    "/api/zero/connectors/:connectorSlug/oauth/start",
+  ],
+  "/api/connectors/:connectorSlug/openid/start": [
+    "/api/okou/connectors/:connectorSlug/openid/start",
+    "/api/zero/connectors/:connectorSlug/openid/start",
+  ],
+  "/api/connectors/:connectorSlug/scope-diff": [
+    "/api/okou/connectors/:connectorSlug/scope-diff",
+    "/api/zero/connectors/:connectorSlug/scope-diff",
+  ],
+  "/api/connectors/diagnostics/check": [
+    "/api/okou/connectors/diagnostics/check",
+    "/api/zero/connectors/diagnostics/check",
+  ],
+  "/api/connectors/search": [
+    "/api/okou/connectors/search",
+    "/api/zero/connectors/search",
+  ],
+  "/api/connectors/steam/player": [
+    "/api/okou/connectors/steam/player",
+    "/api/zero/connectors/steam/player",
+  ],
+  "/api/custom-connectors": [
+    "/api/okou/custom-connectors",
+    "/api/zero/custom-connectors",
+  ],
+  "/api/custom-connectors/:id": [
+    "/api/okou/custom-connectors/:id",
+    "/api/zero/custom-connectors/:id",
+  ],
+  "/api/custom-connectors/:id/connection": [
+    "/api/okou/custom-connectors/:id/connection",
+    "/api/zero/custom-connectors/:id/connection",
+  ],
+  "/api/custom-connectors/:id/oauth2/start": [
+    "/api/okou/custom-connectors/:id/oauth2/start",
+    "/api/zero/custom-connectors/:id/oauth2/start",
+  ],
+  "/api/custom-connectors/:id/permissions": [
+    "/api/okou/custom-connectors/:id/permissions",
+    "/api/zero/custom-connectors/:id/permissions",
+  ],
+  "/api/custom-connectors/:id/values": [
+    "/api/okou/custom-connectors/:id/values",
+    "/api/zero/custom-connectors/:id/values",
+  ],
+  "/api/custom-connectors/oauth2/callback": [
+    "/api/okou/custom-connectors/oauth2/callback",
+    "/api/zero/custom-connectors/oauth2/callback",
+  ],
+  "/api/custom-connectors/proposals/save": [
+    "/api/okou/custom-connectors/proposals/save",
+    "/api/zero/custom-connectors/proposals/save",
+  ],
+  "/api/model-provider-connections": [
+    "/api/okou/model-provider-connections",
+    "/api/zero/model-provider-connections",
+  ],
+  "/api/model-provider-connections/:id": [
+    "/api/okou/model-provider-connections/:id",
+    "/api/zero/model-provider-connections/:id",
+  ],
+  "/api/user-permission-grants": [
+    "/api/okou/user-permission-grants",
+    "/api/zero/user-permission-grants",
+  ],
+  "/api/user-permission-grants/apply": [
+    "/api/okou/user-permission-grants/apply",
+    "/api/zero/user-permission-grants/apply",
+  ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // paths a provider console holds stay branded and are not moved here — they
+  // are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  //
+  // These rows hold two surfaces open. A released web or app build keeps the
+  // branded path it was compiled against until a refresh loads a build that
+  // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
+  // The OAuth-start paths have a second holder that no client version bounds: a
+  // connect or install link the API handed out earlier lives in a Slack, Teams,
+  // or Feishu message a user can still click, and `/api/okou/slack/oauth/install`
+  // is measured traffic listed in `LEGACY_ZERO_PATHS` above, which after this
+  // move only these rows can serve. Removal follows the #26701 evidence gate
+  // like every other row, not either clock.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
+  // #28465: the stable desktop release page and DMG download.
+  //
+  // These two rows hold open a longer window than any other row in this table.
+  // Their callers are installed macOS applications, not a web bundle or a
+  // commit-addressed CLI artifact: the final Zero bridge release documented in
+  // `apps/desktop/README.md` opens the `okou` DMG path from a constant compiled
+  // into the shipped build, and `isTrustedZeroMigrationDownloadUrl` in that
+  // build refuses any other path — so a user who never updates keeps asking for
+  // the branded form indefinitely. The platform download button held the same
+  // path until this slice moved it, and released tabs keep it for the ~2 day
+  // old-web-client window. The `zero` form was reachable through the blanket
+  // expansion until the contract moved, so both are owed.
+  //
+  // An installed desktop build has no drain window at all, so these rows must
+  // not be removed on the #26701 evidence rules alone: retiring the branded
+  // forms needs the Desktop-side drain gate tracked by #26364.
+  //
+  // Each key holds its path parameters verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
+  // #28462: feature switches, model policies, org-level model providers and
+  // their device-auth sessions, the org profile and membership routes, and the
+  // usage reads. Three surfaces hold these branded paths open, and the widest
+  // one is why the rows matter more here than in most slices:
+  //
+  // - An installed desktop build, which hardcodes `/api/okou/org` and
+  //   `/api/okou/feature-switches` rather than deriving them from a contract.
+  //   It has no window at all: it holds those paths until its user updates.
+  // - An open platform page, which keeps the bundle it loaded for about the
+  //   ~2 day old-web-client window in `docs/fallback.md` section 7.
+  // - A commit-addressed CLI package pinned by an execution context's
+  //   `CLI_PKG_URL`, draining over that context's queue lifetime plus claimed
+  //   execution bounded by the runner's 2h `JOB_TIMEOUT`.
+  //
+  // The CI bootstrap steps in `.github/workflows/turbo.yml` also call the
+  // branded forms on purpose: they exercise the compatibility these rows
+  // guarantee. None of those windows is the removal condition — a row retires
+  // under #26701's evidence rules like every other row in this file.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/feature-switches": [
+    "/api/okou/feature-switches",
+    "/api/zero/feature-switches",
+  ],
+  "/api/model-policies": [
+    "/api/okou/model-policies",
+    "/api/zero/model-policies",
+  ],
+  "/api/model-providers": [
+    "/api/okou/model-providers",
+    "/api/zero/model-providers",
+  ],
+  "/api/model-providers/:type": [
+    "/api/okou/model-providers/:type",
+    "/api/zero/model-providers/:type",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions",
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/complete": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+  ],
+  "/api/model-providers/codex/device-auth/sessions": [
+    "/api/okou/model-providers/codex/device-auth/sessions",
+    "/api/zero/model-providers/codex/device-auth/sessions",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
+    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/complete": [
+    "/api/okou/model-providers/codex/device-auth/sessions/complete",
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+  ],
+  "/api/org": ["/api/okou/org", "/api/zero/org"],
+  "/api/org/delete": ["/api/okou/org/delete", "/api/zero/org/delete"],
+  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
+  "/api/org/invite/purchase/:purchaseId/confirm": [
+    "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    "/api/zero/org/invite/purchase/:purchaseId/confirm",
+  ],
+  "/api/org/invite/purchase/preview": [
+    "/api/okou/org/invite/purchase/preview",
+    "/api/zero/org/invite/purchase/preview",
+  ],
+  "/api/org/leave": ["/api/okou/org/leave", "/api/zero/org/leave"],
+  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
+  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
+  "/api/org/membership-requests": [
+    "/api/okou/org/membership-requests",
+    "/api/zero/org/membership-requests",
+  ],
+  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
+  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
+  // #28461: the agent reads and writes, the manual Morning Brief trigger, and
+  // the workflow and workflow-automation management routes. Every caller in
+  // this repository derives its URL from the contract, so nothing here still
+  // asks for a branded form; released builds do. Two surfaces hold these paths,
+  // and each has its own window.
+  //
+  // A published CLI package embeds the contract path it was built from and
+  // stays pinned by an execution context's `CLI_PKG_URL` — `okou agent`,
+  // `okou workflow`, and `okou workflow automation` are the commands behind
+  // these paths. That artifact drains over the maximum queue lifetime plus the
+  // maximum claimed execution and finalization lifetime, with execution bounded
+  // by the runner's 2h `JOB_TIMEOUT`, as `docs/deployment-compatibility.md`
+  // describes for commit-addressed CLI artifacts.
+  //
+  // A browser tab holding already-loaded platform code keeps calling the `okou`
+  // path it was built against until it navigates or reloads: the ~2 day
+  // old-web-client window in `docs/fallback.md` section 7, and the longer of
+  // the two. The `zero` form was reachable through the blanket expansion until
+  // the contract moved. Both forms are owed, and both retire under #26701's
+  // evidence rules rather than on either clock.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/agents": ["/api/okou/agents", "/api/zero/agents"],
+  "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
+  "/api/agents/:id/custom-connectors": [
+    "/api/okou/agents/:id/custom-connectors",
+    "/api/zero/agents/:id/custom-connectors",
+  ],
+  "/api/agents/:id/draft": [
+    "/api/okou/agents/:id/draft",
+    "/api/zero/agents/:id/draft",
+  ],
+  "/api/agents/:id/instructions": [
+    "/api/okou/agents/:id/instructions",
+    "/api/zero/agents/:id/instructions",
+  ],
+  "/api/agents/:id/user-connectors": [
+    "/api/okou/agents/:id/user-connectors",
+    "/api/zero/agents/:id/user-connectors",
+  ],
+  "/api/morning-brief/trigger": [
+    "/api/okou/morning-brief/trigger",
+    "/api/zero/morning-brief/trigger",
+  ],
+  "/api/workflow-automations": [
+    "/api/okou/workflow-automations",
+    "/api/zero/workflow-automations",
+  ],
+  "/api/workflow-automations/:id": [
+    "/api/okou/workflow-automations/:id",
+    "/api/zero/workflow-automations/:id",
+  ],
+  "/api/workflow-automations/:id/disable": [
+    "/api/okou/workflow-automations/:id/disable",
+    "/api/zero/workflow-automations/:id/disable",
+  ],
+  "/api/workflow-automations/:id/enable": [
+    "/api/okou/workflow-automations/:id/enable",
+    "/api/zero/workflow-automations/:id/enable",
+  ],
+  "/api/workflow-automations/:id/run": [
+    "/api/okou/workflow-automations/:id/run",
+    "/api/zero/workflow-automations/:id/run",
+  ],
+  "/api/workflow-automations/:id/webhook-secret": [
+    "/api/okou/workflow-automations/:id/webhook-secret",
+    "/api/zero/workflow-automations/:id/webhook-secret",
+  ],
+  "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
+  "/api/workflows/:workflowId": [
+    "/api/okou/workflows/:workflowId",
+    "/api/zero/workflows/:workflowId",
+  ],
+  "/api/workflows/:workflowId/automations": [
+    "/api/okou/workflows/:workflowId/automations",
+    "/api/zero/workflows/:workflowId/automations",
+  ],
+  "/api/workflows/:workflowId/chat-thread": [
+    "/api/okou/workflows/:workflowId/chat-thread",
+    "/api/zero/workflows/:workflowId/chat-thread",
+  ],
+  "/api/workflows/:workflowId/connector-readiness": [
+    "/api/okou/workflows/:workflowId/connector-readiness",
+    "/api/zero/workflows/:workflowId/connector-readiness",
+  ],
+  "/api/workflows/:workflowId/copy": [
+    "/api/okou/workflows/:workflowId/copy",
+    "/api/zero/workflows/:workflowId/copy",
+  ],
+  "/api/workflows/:workflowId/demote": [
+    "/api/okou/workflows/:workflowId/demote",
+    "/api/zero/workflows/:workflowId/demote",
+  ],
+  "/api/workflows/:workflowId/publish": [
+    "/api/okou/workflows/:workflowId/publish",
+    "/api/zero/workflows/:workflowId/publish",
+  ],
+  "/api/workflows/:workflowId/run": [
+    "/api/okou/workflows/:workflowId/run",
+    "/api/zero/workflows/:workflowId/run",
+  ],
+  // #28545: the two Microsoft console routes, which arrive here from
+  // `FINAL_PROVIDER_CONSOLE_PATHS` rather than from the branded namespace like
+  // the rows above. The Azure Bot messaging endpoint and the Microsoft identity
+  // platform redirect URIs now hold the final paths, so the contracts declare
+  // them and that table's rows were deleted in the same commit — keeping them
+  // would have made both tables produce the same registration.
+  //
+  // What holds the branded forms open is not a released client but the two
+  // Microsoft consoles themselves, which have no drain window: they keep
+  // sending to whatever URL is registered until an operator changes it.
+  // Removal follows #26701's evidence rules, and for the `zero` callback the
+  // ordering constraint recorded there.
+  "/api/integrations/teams/oauth/callback": [
+    "/api/okou/teams/oauth/callback",
+    // Not drain-window compatibility. `callbackRedirectUri` in
+    // `routes/teams-oauth.ts` is brand-conditional and still emits this exact
+    // path for the VM0 brand on purpose: it is registered in the Microsoft app
+    // registration, and #26701 records that it retires together with the
+    // `api.vm0.ai` brand host. So this row is an active producer target, not a
+    // leftover — do not prune it merely for being an `/api/zero/` path, or
+    // live VM0-brand connects lose the callback they were sent to.
+    "/api/zero/teams/oauth/callback",
+  ],
+  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
+  // #28463: avatar video, banking, the browser authorization requests, inbound
+  // email, the GitHub user-connect start, mail drafts, people search,
+  // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
+  // the web file reads.
+  //
+  // Every surface this table protects is represented here at once. Published CLI
+  // builds hold the `okou` form directly: `domains/web.ts` and `domains/banking.ts`
+  // build ten of these URLs by hand rather than from the contract, so the path
+  // they carry shipped independently of this table, and a run execution context
+  // pins its commit-addressed `CLI_PKG_URL` at creation — the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. A released
+  // platform build holds `/api/okou/web/download-file`, `/api/okou/web/file-url`
+  // and `/api/okou/voice-io/stt` until a refresh loads a build that derives the
+  // neutral path (~2 days). The Strapi webhook URL sits in a customer's Strapi
+  // console, and every `zero` form was reachable through the blanket expansion
+  // until these contracts moved; neither has a window at all. Removal therefore
+  // follows the #26701 evidence gate above rather than any of those clocks.
+  "/api/avatar-video/avatars": [
+    "/api/okou/avatar-video/avatars",
+    "/api/zero/avatar-video/avatars",
+  ],
+  "/api/avatar-video/generate": [
+    "/api/okou/avatar-video/generate",
+    "/api/zero/avatar-video/generate",
+  ],
+  "/api/avatar-video/voices": [
+    "/api/okou/avatar-video/voices",
+    "/api/zero/avatar-video/voices",
+  ],
+  "/api/banking/accounts": [
+    "/api/okou/banking/accounts",
+    "/api/zero/banking/accounts",
+  ],
+  "/api/banking/balances": [
+    "/api/okou/banking/balances",
+    "/api/zero/banking/balances",
+  ],
+  "/api/banking/transactions": [
+    "/api/okou/banking/transactions",
+    "/api/zero/banking/transactions",
+  ],
+  "/api/browser/authorization-requests": [
+    "/api/okou/browser/authorization-requests",
+    "/api/zero/browser/authorization-requests",
+  ],
+  "/api/browser/authorization-requests/:requestToken": [
+    "/api/okou/browser/authorization-requests/:requestToken",
+    "/api/zero/browser/authorization-requests/:requestToken",
+  ],
+  "/api/browser/authorization-requests/:requestToken/apply": [
+    "/api/okou/browser/authorization-requests/:requestToken/apply",
+    "/api/zero/browser/authorization-requests/:requestToken/apply",
+  ],
+  "/api/email/inbound": ["/api/okou/email/inbound", "/api/zero/email/inbound"],
+  "/api/github/oauth/connect": [
+    "/api/okou/github/oauth/connect",
+    "/api/zero/github/oauth/connect",
+  ],
+  "/api/mail/drafts/:mailDraftId": [
+    "/api/okou/mail/drafts/:mailDraftId",
+    "/api/zero/mail/drafts/:mailDraftId",
+  ],
+  "/api/mail/drafts/:mailDraftId/attachments/:partId": [
+    "/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
+    "/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
+  ],
+  "/api/mail/drafts/:mailDraftId/send": [
+    "/api/okou/mail/drafts/:mailDraftId/send",
+    "/api/zero/mail/drafts/:mailDraftId/send",
+  ],
+  "/api/mail/drafts/link": [
+    "/api/okou/mail/drafts/link",
+    "/api/zero/mail/drafts/link",
+  ],
+  "/api/people-search": ["/api/okou/people-search", "/api/zero/people-search"],
+  "/api/presentation-templates": [
+    "/api/okou/presentation-templates",
+    "/api/zero/presentation-templates",
+  ],
+  "/api/presentation-templates/:templateId": [
+    "/api/okou/presentation-templates/:templateId",
+    "/api/zero/presentation-templates/:templateId",
+  ],
+  "/api/strapi/events/:integrationId": [
+    "/api/okou/strapi/events/:integrationId",
+    "/api/zero/strapi/events/:integrationId",
+  ],
+  "/api/uploads/complete": [
+    "/api/okou/uploads/complete",
+    "/api/zero/uploads/complete",
+  ],
+  "/api/uploads/multipart/abort": [
+    "/api/okou/uploads/multipart/abort",
+    "/api/zero/uploads/multipart/abort",
+  ],
+  "/api/uploads/multipart/complete": [
+    "/api/okou/uploads/multipart/complete",
+    "/api/zero/uploads/multipart/complete",
+  ],
+  "/api/uploads/prepare": [
+    "/api/okou/uploads/prepare",
+    "/api/zero/uploads/prepare",
+  ],
+  "/api/video-io/generate": [
+    "/api/okou/video-io/generate",
+    "/api/zero/video-io/generate",
+  ],
+  "/api/voice-io/quota": [
+    "/api/okou/voice-io/quota",
+    "/api/zero/voice-io/quota",
+  ],
+  "/api/voice-io/speech": [
+    "/api/okou/voice-io/speech",
+    "/api/zero/voice-io/speech",
+  ],
+  "/api/voice-io/stt": ["/api/okou/voice-io/stt", "/api/zero/voice-io/stt"],
+  "/api/web/download-file": [
+    "/api/okou/web/download-file",
+    "/api/zero/web/download-file",
+  ],
+  "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
+  // #28544: the two Feishu routes `FINAL_PROVIDER_CONSOLE_PATHS` carried
+  // without a console actually holding them, arriving here from that table like
+  // the Microsoft rows above rather than from the branded namespace. Their rows
+  // were deleted there in the same commit, for the reason recorded on that
+  // table: a row whose contract has moved stops matching rather than colliding,
+  // so what it leaves behind is dead configuration reading as a live console
+  // commitment.
+  //
+  // The events row is the load-bearing one. Each Feishu installation registered
+  // its event subscription URL in its own Feishu app console, which we cannot
+  // edit, so an installation created before #28338 still posts to the branded
+  // form it was given. That holder has no drain window at all — it changes when
+  // its operator edits their own console — so these rows retire under #26701's
+  // evidence rules rather than on any client clock.
+  //
+  // The OAuth callback row covers a time-boxed surface instead. Its caller is
+  // `feishu-oauth-callback-page.ts`, which forwards the code it received from
+  // the Feishu console's `app.vm0.ai` target to whichever path the contract
+  // declared when that bundle was built — so an already-loaded platform tab
+  // keeps posting the branded form for the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7. The `oauthRedirectUri()` branch that this
+  // slice's `feishuOAuthCallbackUrl()` change moves is the other holder, and a
+  // narrower one: it is reached only when `callbackTarget` is absent, which
+  // neither frontend entry point does.
+  //
+  // Each key holds its path parameter verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/integrations/feishu/oauth/callback": [
+    "/api/okou/feishu/oauth/callback",
+    "/api/zero/feishu/oauth/callback",
+  ],
+  "/api/webhooks/feishu/events/:installationId": [
+    "/api/okou/feishu/events/:installationId",
+    "/api/zero/feishu/events/:installationId",
+  ],
+  // #28565, the closing slice: the connector-account reads and writes and the
+  // managed SocialKit request. Both contracts were added by features that
+  // merged while #28278 was in flight — #28066 and #28519 for the connector
+  // accounts, #28343 for SocialKit — so no earlier slice's inventory contained
+  // them and they declared the branded namespace by default. The guard in
+  // `contracts/__tests__/api-namespace-declarations.test.ts` lands with this
+  // slice so the next late contract is rejected rather than migrated later.
+  //
+  // Surfaces: a commit-addressed CLI package pinned by a run execution context
+  // holds `/api/okou/social/request` for that context's queue and
+  // claimed-execution lifetime, bounded by the runner's 2h `JOB_TIMEOUT`. The
+  // connector-account paths have no caller in this repository at all — no
+  // platform, desktop or CLI code references them — so what they owe is the
+  // `zero` form the blanket expansion served until this move, plus any external
+  // holder of either branded form, neither of which has a window. That is a
+  // floor rather than the removal condition either way: these rows retire under
+  // #26701's evidence rules like every other row in this file.
+  "/api/connector-accounts": [
+    "/api/okou/connector-accounts",
+    "/api/zero/connector-accounts",
+  ],
+  "/api/connector-accounts/:connectionId": [
+    "/api/okou/connector-accounts/:connectionId",
+    "/api/zero/connector-accounts/:connectionId",
+  ],
+  "/api/connector-accounts/:connectionId/default": [
+    "/api/okou/connector-accounts/:connectionId/default",
+    "/api/zero/connector-accounts/:connectionId/default",
+  ],
+  "/api/connector-accounts/:connectionId/deletion-impact": [
+    "/api/okou/connector-accounts/:connectionId/deletion-impact",
+    "/api/zero/connector-accounts/:connectionId/deletion-impact",
+  ],
+  "/api/connector-accounts/connections": [
+    "/api/okou/connector-accounts/connections",
+    "/api/zero/connector-accounts/connections",
+  ],
+  "/api/social/request": [
+    "/api/okou/social/request",
+    "/api/zero/social/request",
+  ],
 };
 
 /**

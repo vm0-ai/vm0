@@ -40,14 +40,14 @@ runner_e2e_connect_manual_connector() {
         --arg agentId "$agent_id" \
         --argjson values "$values" \
         '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, values: $values}')
-    runner_api_curl "/api/okou/connectors/${connector_slug}/manual-grant" \
+    runner_api_curl "/api/connectors/${connector_slug}/manual-grant" \
         -X POST \
         -d "$payload"
 }
 
 runner_e2e_delete_connector() {
     local connector_slug="$1"
-    runner_api_curl "/api/okou/connectors/${connector_slug}" -X DELETE
+    runner_api_curl "/api/connectors/${connector_slug}" -X DELETE
 }
 
 runner_e2e_upload_text() {
@@ -65,7 +65,7 @@ runner_e2e_upload_text() {
         --arg contentType "$content_type" \
         --argjson size "$size" \
         '{filename: $filename, contentType: $contentType, size: $size}')
-    prepared=$(runner_api_curl "/api/okou/uploads/prepare" \
+    prepared=$(runner_api_curl "/api/uploads/prepare" \
         -X POST \
         -d "$payload") || return
     upload_url=$(jq -er '.uploadUrl | select(type == "string" and length > 0)' \
@@ -99,7 +99,7 @@ runner_e2e_upload_text() {
         --arg id "$upload_id" \
         --arg contentType "$content_type" \
         '{id: $id, contentType: $contentType}')
-    completed=$(runner_api_curl "/api/okou/uploads/complete" \
+    completed=$(runner_api_curl "/api/uploads/complete" \
         -X POST \
         -d "$payload") || return
     jq -ce '{id, filename, contentType, size}' <<<"$completed"
@@ -188,7 +188,7 @@ runner_e2e_delete_chat_thread() {
 
 runner_e2e_delete_workflow() {
     local workflow_id="$1"
-    runner_api_curl "/api/okou/workflows/${workflow_id}" -X DELETE
+    runner_api_curl "/api/workflows/${workflow_id}" -X DELETE
 }
 
 runner_e2e_wait_for_chat_event() {
@@ -254,7 +254,7 @@ runner_e2e_wait_for_usage_event() {
 }
 
 runner_e2e_usage_record() {
-    runner_api_curl "/api/okou/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
+    runner_api_curl "/api/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
 }
 
 runner_e2e_wait_for_usage_record() {

@@ -9,6 +9,7 @@ from mitmproxy import http
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_websocket_usage
+import openai_responses_events
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
@@ -61,17 +62,21 @@ class TestModelProviderWebSocketPrewarmUsage:
     def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
         self._usage_webhook_api = usage_webhook_api
 
+    @pytest.mark.parametrize("terminal_event", sorted(openai_responses_events.TERMINAL_EVENTS))
     def test_model_websocket_dense_terminal_uses_one_full_body_parse(
         self,
         tmp_path,
         real_flow,
         monkeypatch: pytest.MonkeyPatch,
+        terminal_event: str,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         dense_terminal = (
-            b'{"type":"response.completed","padding":['
+            b'{"type":"'
+            + terminal_event.encode()
+            + b'","padding":['
             + b",".join([b"0"] * 20_000)
             + b'],"response":{"id":"dense-prewarm","model":"gpt-5.5",'
             b'"usage":{"input_tokens":9,"output_tokens":4}}}'
@@ -957,6 +962,66 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
+
+    def test_model_websocket_usage_free_conflicting_terminal_id_fails_open(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        sensitive_marker = "conflicting-terminal-sensitive-marker"
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                _openai_websocket_created_frame("warm-active"),
+            )
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "other-response",
+                            "output": [
+                                {
+                                    "type": "message",
+                                    "content": [{"type": "output_text", "text": sensitive_marker}],
+                                }
+                            ],
+                        },
+                    }
+                ).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "warm-active",
+                    input_tokens=17,
+                    output_tokens=0,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 17)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        correlation_entries = _correlation_entries(flow)
+        assert len(correlation_entries) == 1
+        assert correlation_entries[0]["reason"] == "invalid_lifecycle"
+        assert sensitive_marker not in json.dumps(correlation_entries)
 
     def test_model_websocket_malformed_client_frame_retires_unbound_prewarm(
         self,

@@ -50,11 +50,17 @@ function kindAccent(kind: StartCardKind): string {
   }
 }
 
-// One colour per kind, laid down at four strengths: the tile wash, the rules
-// and edges, the muted marks, and the solid shapes. Nothing inside a tile is
-// grey — a neutral border reads as a different material from the wash it sits
-// on, so every edge is the same colour a few steps darker.
-const TILE_ALPHA = "24";
+// One colour per kind, laid down at five strengths: the tile wash, the bands
+// filled inside a drawing, the rules and edges, the muted marks, and the solid
+// shapes. Nothing inside a tile is grey — a neutral border reads as a different
+// material from the wash it sits on, so every edge is the same colour a few
+// steps darker.
+//
+// The wash is the largest area of colour on the page — three 72px squares in a
+// row — so it is the one strength that carries no drawing and is laid down
+// lighter than the bands inside the art, which have white paper under them.
+const TILE_ALPHA = "1A";
+const BAND_ALPHA = "24";
 const LINE_ALPHA = "59";
 const SOFT_ALPHA = "40";
 const FILL_ALPHA = "8C";
@@ -100,7 +106,7 @@ function WebsiteArt({ accent }: { accent: string }) {
         className="flex h-[10px] items-center gap-[2px] border-b px-[3px]"
         style={{
           borderColor: `${accent}${LINE_ALPHA}`,
-          backgroundColor: `${accent}${TILE_ALPHA}`,
+          backgroundColor: `${accent}${BAND_ALPHA}`,
         }}
       >
         <span

@@ -40,6 +40,7 @@ function buildCommands(): Command[] {
     new Command("scrape"),
     new Command("people-search"),
     new Command("web-search"),
+    new Command("social"),
     new Command("recognize"),
     new Command("translate"),
     new Command("finance"),
@@ -210,6 +211,7 @@ describe("registerCommands", () => {
       "scrape",
       "people-search",
       "web-search",
+      "social",
       "recognize",
       "translate",
       "finance",
@@ -301,6 +303,22 @@ describe("registerCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("web-search");
+  });
+
+  it("should show social only with social:read capability", () => {
+    const hiddenToken = buildZeroToken({
+      scope: "okou",
+      capabilities: ["web-search:read"],
+    });
+    vi.stubEnv("OKOU_TOKEN", hiddenToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("social");
+
+    const visibleToken = buildZeroToken({
+      scope: "okou",
+      capabilities: ["social:read"],
+    });
+    vi.stubEnv("OKOU_TOKEN", visibleToken);
+    expect(visibleCommandNames(buildProgram())).toContain("social");
   });
 
   it("should show finance when finance:read capability is present", () => {
@@ -981,6 +999,24 @@ describe("registerCommands", () => {
 
     expect(buildHelpText(decodeSandboxTokenPayload(token))).not.toContain(
       "Find a professional?",
+    );
+  });
+
+  it("should gate the social help example on social:read", () => {
+    const visibleToken = buildZeroToken({
+      scope: "okou",
+      capabilities: ["social:read"],
+    });
+    const hiddenToken = buildZeroToken({
+      scope: "okou",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildHelpText(decodeSandboxTokenPayload(visibleToken))).toContain(
+      "Analyze social data?",
+    );
+    expect(buildHelpText(decodeSandboxTokenPayload(hiddenToken))).not.toContain(
+      "Analyze social data?",
     );
   });
 

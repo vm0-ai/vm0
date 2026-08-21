@@ -41,7 +41,19 @@ const IMAGE_IO_MAX_EDGE = 3840;
 const IMAGE_IO_EDGE_MULTIPLE = 16;
 const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
+const NANO_BANANA_2_LITE_MODEL = "google/nano-banana-2-lite";
 const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
+const QWEN_IMAGE_3_MODEL = "alibaba/qwen-image-3/text-to-image";
+const QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS = 3;
+/**
+ * fal prices Qwen Image 3 per generated image in two resolution tiers, split at
+ * 2,250,000 output pixels: $0.04 at or below it, $0.075 above it.
+ */
+const QWEN_IMAGE_3_STANDARD_TIER_MAX_PIXELS = 2_250_000;
+/** fal caps Qwen Image 3 output at 2048x2048 total pixels. */
+const QWEN_IMAGE_3_MAX_PIXELS = 2048 * 2048;
+/** Largest fal flexible-size preset, used when a request carries `auto`. */
+const FAL_SIZE_PRESET_MAX_PIXELS = 1024 * 1024;
 const SEEDREAM_5_PRO_MODEL = "dola-seedream-5-0-pro-260628";
 const SEEDREAM_5_LITE_MODEL = "seedream-5-0-lite-260128";
 const SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS = 14;
@@ -65,11 +77,16 @@ const FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES = [
   "output_image.high.standard",
   "output_image.high.large",
 ] as const;
+const FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES = [
+  "output_image.1k",
+  "output_image.2k",
+] as const;
 const IMAGE_PRICING_CATEGORIES = [
   FAL_OUTPUT_IMAGE_CATEGORY,
   FAL_OUTPUT_MEGAPIXEL_CATEGORY,
   PROVIDER_COST_USD_MICROS_CATEGORY,
   ...FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
+  ...FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
 ] as const;
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
@@ -233,6 +250,31 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: false,
   },
+  [QWEN_IMAGE_3_MODEL]: {
+    alias: "qwen-image-3",
+    promptless: false,
+    endpointId: QWEN_IMAGE_3_MODEL,
+    imageToImageEndpointId: "alibaba/qwen-image-3/edit",
+    sourceImageInput: "image_urls",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: IMAGE_OUTPUT_FORMATS,
+    pricingCategories: FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
+    billingMode: "pixel_tier_image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
     promptless: false,
@@ -313,6 +355,31 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     promptless: false,
     endpointId: NANO_BANANA_2_MODEL,
     imageToImageEndpointId: "fal-ai/nano-banana-2/edit",
+    sourceImageInput: "image_urls",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "aspect_ratio",
+    outputFormats: IMAGE_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [NANO_BANANA_2_LITE_MODEL]: {
+    alias: "nano-banana-2-lite",
+    promptless: false,
+    endpointId: NANO_BANANA_2_LITE_MODEL,
+    imageToImageEndpointId: "google/nano-banana-2-lite/edit",
     sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "flexible",
@@ -811,6 +878,11 @@ function validateImageSize(
       `Unsupported image size: ${size}; total pixels must be between ${IMAGE_IO_MIN_PIXELS} and ${IMAGE_IO_MAX_PIXELS}`,
     );
   }
+  if (model === QWEN_IMAGE_3_MODEL && pixels > QWEN_IMAGE_3_MAX_PIXELS) {
+    return badRequest(
+      `Unsupported image size for ${modelConfig.alias}: ${size}; total pixels must be at most ${QWEN_IMAGE_3_MAX_PIXELS}`,
+    );
+  }
 
   return null;
 }
@@ -1058,11 +1130,14 @@ function parseSourceImageUrls(
     return sourceImageUrls;
   }
   const maxSourceImageUrls =
-    modelConfig.alias === "nano-banana-2"
+    modelConfig.alias === "nano-banana-2" ||
+    modelConfig.alias === "nano-banana-2-lite"
       ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
       : modelConfig.alias === "seedream5-lite"
         ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
-        : MAX_SOURCE_IMAGE_URLS;
+        : modelConfig.alias === "qwen-image-3"
+          ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
+          : MAX_SOURCE_IMAGE_URLS;
   if (sourceImageUrls.length > maxSourceImageUrls) {
     return badRequest(
       `imageUrls supports at most ${maxSourceImageUrls} images`,
@@ -1476,7 +1551,10 @@ function falImageSize(options: ImageOptions) {
 
 function falAspectRatio(options: ImageOptions): string {
   if (options.size === "auto") {
-    if (options.model === NANO_BANANA_2_MODEL) {
+    if (
+      options.model === NANO_BANANA_2_MODEL ||
+      options.model === NANO_BANANA_2_LITE_MODEL
+    ) {
       return "auto";
     }
     return "16:9";
@@ -1746,11 +1824,39 @@ function megapixelsForImage(
   return Math.max(1, Math.ceil((parsed.width * parsed.height) / 1_000_000));
 }
 
+/**
+ * fal returns Qwen Image 3 files without dimensions, so the tier falls back to
+ * the requested size. An unparsed size means the request carried `auto` and
+ * therefore sent a fal size preset; every preset fal accepts tops out at
+ * 1024x1024, which stays under the tier split.
+ */
+function pixelsForImage(image: FalImageFile, options: ImageOptions): number {
+  if (image.width && image.height) {
+    return image.width * image.height;
+  }
+  const parsed = parseSize(options.size);
+  return parsed ? parsed.width * parsed.height : FAL_SIZE_PRESET_MAX_PIXELS;
+}
+
+function falPixelTierImageCategory(
+  image: FalImageFile,
+  options: ImageOptions,
+): ImagePricingCategory {
+  return pixelsForImage(image, options) > QWEN_IMAGE_3_STANDARD_TIER_MAX_PIXELS
+    ? "output_image.2k"
+    : "output_image.1k";
+}
+
 function falBillingEntries(
   image: FalImageFile,
   options: ImageOptions,
 ): readonly ImageBillingEntry[] {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode === "pixel_tier_image") {
+    return [
+      { category: falPixelTierImageCategory(image, options), quantity: 1 },
+    ];
+  }
   if (modelConfig.billingMode === "megapixel") {
     return [
       {

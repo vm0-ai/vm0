@@ -61,12 +61,12 @@ export const agentInstructionsRequestSchema = z.object({
 });
 
 /**
- * Contract for GET/POST /api/okou/agents (list/create agents)
+ * Contract for GET/POST /api/agents (list/create agents)
  */
 export const agentsMainContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/agents",
+    path: "/api/agents",
     headers: authHeadersSchema,
     body: agentRequestSchema,
     responses: {
@@ -81,7 +81,7 @@ export const agentsMainContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/okou/agents",
+    path: "/api/agents",
     headers: authHeadersSchema,
     responses: {
       200: z.array(agentResponseSchema),
@@ -93,12 +93,12 @@ export const agentsMainContract = c.router({
 });
 
 /**
- * Contract for GET/PUT/PATCH/DELETE /api/okou/agents/:id
+ * Contract for GET/PUT/PATCH/DELETE /api/agents/:id
  */
 export const agentsByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -112,7 +112,7 @@ export const agentsByIdContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentRequestSchema,
@@ -129,7 +129,7 @@ export const agentsByIdContract = c.router({
   },
   updateMetadata: {
     method: "PATCH",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentMetadataRequestSchema,
@@ -145,7 +145,7 @@ export const agentsByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: c.noBody(),
@@ -162,12 +162,12 @@ export const agentsByIdContract = c.router({
 });
 
 /**
- * Contract for GET/PUT /api/okou/agents/:id/instructions
+ * Contract for GET/PUT /api/agents/:id/instructions
  */
 export const agentInstructionsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id/instructions",
+    path: "/api/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -181,7 +181,7 @@ export const agentInstructionsContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id/instructions",
+    path: "/api/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentInstructionsRequestSchema,

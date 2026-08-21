@@ -10,7 +10,7 @@ import {
   buildZeroAgentComposeContent,
   computeComposeVersionId,
 } from "../../../apps/api/src/signals/services/agent-compose-content";
-import { classifyAgentExecutionAuthority } from "../../../apps/api/src/signals/services/agent-execution-authority";
+import { classifyAgentExecutionAuthority } from "./agent-compose-consolidation-preflight-authority";
 import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "../../../apps/api/src/signals/services/agent-execution-plan";
 import {
   CATALOG_DEPENDENCY_KINDS,
@@ -34,7 +34,7 @@ import {
   computeHistoricalProductBuilderReviewFingerprint,
   isExactHistoricalProductBuilderCandidate,
   type HistoricalProductBuilderCandidate,
-} from "../../../apps/api/src/signals/services/historical-product-builder";
+} from "./agent-compose-consolidation-preflight-historical-product-builder";
 import {
   EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
   collectRuntimeContentConsumerManifest,
@@ -3400,7 +3400,180 @@ function outputPaths(value: unknown, prefix = ""): string[] {
   return [prefix];
 }
 
+function sourceRange(
+  source: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, `missing source marker: ${startMarker}`);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(end, -1, `missing source marker: ${endMarker}`);
+  return source.slice(start, end);
+}
+
+async function sourceFilesContaining(
+  roots: readonly string[],
+  literal: string,
+): Promise<string[]> {
+  const matches: string[] = [];
+
+  const visit = async (relativeDirectory: string): Promise<void> => {
+    const absoluteDirectory = path.join(repositoryRoot, relativeDirectory);
+    const entries = await fs.readdir(absoluteDirectory, {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      const relativePath = path.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(relativePath);
+      } else if (
+        entry.isFile() &&
+        relativePath.endsWith(".ts") &&
+        (
+          await fs.readFile(path.join(repositoryRoot, relativePath), "utf8")
+        ).includes(literal)
+      ) {
+        matches.push(relativePath.split(path.sep).join("/"));
+      }
+    }
+  };
+
+  for (const root of roots) {
+    await visit(root);
+  }
+  return matches.sort();
+}
+
+async function testProductRuntimeVersionContentIsolation(): Promise<void> {
+  const readSource = async (relativePath: string): Promise<string> => {
+    return await fs.readFile(path.join(repositoryRoot, relativePath), "utf8");
+  };
+  const zeroRunCreatePath =
+    "turbo/apps/api/src/signals/services/zero-runs-create.service.ts";
+  const runCreatePath =
+    "turbo/apps/api/src/signals/services/agent-run-create.service.ts";
+  const zeroRunCreate = await readSource(zeroRunCreatePath);
+  const runCreate = await readSource(runCreatePath);
+
+  assert.match(zeroRunCreate, /buildZeroAgentComposeContent/u);
+  assert.match(zeroRunCreate, /productAgentExecutionPlan/u);
+  for (const forbidden of [
+    "agentComposeVersions",
+    "headVersionId",
+    "agent-execution-authority",
+    "agent-environment-shadow",
+    "historical-product-builder",
+  ]) {
+    assert.equal(
+      zeroRunCreate.includes(forbidden),
+      false,
+      `${zeroRunCreatePath} must not contain ${forbidden}`,
+    );
+  }
+
+  for (const forbidden of [
+    "runtimeResolvedCompose",
+    "canonicalOkouComposeContent",
+    "classifyAgentExecutionAuthority",
+    "agentExecutionAuthorityObservation",
+    "environmentShadowObservation",
+    "productAgentName",
+  ]) {
+    assert.equal(
+      runCreate.includes(forbidden),
+      false,
+      `${runCreatePath} must not contain ${forbidden}`,
+    );
+  }
+
+  const directAgentResolver = sourceRange(
+    runCreate,
+    "async function resolveByAgentId(",
+    "async function resolveProductByAgentId(",
+  );
+  const productAgentResolver = sourceRange(
+    runCreate,
+    "async function resolveProductByAgentId(",
+    "interface ResumeSessionSnapshot",
+  );
+  const directSessionResolver = sourceRange(
+    runCreate,
+    "function resolveBySessionId(",
+    "function resolveProductBySessionId(",
+  );
+  const productSessionResolver = sourceRange(
+    runCreate,
+    "function resolveProductBySessionId(",
+    "function resolveCompose(",
+  );
+  for (const directResolver of [directAgentResolver, directSessionResolver]) {
+    assert.match(directResolver, /agentComposeVersions\.content/u);
+    assert.match(directResolver, /MISSING_AGENT_CONFIGURATION_MESSAGE/u);
+  }
+  for (const productResolver of [
+    productAgentResolver,
+    productSessionResolver,
+  ]) {
+    assert.equal(
+      productResolver.includes("agentComposeVersions.content"),
+      false,
+    );
+    assert.equal(productResolver.includes("versionContent"), false);
+    assert.equal(
+      productResolver.includes("MISSING_AGENT_CONFIGURATION_MESSAGE"),
+      false,
+    );
+    assert.match(productResolver, /content: options\.executionPlan\.content/u);
+  }
+
+  const forbiddenSurfaceTokens = new Map<string, readonly string[]>([
+    [
+      "turbo/apps/api/src/signals/services/agent-runs.service.ts",
+      ["agentComposeVersionId"],
+    ],
+    [
+      "turbo/apps/api/src/signals/services/logs.service.ts",
+      ["agentComposeVersionId", "agentComposeVersions", "extractFramework"],
+    ],
+    ["turbo/apps/api/src/signals/routes/runners.ts", ["agentComposeVersionId"]],
+    [
+      "turbo/packages/api-contracts/src/contracts/runners.ts",
+      ["agentComposeVersionId"],
+    ],
+    [
+      "turbo/packages/api-contracts/src/contracts/runs.ts",
+      ["agentComposeVersionId"],
+    ],
+    [
+      "turbo/apps/api/src/signals/services/run-context-snapshot.service.ts",
+      ["agentExecutionAuthority", "environmentShadow"],
+    ],
+  ]);
+  for (const [relativePath, forbiddenTokens] of forbiddenSurfaceTokens) {
+    const source = await readSource(relativePath);
+    for (const forbidden of forbiddenTokens) {
+      assert.equal(
+        source.includes(forbidden),
+        false,
+        `${relativePath} must not contain ${forbidden}`,
+      );
+    }
+  }
+
+  for (const retiredRuntimePath of [
+    "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
+    "turbo/apps/api/src/signals/services/agent-environment-shadow.ts",
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
+  ]) {
+    await assert.rejects(
+      fs.access(path.join(repositoryRoot, retiredRuntimePath)),
+    );
+  }
+}
+
 async function testRepositoryAndWorkflowValidators(): Promise<void> {
+  await testProductRuntimeVersionContentIsolation();
   const observed = await collectRepositoryDependencyManifest(repositoryRoot);
   assert.equal(
     manifestsEqual(EXPECTED_REPOSITORY_DEPENDENCIES, observed),
@@ -3480,29 +3653,6 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       "turbo/apps/api/src/signals/services",
     );
     await fs.mkdir(runCreateDirectory, { recursive: true });
-    const environmentShadowConsumerPath = path.join(
-      runCreateDirectory,
-      "agent-environment-shadow.ts",
-    );
-    const environmentShadowConsumer = [
-      'const ENVIRONMENT_SHADOW_COUNT_BUCKETS = ["0", "1"] as const;',
-      "interface ApplicationOwnedEnvironmentCandidateInput {",
-      "  readonly runtimeOverrides: Readonly<Record<string, string>>;",
-      "}",
-      "function buildApplicationOwnedEnvironmentCandidate(",
-      "  args: ApplicationOwnedEnvironmentCandidateInput,",
-      ") {",
-      "  void args;",
-      "  return {};",
-      "}",
-      "function compareApplicationOwnedEnvironment() { return 'exact'; }",
-      "",
-    ].join("\n");
-    await fs.writeFile(
-      environmentShadowConsumerPath,
-      environmentShadowConsumer,
-      "utf8",
-    );
     const runCreateConsumerPath = path.join(
       runCreateDirectory,
       "agent-run-create.service.ts",
@@ -3539,145 +3689,8 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     ].join("\n");
     await fs.writeFile(storageConsumerPath, systemVolumeConsumer, "utf8");
 
-    const zeroRunConsumerPath = path.join(
-      runCreateDirectory,
-      "zero-runs-create.service.ts",
-    );
-    const zeroRunConsumer = [
-      "interface ZeroAgentRunRecord {",
-      "  readonly content: ZeroAgentComposeContent;",
-      "}",
-      "interface ZeroAgentComposeContent { readonly agents?: unknown }",
-      "async function loadZeroAgent() {",
-      "  const [agent] = await db",
-      "    .select({ content: agentComposeVersions.content })",
-      "    .from(zeroAgents)",
-      "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-      "    .innerJoin(",
-      "      agentComposeVersions,",
-      "      eq(agentComposeVersions.id, agentComposes.headVersionId),",
-      "    );",
-      "  return agent",
-      "    ? { content: agent.content as ZeroAgentComposeContent }",
-      "    : null;",
-      "}",
-      "",
-    ].join("\n");
-    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
-
     const semanticBaseline =
       await collectRuntimeContentConsumerManifest(fixtureRoot);
-
-    await fs.writeFile(
-      environmentShadowConsumerPath,
-      environmentShadowConsumer.replace(
-        "  return {};",
-        "  return firstAgent(args.content).environment;",
-      ),
-      "utf8",
-    );
-    const environmentShadowLegacyDrift =
-      await collectRuntimeContentConsumerManifest(fixtureRoot);
-    assert.equal(
-      runtimeContentConsumerManifestsEqual(
-        semanticBaseline,
-        environmentShadowLegacyDrift,
-      ),
-      false,
-    );
-    await fs.writeFile(
-      environmentShadowConsumerPath,
-      environmentShadowConsumer,
-      "utf8",
-    );
-
-    const unrelatedZeroRunQueryChange = zeroRunConsumer
-      .replace(
-        ".select({ content: agentComposeVersions.content })",
-        ".select({ defaultAgentId: orgMetadata.defaultAgentId, content: agentComposeVersions.content })",
-      )
-      .replace(
-        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-        [
-          "    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))",
-          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-        ].join("\n"),
-      );
-    await fs.writeFile(
-      zeroRunConsumerPath,
-      unrelatedZeroRunQueryChange,
-      "utf8",
-    );
-    const unrelatedZeroRunQuery =
-      await collectRuntimeContentConsumerManifest(fixtureRoot);
-    assert.equal(
-      runtimeContentConsumerManifestsEqual(
-        semanticBaseline,
-        unrelatedZeroRunQuery,
-      ),
-      true,
-    );
-    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
-
-    const zeroRunSemanticDrifts = [
-      zeroRunConsumer.replace(
-        "eq(agentComposes.id, zeroAgents.id)",
-        "eq(agentComposes.id, zeroAgents.otherId)",
-      ),
-      zeroRunConsumer.replace(
-        "agentComposes.headVersionId",
-        "agentComposes.otherVersionId",
-      ),
-      zeroRunConsumer.replace(
-        "content: agentComposeVersions.content",
-        "content: agentComposeVersions.otherContent",
-      ),
-      zeroRunConsumer.replace(
-        "agent.content as ZeroAgentComposeContent",
-        "agent.content as UnknownComposeContent",
-      ),
-      zeroRunConsumer.replace(
-        "readonly content: ZeroAgentComposeContent",
-        "readonly content: unknown",
-      ),
-      zeroRunConsumer.replace(
-        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-        "",
-      ),
-      zeroRunConsumer.replace(
-        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-        [
-          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
-        ].join("\n"),
-      ),
-      zeroRunConsumer.replace(
-        "  return agent",
-        [
-          "  const duplicate = agent.content as ZeroAgentComposeContent;",
-          "  void duplicate;",
-          "  return agent",
-        ].join("\n"),
-      ),
-      zeroRunConsumer.replace(
-        "  return agent",
-        ["  void agent.content;", "  return agent"].join("\n"),
-      ),
-    ];
-    for (const driftedZeroRunConsumer of zeroRunSemanticDrifts) {
-      assert.notEqual(driftedZeroRunConsumer, zeroRunConsumer);
-      await fs.writeFile(zeroRunConsumerPath, driftedZeroRunConsumer, "utf8");
-      const zeroRunSemanticDrift =
-        await collectRuntimeContentConsumerManifest(fixtureRoot);
-      assert.equal(
-        runtimeContentConsumerManifestsEqual(
-          semanticBaseline,
-          zeroRunSemanticDrift,
-        ),
-        false,
-      );
-    }
-    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
 
     await fs.writeFile(
       runCreateConsumerPath,
@@ -3768,76 +3781,6 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   } finally {
     await fs.rm(fixtureRoot, { recursive: true, force: true });
   }
-
-  const workflow = await fs.readFile(
-    path.join(
-      repositoryRoot,
-      ".github/workflows/agent-compose-consolidation-preflight.yml",
-    ),
-    "utf8",
-  );
-  assert.match(workflow, /^on:\n {2}workflow_dispatch:\s*$/mu);
-  assert.match(workflow, /^ {4}environment: production$/mu);
-  assert.match(workflow, /^ {10}ref: main$/mu);
-  assert.match(
-    workflow,
-    /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/u,
-  );
-  assert.match(workflow, /ghcr\.io\/vm0-ai\/vm0-toolchain:20260622/u);
-  assert.match(workflow, /^permissions:\n {2}contents: read$/mu);
-  assert.match(workflow, /\[\[ -z "\$database_url" \|\|/u);
-  assert.match(workflow, /"\$database_url" == \*\$'\\n'\*/u);
-  assert.match(workflow, /"\$database_url" == \*\$'\\r'\*/u);
-  assert.match(workflow, /"\$database_url" != postgres:\/\/\*/u);
-  assert.match(workflow, /"\$database_url" != postgresql:\/\/\*/u);
-  assert.ok(
-    workflow.indexOf('if [[ -z "$database_url"') <
-      workflow.indexOf('>> "$GITHUB_OUTPUT"'),
-  );
-  assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
-  assert.match(
-    workflow,
-    /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070 \+ #28080/u,
-  );
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v7/u);
-  const databaseResolutionFailurePayloads = [
-    ...workflow.matchAll(/database_resolution_failure='([^'\n]+)'/gu),
-  ];
-  assert.equal(databaseResolutionFailurePayloads.length, 1);
-  const databaseResolutionFailurePayload =
-    databaseResolutionFailurePayloads[0]?.[1];
-  assert.ok(databaseResolutionFailurePayload);
-  const parsedDatabaseResolutionFailure: unknown = JSON.parse(
-    databaseResolutionFailurePayload,
-  );
-  const canonicalDatabaseResolutionFailure = sanitizedFailureResult(
-    new SanitizedPreflightError("probe.database_resolution", {
-      failurePhase: "configuration",
-      phaseDurationsMs: Object.fromEntries(
-        PREFLIGHT_PHASES.map((phase) => {
-          return [phase, 0] as const;
-        }),
-      ) as Record<(typeof PREFLIGHT_PHASES)[number], number>,
-    }),
-  );
-  assert.deepEqual(
-    parsedDatabaseResolutionFailure,
-    canonicalDatabaseResolutionFailure,
-  );
-  assert.equal(
-    workflow.match(/^\s+printf '%s\\n' "\$database_resolution_failure"$/gmu)
-      ?.length,
-    2,
-  );
-  assert.equal(
-    /vm0\.agent-compose-consolidation-preflight\.v[1-6]/u.test(workflow),
-    false,
-  );
-  assert.equal(
-    /pull_request:|schedule:|actions\/upload-artifact/iu.test(workflow),
-    false,
-  );
-  assert.equal(/--apply|fallback|REPORT_PATH/iu.test(workflow), false);
 
   const preflightSource = await fs.readFile(
     path.join(
@@ -3973,7 +3916,7 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
 
   const historicalClassifierPath = path.join(
     repositoryRoot,
-    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-historical-product-builder.ts",
   );
   const historicalClassifierSource = await fs.readFile(
     historicalClassifierPath,
@@ -3996,26 +3939,23 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     ),
     false,
   );
-  const historicalClassifierCallers = execFileSync(
-    "git",
-    [
-      "grep",
-      "-l",
-      "-F",
-      "isExactHistoricalProductBuilderCandidate(",
-      "--",
-      ":(glob)turbo/apps/api/src/signals/**/*.ts",
-      ":(glob)turbo/packages/db/scripts/**/*.ts",
-    ],
-    { cwd: repositoryRoot, encoding: "utf8" },
-  )
-    .trim()
-    .split("\n")
-    .sort();
+  const historicalClassifierCallers = await sourceFilesContaining(
+    ["turbo/apps/api/src/signals", "turbo/packages/db/scripts"],
+    "isExactHistoricalProductBuilderCandidate(",
+  );
   assert.deepEqual(historicalClassifierCallers, [
-    "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
-    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-authority.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-historical-product-builder.ts",
     "turbo/packages/db/scripts/agent-compose-consolidation-preflight-refinements.ts",
+    "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
+  ]);
+  const authorityClassifierCallers = await sourceFilesContaining(
+    ["turbo/apps/api/src/signals", "turbo/packages/db/scripts"],
+    "classifyAgentExecutionAuthority(",
+  );
+  assert.deepEqual(authorityClassifierCallers, [
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-authority.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight.ts",
     "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
   ]);
 

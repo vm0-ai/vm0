@@ -25,6 +25,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
@@ -43,6 +44,7 @@ import {
   type StripeSubscriptionScheduleUpdateParams,
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
+import { settle } from "../utils";
 import {
   calculateUsagePackAdditionCreditGrant,
   calculateUsagePackUpgradeCreditGrants,
@@ -72,6 +74,7 @@ import {
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const PAYMENT_CONFIRMATION_TTL_MS = 24 * 60 * 60 * 1000;
+const L = logger("UsagePackPlanChange");
 const OPEN_ALLOCATION_CHANGE_STATUSES = [
   "previewed",
   "applying",
@@ -3552,18 +3555,30 @@ export async function reconcileUsagePackSubscriptionChanges(
   const orgIds = new Set<string>();
   let reconciled = expiredCount;
   for (const root of candidates) {
-    const reconciledOrgId = await reconcileSubscriptionChangeCandidate(
-      db,
-      {
-        root,
-        at,
-        paymentExpiredBefore,
-      },
+    const result = await settle(
+      reconcileSubscriptionChangeCandidate(
+        db,
+        {
+          root,
+          at,
+          paymentExpiredBefore,
+        },
+        signal,
+      ),
       signal,
     );
-    if (reconciledOrgId) {
+    if (!result.ok) {
+      L.error("usage pack subscription change reconciliation failed", {
+        subscriptionChangeId: root.id,
+        orgId: root.orgId,
+        usagePackSubscriptionId: root.usagePackSubscriptionId,
+        error: result.error,
+      });
+      continue;
+    }
+    if (result.value) {
       reconciled += 1;
-      orgIds.add(reconciledOrgId);
+      orgIds.add(result.value);
     }
   }
   return { reconciled, orgIds: [...orgIds] };

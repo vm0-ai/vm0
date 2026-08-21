@@ -14,7 +14,10 @@ import {
   publicBrandSchema,
   type PublicBrand,
 } from "@okouai/api-contracts/contracts/public-brand";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -48,7 +51,7 @@ import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   generatePresignedGetUrl,
   generatePresignedPutUrl,
@@ -216,6 +219,13 @@ import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+import {
+  additionalVolumesForRun,
+  authorizedUserPresentationTemplateIds,
+  selectedUserPresentationTemplateIds,
+  userPresentationTemplateVolumes,
+  type PresentationTemplateVolume,
+} from "./presentation-template-data.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -657,6 +667,11 @@ interface CreateQueuedChatRunInput {
   readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  /**
+   * Guidance packages to mount for this run, one per private template the
+   * queued message selected and its sender still owns.
+   */
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
   readonly publicBrand?: PublicBrand;
   readonly threadId: string;
   readonly connectorSourceId?: string;
@@ -982,6 +997,7 @@ function buildQueuedCreateZeroRunArgs(
         ? { modelProvider: input.effectiveModelProvider }
         : {}),
       ...(input.realAgentInPreview ? { realAgentInPreview: true } : {}),
+      ...additionalVolumesForRun(input.presentationTemplateVolumes),
     },
   };
 }
@@ -2638,7 +2654,7 @@ async function resolveQueuedMessageModelRoute(args: {
           : "PROVIDER_UNAVAILABLE",
         message: args.fallbackEnabled
           ? "Every managed route for this model is temporarily unavailable"
-          : "No model provider configured: no VM0 managed model key is configured",
+          : "No model provider configured: no built-in model key is configured",
       },
     };
   }
@@ -3047,6 +3063,8 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
+  readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3057,9 +3075,66 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+        presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+        mountedUserPresentationTemplateIds:
+          args.mountedUserPresentationTemplateIds,
       });
     },
   );
+}
+
+/**
+ * What a queued message's own selections contribute to the run this dispatch
+ * is about to create: the guidance block and the packages that back it.
+ *
+ * Ownership is re-checked here rather than trusted from the send that queued
+ * the message. The row can be deleted while the message waits, and a volume
+ * this user may not read must never be assembled — so the same lookup decides
+ * both what is mounted and what the prompt is allowed to mention.
+ */
+async function resolveQueuedMessageTemplateContext(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly input: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["input"];
+  readonly userMessageProjection: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["userMessageProjection"];
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<{
+  readonly generationTemplatePrompt: string;
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
+}> {
+  const mountedUserPresentationTemplateIds =
+    await authorizedUserPresentationTemplateIds(args.db, {
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      templateIds: selectedUserPresentationTemplateIds(
+        args.userMessageProjection?.templates ?? [],
+      ),
+    });
+  const generationTemplatePrompt =
+    await resolveQueuedMessageGenerationTemplatePrompt({
+      input: args.input,
+      userMessageProjection: args.userMessageProjection,
+      latestWebsiteTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.LatestWebsiteTemplates,
+        args.featureSwitchContext,
+      ),
+      presentationTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PresentationTemplates,
+        args.featureSwitchContext,
+      ),
+      mountedUserPresentationTemplateIds,
+    });
+  return {
+    generationTemplatePrompt,
+    presentationTemplateVolumes: userPresentationTemplateVolumes(
+      mountedUserPresentationTemplateIds,
+    ),
+  };
 }
 
 async function loadQueuedRunMaterial(
@@ -3092,6 +3167,24 @@ function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
       ? { connectorSourceId: launchMaterial.connectorSourceId }
       : {}),
   };
+}
+
+function resolveQueuedMessageComputerUseHostGrant(
+  args: CreateQueuedChatRunInputArgs,
+) {
+  return measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "nested",
+    () => {
+      return loadComputerUseHostGrantForAutoSend({
+        db: args.db,
+        threadId: args.threadId,
+        orgId: args.agent.orgId,
+        userId: args.userId,
+      });
+    },
+  );
 }
 
 async function buildCreateQueuedChatRunInput(
@@ -3163,28 +3256,17 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const generationTemplatePrompt =
-    await resolveQueuedMessageGenerationTemplatePrompt({
+  const { generationTemplatePrompt, presentationTemplateVolumes } =
+    await resolveQueuedMessageTemplateContext({
+      db: args.db,
+      orgId: args.agent.orgId,
+      userId: args.userId,
       input: args,
       userMessageProjection,
-      latestWebsiteTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.LatestWebsiteTemplates,
-        featureSwitchContext,
-      ),
+      featureSwitchContext,
     });
-  const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
-    "nested",
-    () => {
-      return loadComputerUseHostGrantForAutoSend({
-        db: args.db,
-        threadId: args.threadId,
-        orgId: args.agent.orgId,
-        userId: args.userId,
-      });
-    },
-  );
+  const computerUseHostGrant =
+    await resolveQueuedMessageComputerUseHostGrant(args);
   const prompt = queuedMessagePrompt({
     launchMaterial,
   });
@@ -3206,6 +3288,7 @@ async function buildCreateQueuedChatRunInput(
       generationTemplatePrompt,
       computerUseHostGrant?.displayName ?? null,
     ),
+    presentationTemplateVolumes,
     publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,

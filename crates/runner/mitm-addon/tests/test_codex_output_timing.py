@@ -13,6 +13,7 @@ from mitmproxy import http
 import codex_output_timing
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import openai_responses_events
 import usage
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
@@ -152,6 +153,46 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     serialized_requests = b"".join(request.body for request in requests)
     assert secret.encode() not in serialized_requests
     assert secret not in read_jsonl_text_after_flush(proxy_log)
+
+
+@pytest.mark.parametrize("terminal_event", sorted(openai_responses_events.TERMINAL_EVENTS))
+def test_responses_terminals_discard_unconfirmed_timing_candidate(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    terminal_event: str,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(flow)
+        _feed_client_event(flow, _event("response.create"))
+        feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.created",
+                    "response": {"id": "unconfirmed-response"},
+                }
+            ).encode(),
+        )
+        feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": terminal_event,
+                    "response": {"id": "unconfirmed-response"},
+                }
+            ).encode(),
+        )
+        feed_websocket_server_message(flow, _event("response.output_item.added"))
+
+    assert [
+        operation["action_type"]
+        for operation in _operations(_timing_requests(usage_webhook_server))
+    ] == [_FIRST_OUTPUT_ITEM_ADDED]
 
 
 def test_output_first_codex_reports_only_observed_content_free_milestones(

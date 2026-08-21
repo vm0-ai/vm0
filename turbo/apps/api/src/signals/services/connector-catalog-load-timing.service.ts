@@ -3,6 +3,7 @@ import type {
   ApiDispatchTimingCollector,
   ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
+import type { ConnectorCatalogRuntimeProjectionFallbackReason } from "./connector-catalog-runtime-projection.service";
 
 type AcceptedConnectorCatalogCacheOutcome = "hit" | "miss" | "in_flight";
 type AcceptedConnectorCatalogCacheMissReason =
@@ -10,6 +11,19 @@ type AcceptedConnectorCatalogCacheMissReason =
   | "catalog_identity_changed"
   | "capability_identity_changed";
 type ConnectorRuntimeSnapshotCacheOutcome = "hit" | "miss";
+type ConnectorRuntimeProjectionCacheOutcome =
+  | "hit"
+  | "miss"
+  | "in_flight"
+  | "not_applicable";
+type ConnectorRuntimeSelectionSource = "projection" | "full_fallback";
+type ConnectorRuntimeProjectionReadiness =
+  | "ready"
+  | "schema_unavailable"
+  | "not_ready"
+  | "unsupported"
+  | "compatibility_not_ready"
+  | "invalid_compatibility";
 type ConnectorCatalogValidationResult =
   | { readonly outcome: "attested" }
   | {
@@ -136,6 +150,27 @@ function acceptedCacheOutcomeRank(
   }
 }
 
+function projectionReadiness(
+  fallbackReason: ConnectorCatalogRuntimeProjectionFallbackReason | undefined,
+): ConnectorRuntimeProjectionReadiness {
+  switch (fallbackReason) {
+    case "schema_unavailable":
+    case "not_ready":
+    case "unsupported":
+    case "compatibility_not_ready":
+    case "invalid_compatibility": {
+      return fallbackReason;
+    }
+    case "incomplete":
+    case "malformed":
+    case "digest_mismatch":
+    case "unstable":
+    case undefined: {
+      return "ready";
+    }
+  }
+}
+
 export class ConnectorCatalogLoadTiming {
   private acceptedCacheOutcome:
     | AcceptedConnectorCatalogCacheOutcome
@@ -144,6 +179,13 @@ export class ConnectorCatalogLoadTiming {
     | AcceptedConnectorCatalogCacheMissReason
     | undefined;
   private runtimeCacheOutcome: ConnectorRuntimeSnapshotCacheOutcome | undefined;
+  private projectionCacheOutcome:
+    | ConnectorRuntimeProjectionCacheOutcome
+    | undefined;
+  private runtimeSelectionSource: ConnectorRuntimeSelectionSource | undefined;
+  private projectionFallbackReason:
+    | ConnectorCatalogRuntimeProjectionFallbackReason
+    | undefined;
   private validationResult: ConnectorCatalogValidationResult | undefined;
   private catalogRawSize: number | undefined;
   private catalogCompressedSize: number | undefined;
@@ -154,6 +196,7 @@ export class ConnectorCatalogLoadTiming {
   constructor(
     private readonly collector: ApiDispatchTimingCollector,
     private readonly requestedConnectorCount: number | undefined,
+    private readonly metadataConnectorCount: number | undefined = undefined,
   ) {}
 
   recordAcceptedCacheOutcome(
@@ -178,6 +221,16 @@ export class ConnectorCatalogLoadTiming {
     outcome: ConnectorRuntimeSnapshotCacheOutcome,
   ): void {
     this.runtimeCacheOutcome = outcome;
+  }
+
+  recordProjectionResult(args: {
+    readonly source: ConnectorRuntimeSelectionSource;
+    readonly cacheOutcome: ConnectorRuntimeProjectionCacheOutcome;
+    readonly fallbackReason?: ConnectorCatalogRuntimeProjectionFallbackReason;
+  }): void {
+    this.runtimeSelectionSource = args.source;
+    this.projectionCacheOutcome = args.cacheOutcome;
+    this.projectionFallbackReason = args.fallbackReason;
   }
 
   recordValidationResult(result: ConnectorCatalogValidationResult): void {
@@ -243,6 +296,27 @@ export class ConnectorCatalogLoadTiming {
         : {
             connector_catalog_runtime_cache_outcome: this.runtimeCacheOutcome,
           }),
+      ...(this.runtimeSelectionSource === undefined
+        ? {}
+        : {
+            connector_catalog_runtime_selection_source:
+              this.runtimeSelectionSource,
+          }),
+      ...(this.projectionCacheOutcome === undefined
+        ? {}
+        : {
+            connector_catalog_projection_cache_outcome:
+              this.projectionCacheOutcome,
+            connector_catalog_projection_readiness: projectionReadiness(
+              this.projectionFallbackReason,
+            ),
+          }),
+      ...(this.projectionFallbackReason === undefined
+        ? {}
+        : {
+            connector_catalog_projection_fallback_reason:
+              this.projectionFallbackReason,
+          }),
       ...(this.validationResult === undefined
         ? {}
         : {
@@ -284,6 +358,10 @@ export class ConnectorCatalogLoadTiming {
         this.requestedConnectorCount === undefined
           ? "not_applicable"
           : countBucket(this.requestedConnectorCount),
+      connector_catalog_metadata_connector_count_bucket:
+        this.metadataConnectorCount === undefined
+          ? "not_applicable"
+          : countBucket(this.metadataConnectorCount),
       ...(this.materializedConnectorCount === undefined
         ? {}
         : {

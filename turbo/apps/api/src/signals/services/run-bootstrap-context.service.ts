@@ -1,4 +1,5 @@
 import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type {
   FirewallPermissionGrant,
@@ -35,6 +36,7 @@ import {
   type UserFeatureSwitchOverrideRow,
 } from "./feature-switches.service";
 import { activeUserPermissionGrantCondition } from "./user-permission-grants.service";
+import { customConnectorPermissionBundleDependencySlug } from "./custom-connector-permission-bundle.service";
 import {
   workflowsForRunFromRows,
   type RunWorkflowRef,
@@ -82,6 +84,7 @@ interface BootstrapMetadataQueryRow {
   readonly detail: string | null;
   readonly action: FirewallPermissionGrantAction | null;
   readonly permissionNames: readonly string[] | null;
+  readonly permissionBundleRef: string | null;
 }
 
 export interface UserInfo {
@@ -107,6 +110,7 @@ export interface RunBootstrapContext extends AgentConnectorScope {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
+  readonly connectorCatalogMetadataSlugs: readonly ConnectorSlug[];
 }
 
 interface RunBootstrapSnapshotArgs {
@@ -140,6 +144,9 @@ function emptyBootstrapMetadataFields() {
     permissionNames: sql`NULL::text[]`
       .mapWith(nullableCustomConnectorPermissionNamesDecoder)
       .as("permission_names"),
+    permissionBundleRef: sql`NULL::text`
+      .mapWith(nullableTextDecoder)
+      .as("permission_bundle_ref"),
   };
 }
 
@@ -159,6 +166,9 @@ function zeroRunCustomConnectorMetadataQuery(
       permissionNames: sql`${userCustomConnectors.permissionNames}`
         .mapWith(nullableCustomConnectorPermissionNamesDecoder)
         .as("permission_names"),
+      permissionBundleRef: sql`${orgCustomConnectors.permissionBundleRef}`
+        .mapWith(nullableTextDecoder)
+        .as("permission_bundle_ref"),
     })
     .from(userCustomConnectors)
     .innerJoin(
@@ -328,6 +338,7 @@ export function materializeRunBootstrapContext(
   const featureSwitchRows: UserFeatureSwitchOverrideRow[] = [];
   const connectorRows: AgentConnectorSlugRow[] = [];
   const customConnectorRows: AgentCustomConnectorRow[] = [];
+  const connectorCatalogMetadataSlugs = new Set<ConnectorSlug>();
   const permissionGrants: FirewallPermissionGrant[] = [];
 
   for (const row of rows.metadataRows) {
@@ -367,6 +378,14 @@ export function materializeRunBootstrapContext(
           customConnectorId: row.id,
           permissionNames: row.permissionNames,
         });
+        if (row.permissionBundleRef !== null) {
+          const dependency = customConnectorPermissionBundleDependencySlug(
+            row.permissionBundleRef,
+          );
+          if (dependency !== null) {
+            connectorCatalogMetadataSlugs.add(dependency);
+          }
+        }
         break;
       }
       case "permission_grant": {
@@ -410,5 +429,6 @@ export function materializeRunBootstrapContext(
     ...connectorScope,
     workflows: workflowsForRunFromRows(rows.workflowRows, args.userId),
     permissionGrants,
+    connectorCatalogMetadataSlugs: [...connectorCatalogMetadataSlugs].sort(),
   };
 }

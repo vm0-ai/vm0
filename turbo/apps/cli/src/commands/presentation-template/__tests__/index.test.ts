@@ -18,9 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server";
 import { presentationTemplateCommand } from "../index";
 
-const PREPARE_URL = "http://localhost:3000/api/okou/uploads/prepare";
-const COMPLETE_URL = "http://localhost:3000/api/okou/uploads/complete";
-const PUBLISH_URL = "http://localhost:3000/api/okou/presentation-templates";
+const PREPARE_URL = "http://localhost:3000/api/uploads/prepare";
+const COMPLETE_URL = "http://localhost:3000/api/uploads/complete";
+const PUBLISH_URL = "http://localhost:3000/api/presentation-templates";
 const PUT_URL = "https://mock-r2.test/upload/:uploadId";
 const TEMPLATE_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -156,8 +156,6 @@ describe("okou presentation-template publish", () => {
         return HttpResponse.json({
           id: TEMPLATE_ID,
           title: published.title,
-          status: "ready",
-          error: null,
           sourceFilename: "brand-system.pptx",
           coverUrl: "https://presigned.example.com/cover.png",
           pageCount: published.pageFileIds.length,

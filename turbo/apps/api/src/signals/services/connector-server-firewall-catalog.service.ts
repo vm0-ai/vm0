@@ -417,7 +417,7 @@ function acceptedRoutingMetadata(args: {
 }
 
 function acceptedEntries(args: {
-  readonly artifact: ConnectorCatalogArtifact;
+  readonly connectors: readonly ConnectorCatalogArtifactConnector[];
   readonly runtimeMethodsForSlug: (
     connectorSlug: ConnectorSlug,
   ) => readonly ConnectorAuthMethodRuntimeConfig[];
@@ -426,7 +426,7 @@ function acceptedEntries(args: {
     ConnectorSlug,
     AcceptedConnectorServerFirewallEntry
   >();
-  for (const connector of args.artifact.connectors) {
+  for (const connector of args.connectors) {
     if (connector.firewall.kind === "none") {
       continue;
     }
@@ -579,8 +579,20 @@ export function createAcceptedConnectorServerFirewallCatalog(args: {
     connectorSlug: ConnectorSlug,
   ) => readonly ConnectorAuthMethodRuntimeConfig[];
 }): ConnectorServerFirewallCatalog {
+  return createAcceptedConnectorServerFirewallCatalogFromConnectors({
+    connectors: args.artifact.connectors,
+    runtimeMethodsForSlug: args.runtimeMethodsForSlug,
+  });
+}
+
+export function createAcceptedConnectorServerFirewallCatalogFromConnectors(args: {
+  readonly connectors: readonly ConnectorCatalogArtifactConnector[];
+  readonly runtimeMethodsForSlug: (
+    connectorSlug: ConnectorSlug,
+  ) => readonly ConnectorAuthMethodRuntimeConfig[];
+}): ConnectorServerFirewallCatalog {
   const entries = acceptedEntries({
-    artifact: args.artifact,
+    connectors: args.connectors,
     runtimeMethodsForSlug: args.runtimeMethodsForSlug,
   });
   const connectorSlugs = [...entries.keys()].sort(compareStrings);

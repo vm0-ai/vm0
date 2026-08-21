@@ -67,8 +67,10 @@ export const imageModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ImageModelSelection] ?? false;
 });
 
-export const composerImeSubmitFlushEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ComposerImeSubmitFlush] ?? false;
+export const composerSubmitDomReconcileEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ComposerSubmitDomReconcile] ?? false
+  );
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {

@@ -750,7 +750,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.http.get(
-      "*/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
+      "*/api/mail/drafts/:mailDraftId/attachments/:partId",
       ({ params }) => {
         expect(params.mailDraftId).toBe(mailDraftId);
         if (params.partId === "1") {

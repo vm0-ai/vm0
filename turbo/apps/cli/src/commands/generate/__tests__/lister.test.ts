@@ -115,7 +115,7 @@ function stubConnectorsWithCatalogSlugs(
 
 function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
+    `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -141,7 +141,7 @@ function stubBillingStatus(
   videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
-  return http.get("http://localhost:3000/api/okou/billing/status", () => {
+  return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
       tier,
       canBuyCredits: videoGenerationAllowed,
@@ -243,7 +243,7 @@ describe("okou generate lister", () => {
     expect(text).toContain("Okou  Built-in image generation");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
-      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
+      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, nano-banana-2, nano-banana-2-lite; BytePlus: seedream5-pro, seedream5-lite",
     );
     expect(text).toContain("Use: okou generate image --provider built-in -h");
     expect(text).not.toContain(

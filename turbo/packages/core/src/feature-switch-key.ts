@@ -19,6 +19,7 @@ export enum FeatureSwitchKey {
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   JoggAiBuiltIn = "joggAiBuiltIn",
+  ManagedSocialKit = "managedSocialKit",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
@@ -63,6 +64,7 @@ export enum FeatureSwitchKey {
   ChatRunContinuationPresentation = "chatRunContinuationPresentation",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   HomeStartCards = "homeStartCards",
+  HomeGrowthEntry = "homeGrowthEntry",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
@@ -84,5 +86,5 @@ export enum FeatureSwitchKey {
   LatestWebsiteTemplates = "latestWebsiteTemplates",
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
-  ComposerImeSubmitFlush = "composerImeSubmitFlush",
+  ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
 }

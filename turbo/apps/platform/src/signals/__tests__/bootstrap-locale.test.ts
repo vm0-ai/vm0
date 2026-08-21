@@ -577,12 +577,41 @@ describe("bootstrap locale", () => {
         return $.onboarding.workflows["watch-brand-mentions"].steps.three
           .description;
       }),
-    ).toBe("Zero veröffentlicht jede Erwähnung mit Link und Kontext.");
+    ).toBe("Zero speichert den Plan und veröffentlicht nie ohne Genehmigung.");
     expect(
       i18n.t(($) => {
         return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
       }),
-    ).toBe("Zero prüft und wartet auf CI");
+    ).toBe("Zero überprüft die Änderungen.");
+
+    await context.store.set(setLocale$, "hi-IN", context.signal);
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["summarize-zendesk-tickets-daily"].title;
+      }),
+    ).toBe("FAQ को डिजिटल-ह्यूमन सपोर्ट वीडियो में बदलें");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["auto-merge-github-prs"].title;
+      }),
+    ).toBe("GitHub PR अपने-आप merge करें");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["post-github-updates-slack"].title;
+      }),
+    ).toBe("Google Cloud IAM और services का audit करें");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["build-weekly-deck-gamma"].title;
+      }),
+    ).toBe("QuickBooks finance dashboard बनाएँ");
+
+    const hindiWorkflowCopy = JSON.stringify(
+      resources["hi-IN"].common.onboarding.workflows,
+    );
+    expect(hindiWorkflowCopy).not.toMatch(
+      /suggested_questions|hå|Traffik|गोल्डेन ग्लाउच|अटो-लीन्डर/iu,
+    );
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

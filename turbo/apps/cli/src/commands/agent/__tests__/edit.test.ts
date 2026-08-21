@@ -46,11 +46,11 @@ describe("okou agent edit command", () => {
     it("should update display name and show success", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
@@ -75,11 +75,11 @@ describe("okou agent edit command", () => {
     it("should update agent metadata without workflow attachments in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -103,11 +103,11 @@ describe("okou agent edit command", () => {
     it("should update visibility", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ ...mockAgent, visibility: "public" });
@@ -129,11 +129,11 @@ describe("okou agent edit command", () => {
     it("should update avatar with preset and include it in request body", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -157,11 +157,11 @@ describe("okou agent edit command", () => {
     it("should compose svg avatar from descriptive flags", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent);
@@ -190,11 +190,11 @@ describe("okou agent edit command", () => {
       const agentWithAvatar = { ...mockAgent, avatarUrl: "svg:r2s1h3c3f1m" };
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(agentWithAvatar);
         }),
         http.put(
-          "http://localhost:3000/api/okou/agents/my-agent",
+          "http://localhost:3000/api/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(agentWithAvatar);
@@ -228,11 +228,11 @@ describe("okou agent edit command", () => {
       it("should upload instructions content from file and show success message", async () => {
         let capturedInstructionsContent: string | undefined;
         server.use(
-          http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+          http.get("http://localhost:3000/api/agents/my-agent", () => {
             return HttpResponse.json(mockAgent);
           }),
           http.put(
-            "http://localhost:3000/api/okou/agents/my-agent/instructions",
+            "http://localhost:3000/api/agents/my-agent/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
               capturedInstructionsContent = body.content;
@@ -338,7 +338,7 @@ describe("okou agent edit command", () => {
   describe("error handling", () => {
     it("should handle not found error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/missing", () => {
+        http.get("http://localhost:3000/api/agents/missing", () => {
           return HttpResponse.json(
             { error: { message: "Agent not found", code: "NOT_FOUND" } },
             { status: 404 },

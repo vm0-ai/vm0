@@ -9,6 +9,11 @@ use crate::paths::{
 use super::WorkspaceImageCache;
 use super::metadata::WorkspaceCacheMetadata;
 
+const METADATA_FILE_NAME: &str = "metadata.json";
+const CURRENT_IMAGE_FILE_NAME: &str = "current.ext4";
+const SESSION_HISTORY_SIDECAR_FILE_NAME: &str = "session-history.blob";
+const SESSION_HISTORY_SIDECAR_METADATA_FILE_NAME: &str = "session-history.metadata.json";
+
 #[derive(Clone, Debug)]
 pub(crate) struct CacheEntryPaths {
     entry_dir: PathBuf,
@@ -19,13 +24,36 @@ pub(crate) struct CacheEntryPaths {
 
 impl CacheEntryPaths {
     pub(crate) fn new(cache_dir: &Path, cache_key: &str) -> Self {
-        let entry_dir = cache_dir.join(cache_key);
+        Self::from_entry_dir(Self::entry_dir_for(cache_dir, cache_key))
+    }
+
+    pub(super) fn from_entry_dir(entry_dir: PathBuf) -> Self {
         Self {
-            metadata: entry_dir.join("metadata.json"),
-            current_image: entry_dir.join("current.ext4"),
-            session_history_sidecar_metadata: entry_dir.join("session-history.metadata.json"),
+            metadata: entry_dir.join(METADATA_FILE_NAME),
+            current_image: entry_dir.join(CURRENT_IMAGE_FILE_NAME),
+            session_history_sidecar_metadata: entry_dir
+                .join(SESSION_HISTORY_SIDECAR_METADATA_FILE_NAME),
             entry_dir,
         }
+    }
+
+    fn entry_dir_for(cache_dir: &Path, cache_key: &str) -> PathBuf {
+        let mut entry_dir = cache_dir.to_path_buf();
+        entry_dir.push(cache_key);
+        entry_dir
+    }
+
+    fn child_path(mut entry_dir: PathBuf, file_name: &str) -> PathBuf {
+        entry_dir.push(file_name);
+        entry_dir
+    }
+
+    fn child_for(cache_dir: &Path, cache_key: &str, file_name: &str) -> PathBuf {
+        Self::child_path(Self::entry_dir_for(cache_dir, cache_key), file_name)
+    }
+
+    fn temporary_path(entry_dir: PathBuf, file_name: &str, run_id: RunId) -> PathBuf {
+        Self::child_path(entry_dir, &format!("{file_name}.tmp.{run_id}"))
     }
 
     pub(super) fn lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
@@ -49,21 +77,19 @@ impl CacheEntryPaths {
     }
 
     pub(crate) fn tmp_image(&self, run_id: RunId) -> PathBuf {
-        self.entry_dir.join(format!("current.ext4.tmp.{run_id}"))
+        Self::temporary_path(self.entry_dir.clone(), CURRENT_IMAGE_FILE_NAME, run_id)
     }
 
     pub(crate) fn tmp_metadata(&self, run_id: RunId) -> PathBuf {
-        self.entry_dir.join(format!("metadata.json.tmp.{run_id}"))
-    }
-
-    pub(super) fn tmp_session_history_sidecar(&self, run_id: RunId) -> PathBuf {
-        self.entry_dir
-            .join(format!("session-history.blob.tmp.{run_id}"))
+        Self::temporary_path(self.entry_dir.clone(), METADATA_FILE_NAME, run_id)
     }
 
     pub(super) fn tmp_session_history_sidecar_metadata(&self, run_id: RunId) -> PathBuf {
-        self.entry_dir
-            .join(format!("session-history.metadata.json.tmp.{run_id}"))
+        Self::temporary_path(
+            self.entry_dir.clone(),
+            SESSION_HISTORY_SIDECAR_METADATA_FILE_NAME,
+            run_id,
+        )
     }
 }
 
@@ -77,23 +103,23 @@ impl WorkspaceImageCache {
     }
 
     pub(super) fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
-        self.entry_paths(cache_key).entry_dir().to_path_buf()
+        CacheEntryPaths::entry_dir_for(self.workspace_image_cache_dir(), cache_key)
     }
 
     pub(super) fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        self.entry_paths(cache_key).metadata().to_path_buf()
+        CacheEntryPaths::child_for(
+            self.workspace_image_cache_dir(),
+            cache_key,
+            METADATA_FILE_NAME,
+        )
     }
 
     pub(super) fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        self.entry_paths(cache_key).current_image().to_path_buf()
-    }
-
-    pub(super) fn workspace_image_cache_tmp_image(
-        &self,
-        cache_key: &str,
-        run_id: RunId,
-    ) -> PathBuf {
-        self.entry_paths(cache_key).tmp_image(run_id)
+        CacheEntryPaths::child_for(
+            self.workspace_image_cache_dir(),
+            cache_key,
+            CURRENT_IMAGE_FILE_NAME,
+        )
     }
 
     pub(super) fn workspace_image_cache_tmp_sidecar(
@@ -101,17 +127,11 @@ impl WorkspaceImageCache {
         cache_key: &str,
         run_id: RunId,
     ) -> PathBuf {
-        self.entry_paths(cache_key)
-            .tmp_session_history_sidecar(run_id)
-    }
-
-    pub(super) fn workspace_image_cache_tmp_sidecar_metadata(
-        &self,
-        cache_key: &str,
-        run_id: RunId,
-    ) -> PathBuf {
-        self.entry_paths(cache_key)
-            .tmp_session_history_sidecar_metadata(run_id)
+        CacheEntryPaths::temporary_path(
+            CacheEntryPaths::entry_dir_for(self.workspace_image_cache_dir(), cache_key),
+            SESSION_HISTORY_SIDECAR_FILE_NAME,
+            run_id,
+        )
     }
 
     pub(super) fn scoped_cache_key(

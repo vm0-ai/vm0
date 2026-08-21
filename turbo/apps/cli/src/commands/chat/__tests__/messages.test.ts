@@ -27,8 +27,8 @@ import { server } from "../../../mocks/server";
 import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
-const SNAPSHOT_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/event-snapshot`;
-const ROWS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/event-rows`;
+const SNAPSHOT_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/event-snapshot`;
+const ROWS_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/event-rows`;
 const SNAPSHOT_DOWNLOAD_URL =
   "https://r2.example.test/chat-events/snapshot.ndjson.gz";
 const CHAT_EVENT_SCHEMA_HEADERS = {

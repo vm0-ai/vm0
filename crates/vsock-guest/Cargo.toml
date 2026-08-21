@@ -1,6 +1,6 @@
 [package]
 name = "vsock-guest"
-version = "0.19.92"
+version = "0.19.95"
 edition.workspace = true
 
 [dependencies]

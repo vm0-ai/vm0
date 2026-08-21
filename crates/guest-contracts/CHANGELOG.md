@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.12...guest-contracts-v0.11.13) (2026-08-21)
+
+
+### Bug Fixes
+
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
 ## [0.11.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.11...guest-contracts-v0.11.12) (2026-08-20)
 
 

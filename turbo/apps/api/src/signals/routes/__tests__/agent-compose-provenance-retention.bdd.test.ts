@@ -11,6 +11,7 @@ import {
   readAgentComposeVersionProvenanceFixture,
   readAgentComposeVersionReferenceCountsFixture,
   readAgentHeadVersionIdFixture,
+  readAgentRunVersionFixture,
   readCheckpointAgentComposeSnapshotBytesFixture,
   readCheckpointAgentComposeSnapshotFixture,
   setAgentComposeVersionCreatorFixture,
@@ -154,7 +155,8 @@ describe("Agent Compose nullable transition provenance", () => {
     });
     const continuationRun = await runs.readRun(actor, continuation.runId);
     expect(continuation.sessionId).toBe(firstRun.sessionId);
-    expect(continuationRun.agentComposeVersionId).toBe(
+    expect(continuationRun).not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(continuation.runId)).resolves.toBe(
       replacementHead.versionId,
     );
 
@@ -240,22 +242,23 @@ describe("Agent Compose nullable transition provenance", () => {
     await expect(
       bdd.readAgent(survivor, survivingAgent.agentId),
     ).resolves.toMatchObject({ agentId: survivingAgent.agentId });
-    await expect(
-      runs.readRun(survivor, survivingRun.runId),
-    ).resolves.toMatchObject({
-      runId: survivingRun.runId,
-      agentComposeVersionId: sharedVersionId,
-    });
+    const survivingRunRead = await runs.readRun(survivor, survivingRun.runId);
+    expect(survivingRunRead).not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(survivingRun.runId)).resolves.toBe(
+      sharedVersionId,
+    );
 
     const newRun = await runs.createRun(survivor, {
       agentId: survivingAgent.agentId,
       prompt: "resolve the retained nullable head",
       modelProvider: "anthropic-api-key",
     });
-    await expect(runs.readRun(survivor, newRun.runId)).resolves.toMatchObject({
-      runId: newRun.runId,
-      agentComposeVersionId: sharedVersionId,
-    });
+    await expect(
+      runs.readRun(survivor, newRun.runId),
+    ).resolves.not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(newRun.runId)).resolves.toBe(
+      sharedVersionId,
+    );
 
     const history = `bdd session history ${survivingRun.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");

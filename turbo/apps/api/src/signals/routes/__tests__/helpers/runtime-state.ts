@@ -154,6 +154,14 @@ export async function setVm0ManagedCandidateCooldownFixture(
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
+  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+}
+
+export function registerVm0ManagedCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+): void {
   onTestFinished(async () => {
     await postAction(context, {
       action: "delete-vm0-managed-candidate-cooldown",
@@ -178,34 +186,6 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
-export async function validateBrowserPublicBrandRollout(
-  context: TestContext,
-): Promise<{
-  readonly schemaAvailable: boolean;
-  readonly previousApiPublicBrand: "vm0" | "okou" | undefined;
-  readonly newApiPublicBrandPersisted: boolean;
-  readonly newApiPublicBrand: "vm0" | "okou" | undefined;
-  readonly newApiPublicBrandAfterSchemaArrival: "vm0" | "okou" | undefined;
-}> {
-  const response = await postAction(context, {
-    action: "validate-browser-public-brand-rollout",
-  });
-  if (response.browser_public_brand_schema_available === undefined) {
-    throw new Error(
-      "validateBrowserPublicBrandRollout missing schema availability",
-    );
-  }
-  return {
-    schemaAvailable: response.browser_public_brand_schema_available,
-    previousApiPublicBrand: response.previous_api_browser_public_brand,
-    newApiPublicBrandPersisted:
-      response.new_api_browser_public_brand_persisted ?? false,
-    newApiPublicBrand: response.new_api_browser_public_brand,
-    newApiPublicBrandAfterSchemaArrival:
-      response.new_api_browser_public_brand_after_schema_arrival,
-  };
-}
-
 export async function readUsagePackInvitationSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {
@@ -218,6 +198,22 @@ export async function readUsagePackInvitationSchemaAvailable(
     );
   }
   return response.usage_pack_invitation_schema_available;
+}
+
+export async function readConnectorCatalogRuntimeProjectionSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-connector-catalog-runtime-projection-schema-state",
+  });
+  if (
+    response.connector_catalog_runtime_projection_schema_available === undefined
+  ) {
+    throw new Error(
+      "readConnectorCatalogRuntimeProjectionSchemaAvailable missing schema availability",
+    );
+  }
+  return response.connector_catalog_runtime_projection_schema_available;
 }
 
 export async function readUsagePackPurchaseSerializationSchemaAvailable(
@@ -661,6 +657,26 @@ export async function readRunApiStart(
     throw new Error("readRunApiStart missing api_started_at");
   }
   return response.api_started_at ?? null;
+}
+
+/**
+ * Move one owned running run to an elapsed-time boundary and execute the
+ * production steering flow without scanning rows owned by other test files.
+ */
+export async function steerRunTimeBudgetFixture(
+  context: TestContext,
+  runId: string,
+  elapsedMs: number,
+): Promise<NonNullable<TestRuntimeStateActionResponse["run_time_budget"]>> {
+  const response = await postAction(context, {
+    action: "steer-run-time-budget",
+    run_id: runId,
+    elapsed_ms: elapsedMs,
+  });
+  if (!response.run_time_budget) {
+    throw new Error("steerRunTimeBudgetFixture missing run_time_budget");
+  }
+  return response.run_time_budget;
 }
 
 export async function readThreadSessionBinding(

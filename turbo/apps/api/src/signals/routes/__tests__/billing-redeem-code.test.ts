@@ -48,7 +48,7 @@ function setAdminSession(): SessionFixture {
   return fixture;
 }
 
-describe("POST /api/zero/billing/redeem-code", () => {
+describe("POST /api/billing/redeem-code", () => {
   beforeEach(() => {
     mockOptionalEnv("ATOM_URL", ATOM_URL);
     mockOptionalEnv("VM0_MACHINE_SECRET_KEY", ATOM_MACHINE_SECRET_KEY);

@@ -5,9 +5,9 @@
  * Catches string literals and template literals containing /api/ paths
  * that do not start with the canonical /api/okou/ namespace.
  *
- * Good: "/api/okou/billing/status"
- * Bad: "/api/zero/billing/status"
- * Bad: "/api/billing/status"
+ * Good: "/api/okou/org"
+ * Bad: "/api/zero/org"
+ * Bad: "/api/org"
  *
  * #28278 moves product routes off the brand namespace one slice at a time, so
  * a neutral path is a violation until its contract has actually moved. The
@@ -41,6 +41,60 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28459
+  "/api/chat-threads",
+  "/api/chat/events",
+  "/api/chat/search",
+  "/api/image-share/x",
+  "/api/queue-position",
+  "/api/shared-threads",
+  // #28457. One prefix rather than the 34 moved paths: every one of them sits
+  // under `/api/billing/`, and nothing else does.
+  "/api/billing",
+  // #28460. `/api/connectors` also covers the OAuth callback below it, which
+  // was already neutral: once the connector family moves, the prefix a caller
+  // writes no longer distinguishes the two.
+  "/api/connector-catalog",
+  "/api/connectors",
+  "/api/custom-connectors",
+  "/api/model-provider-connections",
+  "/api/user-permission-grants",
+  // #28464. The Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // paths a provider console holds are not in this slice and stay branded, so
+  // they are deliberately absent here. #28544 moved the two Feishu paths no
+  // console held, and neither needs an entry either: the platform reaches the
+  // OAuth callback through its contract rather than as a literal, and the
+  // events endpoint has no platform caller at all — Feishu posts to it.
+  "/api/feishu/connect",
+  "/api/feishu/oauth/connect",
+  "/api/slack/channels",
+  "/api/slack/oauth/connect",
+  "/api/slack/oauth/install",
+  "/api/teams/connect",
+  "/api/teams/oauth/connect",
+  // #28465. The desktop release page and DMG download. Listed as the shared
+  // prefix rather than the two paths, because the channel, platform and arch
+  // parameters are already substituted by the time the download button builds
+  // its URL.
+  "/api/desktop/updates",
+  // #28462
+  "/api/feature-switches",
+  "/api/model-policies",
+  "/api/model-providers",
+  "/api/org",
+  "/api/usage/members",
+  "/api/usage/record",
+  // #28461
+  "/api/agents",
+  "/api/morning-brief",
+  "/api/workflow-automations",
+  "/api/workflows",
+  // #28463
+  "/api/mail/drafts",
+  "/api/uploads",
+  "/api/voice-io",
+  "/api/web/download-file",
+  "/api/web/file-url",
 ];
 
 /**

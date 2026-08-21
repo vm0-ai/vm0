@@ -192,7 +192,7 @@ beforeEach(() => {
   context.mocks.axiom.query.mockResolvedValue([]);
 });
 
-describe("POST /api/zero/connectors/diagnostics/check", () => {
+describe("POST /api/connectors/diagnostics/check", () => {
   it("requires organization auth and both Zero capabilities", async () => {
     const body = {
       mode: "url" as const,
@@ -294,7 +294,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     const malformed = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request("/api/zero/connectors/diagnostics/check", {
+    }).request("/api/connectors/diagnostics/check", {
       method: "POST",
       headers: {
         authorization: "Bearer clerk-session",

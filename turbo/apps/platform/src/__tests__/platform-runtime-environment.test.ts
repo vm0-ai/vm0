@@ -158,7 +158,7 @@ describe("portable platform runtime environment", () => {
     expect(
       runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
     ).toBe(
-      "https://api.okou.ai/api/okou/web/download-file?file_id=attachment-photo",
+      "https://api.okou.ai/api/web/download-file?file_id=attachment-photo",
     );
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");

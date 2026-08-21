@@ -1,6 +1,6 @@
 [package]
 name = "nbd-cow"
-version = "0.4.77"
+version = "0.4.78"
 edition.workspace = true
 
 [[bin]]
@@ -21,6 +21,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 which = { workspace = true, optional = true }
 
 [dev-dependencies]

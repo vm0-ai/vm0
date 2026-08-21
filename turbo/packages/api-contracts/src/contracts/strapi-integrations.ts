@@ -30,7 +30,7 @@ const integrationIdParams = z.object({ integrationId: z.string().uuid() });
 export const strapiIntegrationsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/integrations/strapi",
+    path: "/api/integrations/strapi",
     headers: authHeadersSchema,
     responses: {
       200: z.array(strapiIntegrationSchema),
@@ -41,7 +41,7 @@ export const strapiIntegrationsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/okou/integrations/strapi",
+    path: "/api/integrations/strapi",
     headers: authHeadersSchema,
     body: z.object({
       name: z.string().trim().min(1).max(128),
@@ -60,7 +60,7 @@ export const strapiIntegrationsContract = c.router({
   },
   revealSecret: {
     method: "POST",
-    path: "/api/okou/integrations/strapi/:integrationId/secret",
+    path: "/api/integrations/strapi/:integrationId/secret",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -74,7 +74,7 @@ export const strapiIntegrationsContract = c.router({
   },
   checkTest: {
     method: "POST",
-    path: "/api/okou/integrations/strapi/:integrationId/check-test",
+    path: "/api/integrations/strapi/:integrationId/check-test",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -91,7 +91,7 @@ export const strapiIntegrationsContract = c.router({
   },
   remove: {
     method: "DELETE",
-    path: "/api/okou/integrations/strapi/:integrationId",
+    path: "/api/integrations/strapi/:integrationId",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -109,7 +109,7 @@ export const strapiIntegrationsContract = c.router({
 export const strapiEventsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/strapi/events/:integrationId",
+    path: "/api/strapi/events/:integrationId",
     pathParams: integrationIdParams,
     headers: z.object({
       authorization: z.string().optional(),

@@ -30,7 +30,7 @@ export const connectors = pgTable(
     connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     displayName: varchar("display_name", { length: 255 }),
-    isDefault: boolean("is_default").default(true),
+    isDefault: boolean("is_default").default(true).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
     storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
 
@@ -57,8 +57,14 @@ export const connectors = pgTable(
         .where(
           sql`${table.connectorSlug} = 'stripe' AND ${table.authMethod} = 'oauth'`,
         ),
-      uniqueIndex("idx_connectors_org_user_custom_connector")
-        .on(table.orgId, table.userId, table.customConnectorId)
+      index("idx_connectors_org_user_custom_connector")
+        .on(
+          table.orgId,
+          table.userId,
+          table.customConnectorId,
+          table.createdAt,
+          table.id,
+        )
         .where(sql`${table.customConnectorId} IS NOT NULL`),
       uniqueIndex("idx_connectors_org_user_custom_connector_default")
         .on(table.orgId, table.userId, table.customConnectorId)
@@ -84,8 +90,14 @@ export const connectors = pgTable(
         "chk_connectors_identity",
         sql`num_nonnulls(${table.connectorSlug}, ${table.customConnectorId}) = 1`,
       ),
-      uniqueIndex("idx_connectors_org_user_slug")
-        .on(table.orgId, table.userId, table.connectorSlug)
+      index("idx_connectors_org_user_slug")
+        .on(
+          table.orgId,
+          table.userId,
+          table.connectorSlug,
+          table.createdAt,
+          table.id,
+        )
         .where(sql`${table.connectorSlug} IS NOT NULL`),
       uniqueIndex("idx_connectors_org_user_slug_default")
         .on(table.orgId, table.userId, table.connectorSlug)

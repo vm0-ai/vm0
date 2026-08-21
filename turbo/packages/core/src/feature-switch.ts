@@ -5,7 +5,7 @@
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
  * NOT AN AUTHORIZATION BOUNDARY. Every registered switch accepts user overrides
- * through `POST /api/zero/feature-switches`. For money-granting, credential, or
+ * through `POST /api/feature-switches`. For money-granting, credential, or
  * privilege-escalation endpoints, gate with a hard identity check (e.g.
  * `isStaffOrg()` from `./staff-org`) instead of this system.
  */
@@ -61,7 +61,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.BoxConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Box file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -112,6 +112,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
     enabled: true,
+  },
+  [FeatureSwitchKey.ManagedSocialKit]: {
+    maintainer: "lancy@vm0.ai",
+    description: "Enable vm0-managed SocialKit data and analysis operations",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -332,6 +338,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SavedBillingCreditPurchase]: {
     maintainer: "yuma@vm0.ai",
@@ -371,12 +378,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComposerImeSubmitFlush]: {
+  [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Protect in-flight IME composition in the chat composer: skip unchanged feedback note DOM writes and flush pending DOM changes before reading a submission.",
+      "Re-read every composer block from the live contenteditable before serializing a submission, recovering text a broken mobile composition left only in the DOM, and report each recovery.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
@@ -423,6 +430,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Replace the chat landing page's suggested prompts with entry cards for each thing the agent can make.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.HomeGrowthEntry]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the home growth entry for Slack, Telegram, phone, member invites, and credits.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

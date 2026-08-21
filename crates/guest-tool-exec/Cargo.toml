@@ -1,0 +1,19 @@
+[package]
+name = "guest-tool-exec"
+version = "0.1.1"
+edition.workspace = true
+description = "Explicit shell-tool cgroup launcher and runtime hook adapter for VM0 guests"
+
+[dependencies]
+guest-contracts.workspace = true
+libc.workspace = true
+process-control-ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shell-quote.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

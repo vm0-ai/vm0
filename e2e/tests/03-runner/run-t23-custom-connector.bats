@@ -13,7 +13,7 @@ setup() {
 teardown() {
     runner_e2e_teardown_test
     if [[ -n "${CUSTOM_CONNECTOR_ID:-}" ]]; then
-        runner_api_curl "/api/okou/custom-connectors/${CUSTOM_CONNECTOR_ID}" \
+        runner_api_curl "/api/custom-connectors/${CUSTOM_CONNECTOR_ID}" \
             -X DELETE \
             >/dev/null 2>&1 || true
     fi
@@ -48,7 +48,7 @@ teardown() {
             queryInjections: [],
             authMode: "manual"
         }')
-    run runner_api_curl "/api/okou/custom-connectors" \
+    run runner_api_curl "/api/custom-connectors" \
         -X POST \
         -d "$connector_payload"
     echo "$output"
@@ -64,7 +64,7 @@ teardown() {
         --arg secret "$probe_secret" \
         '{values: [{key: "probe_secret", kind: "secret", value: $secret}]}')
     run runner_api_curl \
-        "/api/okou/custom-connectors/${CUSTOM_CONNECTOR_ID}/values" \
+        "/api/custom-connectors/${CUSTOM_CONNECTOR_ID}/values" \
         -X PUT \
         -d "$values_payload"
     assert_success
@@ -85,7 +85,7 @@ teardown() {
                 permissionNames: []
             }]
         }')
-    run runner_api_curl "/api/okou/agents/${AGENT_ID}/custom-connectors" \
+    run runner_api_curl "/api/agents/${AGENT_ID}/custom-connectors" \
         -X PUT \
         -d "$grants_payload"
     echo "$output"

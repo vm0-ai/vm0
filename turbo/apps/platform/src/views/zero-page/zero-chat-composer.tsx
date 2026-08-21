@@ -23,6 +23,10 @@ import {
   presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/zero-page/presentation-template-import.ts";
+import {
+  ownPresentationTemplates$,
+  type PresentationTemplateSummary,
+} from "../../signals/zero-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -234,7 +238,6 @@ import {
 import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CONFIGS,
-  IMAGE_MODEL_VARIANT_GROUPS,
   PUBLIC_IMAGE_MODELS,
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
@@ -4820,6 +4823,12 @@ function IllustrationTemplateGrid({
  * Hands the chosen deck to the composer, which attaches it, sends it, and
  * navigates into the new thread. Importing is the ordinary chat path with the
  * message written for the user, not a separate upload flow.
+ *
+ * The import owns the root signal, like the ordinary send and upload controls:
+ * from the new-thread composer it outlives the page it started on. A page
+ * signal is aborted by the very navigation this send performs, which would kill
+ * the in-flight thread create and the run that follows it, leaving a thread the
+ * user can see but the server never recorded.
  */
 function PptImportCard({
   signals,
@@ -4829,7 +4838,7 @@ function PptImportCard({
   onImported: () => void;
 }) {
   const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
   const importDeck = useSet(importPresentationTemplateDeck$);
   const label = t(($) => {
     return $.artifacts.templates.importDeck;
@@ -4865,7 +4874,7 @@ function PptImportCard({
             }
             onImported();
             detach(
-              importDeck({ signals, file }, pageSignal),
+              importDeck({ signals, file }, rootSignal),
               Reason.DomCallback,
             );
           }}
@@ -4880,6 +4889,65 @@ function PptImportCard({
         </span>
       </span>
     </label>
+  );
+}
+
+/**
+ * A deck this user already imported, drawn from its persisted page images.
+ *
+ * The card carries no `Use` control yet. A private template is selected as
+ * `user-template:<uuid>`, and the API that resolves that id for a generation
+ * run is #26238; offering the button first would move the failure from a
+ * disabled control into the run the user just paid for.
+ */
+function ImportedPptCard({
+  template,
+}: {
+  template: PresentationTemplateSummary;
+}) {
+  const { t } = useTranslation();
+  const label = t(
+    ($) => {
+      return $.artifacts.templates.slidePreview;
+    },
+    {
+      title: template.title,
+    },
+  );
+  return (
+    <div
+      className="group/tile relative"
+      data-imported-presentation-template={template.id}
+    >
+      <div
+        className={cn(TEMPLATE_TILE_MEDIA, TEMPLATE_TILE_RING, "aspect-[16/9]")}
+      >
+        {template.coverUrl === null ? null : (
+          <img
+            alt={label}
+            title={label}
+            src={template.coverUrl}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="pointer-events-none h-full w-full bg-background object-cover"
+          />
+        )}
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{template.title}</p>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {t(
+            ($) => {
+              return $.artifacts.templates.importedSlides;
+            },
+            {
+              count: template.pageCount,
+            },
+          )}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -4901,11 +4969,17 @@ function PptTemplateGrid({
   signals: ComposerSignals;
 }) {
   const importEnabled = useGet(presentationTemplateImportEnabled$);
+  // Import tile, then this user's own decks, then the built-in templates: the
+  // decks a user made are the ones they came back for.
+  const importedTemplates = useLastResolved(ownPresentationTemplates$) ?? [];
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {importEnabled ? (
         <PptImportCard signals={signals} onImported={onImported} />
       ) : null}
+      {importedTemplates.map((template) => {
+        return <ImportedPptCard key={template.id} template={template} />;
+      })}
       {items.map((item) => {
         return (
           <PptCard
@@ -7558,59 +7632,25 @@ function composerImageModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  variantLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
   tabLabel: string;
-  /** Segment aria-label, resolved per family rather than for a single one. */
-  variantLabel: (family: string) => string;
 }): MediaModelPanelCategory {
-  // Only base models get a row; the rest of a family lives on that row's
-  // segment control.
-  const variantOnlyModels = new Set<ImageModel>(
-    IMAGE_MODEL_VARIANT_GROUPS.flatMap((group) => {
-      return group.models.slice(1);
-    }),
-  );
   return {
     id: "image",
     label,
     tabLabel,
-    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
-      return !variantOnlyModels.has(candidate);
-    }).map((candidate) => {
-      const group = IMAGE_MODEL_VARIANT_GROUPS.find((candidateGroup) => {
-        return candidateGroup.models[0] === candidate;
-      });
-      const rowLabel = group?.label ?? IMAGE_MODEL_CONFIGS[candidate].label;
+    options: PUBLIC_IMAGE_MODELS.map((candidate) => {
       return {
         key: candidate,
-        label: rowLabel,
+        label: IMAGE_MODEL_CONFIGS[candidate].label,
         icon: <ImageModelBrandIcon model={candidate} />,
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);
         },
-        ...(group
-          ? {
-              variant: {
-                label: variantLabel(rowLabel),
-                options: group.models.map((variantModel) => {
-                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7621,32 +7661,17 @@ function composerVideoModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  variantLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   tabLabel: string;
-  variantLabel: string;
 }): MediaModelPanelCategory {
-  const seedance2Models = [
-    "dreamina-seedance-2-0-260128",
-    "dreamina-seedance-2-0-fast-260128",
-    "dreamina-seedance-2-0-mini-260615",
-  ] as const satisfies readonly VideoModel[];
-  const seedance2Model = seedance2Models[0];
   return {
     id: "video",
     label,
     tabLabel,
-    options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
-      return (
-        candidate === seedance2Model ||
-        !seedance2Models.some((seedance2Candidate) => {
-          return candidate === seedance2Candidate;
-        })
-      );
-    }).map((candidate) => {
+    options: PUBLIC_VIDEO_MODELS.map((candidate) => {
       return {
         key: candidate,
         label: VIDEO_MODEL_CONFIGS[candidate].label,
@@ -7655,24 +7680,6 @@ function composerVideoModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
-        ...(candidate === seedance2Model
-          ? {
-              variant: {
-                label: variantLabel,
-                options: seedance2Models.map((variantModel) => {
-                  const variantConfig = VIDEO_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7709,14 +7716,6 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryImage;
         }),
-        variantLabel: (family: string) => {
-          return t(
-            ($) => {
-              return $.settings.models.picker.modelVariants;
-            },
-            { model: family },
-          );
-        },
       }),
     );
   }
@@ -7731,12 +7730,6 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryVideo;
         }),
-        variantLabel: t(
-          ($) => {
-            return $.settings.models.picker.modelVariants;
-          },
-          { model: VIDEO_MODEL_CONFIGS["dreamina-seedance-2-0-260128"].label },
-        ),
       }),
     );
   }

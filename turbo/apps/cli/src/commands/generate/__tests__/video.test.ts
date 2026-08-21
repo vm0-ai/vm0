@@ -14,7 +14,7 @@ import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
 import { videoCommand } from "../video";
 
-const VIDEO_URL = "http://localhost:3000/api/okou/video-io/generate";
+const VIDEO_URL = "http://localhost:3000/api/video-io/generate";
 const FIRST_FRAME_URL = "https://example.com/first.png";
 const LAST_FRAME_URL = "https://example.com/last.png";
 const VIDEO_RESULT = {
@@ -72,7 +72,7 @@ function stubBillingStatus(
   videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
-  return http.get("http://localhost:3000/api/okou/billing/status", () => {
+  return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
       tier,
       canBuyCredits: videoGenerationAllowed,

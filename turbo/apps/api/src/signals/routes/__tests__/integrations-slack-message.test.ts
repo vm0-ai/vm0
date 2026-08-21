@@ -7,10 +7,6 @@ import { integrationsSlackMessageContract } from "@okouai/api-contracts/contract
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
@@ -60,7 +56,7 @@ function sandboxToken(args: {
   });
 }
 
-describe("POST /api/okou/integrations/slack/message", () => {
+describe("POST /api/integrations/slack/message", () => {
   beforeEach(() => {
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
@@ -105,9 +101,8 @@ describe("POST /api/okou/integrations/slack/message", () => {
    * Creates a real run for an agent named "My Assistant" through the product
    * agent + run APIs, so the message footer can resolve the agent label from
    * the run. Run admission needs org credits (Stripe webhook grant); the
-   * current Agent API cannot express the legacy inline ANTHROPIC_API_KEY
-   * state, so a narrow historical Compose fixture supplies it. This keeps the
-   * run free of a selected model, matching providers without model selection.
+   * provider-only fixture keeps the run free of a selected model, matching
+   * providers without model selection without reading legacy Compose content.
    */
   async function seedAgentRun(base: {
     readonly orgId: string;
@@ -125,25 +120,16 @@ describe("POST /api/okou/integrations/slack/message", () => {
       displayName: "My Assistant",
       visibility: "private",
     });
-    const compose = await readHistoricalAgentComposeHeadFixture(agent.agentId);
-    await createHistoricalAgentComposeFixture({
-      actor: { userId: base.userId, orgId: base.orgId },
-      content: {
-        version: "1.0",
-        agents: {
-          [compose.name]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-          },
-        },
-      },
-      signal: context.signal,
+    await api.createOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
       prompt: "send slack message",
+      modelProvider: "openrouter-api-key",
     });
     // Product run creation authenticates through the Clerk session mocks;
     // restore the membership-list mock the zero-token auth path relies on.

@@ -30,7 +30,7 @@ export type VoiceIoSttResponse = z.infer<typeof voiceIoSttResponseSchema>;
 export const voiceIoSttContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/voice-io/stt",
+    path: "/api/voice-io/stt",
     headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),

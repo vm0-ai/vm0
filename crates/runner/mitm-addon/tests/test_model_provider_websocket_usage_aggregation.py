@@ -47,6 +47,14 @@ def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = 
     ).encode()
 
 
+def _pressure_model_usage_tier_state(flow: http.HTTPFlow) -> None:
+    for index in range(100):
+        feed_websocket_server_message(
+            flow,
+            _openai_websocket_zero_usage_frame(f"resp_ws_pressure_{index}"),
+        )
+
+
 class TestModelProviderWebSocketUsageAggregation:
     """Tests for per-response WebSocket usage reconciliation and tiering."""
 
@@ -246,6 +254,154 @@ class TestModelProviderWebSocketUsageAggregation:
         ]
         assert underbilling_entries == []
 
+    def test_model_websocket_late_output_recovers_evicted_long_context_fast_tier(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_evicted",
+                            "model": "gpt-5.5",
+                            "service_tier": "priority",
+                            "usage": {"input_tokens": 272_001},
+                        },
+                    }
+                ).encode(),
+            )
+            _pressure_model_usage_tier_state(flow)
+
+            tiers = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_TIERS]
+            assert isinstance(tiers, dict)
+            assert len(tiers) == 100
+            assert "resp_ws_evicted" not in tiers
+
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.done",
+                        "response": {
+                            "id": "resp_ws_evicted",
+                            "model": "gpt-5.5",
+                            "usage": {"output_tokens": 12},
+                        },
+                    }
+                ).encode(),
+            )
+
+            recovered = tiers["resp_ws_evicted"]
+            assert len(tiers) == 100
+            assert recovered.tier == "long_context"
+            assert recovered.fast is True
+            assert recovered.committed is True
+
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert metadata_keys.MODEL_PROVIDER_USAGE_TIERS not in flow.metadata
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", "tokens.input.long_context.fast", 272_001),
+                ("gpt-5.5", "tokens.output.long_context.fast", 12),
+            ],
+        )
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [
+                ("gpt-5.5", "tokens.input", 272_001),
+                ("gpt-5.5", "tokens.output", 12),
+            ],
+        )
+        underbilling_entries = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert underbilling_entries == []
+
+    def test_model_websocket_duplicate_output_recovers_evicted_source_category(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_ws_evicted_duplicate",
+                    input_tokens=20,
+                    output_tokens=12,
+                ),
+            )
+            _pressure_model_usage_tier_state(flow)
+
+            tiers = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_TIERS]
+            assert "resp_ws_evicted_duplicate" not in tiers
+
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.done",
+                        "response": {
+                            "id": "resp_ws_evicted_duplicate",
+                            "model": "gpt-5.5",
+                            "usage": {"output_tokens": 7},
+                        },
+                    }
+                ).encode(),
+            )
+
+            recovered = tiers["resp_ws_evicted_duplicate"]
+            assert recovered.tier == "base"
+            assert recovered.fast is False
+            assert recovered.committed is True
+
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [
+                ("gpt-5.5", "tokens.input", 20),
+                ("gpt-5.5", "tokens.output", 12),
+            ],
+        )
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            [
+                ("gpt-5.5", "tokens.input", 20),
+                ("gpt-5.5", "tokens.output", 12),
+            ],
+        )
+        duplicate_entry = next(
+            entry
+            for entry in model_usage_source_entries(flow)
+            if entry["usage"] == {"tokens.output": 7}
+        )
+        [duplicate_event] = duplicate_entry["usage_events"]
+        assert duplicate_event["category"] == "tokens.output"
+        assert duplicate_event["buffer_accepted"] is False
+
     def test_model_websocket_explicit_zero_input_selects_base_tier_for_late_output(
         self,
         tmp_path,
@@ -289,7 +445,7 @@ class TestModelProviderWebSocketUsageAggregation:
             [("gpt-5.5", "tokens.output", 12)],
         )
 
-    def test_model_websocket_output_without_input_skips_unclassifiable_billing(
+    def test_model_websocket_output_without_input_uses_conservative_billing_fallback(
         self,
         tmp_path,
         real_flow,
@@ -311,7 +467,11 @@ class TestModelProviderWebSocketUsageAggregation:
             ).encode(),
         )
 
-        assert webhook.usage_events() == []
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [("gpt-5.5", "tokens.output.long_context", 12)],
+        )
         assert_usage_event_rows(
             webhook.model_usage_observation_events(),
             "model",
@@ -328,6 +488,9 @@ class TestModelProviderWebSocketUsageAggregation:
         assert entry["underbilling_class"] == "risk"
         assert entry["run_id"] == "run-abc-123"
         assert entry["provider"] == "gpt-5.5"
+        assert entry["usage_billed"] is True
+        assert entry["fallback_billing_tier"] == "long_context"
+        assert entry["fallback_fast"] is False
 
     def test_model_websocket_tier_state_is_bounded_and_terminally_released(
         self,

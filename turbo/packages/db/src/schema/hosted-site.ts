@@ -40,13 +40,7 @@ export const hostedSites = pgTable(
     // versions that still identify sites by (org_id, slug).
     slug: varchar("slug", { length: 64 }).notNull(),
     requestedSlug: varchar("requested_slug", { length: 64 }),
-    // DB/API rollout fallback (observed maximum: ~102 minutes): existing rows
-    // and writes from the previous API release are VM0. Remove this default
-    // after that release is outside the rollback window; tracked by #27750.
-    publicBrand: text("public_brand")
-      .$type<PublicBrand>()
-      .default("vm0")
-      .notNull(),
+    publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
     // Deliberately denormalized: deleting the originating thread must not
     // erase the site's ownership boundary.
     chatThreadId: uuid("chat_thread_id"),
@@ -99,13 +93,7 @@ export const hostedDeployments = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     runId: text("run_id"),
-    // DB/API rollout fallback (observed maximum: ~102 minutes): the previous
-    // API omits this field and writes VM0. The composite foreign key below
-    // fails closed for Okou sites. Remove after that API cannot return; #27750.
-    publicBrand: text("public_brand")
-      .$type<PublicBrand>()
-      .default("vm0")
-      .notNull(),
+    publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
     status: varchar("status", { length: 32 })
       .$type<HostedDeploymentStatus>()
       .notNull()

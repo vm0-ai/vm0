@@ -386,10 +386,9 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Exact pre-redaction classification and bucket boundaries are a finite,
-      // security-sensitive matrix that cannot be exhaustively observed through
-      // the product Run route without leaking the compared environment maps.
-      "src/signals/services/__tests__/agent-environment-shadow.test.ts",
+      // Content hashes are a byte-identical cryptographic contract shared with
+      // guest-agent; route behavior cannot pin the serializer's full corpus.
+      "src/signals/services/__tests__/storage-content-hash.service.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
@@ -513,6 +512,9 @@ export default [
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // Content hashes are a byte-identical cryptographic contract shared with
+      // guest-agent; route behavior cannot pin the serializer's full corpus.
+      "src/signals/services/__tests__/storage-content-hash.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.

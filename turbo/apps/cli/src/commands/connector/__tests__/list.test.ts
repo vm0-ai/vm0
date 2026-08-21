@@ -81,7 +81,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
 }
 
 function stubAgent(id: string, displayName: string | null) {
-  return http.get(`http://localhost:3000/api/okou/agents/${id}`, () => {
+  return http.get(`http://localhost:3000/api/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -95,7 +95,7 @@ function stubAgent(id: string, displayName: string | null) {
 
 function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/okou/agents/${id}/user-connectors`,
+    `http://localhost:3000/api/agents/${id}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -229,7 +229,7 @@ describe("okou connector list command", () => {
         stubConnectors([connectedGithub]),
         stubAgent(AGENT_UUID, "maya"),
         http.get(
-          `http://localhost:3000/api/okou/agents/${AGENT_UUID}/user-connectors`,
+          `http://localhost:3000/api/agents/${AGENT_UUID}/user-connectors`,
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["github"],
@@ -266,15 +266,12 @@ describe("okou connector list command", () => {
         stubConnectors([connectedGithub]),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, ["github"]),
-        http.get(
-          `http://localhost:3000/api/okou/agents/${ALT_AGENT_UUID}`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "should not be called", code: "ERR" } },
-              { status: 500 },
-            );
-          },
-        ),
+        http.get(`http://localhost:3000/api/agents/${ALT_AGENT_UUID}`, () => {
+          return HttpResponse.json(
+            { error: { message: "should not be called", code: "ERR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
@@ -337,20 +334,17 @@ describe("okou connector list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/okou/connector-catalog/status",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Not authenticated",
-                  code: "UNAUTHORIZED",
-                },
+        http.get("http://localhost:3000/api/connector-catalog/status", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Not authenticated",
+                code: "UNAUTHORIZED",
               },
-              { status: 401 },
-            );
-          },
-        ),
+            },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {
