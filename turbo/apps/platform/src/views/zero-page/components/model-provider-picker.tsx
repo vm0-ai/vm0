@@ -1184,10 +1184,12 @@ function ModelFirstModelPickerContentLayout({
         // a name beside a badge again.
         "min-w-[260px]",
         mediaModelPanel
-          ? // The 294px bordered cap leaves a 292px scroll viewport: enough for
-            // the compact header and seven model rows, while an eighth adds one
-            // 32px row plus its 4px gap.
-            "max-h-[294px]"
+          ? // The 302px bordered cap leaves a 300px scroll viewport: enough for
+            // the header and seven model rows, while an eighth adds one 32px
+            // row plus its 4px gap. The cap grew with the header when it went
+            // from `py-1` to `py-2`; both numbers move together or seven rows
+            // stop fitting.
+            "max-h-[302px]"
           : "max-h-[280px]",
       )}
     >
