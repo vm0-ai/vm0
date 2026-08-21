@@ -35,6 +35,7 @@ const SCHEMA = {
   OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   OKOU_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   OKOU_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
+  OKOU_SOCIAL_SOCIALKIT_TOKEN: z.string().min(1).optional(),
   OKOU_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
   OKOU_SEO_DATAFORSEO_LOGIN: z.string().min(1).optional(),
   OKOU_SEO_DATAFORSEO_PASSWORD: z.string().min(1).optional(),

@@ -273,6 +273,23 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates social capability behind the managed SocialKit feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ManagedSocialKit]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "social:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "social:read",
+    );
+  });
+
   it("grants custom connector writes by default", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
