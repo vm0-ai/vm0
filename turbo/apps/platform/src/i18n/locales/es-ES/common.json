@@ -1273,22 +1273,22 @@
       },
       "highlights": {
         "addOnConcurrency": "Añade concurrencia cuando quieras",
+        "agentFanOut": "Un agente puede dirigir a todo un equipo de agentes",
         "automations": "Automatizaciones programadas y por eventos",
         "builtInResearchData": "Datos SEO, de leads, web y de mercado integrados",
         "chatIntegrations": "Integración con Slack y Telegram",
-        "computerUse": "Los agentes manejan apps en tu propio escritorio",
+        "computerUse": "Los agentes manejan apps reales en tu escritorio",
         "concurrentAgents": "{{slots}} agentes a la vez",
         "everythingInBuiltForTeams": "Todo lo de {{plan}}, creado para equipos",
+        "hostedSite": "Publica el trabajo de un agente como sitio en vivo",
         "included": "Incluido",
-        "liveBrowser": "Observa y toma el control del navegador de un agente",
-        "memberRoles": "Invita a tu equipo como administradores o miembros",
-        "modelPolicies": "Elige qué modelos puede usar tu espacio de trabajo",
+        "liveBrowser": "Mira el navegador de un agente y toma el control",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "Soporte por correo",
         "supportPriority": "Soporte prioritario",
         "videoGeneration": "Generación de vídeo y avatares",
         "voiceInput": "Entrada de voz: {{requests}} solicitudes y {{minutes}} minutos al día",
-        "webhookAutomations": "Activa agentes desde cualquier sistema con un webhook"
+        "webhookAutomations": "Lanza una ejecución desde cualquier sistema con un webhook"
       },
       "legacy": "Heredado",
       "limitedFree": {

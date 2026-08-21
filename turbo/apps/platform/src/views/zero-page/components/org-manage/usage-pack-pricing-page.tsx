@@ -797,13 +797,14 @@ function PlanPrice({
    2/10, canBuyConcurrency, workflowWebhookAutomationAllowed, audioDailyRateLimit
    300/500 and audioDailyDurationSeconds 200/500, and nothing else.
 
-   The live browser, Computer Use, model policy and member-role rows are
-   capability both plans ship. They sit here because the label says "Everything
-   in Pro, built for teams" -- inherited, not exclusive -- and because they are
-   workspace-level controls a team reaches for: model policy and roles are both
-   org-admin scoped. If any of them is ever gated to Team, the label can tighten
-   to a plain delta; until then it must not, or the column is claiming Pro
-   features as Team entitlements again.
+   The middle four rows are capability both plans ship. They sit here because
+   the label says "Everything in Pro, built for teams" -- inherited, not
+   exclusive. They are phrased as the thing the agent does rather than the
+   setting that enables it: a plan column earns attention by naming an outcome,
+   and "Choose which models your workspace can use" named a settings screen.
+   If any of them is ever gated to Team, the label can tighten to a plain delta;
+   until then it must not, or the column is claiming Pro features as Team
+   entitlements again.
 
    Nine rows on each side, every row a single line at this width, so the columns
    align row for row across the divider.
@@ -834,6 +835,9 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
       i18n.t(($) => {
+        return $.billing.plans.highlights.agentFanOut;
+      }),
+      i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
       }),
       i18n.t(($) => {
@@ -843,10 +847,7 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.computerUse;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.modelPolicies;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.memberRoles;
+        return $.billing.plans.highlights.hostedSite;
       }),
       voiceInput,
       i18n.t(($) => {

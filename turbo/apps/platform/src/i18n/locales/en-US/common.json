@@ -1251,22 +1251,22 @@
       },
       "highlights": {
         "addOnConcurrency": "Add more concurrency any time",
+        "agentFanOut": "One agent can run a whole team of agents",
         "automations": "Scheduled and event automations",
         "builtInResearchData": "Built-in SEO, lead, web, and market data",
         "chatIntegrations": "Slack and Telegram integration",
-        "computerUse": "Agents operate apps on your own desktop",
+        "computerUse": "Agents drive real apps on your desktop",
         "concurrentAgents": "{{slots}} agents running at once",
         "everythingInBuiltForTeams": "Everything in {{plan}}, built for teams",
+        "hostedSite": "Publish an agent's work as a live site",
         "included": "Included",
-        "liveBrowser": "Watch and take over an agent's live browser",
-        "memberRoles": "Invite teammates as admins or members",
-        "modelPolicies": "Choose which models your workspace can use",
+        "liveBrowser": "Watch an agent's live browser and take the wheel",
         "models": "Claude Opus 5, GPT 5.6 Sol, DeepSeek V4 Pro",
         "supportEmail": "Email support",
         "supportPriority": "Priority support",
         "videoGeneration": "Video and avatar generation",
         "voiceInput": "Voice input, {{requests}} requests and {{minutes}} minutes a day",
-        "webhookAutomations": "Trigger agents from any system via webhook"
+        "webhookAutomations": "Start a run from any system with one webhook"
       },
       "legacy": "Legacy",
       "limitedFree": {
