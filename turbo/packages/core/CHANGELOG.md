@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.577.0](https://github.com/vm0-ai/vm0/compare/core-v8.576.0...core-v8.577.0) (2026-08-21)
+
+
+### Features
+
+* **connectors:** enable box oauth ([#28507](https://github.com/vm0-ai/vm0/issues/28507)) ([59784c7](https://github.com/vm0-ai/vm0/commit/59784c714a10f3e66ee4208fda67ea744cb5241f))
+* **core:** enable usage pack plans for staff ([#28503](https://github.com/vm0-ai/vm0/issues/28503)) ([14a9a65](https://github.com/vm0-ai/vm0/commit/14a9a653f13e028a63e8bfe439fbf9a6c53361c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+
 ## [8.576.0](https://github.com/vm0-ai/vm0/compare/core-v8.575.0...core-v8.576.0) (2026-08-21)
 
 

@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.1.78](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.77...guest-write-file-v0.1.78) (2026-08-21)
+
 ## [0.1.77](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.76...guest-write-file-v0.1.77) (2026-08-20)
 
 ## [0.1.76](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.75...guest-write-file-v0.1.76) (2026-08-18)
