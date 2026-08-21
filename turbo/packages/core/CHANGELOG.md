@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.578.0](https://github.com/vm0-ai/vm0/compare/core-v8.577.0...core-v8.578.0) (2026-08-21)
+
+
+### Features
+
+* **composer:** offer one model per family in the media pickers ([#28510](https://github.com/vm0-ai/vm0/issues/28510)) ([3389b85](https://github.com/vm0-ai/vm0/commit/3389b85bbb3916d38a71661227ccfc1d02662e75))
+* **platform:** turn the home invite button into a growth entry ([#28439](https://github.com/vm0-ai/vm0/issues/28439)) ([632fbb9](https://github.com/vm0-ai/vm0/commit/632fbb9f12b7886dafa5860c778245742e4ad689))
+
+
+### Refactoring
+
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+
 ## [8.577.0](https://github.com/vm0-ai/vm0/compare/core-v8.576.0...core-v8.577.0) (2026-08-21)
 
 
