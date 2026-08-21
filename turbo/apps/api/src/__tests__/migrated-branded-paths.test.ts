@@ -4,7 +4,11 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
+import { scrapeRoutes } from "../signals/routes/scrape";
+import { translationRoutes } from "../signals/routes/translation";
 import { weatherRoutes } from "../signals/routes/weather";
+import { webSearchRoutes } from "../signals/routes/web-search";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -252,6 +256,11 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/image-io/generate",
     "/api/zero/image-io/generate",
   ],
+  // #28416
+  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
+  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
+  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
+  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
   // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
   // attribution.
   "/api/attribution/signup": [
@@ -526,6 +535,47 @@ describe("branded paths for migrated neutral routes", () => {
           expect(match.viaNamespaceAliasFallback).toBeUndefined();
         }
       }
+    }
+  });
+
+  // The #28416 twin of the weather assertion below: the four managed
+  // web-content and model routes, driven through the same production app
+  // factory. Kept per family so a failure names what regressed.
+  it("serves the migrated web-content paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: imageRecognitionRoutes, suffix: "recognize" },
+      { routes: scrapeRoutes, suffix: "scrape" },
+      { routes: translationRoutes, suffix: "translate" },
+      { routes: webSearchRoutes, suffix: "web-search" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
     }
   });
 

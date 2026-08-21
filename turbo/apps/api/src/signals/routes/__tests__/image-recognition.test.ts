@@ -220,7 +220,7 @@ async function expectNoUsage(actor: RecognitionActor): Promise<void> {
   ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
 }
 
-describe("POST /api/zero/recognize", () => {
+describe("POST /api/recognize", () => {
   it("recognizes one owned image and settles each real invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
