@@ -7,6 +7,7 @@ import { ROUTES } from "../signals/route";
 import { avatarVideoRoutes } from "../signals/routes/avatar-video";
 import { bankingRoutes } from "../signals/routes/banking";
 import { billingStatusRoutes } from "../signals/routes/billing-status";
+import { connectorAccountRoutes } from "../signals/routes/connector-accounts";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
@@ -20,6 +21,7 @@ import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
+import { socialRoutes } from "../signals/routes/social";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
 import { teamsBotRoutes } from "../signals/routes/teams-bot";
 import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
@@ -1258,6 +1260,33 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/web/download-file",
   ],
   "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
+  // #28565: the connector-account reads and writes and the managed SocialKit
+  // request, the two contracts that were added while #28278 was in flight and
+  // so appeared in no slice's inventory.
+  "/api/connector-accounts": [
+    "/api/okou/connector-accounts",
+    "/api/zero/connector-accounts",
+  ],
+  "/api/connector-accounts/:connectionId": [
+    "/api/okou/connector-accounts/:connectionId",
+    "/api/zero/connector-accounts/:connectionId",
+  ],
+  "/api/connector-accounts/:connectionId/default": [
+    "/api/okou/connector-accounts/:connectionId/default",
+    "/api/zero/connector-accounts/:connectionId/default",
+  ],
+  "/api/connector-accounts/:connectionId/deletion-impact": [
+    "/api/okou/connector-accounts/:connectionId/deletion-impact",
+    "/api/zero/connector-accounts/:connectionId/deletion-impact",
+  ],
+  "/api/connector-accounts/connections": [
+    "/api/okou/connector-accounts/connections",
+    "/api/zero/connector-accounts/connections",
+  ],
+  "/api/social/request": [
+    "/api/okou/social/request",
+    "/api/zero/social/request",
+  ],
 };
 
 function missingBrandedPaths(
@@ -1940,6 +1969,63 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ neutralSuffix, neutral, okou, zero }).toStrictEqual({
         neutralSuffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28565 twin, for the two contracts that arrived after their families
+  // had already migrated. One case carries a path parameter, because a row is
+  // matched on `entry.route.path` and a template that loses a parameter still
+  // looks plausible in the table while 404ing every real request. Requests are
+  // unauthenticated, so the status is whatever the auth layer returns — the
+  // point is that all three forms reach the same handler.
+  it("serves the migrated connector-account and social paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const connectionId = "11111111-2222-4333-8444-555555555555";
+    const endpoints = [
+      {
+        routes: connectorAccountRoutes,
+        method: "GET",
+        suffix: "connector-accounts",
+      },
+      {
+        routes: connectorAccountRoutes,
+        method: "GET",
+        suffix: "connector-accounts/connections",
+      },
+      {
+        routes: connectorAccountRoutes,
+        method: "POST",
+        suffix: `connector-accounts/${connectionId}/default`,
+      },
+      { routes: socialRoutes, method: "POST", suffix: "social/request" },
+    ] as const;
+
+    for (const { routes, method, suffix } of endpoints) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
         neutral,
         okou: neutral,
         zero: neutral,

@@ -149,7 +149,7 @@ const connectorAccountExactTargetBodySchema = z
 export const connectorAccountsContract = c.router({
   summaries: {
     method: "GET",
-    path: "/api/okou/connector-accounts",
+    path: "/api/connector-accounts",
     headers: authHeadersSchema,
     responses: {
       200: z.object({ summaries: z.array(connectorAccountSummarySchema) }),
@@ -161,7 +161,7 @@ export const connectorAccountsContract = c.router({
   },
   connections: {
     method: "GET",
-    path: "/api/okou/connector-accounts/connections",
+    path: "/api/connector-accounts/connections",
     headers: authHeadersSchema,
     query: connectorAccountListQuerySchema,
     responses: {
@@ -178,7 +178,7 @@ export const connectorAccountsContract = c.router({
   },
   rename: {
     method: "PATCH",
-    path: "/api/okou/connector-accounts/:connectionId",
+    path: "/api/connector-accounts/:connectionId",
     headers: authHeadersSchema,
     pathParams: connectorAccountPathParamsSchema,
     body: z
@@ -198,7 +198,7 @@ export const connectorAccountsContract = c.router({
   },
   setDefault: {
     method: "POST",
-    path: "/api/okou/connector-accounts/:connectionId/default",
+    path: "/api/connector-accounts/:connectionId/default",
     headers: authHeadersSchema,
     pathParams: connectorAccountPathParamsSchema,
     body: connectorAccountExactTargetBodySchema,
@@ -213,7 +213,7 @@ export const connectorAccountsContract = c.router({
   },
   deletionImpact: {
     method: "GET",
-    path: "/api/okou/connector-accounts/:connectionId/deletion-impact",
+    path: "/api/connector-accounts/:connectionId/deletion-impact",
     headers: authHeadersSchema,
     pathParams: connectorAccountPathParamsSchema,
     query: connectorAccountTargetQuerySchema,
@@ -232,7 +232,7 @@ export const connectorAccountsContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/connector-accounts/:connectionId",
+    path: "/api/connector-accounts/:connectionId",
     headers: authHeadersSchema,
     pathParams: connectorAccountPathParamsSchema,
     body: z

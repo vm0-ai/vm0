@@ -278,7 +278,7 @@ async function rawSocialRequest(
     routes: socialTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
-  const request = new Request("http://api.test/api/okou/social/request", {
+  const request = new Request("http://api.test/api/social/request", {
     method: "POST",
     headers: {
       ...authenticate(actor),

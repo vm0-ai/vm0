@@ -99,7 +99,7 @@ describe("okou social command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/social/request",
+        "http://localhost:3000/api/social/request",
         async ({ request }) => {
           requestBody = (await request.json()) as unknown;
           return HttpResponse.json(responseBody);
@@ -136,7 +136,7 @@ describe("okou social command", () => {
     } as const;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/social/request",
+        "http://localhost:3000/api/social/request",
         async ({ request }) => {
           requestBody = (await request.json()) as unknown;
           return HttpResponse.json(postResponse);
@@ -197,7 +197,7 @@ describe("okou social command", () => {
   ])("rejects $caseName before calling the API", async ({ args, message }) => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/social/request", () => {
+      http.post("http://localhost:3000/api/social/request", () => {
         apiRequests += 1;
         return HttpResponse.json(responseBody);
       }),
@@ -231,7 +231,7 @@ describe("okou social command", () => {
 
   it("prints API errors", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/social/request", () => {
+      http.post("http://localhost:3000/api/social/request", () => {
         return HttpResponse.json(
           {
             error: {

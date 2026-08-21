@@ -481,7 +481,7 @@ export type SocialKitResponse = z.infer<typeof socialKitResponseSchema>;
 export const socialContract = c.router({
   request: {
     method: "POST",
-    path: "/api/okou/social/request",
+    path: "/api/social/request",
     headers: authHeadersSchema,
     body: socialKitRequestSchema,
     responses: {
