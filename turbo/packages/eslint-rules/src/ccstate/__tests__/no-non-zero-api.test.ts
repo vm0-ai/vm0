@@ -97,9 +97,12 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject has to be a family no slice has migrated: #28459 added
+    // `/api/chat-threads` to the allow list, which made the previous subject
+    // legal and left this case asserting the opposite of the rule.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/memory/entries")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],
