@@ -101,6 +101,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      false,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(true);
@@ -137,6 +140,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(false);
@@ -166,6 +172,23 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
       true,
+    );
+  });
+
+  it("should enable composer submit DOM reconciliation only for Bingjie", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+    });
+    expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      true,
+    );
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
+      false,
     );
   });
 

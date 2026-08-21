@@ -86,4 +86,5 @@ export enum FeatureSwitchKey {
   LatestWebsiteTemplates = "latestWebsiteTemplates",
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
+  ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
 }
