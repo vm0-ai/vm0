@@ -437,8 +437,7 @@ describe("Steam OpenID connector", () => {
     expect(connector.body).toStrictEqual(initial.body);
 
     const replacementAuthorizationUrl = await startSteamOpenId(actor, {
-      intent: "reconnect",
-      connectionId: initial.body.id,
+      intent: "single-account",
     });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);

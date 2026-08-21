@@ -574,7 +574,7 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("restores an explicit reconnect target across the OAuth callback", async () => {
+  it("restores explicit single-account and reconnect intents across OAuth callbacks", async () => {
     mockGitHubConnectorOAuth();
 
     const bdd = createBddApi(context);
@@ -592,6 +592,23 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "github",
     );
+
+    const singleAccountStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+      undefined,
+      { intent: "single-account" },
+    );
+    await connectorsApi.completeOauthCallback("github", {
+      code: "github-single-account-code",
+      state: stateFromAuthorizationUrl(singleAccountStart.authorizationUrl),
+    });
+    const singleAccountConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "github",
+    );
+    expect(singleAccountConnection.id).toBe(initialConnection.id);
 
     const reconnectStart = await connectorsApi.startOauth(
       actor,
@@ -832,6 +849,8 @@ describe("CONN-02: OAuth device authorization", () => {
       actor,
       "test-oauth-device",
       "oauth",
+      undefined,
+      { intent: "single-account" },
     );
     expect(session).toMatchObject({
       connectorSlug: "test-oauth-device",
@@ -2004,9 +2023,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
-  it("uses the same first-account and sibling gate for HTTP and MCP custom connectors", async () => {
+  it("uses explicit single-account semantics for HTTP and MCP custom connectors", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
     const definitions = [
@@ -2047,20 +2067,38 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         connector.id,
         [{ key: "secret", kind: "secret", value: "first-secret" }],
         [200],
-        { intent: "add", displayName: "Work" },
+        { intent: "single-account" },
       );
       expect(connected.body).toMatchObject({ connected: true });
+
+      const replaced = await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        connector.id,
+        [{ key: "secret", kind: "secret", value: "replacement-secret" }],
+        [200],
+        { intent: "single-account" },
+      );
+      expect(replaced.body).toMatchObject({ connected: true });
 
       const sibling = await connectorsApi.requestSetCustomConnectorValues(
         admin,
         connector.id,
         [{ key: "secret", kind: "secret", value: "sibling-secret" }],
-        [409],
+        [200],
         { intent: "add", displayName: "Personal" },
       );
-      expectApiError(sibling.body);
-      expect(sibling.body.error.message).toBe(
-        "Additional connector accounts are not enabled yet",
+      expect(sibling.body).toMatchObject({ connected: true });
+
+      const ambiguous = await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        connector.id,
+        [{ key: "secret", kind: "secret", value: "ambiguous-secret" }],
+        [409],
+        { intent: "single-account" },
+      );
+      expectApiError(ambiguous.body);
+      expect(ambiguous.body.error.message).toBe(
+        "Multiple connector accounts require an exact choice",
       );
       await expect(
         connectorsApi.readCustomConnector(admin, connector.id),
@@ -2169,6 +2207,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       member,
       created.id,
       agent.agentId,
+      { intent: "single-account" },
     );
     const authorization = new URL(authorizationUrl);
     expect(authorization.origin + authorization.pathname).toBe(

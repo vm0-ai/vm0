@@ -403,6 +403,118 @@ describe("connector account lifecycle routes", () => {
     ).toHaveLength(1);
   });
 
+  it("reuses an explicit single account and rejects an ambiguous target", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+
+    const first = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-first" },
+        },
+      }),
+      [200],
+    );
+    const replaced = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-replaced" },
+        },
+      }),
+      [200],
+    );
+    expect(replaced.body.id).toBe(first.body.id);
+
+    const sibling = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Sibling" },
+          values: { apiKey: "sk-single-sibling" },
+        },
+      }),
+      [200],
+    );
+    expect(sibling.body.id).not.toBe(first.body.id);
+
+    const ambiguous = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-ambiguous" },
+        },
+      }),
+      [409],
+    );
+    expect(ambiguous.body.error.message).toBe(
+      "Multiple connector accounts require an exact choice",
+    );
+
+    const accounts = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(accounts.body.connections).toHaveLength(2);
+  });
+
+  it("serializes concurrent explicit single-account writes", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+
+    const responses = await Promise.all(
+      ["first", "second"].map((suffix) => {
+        return accept(
+          connectorClient().connect({
+            headers: authHeaders(),
+            params: { connectorSlug: "openai" },
+            body: {
+              authMethod: "api-token",
+              account: { intent: "single-account" },
+              values: { apiKey: `sk-single-concurrent-${suffix}` },
+            },
+          }),
+          [200],
+        );
+      }),
+    );
+    expect(
+      responses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    expect(responses[1]?.body.id).toBe(responses[0]?.body.id);
+
+    const accounts = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(accounts.body.connections).toHaveLength(1);
+    expect(accounts.body.connections[0]).toMatchObject({
+      id: responses[0]?.body.id,
+      displayName: null,
+      isDefault: true,
+    });
+  });
+
   it("paginates and searches more than one hundred accounts", async () => {
     const fixture = await seedFixture();
     await setConnectorAccountsEnabled(fixture, true);

@@ -2135,7 +2135,7 @@ describe("Feishu integration", () => {
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
-        body: {},
+        body: { account: { intent: "single-account" } },
       }),
       [403],
     );
@@ -2206,7 +2206,10 @@ describe("Feishu integration", () => {
       ).set({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
-        body: { values: [] },
+        body: {
+          values: [],
+          account: { intent: "single-account" },
+        },
       }),
       [403],
     );

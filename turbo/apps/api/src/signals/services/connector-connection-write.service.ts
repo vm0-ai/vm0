@@ -3,9 +3,12 @@ import { connectors } from "@okouai/db/schema/connector";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
+import { logger } from "../../lib/log";
 import { deleteConnectorOwnedCredentialRows } from "./connector-credential-storage-write.service";
 import type { ConnectorAccountMutation } from "./connector-account-mutation.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+
+const log = logger("api:connector-account-mutation");
 
 export interface StoredConnectorConnectionRow {
   readonly id: string;
@@ -90,6 +93,51 @@ export type ConnectorConnectionMutationResolution =
   | { readonly kind: "ambiguous" }
   | { readonly kind: "sibling-disabled" };
 
+type ConnectorConnectionMutationOutcome =
+  | ReadyConnectorConnectionMutation["kind"]
+  | Exclude<
+      ConnectorConnectionMutationResolution,
+      { readonly kind: "ready" }
+    >["kind"];
+
+type ConnectorConnectionSelectionCardinality = "zero" | "one" | "multiple";
+
+function connectorConnectionSelectionCardinality(
+  count: number,
+): ConnectorConnectionSelectionCardinality {
+  if (count === 0) {
+    return "zero";
+  }
+  return count === 1 ? "one" : "multiple";
+}
+
+function connectorConnectionMutationOutcome(
+  resolution: ConnectorConnectionMutationResolution,
+): ConnectorConnectionMutationOutcome {
+  return resolution.kind === "ready"
+    ? resolution.mutation.kind
+    : resolution.kind;
+}
+
+function observeConnectorConnectionMutation(
+  args: {
+    readonly targetKind: ConnectorAccountTarget["kind"];
+    readonly intent: ConnectorAccountMutation["intent"];
+    readonly selectedCount: number;
+  },
+  resolution: ConnectorConnectionMutationResolution,
+): ConnectorConnectionMutationResolution {
+  log.debug("Resolved connector account mutation", {
+    targetKind: args.targetKind,
+    intent: args.intent,
+    selectionCardinality: connectorConnectionSelectionCardinality(
+      args.selectedCount,
+    ),
+    outcome: connectorConnectionMutationOutcome(resolution),
+  });
+  return resolution;
+}
+
 function connectorConnectionSelection() {
   return {
     id: connectors.id,
@@ -149,9 +197,17 @@ export async function resolveConnectorConnectionMutation(
       )
       .for("update")
       .limit(1);
-    return existing
+    const resolution: ConnectorConnectionMutationResolution = existing
       ? { kind: "ready", mutation: { kind: "update", existing } }
       : { kind: "missing" };
+    return observeConnectorConnectionMutation(
+      {
+        targetKind: args.target.kind,
+        intent: args.mutation.intent,
+        selectedCount: existing ? 1 : 0,
+      },
+      resolution,
+    );
   }
 
   const existing = await db
@@ -167,29 +223,39 @@ export async function resolveConnectorConnectionMutation(
     .orderBy(connectors.id)
     .for("update")
     .limit(2);
+  let resolution: ConnectorConnectionMutationResolution;
   if (args.mutation.intent === "add") {
     if (existing.length > 0 && !args.allowSiblings) {
-      return { kind: "sibling-disabled" };
-    }
-    return {
-      kind: "ready",
-      mutation: {
-        kind: "insert",
-        displayName: args.mutation.displayName ?? null,
-        isDefault: existing.length === 0,
-      },
-    };
-  }
-  if (existing.length > 1) {
-    return { kind: "ambiguous" };
-  }
-  const [singleton] = existing;
-  return singleton
-    ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
-    : {
+      resolution = { kind: "sibling-disabled" };
+    } else {
+      resolution = {
         kind: "ready",
-        mutation: { kind: "insert", displayName: null, isDefault: true },
+        mutation: {
+          kind: "insert",
+          displayName: args.mutation.displayName ?? null,
+          isDefault: existing.length === 0,
+        },
       };
+    }
+  } else if (existing.length > 1) {
+    resolution = { kind: "ambiguous" };
+  } else {
+    const [singleton] = existing;
+    resolution = singleton
+      ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
+      : {
+          kind: "ready",
+          mutation: { kind: "insert", displayName: null, isDefault: true },
+        };
+  }
+  return observeConnectorConnectionMutation(
+    {
+      targetKind: args.target.kind,
+      intent: args.mutation.intent,
+      selectedCount: existing.length,
+    },
+    resolution,
+  );
 }
 
 export async function writeConnectorConnectionMetadata(
