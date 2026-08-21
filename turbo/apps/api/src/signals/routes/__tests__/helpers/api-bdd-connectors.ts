@@ -1457,6 +1457,7 @@ export function createConnectorBddApi(context: TestContext) {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[];
         readonly agentId?: string;
         readonly authorizeAgent?: true;
+        readonly account?: ConnectorAccountMutationIntent;
       },
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
@@ -1471,6 +1472,7 @@ export function createConnectorBddApi(context: TestContext) {
             values,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+            ...(options.account ? { account: options.account } : {}),
           },
         }),
         options.statuses,

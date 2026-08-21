@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.779.0](https://github.com/vm0-ai/vm0/compare/app-v0.778.1...app-v0.779.0) (2026-08-21)
+
+
+### Features
+
+* **composer:** offer one model per family in the media pickers ([#28510](https://github.com/vm0-ai/vm0/issues/28510)) ([3389b85](https://github.com/vm0-ai/vm0/commit/3389b85bbb3916d38a71661227ccfc1d02662e75))
+* **onboarding:** refresh oauth workflow templates ([#28371](https://github.com/vm0-ai/vm0/issues/28371)) ([1b42df2](https://github.com/vm0-ai/vm0/commit/1b42df2a8b21728e74a365fc22143031440342db))
+* **platform:** list the user's imported decks in the presentation picker ([#28533](https://github.com/vm0-ai/vm0/issues/28533)) ([e1901a6](https://github.com/vm0-ai/vm0/commit/e1901a6025ef826071a8d21851133536e37263c4))
+* **platform:** turn the home invite button into a growth entry ([#28439](https://github.com/vm0-ai/vm0/issues/28439)) ([632fbb9](https://github.com/vm0-ai/vm0/commit/632fbb9f12b7886dafa5860c778245742e4ad689))
+
+
+### Bug Fixes
+
+* **platform:** narrow the model picker popover back to 260px ([#28542](https://github.com/vm0-ai/vm0/issues/28542)) ([787b8c7](https://github.com/vm0-ai/vm0/commit/787b8c7597206ed952f5fc69c31ec48a5d890a83))
+
+
+### Refactoring
+
+* **api:** move agents, workflows, and workflow automations off the brand namespace ([#28497](https://github.com/vm0-ai/vm0/issues/28497)) ([ee1f56f](https://github.com/vm0-ai/vm0/commit/ee1f56f9a4994b5b6978e6e8515fdbe9df9e6970))
+* **api:** move desktop update routes off the brand namespace ([#28489](https://github.com/vm0-ai/vm0/issues/28489)) ([cef2269](https://github.com/vm0-ai/vm0/commit/cef2269fb823155ef359347544683ed3219149a9)), closes [#28465](https://github.com/vm0-ai/vm0/issues/28465)
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+    * @okouai/core bumped to 8.578.0
+
 ## [0.778.1](https://github.com/vm0-ai/vm0/compare/app-v0.778.0...app-v0.778.1) (2026-08-21)
 
 

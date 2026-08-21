@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.470.0](https://github.com/vm0-ai/vm0/compare/api-v1.469.0...api-v1.470.0) (2026-08-21)
+
+
+### Features
+
+* **composer:** offer one model per family in the media pickers ([#28510](https://github.com/vm0-ai/vm0/issues/28510)) ([3389b85](https://github.com/vm0-ai/vm0/commit/3389b85bbb3916d38a71661227ccfc1d02662e75))
+* **connectors:** enable multi-account lifecycle ([#28519](https://github.com/vm0-ai/vm0/issues/28519)) ([c5926f2](https://github.com/vm0-ai/vm0/commit/c5926f2a383dded86f8e67d9fc413817879fa75c))
+
+
+### Refactoring
+
+* **api:** move agents, workflows, and workflow automations off the brand namespace ([#28497](https://github.com/vm0-ai/vm0/issues/28497)) ([ee1f56f](https://github.com/vm0-ai/vm0/commit/ee1f56f9a4994b5b6978e6e8515fdbe9df9e6970))
+* **api:** move desktop update routes off the brand namespace ([#28489](https://github.com/vm0-ai/vm0/issues/28489)) ([cef2269](https://github.com/vm0-ai/vm0/commit/cef2269fb823155ef359347544683ed3219149a9)), closes [#28465](https://github.com/vm0-ai/vm0/issues/28465)
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+* **api:** move the billing routes off the brand namespace ([#28486](https://github.com/vm0-ai/vm0/issues/28486)) ([464d080](https://github.com/vm0-ai/vm0/commit/464d080b5888e272579e09f338c0c72df3388a6c))
+* **db:** drop the presentation template status and error columns ([#28515](https://github.com/vm0-ai/vm0/issues/28515)) ([53b6214](https://github.com/vm0-ai/vm0/commit/53b6214b0ee5426414f6f6fa5eb428b4c169b380))
+* **rebranding:** remove expired rollout fallbacks ([#28511](https://github.com/vm0-ai/vm0/issues/28511)) ([bc28080](https://github.com/vm0-ai/vm0/commit/bc2808047690c0e691eaa7c65f6e5c64c893a996))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+    * @okouai/core bumped to 8.578.0
+    * @okouai/db bumped to 1.213.0
+    * @okouai/pi-agent-runtime bumped to 1.5.4
+
 ## [1.469.0](https://github.com/vm0-ai/vm0/compare/api-v1.468.0...api-v1.469.0) (2026-08-21)
 
 

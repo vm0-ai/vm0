@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.38.56](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.55...desktop-v0.38.56) (2026-08-21)
+
+
+### Refactoring
+
+* **api:** move desktop update routes off the brand namespace ([#28489](https://github.com/vm0-ai/vm0/issues/28489)) ([cef2269](https://github.com/vm0-ai/vm0/commit/cef2269fb823155ef359347544683ed3219149a9)), closes [#28465](https://github.com/vm0-ai/vm0/issues/28465)
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.347.0
+
 ## [0.38.55](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.54...desktop-v0.38.55) (2026-08-21)
 
 

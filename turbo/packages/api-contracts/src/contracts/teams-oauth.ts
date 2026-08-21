@@ -33,7 +33,7 @@ export const teamsOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/okou/teams/oauth/callback",
+    path: "/api/integrations/teams/oauth/callback",
     query: teamsOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),

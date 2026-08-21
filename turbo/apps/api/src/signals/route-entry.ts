@@ -47,10 +47,10 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * Final paths that the Feishu, Slack, and Microsoft consoles hold after #28278
- * Stage 0, keyed by the branded path that serves them today. OAuth callbacks
- * join `/api/integrations/**` beside the IM connect routes, and inbound
- * webhooks join `/api/webhooks/**` beside the other providers.
+ * Final paths that the Feishu and Slack consoles hold after #28278 Stage 0,
+ * keyed by the branded path that serves them today. OAuth callbacks join
+ * `/api/integrations/**` beside the IM connect routes, and inbound webhooks
+ * join `/api/webhooks/**` beside the other providers.
  *
  * Step 1 only makes these paths routable: each one adds a second way to reach
  * the handler that already serves its branded path. Producers switch one at a
@@ -58,26 +58,31 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  * Teams OAuth callback switched in #28300 and the Feishu events URL we display
  * to operators in #28338. Every branded path here stays registered: removal is
  * gated on #26701.
+ *
+ * A row leaves this table when #28278 moves its contract onto the final path,
+ * because from then on the contract declares that path and this table has
+ * nothing left to add. The two Microsoft rows left in #28545, and
+ * `MIGRATED_BRANDED_PATHS` below owes their branded forms instead. That
+ * deletion is not optional: a row kept alongside a migrated contract makes both
+ * tables produce the same registration, which `assertUniqueRouteRegistrations`
+ * throws on at startup.
  */
 const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
   "GET /api/okou/slack/oauth/callback":
     "/api/integrations/slack/oauth/callback",
-  "GET /api/okou/teams/oauth/callback":
-    "/api/integrations/teams/oauth/callback",
   "GET /api/okou/feishu/oauth/callback":
     "/api/integrations/feishu/oauth/callback",
   "POST /api/okou/slack/events": "/api/webhooks/slack/events",
   "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
   "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
-  "POST /api/okou/teams/bot": "/api/webhooks/teams/bot",
   "POST /api/okou/feishu/events/:installationId":
     "/api/webhooks/feishu/events/:installationId",
 };
 
 /**
- * Adds the eight final provider console paths. Unlike the namespace aliases
- * below, this expands an explicit list and never derives a path, so no other
- * route gains a second registration.
+ * Adds the six final provider console paths still served from a branded
+ * contract. Unlike the namespace aliases below, this expands an explicit list
+ * and never derives a path, so no other route gains a second registration.
  */
 export function withFinalProviderConsolePaths(
   routes: readonly RouteEntry[],
@@ -156,9 +161,12 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
 
   // Held by a provider console, so measured traffic cannot retire them. Every
-  // branded path in `FINAL_PROVIDER_CONSOLE_PATHS` is listed, including the
-  // Teams OAuth callback that the Microsoft app registration still points at
-  // after #28300 — see the ordering constraint recorded on #26701.
+  // branded path in `FINAL_PROVIDER_CONSOLE_PATHS` is listed, plus the Teams
+  // OAuth callback below and the `/api/okou/teams/bot` row above: #28545 moved
+  // both contracts onto their final console paths, so those two rows are served
+  // by `MIGRATED_BRANDED_PATHS` rather than by the expansion. They stay listed,
+  // because a row records that a path is owed rather than which table serves it
+  // — see the ordering constraint recorded on #26701.
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
   "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
@@ -1462,6 +1470,30 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/workflows/:workflowId/run",
     "/api/zero/workflows/:workflowId/run",
   ],
+  // #28545: the two Microsoft console routes, which arrive here from
+  // `FINAL_PROVIDER_CONSOLE_PATHS` rather than from the branded namespace like
+  // the rows above. The Azure Bot messaging endpoint and the Microsoft identity
+  // platform redirect URIs now hold the final paths, so the contracts declare
+  // them and that table's rows were deleted in the same commit — keeping them
+  // would have made both tables produce the same registration.
+  //
+  // What holds the branded forms open is not a released client but the two
+  // Microsoft consoles themselves, which have no drain window: they keep
+  // sending to whatever URL is registered until an operator changes it.
+  // Removal follows #26701's evidence rules, and for the `zero` callback the
+  // ordering constraint recorded there.
+  "/api/integrations/teams/oauth/callback": [
+    "/api/okou/teams/oauth/callback",
+    // Not drain-window compatibility. `callbackRedirectUri` in
+    // `routes/teams-oauth.ts` is brand-conditional and still emits this exact
+    // path for the VM0 brand on purpose: it is registered in the Microsoft app
+    // registration, and #26701 records that it retires together with the
+    // `api.vm0.ai` brand host. So this row is an active producer target, not a
+    // leftover — do not prune it merely for being an `/api/zero/` path, or
+    // live VM0-brand connects lose the callback they were sent to.
+    "/api/zero/teams/oauth/callback",
+  ],
+  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
   // #28463: avatar video, banking, the browser authorization requests, inbound
   // email, the GitHub user-connect start, mail drafts, people search,
   // presentation templates, the Strapi webhook, uploads, video-io, voice-io and

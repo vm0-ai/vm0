@@ -2,9 +2,33 @@ import { describe, expect, it } from "vitest";
 
 import {
   claudeToolEntrySchema,
+  getRunResponseSchema,
   networkLogEntrySchema,
   unifiedRunRequestSchema,
 } from "../runs";
+
+describe("get run response contract", () => {
+  it("omits the retired Compose version field", () => {
+    const response = getRunResponseSchema.parse({
+      runId: "run-1",
+      status: "pending",
+      prompt: "inspect the run",
+      appendSystemPrompt: null,
+      createdAt: "2026-08-21T00:00:00.000Z",
+    });
+
+    expect(getRunResponseSchema.shape).not.toHaveProperty(
+      "agentComposeVersionId",
+    );
+    expect(response).toStrictEqual({
+      runId: "run-1",
+      status: "pending",
+      prompt: "inspect the run",
+      appendSystemPrompt: null,
+      createdAt: "2026-08-21T00:00:00.000Z",
+    });
+  });
+});
 
 describe("Claude tool entry contract", () => {
   it("accepts single Claude tool names", () => {

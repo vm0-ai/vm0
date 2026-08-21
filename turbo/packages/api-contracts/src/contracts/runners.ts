@@ -473,7 +473,6 @@ export const jobSchema = z.object({
   runId: z.uuid(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
@@ -892,7 +891,12 @@ export const storedExecutionContextSchema =
  * Tolerant reader for execution contexts already persisted in a database or
  * encrypted queue payload. The optional baseline is derived performance data,
  * so malformed or future versions must remain an independent cache miss rather
- * than invalidating the complete queued execution context.
+ * than invalidating the complete queued execution context. During the Stage 4
+ * API rollout, contexts queued by the previous API may also carry the retired
+ * Compose-version key; Zod's default unknown-key stripping normalizes it out.
+ * Surface: existing runner queue, up to two hours. Remove the Stage 4-specific
+ * comment and fixture after pre-cutover contexts expire; follow-up #26938
+ * Stage 8. The general tolerant reader remains for its existing purpose.
  */
 export const compatibleStoredExecutionContextSchema =
   storedExecutionContextObjectSchema
@@ -913,7 +917,6 @@ const executionContextObjectSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),

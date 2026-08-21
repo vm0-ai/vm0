@@ -164,6 +164,12 @@ describe("final provider console paths", () => {
     });
   });
 
+  // Kept here after #28545 moved the contract onto the final path: what this
+  // block asserts is that all three forms answer identically, which is the
+  // property the move has to preserve. The table behind them changed —
+  // `MIGRATED_BRANDED_PATHS` now owes the two branded forms rather than
+  // `FINAL_PROVIDER_CONSOLE_PATHS` owing the final one — and that swap is what
+  // this replay would catch if a row had been dropped on either side.
   describe("GET /api/integrations/teams/oauth/callback", () => {
     const paths = namespacePaths(
       "/teams/oauth/callback",

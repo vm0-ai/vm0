@@ -646,7 +646,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(runsByIdContract.getById, ({ respond }) => {
       return respond(200, {
         runId: "run-active",
-        agentComposeVersionId: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

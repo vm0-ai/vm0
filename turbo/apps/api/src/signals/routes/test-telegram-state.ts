@@ -57,6 +57,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
+import { ensureAgentInstructionsStorageFixture } from "./test-agent-instructions-storage";
 import type { Tx } from "../../lib/db-types";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
@@ -981,6 +982,15 @@ async function seedTelegramPostFixtureForAction(
   };
 
   await seedTelegramPostAgent(db, seed, signal);
+  await ensureAgentInstructionsStorageFixture(
+    db,
+    {
+      orgId: seed.orgId,
+      userId: seed.userId,
+      agentName: seed.name,
+    },
+    signal,
+  );
   if (readActionBoolean(body, "seed_default_agent", true)) {
     await seedTelegramPostDefaultAgent(db, seed, signal);
   }
@@ -1781,6 +1791,16 @@ async function seedDefaultAgent(
     signal.throwIfAborted();
   });
   signal.throwIfAborted();
+
+  await ensureAgentInstructionsStorageFixture(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.userId,
+      agentName: input.name,
+    },
+    signal,
+  );
 
   return { composeId, versionId, agentId: composeId };
 }

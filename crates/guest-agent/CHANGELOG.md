@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.74.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.18...guest-agent-v0.74.19) (2026-08-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** ignore task notification results ([#28534](https://github.com/vm0-ai/vm0/issues/28534)) ([db3e953](https://github.com/vm0-ai/vm0/commit/db3e95327b14181d74456de8f00120bd1e186be0))
+* **guest-agent:** mask sandbox operation telemetry ([#28512](https://github.com/vm0-ai/vm0/issues/28512)) ([d81bf2d](https://github.com/vm0-ai/vm0/commit/d81bf2d0505e96a7e76efc5365c2275e271dca2f))
+* **guest-agent:** redact multiline secrets in telemetry ([#28514](https://github.com/vm0-ai/vm0/issues/28514)) ([484c288](https://github.com/vm0-ai/vm0/commit/484c28853522c09be3eca6e9aa21726169dc0665))
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
 ## [0.74.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.17...guest-agent-v0.74.18) (2026-08-21)
 
 ## [0.74.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.16...guest-agent-v0.74.17) (2026-08-20)

@@ -21,6 +21,7 @@ import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
+import { teamsBotRoutes } from "../signals/routes/teams-bot";
 import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
@@ -1139,6 +1140,16 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/workflows/:workflowId/run",
     "/api/zero/workflows/:workflowId/run",
   ],
+  // #28545: the Teams OAuth callback and the Teams bot ingress, moved off
+  // `FINAL_PROVIDER_CONSOLE_PATHS` now that both Microsoft consoles hold the
+  // final URL. `/api/zero/teams/oauth/callback` is still emitted on purpose by
+  // the VM0 brand, so it is a producer target rather than drain-window
+  // compatibility; `route-entry.ts` records why on the row.
+  "/api/integrations/teams/oauth/callback": [
+    "/api/okou/teams/oauth/callback",
+    "/api/zero/teams/oauth/callback",
+  ],
+  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
   // #28463: avatar video, banking, browser authorization requests, inbound
   // email, the GitHub user-connect start, mail drafts, people search,
   // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
@@ -1876,6 +1887,59 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ suffix, neutral, okou, zero }).toStrictEqual({
         suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28545 twin, and the one slice where the branded forms are held by a
+  // provider console rather than by a released client: the Microsoft app
+  // registration still lists both callback URLs and Azure Bot can still be
+  // pointed at either bot URL, so a dropped row 404s Microsoft itself with no
+  // drain window to wait out. Requests carry no credentials, so the status is
+  // whatever the handler returns before it has any — the point is that the
+  // neutral path and both branded forms reach the same handler.
+  it("serves the migrated Teams console paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      {
+        routes: teamsOauthRoutes,
+        method: "GET",
+        neutralSuffix: "integrations/teams/oauth/callback",
+        brandedSuffix: "teams/oauth/callback",
+      },
+      {
+        routes: teamsBotRoutes,
+        method: "POST",
+        neutralSuffix: "webhooks/teams/bot",
+        brandedSuffix: "teams/bot",
+      },
+    ] as const;
+
+    for (const { routes, method, neutralSuffix, brandedSuffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${neutralSuffix}`);
+      const okou = await statusFor(`/api/okou/${brandedSuffix}`);
+      const zero = await statusFor(`/api/zero/${brandedSuffix}`);
+
+      expect({ neutralSuffix, neutral, okou, zero }).toStrictEqual({
+        neutralSuffix,
         neutral,
         okou: neutral,
         zero: neutral,

@@ -88,6 +88,7 @@ import { connectorCheckRoutes } from "./routes/connector-check";
 import { connectorsExternalCodeRoutes } from "./routes/connectors-external-code";
 import { connectorsOauthDeviceAuthRoutes } from "./routes/connectors-oauth-device-auth";
 import { connectorsRoutes } from "./routes/connectors";
+import { connectorAccountRoutes } from "./routes/connector-accounts";
 import { customConnectorsRoutes } from "./routes/custom-connectors";
 import { emailInboundRoutes } from "./routes/email-inbound";
 import { featureSwitchesRoutes } from "./routes/feature-switches";
@@ -280,6 +281,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsExternalCodeRoutes,
   ...connectorsOauthDeviceAuthRoutes,
   ...connectorsRoutes,
+  ...connectorAccountRoutes,
   ...customConnectorsRoutes,
   ...emailInboundRoutes,
   ...featureSwitchesRoutes,

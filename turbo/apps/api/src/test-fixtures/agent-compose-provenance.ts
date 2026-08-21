@@ -86,6 +86,20 @@ export async function readAgentComposeVersionReferenceCountsFixture(
   };
 }
 
+export async function readAgentRunVersionFixture(
+  runId: string,
+): Promise<string | null> {
+  const [run] = await db()
+    .select({ versionId: agentRuns.agentComposeVersionId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error("Expected an Agent Run");
+  }
+  return run.versionId;
+}
+
 export async function readCheckpointAgentComposeSnapshotFixture(
   runId: string,
 ): Promise<unknown> {
@@ -110,6 +124,19 @@ export async function clearAgentRunVersionFixture(
     .returning({ id: agentRuns.id });
   if (rows.length !== 1) {
     throw new Error("Expected one Agent Run version reference to clear");
+  }
+}
+
+export async function clearAgentRunLaunchSnapshotFixture(
+  runId: string,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ launchSnapshot: null })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Agent Run launch snapshot to clear");
   }
 }
 

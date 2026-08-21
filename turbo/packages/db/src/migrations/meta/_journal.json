@@ -1072,6 +1072,13 @@
       "when": 1787290223588,
       "tag": "0960_curly_blob",
       "breakpoints": true
+    },
+    {
+      "idx": 961,
+      "version": "7",
+      "when": 1787293560923,
+      "tag": "0961_connector_account_lifecycle",
+      "breakpoints": true
     }
   ]
 }

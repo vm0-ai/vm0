@@ -1,9 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 
-import { computeComposeVersionId } from "./agent-compose-content";
-import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "./agent-execution-plan";
-import { isExactHistoricalProductBuilderCandidate } from "./historical-product-builder";
+import { computeComposeVersionId } from "../../../apps/api/src/signals/services/agent-compose-content";
+import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "../../../apps/api/src/signals/services/agent-execution-plan";
+import { isExactHistoricalProductBuilderCandidate } from "./agent-compose-consolidation-preflight-historical-product-builder";
+
+// Migration-bound legacy inventory only. Product launch code must never import
+// this classifier or use its result as execution authority.
 
 export const AGENT_EXECUTION_PLAN_DIMENSIONS = [
   "danglingOrMissingHeadVersion",
