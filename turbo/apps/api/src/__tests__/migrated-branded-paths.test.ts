@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { billingStatusRoutes } from "../signals/routes/billing-status";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
@@ -609,6 +610,71 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
     "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
   ],
+  // #28466
+  "/api/computer-use/audit-events": [
+    "/api/okou/computer-use/audit-events",
+    "/api/zero/computer-use/audit-events",
+  ],
+  "/api/computer-use/authorization-requests": [
+    "/api/okou/computer-use/authorization-requests",
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken": [
+    "/api/okou/computer-use/authorization-requests/:requestToken",
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken/apply": [
+    "/api/okou/computer-use/authorization-requests/:requestToken/apply",
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+  ],
+  "/api/computer-use/commands": [
+    "/api/okou/computer-use/commands",
+    "/api/zero/computer-use/commands",
+  ],
+  "/api/computer-use/commands/:commandId": [
+    "/api/okou/computer-use/commands/:commandId",
+    "/api/zero/computer-use/commands/:commandId",
+  ],
+  "/api/computer-use/commands/:commandId/plugin-content": [
+    "/api/okou/computer-use/commands/:commandId/plugin-content",
+    "/api/zero/computer-use/commands/:commandId/plugin-content",
+  ],
+  "/api/computer-use/commands/:commandId/screenshot": [
+    "/api/okou/computer-use/commands/:commandId/screenshot",
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+  ],
+  "/api/computer-use/heartbeat": [
+    "/api/okou/computer-use/heartbeat",
+    "/api/zero/computer-use/heartbeat",
+  ],
+  "/api/computer-use/host/commands/:commandId/complete": [
+    "/api/okou/computer-use/host/commands/:commandId/complete",
+    "/api/zero/computer-use/host/commands/:commandId/complete",
+  ],
+  "/api/computer-use/host/commands/next": [
+    "/api/okou/computer-use/host/commands/next",
+    "/api/zero/computer-use/host/commands/next",
+  ],
+  "/api/computer-use/host/stop": [
+    "/api/okou/computer-use/host/stop",
+    "/api/zero/computer-use/host/stop",
+  ],
+  "/api/computer-use/hosts": [
+    "/api/okou/computer-use/hosts",
+    "/api/zero/computer-use/hosts",
+  ],
+  "/api/computer-use/hosts/start": [
+    "/api/okou/computer-use/hosts/start",
+    "/api/zero/computer-use/hosts/start",
+  ],
+  "/api/computer-use/plugin-commands": [
+    "/api/okou/computer-use/plugin-commands",
+    "/api/zero/computer-use/plugin-commands",
+  ],
+  "/api/computer-use/write-commands": [
+    "/api/okou/computer-use/write-commands",
+    "/api/zero/computer-use/write-commands",
+  ],
 };
 
 function missingBrandedPaths(
@@ -987,6 +1053,46 @@ describe("branded paths for migrated neutral routes", () => {
           method,
           headers: { "content-type": "application/json" },
           ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28457 twin of the two assertions above, for the billing slice. Every
+  // caller of these routes in this repository derives its URL from the
+  // contract, so a request-level case is the only place a dropped row shows
+  // up as the 404 a released client would get. Requests are unauthenticated,
+  // so the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated billing paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: billingStatusRoutes, method: "GET", suffix: "billing/status" },
+    ] as const;
+
+    for (const { routes, method, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
         });
         return response.status;
       }
