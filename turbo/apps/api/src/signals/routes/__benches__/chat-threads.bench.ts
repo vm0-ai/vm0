@@ -870,7 +870,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/user-preferences",
+    "GET /api/user-preferences",
     async () => {
       await ensureSeeded();
       const response = await userPreferencesClient.get({
@@ -908,7 +908,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/me/model-providers",
+    "GET /api/me/model-providers",
     async () => {
       await ensureSeeded();
       const response = await personalModelProvidersClient.list({

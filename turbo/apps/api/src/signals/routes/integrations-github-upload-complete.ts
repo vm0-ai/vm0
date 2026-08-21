@@ -144,6 +144,7 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
       contentType: mimetype,
       sizeBytes: object.size,
       url: fileUrl,
+      publicBrand: object.publicBrand,
       metadata: buildMetadata({
         body,
         s3Key: object.key,

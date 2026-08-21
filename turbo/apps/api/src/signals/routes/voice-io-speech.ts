@@ -1,9 +1,11 @@
 import { command } from "ccstate";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
@@ -39,6 +41,7 @@ interface GenerateSpeechResponseArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
+  readonly publicBrand: PublicBrand;
   readonly text: string;
   readonly voice: string;
   readonly instructions: string | undefined;
@@ -106,6 +109,7 @@ const generateSpeechResponse$ = command(
         orgId: args.orgId,
         userId: args.userId,
         runId: args.runId,
+        publicBrand: args.publicBrand,
         voice: args.voice,
         audioBytes,
         durationSeconds,
@@ -175,6 +179,8 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const admission = await set(
     startRunBuiltInAdmission$,
     { runId, kind: "voice" },
@@ -191,6 +197,7 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
+        publicBrand,
         text,
         voice,
         instructions,

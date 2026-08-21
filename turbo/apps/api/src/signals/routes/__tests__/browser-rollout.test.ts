@@ -3,6 +3,7 @@ import { testContext } from "../../../__tests__/test-context";
 import {
   readBrowserScreenshotSchemaAvailable,
   resetDatabasePool,
+  validateBrowserPublicBrandRollout,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -28,5 +29,32 @@ describe("browser screenshot rollout compatibility", () => {
     await expect(
       readBrowserScreenshotSchemaAvailable(context),
     ).resolves.toBeFalsy();
+  });
+
+  it("supports both browser public-brand deployment orders", async () => {
+    await resetDatabasePool(context);
+    await expect(
+      validateBrowserPublicBrandRollout(context),
+    ).resolves.toStrictEqual({
+      schemaAvailable: true,
+      previousApiPublicBrand: "vm0",
+      newApiPublicBrandPersisted: true,
+      newApiPublicBrand: "okou",
+      newApiPublicBrandAfterSchemaArrival: "okou",
+    });
+
+    const preMigrationUrl = preMigrationDatabaseUrl();
+    await resetDatabasePool(context);
+    mockEnv("DATABASE_URL", preMigrationUrl);
+
+    await expect(
+      validateBrowserPublicBrandRollout(context),
+    ).resolves.toStrictEqual({
+      schemaAvailable: false,
+      previousApiPublicBrand: "vm0",
+      newApiPublicBrandPersisted: false,
+      newApiPublicBrand: "okou",
+      newApiPublicBrandAfterSchemaArrival: "okou",
+    });
   });
 });

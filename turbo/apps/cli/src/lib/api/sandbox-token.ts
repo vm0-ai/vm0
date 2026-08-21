@@ -1,3 +1,4 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { getOkouToken } from "../okou-env.js";
 
 export interface SandboxTokenPayload {
@@ -6,6 +7,7 @@ export interface SandboxTokenPayload {
   orgId: string;
   scope: "okou";
   capabilities: string[];
+  publicBrand?: PublicBrand;
   iat: number;
   exp: number;
 }
@@ -33,7 +35,15 @@ export function decodeSandboxTokenPayload(
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString(),
     ) as SandboxTokenPayload;
-    if (payload.scope === "okou" && Array.isArray(payload.capabilities)) {
+    const publicBrandIsValid =
+      payload.publicBrand === undefined ||
+      payload.publicBrand === "vm0" ||
+      payload.publicBrand === "okou";
+    if (
+      payload.scope === "okou" &&
+      Array.isArray(payload.capabilities) &&
+      publicBrandIsValid
+    ) {
       return payload;
     }
   } catch {

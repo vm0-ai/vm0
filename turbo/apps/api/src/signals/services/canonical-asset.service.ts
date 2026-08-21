@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunUploadedFileMetadata } from "@okouai/db/jsonb-contracts/run-uploaded-file";
 import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
@@ -64,6 +66,7 @@ interface CanonicalSlackInputFileArgs {
   readonly workspaceId: string;
   readonly channelId: string;
   readonly messageTs: string;
+  readonly publicBrand: PublicBrand;
   readonly botToken?: string;
   readonly file: SlackFile;
 }
@@ -82,6 +85,25 @@ interface CanonicalAssetRow {
   readonly checksumSha256: string | null;
   readonly storageKey: string | null;
   readonly url: string | null;
+  readonly metadata: RunUploadedFileMetadata;
+}
+
+function canonicalAssetPublicBrand(
+  metadata: RunUploadedFileMetadata,
+): PublicBrand {
+  const publicBrand: unknown = metadata.publicBrand;
+  if (publicBrand === undefined) {
+    // Old API writers can omit the field during the observed ~102-minute
+    // DB/API rollout window, and their persisted rows remain reachable until
+    // expiry or backfill. Remove after both conditions hold; tracked by #28449.
+    return "vm0";
+  }
+  if (publicBrand === "vm0" || publicBrand === "okou") {
+    return publicBrand;
+  }
+  throw new Error(
+    `Invalid canonical asset public brand: ${String(publicBrand)}`,
+  );
 }
 
 function slackFileFilename(file: SlackFile): string {
@@ -157,6 +179,7 @@ function canonicalAssetSelection() {
     checksumSha256: runUploadedFiles.checksumSha256,
     storageKey: runUploadedFiles.storageKey,
     url: runUploadedFiles.url,
+    metadata: runUploadedFiles.metadata,
   } as const;
 }
 
@@ -263,7 +286,7 @@ async function ensureSlackInputAsset(
       contentType: args.contentType,
       sizeBytes: args.file.size ?? null,
       url: null,
-      metadata: {},
+      metadata: { publicBrand: args.publicBrand },
       assetVersion: CANONICAL_ASSET_VERSION,
       classification: "input",
       accessLevel: "private",
@@ -515,6 +538,7 @@ const importCanonicalSlackInputFile$ = command(
                 args.userId,
                 args.asset.id,
                 args.asset.filename ?? args.asset.id,
+                canonicalAssetPublicBrand(args.asset.metadata),
               ),
             },
           ),
@@ -564,6 +588,7 @@ const materializeCanonicalSlackInputFile$ = command(
       {
         userId: args.userId,
         filename,
+        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -694,8 +719,8 @@ export async function registerCanonicalWebInputAssets(
         filename: file.filename,
         contentType: file.contentType,
         sizeBytes: file.size,
-        url: buildFileUrlFromKey(file.objectKey),
-        metadata: {},
+        url: buildFileUrlFromKey(file.objectKey, file.publicBrand),
+        metadata: { publicBrand: file.publicBrand },
         assetVersion: CANONICAL_ASSET_VERSION,
         classification: "input",
         accessLevel: "private",
@@ -728,6 +753,7 @@ interface PrepareCanonicalPublishedAssetArgs {
   readonly contentType: string;
   readonly size: number;
   readonly checksumSha256: string;
+  readonly publicBrand: PublicBrand;
   readonly destination: {
     readonly channelId: string;
     readonly threadTs?: string;
@@ -768,7 +794,7 @@ async function ensureCanonicalPublishedAsset(
       contentType: args.contentType,
       sizeBytes: args.size,
       url: null,
-      metadata: {},
+      metadata: { publicBrand: args.publicBrand },
       assetVersion: CANONICAL_ASSET_VERSION,
       classification: "published-output",
       accessLevel: "published",
@@ -887,6 +913,7 @@ export const prepareCanonicalPublishedAsset$ = command(
       {
         userId: args.userId,
         filename: args.filename,
+        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -924,11 +951,19 @@ export const prepareCanonicalPublishedAsset$ = command(
       throw new Error("Canonical publication storage key is missing");
     }
     const metadata = isArtifactKeyV2(storageKey)
-      ? artifactObjectMetadata(args.userId, asset.id, args.filename)
+      ? artifactObjectMetadata(
+          args.userId,
+          asset.id,
+          args.filename,
+          canonicalAssetPublicBrand(asset.metadata),
+        )
       : undefined;
     const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
 
-    const url = buildFileUrlFromKey(storageKey);
+    const url = buildFileUrlFromKey(
+      storageKey,
+      canonicalAssetPublicBrand(asset.metadata),
+    );
     if (asset.materializationStatus === "ready") {
       return {
         assetId: asset.id,
@@ -1015,7 +1050,10 @@ export const materializeCanonicalPublishedAsset$ = command(
         message: "Canonical publication asset was not found",
       };
     }
-    const url = buildFileUrlFromKey(asset.storageKey);
+    const url = buildFileUrlFromKey(
+      asset.storageKey,
+      canonicalAssetPublicBrand(asset.metadata),
+    );
     if (asset.materializationStatus === "ready") {
       await set(syncArtifactCatalogForFile$, asset.id, signal);
       return { ok: true, assetId: asset.id, url };

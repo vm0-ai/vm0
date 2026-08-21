@@ -6,12 +6,9 @@ import {
 } from "@okouai/ui/components/ui/dialog";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import {
-  findWebsiteTemplateItem,
-  r2ImageTransformUrl,
-  type WebsiteTemplateItem,
-} from "@okouai/core";
+import { r2ImageTransformUrl, type WebsiteTemplateItem } from "@okouai/core";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import { findWebsiteTemplateItem } from "../../lib/platform-template-items.ts";
 
 function WebsiteTemplatePreviewDialog({
   item,

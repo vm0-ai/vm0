@@ -6,7 +6,7 @@ import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { z } from "zod";
 
-import { env } from "../../lib/env";
+import { publicArtifactsBaseUrlForBrand } from "../../lib/file-url";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
@@ -189,8 +189,11 @@ function artifactPathFromShareImageUrl(pathname: string): string | null {
 }
 
 function isAllowedShareImageUrl(parsed: URL): boolean {
-  const publicArtifactsBaseUrl = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
-  if (parsed.origin !== publicArtifactsBaseUrl.origin) {
+  const allowedOrigins = new Set([
+    new URL(publicArtifactsBaseUrlForBrand("vm0")).origin,
+    new URL(publicArtifactsBaseUrlForBrand("okou")).origin,
+  ]);
+  if (!allowedOrigins.has(parsed.origin)) {
     return false;
   }
 

@@ -1641,6 +1641,7 @@ interface GmailEventAutomationRow {
 
 type GmailRunStarter = (args: {
   readonly automation: GmailEventAutomationRow;
+  readonly connectorSourceId: string;
   readonly decoded: DecodedGmailPubSubPush;
   readonly message: GmailMessageContext;
   readonly timing: AutomationEventRunTiming;
@@ -1934,6 +1935,7 @@ async function dispatchGmailAutomationEvent(
 
   const result = await args.startRun({
     automation: args.automation,
+    connectorSourceId: args.state.connectorId,
     decoded: args.decoded,
     message: args.message,
     timing: args.timing,
@@ -2423,6 +2425,7 @@ const startGmailWorkflowRun$ = command(
     { set },
     args: {
       readonly automation: GmailEventAutomationRow;
+      readonly connectorSourceId: string;
       readonly decoded: DecodedGmailPubSubPush;
       readonly message: GmailMessageContext;
       readonly timing: AutomationEventRunTiming;
@@ -2459,6 +2462,7 @@ const startGmailWorkflowRun$ = command(
           chatThreadId: args.automation.chatThreadId,
         },
         automationContext: runInput.context,
+        connectorSourceId: args.connectorSourceId,
         apiStartTime: args.apiStartTime,
         triggerSource: "automation-event",
         triggerBrief: runInput.triggerBrief,
@@ -2541,11 +2545,12 @@ export const dispatchGmailPubSubPush$ = command(
             }),
           });
         }
-      : async ({ automation, decoded, message, timing }) => {
+      : async ({ automation, connectorSourceId, decoded, message, timing }) => {
           return await set(
             startGmailWorkflowRun$,
             {
               automation,
+              connectorSourceId,
               decoded,
               message,
               timing,

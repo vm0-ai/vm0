@@ -110,7 +110,7 @@ class TestErrorHandler:
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
         assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
 
-    async def test_connector_candidate_error_gets_local_diagnostic_response(
+    async def test_connector_candidate_error_keeps_original_connection_error(
         self, tmp_path, real_flow, mitm_ctx
     ):
         reg_path = write_connector_diagnostic_capture_registry(tmp_path)
@@ -123,102 +123,22 @@ class TestErrorHandler:
         )
 
         with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            record_connector_diagnostic_requestheaders_context(flow)
+            await mitm_addon.request(flow)
+            assert flow.response is None
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
 
-        assert flow.response is not None
-        assert flow.response.status_code == 424
-        content = flow.response.content
-        assert content is not None
-        body = json.loads(content)
-        assert body["error"] == "connector_not_configured_for_run"
-        assert body["connector"] == "fal"
-        assert body["envNames"] == ["FAL_TOKEN"]
-        assert body["base"] == "https://fal.run"
-        assert body["upstreamStatus"] == 0
-
+        assert flow.response is None
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
-        assert entry["firewall_error"] == "connector_not_configured_for_run"
-        assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
-        assert entry["connector_diagnostic_base"] == "https://fal.run"
+        assert "firewall_error" not in entry
+        assert "connector_diagnostic_slug" not in entry
 
-        proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
-        assert proxy_entries[0]["type"] == "connector_diagnostic"
-        assert proxy_entries[0]["upstream_status"] == 0
-        assert proxy_entries[1]["type"] == "connection_error"
+        [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert proxy_entry["type"] == "connection_error"
 
-    async def test_connector_candidate_error_gets_diagnostic_without_network_log(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
-        flow = real_flow(
-            with_response=False,
-            client_ip="10.200.0.5",
-            host="fal.run",
-            path="/fal-ai/nano-banana-pro",
-            method="POST",
-        )
-
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            record_connector_diagnostic_requestheaders_context(flow)
-            flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-            flow.metadata.pop(metadata_keys.NETWORK_LOG_TARGET)
-            flow.error = Error("connection reset by peer")
-            mitm_addon.error(flow)
-
-        assert flow.response is not None
-        assert flow.response.status_code == 424
-        content = flow.response.content
-        assert content is not None
-        body = json.loads(content)
-        assert body["error"] == "connector_not_configured_for_run"
-        assert body["connector"] == "fal"
-        assert not (tmp_path / "net.jsonl").exists()
-
-        [connector_entry, connection_entry] = read_jsonl_entries_after_flush(
-            tmp_path / "proxy.jsonl"
-        )
-        assert connector_entry["type"] == "connector_diagnostic"
-        assert connection_entry["type"] == "connection_error"
-
-    async def test_head_connector_candidate_error_gets_bodyless_diagnostic(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        reg_path = write_connector_diagnostic_capture_registry(tmp_path)
-        flow = real_flow(
-            with_response=False,
-            client_ip="10.200.0.5",
-            host="fal.run",
-            path="/fal-ai/nano-banana-pro",
-            method="HEAD",
-        )
-
-        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-            record_connector_diagnostic_requestheaders_context(flow)
-            flow.error = Error("connection reset by peer")
-            mitm_addon.error(flow)
-
-        assert flow.response is not None
-        assert flow.response.status_code == 424
-        assert flow.response.raw_content == b""
-        assert flow.response.headers["Content-Type"] == "application/json"
-        assert flow.response.headers.get_all("Content-Length") == []
-        assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "fal"
-        [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-        assert network_entry["response_size"] == 0
-        assert network_entry["error"] == "connection reset by peer"
-        assert "response_body" not in network_entry
-        [connector_entry, connection_entry] = read_jsonl_entries_after_flush(
-            tmp_path / "proxy.jsonl"
-        )
-        assert connector_entry["type"] == "connector_diagnostic"
-        assert connection_entry["type"] == "connection_error"
-
-    def test_streamed_connector_candidate_error_before_request_gets_diagnostic(
+    def test_streamed_connector_candidate_error_before_request_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx
     ):
         reg_path = write_connector_diagnostic_capture_registry(tmp_path)
@@ -235,21 +155,13 @@ class TestErrorHandler:
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
 
-        assert flow.response is not None
-        assert flow.response.status_code == 424
-        content = flow.response.content
-        assert content is not None
-        body = json.loads(content)
-        assert body["error"] == "connector_not_configured_for_run"
-        assert body["connector"] == "fal"
-
+        assert flow.response is None
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["request_size"] == len(request_chunk)
         assert entry["error"] == "connection reset by peer"
-        assert entry["firewall_error"] == "connector_not_configured_for_run"
-        assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
+        assert "firewall_error" not in entry
+        assert "connector_diagnostic_slug" not in entry
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata

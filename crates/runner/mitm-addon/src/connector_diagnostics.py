@@ -24,8 +24,8 @@ Lifecycle:
   streaming. A diagnostic stream suppresses the upstream body and emits its
   replacement content once, except that HEAD remains bodyless.
 - ``response()`` completes streamed replacement or handles buffered 401/403
-  replacement before network logging. ``error()`` may synthesize a diagnostic
-  response unless response headers already installed a replacement.
+  replacement before network logging. ``error()`` preserves connection errors
+  while finalizing any replacement already installed after 401/403 headers.
 - Terminal response, error, and WebSocket cleanup call ``release_flow_state()``
   from exception-safe cleanup to release diagnostic-private state and detach an
   installed diagnostic stream callback.
@@ -119,13 +119,19 @@ def record_allow_context(
     """Pin diagnostic lookup context for an eligible ordinary allow flow.
 
     Request-header callers use this before carrying a streamed ``allow``
-    classification into ``request()``; request callers use it before immediate
-    or deferred diagnostic resolution. A browser flow, existing diagnostic, or
-    asterisk-form target, or incomplete original-URL context is a no-op.
+    classification into ``request()``; request callers use it to defer
+    diagnostic resolution until an upstream response. A browser flow, existing
+    diagnostic, asterisk-form target, or incomplete original-URL context is a
+    no-op.
+
+    Catalog matching is only a diagnostic hint, not proof that an ordinary
+    request requires connector credentials. Preserve the original request and
+    wait for an upstream 401/403 to provide the auth-failure signal before
+    resolving an inactive connector candidate.
 
     On success, the flow records diagnostic eligibility, active firewall names,
-    and one classification-compatible catalog snapshot. Response and error
-    phases resolve candidates only from that pinned snapshot.
+    and one classification-compatible catalog snapshot. Response phases resolve
+    candidates only from that pinned snapshot.
     """
     if classification.is_asterisk_form:
         return
@@ -144,48 +150,6 @@ def record_allow_context(
         sorted(_active_firewall_names(vm_info))
     )
     _pin_diagnostic_snapshot(flow, classification)
-
-
-def maybe_make_local_response(
-    flow: http.HTTPFlow,
-    *,
-    original_url: str,
-) -> bool:
-    """Create an immediate diagnostic for an ordinary allow request.
-
-    Call this from the committed request phase after ``record_allow_context()``
-    and only when request streaming has not deferred the decision. It uses the
-    pinned catalog candidate and preserves upstream handling for browser flows,
-    missing candidates, or requests carrying configured or generic auth
-    material.
-
-    Return ``True`` only after installing a local HTTP 424 response, recording
-    failure/timing/firewall metadata, and emitting the diagnostic proxy entry.
-    HEAD keeps the same diagnostic status and metadata without response content.
-    The caller must treat that response as terminal for request dispatch.
-    """
-    if _is_browser_diagnostic_skip(flow):
-        return False
-    candidate = _resolve_candidate(flow, original_url=original_url)
-    if candidate is None:
-        return False
-    if _request_may_have_auth_material(flow, candidate, original_url):
-        return False
-
-    flow_metadata.start_request_timing(flow.metadata)
-    _set_failure_metadata(flow, candidate)
-    flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
-    flow.response = _make_local_response(
-        flow,
-        candidate,
-        upstream_status=0,
-    )
-    _log_proxy_entry(
-        flow,
-        original_url=original_url,
-        upstream_status=0,
-    )
-    return True
 
 
 def maybe_make_firewall_allow_local_response(
@@ -386,42 +350,18 @@ def maybe_replace_response(
     )
 
 
-def maybe_make_error_response(
-    flow: http.HTTPFlow,
-    *,
-    original_url: str,
-) -> None:
-    """Create a connector diagnostic response during the error hook.
+def handle_error(flow: http.HTTPFlow) -> None:
+    """Finalize a response-header diagnostic after a connection error.
 
-    Call this before writing the flow's network-error entry. If response headers
-    already installed diagnostic replacement, it does not create or log another
-    diagnostic and clears trailers when a response exists. Otherwise an
-    eligible non-browser request without auth material receives a local HTTP 424
-    response with upstream status zero and one diagnostic proxy entry. HEAD keeps
-    that response bodyless.
+    Connection errors before an upstream 401/403 remain unchanged. When response
+    headers already established a diagnostic replacement, discard upstream
+    trailers before terminal cleanup detaches the owned stream callback.
     """
-    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
-        if flow.response is not None:
-            flow.response.trailers = None
-        return
-    if _is_browser_diagnostic_skip(flow):
-        return
-    candidate = _resolve_candidate(flow, original_url=original_url)
-    if candidate is None:
-        return
-    if _request_may_have_auth_material(flow, candidate, original_url):
-        return
-    _set_failure_metadata(flow, candidate)
-    flow.response = _make_local_response(
-        flow,
-        candidate,
-        upstream_status=0,
-    )
-    _log_proxy_entry(
-        flow,
-        original_url=original_url,
-        upstream_status=0,
-    )
+    if (
+        flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS)
+        and flow.response is not None
+    ):
+        flow.response.trailers = None
 
 
 def release_flow_state(flow: http.HTTPFlow) -> None:

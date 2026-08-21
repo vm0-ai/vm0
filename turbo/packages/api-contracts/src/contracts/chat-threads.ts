@@ -3,6 +3,10 @@ import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
 import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
+import {
+  connectorAccountSelectionSchema,
+  connectorAccountTargetSchema,
+} from "./connector-accounts";
 import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -856,6 +860,7 @@ const chatThreadCreateBodySchema = z.object({
   agentId: z.string().min(1),
   clientThreadId: z.string().uuid().optional(),
   eventId: chatThreadEventIdSchema.optional(),
+  connectorSelections: z.array(connectorAccountSelectionSchema).optional(),
   /**
    * Selected model id. The API resolves the effective model provider from org
    * policy and available credentials. Omit it to inherit the model of the run
@@ -1355,6 +1360,56 @@ export const chatThreadModelSelectionContract = c.router({
   },
 });
 
+/** Read, set, or clear sparse per-thread connector account overrides. */
+export const chatThreadConnectorSelectionContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/okou/chat-threads/:id/connector-selections",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    responses: {
+      200: z.object({
+        selections: z.array(connectorAccountSelectionSchema),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a chat thread's connector account selections",
+  },
+  update: {
+    method: "PUT",
+    path: "/api/okou/chat-threads/:id/connector-selections",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: connectorAccountSelectionSchema,
+    responses: {
+      200: connectorAccountSelectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update one chat thread connector account selection",
+  },
+  clear: {
+    method: "DELETE",
+    path: "/api/okou/chat-threads/:id/connector-selections",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: connectorAccountTargetSchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Clear one chat thread connector account selection",
+  },
+});
+
 /**
  * Update a chat thread's video model pin. Separate from the model-selection
  * route because it shares none of its provider, tier, or policy resolution.
@@ -1501,6 +1556,7 @@ export const chatEventsContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
       429: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Append a chat event and dispatch input when applicable",
   },
@@ -1701,6 +1757,8 @@ export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;
 export type ChatThreadModelSelectionContract =
   typeof chatThreadModelSelectionContract;
+export type ChatThreadConnectorSelectionContract =
+  typeof chatThreadConnectorSelectionContract;
 export type ChatThreadComputerUseHostContract =
   typeof chatThreadComputerUseHostContract;
 export type ChatEventsContract = typeof chatEventsContract;

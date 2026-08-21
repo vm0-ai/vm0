@@ -60,6 +60,7 @@ function geocodeOkHandler(requests: URL[]) {
 
 describe("FILE-01: hosted-site deployments through host APIs", () => {
   it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
+    mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou-public-sites.test");
     mockEnv("OKOU_HOST_DOMAIN", "okou-sites.test");
     mockEnv("ZERO_HOST_DOMAIN", "zero-sites.test");
     mockEnv("OKOU_HOST_SCHEME", "http");
@@ -88,7 +89,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(first.publicSlug).toBe(site);
     expect(second.publicSlug).toBe(site);
     expect(first.url).toBe(second.url);
-    expect(first.url).toBe(`http://${site}.okou-sites.test`);
+    expect(first.url).toBe(`https://${site}.zero-sites.test`);
     expect(first.aliasUrl).toBe(first.url);
     expect(second.aliasUrl).toBe(second.url);
     expect(first.deploymentVersion).toBe(1);
@@ -216,6 +217,123 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         deploymentVersion: 3,
       }),
     ]);
+  });
+
+  it("uses the creation brand for hosted-site URLs and isolates Okou pointers [HOST-A]", async () => {
+    mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
+    mockEnv("OKOU_HOST_DOMAIN", "legacy-sites.test");
+    mockEnv("ZERO_HOST_DOMAIN", "sites.vm0.io");
+    mockEnv("OKOU_HOST_SCHEME", "https");
+    mockEnv("ZERO_HOST_SCHEME", "https");
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected branded host actor to have an org");
+    }
+    const capture = api.captureHostedSitesS3();
+    await upsertOrgPlanEntitlementFixture({ orgId: actor.orgId });
+
+    const vm0Site = `bdd-vm0-brand-${randomUUID().slice(0, 8)}`;
+    const vm0Body = {
+      site: vm0Site,
+      artifactKind: "hosted-site" as const,
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", "<main>VM0 site</main>")],
+    };
+    const createdOnVm0 = await api.prepareHostedSite(actor, vm0Body, "vm0");
+    const redeployedFromOkou = await api.prepareHostedSite(
+      actor,
+      vm0Body,
+      "okou",
+    );
+
+    expect(createdOnVm0.url).toBe(`https://${vm0Site}.sites.vm0.io`);
+    expect(redeployedFromOkou).toMatchObject({
+      siteId: createdOnVm0.siteId,
+      url: createdOnVm0.url,
+      deploymentVersion: 2,
+    });
+
+    const browserOkouSite = `bdd-browser-okou-${randomUUID().slice(0, 8)}`;
+    const createdOnOkou = await api.prepareHostedSite(
+      actor,
+      {
+        ...vm0Body,
+        site: browserOkouSite,
+      },
+      "okou",
+    );
+    expect(createdOnOkou.url).toBe(`https://${browserOkouSite}.okou.app`);
+
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: actor.orgId },
+          role: "org:admin",
+        },
+      ],
+    });
+    const okouToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      randomUUID(),
+      ["host:write"],
+      "okou",
+    );
+    const okouSite = `bdd-okou-brand-${randomUUID().slice(0, 8)}`;
+    const createdWithOkouToken = await api.prepareHostedSite(
+      { bearerToken: okouToken },
+      {
+        site: okouSite,
+        artifactKind: "hosted-site",
+        spaFallback: false,
+        files: [hostedTextFile("/index.html", "<main>Okou site</main>")],
+      },
+      "vm0",
+    );
+    expect(createdWithOkouToken.url).toBe(`https://${okouSite}.okou.app`);
+    expect(createdWithOkouToken.artifactUrl).toBe(
+      `https://dpl-${createdWithOkouToken.deploymentId}.okou.app`,
+    );
+
+    await api.completeHostedSite(
+      { bearerToken: okouToken },
+      createdWithOkouToken.deploymentId,
+    );
+    const okouPointerKey = `sites/brands/okou/${okouSite}/active.json`;
+    const okouDeploymentPointerKey = `sites/brands/okou/deployments/${createdWithOkouToken.deploymentId}.json`;
+    const okouPointer = capture.puts.find((put) => {
+      return put.key === okouPointerKey;
+    });
+    expect(okouPointer).toBeDefined();
+    expect(JSON.parse(okouPointer?.body ?? "{}")).toMatchObject({
+      publicBrand: "okou",
+      publicSlug: okouSite,
+      deploymentId: createdWithOkouToken.deploymentId,
+    });
+    expect(
+      capture.puts.some((put) => {
+        return put.key === okouDeploymentPointerKey;
+      }),
+    ).toBeTruthy();
+    const okouManifest = capture.puts.find((put) => {
+      return put.key.endsWith("/manifest.json") && put.body.includes(okouSite);
+    });
+    expect(JSON.parse(okouManifest?.body ?? "{}")).toMatchObject({
+      publicBrand: "okou",
+      publicSlug: okouSite,
+      deploymentId: createdWithOkouToken.deploymentId,
+    });
+    expect(
+      capture.puts.some((put) => {
+        return (
+          put.key === `sites/${okouSite}/active.json` ||
+          put.key ===
+            `sites/deployments/${createdWithOkouToken.deploymentId}.json`
+        );
+      }),
+    ).toBeFalsy();
   });
 
   it("adds a four-character hash only when the simple alias is already occupied [HOST-A]", async () => {
@@ -443,6 +561,49 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expectApiError(tooLong.body);
     expect(tooLong.body.error.code).toBe("BAD_REQUEST");
     expect(tooLong.body.error.message).toContain("96");
+  });
+
+  // #28417 moved the maps contract to `/api/maps/**`, so the blanket expansion
+  // no longer derives either branded form and both exist only because
+  // `MIGRATED_BRANDED_PATHS` names them. Asserted through the endpoint rather
+  // than the route table: a registration entry cannot show that a request from
+  // a released CLI build actually reaches the maps handler and is charged.
+  it("serves geocode on the neutral path and both branded paths released CLI builds hold [MAPS-COMPAT]", async () => {
+    const bdd = createBddApi(context);
+    const billing = createMapsBillingApi(context);
+    const runs = createRunsApi(context);
+    const admin = bdd.user();
+    await runs.grantProEntitlement(admin);
+    billing.configureMapsProvider();
+
+    const geocodeRequests: URL[] = [];
+    server.use(geocodeOkHandler(geocodeRequests));
+
+    // Written out rather than derived from the contract or the table, so a
+    // deleted row fails this test instead of changing what it asserts.
+    const paths = [
+      "/api/maps/geocode",
+      "/api/okou/maps/geocode",
+      "/api/zero/maps/geocode",
+    ];
+
+    for (const path of paths) {
+      const response = await billing.requestMapsGeocodeAtPath(admin, path, {
+        address: "1 Infinite Loop, Cupertino",
+      });
+
+      expect(response.status, `Expected ${path} to be served`).toBe(200);
+      expect(response.body).toMatchObject({
+        operation: "geocode",
+        provider: "google-maps",
+        billingCategory: "geocoding",
+        billingQuantity: 1,
+      });
+    }
+
+    // Every path reached the provider, so none of them was answered by an
+    // unrelated route that happens to share the prefix.
+    expect(geocodeRequests).toHaveLength(paths.length);
   });
 
   it("charges marked-up Google Maps prices across geocode, directions, places, and details [MAPS-A]", async () => {

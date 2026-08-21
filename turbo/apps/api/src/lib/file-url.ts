@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { env } from "./env";
 
@@ -16,8 +17,20 @@ export function sanitizeArtifactFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function publicArtifactsBaseUrl(): string {
-  return env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
+export function publicArtifactsBaseUrlForBrand(
+  publicBrand: PublicBrand,
+): string {
+  // API/config rollout compatibility: environments that predate the branded
+  // CDN config still have only PUBLIC_ARTIFACTS_BASE_URL. Remove after every
+  // supported API environment provides OKOU_PUBLIC_ARTIFACTS_BASE_URL and the
+  // prior API is outside the observed ~102-minute rollout/rollback window.
+  // Tracked by #28449.
+  const configuredUrl =
+    publicBrand === "okou"
+      ? (env("OKOU_PUBLIC_ARTIFACTS_BASE_URL") ??
+        env("PUBLIC_ARTIFACTS_BASE_URL"))
+      : env("PUBLIC_ARTIFACTS_BASE_URL");
+  return configuredUrl.replace(/\/+$/, "");
 }
 
 export function buildArtifactKey(
@@ -65,6 +78,9 @@ export function isArtifactKeyV2(key: string): boolean {
   return /^artifacts\/[0-9a-z]{10}\.[^/]+$/u.test(key);
 }
 
-export function buildFileUrlFromKey(key: string): string {
-  return `${publicArtifactsBaseUrl()}/${key.replace(/^\/+/, "")}`;
+export function buildFileUrlFromKey(
+  key: string,
+  publicBrand: PublicBrand,
+): string {
+  return `${publicArtifactsBaseUrlForBrand(publicBrand)}/${key.replace(/^\/+/, "")}`;
 }

@@ -256,7 +256,6 @@ interface ConcurrencySubscriptionConfirmDialogState {
   readonly subscriptionId: string;
   readonly currentQuantity: number;
   readonly canReduce: boolean;
-  readonly canChangeInApp: boolean;
   readonly changeMode: ConcurrencyChangeMode;
   readonly targetQuantity: number | null;
   readonly preview: ConcurrencySubscriptionChangePreviewResponse | null;
@@ -367,7 +366,6 @@ export const openConcurrencyConfirmDialog$ = command(
       readonly subscriptionId: string;
       readonly currentQuantity: number;
       readonly canReduce: boolean;
-      readonly canChangeInApp: boolean;
     },
   ) => {
     set(internalConcurrencyConfirmDialog$, {
@@ -375,7 +373,6 @@ export const openConcurrencyConfirmDialog$ = command(
       subscriptionId: args.subscriptionId,
       currentQuantity: args.currentQuantity,
       canReduce: args.action === "change" && args.canReduce,
-      canChangeInApp: args.action === "change" && args.canChangeInApp,
       changeMode: "quantity",
       targetQuantity: args.action === "change" ? args.currentQuantity : null,
       preview: null,
@@ -1537,7 +1534,6 @@ export const openConcurrencyChangeReview$ = command(
       subscriptionId: args.subscriptionId,
       currentQuantity: args.currentQuantity,
       canReduce: args.canReduce,
-      canChangeInApp: true,
       changeMode: "quantity",
       targetQuantity: args.targetQuantity,
       preview,
@@ -1590,36 +1586,6 @@ export const confirmConcurrencySubscriptionChange$ = command(
           : $.billing.toasts.concurrencyChanged;
       }),
     );
-  },
-);
-
-export const startConcurrencyReduction$ = command(
-  async (
-    { get },
-    args: { readonly subscriptionId: string; readonly quantity: number },
-    signal: AbortSignal,
-  ) => {
-    const successUrl = new URL("/", window.location.origin);
-    successUrl.searchParams.set("concurrency", "reduced");
-    const cancelUrl = checkoutReturnUrl();
-    cancelUrl.searchParams.set("concurrency", "canceled");
-
-    const createClient = get(zeroClient$);
-    const client = createClient(billingConcurrencySubscriptionContract);
-    const result = await accept(
-      client.reduce({
-        params: { subscriptionId: args.subscriptionId },
-        body: {
-          quantity: args.quantity,
-          successUrl: successUrl.toString(),
-          cancelUrl: cancelUrl.toString(),
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    window.location.href = result.body.url;
   },
 );
 

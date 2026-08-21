@@ -223,6 +223,7 @@ function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
+  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -231,6 +232,7 @@ function zeroToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: ["file:write"],
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -1212,6 +1214,7 @@ describe("POST /api/zero/voice-io/*", () => {
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
+      publicBrand: "okou",
     });
     const app = createVoiceIoTestApp(usagePricingResolution);
     const response = await app.request("/api/zero/voice-io/speech", {
@@ -1261,10 +1264,11 @@ describe("POST /api/zero/voice-io/*", () => {
     const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.wav$/u);
-    expect(url).toBe(`https://cdn.vm7.io/${String(putInput.Key)}`);
+    expect(url).toBe(`https://cdn.okou.io/${String(putInput.Key)}`);
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),
+      "public-brand": "okou",
       "user-id": encodeURIComponent(fixture.userId),
     });
     expect(putInput.ContentType).toBe(SPEECH_CONTENT_TYPE);
