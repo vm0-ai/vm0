@@ -797,12 +797,16 @@ function PlanPrice({
    2/10, canBuyConcurrency, workflowWebhookAutomationAllowed, audioDailyRateLimit
    300/500 and audioDailyDurationSeconds 200/500, and nothing else.
 
-   The live browser, Computer Use and workflow rows are capability both plans
-   ship. They sit here because the label says "Everything in Pro, built for
-   teams" -- inherited, not exclusive -- and because ten concurrent slots are
-   what make them worth buying. If any of the three is ever gated to Team, the
-   label can tighten to a plain delta; until then it must not, or the column is
-   claiming Pro features as Team entitlements again.
+   The live browser, Computer Use, model policy and member-role rows are
+   capability both plans ship. They sit here because the label says "Everything
+   in Pro, built for teams" -- inherited, not exclusive -- and because they are
+   workspace-level controls a team reaches for: model policy and roles are both
+   org-admin scoped. If any of them is ever gated to Team, the label can tighten
+   to a plain delta; until then it must not, or the column is claiming Pro
+   features as Team entitlements again.
+
+   Nine rows on each side, every row a single line at this width, so the columns
+   align row for row across the divider.
 
    The dialog is a fixed 43rem, leaving 570px for the columns, which Pro's nine
    rows sit exactly on. A tenth row has to replace one, and any row that wraps
@@ -839,7 +843,10 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
         return $.billing.plans.highlights.computerUse;
       }),
       i18n.t(($) => {
-        return $.billing.plans.highlights.reusableWorkflows;
+        return $.billing.plans.highlights.modelPolicies;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.memberRoles;
       }),
       voiceInput,
       i18n.t(($) => {

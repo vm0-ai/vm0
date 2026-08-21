@@ -493,8 +493,8 @@ describe("organization billing settings", () => {
     }
 
     /* Concurrency, webhooks and the voice caps are the real entitlement
-       differences; the live browser, Computer Use and workflow rows are shared
-       capability the label inherits with "Everything in Pro". */
+       differences; the live browser, Computer Use, model policy and member-role
+       rows are shared capability the label inherits with "Everything in Pro". */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
@@ -504,7 +504,8 @@ describe("organization billing settings", () => {
       "Trigger agents from any system via webhook",
       "Watch and take over an agent's live browser",
       "Agents operate apps on your own desktop",
-      "Turn a repeated job into a reusable workflow",
+      "Choose which models your workspace can use",
+      "Invite teammates as admins or members",
       "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {
