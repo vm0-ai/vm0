@@ -635,11 +635,7 @@ function ConcurrencyPurchaseCardMount({
       return !subscription.cancelAtPeriodEnd;
     },
   );
-  // Old API responses omit this during the ~2-day web/app client version-skew
-  // window. Remove the legacy Checkout branch with #26152 after #26116 has
-  // been deployed beyond that window.
-  const activeChangeReviewAvailable =
-    activeSubscription?.canChangeInApp === true;
+  const activeChangeReviewAvailable = activeSubscription !== undefined;
   const purchaseReviewAvailable =
     !activeSubscription &&
     billingStatus?.concurrencyPurchaseReviewAvailable === true;

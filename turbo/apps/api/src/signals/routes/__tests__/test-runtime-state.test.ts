@@ -1,9 +1,26 @@
+import { randomUUID } from "node:crypto";
+
+import { ALL_RUN_STATUSES } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
+import { withMockNowForTest } from "../../../lib/time";
+import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import {
+  resolveVm0ManagedModelRouteFixture,
+  seedVm0ManagedModelCandidateKeys,
+  seedVm0ManagedModelKey,
+  setVm0ManagedCandidateCooldownFixture,
+} from "./helpers/runtime-state";
 
 const context = testContext();
+const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
+const runs = createRunsApi(context);
 
 describe("POST /api/test/runtime-state/action", () => {
   it("keeps overlapping VM0 managed model-key fixtures independently releasable", async () => {
@@ -15,5 +32,181 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await expect(first.release()).resolves.toBeUndefined();
     await expect(second.release()).resolves.toBeUndefined();
+  });
+
+  it("isolates expiry-based cooldowns to exact managed routes", async () => {
+    await seedVm0ManagedModelCandidateKeys(context, "claude-fable-5");
+    await seedVm0ManagedModelCandidateKeys(context, "gpt-5.6-sol");
+    const startedAt = Date.UTC(2026, 7, 20, 0, 0, 0);
+    const routeCooldownUntil = new Date(startedAt + 60 * 1000);
+
+    const gptPrimary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "gpt-5.6-sol",
+        true,
+      );
+    });
+    expect(gptPrimary).toMatchObject({
+      provider_type: "openai-api-key",
+      upstream_model: "gpt-5.6-sol",
+    });
+    if (!gptPrimary) {
+      throw new Error("Expected a primary GPT route");
+    }
+
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "gpt-5.6-sol",
+      gptPrimary,
+      routeCooldownUntil,
+    );
+    const gptFallback = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "gpt-5.6-sol",
+        true,
+      );
+    });
+    expect(gptFallback?.provider_type).toBe("openrouter-codex");
+    if (!gptFallback) {
+      throw new Error("Expected a fallback GPT route");
+    }
+
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "gpt-5.6-sol",
+      gptFallback,
+      routeCooldownUntil,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", false),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+      ).resolves.toBeNull();
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-terra", true),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+    });
+
+    const gptTerraPrimary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "gpt-5.6-terra",
+        true,
+      );
+    });
+    if (!gptTerraPrimary) {
+      throw new Error("Expected a primary GPT Terra route");
+    }
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "gpt-5.6-terra",
+      gptTerraPrimary,
+      routeCooldownUntil,
+    );
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-terra", true),
+      ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
+    });
+
+    const claudePrimary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "claude-fable-5",
+        true,
+      );
+    });
+    expect(claudePrimary?.provider_type).toBe("anthropic-api-key");
+    if (!claudePrimary) {
+      throw new Error("Expected a primary Claude route");
+    }
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "claude-fable-5",
+      claudePrimary,
+      routeCooldownUntil,
+    );
+    const claudeFallback = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0ManagedModelRouteFixture(
+        context,
+        "claude-fable-5",
+        true,
+      );
+    });
+    expect(claudeFallback?.provider_type).toBe("openrouter-api-key");
+    if (!claudeFallback) {
+      throw new Error("Expected a fallback Claude route");
+    }
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      "claude-fable-5",
+      claudeFallback,
+      routeCooldownUntil,
+    );
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await runs.grantProEntitlement(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD managed fallback unavailable agent",
+    });
+    await runs.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-sol",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    if (!actor.orgId) {
+      throw new Error("Expected managed fallback actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+      },
+    );
+    const rejected = await withMockNowForTest(startedAt, async () => {
+      return await chat.requestSendEvent(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt: "reject before constructing a managed-model run",
+          model: "gpt-5.6-sol",
+          clientEventId: randomUUID(),
+        },
+        [503],
+      );
+    });
+    expect(rejected.body).toStrictEqual({
+      error: {
+        code: "MODEL_PROVIDER_UNAVAILABLE",
+        message:
+          "Every managed route for this model is temporarily unavailable",
+      },
+    });
+    await expect(
+      runs.listAgentRuns(actor, {
+        status: ALL_RUN_STATUSES.join(","),
+        limit: 20,
+      }),
+    ).resolves.toStrictEqual({ runs: [] });
+
+    await withMockNowForTest(routeCooldownUntil.getTime(), async () => {
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+      await expect(
+        resolveVm0ManagedModelRouteFixture(context, "claude-fable-5", true),
+      ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
+    });
   });
 });

@@ -64,7 +64,7 @@ const KLING_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
 const CLOUDFLARE_MEDIA_FRAME_URL =
-  /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
+  /^https:\/\/cdn\.(?:vm7|okou)\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
 const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
@@ -396,6 +396,7 @@ function zeroToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly "file:write"[];
+  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -404,6 +405,7 @@ function zeroToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: args.capabilities ?? ["file:write"],
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -1321,6 +1323,7 @@ describe("POST /api/zero/video-io/generate", () => {
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
+      publicBrand: "okou",
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
@@ -1429,10 +1432,11 @@ describe("POST /api/zero/video-io/generate", () => {
     const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.mp4$/u);
-    expect(url).toBe(`https://cdn.vm7.io/${String(putInput.Key)}`);
+    expect(url).toBe(`https://cdn.okou.io/${String(putInput.Key)}`);
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),
+      "public-brand": "okou",
       "user-id": encodeURIComponent(fixture.userId),
     });
     expect(putInput.ContentType).toBe("video/mp4");

@@ -1459,15 +1459,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
         if classification.kind == "allow":
             connector_diagnostics.record_allow_context(flow, classification)
-            if request_streaming.streamed_request_size(flow) is None:
-                original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-                if isinstance(
-                    original_url, str
-                ) and connector_diagnostics.maybe_make_local_response(
-                    flow,
-                    original_url=original_url,
-                ):
-                    return
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
 
@@ -1875,7 +1866,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow_metadata.firewall_action(flow.metadata)
 
-    connector_diagnostics.maybe_make_error_response(flow, original_url=original_url)
+    connector_diagnostics.handle_error(flow)
 
     request_size = _request_size(flow)
     error_msg = flow.error.msg if flow.error else "unknown error"

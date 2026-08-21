@@ -1329,8 +1329,13 @@
             intensity: "m",
           },
         ];
+        var staticAssetBase =
+          document.documentElement.getAttribute("data-app-brand-name") ===
+          "Okou"
+            ? "https://static.okou.io"
+            : "https://static.vm0.io";
         var avatarAssetBase =
-          "https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/";
+          staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
         var avatar =
           avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
         var messageIndex = Math.floor(Math.random() * messages.length);

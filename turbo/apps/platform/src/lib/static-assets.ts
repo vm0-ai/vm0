@@ -1,7 +1,14 @@
-const STATIC_ASSETS_BASE_URL = "https://static.vm0.io";
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
+import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
+
+const PLATFORM_RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
+
+export function platformPublicStaticUrl(url: string): string {
+  return staticUrlForPublicBrand(url, PLATFORM_RUNTIME_CONFIG.publicBrand);
+}
 
 export function platformStaticAssetUrl(path: string) {
-  return `${STATIC_ASSETS_BASE_URL}/platform/${path.replace(/^\/+/u, "")}`;
+  return `${PLATFORM_RUNTIME_CONFIG.publicStaticAssetsBaseUrl}/platform/${path.replace(/^\/+/u, "")}`;
 }
 
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(

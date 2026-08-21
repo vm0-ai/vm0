@@ -7,10 +7,12 @@ import {
 } from "node:crypto";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   workflowAutomationsContract,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -36,8 +38,10 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -81,6 +85,12 @@ function authHeaders(actor: ApiTestUser) {
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -887,6 +897,9 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
     const created = await accept(
@@ -946,6 +959,14 @@ describe("POST /api/webhooks/gmail", () => {
     await expect(
       workflowAutomationDisplayTexts(actor, chatThreadId),
     ).resolves.toContain(expectedDisplayMessage);
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(actor),
+        params: { id: chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
     await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
       {
         lastRunAt: expect.any(String),

@@ -41,6 +41,10 @@ export function providerUnavailable(message: string) {
   return httpError(503, "PROVIDER_UNAVAILABLE", message);
 }
 
+export function modelProviderUnavailable(message: string) {
+  return httpError(503, "MODEL_PROVIDER_UNAVAILABLE", message);
+}
+
 export function notConfigured(message: string) {
   return httpError(503, "NOT_CONFIGURED", message);
 }
