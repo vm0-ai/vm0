@@ -4607,7 +4607,6 @@
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "modelVariants": "{{model}} variants",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",

@@ -11,7 +11,7 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { onRef, tapError } from "../utils.ts";
 
 const OKOU_DESKTOP_DMG_DOWNLOAD_PATH =
-  "/api/okou/desktop/updates/stable/darwin/arm64/dmg";
+  "/api/desktop/updates/stable/darwin/arm64/dmg";
 
 export const OKOU_DESKTOP_DOWNLOAD_URL = new URL(
   OKOU_DESKTOP_DMG_DOWNLOAD_PATH,

@@ -1765,7 +1765,6 @@ export {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPES,
   REQUIRED_PRESENTATION_TEMPLATE_PACKAGE_FILES,
-  presentationTemplateStatusSchema,
   presentationTemplatesContract,
   type PresentationTemplateSummary,
   type PresentationTemplatesContract,

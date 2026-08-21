@@ -234,7 +234,6 @@ import {
 import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CONFIGS,
-  IMAGE_MODEL_VARIANT_GROUPS,
   PUBLIC_IMAGE_MODELS,
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
@@ -7564,59 +7563,25 @@ function composerImageModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  variantLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
   tabLabel: string;
-  /** Segment aria-label, resolved per family rather than for a single one. */
-  variantLabel: (family: string) => string;
 }): MediaModelPanelCategory {
-  // Only base models get a row; the rest of a family lives on that row's
-  // segment control.
-  const variantOnlyModels = new Set<ImageModel>(
-    IMAGE_MODEL_VARIANT_GROUPS.flatMap((group) => {
-      return group.models.slice(1);
-    }),
-  );
   return {
     id: "image",
     label,
     tabLabel,
-    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
-      return !variantOnlyModels.has(candidate);
-    }).map((candidate) => {
-      const group = IMAGE_MODEL_VARIANT_GROUPS.find((candidateGroup) => {
-        return candidateGroup.models[0] === candidate;
-      });
-      const rowLabel = group?.label ?? IMAGE_MODEL_CONFIGS[candidate].label;
+    options: PUBLIC_IMAGE_MODELS.map((candidate) => {
       return {
         key: candidate,
-        label: rowLabel,
+        label: IMAGE_MODEL_CONFIGS[candidate].label,
         icon: <ImageModelBrandIcon model={candidate} />,
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);
         },
-        ...(group
-          ? {
-              variant: {
-                label: variantLabel(rowLabel),
-                options: group.models.map((variantModel) => {
-                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7627,32 +7592,17 @@ function composerVideoModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  variantLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   tabLabel: string;
-  variantLabel: string;
 }): MediaModelPanelCategory {
-  const seedance2Models = [
-    "dreamina-seedance-2-0-260128",
-    "dreamina-seedance-2-0-fast-260128",
-    "dreamina-seedance-2-0-mini-260615",
-  ] as const satisfies readonly VideoModel[];
-  const seedance2Model = seedance2Models[0];
   return {
     id: "video",
     label,
     tabLabel,
-    options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
-      return (
-        candidate === seedance2Model ||
-        !seedance2Models.some((seedance2Candidate) => {
-          return candidate === seedance2Candidate;
-        })
-      );
-    }).map((candidate) => {
+    options: PUBLIC_VIDEO_MODELS.map((candidate) => {
       return {
         key: candidate,
         label: VIDEO_MODEL_CONFIGS[candidate].label,
@@ -7661,24 +7611,6 @@ function composerVideoModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
-        ...(candidate === seedance2Model
-          ? {
-              variant: {
-                label: variantLabel,
-                options: seedance2Models.map((variantModel) => {
-                  const variantConfig = VIDEO_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7715,14 +7647,6 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryImage;
         }),
-        variantLabel: (family: string) => {
-          return t(
-            ($) => {
-              return $.settings.models.picker.modelVariants;
-            },
-            { model: family },
-          );
-        },
       }),
     );
   }
@@ -7737,12 +7661,6 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryVideo;
         }),
-        variantLabel: t(
-          ($) => {
-            return $.settings.models.picker.modelVariants;
-          },
-          { model: VIDEO_MODEL_CONFIGS["dreamina-seedance-2-0-260128"].label },
-        ),
       }),
     );
   }

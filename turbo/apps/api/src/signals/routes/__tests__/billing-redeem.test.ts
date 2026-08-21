@@ -80,7 +80,7 @@ async function seedOpenRedemption(sessionId: string): Promise<void> {
   context.mocks.stripe.checkout.sessions.create.mockClear();
 }
 
-describe("POST /api/zero/billing/redeem/:campaign", () => {
+describe("POST /api/billing/redeem/:campaign", () => {
   beforeEach(() => {
     setRedeemEnv();
     // Default-safe coupon/price responses; specific tests override.

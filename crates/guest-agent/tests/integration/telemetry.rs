@@ -2,6 +2,7 @@ use crate::support::*;
 use base64::Engine;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -259,11 +260,17 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     let masked_telemetry_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/telemetry")
-            .body_includes(format!("system log {session_id} ***"));
+            .body_includes(format!("system log {session_id} ***"))
+            .body_includes(r#""action_type":"telemetry_secret_mask""#)
+            .body_includes(r#""duration_ms":17"#)
+            .body_includes(r#""success":false"#)
+            .body_includes(r#""error":"sandbox failure: ***""#);
         then.status(200);
     });
 
-    let secret_values = base64::engine::general_purpose::STANDARD.encode(secret);
+    let secret_values = [secret, "error"]
+        .map(|value| base64::engine::general_purpose::STANDARD.encode(value))
+        .join(",");
     let masker = std::sync::Arc::new(SecretMasker::from_raw(&secret_values));
     let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
         "test-run-001".to_string(),
@@ -283,6 +290,13 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
 
     std::fs::write(system_log, format!("system log {session_id} {secret}\n"))
         .expect("system log should be written");
+    let sandbox_error = format!("sandbox failure: {secret}");
+    guest_common::telemetry::record_sandbox_op(
+        "telemetry_secret_mask",
+        Duration::from_millis(17),
+        false,
+        Some(&sandbox_error),
+    );
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Final)
         .await
@@ -296,6 +310,89 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     event_mock.delete_async().await;
     raw_telemetry_mock.delete_async().await;
     masked_telemetry_mock.delete_async().await;
+    remove_telemetry_files(paths);
+}
+
+#[tokio::test]
+async fn telemetry_redacts_multiline_secret_across_flushes() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("multiline-secret-across-flushes").unwrap();
+    let paths = &files.paths;
+    let system_log = paths.system_log_file();
+    ensure_parent_dir(system_log);
+
+    let secret_lines = [
+        "first-telemetry-secret-line",
+        "second-telemetry-secret-line",
+    ];
+    let secret = secret_lines.join("\n");
+    let request_bodies = Arc::new(Mutex::new(Vec::new()));
+    let request_bodies_for_mock = Arc::clone(&request_bodies);
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.respond_with(move |request| {
+            request_bodies_for_mock
+                .lock()
+                .unwrap()
+                .push(request.body_vec());
+            http_status(200)
+        });
+    });
+
+    let encoded_secret = base64::engine::general_purpose::STANDARD.encode(secret);
+    let masker = Arc::new(SecretMasker::from_raw(&encoded_secret));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
+
+    std::fs::write(system_log, format!("{}\n", secret_lines[0]))
+        .expect("first secret line should be written");
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("first secret line should be uploaded");
+
+    {
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .open(system_log)
+            .expect("system log should open for append");
+        writeln!(log, "{}", secret_lines[1]).expect("second secret line should be appended");
+    }
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("second secret line should be uploaded");
+    telemetry.shutdown().await;
+
+    upload_mock.assert_calls_async(2).await;
+    {
+        let request_bodies = request_bodies.lock().unwrap();
+        assert_eq!(request_bodies.len(), 2, "expected two telemetry uploads");
+
+        let first_payload: serde_json::Value = serde_json::from_slice(&request_bodies[0])
+            .expect("first telemetry request should contain valid JSON");
+        let second_payload: serde_json::Value = serde_json::from_slice(&request_bodies[1])
+            .expect("second telemetry request should contain valid JSON");
+        assert_eq!(first_payload["systemLog"], "***\n");
+        assert_eq!(second_payload["systemLog"], "***\n");
+
+        for request_body in request_bodies.iter() {
+            let request_body = String::from_utf8_lossy(request_body);
+            for secret_line in secret_lines {
+                assert!(
+                    !request_body.contains(secret_line),
+                    "telemetry request leaked multiline secret component: {secret_line}"
+                );
+            }
+        }
+    }
+
+    upload_mock.delete_async().await;
     remove_telemetry_files(paths);
 }
 

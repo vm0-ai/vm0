@@ -3568,37 +3568,10 @@ describe("chat composer image model", () => {
   function selectedImageModelLabel(
     root: ParentNode = document,
   ): string | undefined {
-    // Every family segment fills one variant by default, so a checked radio no
-    // longer proves selection. `aria-current` marks the one row that is truly
-    // selected -- the same cue the checkmark gives sighted users. A family row
-    // then names the exact variant from its checked segment, and a plain row
-    // carries the label itself.
+    // `aria-current` marks the selected row -- the same cue the checkmark gives
+    // sighted users.
     const selected = root.querySelector("[aria-current='true']");
-    if (!selected) {
-      return undefined;
-    }
-    const checkedVariant = Array.from(
-      selected.querySelectorAll("[role='radio']"),
-    ).find((candidate) => {
-      return candidate.getAttribute("aria-checked") === "true";
-    });
-    return (checkedVariant ?? selected).getAttribute("aria-label") ?? undefined;
-  }
-
-  function imageVariantSegment(label: string): HTMLElement | undefined {
-    return queryAllByRoleFast("radio").find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
-    });
-  }
-
-  function findImageVariantSegment(label: string): Promise<HTMLElement> {
-    return waitFor(() => {
-      const item = imageVariantSegment(label);
-      if (!item) {
-        throw new Error(`${label} image variant not found`);
-      }
-      return item;
-    });
+    return selected?.getAttribute("aria-label") ?? undefined;
   }
 
   function imageModelBrandIcon(label: string): Element {
@@ -3615,7 +3588,7 @@ describe("chat composer image model", () => {
     const initialPreference: UserModelPreferenceResponse = {
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       updatedAt: "2026-08-18T00:00:00Z",
     };
     let createdImageModel: string | undefined;
@@ -3637,7 +3610,7 @@ describe("chat composer image model", () => {
 
     await openImageModels(user);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
 
     context.mocks.data.userModelPreference({
@@ -3684,7 +3657,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3719,7 +3692,7 @@ describe("chat composer image model", () => {
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
     expect(
-      screen.queryByText("Temporarily switched to Qwen Image for images"),
+      screen.queryByText("Temporarily switched to Nano Banana 2 for images"),
     ).not.toBeInTheDocument();
     await user.click(await findMediaPanelButton("GPT Image 2"));
 
@@ -3757,10 +3730,9 @@ describe("chat composer image model", () => {
     });
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
-    await expect(findMediaPanelButton("Qwen Image")).resolves.toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    await expect(
+      findMediaPanelButton("Nano Banana 2"),
+    ).resolves.toHaveAttribute("aria-pressed", "true");
     expect(updates).toStrictEqual([]);
   });
 
@@ -3774,7 +3746,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3831,7 +3803,7 @@ describe("chat composer image model", () => {
     let stored: UserModelPreferenceResponse = {
       selectedModel: "claude-fable-5",
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     };
@@ -3919,7 +3891,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-fable-5",
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-18T00:00:00Z",
     });
@@ -3998,7 +3970,7 @@ describe("chat composer image model", () => {
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       updatedAt: "2026-08-18T00:00:00Z",
     });
     context.mocks.api(
@@ -4053,7 +4025,7 @@ describe("chat composer image model", () => {
       selectedModel: null,
       serviceTier: null,
       selectedVideoModel: null,
-      selectedImageModel: "fal-ai/qwen-image",
+      selectedImageModel: "fal-ai/nano-banana-2",
       updatedAt: "2026-08-18T00:00:00Z",
     });
     mockAgent();
@@ -4083,79 +4055,33 @@ describe("chat composer image model", () => {
 
     expect(imageTab).toHaveAttribute("aria-checked", "true");
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
     const listbox = screen.getByRole("listbox");
-    // Both variants are on the row at once, and neither is marked while a
-    // different family is the selection.
-    const variantSegments = queryAllByRoleFast("radio", listbox)
-      .filter((candidate) => {
-        return candidate.hasAttribute("aria-label");
-      })
-      .filter((candidate) => {
-        // Exclude category-tab radios: their grandparent wrapper has .sticky.
-        const el = candidate as HTMLElement;
-        return !el.parentElement?.parentElement?.classList.contains("sticky");
-      });
-    expect(
-      variantSegments.map((candidate) => {
-        return candidate.getAttribute("aria-label");
-      }),
-    ).toStrictEqual([
-      "Flux Pro v1.1",
-      "Flux Pro v1.1 Ultra",
-      "Seedream 5 Pro",
-      "Seedream 5 Lite",
-    ]);
-    expect(
-      variantSegments.map((candidate) => {
-        return candidate.textContent;
-      }),
-    ).toStrictEqual(["Standard", "Ultra", "Pro", "Lite"]);
-    // Qwen is the selection, so no family carries the checkmark, yet each
-    // segment still fills its base variant so the control never reads as empty.
-    expect(
-      variantSegments
-        .filter((candidate) => {
-          return candidate.getAttribute("aria-checked") === "true";
-        })
-        .map((candidate) => {
-          return candidate.getAttribute("aria-label");
-        }),
-    ).toStrictEqual(["Flux Pro v1.1", "Seedream 5 Pro"]);
+    // One row per family: the secondary variants and Qwen stay generatable by
+    // alias but are no longer offered as a choice here.
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
+    expect(within(listbox).queryByText("Qwen Image")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
-    const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
-    expect(qwenIcon).toContain("image-model-qwen-gradient");
     const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
     expect(nanoBananaIcon).toContain("#f94543");
     expect(
       new Set([
         openAiIcon,
         fluxIcon,
-        qwenIcon,
-        imageModelBrandIcon("Seedream 5").outerHTML,
+        imageModelBrandIcon("Seedream 5 Pro").outerHTML,
         nanoBananaIcon,
       ]).size,
-    ).toBe(5);
+    ).toBe(4);
     expect(within(listbox).queryByText(/birefnet/i)).not.toBeInTheDocument();
     expect(
       within(listbox).queryByText(/clarity upscaler/i),
     ).not.toBeInTheDocument();
     expect(within(listbox).queryByText("BYOK")).not.toBeInTheDocument();
-    // "Pro" is a Seedream 5 variant chip here, so the run-model price tier is
-    // ruled out by role rather than by the bare word.
-    expect(
-      within(listbox)
-        .queryAllByText("Pro")
-        .filter((candidate) => {
-          return candidate.role !== "radio";
-        }),
-    ).toStrictEqual([]);
     expect(
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
@@ -4178,14 +4104,14 @@ describe("chat composer image model", () => {
       "aria-pressed",
       "true",
     );
-    expect(mediaPanelButton("Qwen Image")).toHaveAttribute(
+    expect(mediaPanelButton("Nano Banana 2")).toHaveAttribute(
       "aria-pressed",
       "false",
     );
     updateGate.resolve();
   });
 
-  it("selects Flux and Seedream 5 variants from their family rows", async () => {
+  it("selects the one model each family offers", async () => {
     const user = userEvent.setup({ delay: null });
     const updates: { threadId: string; model: string | null }[] = [];
     context.mocks.browser.matchMedia(true);
@@ -4209,46 +4135,38 @@ describe("chat composer image model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    // The family row carries the shared name; the variant name lives on the
-    // segment, so picking Lite is one click rather than a drill-in.
+    // Each family is one row naming the exact model it pins, so picking it is
+    // a single click with no variant step in between.
     await openImageModels(user);
-    await user.click(await findImageVariantSegment("Seedream 5 Lite"));
+    await user.click(await findMediaPanelButton("Seedream 5 Pro"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
-        { threadId: THREAD_ID, model: "seedream-5-0-lite-260128" },
+        { threadId: THREAD_ID, model: "dola-seedream-5-0-pro-260628" },
       ]);
     });
     // Any click closes the popover, so the follow-up read reopens it.
     await openImageModels(user);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Seedream 5 Lite");
+      expect(selectedImageModelLabel()).toBe("Seedream 5 Pro");
     });
-    expect(mediaPanelButton("Seedream 5")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
 
-    await user.click(await findImageVariantSegment("Flux Pro v1.1 Ultra"));
+    await user.click(await findMediaPanelButton("Flux Pro v1.1"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
-        { threadId: THREAD_ID, model: "seedream-5-0-lite-260128" },
-        { threadId: THREAD_ID, model: "fal-ai/flux-pro/v1.1-ultra" },
+        { threadId: THREAD_ID, model: "dola-seedream-5-0-pro-260628" },
+        { threadId: THREAD_ID, model: "fal-ai/flux-pro/v1.1" },
       ]);
     });
     await openImageModels(user);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Flux Pro v1.1 Ultra");
+      expect(selectedImageModelLabel()).toBe("Flux Pro v1.1");
     });
-    // Seedream 5 is no longer the selection, so its segment falls back to the
-    // filled base (Pro) rather than holding the Lite picked earlier.
-    await expect(
-      findImageVariantSegment("Seedream 5 Pro"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
-    await expect(
-      findImageVariantSegment("Seedream 5 Lite"),
-    ).resolves.toHaveAttribute("aria-checked", "false");
+    expect(mediaPanelButton("Seedream 5 Pro")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("shows no selection when the pinned model is no longer offered", async () => {
@@ -4271,16 +4189,13 @@ describe("chat composer image model", () => {
 
     await openImageModels(user);
     await waitFor(() => {
-      expect(mediaPanelButton("Qwen Image")).toBeInTheDocument();
+      expect(mediaPanelButton("Seedream 5 Pro")).toBeInTheDocument();
     });
     const listbox = screen.getByRole("listbox");
-    // Nothing claims the pin, so no row is current and every family shows its
-    // default base chip rather than a stale highlight.
+    // Nothing claims the pin, so no row is current rather than one of the
+    // offered models carrying a stale highlight.
     expect(selectedImageModelLabel()).toBeUndefined();
     expect(listbox.querySelector("[aria-current='true']")).toBeNull();
-    await expect(
-      findImageVariantSegment("Seedream 5 Pro"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
   });
 
   it("switches category from the same strip on mobile", async () => {
@@ -4318,7 +4233,7 @@ describe("chat composer image model", () => {
       "aria-pressed",
       "true",
     );
-    expect(mediaPanelButton("Seedream 5")).toBeInTheDocument();
+    expect(mediaPanelButton("Seedream 5 Pro")).toBeInTheDocument();
 
     await user.click(await findCategoryTab("Chat"));
 
@@ -4349,7 +4264,7 @@ describe("chat composer image model", () => {
         agentId: AGENT_ID,
         title: "Second image thread",
         selectedModel: "claude-fable-5",
-        selectedImageModel: "fal-ai/qwen-image",
+        selectedImageModel: "fal-ai/nano-banana-2",
       },
     ]);
     context.mocks.api(
@@ -4398,7 +4313,7 @@ describe("chat composer image model", () => {
 
     await openImageModels(user, secondThread);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
   });
 });
@@ -4420,24 +4335,13 @@ describe("chat composer video model", () => {
 
   /**
    * The composer no longer prints the video model, so the selection is read
-   * from the open panel: a plain row carries `aria-pressed`, while Seedance 2.0
-   * marks the choice on its variant segment instead.
+   * from the open panel's pressed row.
    */
   function selectedVideoModelLabel(): string | undefined {
     const row = queryAllByRoleFast("button").find((candidate) => {
       return candidate.getAttribute("aria-pressed") === "true";
     });
-    if (row) {
-      return row.getAttribute("aria-label") ?? undefined;
-    }
-    const variant = queryAllByRoleFast("radio").find((candidate) => {
-      return (
-        candidate.getAttribute("aria-checked") === "true" &&
-        candidate.hasAttribute("aria-label") &&
-        candidate.textContent?.trim()
-      );
-    });
-    return variant?.getAttribute("aria-label") ?? undefined;
+    return row?.getAttribute("aria-label") ?? undefined;
   }
 
   function videoPanelButton(label: string): HTMLElement | undefined {
@@ -4453,22 +4357,6 @@ describe("chat composer video model", () => {
         throw new Error(`${label} button not found`);
       }
       return button;
-    });
-  }
-
-  function videoVariantSegment(label: string): HTMLElement | undefined {
-    return queryAllByRoleFast("radio").find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
-    });
-  }
-
-  function findVideoVariantSegment(label: string): Promise<HTMLElement> {
-    return waitFor(() => {
-      const item = videoVariantSegment(label);
-      if (!item) {
-        throw new Error(`${label} video variant not found`);
-      }
-      return item;
     });
   }
 
@@ -4690,20 +4578,14 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
-    // The three Seedance 2.0 siblings collapse onto one row's segment.
+    // Seedance 2.0 is one row for the Standard model; its Fast and Mini
+    // siblings stay generatable by alias but are no longer offered here.
+    expect(videoPanelButton("Seedance 2.0")).toBeInTheDocument();
     expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
     expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
-    const variantSegments = queryAllByRoleFast("radio").filter((candidate) => {
-      return (
-        candidate.hasAttribute("aria-label") && candidate.textContent?.trim()
-      );
-    });
-    expect(
-      variantSegments.map((candidate) => {
-        return candidate.textContent;
-      }),
-    ).toStrictEqual(["Standard", "Fast", "Mini"]);
-    expect(selectedVideoModelLabel()).toBe("Seedance 2.0 fast");
+    // The system default is still Seedance 2.0 fast, which the picker no longer
+    // offers, so no row claims the untouched thread.
+    expect(selectedVideoModelLabel()).toBeUndefined();
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
@@ -4805,25 +4687,10 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
     await user.click(await findCategoryTab("Video"));
 
-    // All three siblings sit on the row, so the pick is a single click.
-    expect(
-      queryAllByRoleFast("radio")
-        .filter((candidate) => {
-          return (
-            candidate.hasAttribute("aria-label") &&
-            candidate.textContent?.trim()
-          );
-        })
-        .map((candidate) => {
-          return candidate.getAttribute("aria-label");
-        }),
-    ).toStrictEqual(["Seedance 2.0", "Seedance 2.0 fast", "Seedance 2.0 Mini"]);
-    await user.click(await findVideoVariantSegment("Seedance 2.0 fast"));
+    await user.click(await findVideoPanelButton("Seedance 2.0"));
 
     await waitFor(() => {
-      expect(bodies).toStrictEqual([
-        { model: "dreamina-seedance-2-0-fast-260128" },
-      ]);
+      expect(bodies).toStrictEqual([{ model: "dreamina-seedance-2-0-260128" }]);
     });
   });
 
