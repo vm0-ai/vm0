@@ -283,6 +283,25 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/host/sites/:site/deployments",
     "/api/zero/host/sites/:site/deployments",
   ],
+  // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
+  // attribution.
+  "/api/attribution/signup": [
+    "/api/okou/attribution/signup",
+    "/api/zero/attribution/signup",
+  ],
+  "/api/chat-thread-drafts": [
+    "/api/okou/chat-thread-drafts",
+    "/api/zero/chat-thread-drafts",
+  ],
+  "/api/chat-thread-unreads": [
+    "/api/okou/chat-thread-unreads",
+    "/api/zero/chat-thread-unreads",
+  ],
+  "/api/chat-thread-unreads/mark-read": [
+    "/api/okou/chat-thread-unreads/mark-read",
+    "/api/zero/chat-thread-unreads/mark-read",
+  ],
+  "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
   // #28422
   "/api/artifacts/catalog": [
     "/api/okou/artifacts/catalog",

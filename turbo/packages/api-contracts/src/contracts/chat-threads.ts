@@ -987,7 +987,7 @@ const chatEventNormalSendBodySchema = z
 export const chatThreadsContract = c.router({
   indicators: {
     method: "GET",
-    path: "/api/okou/indicators",
+    path: "/api/indicators",
     headers: authHeadersSchema,
     responses: {
       200: zeroIndicatorsSchema,
@@ -1056,7 +1056,7 @@ export const chatThreadsContract = c.router({
     method: "GET",
     // Sibling path (not nested under /chat-threads/) so it can never
     // collide with the /chat-threads/:id route pattern.
-    path: "/api/okou/chat-thread-drafts",
+    path: "/api/chat-thread-drafts",
     headers: authHeadersSchema,
     query: z.object({}),
     responses: {
@@ -1074,7 +1074,7 @@ export const chatThreadsContract = c.router({
   },
   unreads: {
     method: "GET",
-    path: "/api/okou/chat-thread-unreads",
+    path: "/api/chat-thread-unreads",
     headers: authHeadersSchema,
     query: z.object({
       agentId: z.string().min(1),
@@ -1226,7 +1226,7 @@ export const chatThreadMarkUnreadContract = c.router({
 export const chatThreadMarkAgentReadContract = c.router({
   markAgentRead: {
     method: "POST",
-    path: "/api/okou/chat-thread-unreads/mark-read",
+    path: "/api/chat-thread-unreads/mark-read",
     headers: authHeadersSchema,
     body: z.object({
       agentId: z.string().min(1),

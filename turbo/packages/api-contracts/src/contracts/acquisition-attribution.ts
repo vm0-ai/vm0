@@ -67,7 +67,7 @@ const recordSignupAttributionResponseSchema = z.object({
 export const acquisitionAttributionContract = c.router({
   recordSignup: {
     method: "POST",
-    path: "/api/okou/attribution/signup",
+    path: "/api/attribution/signup",
     headers: authHeadersSchema,
     body: recordSignupAttributionRequestSchema,
     responses: {
