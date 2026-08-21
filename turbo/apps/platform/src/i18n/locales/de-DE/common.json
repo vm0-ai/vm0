@@ -2015,6 +2015,14 @@
         }
       },
       "openTemplatesAria": "Vorlagen durchsuchen",
+      "slack": {
+        "channels": "Alle Kanäle",
+        "connect": "Verbinden",
+        "description": "Per DM schreiben oder in jedem Channel @erwähnen",
+        "install": "Zu Slack hinzufügen",
+        "openChannelsAria": "Kanäle öffnen",
+        "title": "{{assistantName}} zu Slack hinzufügen"
+      },
       "startWithPrompt": "Erstellen",
       "templates": "Vorlagen"
     },

@@ -2015,6 +2015,14 @@
         }
       },
       "openTemplatesAria": "Browse templates",
+      "slack": {
+        "channels": "All channels",
+        "connect": "Connect",
+        "description": "DM it or @mention it in any channel",
+        "install": "Add to Slack",
+        "openChannelsAria": "Open channels",
+        "title": "Add {{assistantName}} to Slack"
+      },
       "startWithPrompt": "Create",
       "templates": "Templates"
     },

@@ -2056,6 +2056,14 @@
         }
       },
       "openTemplatesAria": "Explorar plantillas",
+      "slack": {
+        "channels": "Todos los canales",
+        "connect": "Conectar",
+        "description": "Escríbele por MD o menciónalo en cualquier canal",
+        "install": "Añadir a Slack",
+        "openChannelsAria": "Abrir canales",
+        "title": "Añadir {{assistantName}} a Slack"
+      },
       "startWithPrompt": "Crear",
       "templates": "Plantillas"
     },

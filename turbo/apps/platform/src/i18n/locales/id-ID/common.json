@@ -2014,6 +2014,14 @@
         }
       },
       "openTemplatesAria": "Jelajahi templat",
+      "slack": {
+        "channels": "Semua kanal",
+        "connect": "Hubungkan",
+        "description": "Kirim DM atau @sebut di kanal mana pun",
+        "install": "Tambahkan ke Slack",
+        "openChannelsAria": "Buka kanal",
+        "title": "Tambahkan {{assistantName}} ke Slack"
+      },
       "startWithPrompt": "Buat",
       "templates": "Templat"
     },

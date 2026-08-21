@@ -2014,6 +2014,14 @@
         }
       },
       "openTemplatesAria": "テンプレートを見る",
+      "slack": {
+        "channels": "すべてのチャンネル",
+        "connect": "接続する",
+        "description": "DM で話しかけるか、任意のチャンネルで @メンション",
+        "install": "Slack に追加",
+        "openChannelsAria": "チャンネルを開く",
+        "title": "Slack に {{assistantName}} を追加"
+      },
       "startWithPrompt": "作成",
       "templates": "テンプレート"
     },

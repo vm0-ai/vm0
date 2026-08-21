@@ -2056,6 +2056,14 @@
         }
       },
       "openTemplatesAria": "Parcourir les modèles",
+      "slack": {
+        "channels": "Tous les canaux",
+        "connect": "Connecter",
+        "description": "Écrivez-lui en MP ou @mentionnez-le dans un canal",
+        "install": "Ajouter à Slack",
+        "openChannelsAria": "Ouvrir les canaux",
+        "title": "Ajouter {{assistantName}} à Slack"
+      },
       "startWithPrompt": "Créer",
       "templates": "Modèles"
     },

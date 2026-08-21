@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
@@ -12,7 +17,13 @@ import {
   type StartCardConnectorIcon,
   type StartCardKind,
 } from "../../signals/zero-page/zero-start-cards.ts";
+import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
+import { assistantName$ } from "../../signals/branding.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { openFreshOAuth } from "./slack-oauth-window.ts";
 import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
 
 // Every kind draws into the same square slot so the row reads as one family.
@@ -59,8 +70,21 @@ const LINE_ALPHA = "59";
 const SOFT_ALPHA = "40";
 const FILL_ALPHA = "8C";
 
+// The Slack card is the one tile whose art is a brand mark, so its wash is
+// taken from that brand rather than from the avatar palette above.
+const SLACK_ACCENT = "#4A154B";
+
+const slackIconImg = settingsIconAssetUrl("slack");
+
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
 type WorkflowArtIcon = StartCardConnectorIcon | undefined;
+
+// The artwork carries its own padding — the mark covers 45% of the canvas — so
+// the box is scaled up to land a 32px mark, the size of the avatar card's
+// portrait chip.
+function SlackArt() {
+  return <img src={slackIconImg} alt="" className="size-8 scale-[2.2]" />;
+}
 
 function SlidesArt({ accent }: { accent: string }) {
   const edge = { borderColor: `${accent}${LINE_ALPHA}` };
@@ -280,6 +304,106 @@ function WorkflowArt({ accent }: { accent: string }) {
   );
 }
 
+/**
+ * One action in a card's hover overlay. The secondary is dropped once the card
+ * is too narrow to hold both — the query reads the card's content box, so 15rem
+ * sits between the two-up card's 188px and the three-up card's 260px. The card
+ * still reaches that action on its own click.
+ */
+function OverlayAction({
+  label,
+  secondary = false,
+  onClick,
+}: {
+  label: string;
+  secondary?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant="outline"
+      className={`min-w-0 flex-1 text-xs${secondary ? " hidden @[15rem]:inline-flex" : ""}`}
+      onClick={onClick}
+    >
+      <span className="truncate">{label}</span>
+    </Button>
+  );
+}
+
+/**
+ * The shape every card in the row shares: a square art tile washed in the
+ * card's own colour, a two-line description beside it, and actions that only
+ * appear on hover.
+ */
+function StartCardShell({
+  accent,
+  art,
+  title,
+  description,
+  openAriaLabel,
+  onOpen,
+  actions,
+}: {
+  accent: string;
+  art: ReactNode;
+  title: string;
+  description: string;
+  openAriaLabel: string;
+  onOpen: () => void;
+  actions: ReactNode;
+}) {
+  // `justify-center`: every card in the row is stretched to the tallest one, so
+  // shorter content has to sit in the middle or its bottom padding reads as
+  // deeper than its top.
+  //
+  // `@container`: the overlay drops its secondary action based on how wide the
+  // card actually is, which the viewport alone does not tell us — the same
+  // breakpoint yields a 292px card with the sidebar open and a wider one
+  // without it.
+  return (
+    <div className="zero-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
+      {/* Stretched hit area so the whole card opens its browse destination,
+          kept as a real button so the hover actions stay focusable siblings. */}
+      <button
+        type="button"
+        className="absolute inset-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={openAriaLabel}
+        onClick={onOpen}
+      />
+      <div className="pointer-events-none flex items-center gap-3">
+        <div
+          className={THUMBNAIL_CLASS}
+          style={{ backgroundColor: `${accent}${TILE_ALPHA}` }}
+        >
+          {art}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          {/* The clamp is only a guard: beside the thumbnail a description gets
+              a 176px column, and every one of them is written to land inside
+              the two lines that fit there. */}
+          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      </div>
+      {/* An overlay rather than a row in the flow: the actions must not reserve
+          height while hidden, and `inset-x-4` keeps them inside the card, which
+          the two buttons are otherwise too wide for. The longest description in
+          a row reaches the card's bottom edge, so the buttons sit on a scrim
+          that fades that text out instead of slicing through a line. Only the
+          buttons take clicks — the rest of the overlay, and all of it on a
+          touch device where `hover` never resolves, falls through to the card.
+          */}
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-14 items-end gap-1 bg-gradient-to-t from-card from-[57%] to-transparent opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-focus-within:[&>button]:pointer-events-auto group-hover:[&>button]:pointer-events-auto">
+        {actions}
+      </div>
+    </div>
+  );
+}
+
 interface StartCardContent {
   readonly title: string;
   readonly description: string;
@@ -306,93 +430,115 @@ function StartCard({
   onOpenTemplates: () => void;
 }) {
   const { t } = useTranslation();
-  // `justify-center`: every card in the row is stretched to the tallest one, so
-  // shorter content has to sit in the middle or its bottom padding reads as
-  // deeper than its top.
-  //
-  // `@container`: the overlay drops its secondary action based on how wide the
-  // card actually is, which the viewport alone does not tell us — the same
-  // breakpoint yields a 292px card with the sidebar open and a wider one
-  // without it.
   return (
-    <div className="zero-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
-      {/* Stretched hit area so the whole card opens the template picker, kept as
-          a real button so the hover actions stay focusable siblings. */}
-      <button
-        type="button"
-        className="absolute inset-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={t(($) => {
-          return $.chat.startCards.openTemplatesAria;
-        })}
-        onClick={onOpenTemplates}
-      />
-      <div className="pointer-events-none flex items-center gap-3">
-        <div
-          className={THUMBNAIL_CLASS}
-          style={{
-            backgroundColor: `${kindAccent(kind)}${TILE_ALPHA}`,
-          }}
-        >
-          {art}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">
-            {content.title}
-          </p>
-          {/* The clamp is only a guard: beside the thumbnail a description gets
-              a 176px column, and every one of them is written to land inside
-              the two lines that fit there. */}
-          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-            {content.description}
-          </p>
-        </div>
-      </div>
-      {/* An overlay rather than a row in the flow: the actions must not reserve
-          height while hidden, and `inset-x-4` keeps them inside the card, which
-          the two buttons are otherwise too wide for. The longest description in
-          a row reaches the card's bottom edge, so the buttons sit on a scrim
-          that fades that text out instead of slicing through a line. Only the
-          buttons take clicks — the rest of the overlay, and all of it on a
-          touch device where `hover` never resolves, falls through to the card.
-          */}
-      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-14 items-end gap-1 bg-gradient-to-t from-card from-[57%] to-transparent opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-focus-within:[&>button]:pointer-events-auto group-hover:[&>button]:pointer-events-auto">
-        {/* Peers that split the card: one starts the run from this card's
-            prompt, the other opens the picker. Neither leads, so they take
-            equal widths rather than each hugging its own label. */}
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          className="min-w-0 flex-1 text-xs"
-          onClick={() => {
-            onSelectPrompt(content.prompt);
-          }}
-        >
-          <span className="truncate">
-            {t(($) => {
+    <StartCardShell
+      accent={kindAccent(kind)}
+      art={art}
+      title={content.title}
+      description={content.description}
+      openAriaLabel={t(($) => {
+        return $.chat.startCards.openTemplatesAria;
+      })}
+      onOpen={onOpenTemplates}
+      actions={
+        // Peers that split the card: one starts the run from this card's
+        // prompt, the other opens the picker. Neither leads, so they take
+        // equal widths rather than each hugging its own label.
+        <>
+          <OverlayAction
+            label={t(($) => {
               return $.chat.startCards.startWithPrompt;
             })}
-          </span>
-        </Button>
-        {/* Dropped once the card is too narrow to hold both — the query reads
-            the card's content box, so 15rem sits between the two-up card's
-            188px and the three-up card's 260px. The card still opens the
-            picker on its own. */}
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          className="hidden min-w-0 flex-1 text-xs @[15rem]:inline-flex"
-          onClick={onOpenTemplates}
-        >
-          <span className="truncate">
-            {t(($) => {
+            onClick={() => {
+              onSelectPrompt(content.prompt);
+            }}
+          />
+          <OverlayAction
+            secondary
+            label={t(($) => {
               return $.chat.startCards.templates;
             })}
-          </span>
-        </Button>
-      </div>
-    </div>
+            onClick={onOpenTemplates}
+          />
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * Slack setup, as a card in the same row.
+ *
+ * Unlike its neighbours this one can be finished, so it is drawn only while
+ * there is a step left to take and disappears once the workspace is connected.
+ * The card itself opens the channels page — every other channel and the full
+ * Slack state live there — and the hover overlay carries the one step this
+ * member can actually take.
+ */
+function SlackStartCard() {
+  const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
+  const navigate = useSet(detachedNavigateTo$);
+  const slackLoadable = useLastLoadable(slackOrgData$);
+  if (slackLoadable.state !== "hasData") {
+    return null;
+  }
+  const slack = slackLoadable.data;
+  if (slack.isConnected) {
+    return null;
+  }
+  // Before the workspace install only an admin gets a URL, and after it every
+  // member gets their own connect URL. Without one there is no step to offer.
+  const setupUrl = slack.isInstalled ? slack.connectUrl : slack.installUrl;
+  if (!setupUrl) {
+    return null;
+  }
+  const openChannels = () => {
+    navigate(ROUTES.works);
+  };
+  return (
+    <StartCardShell
+      accent={SLACK_ACCENT}
+      art={<SlackArt />}
+      title={t(
+        ($) => {
+          return $.chat.startCards.slack.title;
+        },
+        { assistantName },
+      )}
+      description={t(($) => {
+        return $.chat.startCards.slack.description;
+      })}
+      openAriaLabel={t(($) => {
+        return $.chat.startCards.slack.openChannelsAria;
+      })}
+      onOpen={openChannels}
+      actions={
+        <>
+          <OverlayAction
+            label={
+              slack.isInstalled
+                ? t(($) => {
+                    return $.chat.startCards.slack.connect;
+                  })
+                : t(($) => {
+                    return $.chat.startCards.slack.install;
+                  })
+            }
+            onClick={() => {
+              openFreshOAuth(setupUrl);
+            }}
+          />
+          <OverlayAction
+            secondary
+            label={t(($) => {
+              return $.chat.startCards.slack.channels;
+            })}
+            onClick={openChannels}
+          />
+        </>
+      }
+    />
   );
 }
 
@@ -486,6 +632,9 @@ export function StartCards({
           />
         );
       })}
+      {/* Last, on its own line under the row: the kinds above are what to make
+          next, and this is a one-time setup that leaves once it is done. */}
+      <SlackStartCard />
     </div>
   );
 }

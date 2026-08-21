@@ -2056,6 +2056,14 @@
         }
       },
       "openTemplatesAria": "Sfoglia i modelli",
+      "slack": {
+        "channels": "Tutti i canali",
+        "connect": "Connettiti",
+        "description": "Scrivigli in DM o @menzionalo in qualsiasi canale",
+        "install": "Aggiungi a Slack",
+        "openChannelsAria": "Apri i canali",
+        "title": "Aggiungi {{assistantName}} a Slack"
+      },
       "startWithPrompt": "Crea",
       "templates": "Modelli"
     },
