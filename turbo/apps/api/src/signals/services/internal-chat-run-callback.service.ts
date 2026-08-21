@@ -2654,7 +2654,7 @@ async function resolveQueuedMessageModelRoute(args: {
           : "PROVIDER_UNAVAILABLE",
         message: args.fallbackEnabled
           ? "Every managed route for this model is temporarily unavailable"
-          : "No model provider configured: no VM0 managed model key is configured",
+          : "No model provider configured: no built-in model key is configured",
       },
     };
   }

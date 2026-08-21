@@ -21,6 +21,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
@@ -1163,6 +1164,10 @@ describe("CHAT-02: completed chat callback", () => {
         'The "prompt" values are shown as plain text, not rendered as Markdown',
       ),
     ]);
+    expect(followupSystemPrompts[0]).toContain(
+      "Supported built-in generation tasks:",
+    );
+    expect(followupSystemPrompts[0]).not.toContain("VM0");
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -4094,6 +4099,94 @@ describe("CHAT-02: drain-time admission failure", () => {
     },
     90_000,
   );
+
+  it("terminalizes a queued Web message with neutral built-in model copy when the key is unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before queued built-in model admission",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedPrompt = "reject this queued message without a built-in key";
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: queuedPrompt,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    await chat.updateThreadModelSelection(
+      actor,
+      anchor.threadId,
+      "claude-sonnet-5",
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+
+    await withBuiltInModelRuntimeRouteUnavailableForTest(
+      "claude-sonnet-5",
+      async () => {
+        await completeChatRunOk(anchor.runId, anchorHeaders);
+        await flushWaitUntilForTest();
+      },
+    );
+
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "provider_unavailable"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "provider_unavailable"
+            );
+          })
+        );
+      },
+    );
+    const rejected = userMessages(terminal.events).find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === queuedEventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the queued Web message to be rejected");
+    }
+    expect(rejected.error).toBe("provider_unavailable");
+    const errors = assistantMessages(terminal.events).filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "provider_unavailable"
+      );
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toBe(
+      "No model provider configured: no built-in model key is configured",
+    );
+    expect(errors[0]?.content).not.toContain("VM0");
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+  }, 90_000);
 });
 
 describe("CHAT-02: failed chat callbacks", () => {
