@@ -100,7 +100,7 @@ async function rawWebSearchRequest(
     routes: webSearchTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
-  const request = new Request("http://api.test/api/zero/web-search", {
+  const request = new Request("http://api.test/api/web-search", {
     method: "POST",
     headers: {
       ...authenticate(actor),

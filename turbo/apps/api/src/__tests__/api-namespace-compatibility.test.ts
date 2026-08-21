@@ -130,9 +130,14 @@ function requireBrandedRoute(): RouteEntry {
 // them.
 describe("API namespace compatibility", () => {
   const registeredRoutes = withApiNamespaceAliases(ROUTES);
+  // Composed the way production registers routes. The expansion above is the
+  // mechanism this file pins; this is what a caller actually reaches, and it is
+  // the only composition that still finds a #28278-migrated contract at the
+  // branded paths its released callers hold.
+  const servedRoutes = withMigratedBrandedPaths(registeredRoutes);
 
   function registrationsFor(path: string): readonly RouteEntry[] {
-    return registeredRoutes.filter((entry) => {
+    return servedRoutes.filter((entry) => {
       return entry.route.path === path;
     });
   }
@@ -225,7 +230,7 @@ describe("API namespace compatibility", () => {
 
       for (const source of sources) {
         const key = `${source.route.method} ${legacy}`;
-        const matches = registeredRoutes.filter((entry) => {
+        const matches = servedRoutes.filter((entry) => {
           return routeKey(entry) === key;
         });
         expect(matches, `Missing registration for ${key}`).toHaveLength(1);
@@ -290,16 +295,20 @@ describe("API namespace compatibility", () => {
     );
   });
 
-  it("keeps every listed legacy path backed by a declared contract", () => {
-    const declaredCanonicalPaths = new Set(
-      ROUTES.map(({ route }) => {
+  // A row whose canonical path nothing answers is a row no caller can use. Read
+  // from the served composition rather than from `ROUTES`: once a #28278 slice
+  // moves a contract to its neutral path, the canonical branded path is served
+  // by the migrated-branded table instead of being declared by the contract.
+  it("keeps every listed legacy path backed by a served canonical path", () => {
+    const servedCanonicalPaths = new Set(
+      servedRoutes.map(({ route }) => {
         return canonicalPath(route.path);
       }),
     );
 
     expect(
       Object.keys(LEGACY_ZERO_PATHS).filter((path) => {
-        return !declaredCanonicalPaths.has(path);
+        return !servedCanonicalPaths.has(path);
       }),
     ).toStrictEqual([]);
   });

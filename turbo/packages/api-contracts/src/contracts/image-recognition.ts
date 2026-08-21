@@ -53,7 +53,7 @@ const recognitionResponses = {
 export const imageRecognitionContract = c.router({
   recognize: {
     method: "POST",
-    path: "/api/okou/recognize",
+    path: "/api/recognize",
     headers: authHeadersSchema,
     body: imageRecognitionRequestSchema,
     responses: recognitionResponses,
