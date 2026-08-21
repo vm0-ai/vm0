@@ -311,6 +311,24 @@ describe("connector account lifecycle routes", () => {
       hasSibling: true,
     });
 
+    const invalidReplacement = await accept(
+      accountClient().delete({
+        headers: authHeaders(),
+        params: { connectionId: second.body.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "openai" },
+          selectionResolution: {
+            kind: "reassign",
+            connectionId: randomUUID(),
+          },
+        },
+      }),
+      [409],
+    );
+    expect(invalidReplacement.body.error.message).toBe(
+      "Replacement connector account is not available",
+    );
+
     const deleted = await accept(
       accountClient().delete({
         headers: authHeaders(),
@@ -662,6 +680,97 @@ describe("connector account lifecycle routes", () => {
       expect(legacyDisconnect.body.error.message).toBe(
         "Multiple connector accounts require an exact choice",
       );
+
+      const work = accounts.body.connections.find((account) => {
+        return account.displayName === "Work";
+      });
+      const personal = accounts.body.connections.find((account) => {
+        return account.displayName === "Personal";
+      });
+      if (!work || !personal) {
+        throw new Error("Expected both custom connector accounts");
+      }
+
+      const renamed = await accept(
+        accountClient().rename({
+          headers: authHeaders(),
+          params: { connectionId: personal.id },
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+            displayName: "Personal renamed",
+          },
+        }),
+        [200],
+      );
+      expect(renamed.body.displayName).toBe("Personal renamed");
+
+      await accept(
+        accountClient().setDefault({
+          headers: authHeaders(),
+          params: { connectionId: personal.id },
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+          },
+        }),
+        [200],
+      );
+      const impact = await accept(
+        accountClient().deletionImpact({
+          headers: authHeaders(),
+          params: { connectionId: personal.id },
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+          },
+        }),
+        [200],
+      );
+      expect(impact.body).toStrictEqual({
+        connectionId: personal.id,
+        explicitSelectionCount: 0,
+        hasSibling: true,
+      });
+
+      const deleted = await accept(
+        accountClient().delete({
+          headers: authHeaders(),
+          params: { connectionId: personal.id },
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+            selectionResolution: { kind: "clear" },
+          },
+        }),
+        [200],
+      );
+      expect(deleted.body).toStrictEqual({
+        deletedConnectionId: personal.id,
+        resolvedSelectionCount: 0,
+        promotedDefaultConnectionId: work.id,
+      });
+
+      const remaining = await accept(
+        accountClient().connections({
+          headers: authHeaders(),
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+            limit: 100,
+          },
+        }),
+        [200],
+      );
+      expect(remaining.body.connections).toMatchObject([
+        { id: work.id, displayName: "Work", isDefault: true },
+      ]);
     },
   );
 });
