@@ -22,6 +22,11 @@ import {
   loadAgentConnectorScope,
   type AgentConnectorScope,
 } from "./agent-connector-scope.service";
+import {
+  getConnectorRuntimeConnector,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
+} from "./connector-catalog-runtime.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -85,6 +90,29 @@ function selectionFromRow(
     connectionId: row.connectorId,
     target: targetFromRow(row),
   };
+}
+
+function targetExistsInCatalog(
+  snapshot: ConnectorRuntimeSelection | undefined,
+  target: ConnectorAccountTarget,
+): boolean {
+  return (
+    target.kind === "custom" ||
+    (snapshot !== undefined &&
+      getConnectorRuntimeConnector(snapshot, target.connectorSlug) !==
+        undefined)
+  );
+}
+
+async function loadSnapshotForBuiltinTargets(
+  db: ReadonlyDb,
+  selections: readonly ConnectorAccountSelection[],
+): Promise<ConnectorRuntimeSelection | undefined> {
+  return selections.some((selection) => {
+    return selection.target.kind === "builtin";
+  })
+    ? await loadConnectorRuntimeSnapshot(db)
+    : undefined;
 }
 
 function targetColumns(target: ConnectorAccountTarget): {
@@ -190,7 +218,11 @@ export async function listChatThreadConnectorSelections(
     return null;
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
-  return rows.map(selectionFromRow);
+  const selections = rows.map(selectionFromRow);
+  const snapshot = await loadSnapshotForBuiltinTargets(db, selections);
+  return selections.filter((selection) => {
+    return targetExistsInCatalog(snapshot, selection.target);
+  });
 }
 
 export async function prepareChatThreadConnectorSelections(
@@ -217,8 +249,16 @@ export async function prepareChatThreadConnectorSelections(
     return { kind: "ready", selections: [] };
   }
 
+  const selections = [...byTarget.values()];
   const scope = await loadAgentConnectorScope(db, args);
+  const snapshot = await loadSnapshotForBuiltinTargets(db, selections);
   for (const selection of byTarget.values()) {
+    if (!targetExistsInCatalog(snapshot, selection.target)) {
+      return {
+        kind: "invalid",
+        message: "Connector target is unavailable",
+      };
+    }
     if (!targetIsAuthorized(scope, selection.target)) {
       return {
         kind: "invalid",
@@ -230,7 +270,7 @@ export async function prepareChatThreadConnectorSelections(
   const resolutions = await resolveConnectorAccounts(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: [...byTarget.values()].map((selection) => {
+    requests: selections.map((selection) => {
       return {
         target: selection.target,
         selection: {

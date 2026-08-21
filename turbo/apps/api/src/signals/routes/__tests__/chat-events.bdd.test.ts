@@ -1497,6 +1497,13 @@ describe("CHAT-02: thread connector account selection", () => {
       { apiKey: "retired-thread-openai-key" },
       agentId,
     );
+    const runtimeConnection = await connectors.connectManualGrant(
+      actor,
+      "runtime",
+      "api-token",
+      { apiKey: "retired-thread-runtime-key" },
+      agentId,
+    );
     const thread = await chat.createThread(actor, {
       agentId,
       title: "Retired catalog connector thread",
@@ -1508,6 +1515,17 @@ describe("CHAT-02: thread connector account selection", () => {
         body: {
           connectionId: connection.id,
           target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: runtimeConnection.id,
+          target: { kind: "builtin", connectorSlug: "runtime" },
         },
       }),
       [200],
@@ -1539,6 +1557,66 @@ describe("CHAT-02: thread connector account selection", () => {
     expect(
       claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
     ).toBeUndefined();
+
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: runtimeConnection.id,
+        target: { kind: "builtin", connectorSlug: "runtime" },
+      },
+    ]);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [400],
+    );
+    await accept(
+      chatThreadsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          agentId,
+          model: "claude-sonnet-5",
+          connectorSelections: [
+            {
+              connectionId: connection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().clear({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+        body: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [204],
+    );
+    await installApiTestConnectorCatalog();
+    const restoredSelections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: thread.id },
+      }),
+      [200],
+    );
+    expect(restoredSelections.body.selections).toStrictEqual(
+      selections.body.selections,
+    );
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 });

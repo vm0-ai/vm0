@@ -671,6 +671,9 @@ async function validateApplyUserPermissionGrants(
 ): Promise<ValidationErrorResponse | null> {
   const index = await catalog.loadPermissionIndex(apply.connectorSlug);
   if (!index) {
+    if (apply.mode === "replace" && apply.grants.length === 0) {
+      return null;
+    }
     return validationError(`Unknown connector slug: ${apply.connectorSlug}`);
   }
 
@@ -860,12 +863,17 @@ export const listUserPermissionGrants$ = command(
 
     const grants = await loadActiveUserPermissionGrants(db, scope);
     signal.throwIfAborted();
+    const snapshot =
+      grants.length === 0 ? undefined : await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const responseScope = permissionGrantResponseScope(scope);
 
     return {
       kind: "ok" as const,
-      grants: grants.map((grant) => {
-        return formatUserPermissionGrant(grant, responseScope);
+      grants: grants.flatMap((grant) => {
+        return snapshot?.connectors.has(grant.connectorSlug)
+          ? [formatUserPermissionGrant(grant, responseScope)]
+          : [];
       }),
     };
   },
