@@ -154,14 +154,7 @@ export async function setVm0ManagedCandidateCooldownFixture(
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
-  onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-candidate-cooldown",
-      selected_model: selectedModel,
-      provider_type: route.provider_type,
-      upstream_model: route.upstream_model,
-    });
-  });
+  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
 }
 
 export function registerVm0ManagedCandidateCooldownCleanup(
