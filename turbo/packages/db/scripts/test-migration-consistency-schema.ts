@@ -56,6 +56,7 @@ import {
   validateCheckpointAgentComposeSnapshotNullableMigration,
   validateCheckpointAgentComposeSnapshotNullableSchema,
 } from "./test-checkpoint-agent-compose-snapshot-nullable";
+import { validateBuiltInModelKeysCompatibilityRelation } from "./test-built-in-model-keys-compatibility-relation";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
@@ -11745,6 +11746,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
     await validateCheckpointAgentComposeSnapshotNullableMigration();
+    await validateBuiltInModelKeysCompatibilityRelation();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateCustomGatewayProviderTypes();

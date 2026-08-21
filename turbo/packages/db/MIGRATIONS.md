@@ -51,6 +51,7 @@ delete the workflow, probe, focused validator, and this entry together.
 | #28080                            | Checkpoint configuration-independence manifest     | #26938 Stage 8 |
 | #28080                            | Checkpoint v7 protected partition                  | #26938 Stage 8 |
 | #28304                            | Usage-pack pending snapshot dirty upgrade          | #28372         |
+| #28453                            | Built-in model key relation compatibility          | #28368 D1      |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#27896|agent-execution-authority-classifier-and-helpers|removal-owner:#26938-stage-8 -->
@@ -66,6 +67,7 @@ delete the workflow, probe, focused validator, and this entry together.
 <!-- vm0-transition-validator:#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372 -->
+<!-- vm0-transition-validator:#28453|built-in-model-key-relation-compatibility|removal-owner:#28368-relation-contract -->
 
 ## Migration patterns
 
