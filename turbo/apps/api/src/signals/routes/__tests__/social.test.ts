@@ -45,6 +45,7 @@ const context = testContext();
 const SOCIALKIT_BASE = "https://api.socialkit.dev";
 const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_CATEGORY = MANAGED_SOCIALKIT_BILLING_CATEGORY;
+const SOCIALKIT_REQUEST_CREDITS = 3;
 const DEFAULT_SOCIAL_REQUEST = {
   method: "GET",
   path: "/youtube/transcript",
@@ -348,7 +349,7 @@ async function setupConfiguredPricing(): Promise<UsagePricingFixture> {
     configured: [
       {
         ...socialPricingKey(),
-        unitPrice: 5,
+        unitPrice: SOCIALKIT_REQUEST_CREDITS,
         unitSize: 1,
       },
     ],
@@ -564,10 +565,10 @@ describe("managed SocialKit route", () => {
       [200],
     );
 
-    expect(response.body.creditsCharged).toBe(5);
+    expect(response.body.creditsCharged).toBe(SOCIALKIT_REQUEST_CREDITS);
     expect(usage.body.rows).toHaveLength(1);
     expect(usage.body.rows[0]?.runId).toBe(run.runId);
-    expect(usage.body.rows[0]?.credits).toBe(5);
+    expect(usage.body.rows[0]?.credits).toBe(SOCIALKIT_REQUEST_CREDITS);
   });
 
   it("forwards representative GET operations with only managed auth", async () => {
@@ -633,7 +634,7 @@ describe("managed SocialKit route", () => {
         operation: { method: "GET", path },
         billingCategory: DEFAULT_CATEGORY,
         billingQuantity: 1,
-        creditsCharged: 5,
+        creditsCharged: SOCIALKIT_REQUEST_CREDITS,
         result: { path },
       });
     }
@@ -651,7 +652,9 @@ describe("managed SocialKit route", () => {
         };
       }),
     );
-    expect(beforeCredits - (await credits(actor))).toBe(cases.length * 5);
+    expect(beforeCredits - (await credits(actor))).toBe(
+      cases.length * SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 
   it("forwards reviewed POST operations without a request body", async () => {
@@ -695,10 +698,12 @@ describe("managed SocialKit route", () => {
     expect(response.body).toMatchObject({
       billingCategory: DEFAULT_CATEGORY,
       billingQuantity: 1,
-      creditsCharged: 5,
+      creditsCharged: SOCIALKIT_REQUEST_CREDITS,
       result: { page: 2 },
     });
-    expect(beforeCredits - (await credits(actor))).toBe(5);
+    expect(beforeCredits - (await credits(actor))).toBe(
+      SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 
   it("forwards documented pagination, filter, cache, and customization fields", async () => {
@@ -1022,7 +1027,7 @@ describe("managed SocialKit route", () => {
     configureProvider();
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
-    await setActorCredits(actor, 4);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS - 1);
     await enableSocialKit(actor);
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
@@ -1298,7 +1303,9 @@ describe("managed SocialKit route", () => {
 
     expect(response.status).toBe(200);
     expect(controller.signal.aborted).toBeTruthy();
-    expect(beforeCredits - (await credits(actor))).toBe(5);
+    expect(beforeCredits - (await credits(actor))).toBe(
+      SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 
   it("records concurrent successful requests exactly once each", async () => {
@@ -1333,9 +1340,11 @@ describe("managed SocialKit route", () => {
       ),
     ]);
 
-    expect(first.body.creditsCharged).toBe(5);
-    expect(second.body.creditsCharged).toBe(5);
+    expect(first.body.creditsCharged).toBe(SOCIALKIT_REQUEST_CREDITS);
+    expect(second.body.creditsCharged).toBe(SOCIALKIT_REQUEST_CREDITS);
     expect(providerRequests).toBe(2);
-    expect(beforeCredits - (await credits(actor))).toBe(10);
+    expect(beforeCredits - (await credits(actor))).toBe(
+      2 * SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 });
