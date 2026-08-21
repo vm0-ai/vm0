@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.779.1](https://github.com/vm0-ai/vm0/compare/app-v0.779.0...app-v0.779.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **platform:** bold the selected pinned agent label ([#28551](https://github.com/vm0-ai/vm0/issues/28551)) ([a9da8a4](https://github.com/vm0-ai/vm0/commit/a9da8a4bfaa152dea4a9591d6606c3e94108c301))
+
+
+### Refactoring
+
+* **run:** finish the version-independent runtime cutover ([#28517](https://github.com/vm0-ai/vm0/issues/28517)) ([d6a1f75](https://github.com/vm0-ai/vm0/commit/d6a1f753c2146b421c09ce8cd0cae59212d169f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.348.0
+    * @okouai/core bumped to 8.579.0
+
 ## [0.779.0](https://github.com/vm0-ai/vm0/compare/app-v0.778.1...app-v0.779.0) (2026-08-21)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.579.0](https://github.com/vm0-ai/vm0/compare/core-v8.578.0...core-v8.579.0) (2026-08-21)
+
+
+### Features
+
+* **api:** add managed socialkit service ([#28343](https://github.com/vm0-ai/vm0/issues/28343)) ([94f6768](https://github.com/vm0-ai/vm0/commit/94f67682a19fd19310449075a7cf9bcf40e5a52f))
+* **api:** resolve a user's own presentation template for a generation run ([#28536](https://github.com/vm0-ai/vm0/issues/28536)) ([1db3d99](https://github.com/vm0-ai/vm0/commit/1db3d99c96b5a2fa8fec2324d644f073a9622912))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.348.0
+
 ## [8.578.0](https://github.com/vm0-ai/vm0/compare/core-v8.577.0...core-v8.578.0) (2026-08-21)
 
 
