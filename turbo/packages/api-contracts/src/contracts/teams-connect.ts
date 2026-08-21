@@ -70,7 +70,7 @@ const teamsDisconnectResponseSchema = z.object({
 export const teamsConnectContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/okou/integrations/teams/connect",
+    path: "/api/integrations/teams/connect",
     headers: authHeadersSchema,
     responses: {
       200: teamsConnectStatusSchema,
@@ -80,7 +80,7 @@ export const teamsConnectContract = c.router({
   },
   connect: {
     method: "POST",
-    path: "/api/okou/integrations/teams/connect",
+    path: "/api/integrations/teams/connect",
     headers: authHeadersSchema,
     body: teamsConnectBodySchema,
     responses: {
@@ -94,7 +94,7 @@ export const teamsConnectContract = c.router({
   },
   disconnect: {
     method: "DELETE",
-    path: "/api/okou/integrations/teams/connect",
+    path: "/api/integrations/teams/connect",
     headers: authHeadersSchema,
     query: z.object({
       action: z.string().optional(),
