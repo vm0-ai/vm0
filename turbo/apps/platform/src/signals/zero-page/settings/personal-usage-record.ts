@@ -78,6 +78,19 @@ const resetMyUsageRecordPages$ = command(({ set }) => {
   });
 });
 
+const releaseMyUsageRecordPageRequest$ = command(
+  ({ get, set }, page: number, generation: number) => {
+    if (get(myUsageRecordGeneration$) !== generation) {
+      return;
+    }
+    set(myUsageRecordRequestedPages$, (pages) => {
+      const retryablePages = new Set(pages);
+      retryablePages.delete(page);
+      return retryablePages;
+    });
+  },
+);
+
 export const myUsageRange$ = computed((get) => {
   return get(myUsageRangeState$);
 });
@@ -167,15 +180,12 @@ export const loadMoreUsageRecord$ = command(
 
     const loadPage = get(loadMyUsageRecordPage$);
     const next = await onRejection(loadPage(nextPage, signal), () => {
-      if (get(myUsageRecordGeneration$) !== generation) {
-        return;
-      }
-      set(myUsageRecordRequestedPages$, (pages) => {
-        const retryablePages = new Set(pages);
-        retryablePages.delete(nextPage);
-        return retryablePages;
-      });
+      set(releaseMyUsageRecordPageRequest$, nextPage, generation);
     });
+    if (signal.aborted) {
+      set(releaseMyUsageRecordPageRequest$, nextPage, generation);
+      return;
+    }
     if (get(myUsageRecordGeneration$) !== generation) {
       return;
     }
