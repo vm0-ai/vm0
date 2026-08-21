@@ -792,18 +792,17 @@ function PlanPrice({
    covers SEO, lead, web, and market data instead of three, which names the
    whole capability without pushing Pro's list past a scannable length.
 
-   Team is a strict delta: every row is something Pro cannot do, and the label
-   says "plus" rather than "built for teams" so it reads that way.
-   ORG_PLAN_ENTITLEMENT_TIER_VALUES is the whole difference between the plans --
-   baseConcurrencyLimit 2/10, canBuyConcurrency, workflowWebhookAutomationAllowed,
-   audioDailyRateLimit 300/500, audioDailyDurationSeconds 200/500 -- plus the
-   support tier, which is policy rather than a flag. Five rows, and there is no
-   sixth to write. A capability that ships on both plans belongs in Pro's column,
-   however team-shaped it sounds; putting it here is what made this dialog claim
-   Pro features as Team entitlements in the first place.
+   Team's first three rows and its voice caps are the only real entitlement
+   differences: ORG_PLAN_ENTITLEMENT_TIER_VALUES varies baseConcurrencyLimit
+   2/10, canBuyConcurrency, workflowWebhookAutomationAllowed, audioDailyRateLimit
+   300/500 and audioDailyDurationSeconds 200/500, and nothing else.
 
-   Lengthening this column means gating something in
-   ORG_PLAN_ENTITLEMENT_TIER_VALUES first, then adding the row.
+   The live browser, Computer Use and workflow rows are capability both plans
+   ship. They sit here because the label says "Everything in Pro, built for
+   teams" -- inherited, not exclusive -- and because ten concurrent slots are
+   what make them worth buying. If any of the three is ever gated to Team, the
+   label can tighten to a plain delta; until then it must not, or the column is
+   claiming Pro features as Team entitlements again.
 
    The dialog is a fixed 43rem, leaving 570px for the columns, which Pro's nine
    rows sit exactly on. A tenth row has to replace one, and any row that wraps
@@ -832,6 +831,15 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
       }),
       i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.liveBrowser;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.computerUse;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.reusableWorkflows;
       }),
       voiceInput,
       i18n.t(($) => {
@@ -870,7 +878,7 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
   return tier === "team"
     ? i18n.t(
         ($) => {
-          return $.billing.plans.highlights.everythingInPlus;
+          return $.billing.plans.highlights.everythingInBuiltForTeams;
         },
         { plan: planName("pro") },
       )

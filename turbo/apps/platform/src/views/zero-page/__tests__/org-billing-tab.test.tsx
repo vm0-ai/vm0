@@ -492,16 +492,19 @@ describe("organization billing settings", () => {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team is a strict delta -- every row is something Pro cannot do. Its five
-       rows are the whole of what ORG_PLAN_ENTITLEMENT_TIER_VALUES varies between
-       the plans, plus the support tier. */
+    /* Concurrency, webhooks and the voice caps are the real entitlement
+       differences; the live browser, Computer Use and workflow rows are shared
+       capability the label inherits with "Everything in Pro". */
     expect(
-      within(teamPlan).getByText("Everything in Pro, plus"),
+      within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
     for (const item of [
       "10 agents running at once",
       "Add more concurrency any time",
       "Trigger agents from any system via webhook",
+      "Watch and take over an agent's live browser",
+      "Agents operate apps on your own desktop",
+      "Turn a repeated job into a reusable workflow",
       "Voice input, 500 requests and 500 minutes a day",
       "Priority support",
     ]) {
