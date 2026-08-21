@@ -69,13 +69,17 @@ def test_rate_limit_response_writes_normalized_summary(tmp_path, real_flow, mitm
         response_headers=header_map({"retry-after": "120"}),
     )
 
-    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
 
     assert json.loads(failure_path.read_text()) == {
         "failureKind": "rate_limit",
         "retryAfterSeconds": 120,
     }
     assert stat.S_IMODE(failure_path.stat().st_mode) == 0o600
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
 
 
 @pytest.mark.parametrize(
@@ -301,9 +305,38 @@ def test_conflicting_sse_event_type_is_not_reported(tmp_path, real_flow, mitm_ct
         response_headers=header_map({"content-type": "text/event-stream"}),
     )
 
-    _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(body)
 
     assert not failure_path.exists()
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+
+def test_sse_failure_is_written_before_response_hook(tmp_path, real_flow, mitm_ctx):
+    failure_path = tmp_path / "model-provider-failure.json"
+    body = (
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{'
+        b'"error":{"code":"server_error"}}}\n\n'
+    )
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(body)
+
+    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
 
 
 def test_connection_error_is_reported(tmp_path, real_flow, mitm_ctx):

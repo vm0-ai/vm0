@@ -196,9 +196,27 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
     ):
         return None
 
+    failure_kind = _failure_kind_from_http_status(
+        response.status_code,
+        flow_metadata.firewall_name(flow.metadata),
+    )
+    if failure_kind is not None:
+        _settle_http_flow(
+            flow,
+            flow_state,
+            _failure_outcome(
+                failure_kind,
+                _retry_after_seconds(response.status_code, response.headers),
+            ),
+        )
+        return None
+
     parser: _JsonResponseParser | _SseResponseParser
     if _has_event_stream_media_type(response):
-        parser = _SseResponseParser(flow_state.protocol)
+        parser = _SseResponseParser(
+            flow_state.protocol,
+            lambda outcome: _settle_http_flow(flow, flow_state, outcome),
+        )
     else:
         parser = _JsonResponseParser(flow_state.protocol)
     decode_session = body_decoding.create_stream_decode_session(response.headers, parser.feed)
@@ -230,12 +248,17 @@ def finish_http_response(flow: http.HTTPFlow) -> None:
         flow_metadata.firewall_name(flow.metadata),
     )
     if failure_kind is not None:
-        outcome = _failure_outcome(
-            failure_kind,
-            _retry_after_seconds(response.status_code, response.headers),
-        )
-    else:
-        outcome = _finish_response_body(flow, flow_state.protocol)
+        if not flow_state.terminal_observed:
+            _settle_http_flow(
+                flow,
+                flow_state,
+                _failure_outcome(
+                    failure_kind,
+                    _retry_after_seconds(response.status_code, response.headers),
+                ),
+            )
+        return
+    outcome = _finish_response_body(flow, flow_state.protocol)
     _settle_http_flow(flow, flow_state, outcome)
 
 
@@ -375,8 +398,12 @@ class _JsonResponseParser:
 
 
 class _SseResponseParser:
-    def __init__(self, protocol: _Protocol) -> None:
-        self._handler: _SseEventHandler = _SseEventHandler(protocol)
+    def __init__(
+        self,
+        protocol: _Protocol,
+        settle: Callable[[_Outcome], None],
+    ) -> None:
+        self._handler: _SseEventHandler = _SseEventHandler(protocol, settle)
         self._scanner = SseUsageScanner(
             self._handler,
             capture_data_without_event=True,
@@ -391,8 +418,13 @@ class _SseResponseParser:
 
 
 class _SseEventHandler:
-    def __init__(self, protocol: _Protocol) -> None:
+    def __init__(
+        self,
+        protocol: _Protocol,
+        settle: Callable[[_Outcome], None],
+    ) -> None:
         self._protocol: _Protocol = protocol
+        self._settle = settle
         self._extractor: JsonSelectiveExtractor | None = None
         self._done_candidate = bytearray()
         self._done_overflow = False
@@ -434,7 +466,7 @@ class _SseEventHandler:
             self._record_terminal(_success_outcome())
             return
         if extractor is None:
-            self._parse_ambiguous = True
+            self._mark_parse_ambiguous()
             return
         result = extractor.finish()
         payload_event_type = _string_value(result.values, ("type",))
@@ -443,11 +475,11 @@ class _SseEventHandler:
             and payload_event_type is not None
             and event_name != payload_event_type
         ):
-            self._parse_ambiguous = True
+            self._mark_parse_ambiguous()
             return
         event_type = event_name or payload_event_type
         if not result.complete:
-            self._parse_ambiguous = True
+            self._mark_parse_ambiguous()
             return
         if self._protocol == "anthropic_messages":
             if event_type == "message_stop":
@@ -469,7 +501,7 @@ class _SseEventHandler:
     def on_event_discard(self, event_name: str | None) -> None:
         del event_name
         self._extractor = None
-        self._parse_ambiguous = True
+        self._mark_parse_ambiguous()
 
     def outcome(self) -> _Outcome:
         if self._terminal is not None and self._terminal.kind == "failure":
@@ -483,6 +515,11 @@ class _SseEventHandler:
             self._terminal = outcome
         elif self._terminal != outcome:
             self._terminal = _unknown_outcome()
+        self._settle(self.outcome())
+
+    def _mark_parse_ambiguous(self) -> None:
+        self._parse_ambiguous = True
+        self._settle(self.outcome())
 
 
 def _protocol_for_flow(flow: http.HTTPFlow) -> _Protocol | None:
