@@ -1,7 +1,9 @@
 import { and, eq } from "drizzle-orm";
+import type { ConnectorAccountDeleteResolution } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
 
 import type { Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 import {
   deleteConnectorCredentialStorageConnection,
   type ConnectorCredentialStorageDeclaration,
@@ -9,6 +11,7 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
+import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -149,4 +152,43 @@ export async function deleteCustomConnectorMemberConnectionById(
     signal,
   );
   return true;
+}
+
+export async function deleteCustomConnectorMemberConnectionExact(
+  db: Tx,
+  args: CustomConnectorMemberConnection & {
+    readonly memberConnectorId: string;
+    readonly selectionResolution: ConnectorAccountDeleteResolution;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid-replacement" }
+  | {
+      readonly kind: "deleted";
+      readonly resolvedSelectionCount: number;
+      readonly promotedDefaultConnectionId: string | null;
+    }
+> {
+  const deletion = await prepareConnectorAccountDeletion(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "custom", customConnectorId: args.connectorId },
+    connectionId: args.memberConnectorId,
+    selectionResolution: args.selectionResolution,
+  });
+  signal.throwIfAborted();
+  if (deletion.kind !== "ready") {
+    return deletion;
+  }
+  await deleteConnectorCredentialStorageConnection(
+    db,
+    { connectorId: args.memberConnectorId },
+    signal,
+  );
+  return {
+    kind: "deleted",
+    resolvedSelectionCount: deletion.resolvedSelectionCount,
+    promotedDefaultConnectionId: deletion.promotedDefaultConnectionId,
+  };
 }

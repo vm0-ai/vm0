@@ -342,7 +342,7 @@ function authHeaders() {
 }
 
 // ========== TEST SUITE ==========
-describe("POST /api/okou/agents", () => {
+describe("POST /api/agents", () => {
   it("creates an agent and returns it from the list endpoint", async () => {
     context.mocks.clerk.session("user_test", "org_test");
 

@@ -557,7 +557,7 @@ async function runAutomationNow(
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(`/api/zero/workflow-automations/${automationId}/run`, {
+  }).request(`/api/workflow-automations/${automationId}/run`, {
     method: "POST",
     headers: authHeaders(actor),
   });

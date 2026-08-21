@@ -29,7 +29,7 @@ export type AgentCustomConnectorUpdate = z.infer<
 >;
 
 /**
- * Contract for GET/PUT /api/okou/agents/:id/custom-connectors
+ * Contract for GET/PUT /api/agents/:id/custom-connectors
  *
  * Mirrors {@link import("./user-connectors").userConnectorsContract} but
  * over org custom connector UUIDs (not official connector slugs).
@@ -39,7 +39,7 @@ export type AgentCustomConnectorUpdate = z.infer<
 export const zeroAgentCustomConnectorsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id/custom-connectors",
+    path: "/api/agents/:id/custom-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -52,7 +52,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id/custom-connectors",
+    path: "/api/agents/:id/custom-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentCustomConnectorUpdateSchema,

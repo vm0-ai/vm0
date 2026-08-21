@@ -23,7 +23,10 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ConnectorAccountDeleteResolution,
+  ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
@@ -53,6 +56,7 @@ import {
 } from "./custom-connector-definition-selection";
 import {
   deleteCustomConnectorMemberConnection,
+  deleteCustomConnectorMemberConnectionExact,
   type PreparedCustomConnectorValue,
   upsertCustomConnectorStoredValues,
 } from "./custom-connector-credential-storage.service";
@@ -90,7 +94,10 @@ import {
   type ReadyConnectorConnectionMutation,
   writeConnectorConnectionMetadata,
 } from "./connector-connection-write.service";
-import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
+import {
+  connectorAccountSiblingWritesEnabled,
+  normalizeConnectorAccountMutation,
+} from "./connector-account-mutation.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2668,6 +2675,7 @@ async function prepareCustomConnectorValueWrite(args: {
   readonly request: SetCustomConnectorValuesArgs;
   readonly expectedConnector: CustomConnectorRow;
   readonly expectedValues: readonly CustomConnectorValueInput[];
+  readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
 }): Promise<
   | CustomConnectorValueWriteState
   | BadRequestResponse
@@ -2718,6 +2726,9 @@ async function prepareCustomConnectorValueWrite(args: {
       customConnectorId: args.request.connectorId,
     },
     mutation: normalizeConnectorAccountMutation(args.request.account),
+    allowSiblings: connectorAccountSiblingWritesEnabled(
+      args.featureSwitchContext,
+    ),
   });
   if (resolution.kind !== "ready") {
     return resolution.kind === "missing"
@@ -2771,6 +2782,7 @@ async function persistCustomConnectorValues(
     readonly expectedConnector: CustomConnectorRow;
     readonly expectedValues: readonly CustomConnectorValueInput[];
     readonly preparedValues: readonly PreparedCustomConnectorValue[];
+    readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
   },
   signal: AbortSignal,
 ): Promise<
@@ -2914,6 +2926,7 @@ export const setCustomConnectorValues$ = command(
           expectedConnector: connector,
           expectedValues: values,
           preparedValues,
+          featureSwitchContext,
         },
         signal,
       );
@@ -3037,6 +3050,84 @@ export const disconnectCustomConnector$ = command(
       postCommitAbort,
     );
     return undefined;
+  },
+);
+
+export const deleteCustomConnectorAccount$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly connectorId: string;
+      readonly memberConnectorId: string;
+      readonly selectionResolution: ConnectorAccountDeleteResolution;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
+    const deletion = writeDb.transaction(async (tx) => {
+      const [connector] = await tx
+        .select({
+          oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
+        })
+        .from(orgCustomConnectors)
+        .leftJoin(
+          orgCustomConnectorOauthConfigs,
+          and(
+            eq(
+              orgCustomConnectorOauthConfigs.connectorId,
+              orgCustomConnectors.id,
+            ),
+            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+          ),
+        )
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.connectorId),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .for("update", { of: orgCustomConnectors })
+        .limit(1);
+      signal.throwIfAborted();
+      if (!connector) {
+        return { kind: "missing" as const };
+      }
+      if (
+        isIntegrationManagedCustomConnectorProviderAdapter(
+          connector.oauthProviderAdapter,
+        )
+      ) {
+        return { kind: "managed" as const };
+      }
+      return await deleteCustomConnectorMemberConnectionExact(tx, args, signal);
+    });
+    const result = await commitConnectorRuntimeMutation(deletion, (value) => {
+      return value.kind === "deleted"
+        ? {
+            db: writeDb,
+            scope: { orgId: args.orgId, userId: args.userId },
+            targets: [
+              { kind: "custom" as const, customConnectorId: args.connectorId },
+            ],
+          }
+        : undefined;
+    });
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
+    if (result.kind !== "deleted") {
+      signal.throwIfAborted();
+      return result;
+    }
+    await publishCustomConnectorUserInvalidationAfterCommit(
+      args.userId,
+      signal,
+      postCommitAbort,
+    );
+    return result;
   },
 );
 

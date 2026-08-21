@@ -16,7 +16,7 @@ import { agentsRoutes } from "../agents";
 const context = testContext();
 const mocks = createRouteMocks(context);
 
-describe("GET /api/zero/agents/:id/user-connectors", () => {
+describe("GET /api/agents/:id/user-connectors", () => {
   it("keeps connector grants when their discovery feature switch is disabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
