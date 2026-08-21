@@ -469,6 +469,8 @@ describe("branded paths for migrated neutral routes", () => {
           expect(match.viaNamespaceAliasFallback).toBeUndefined();
         }
       }
+    }
+  });
 
   // The #28416 twin of the weather assertion below: the four managed
   // web-content and model routes, driven through the same production app
@@ -508,8 +510,6 @@ describe("branded paths for migrated neutral routes", () => {
         zero: neutral,
       });
       expect(neutral).not.toBe(404);
-    }
-  });
     }
   });
 
