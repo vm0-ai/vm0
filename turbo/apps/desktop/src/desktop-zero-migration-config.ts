@@ -3,8 +3,7 @@ export const ZERO_MIGRATION_BRIDGE_CONFIG = {
   policyPath: "/api/desktop/migration-policy",
   policyRefreshIntervalMs: 5 * 60 * 1_000,
   policyRequestTimeoutMs: 5 * 1_000,
-  downloadUrl:
-    "https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+  downloadUrl: "https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg",
   reminderDelayMs: 7 * 24 * 60 * 60 * 1_000,
   copy: {
     title: "Zero Computer Use is moving to Okou",
@@ -50,7 +49,7 @@ export function isTrustedZeroMigrationDownloadUrl(rawUrl: string): boolean {
     return (
       url.protocol === "https:" &&
       url.origin === "https://api.vm0.ai" &&
-      url.pathname === "/api/okou/desktop/updates/stable/darwin/arm64/dmg" &&
+      url.pathname === "/api/desktop/updates/stable/darwin/arm64/dmg" &&
       url.search === "" &&
       url.hash === ""
     );

@@ -2,9 +2,7 @@ import { command } from "ccstate";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq } from "drizzle-orm";
 
-import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
 
 export const deletePresentationTemplate$ = command(
   async (
@@ -16,49 +14,19 @@ export const deletePresentationTemplate$ = command(
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const template = await db.transaction(async (tx) => {
-      await lockPresentationTemplateLifecycle(tx, args.templateId);
-      signal.throwIfAborted();
-      const [row] = await tx
-        .select({ id: presentationTemplates.id })
-        .from(presentationTemplates)
-        .where(
-          and(
-            eq(presentationTemplates.id, args.templateId),
-            eq(presentationTemplates.orgId, args.orgId),
-            eq(presentationTemplates.ownerUserId, args.ownerUserId),
-          ),
-        )
-        .limit(1);
-      if (!row) {
-        return null;
-      }
-      await tx
-        .update(presentationTemplates)
-        .set({
-          status: "failed",
-          updatedAt: nowDate(),
-          updatedBy: args.ownerUserId,
-        })
-        .where(eq(presentationTemplates.id, row.id));
-      return row;
-    });
-    signal.throwIfAborted();
-    if (!template) {
-      return false;
-    }
-
     // Source and page objects are normal user uploads. Deleting a template must
     // not delete independently owned attachments that may be reused elsewhere.
-    const [deleted] = await db
+    //
+    // Concurrent deletes of the same template need no marker column or advisory
+    // lock: the row lock a single `DELETE ... RETURNING` takes already lets
+    // exactly one caller observe the row, and the loser returns nothing.
+    const [deleted] = await set(writeDb$)
       .delete(presentationTemplates)
       .where(
         and(
-          eq(presentationTemplates.id, template.id),
+          eq(presentationTemplates.id, args.templateId),
           eq(presentationTemplates.orgId, args.orgId),
           eq(presentationTemplates.ownerUserId, args.ownerUserId),
-          eq(presentationTemplates.status, "failed"),
         ),
       )
       .returning({ id: presentationTemplates.id });

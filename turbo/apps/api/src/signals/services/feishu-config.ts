@@ -89,7 +89,7 @@ export function feishuOAuthAppCallbackUrl(): string {
 
 export function feishuOAuthConnectUrl(state: string): string {
   const url = new URL(
-    "/api/okou/feishu/oauth/connect",
+    "/api/feishu/oauth/connect",
     env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
   );
   url.searchParams.set("state", state);

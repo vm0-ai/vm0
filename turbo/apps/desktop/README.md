@@ -152,8 +152,9 @@ rollout. Existing Zero installations keep using
 `/api/desktop/updates/stable/darwin/arm64` and the `desktop-updates` manifest.
 Final `ai.okou.desktop` installations use
 `/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64` and the separate
-`ai-okou-desktop-updates` manifest. The stable branded Okou download route also
-resolves through this final-identity manifest. The pre-adoption Okou manifest
+`ai-okou-desktop-updates` manifest. The stable Okou download route at
+`/api/desktop/updates/stable/darwin/arm64` also resolves through this
+final-identity manifest. The pre-adoption Okou manifest
 remains frozen without a final-identity artifact, and its explicit product
 routes return `404`. Each manifest identifies its product, and the API rejects
 ZIP assets whose product filename does not match the requested feed. A Zero
@@ -190,7 +191,14 @@ for seven days. `Download Okou` records the migration handoff before waiting for
 the active Computer Use command, stops the Zero host after that command finishes,
 and then opens the stable signed Okou DMG route:
 
-`https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg`
+`https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`
+
+#28278 moved that route off the brand namespace. Builds published before the
+move open `https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg`
+and reject any other path, so the API keeps serving both branded forms through
+`MIGRATED_BRANDED_PATHS` in `apps/api/src/signals/route-entry.ts`. An installed
+build never drains on its own; retiring those forms needs the Desktop drain gate
+tracked by #26364.
 
 Once the handoff starts, Zero does not automatically register or relaunch its
 host on restart. The migration notice remains available so the user can retry

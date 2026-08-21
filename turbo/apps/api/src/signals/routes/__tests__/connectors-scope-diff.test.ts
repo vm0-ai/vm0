@@ -52,7 +52,7 @@ async function connectGithub(actor: ApiTestUser): Promise<void> {
   });
 }
 
-describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
+describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
   it("returns 401 when not authenticated", async () => {
     const response = await connectorsApi.requestScopeDiff(
       null,

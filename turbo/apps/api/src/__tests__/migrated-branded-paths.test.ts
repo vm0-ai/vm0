@@ -4,14 +4,20 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
+import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
+import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
+import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
+import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
+import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import { translationRoutes } from "../signals/routes/translation";
 import { weatherRoutes } from "../signals/routes/weather";
 import { webSearchRoutes } from "../signals/routes/web-search";
@@ -674,6 +680,175 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/integrations/telegram/upload-file/init",
     "/api/zero/integrations/telegram/upload-file/init",
   ],
+  // #28460: the connector catalog, the connector connections, the custom
+  // connectors, the model provider connections, and the user permission grants.
+  "/api/connector-catalog": [
+    "/api/okou/connector-catalog",
+    "/api/zero/connector-catalog",
+  ],
+  "/api/connector-catalog/:connectorSlug": [
+    "/api/okou/connector-catalog/:connectorSlug",
+    "/api/zero/connector-catalog/:connectorSlug",
+  ],
+  "/api/connector-catalog/:connectorSlug/permissions": [
+    "/api/okou/connector-catalog/:connectorSlug/permissions",
+    "/api/zero/connector-catalog/:connectorSlug/permissions",
+  ],
+  "/api/connector-catalog/diagnostics": [
+    "/api/okou/connector-catalog/diagnostics",
+    "/api/zero/connector-catalog/diagnostics",
+  ],
+  "/api/connector-catalog/discovery": [
+    "/api/okou/connector-catalog/discovery",
+    "/api/zero/connector-catalog/discovery",
+  ],
+  "/api/connector-catalog/status": [
+    "/api/okou/connector-catalog/status",
+    "/api/zero/connector-catalog/status",
+  ],
+  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
+  "/api/connectors/:connectorSlug": [
+    "/api/okou/connectors/:connectorSlug",
+    "/api/zero/connectors/:connectorSlug",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+  ],
+  "/api/connectors/:connectorSlug/manual-grant": [
+    "/api/okou/connectors/:connectorSlug/manual-grant",
+    "/api/zero/connectors/:connectorSlug/manual-grant",
+  ],
+  "/api/connectors/:connectorSlug/no-auth": [
+    "/api/okou/connectors/:connectorSlug/no-auth",
+    "/api/zero/connectors/:connectorSlug/no-auth",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+  ],
+  "/api/connectors/:connectorSlug/oauth/start": [
+    "/api/okou/connectors/:connectorSlug/oauth/start",
+    "/api/zero/connectors/:connectorSlug/oauth/start",
+  ],
+  "/api/connectors/:connectorSlug/openid/start": [
+    "/api/okou/connectors/:connectorSlug/openid/start",
+    "/api/zero/connectors/:connectorSlug/openid/start",
+  ],
+  "/api/connectors/:connectorSlug/scope-diff": [
+    "/api/okou/connectors/:connectorSlug/scope-diff",
+    "/api/zero/connectors/:connectorSlug/scope-diff",
+  ],
+  "/api/connectors/diagnostics/check": [
+    "/api/okou/connectors/diagnostics/check",
+    "/api/zero/connectors/diagnostics/check",
+  ],
+  "/api/connectors/search": [
+    "/api/okou/connectors/search",
+    "/api/zero/connectors/search",
+  ],
+  "/api/connectors/steam/player": [
+    "/api/okou/connectors/steam/player",
+    "/api/zero/connectors/steam/player",
+  ],
+  "/api/custom-connectors": [
+    "/api/okou/custom-connectors",
+    "/api/zero/custom-connectors",
+  ],
+  "/api/custom-connectors/:id": [
+    "/api/okou/custom-connectors/:id",
+    "/api/zero/custom-connectors/:id",
+  ],
+  "/api/custom-connectors/:id/connection": [
+    "/api/okou/custom-connectors/:id/connection",
+    "/api/zero/custom-connectors/:id/connection",
+  ],
+  "/api/custom-connectors/:id/oauth2/start": [
+    "/api/okou/custom-connectors/:id/oauth2/start",
+    "/api/zero/custom-connectors/:id/oauth2/start",
+  ],
+  "/api/custom-connectors/:id/permissions": [
+    "/api/okou/custom-connectors/:id/permissions",
+    "/api/zero/custom-connectors/:id/permissions",
+  ],
+  "/api/custom-connectors/:id/values": [
+    "/api/okou/custom-connectors/:id/values",
+    "/api/zero/custom-connectors/:id/values",
+  ],
+  "/api/custom-connectors/oauth2/callback": [
+    "/api/okou/custom-connectors/oauth2/callback",
+    "/api/zero/custom-connectors/oauth2/callback",
+  ],
+  "/api/custom-connectors/proposals/save": [
+    "/api/okou/custom-connectors/proposals/save",
+    "/api/zero/custom-connectors/proposals/save",
+  ],
+  "/api/model-provider-connections": [
+    "/api/okou/model-provider-connections",
+    "/api/zero/model-provider-connections",
+  ],
+  "/api/model-provider-connections/:id": [
+    "/api/okou/model-provider-connections/:id",
+    "/api/zero/model-provider-connections/:id",
+  ],
+  "/api/user-permission-grants": [
+    "/api/okou/user-permission-grants",
+    "/api/zero/user-permission-grants",
+  ],
+  "/api/user-permission-grants/apply": [
+    "/api/okou/user-permission-grants/apply",
+    "/api/zero/user-permission-grants/apply",
+  ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds are not in this slice and stay
+  // branded; they are covered by `provider-console-paths.test.ts`.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
+  // #28465. Keys hold their path parameters verbatim, because the table is
+  // matched against `entry.route.path` rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
 };
 
 function missingBrandedPaths(
@@ -1096,6 +1271,52 @@ describe("branded paths for migrated neutral routes", () => {
           method,
           headers: { "content-type": "application/json" },
           ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28464 twin of the two assertions above, driven through the app factory
+  // production uses rather than over the route table. Every path is a GET a
+  // released web build, or a connect link already sitting in a Slack, Teams, or
+  // Feishu message, still asks for. The status is whatever the handler returns
+  // without credentials or provider configuration; the point is that all three
+  // forms reach the same handler instead of falling through to 404.
+  it("serves the migrated IM connect paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect" },
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect/status" },
+      { routes: feishuOauthRoutes, suffix: "feishu/oauth/connect" },
+      { routes: slackChannelsRoutes, suffix: "slack/channels" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/connect" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
+      { routes: teamsBrowserConnectRoutes, suffix: "teams/connect" },
+      { routes: teamsOauthRoutes, suffix: "teams/oauth/connect" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
         });
         return response.status;
       }

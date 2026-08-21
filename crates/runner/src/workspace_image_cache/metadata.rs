@@ -84,11 +84,9 @@ impl WorkspaceImageCache {
     pub(super) async fn classify_metadata_scope(
         &self,
         cache_key: &str,
+        metadata_path: &Path,
     ) -> WorkspaceCacheScopeClassification {
-        let Ok(metadata) = self
-            .read_metadata_file(&self.workspace_image_cache_metadata(cache_key))
-            .await
-        else {
+        let Ok(metadata) = self.read_metadata_file(metadata_path).await else {
             return WorkspaceCacheScopeClassification::Unclassified;
         };
         if !self.metadata_matches_cache_key(cache_key, &metadata) {

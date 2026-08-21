@@ -107,6 +107,17 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+const managedModelProviderFailureKindSchema = z.enum([
+  "authentication",
+  "billing",
+  "rate_limit",
+  "provider_unavailable",
+  "timeout",
+  "connection",
+]);
+
+const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
@@ -1028,6 +1039,40 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+export const runnersModelProviderFailuresContract = c.router({
+  report: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/model-provider-failures",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z
+      .object({
+        failureKind: managedModelProviderFailureKindSchema,
+        retryAfterSeconds: z
+          .number()
+          .int()
+          .positive()
+          .max(MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+          .optional(),
+      })
+      .strict(),
+    responses: {
+      200: z
+        .object({
+          outcome: z.enum(["recorded", "ignored"]),
+        })
+        .strict(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Report a managed model provider failure for a run",
+  },
+});
+
 const activeInputDeliveryReferenceSchema = z.object({
   deliveryId: z.uuid(),
   eventIds: z.array(z.uuid()).length(1),
@@ -1205,6 +1250,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersModelProviderFailuresContract =
+  typeof runnersModelProviderFailuresContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
 export type RunnersConnectorRuntimeSyncContract =
   typeof runnersConnectorRuntimeSyncContract;

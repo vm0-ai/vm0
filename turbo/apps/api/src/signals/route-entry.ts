@@ -926,6 +926,210 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/integrations/telegram/upload-file/init",
     "/api/zero/integrations/telegram/upload-file/init",
   ],
+  // #28460: the connector catalog, the connector connections and their
+  // authorization starts, the custom connectors, the model provider
+  // connections, and the user permission grants. Two surfaces hold these
+  // branded paths. A released web or app build keeps calling the form it was
+  // compiled against until it reloads, the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7; and a commit-addressed CLI package pinned by
+  // an execution context's `CLI_PKG_URL` keeps calling it for that context's
+  // queue lifetime plus claimed execution, bounded by the runner's 2h
+  // `JOB_TIMEOUT`. Neither window is the removal condition on its own: a row
+  // retires under the #26701 evidence gate above, like every other row here.
+  "/api/connector-catalog": [
+    "/api/okou/connector-catalog",
+    "/api/zero/connector-catalog",
+  ],
+  "/api/connector-catalog/:connectorSlug": [
+    "/api/okou/connector-catalog/:connectorSlug",
+    "/api/zero/connector-catalog/:connectorSlug",
+  ],
+  "/api/connector-catalog/:connectorSlug/permissions": [
+    "/api/okou/connector-catalog/:connectorSlug/permissions",
+    "/api/zero/connector-catalog/:connectorSlug/permissions",
+  ],
+  "/api/connector-catalog/diagnostics": [
+    "/api/okou/connector-catalog/diagnostics",
+    "/api/zero/connector-catalog/diagnostics",
+  ],
+  "/api/connector-catalog/discovery": [
+    "/api/okou/connector-catalog/discovery",
+    "/api/zero/connector-catalog/discovery",
+  ],
+  "/api/connector-catalog/status": [
+    "/api/okou/connector-catalog/status",
+    "/api/zero/connector-catalog/status",
+  ],
+  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
+  "/api/connectors/:connectorSlug": [
+    "/api/okou/connectors/:connectorSlug",
+    "/api/zero/connectors/:connectorSlug",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+  ],
+  "/api/connectors/:connectorSlug/manual-grant": [
+    "/api/okou/connectors/:connectorSlug/manual-grant",
+    "/api/zero/connectors/:connectorSlug/manual-grant",
+  ],
+  "/api/connectors/:connectorSlug/no-auth": [
+    "/api/okou/connectors/:connectorSlug/no-auth",
+    "/api/zero/connectors/:connectorSlug/no-auth",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+  ],
+  "/api/connectors/:connectorSlug/oauth/start": [
+    "/api/okou/connectors/:connectorSlug/oauth/start",
+    "/api/zero/connectors/:connectorSlug/oauth/start",
+  ],
+  "/api/connectors/:connectorSlug/openid/start": [
+    "/api/okou/connectors/:connectorSlug/openid/start",
+    "/api/zero/connectors/:connectorSlug/openid/start",
+  ],
+  "/api/connectors/:connectorSlug/scope-diff": [
+    "/api/okou/connectors/:connectorSlug/scope-diff",
+    "/api/zero/connectors/:connectorSlug/scope-diff",
+  ],
+  "/api/connectors/diagnostics/check": [
+    "/api/okou/connectors/diagnostics/check",
+    "/api/zero/connectors/diagnostics/check",
+  ],
+  "/api/connectors/search": [
+    "/api/okou/connectors/search",
+    "/api/zero/connectors/search",
+  ],
+  "/api/connectors/steam/player": [
+    "/api/okou/connectors/steam/player",
+    "/api/zero/connectors/steam/player",
+  ],
+  "/api/custom-connectors": [
+    "/api/okou/custom-connectors",
+    "/api/zero/custom-connectors",
+  ],
+  "/api/custom-connectors/:id": [
+    "/api/okou/custom-connectors/:id",
+    "/api/zero/custom-connectors/:id",
+  ],
+  "/api/custom-connectors/:id/connection": [
+    "/api/okou/custom-connectors/:id/connection",
+    "/api/zero/custom-connectors/:id/connection",
+  ],
+  "/api/custom-connectors/:id/oauth2/start": [
+    "/api/okou/custom-connectors/:id/oauth2/start",
+    "/api/zero/custom-connectors/:id/oauth2/start",
+  ],
+  "/api/custom-connectors/:id/permissions": [
+    "/api/okou/custom-connectors/:id/permissions",
+    "/api/zero/custom-connectors/:id/permissions",
+  ],
+  "/api/custom-connectors/:id/values": [
+    "/api/okou/custom-connectors/:id/values",
+    "/api/zero/custom-connectors/:id/values",
+  ],
+  "/api/custom-connectors/oauth2/callback": [
+    "/api/okou/custom-connectors/oauth2/callback",
+    "/api/zero/custom-connectors/oauth2/callback",
+  ],
+  "/api/custom-connectors/proposals/save": [
+    "/api/okou/custom-connectors/proposals/save",
+    "/api/zero/custom-connectors/proposals/save",
+  ],
+  "/api/model-provider-connections": [
+    "/api/okou/model-provider-connections",
+    "/api/zero/model-provider-connections",
+  ],
+  "/api/model-provider-connections/:id": [
+    "/api/okou/model-provider-connections/:id",
+    "/api/zero/model-provider-connections/:id",
+  ],
+  "/api/user-permission-grants": [
+    "/api/okou/user-permission-grants",
+    "/api/zero/user-permission-grants",
+  ],
+  "/api/user-permission-grants/apply": [
+    "/api/okou/user-permission-grants/apply",
+    "/api/zero/user-permission-grants/apply",
+  ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds stay branded and are not moved here —
+  // they are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  //
+  // These rows hold two surfaces open. A released web or app build keeps the
+  // branded path it was compiled against until a refresh loads a build that
+  // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
+  // The OAuth-start paths have a second holder that no client version bounds: a
+  // connect or install link the API handed out earlier lives in a Slack, Teams,
+  // or Feishu message a user can still click, and `/api/okou/slack/oauth/install`
+  // is measured traffic listed in `LEGACY_ZERO_PATHS` above, which after this
+  // move only these rows can serve. Removal follows the #26701 evidence gate
+  // like every other row, not either clock.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
+  // #28465: the stable desktop release page and DMG download.
+  //
+  // These two rows hold open a longer window than any other row in this table.
+  // Their callers are installed macOS applications, not a web bundle or a
+  // commit-addressed CLI artifact: the final Zero bridge release documented in
+  // `apps/desktop/README.md` opens the `okou` DMG path from a constant compiled
+  // into the shipped build, and `isTrustedZeroMigrationDownloadUrl` in that
+  // build refuses any other path — so a user who never updates keeps asking for
+  // the branded form indefinitely. The platform download button held the same
+  // path until this slice moved it, and released tabs keep it for the ~2 day
+  // old-web-client window. The `zero` form was reachable through the blanket
+  // expansion until the contract moved, so both are owed.
+  //
+  // An installed desktop build has no drain window at all, so these rows must
+  // not be removed on the #26701 evidence rules alone: retiring the branded
+  // forms needs the Desktop-side drain gate tracked by #26364.
+  //
+  // Each key holds its path parameters verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
 };
 
 /**

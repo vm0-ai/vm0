@@ -51,7 +51,7 @@ const YOUTUBE_OAUTH_SCOPES = [
 
 function oauthStartUrl(connectorSlug: string, origin = BASE_URL): string {
   return new URL(
-    `/api/zero/connectors/${connectorSlug}/oauth/start`,
+    `/api/connectors/${connectorSlug}/oauth/start`,
     origin,
   ).toString();
 }
@@ -173,7 +173,7 @@ async function rejectProviderAuthorization(
   await app.request(callbackUrl.toString());
 }
 
-describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
+describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
