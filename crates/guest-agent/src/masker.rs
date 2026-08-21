@@ -152,6 +152,29 @@ impl SecretMasker {
         }
     }
 
+    /// Recursively mask secrets in JSON string values without changing keys.
+    pub(crate) fn mask_string_values(&self, val: &mut Value) {
+        if self.matcher.is_none() && self.url_encoded_matcher.is_none() {
+            return;
+        }
+        match val {
+            Value::String(s) => {
+                self.mask_string_in_place(s);
+            }
+            Value::Array(arr) => {
+                for item in arr {
+                    self.mask_string_values(item);
+                }
+            }
+            Value::Object(map) => {
+                for value in map.values_mut() {
+                    self.mask_string_values(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Replace all secret patterns in a string with `***`.
     ///
     /// Redacts the full union of all pattern matches so overlapping configured
