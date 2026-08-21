@@ -282,9 +282,12 @@ function GrowthEntry() {
 }
 
 export function GrowthEntryHeader() {
+  const features = useLastResolved(featureSwitch$);
+  const growthEntryEnabled =
+    features?.[FeatureSwitchKey.HomeGrowthEntry] ?? false;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  if (!isAdmin) {
+  if (!growthEntryEnabled || !isAdmin) {
     return null;
   }
   return (

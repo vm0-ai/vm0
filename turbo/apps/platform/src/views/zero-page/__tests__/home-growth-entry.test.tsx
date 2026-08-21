@@ -2,6 +2,7 @@ import {
   integrationsSlackContract,
   type SlackOrgStatus,
 } from "@okouai/api-contracts/contracts/integrations-slack";
+import { FeatureSwitchKey } from "@okouai/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { AGENT_ID, context, mockAgent } from "./chat-composer-test-helpers.ts";
+import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 function mockSlackStatus(overrides: Partial<SlackOrgStatus>): void {
   const status: SlackOrgStatus = {
@@ -33,7 +35,10 @@ function mockSlackStatus(overrides: Partial<SlackOrgStatus>): void {
   });
 }
 
-function setupGrowthEntry(slack: Partial<SlackOrgStatus>): void {
+function setupGrowthEntry(
+  slack: Partial<SlackOrgStatus>,
+  growthEntryEnabled = true,
+): void {
   mockAgent();
   context.mocks.data.org({
     id: "org_1",
@@ -44,10 +49,20 @@ function setupGrowthEntry(slack: Partial<SlackOrgStatus>): void {
   detachedSetupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.HomeGrowthEntry]: growthEntryEnabled,
+    },
   });
 }
 
 describe("home growth entry", () => {
+  it("stays hidden when its feature switch is disabled", async () => {
+    setupGrowthEntry({ isConnected: false, isInstalled: false }, false);
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(screen.queryByTestId("growth-entry")).not.toBeInTheDocument();
+  });
+
   it("leads with Slack before installation and opens the works page", async () => {
     const user = userEvent.setup();
     setupGrowthEntry({ isConnected: false, isInstalled: false });

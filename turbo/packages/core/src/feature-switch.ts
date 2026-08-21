@@ -420,6 +420,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.HomeGrowthEntry]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the home growth entry for Slack, Telegram, phone, member invites, and credits.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ConnectorDiscovery]: {
     maintainer: "ethan@vm0.ai",
     description:
