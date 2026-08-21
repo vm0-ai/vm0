@@ -4606,7 +4606,6 @@
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "models": "モデル",
-        "modelVariants": "{{model}} のバリエーション",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",

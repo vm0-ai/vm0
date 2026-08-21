@@ -131,8 +131,6 @@ interface BaseVideoModelConfig {
   readonly alias: string;
   /** Human-facing name for pickers. */
   readonly label: string;
-  /** Compact label used when the model is shown as a sibling variant. */
-  readonly variantLabel?: string;
   readonly aspectRatios: readonly VideoAspectRatio[];
   readonly durations: readonly VideoDuration[];
   readonly resolutions: readonly VideoResolution[];
@@ -147,6 +145,11 @@ interface BaseVideoModelConfig {
   readonly supportsReferenceAudio: boolean;
   readonly supportsFirstFrame: boolean;
   readonly supportsLastFrame: boolean;
+  /**
+   * Whether the user-facing picker offers the model. A private model still
+   * generates through its alias and through defaults that name it; the flag
+   * only decides whether it is worth presenting as a choice.
+   */
   readonly public: boolean;
 }
 
@@ -195,7 +198,6 @@ export const VIDEO_MODEL_CONFIGS = {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0",
     label: "Seedance 2.0",
-    variantLabel: "Standard",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -217,7 +219,6 @@ export const VIDEO_MODEL_CONFIGS = {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0-fast",
     label: "Seedance 2.0 fast",
-    variantLabel: "Fast",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -233,13 +234,12 @@ export const VIDEO_MODEL_CONFIGS = {
     supportsReferenceAudio: true,
     supportsFirstFrame: true,
     supportsLastFrame: true,
-    public: true,
+    public: false,
   },
   "dreamina-seedance-2-0-mini-260615": {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0-mini",
     label: "Seedance 2.0 Mini",
-    variantLabel: "Mini",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -255,7 +255,7 @@ export const VIDEO_MODEL_CONFIGS = {
     supportsReferenceAudio: true,
     supportsFirstFrame: true,
     supportsLastFrame: true,
-    public: true,
+    public: false,
   },
   "seedance-1-5-pro-251215": {
     provider: "byteplus",
