@@ -79,9 +79,9 @@ async fn expired_cooldown_with_failed_recheck_drops_claim_and_scans() {
     pool.release_claim(claim(3, dir.path()));
     let (respond_to, mut response) = oneshot::channel();
     pool.waiting_acquires.push_back(respond_to);
-    pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
+    pool.defer_scan_exhaustion();
     assert_eq!(pool.waiting_acquires.len(), 1);
-    assert_eq!(pool.deferred_acquire_errors.len(), 1);
+    assert!(pool.deferred_scan_exhaustion);
     pool.ensure_waiting_progress(0);
     assert!(matches!(
         response.try_recv(),

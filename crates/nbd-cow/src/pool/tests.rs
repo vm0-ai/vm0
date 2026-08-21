@@ -1,7 +1,8 @@
 use super::*;
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use crate::device_lock::{self, NbdDeviceClaim};
@@ -18,6 +19,68 @@ fn always_free(_: u32) -> bool {
 
 fn never_free(_: u32) -> bool {
     false
+}
+
+struct ScanWorkerGate {
+    checks: AtomicUsize,
+    released: AtomicBool,
+    lock: Mutex<()>,
+    changed: Condvar,
+}
+
+impl ScanWorkerGate {
+    const fn new() -> Self {
+        Self {
+            checks: AtomicUsize::new(0),
+            released: AtomicBool::new(false),
+            lock: Mutex::new(()),
+            changed: Condvar::new(),
+        }
+    }
+
+    fn check(&self, result: bool) -> bool {
+        self.checks.fetch_add(1, Ordering::SeqCst);
+        let guard = self.lock.lock().expect("scan gate lock");
+        let _guard = self
+            .changed
+            .wait_while(guard, |_| !self.released.load(Ordering::SeqCst))
+            .expect("scan gate wait");
+        result
+    }
+
+    fn release(&self) {
+        let _guard = self.lock.lock().expect("scan gate lock");
+        self.released.store(true, Ordering::SeqCst);
+        self.changed.notify_all();
+    }
+
+    fn checks(&self) -> usize {
+        self.checks.load(Ordering::SeqCst)
+    }
+}
+
+static BUSY_SCAN_GATE: ScanWorkerGate = ScanWorkerGate::new();
+static FREE_SCAN_GATE: ScanWorkerGate = ScanWorkerGate::new();
+
+fn gated_never_free(_: u32) -> bool {
+    BUSY_SCAN_GATE.check(false)
+}
+
+fn gated_always_free(_: u32) -> bool {
+    FREE_SCAN_GATE.check(true)
+}
+
+async fn wait_for_scan_workers(gate: &ScanWorkerGate) {
+    let workers_ready = tokio::time::timeout(Duration::from_secs(1), async {
+        while gate.checks() < MAX_PENDING {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    if workers_ready.is_err() {
+        gate.release();
+        panic!("demand scan did not start {MAX_PENDING} concurrent workers");
+    }
 }
 
 fn test_pool(
