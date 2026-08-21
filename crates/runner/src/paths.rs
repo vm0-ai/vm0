@@ -708,6 +708,10 @@ mod tests {
                 lp.proxy_log(id),
                 PathBuf::from(format!("/test/logs/proxy-{id}.jsonl")),
             ),
+            (
+                lp.model_provider_failure(id),
+                PathBuf::from(format!("/test/logs/model-provider-failure-{id}.json")),
+            ),
         ];
 
         for (actual, expected) in paths {
@@ -737,6 +741,9 @@ mod tests {
         assert!(LogPaths::is_gc_eligible_log(
             "proxy-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
+        assert!(LogPaths::is_gc_eligible_log(
+            "model-provider-failure-550e8400-e29b-41d4-a716-446655440000.json"
+        ));
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
         assert!(LogPaths::is_gc_eligible_log(
             ".system-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
@@ -763,6 +770,7 @@ mod tests {
             lp.metrics_log(id),
             lp.sandbox_ops_log(id),
             lp.proxy_log(id),
+            lp.model_provider_failure(id),
         ];
 
         for path in paths {

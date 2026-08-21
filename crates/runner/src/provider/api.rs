@@ -1743,7 +1743,9 @@ mod tests {
                         "failureKind": "rate_limit",
                         "retryAfterSeconds": 120,
                     }));
-                then.status(204);
+                then.status(200).json_body(serde_json::json!({
+                    "outcome": "recorded",
+                }));
             })
             .await;
         let api = api_client_for_server(&server);
