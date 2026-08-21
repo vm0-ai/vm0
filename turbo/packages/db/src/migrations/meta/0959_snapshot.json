@@ -1,6 +1,6 @@
 {
-  "id": "11acebf1-429f-4f20-8ece-c2442edb42c9",
-  "prevId": "1333bcee-4e77-46a0-b7fa-ef5d92b97895",
+  "id": "ae8fa5f2-7009-49cb-8ac0-d3b216c3c60e",
+  "prevId": "11acebf1-429f-4f20-8ece-c2442edb42c9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4073,8 +4073,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "name": {
           "name": "name",
@@ -12791,8 +12790,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "status": {
           "name": "status",
@@ -13040,8 +13038,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "chat_thread_id": {
           "name": "chat_thread_id",
