@@ -52,8 +52,8 @@ use super::api::{ApiClient, ConnectorRuntimeSyncOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::proxy::{
-    ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryTransaction,
-    ConnectorRuntimeRegistryUpdate, CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
+    ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryUpdate,
+    CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
 };
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
@@ -863,11 +863,10 @@ impl ConnectorRuntimeSyncCore {
             return false;
         };
         if !prepared_publications.is_empty() {
-            let transaction: Result<ConnectorRuntimeRegistryTransaction<'_>, RunnerError> =
-                snapshot
-                    .registry
-                    .connector_runtime_registry_transaction()
-                    .await;
+            let transaction = snapshot
+                .registry
+                .connector_runtime_registry_transaction()
+                .await;
             let (prepared_publications, publication) = match transaction {
                 Ok(transaction) => {
                     // Acquire the registry transaction before active state so notifications can
