@@ -371,15 +371,15 @@ impl WorkspaceCacheWatcher {
         if self.watch_by_cache_key.contains_key(&cache_key) {
             return Ok(false);
         }
-        let paths = self.cache.entry_paths(&cache_key);
-        if !Self::entry_is_watchable(paths.entry_dir())? {
+        let entry_dir = self.cache.workspace_image_cache_entry_dir(&cache_key);
+        if !Self::entry_is_watchable(&entry_dir)? {
             return Ok(false);
         }
         let watch = match self
             .inotify
             .get_ref()
             .0
-            .add_watch(paths.entry_dir(), ENTRY_WATCH_FLAGS)
+            .add_watch(&entry_dir, ENTRY_WATCH_FLAGS)
         {
             Ok(watch) => watch,
             Err(Errno::ENOENT | Errno::ENOTDIR | Errno::ELOOP) => return Ok(false),
@@ -393,8 +393,9 @@ impl WorkspaceCacheWatcher {
             },
         );
         self.watch_by_cache_key.insert(cache_key.clone(), watch);
+        let metadata_path = self.cache.workspace_image_cache_metadata(&cache_key);
         let changed = self
-            .classify_metadata_commit(&cache_key, paths.metadata(), committed_cache_keys)
+            .classify_metadata_commit(&cache_key, &metadata_path, committed_cache_keys)
             .await;
         self.enforce_watch_limit(&cache_key);
         if !self.watch_by_cache_key.contains_key(&cache_key) {

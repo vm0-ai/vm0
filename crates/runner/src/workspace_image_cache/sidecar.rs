@@ -250,10 +250,10 @@ impl WorkspaceImageCache {
         run_id: RunId,
         publication: WorkspaceSessionHistorySidecarPublication<'_>,
     ) -> RunnerResult<()> {
-        let paths = self.entry_paths(cache_key);
         match publication {
             WorkspaceSessionHistorySidecarPublication::PreserveExisting => {}
             WorkspaceSessionHistorySidecarPublication::Replace(source) => {
+                let paths = self.entry_paths(cache_key);
                 self.publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
                     .await?;
             }
