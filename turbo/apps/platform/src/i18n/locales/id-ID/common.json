@@ -3080,7 +3080,6 @@
       "dialogPreview": "Pratinjau {{title}}",
       "gotIt": "Mengerti",
       "next": "Berikutnya",
-      "noConnectorRequired": "Tidak perlu konektor",
       "previewWorkflowDetails": "Pratinjau detail alur kerja",
       "selectTemplate": "Pilih template ini",
       "selectThisTemplate": "Pilih template ini",
@@ -3257,7 +3256,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Lanjutkan dengan {{assistantName}}",
-      "createDraft": "Buat draf",
+      "createWorkflow": "Buat alur kerja",
       "customNoteLabel": "Jelaskan alur kerja Anda",
       "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan {{assistantName}}",
       "customTitle": "Jelaskan alur kerja Anda",
@@ -3267,1027 +3266,1027 @@
     },
     "workflows": {
       "alert-metric-moves-slack": {
-        "description": "Pantau metrik utama Anda dan beri peringatan ke Slack saat salah satunya berubah tajam.",
-        "scenario": "Pada saat masalah metrik terlihat di tinjauan mingguan, masalah itu sudah berumur beberapa hari. {{assistantName}} memantau metrik utama setiap jam dan mengirim ping ke Slack begitu nilainya keluar dari rentang normal.",
+        "description": "Temukan perubahan website yang signifikan dan jelaskan penyebabnya yang mungkin.",
+        "scenario": "Perubahan metrik yang tajam paling penting ketika konteksnya juga hadir. {{assistantName}} memantau Google Analytics dan menambahkan bukti pencarian atau saluran bayar ketika terhubung.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca metrik setiap jam.",
-            "title": "{{assistantName}} memeriksa metrik"
+            "description": "{{assistantName}} membaca metrik lalu lintas dan konversi yang dipilih.",
+            "title": "Metrik kunci dicek"
           },
           "three": {
-            "description": "{{assistantName}} mengirim peringatan dengan deviasi.",
-            "title": "Peringatan dikirim ke Slack"
+            "description": "{{assistantName}} mengembalikan penyebab yang mungkin dan langkah pengecekan selanjutnya.",
+            "title": "Pergeseran dijelaskan"
           },
           "two": {
-            "description": "{{assistantName}} menandai nilai di luar rentang yang diharapkan.",
-            "title": "Dibandingkan dengan rentang normal"
+            "description": "{{assistantName}} membandingkan nilai saat ini dengan rentang yang diharapkan.",
+            "title": "Pergerakan yang tidak biasa ditemukan"
           }
         },
-        "title": "Beri peringatan saat metrik berubah"
+        "title": "Beri peringatan pada pergeseran lalu lintas dan konversi"
       },
       "auto-merge-github-prs": {
-        "description": "Tinjau PR berlabel siap-merge, tunggu CI, lalu merge dan kirim ke Slack.",
-        "scenario": "Merge PR berarti mengawasi CI, memeriksa ulang diff, dan ingat untuk memberi tahu bahwa perubahan sudah tayang. {{assistantName}} memantau label siap-merge, meninjau perubahan, menunggu pemeriksaan lolos, merge, lalu memberi tahu kanal.",
+        "description": "Tinjau PR siap, tunggu CI, dan gabungkan perubahan yang disetujui.",
+        "scenario": "Menggabungkan PR berarti memantau cek dan membaca perbedaan. {{assistantName}} mengambil label siap untuk digabungkan, memeriksa perubahan, menunggu CI, dan hanya menggabungkan jika Anda setuju.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengambil pull request segera setelah diberi label merge Anda.",
-            "title": "Sebuah PR diberi label siap-merge"
+            "description": "{{assistantName}} mendeteksi label siap untuk digabungkan.",
+            "title": "PR siap"
           },
           "three": {
-            "description": "{{assistantName}} merge PR dan mengirim hasilnya ke kanal Anda.",
-            "title": "Di-merge dan dikirim ke Slack"
+            "description": "{{assistantName}} hanya menggabungkan setelah kondisi keselamatan yang disetujui dilewati.",
+            "title": "Diguangkan berdasarkan aturan Anda"
           },
           "two": {
-            "description": "{{assistantName}} membaca diff dan menunggu sampai semua pemeriksaan wajib lolos.",
-            "title": "{{assistantName}} meninjau dan menunggu CI"
+            "description": "{{assistantName}} memeriksa perbedaan dan menunggu CI yang diperlukan.",
+            "title": "{{assistantName}} memeriksa perubahan"
           }
         },
-        "title": "Auto-merge PR GitHub"
+        "title": "Otomatis gabungkan PR GitHub"
       },
       "blog-posts-to-x": {
-        "description": "Setiap hari {{assistantName}} mengubah posting blog yang baru diterbitkan menjadi variasi sosial dan mengantrekan ke X lewat Buffer.",
-        "scenario": "Satu posting blog bisa jadi sepuluh posting sosial, tapi tak ada yang punya waktu untuk memecahnya. {{assistantName}} mendeteksi posting yang baru terbit, menyusun beberapa variasi X, dan mengantrekan lewat Buffer untuk disetujui.",
+        "description": "Temukan halaman yang memburuk dan ubah menjadi ringkasan pembaruan yang terprioritaskan.",
+        "scenario": "Konten yang ada sering memiliki potensi lebih dari artikel baru. {{assistantName}} menggunakan Firecrawl dan DataForSEO yang bawaan untuk menemukan halaman yang tidak efektif, menilai permintaan saat ini, dan merekomendasikan pembaruan yang fokus.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mendeteksi posting baru yang diterbitkan di Strapi.",
-            "title": "{{assistantName}} menemukan posting baru"
+            "description": "{{assistantName}} mengrawl situs dan mengidentifikasi kandidat pembaruan yang mungkin.",
+            "title": "Halaman yang ada diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} menjadwalkan variasi untuk ditinjau.",
-            "title": "Diantrekan di Buffer"
+            "description": "{{assistantName}} memprioritaskan halaman dan menentukan perbaikan yang diperlukan.",
+            "title": "Ringkasan pembaruan dibuat"
           },
           "two": {
-            "description": "{{assistantName}} menyusun beberapa posting X dari tiap artikel.",
-            "title": "Dipecah menjadi variasi sosial"
+            "description": "{{assistantName}} memeriksa hasil pencarian, kata kunci, dan penutupan kompetitif.",
+            "title": "Permintaan saat ini ditetapkan"
           }
         },
-        "title": "Ubah posting blog menjadi posting sosial"
+        "title": "Bangun rencana pembaruan SEO konten"
       },
       "build-weekly-deck-gamma": {
-        "description": "Ubah metrik minggu ini menjadi deck siap presentasi di Gamma.",
-        "scenario": "Deck metrik mingguan selalu berupa slide yang sama dengan angka baru setiap kali. {{assistantName}} mengambil datanya, membangun deck di Gamma, lalu mengirimnya ke Slack agar tinjauan siap sebelum rapat.",
+        "description": "Telusuri pendapatan, pengeluaran, dana yang diterima, dan aliran kas di Sheets.",
+        "scenario": "Ulasan keuangan memperlambat ketika angka harus dibangun secara manual. {{assistantName}} menarik metrik QuickBooks yang disetujui dan mempertahankan dashboard keuangan yang siap untuk diambil keputusan di Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca metrik dari Sheets dan analitik.",
-            "title": "{{assistantName}} mengumpulkan angkanya"
+            "description": "{{assistantName}} membaca pendapatan, pengeluaran, dana yang diterima, dan aliran kas.",
+            "title": "Data keuangan dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} membagikan deck yang sudah selesai.",
-            "title": "Dikirim ke Slack"
+            "description": "{{assistantName}} menulis pandangan keuangan yang saat ini ke Google Sheets.",
+            "title": "Dashboard diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} menyusun deck metrik berulang.",
-            "title": "Deck dibuat di Gamma"
+            "description": "{{assistantName}} menghitung tren, pengecualian, dan total laporan.",
+            "title": "Metrik disusun"
           }
         },
-        "title": "Buat deck mingguan di Gamma"
+        "title": "Bangun dashboard keuangan QuickBooks"
       },
       "business-review-gamma": {
-        "description": "Ubah metrik bulan ini menjadi deck tinjauan bisnis di Gamma.",
-        "scenario": "Tinjauan bisnis mingguan adalah deck berulang yang biasanya dibuat ulang secara manual. {{assistantName}} mengambil pendapatan dan pertumbuhan, membangun deck di Gamma, dan menyiapkannya sebelum rapat.",
+        "description": "Gabungkan data finansial, pertumbuhan, dan operasional menjadi satu tinjauan.",
+        "scenario": "Tinjauan bulanan harus menjelaskan bisnis, bukan hanya mengulang dashboard. {{assistantName}} menggabungkan QuickBooks, Google Analytics, dan Google Sheets dan menambahkan konteks HubSpot ketika tersedia.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca MRR, burn, dan pertumbuhan dari Stripe dan Clerk.",
-            "title": "{{assistantName}} menarik angkanya"
+            "description": "{{assistantName}} membaca metrik finansial, pertumbuhan, dan operasional.",
+            "title": "Data bisnis dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} membagikan deck yang sudah selesai.",
-            "title": "Siap dipresentasikan"
+            "description": "{{assistantName}} mengembalikan tinjauan bulanan yang ringkas dan siap untuk keputusan.",
+            "title": "Tinjauan disiapkan"
           },
           "two": {
-            "description": "{{assistantName}} menyusun tinjauan bisnis berulang.",
-            "title": "Deck dibuat di Gamma"
+            "description": "{{assistantName}} menghubungkan tren, perbedaan rencana, kemenangan, dan risiko.",
+            "title": "Kinerja dianalisis"
           }
         },
-        "title": "Buat tinjauan bisnis di Gamma"
+        "title": "Bangun tinjauan bisnis bulanan"
       },
       "catch-calendar-conflicts": {
-        "description": "Pindai kalender Anda untuk jadwal ganda dan beri tahu lebih awal.",
-        "scenario": "Jadwal ganda baru ketahuan saat dua rapat dimulai bersamaan. {{assistantName}} memeriksa setiap acara baru terhadap kalender Anda dan ketersediaan Cal.com, lalu memberi tahu Anda tentang konflik sebelum terjadi.",
+        "description": "Deteksi konflik ganda dan jendela pemesanan yang sulit sejak dini.",
+        "scenario": "Konflik kalender paling mudah diselesaikan sebelum hari rapat. {{assistantName}} memeriksa acara baru untuk overalap, perjalanan, dan konflik persiapan dan menjelaskan pilihan.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} aktif saat acara baru masuk ke kalender Anda.",
-            "title": "Sebuah acara dibuat"
+            "description": "{{assistantName}} membaca acara dan jadwal kalender sekitarnya.",
+            "title": "Acara baru diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} memberi tahu Anda tentang bentrokan dan opsinya.",
-            "title": "Konflik ditandai di Slack"
+            "description": "{{assistantName}} menjelaskan konflik dan dapat membuat catatan Gmail.",
+            "title": "Pilihan penyelesaian dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} membandingkan dengan acara dan ketersediaan yang ada.",
-            "title": "Diperiksa untuk konflik"
+            "description": "{{assistantName}} mendeteksi overalap dan jendela pindah yang mustahil.",
+            "title": "Konflik teridentifikasi"
           }
         },
-        "title": "Deteksi konflik Google Calendar"
+        "title": "Temukan konflik Google Calendar"
       },
       "catch-leads-gmail": {
-        "description": "Temukan sinyal pembelian di email baru dan catat lead yang memenuhi syarat.",
-        "scenario": "Lead hangat tersembunyi di inbox yang sibuk dan bisa keburu dingin. {{assistantName}} membaca email masuk untuk sinyal pembelian, memperkaya pengirim dengan Apollo, mencatat lead ke sheet, dan menyarankan langkah berikutnya di Slack.",
+        "description": "Ringkas perpindahan tahap, transaksi yang lama, risiko, dan perubahan proyeksi.",
+        "scenario": "Ringkasan pipa lebih jelas ketika perubahan tiba sebelum pertemuan. {{assistantName}} membandingkan pipa HubSpot saat ini dengan snapshot sebelumnya dan mengembalikan ringkasan mingguan yang singkat.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca Gmail masuk untuk sinyal pembelian.",
-            "title": "{{assistantName}} memindai email baru"
+            "description": "{{assistantName}} mengumpulkan transaksi, tahap, pemilik, tanggal, dan aktivitas.",
+            "title": "Pipa dibaca"
           },
           "three": {
-            "description": "{{assistantName}} mengirim lead dan langkah berikutnya yang disarankan ke Slack.",
-            "title": "Langkah berikutnya disarankan"
+            "description": "{{assistantName}} mengembalikan tindakan selanjutnya dan pilihan untuk memperbarui Google Sheets.",
+            "title": "Ringkasan dibuat"
           },
           "two": {
-            "description": "{{assistantName}} memperkaya dengan Apollo dan menambahkan baris ke sheet Anda.",
-            "title": "Lead diperkaya dan dicatat"
+            "description": "{{assistantName}} menemukan perubahan, transaksi yang lama, penghalang, dan pergeseran proyeksi.",
+            "title": "Perpindahan dan risiko dianalisis"
           }
         },
-        "title": "Tangkap lead dari Gmail"
+        "title": "Buat ringkasan pipa HubSpot mingguan"
       },
       "chase-overdue-asana-tasks": {
-        "description": "Temukan tugas Asana yang terlambat dan ingatkan pemiliknya di Slack.",
-        "scenario": "Tugas yang terlambat perlu ada yang menindaklanjuti, dan orang itu selalu sibuk. {{assistantName}} memindai Asana setiap hari untuk apa pun yang sudah lewat tenggat dan menyentil tiap pemilik di Slack.",
+        "description": "Siapkan pengingat spesifik pemilik tanpa mengirim otomatis.",
+        "scenario": "Pekerjaan yang terlambat membutuhkan konteks, bukan nudge umum. {{assistantName}} mengelompokkan tugas Asana yang terlambat oleh pemilik dan menulis pengingat Gmail yang singkat untuk setiap orang.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca tugas yang sudah lewat tanggal tenggatnya.",
-            "title": "{{assistantName}} memindai Asana"
+            "description": "{{assistantName}} membaca tugas Asana yang terlambat.",
+            "title": "Pekerjaan yang terlambat ditemukan"
           },
           "three": {
-            "description": "{{assistantName}} mengirim DM ke tiap pemilik daftar tugas terlambat mereka.",
-            "title": "Pengingat dikirim di Slack"
+            "description": "{{assistantName}} membuat pengingat untuk diproses manusia dan tidak pernah mengirimnya.",
+            "title": "Draft Gmail dibuat"
           },
           "two": {
-            "description": "{{assistantName}} mengelompokkan pekerjaan terlambat berdasarkan penanggung jawab.",
-            "title": "Pemilik teridentifikasi"
+            "description": "{{assistantName}} menyiapkan konteks proyek dan penghalang yang relevan.",
+            "title": "Tugas dielompokkan berdasarkan pemilik"
           }
         },
-        "title": "Tindaklanjuti tugas Asana yang terlambat"
+        "title": "Drafting pengingat Gmail untuk tugas Asana yang terlambat"
       },
       "check-posthog-signup-funnel": {
-        "description": "Pantau alur pendaftaran dan kirim penurunan terbesar ke Slack.",
-        "scenario": "Alur hanya berguna kalau ada yang menjalankannya. {{assistantName}} menjalankan alur pendaftaran setiap minggu, menemukan langkah yang paling banyak kehilangan orang, dan mengirimnya ke Slack agar tim tahu harus fokus di mana.",
+        "description": "Bandingkan Google Ads dan Meta Ads pada basis performa yang sama.",
+        "scenario": "Sulit membandingkan saluran bayar ketika setiap platform melaporkannya dengan cara yang berbeda. {{assistantName}} mengnormalisasi pengeluaran, konversi, CPA, dan ROAS di Google Ads dan Meta Ads.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menjalankan alur pendaftaran di PostHog untuk minggu ini.",
-            "title": "{{assistantName}} menjalankan alurnya"
+            "description": "{{assistantName}} membaca keduanya untuk jendela laporan yang sama.",
+            "title": "Data iklan dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} mengirim penurunan dan trennya.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} menyoroti efisiensi, penjadwalan, dan opsional memperbarui Sheets.",
+            "title": "Perbedaan saluran dijelaskan"
           },
           "two": {
-            "description": "{{assistantName}} menemukan langkah dengan penurunan terbesar.",
-            "title": "Penurunan terbesar teridentifikasi"
+            "description": "{{assistantName}} menghitung metrik yang dapat dibandingkan pengeluaran, konversi, CPA, dan ROAS.",
+            "title": "Performa diperlakukan"
           }
         },
-        "title": "Periksa alur pendaftaran PostHog"
+        "title": "Bandingkan saluran pengambilan bayar"
       },
       "compare-google-ads-last-month": {
-        "description": "Setiap hari {{assistantName}} membandingkan belanja, CPA, dan ROAS Google Ads serta Meta Ads dengan periode sebelumnya dan menandai anomali di Slack.",
-        "scenario": "Masalah pacing iklan merugikan uang setiap hari saat tak disadari. {{assistantName}} membandingkan belanja, CPA, dan ROAS dengan periode sebelumnya setiap hari dan menandai apa pun yang menyimpang di Slack.",
+        "description": "Monitor efisiensi media berbayar, penjadwalan, dan pergeseran kinerja.",
+        "scenario": "Anggaran dapat bergerak sebelum pemilik kampanye menyadarinya. {{assistantName}} membandingkan Google Ads dan Meta Ads pada pengeluaran, konversi, CPA, dan ROAS dan menyoroti di mana tindakan diperlukan.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik data belanja, CPA, dan konversi dari Google dan Meta Ads.",
-            "title": "{{assistantName}} membaca performa iklan"
+            "description": "{{assistantName}} membaca kedua platform iklan untuk periode yang dipilih.",
+            "title": "Data kampanye dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} memposting perbandingan dan menyorot penyimpangan.",
-            "title": "Anomali ditandai di Slack"
+            "description": "{{assistantName}} kembalikan perbandingan dan opsionalnya memperbarui Sheets.",
+            "title": "Tindakan direkomendasikan"
           },
           "two": {
-            "description": "{{assistantName}} menghitung selisih dan pacing.",
-            "title": "Dibandingkan dengan periode sebelumnya"
+            "description": "{{assistantName}} normalisasi kinerja dan mengidentifikasi pergeseran material.",
+            "title": "Efisiensi dibandingkan"
           }
         },
-        "title": "Bandingkan Google Ads vs bulan lalu"
+        "title": "Bandingkan Google Ads dan Meta Ads"
       },
       "daily-company-brief-slack": {
-        "description": "Tarik produk, pertumbuhan, dan pendapatan ke ringkasan harian di Slack.",
-        "scenario": "Gambaran lengkap tersebar di lima alat yang tak pernah dicek bersama. {{assistantName}} menarik data pertumbuhan, pendapatan, kesehatan produk, dan engineering setiap pagi lalu mengirim satu pulse perusahaan ke Slack: kemenangan, risiko, dan hal yang perlu diperhatikan.",
+        "description": "Gabungkan pertumbuhan, pipeline, dan konteks finansial opsional.",
+        "scenario": "Gambaran perusahaan tersebar di beberapa sistem. {{assistantName}} menggabungkan Google Analytics dan HubSpot, menambahkan konteks QuickBooks ketika tersedia, dan mengembalikan kemenangan, risiko, dan keputusan yang penting.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca pertumbuhan, pendapatan, error, dan shipping di seluruh stack Anda.",
-            "title": "{{assistantName}} mengumpulkan sinyal"
+            "description": "{{assistantName}} membaca pertumbuhan, pipeline, dan data finansial yang tersedia.",
+            "title": "Sinyal perusahaan dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} memposting ringkasan harian perusahaan.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} meringkas prioritas dalam thread otomasi.",
+            "title": "Pulse dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} menulis kemenangan, risiko, dan hal yang perlu diperhatikan.",
-            "title": "Disusun menjadi pulse"
+            "description": "{{assistantName}} menghubungkan pergerakan di seluruh bisnis.",
+            "title": "Kemenangan dan risiko diidentifikasi"
           }
         },
-        "title": "Kirim ringkasan harian perusahaan ke Slack"
+        "title": "Buat pulse perusahaan harian"
       },
       "daily-industry-news-slack": {
-        "description": "Kumpulkan berita industri relevan hari ini menjadi ringkasan Slack.",
-        "scenario": "Tetap update berarti membuka belasan tab yang tak pernah Anda buka. {{assistantName}} memindai berita AI dan kompetitor dari 24 jam terakhir setiap hari dan memposting ringkasan singkat ke Slack supaya Anda cukup membaca satu ringkasan saja.",
+        "description": "Monitor posisi kas QuickBooks dan risiko penerimaan.",
+        "scenario": "Masalah aliran kas lebih murah untuk ditangani sebelum menjadi mendesak. {{assistantName}} memeriksa aliran kas QuickBooks dan faktur yang terlambat, menjelaskan risiko material, dan dapat menyiapkan email Gmail untuk diproses.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mencari liputan AI dan kompetitor dari hari terakhir dengan Exa.",
-            "title": "{{assistantName}} memindai berita"
+            "description": "{{assistantName}} membaca aliran kas, penerimaan, dan faktur yang terlambat.",
+            "title": "Risiko finansial dicek"
           },
           "three": {
-            "description": "{{assistantName}} memposting ringkasan berita harian.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} menjelaskan risiko dan dapat menyiapkan Gmail follow-up.",
+            "title": "Peringatan dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} merangkum hal yang benar-benar penting.",
-            "title": "Disarikan menjadi ringkasan"
+            "description": "{{assistantName}} menandai saldo yang lama dan sinyal tekanan kas.",
+            "title": "Perubahan penting diidentifikasi"
           }
         },
-        "title": "Kirim berita industri harian ke Slack"
+        "title": "Peringatkan tentang aliran kas dan faktur yang terlambat"
       },
       "draft-github-release-notes-notion": {
-        "description": "Ubah PR yang digabung sejak rilis terakhir menjadi catatan yang rapi di Notion.",
-        "scenario": "Menulis catatan rilis berarti menggulir riwayat PR dan menerjemahkan commit ke bahasa sederhana. {{assistantName}} melakukannya saat Anda memberi label shipped pada PR: {{assistantName}} mengumpulkan semua yang digabung sejak tag terakhir dan menyusun catatan yang mudah dibaca di Notion.",
+        "description": "Ubah PR yang telah digabungkan menjadi catatan rilis yang jelas dan dapat dipahami pengguna.",
+        "scenario": "Catatan rilis tidak harus menulis log commit secara manual. {{assistantName}} mengumpulkan PR yang telah digabungkan sejak rilis terakhir dan mengubahnya menjadi catatan perubahan yang ringkas di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu dari label rilis Anda.",
-            "title": "Sebuah PR diberi label shipped"
+            "description": "{{assistantName}} mengumpulkan PR sejak rilis terakhir.",
+            "title": "Kerja yang telah digabungkan diumpamakan"
           },
           "three": {
-            "description": "{{assistantName}} menyusun catatan rilis yang rapi dan dikelompokkan di halaman Notion.",
-            "title": "Catatan rilis disimpan ke Notion"
+            "description": "{{assistantName}} menulis draft catatan rilis di Notion.",
+            "title": "Catatan disimpan"
           },
           "two": {
-            "description": "{{assistantName}} mengumpulkan semua yang digabung sejak tag rilis terakhir.",
-            "title": "{{assistantName}} mengumpulkan PR yang digabung"
+            "description": "{{assistantName}} mengelompokkan kerja dan menjelaskan dampak pengguna.",
+            "title": "Perubahan diterjemahkan"
           }
         },
-        "title": "Susun catatan rilis GitHub di Notion"
+        "title": "Draft catatan rilis GitHub di Notion"
       },
       "draft-newsletter-mailchimp": {
-        "description": "Setiap bulan {{assistantName}} menyusun newsletter dari fitur yang sudah shipped dan menyiapkan draf di Mailchimp.",
-        "scenario": "Newsletter bulanan selalu dimulai dari halaman kosong. {{assistantName}} mengumpulkan apa yang shipped dari GitHub, menyusun draf edisi, dan menyiapkannya di Mailchimp agar Anda mengedit, bukan menulis dari nol.",
+        "description": "Gabungkan Analytics dan Search Console menjadi laporan organik yang satu.",
+        "scenario": "Pertumbuhan organik hidup di atas data lalu lintas dan pencarian. {{assistantName}} menggabungkan Google Analytics dengan Search Console, menjelaskan pergerakan dan peluang, dan opsionalnya merekam pekerjaan berikutnya di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca fitur yang digabung dan highlight dari GitHub.",
-            "title": "{{assistantName}} mengumpulkan yang sudah shipped"
+            "description": "{{assistantName}} membaca perilaku situs dan kinerja pencarian.",
+            "title": "Data organik dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} membuat draf kampanye yang siap diedit.",
-            "title": "Disiapkan di Mailchimp"
+            "description": "{{assistantName}} kembalikan prioritas dan opsionalnya menyimpannya di Notion.",
+            "title": "Ringkasan dibuat"
           },
           "two": {
-            "description": "{{assistantName}} menulis edisi dengan suara Anda.",
-            "title": "Newsletter didraf"
+            "description": "{{assistantName}} menghubungkan halaman tujuan, query, konversi, dan tren.",
+            "title": "Pertumbuhan dianalisis"
           }
         },
-        "title": "Buat draf newsletter di Mailchimp"
+        "title": "Buat ringkasan pertumbuhan organik"
       },
       "draft-replies-notion-faq": {
-        "description": "Buat draf balasan tiket berdasarkan FAQ Notion Anda.",
-        "scenario": "Sebagian besar pertanyaan sudah dijawab di docs. {{assistantName}} membaca pertanyaan masuk, mencari FAQ di Notion, dan menyusun balasan berdasarkan docs Anda sendiri agar agen dapat menyetujuinya.",
+        "description": "Ground email dukungan dalam FAQ Notion yang disetujui.",
+        "scenario": "Sebanyak mungkin pertanyaan dukungan sudah memiliki jawaban yang disetujui di mana-mana. {{assistantName}} membaca email, menemukan panduan Notion yang relevan, dan menulis balasan yang diberdayakan untuk dipelajari.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca percakapan baru di Intercom atau Gmail.",
-            "title": "Ada pertanyaan masuk"
+            "description": "{{assistantName}} membaca percakapan Gmail dan konteks pelanggan.",
+            "title": "Sebuah pertanyaan dukungan datang"
           },
           "three": {
-            "description": "{{assistantName}} menyiapkan respons sesuai brand.",
-            "title": "Balasan didraf untuk ditinjau"
+            "description": "{{assistantName}} mempersiapkan balasan dan tidak mengirim secara otomatis.",
+            "title": "Balasan disusun"
           },
           "two": {
-            "description": "{{assistantName}} menemukan jawaban yang relevan di docs Anda.",
-            "title": "{{assistantName}} memeriksa FAQ Notion"
+            "description": "{{assistantName}} menemukan panduan Notion yang relevan.",
+            "title": "FAQ dicek"
           }
         },
-        "title": "Buat draf balasan dari FAQ Notion Anda"
+        "title": "Draft balasan dari FAQ"
       },
       "file-gmail-invoices-drive": {
-        "description": "Simpan email invoice ke Drive dan catat semuanya di Sheet.",
-        "scenario": "Invoice menumpuk di inbox dan rekonsiliasi jadi berantakan. {{assistantName}} menyimpan setiap invoice berlabel ke folder Drive yang tepat dan mencatat jumlah serta tanggal jatuh tempo di sheet pengeluaran Anda saat masuk.",
+        "description": "Simpan file faktur dan catat item akuntansi yang sesuai.",
+        "scenario": "Faktur menciptakan pekerjaan bersih ketika file dan catatan akuntansi terpisah. {{assistantName}} menyimpan lampiran Gmail di Drive, mencatat tagihan atau pengeluaran di QuickBooks, dan dapat memperbarui lembar koreksi.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu dari label Invoices Anda di Gmail.",
-            "title": "Sebuah invoice diberi label"
+            "description": "{{assistantName}} membaca pesan Gmail dan lampirannya yang dipilih.",
+            "title": "Faktur email teridentifikasi"
           },
           "three": {
-            "description": "{{assistantName}} mencatat jumlah dan tanggal jatuh tempo di sheet pengeluaran.",
-            "title": "Dicatat di sheet"
+            "description": "{{assistantName}} mencatat item dan memperbarui Google Sheets opsional.",
+            "title": "QuickBooks diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} menyimpan lampiran ke folder yang benar.",
-            "title": "Disimpan ke Google Drive"
+            "description": "{{assistantName}} menyimpan dokumen di Drive dan mengekstrak data akuntansi.",
+            "title": "File dan detail terkumpul"
           }
         },
-        "title": "Simpan invoice Gmail ke Google Drive"
+        "title": "Simpan faktur Gmail di Drive dan QuickBooks"
       },
       "file-sentry-crashes-github": {
-        "description": "Urutkan error baru di Sentry berdasarkan dampak ke pengguna dan ubah yang terburuk menjadi issue GitHub.",
-        "scenario": "Crash baru tersembunyi di Sentry sampai ada yang mencarinya. {{assistantName}} memeriksa setiap jam, mengurutkan error berdasarkan jumlah pengguna yang terdampak, membuka issue GitHub untuk yang penting, dan memberi tahu pemilik kode tersebut.",
+        "description": "Urutkan crash baru berdasarkan dampak dan laporkan masalah yang paling dapat diambil tindakan.",
+        "scenario": "Crash dengan dampak tinggi dapat tersembunyi di feed kesalahan. {{assistantName}} memeriksa kegagalan baru dari Sentry, menilai berdasarkan keparahan dan pengguna yang terpengaruh, dan melaporkan yang memerlukan kerja engineering.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca error yang belum terselesaikan dan jumlah event-nya untuk satu jam terakhir.",
-            "title": "{{assistantName}} menarik error baru dari Sentry"
+            "description": "{{assistantName}} mengumpulkan kesalahan yang belum diselesaikan dan sinyal dampak dari Sentry.",
+            "title": "{{assistantName}} membaca crash baru"
           },
           "three": {
-            "description": "{{assistantName}} membuka issue GitHub dengan stack trace dan memberi tahu pemiliknya di Slack.",
-            "title": "Issue dibuat dan pemilik diberi tahu"
+            "description": "{{assistantName}} membuat masalah yang dapat diambil tindakan dan opsional menghubungkannya di Linear.",
+            "title": "Masalah GitHub dilaporkan"
           },
           "two": {
-            "description": "{{assistantName}} mengurutkan berdasarkan pengguna terdampak dan menyaring noise berdampak rendah.",
-            "title": "Diurutkan berdasarkan dampak ke pengguna"
+            "description": "{{assistantName}} memisahkan regressi penting dari noise dampak rendah.",
+            "title": "Dampak dinilai"
           }
         },
-        "title": "Ubah crash Sentry menjadi issue GitHub"
+        "title": "File Sentry crash menjadi masalah GitHub"
       },
       "fixes-to-notion-help-docs": {
-        "description": "Saat sebuah tiket ditandai selesai, {{assistantName}} mengubah perbaikannya menjadi artikel bantuan yang bisa dipakai ulang di Notion.",
-        "scenario": "Pertanyaan yang sama terus muncul karena perbaikannya tak pernah didokumentasikan. {{assistantName}} mengubah setiap tiket yang sudah selesai menjadi artikel bantuan yang rapi dan bisa dipakai ulang di Notion supaya jawabannya sudah ada lain kali.",
+        "description": "Konversikan penyelesaian GitHub yang terkonfirmasi menjadi panduan Notion yang dapat digunakan.",
+        "scenario": "Pertanyaan dukungan yang sama kembali ketika penyelesaian tidak pernah didokumentasikan. {{assistantName}} membaca isu GitHub yang terpecahkan dan mengubah penyelesaian yang disetujui menjadi artikel panduan Notion yang jelas.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu saat tiket ditutup.",
-            "title": "Sebuah tiket diselesaikan"
+            "description": "{{assistantName}} membaca isu GitHub, penyelesaian, dan dampak pengguna.",
+            "title": "Bug yang terpecahkan dipilih"
           },
           "three": {
-            "description": "{{assistantName}} menambahkan artikel ke pusat bantuan Anda.",
-            "title": "Disimpan ke Notion"
+            "description": "{{assistantName}} menulis sketsa yang dapat digunakan di Notion.",
+            "title": "Artikel panduan disimpan"
           },
           "two": {
-            "description": "{{assistantName}} menyusun how-to yang jelas dari penyelesaiannya.",
-            "title": "Perbaikan ditulis"
+            "description": "{{assistantName}} mengubah penyelesaian menjadi langkah-langkah troubleshooting yang jelas.",
+            "title": "Panduan disusun"
           }
         },
-        "title": "Ubah perbaikan menjadi dokumen bantuan Notion"
+        "title": "Ubah bug yang terpecahkan menjadi panduan bantuan"
       },
       "flag-figma-designs-no-task": {
-        "description": "Tandai desain Figma yang belum memiliki tugas Linear terhubung.",
-        "scenario": "Desain selesai diam-diam tanpa pernah menjadi tiket build. {{assistantName}} memindai Figma setiap hari untuk frame berstatus ready yang belum memiliki tugas Linear terhubung dan menandai celahnya di Slack sebelum terlewat.",
+        "description": "Konversi spesifikasi produk yang disetujikan menjadi pekerjaan Linear yang terstruktur.",
+        "scenario": "Spesifikasi yang disetujikan masih perlu menjadi pekerjaan yang dapat dijalankan. {{assistantName}} membaca spesifikasi Notion dan membuat proyek Linear dengan milestone, isu yang terstruktur, ketergantungan, dan kriteria persetujuan.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca frame dan tugas yang terhubung.",
-            "title": "{{assistantName}} memindai frame Figma"
+            "description": "{{assistantName}} membaca spesifikasi produk Notion yang disetujikan.",
+            "title": "Spesifikasi diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} mencantumkan desain yang belum terhubung di channel Anda.",
-            "title": "Celah diposting ke Slack"
+            "description": "{{assistantName}} membuat proyek dan secara opsional menghubungkan konteks GitHub.",
+            "title": "Proyek Linear dibuat"
           },
           "two": {
-            "description": "{{assistantName}} menandai desain ready yang tidak punya tiket build.",
-            "title": "Menemukan frame tanpa tugas"
+            "description": "{{assistantName}} mengidentifikasi milestone, isu, ketergantungan, dan kriteria.",
+            "title": "Pekerjaan diteruskan"
           }
         },
-        "title": "Tandai desain Figma tanpa tugas"
+        "title": "Ubah spesifikasi Notion menjadi proyek Linear"
       },
       "flagged-gmail-todoist-tasks": {
-        "description": "Ubah email yang Anda tandai menjadi tugas Todoist secara otomatis.",
-        "scenario": "Menandai email hanya memindahkan keputusan ke nanti. {{assistantName}} mengambil email yang ditandai, meneliti topik dan utas sebelumnya, lalu membuat tugas Todoist dengan konteks yang sudah terlampir.",
+        "description": "Buat tugas yang dapat diambil dari pesan dengan label yang dipilih.\\n",
+        "scenario": "Email penting menjadi lebih mudah diselesaikan ketika mereka keluar dari inbox sebagai tugas yang jelas. {{assistantName}} mengubah pesan Gmail yang dilabeli menjadi item Todoist dengan tanggal jatuh tempo dan konteks sumber.\\n",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu dari label to-do Anda di Gmail.",
-            "title": "Anda menandai email"
+            "description": "{{assistantName}} mendeteksi label yang dipilih dan membaca pesan.\\n",
+            "title": "Pesan Gmail ditandai\\n"
           },
           "three": {
-            "description": "{{assistantName}} membuat tugas yang siap dikerjakan dengan tautan.",
-            "title": "Tugas disimpan di Todoist"
+            "description": "{{assistantName}} membuat tugas dengan tautan sumber.\\n",
+            "title": "Tugas Todoist dibuat\\n"
           },
           "two": {
-            "description": "{{assistantName}} mengumpulkan konteks utas sebelumnya dan info web dengan Exa.",
-            "title": "{{assistantName}} menelitinya"
+            "description": "{{assistantName}} mengidentifikasi tugas, tanggal jatuh tempo, dan konteks mendukung.\\n",
+            "title": "Tindakan diambil"
           }
         },
-        "title": "Ubah email Gmail yang ditandai menjadi tugas Todoist"
+        "title": "Ubah surat Gmail yang ditandai menjadi tugas Todoist\\n"
       },
       "github-idea-to-notion-spec": {
-        "description": "Ubah issue GitHub berlabel menjadi spesifikasi produk terstruktur di Notion.",
-        "scenario": "Ide satu baris di issue belum jadi spec. {{assistantName}} mengambil label needs-spec dan mengembangkan issue menjadi PRD terstruktur di Notion dengan problem, pengguna, kebutuhan, dan kriteria penerimaan siap untuk disempurnakan.",
+        "description": "Perluas ide GitHub yang dilabeli menjadi spesifikasi produk yang struktur.",
+        "scenario": "Ide yang baik sering berhenti pada deskripsi isu yang singkat. {{assistantName}} mengubah ide GitHub yang dilabeli menjadi spesifikasi Notion yang jelas dengan masalah, bukti, skop, metrik, risiko, dan pertanyaan terbuka.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu dari label dan membaca issue.",
-            "title": "Sebuah issue diberi label needs-spec"
+            "description": "{{assistantName}} membaca isu GitHub yang dilabeli dan konteks terkait.",
+            "title": "Pilihlah ide"
           },
           "three": {
-            "description": "{{assistantName}} membuat halaman PRD terstruktur di Notion.",
-            "title": "Disimpan ke Notion"
+            "description": "{{assistantName}} menulis sketsa yang terstruktur di Notion.",
+            "title": "Spesifikasi disimpan"
           },
           "two": {
-            "description": "{{assistantName}} menyusun masalah, pengguna, kebutuhan, dan kriteria penerimaan.",
-            "title": "{{assistantName}} mengembangkannya menjadi PRD"
+            "description": "{{assistantName}} memperluas masalah, skop, kriteria keberhasilan, dan risiko.",
+            "title": "Spesifikasi dikembangkan"
           }
         },
         "title": "Ubah ide GitHub menjadi spesifikasi Notion"
       },
       "gmail-followups-auto": {
-        "description": "Temukan kontak yang belum membalas dan susun tindak lanjut berikutnya.",
-        "scenario": "Follow-up adalah saat deal dimenangkan, dan saat deal dilupakan. {{assistantName}} memajukan sequence Anda setiap hari dan menyusun sentuhan berikutnya untuk setiap yang belum membalas agar tidak ada yang basi.",
+        "description": "Siapkan follow-up penjualan yang kontekstual untuk review manusia.",
+        "scenario": "Follow-up yang baik memerlukan catatan transaksi dan percakapan. {{assistantName}} menggabungkan konteks HubSpot dengan thread Gmail yang terkait dan menyiapkan tanggapan yang singkat tanpa mengirimnya.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca siapa yang belum membalas di Instantly dan Apollo.",
-            "title": "{{assistantName}} memeriksa status sequence"
+            "description": "{{assistantName}} membaca catatan transaksi HubSpot dan aktivitas terbaru.",
+            "title": "Konteks transaksi diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} menyiapkan draf untuk persetujuan Anda.",
-            "title": "Siap di Gmail"
+            "description": "{{assistantName}} menyiapkan draft Gmail untuk review manusia.",
+            "title": "Follow-up disusun"
           },
           "two": {
-            "description": "{{assistantName}} menulis follow-up untuk setiap kontak.",
-            "title": "Sentuhan berikutnya sudah disusun"
+            "description": "{{assistantName}} mengidentifikasi pertanyaan terbuka, komitmen, dan waktu.",
+            "title": "Thread email diperiksa"
           }
         },
-        "title": "Kirim follow-up Gmail otomatis"
+        "title": "Draft follow-up Gmail dari HubSpot"
       },
       "gmail-reconnect-reminders": {
-        "description": "Tampilkan kontak penting yang sudah lama belum Anda email.",
-        "scenario": "Relasi memudar saat Anda sibuk fokus. {{assistantName}} meninjau inbox dan kalender Anda setiap minggu, menampilkan kontak bermakna yang sudah lama tidak Anda hubungi, dan menyarankan pembuka yang alami untuk menyambung kembali.",
+        "description": "Temukan kontak penting yang telah diam dan draft upaya hubungan.",
+        "scenario": "Hubungan penting pudar ketika tidak ada yang menyadari ketidaktahuan. {{assistantName}} memeriksa Gmail, menambahkan riwayat kalender ketika tersedia, dan menyiapkan catatan reconnect yang mendalam.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca riwayat email dan kalender terbaru.",
-            "title": "{{assistantName}} meninjau kontak Anda"
+            "description": "{{assistantName}} memeriksa aktivitas Gmail terbaru dan konteks kontak.",
+            "title": "Riwayat hubungan diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} memposting tiap kontak dengan pembuka yang disarankan.",
-            "title": "Pembuka disarankan"
+            "description": "{{assistantName}} menyiapkan pesan pribadi untuk diproses manusia.",
+            "title": "Draft merekam kembali disiapkan"
           },
           "two": {
-            "description": "{{assistantName}} menemukan kontak bermakna yang sudah lama tidak Anda hubungi.",
-            "title": "Relasi yang renggang ditampilkan"
+            "description": "{{assistantName}} mengidentifikasi kontak berharga tanpa interaksi terbaru.",
+            "title": "Hubungan yang diam diurutkan"
           }
         },
-        "title": "Dapatkan pengingat untuk menyambung kembali di Gmail"
+        "title": "Tampilkan hubungan untuk merekam kembali"
       },
       "highlight-key-emails-gmail": {
-        "description": "Tampilkan beberapa email yang benar-benar butuh perhatian Anda.",
-        "scenario": "Inbox yang penuh menenggelamkan tiga email yang penting. {{assistantName}} membaca email Anda setiap pagi dan hanya menampilkan yang benar-benar butuh Anda, lalu mempostingnya ke Slack.",
+        "description": "Temukan email Gmail yang paling memerlukan respons eksekutif.",
+        "scenario": "Inbox eksekutif mencampurkan keputusan penting dengan lalu lintas rutin. {{assistantName}} mengidentifikasi email yang penting, menjelaskan mengapa, dan menyiapkan balasan tanpa mengirimnya.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memindai email semalam di Gmail.",
-            "title": "{{assistantName}} membaca inbox"
+            "description": "{{assistantName}} membaca email Gmail terbaru dan konteks kalender yang tersedia.",
+            "title": "Inbox diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} memposting daftar pendek beserta alasan tiap email penting.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} meringkas setiap item dan menyiapkan balasan untuk diproses.",
+            "title": "Balasan disiapkan"
           },
           "two": {
-            "description": "{{assistantName}} menyaring beberapa yang butuh perhatian Anda.",
-            "title": "Prioritas diidentifikasi"
+            "description": "{{assistantName}} memprioritaskan keputusan, komitmen, dan permintaan sensitif.",
+            "title": "Pesan penting diurutkan"
           }
         },
-        "title": "Sorot email penting di Gmail"
+        "title": "Ungkap email kunci"
       },
       "investor-update-google-docs": {
-        "description": "Kumpulkan metrik dan sorotan menjadi update investor di Docs.",
-        "scenario": "Update investor bulanan selalu terlambat dan dimulai dari nol. {{assistantName}} mengumpulkan KPI dan sorotan lalu menyusun update di Google Docs agar Anda tinggal menyempurnakan, bukan merangkai.",
+        "description": "Gabungkan data finansial dan pertumbuhan ke dalam draft Google Docs.",
+        "scenario": "Perbaruan investor membutuhkan waktu karena cerita dan angka hidup terpisah. {{assistantName}} menggabungkan QuickBooks dan Google Analytics, menambahkan konteks HubSpot ketika tersedia, dan menulis perbaruan dalam Google Docs.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik revenue dan pertumbuhan dari Stripe dan Sheets.",
-            "title": "{{assistantName}} mengumpulkan KPI"
+            "description": "{{assistantName}} membaca metrik finansial, pertumbuhan, dan pipeline yang tersedia.",
+            "title": "Metrik saat ini dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} meninggalkan draf yang siap diedit.",
-            "title": "Dapat diedit di Google Docs"
+            "description": "{{assistantName}} menulis perbaruan investor dalam Google Docs.",
+            "title": "Perbaruan disusun"
           },
           "two": {
-            "description": "{{assistantName}} menulis narasi dan metrik.",
-            "title": "Update sudah disusun"
+            "description": "{{assistantName}} menghubungkan kemajuan, pelajaran, risiko, dan prioritas berikutnya.",
+            "title": "Naskah dikembangkan"
           }
         },
-        "title": "Susun update investor di Google Docs"
+        "title": "Susun perbaruan investor"
       },
       "log-gong-calls-hubspot": {
-        "description": "Ambil catatan dan langkah berikutnya dari panggilan Gong ke deal HubSpot.",
-        "scenario": "Catatan panggilan tidak pernah masuk ke CRM saat masih segar. {{assistantName}} membaca transkrip Gong setelah tiap panggilan dan menulis ringkasan serta langkah berikutnya ke deal HubSpot secara otomatis.",
+        "description": "Ubah catatan rapat Google Meet menjadi keputusan dan tindakan selanjutnya di CRM.",
+        "scenario": "Detail penting panggilan penting hilang ketika catatan tetap di luar CRM. {{assistantName}} mengubah catatan rapat Google Meet menjadi keputusan, objeksi, komitmen, dan tindakan selanjutnya di HubSpot.",
         "steps": {
           "one": {
-            "description": "Setelah panggilan, {{assistantName}} mengambil catatan rekaman dari Gong.",
-            "title": "{{assistantName}} membaca transkrip"
+            "description": "{{assistantName}} membaca transcript terbaru dan konteks panggilan.",
+            "title": "Transcript Meet tiba"
           },
           "three": {
-            "description": "{{assistantName}} menulis catatan ke record deal.",
-            "title": "Dicatat ke HubSpot"
+            "description": "{{assistantName}} mencatat ringkasan dan dapat menyiapkan follow-up Gmail.",
+            "title": "HubSpot diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} mengekstrak keputusan dan tindak lanjut.",
-            "title": "Ringkasan dan langkah berikutnya sudah disusun"
+            "description": "{{assistantName}} mengidentifikasi keputusan, objeksi, komitmen, dan pemilik.",
+            "title": "Sinyal penjualan diambil"
           }
         },
-        "title": "Catat panggilan Gong ke HubSpot"
+        "title": "Catat tindak lanjut Google Meet di HubSpot"
       },
       "meeting-notes-asana-tasks": {
-        "description": "Ubah catatan rapat menjadi tugas Asana yang ditugaskan dan diberi tenggat.",
-        "scenario": "Item aksi mati di catatan rapat. {{assistantName}} membaca transkrip setelah setiap rapat, mengambil to-do, dan membuat tugas Asana yang ditugaskan agar keputusan benar-benar menjadi pekerjaan.",
+        "description": "Buat pekerjaan proyek yang ditugaskan dari transkrip rapat.",
+        "scenario": "Tindakan rapat hilang ketika mereka tetap berada di dalam catatan. {{assistantName}} membaca transkrip Google Meet, mengidentifikasi komitmen dan pemilik, dan membuat tugas Asana yang jelas.",
         "steps": {
           "one": {
-            "description": "Setelah rapat, {{assistantName}} mengambil catatan dari Fireflies.",
-            "title": "{{assistantName}} membaca transkrip"
+            "description": "{{assistantName}} membaca transkrip rapat dan konteks Kalender.",
+            "title": "Transkrip rapat tiba"
           },
           "three": {
-            "description": "{{assistantName}} membuat tugas yang ditugaskan dengan tenggat.",
-            "title": "Tugas dibuat di Asana"
+            "description": "{{assistantName}} membuat pekerjaan yang ditugaskan dengan konteks sumber.",
+            "title": "Tugas Asana dibuat"
           },
           "two": {
-            "description": "{{assistantName}} mengidentifikasi to-do dan penanggung jawab.",
-            "title": "Item aksi diekstrak"
+            "description": "{{assistantName}} mengidentifikasi tugas, pemilik, tanggal jatuh tempo, dan ketergantungan.",
+            "title": "Tindakan diambil"
           }
         },
-        "title": "Ubah catatan rapat menjadi tugas Asana"
+        "title": "Ubah catatan Google Meet menjadi tugas Asana"
       },
       "meeting-recaps-slack": {
-        "description": "Bagikan rangkuman berisi keputusan dan item aksi setelah setiap rapat.",
-        "scenario": "Detail rapat memudar sebelum rapat berikutnya. {{assistantName}} membaca transkrip sesudahnya dan mengirim rangkuman yang rapi tentang keputusan dan item aksi agar tidak ada yang hilang.",
+        "description": "Ubah transcript rapat menjadi ringkasan yang singkat dan tindakan.\\n",
+        "scenario": "Keputusan rapat hilang ketika transcript tidak pernah diproses. {{assistantName}} membaca transcript Google Meet dan menulis keputusan kunci, tindakan, dan pemiliknya di Google Docs.\\n",
         "steps": {
           "one": {
-            "description": "Setelah rapat, {{assistantName}} mengambil catatan dari Fireflies.",
-            "title": "{{assistantName}} membaca transkrip"
+            "description": "{{assistantName}} membaca transcript dan konteks Calendar yang tersedia.\\n",
+            "title": "Transcript rapat tiba\\n"
           },
           "three": {
-            "description": "{{assistantName}} mengirim rangkuman ke Gmail atau Slack.",
-            "title": "Dikirim ke Anda"
+            "description": "{{assistantName}} menulis ringkasan yang terstruktur di Google Docs.\\n",
+            "title": "Ringkasan disimpan\\n"
           },
           "two": {
-            "description": "{{assistantName}} merangkum keputusan dan item aksi.",
-            "title": "Rangkuman ditulis"
+            "description": "{{assistantName}} mengidentifikasi hasil, pemilik, tanggal jatuh tempo, dan pertanyaan terbuka.\\n",
+            "title": "Keputusan dan tindakan diambil\\n"
           }
         },
-        "title": "Dapatkan rangkuman rapat di Slack"
+        "title": "Simpan ringkasan Google Meet ke Google Docs\\n"
       },
       "morning-brief-slack": {
-        "description": "Setiap pagi {{assistantName}} mengirim brief berisi jadwal Anda dan email yang butuh perhatian, lalu mempostingnya ke Slack.",
-        "scenario": "Sepuluh menit pertama hari terbuang untuk memahami hari itu seperti apa. {{assistantName}} menyusun jadwal dan email yang butuh perhatian, lalu memposting brief pagi ke Slack sebelum Anda duduk bekerja.",
+        "description": "Gabungkan email penting, jadwal hari ini, dan konteks Notion opsional.\\n",
+        "scenario": "Rencana pagi yang berguna membutuhkan inbox dan kalender. {{assistantName}} memeriksa Gmail dan Google Calendar, menambahkan konteks Notion jika tersedia, dan mengembalikan ringkasan harian singkat.\\n",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik kalender hari ini dan email prioritas.",
-            "title": "{{assistantName}} membaca hari Anda"
+            "description": "{{assistantName}} membaca email penting dan jadwal hari ini.\\n",
+            "title": "Input hari ini dikumpulkan\\n"
           },
           "three": {
-            "description": "{{assistantName}} mengirim brief pagi.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} membuat rencana terfokus di thread otomasi.\\n",
+            "title": "Ringkasan dikembalikan\\n"
           },
           "two": {
-            "description": "{{assistantName}} menulis jadwal Anda dan apa yang perlu diperhatikan.",
-            "title": "Brief disusun"
+            "description": "{{assistantName}} mengidentifikasi komitmen, persiapan, dan tindak lanjut.\\n",
+            "title": "Prioritas terhubung\\n"
           }
         },
-        "title": "Dapatkan brief pagi di Slack"
+        "title": "Buat ringkasan pagi\\n"
       },
       "new-gmail-contacts-hubspot": {
-        "description": "Tambahkan dan lengkapi pengirim email yang belum dikenal sebagai kontak HubSpot.",
-        "scenario": "Kontak terlewat saat tidak ada yang mencatatnya. {{assistantName}} mendeteksi email dari seseorang yang belum ada di HubSpot, membuat record, dan melengkapinya dengan Apollo agar CRM tetap lengkap tanpa input manual.",
+        "description": "Buat atau kayakan data kontak CRM dari percakapan email yang relevan.",
+        "scenario": "Hubungan baru sering terjebak di inbox. {{assistantName}} mengidentifikasi kontak Gmail yang relevan, memeriksa HubSpot untuk duplikat, dan membuat atau kayakan data kontak.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memeriksa email masuk terhadap CRM.",
-            "title": "{{assistantName}} menemukan pengirim yang tidak dikenal"
+            "description": "{{assistantName}} memeriksa percakapan email Gmail yang relevan.",
+            "title": "Kontak baru diidentifikasi"
           },
           "three": {
-            "description": "{{assistantName}} mencatat kontak dan sumber di timeline.",
-            "title": "Dicatat untuk follow-up"
+            "description": "{{assistantName}} membuat atau memperkaya data kontak di HubSpot.",
+            "title": "Kontak diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} menambahkan orang itu ke HubSpot dan melengkapinya dengan Apollo.",
-            "title": "Kontak dibuat dan dilengkapi"
+            "description": "{{assistantName}} menemukan catatan yang ada dan detail yang hilang.",
+            "title": "HubSpot diperiksa"
           }
         },
-        "title": "Tambahkan kontak Gmail baru ke HubSpot"
+        "title": "Tambahkan kontak baru Gmail ke HubSpot"
       },
       "onboard-new-hires-asana": {
-        "description": "Buat checklist tugas onboarding untuk setiap karyawan baru di Asana.",
-        "scenario": "Onboarding selalu checklist yang sama, dan selalu dilakukan manual. {{assistantName}} mendeteksi karyawan baru, membuat project onboarding di Asana, dan menyiapkan dokumen awal mereka di Drive.",
+        "description": "Ubah pengajuan penerimaan yang disetujui menjadi rencana onboarding Asana.",
+        "scenario": "Onboarding karyawan baru lebih andal ketika setiap pengajuan penerimaan yang disetujui mengikuti rencana yang sama. {{assistantName}} membaca pengisian Google Forms, membuat tugas Asana, dan dapat menyimpan dokumen di Drive.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mendeteksi record baru di Deel.",
-            "title": "Karyawan baru ditambahkan"
+            "description": "{{assistantName}} membaca formulir onboarding baru dan detail yang diperlukan.",
+            "title": "Pengisian disetujui"
           },
           "three": {
-            "description": "{{assistantName}} menyiapkan dokumen awal di Google Drive.",
-            "title": "Dokumen disiapkan"
+            "description": "{{assistantName}} membuat rencana dan dapat menyimpan dokumen Drive opsional.",
+            "title": "Asana diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} memulai project onboarding dengan tugas yang ditugaskan.",
-            "title": "Checklist dibuat di Asana"
+            "description": "{{assistantName}} menetapkan peran dan tanggal mulai ke tugas dan pemilik.",
+            "title": "Rencana onboarding dibangun"
           }
         },
-        "title": "Onboard karyawan baru di Asana"
+        "title": "Onboarding karyawan baru dari Google Forms"
       },
       "post-daily-metrics-slack": {
-        "description": "Posting jumlah pengunjung, signup, dan aktivasi harian ke Slack.",
-        "scenario": "Memeriksa tiga dashboard sebelum kopi bukan ritual favorit siapa pun. {{assistantName}} menarik pengunjung, signup, dan aktivasi setiap pagi lalu memposting angkanya ke Slack supaya hari dimulai dengan KPI sudah ada di channel.",
+        "description": "Ringkaskan lalu lintas, pengambilan, konversi, dan perubahan yang menonjol.",
+        "scenario": "Ringkasan website harian tidak perlu membuka beberapa laporan. {{assistantName}} membaca Google Analytics, menambahkan konteks Search Console ketika tersedia, dan mengembalikan ringkasan yang singkat dalam thread otomasi.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca traffic, signup, dan aktivasi dari alat analitik Anda.",
-            "title": "{{assistantName}} menarik metrik"
+            "description": "{{assistantName}} membaca lalu lintas, pengambilan, dan metrik konversi.",
+            "title": "Data website dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} memposting update KPI pagi.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} meringkas apa yang berubah dan apa yang perlu diperhatikan.",
+            "title": "Ringkasan dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} memformat angka penting dengan konteks hari-ke-hari.",
-            "title": "Disusun menjadi snapshot KPI"
+            "description": "{{assistantName}} membandingkan performa dan menyoroti pergerakan yang signifikan.",
+            "title": "Perubahan diidentifikasi"
           }
         },
-        "title": "Posting metrik harian ke Slack"
+        "title": "Buat ringkasan metrik website harian"
       },
       "post-github-updates-slack": {
-        "description": "Setiap pagi hari kerja {{assistantName}} mengompilasi pekerjaan Anda yang sudah digabung dan yang masih berjalan dari GitHub dan Linear menjadi update progres untuk Slack.",
-        "scenario": "Standup memakan waktu dan separuhnya hanya untuk mengingat apa yang sudah Anda kerjakan. {{assistantName}} mengompilasi PR GitHub yang sudah digabung dan tiket Linear yang masih berjalan setiap pagi, lalu memposting update progres yang rapi agar standup async tersusun sendiri.",
+        "description": "Tinjau akses cloud, akun layanan, dan layanan yang terpapar.",
+        "scenario": "Hak akses cloud bergerak seiring proyek bertumbuh. {{assistantName}} memeriksa Google Cloud IAM, akun layanan, kunci, layanan yang diaktifkan, dan paparan publik, lalu mengembalikan laporan risiko hanya baca dengan petunjuk penyelesaian yang jelas.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca pekerjaan Anda yang sudah digabung dan terbuka dari GitHub dan Linear.",
-            "title": "{{assistantName}} mengumpulkan aktivitas Anda"
+            "description": "{{assistantName}} menginventarisikasi ikatan IAM, akun, kunci, dan layanan.",
+            "title": "Akses cloud dipertinjau"
           },
           "three": {
-            "description": "{{assistantName}} memposting update ke channel standup Anda setiap hari kerja.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} menyarankan perbaikan dan opsional menulis isu GitHub yang disetujui.",
+            "title": "Penyelesaian dipersiapkan"
           },
           "two": {
-            "description": "{{assistantName}} menulis ringkasan progres yang singkat dan mudah dibaca.",
-            "title": "Dirangkum menjadi update"
+            "description": "{{assistantName}} menandai hak akses berlebihan, kredensial kadaluarsa, dan paparan publik.",
+            "title": "Risiko dinilai"
           }
         },
-        "title": "Posting update GitHub ke Slack"
+        "title": "Audit Google Cloud IAM dan layanan"
       },
       "post-release-notes-slack": {
-        "description": "Susun changelog dari pekerjaan yang baru dirilis dan posting ke Slack.",
-        "scenario": "Changelog yang dilihat pengguna berbeda dari log commit. {{assistantName}} memicu pada label release, menyusun ringkasan ramah untuk pengguna tentang apa yang dirilis, dan mempostingnya ke Slack serta Notion.",
+        "description": "Ubah perubahan terbaru di GitHub menjadi catatan perubahan yang disetujui.",
+        "scenario": "Perubahan yang terkirim mudah hilang di dalam permintaan penarikan. {{assistantName}} mengumpulkan perubahan GitHub terkirim terbaru, menulis catatan rilis yang mudah dibaca, dan mempublikasikan versi yang disetujui di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memicu pada label release.",
-            "title": "Sebuah PR diberi label release"
+            "description": "{{assistantName}} mengumpulkan perubahan GitHub yang terkirim terbaru.",
+            "title": "Perubahan yang terkirim dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} membagikan pengumuman di kedua tempat.",
-            "title": "Diposting ke Slack dan Notion"
+            "description": "{{assistantName}} menyimpan catatan rilis akhir di Notion.",
+            "title": "Draft yang disetujui dipublikasikan"
           },
           "two": {
-            "description": "{{assistantName}} menulis ringkasan yang ditujukan untuk pengguna tentang apa yang berubah.",
-            "title": "{{assistantName}} menyusun draf changelog"
+            "description": "{{assistantName}} mengelompokkan perubahan dan menjelaskan dampak pengguna.",
+            "title": "Catatan rilis ditulis"
           }
         },
-        "title": "Posting catatan rilis ke Slack"
+        "title": "Publikasikan catatan rilis di Notion"
       },
       "prep-google-calendar-meetings": {
-        "description": "Teliti peserta eksternal dan kirim brief persiapan sebelum meeting.",
-        "scenario": "Masuk ke panggilan tanpa persiapan berarti harus mengandalkan improvisasi. {{assistantName}} mendeteksi meeting eksternal baru, meneliti peserta dan perusahaannya dengan Apollo, menarik konteks panggilan sebelumnya dari Gong, lalu mengirim brief satu halaman lewat DM sebelum dimulai.",
+        "description": "Buat ringkasan fokus untuk rapat eksternal yang akan datang.",
+        "scenario": "Persiapan rapat tidak harus dimulai lima menit sebelum panggilan. {{assistantName}} memeriksa acara kalender dan menambahkan konteks kontak dan CRM ketika tersedia.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} dipicu saat peserta eksternal bergabung ke kalender Anda.",
-            "title": "Meeting ditambahkan"
+            "description": "{{assistantName}} membaca jendela Google Calendar yang dipilih.",
+            "title": "Rapat yang akan datang ditemukan"
           },
           "three": {
-            "description": "{{assistantName}} mengirim dossier satu halaman lewat DM sebelum panggilan.",
-            "title": "Brief persiapan dikirim ke Slack"
+            "description": "{{assistantName}} mengembalikan tujuan, konteks, risiko, dan pertanyaan yang disarankan.",
+            "title": "Ringkasan disiapkan"
           },
           "two": {
-            "description": "{{assistantName}} memperkaya orang dan perusahaan dengan Apollo dan Gong.",
-            "title": "Peserta diteliti"
+            "description": "{{assistantName}} memeriksa HubSpot ketika terhubung.",
+            "title": "Konteks peserta dikumpulkan"
           }
         },
-        "title": "Siapkan meeting Google Calendar"
+        "title": "Persiapan rapat Google Calendar"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "Setiap hari {{assistantName}} mempublikasikan konten yang dijadwalkan untuk hari ini dari kalender Notion ke Strapi dan mengantrekan posting sosial di Buffer.",
-        "scenario": "Kalender konten hanya berfungsi jika ada yang menekan publish. {{assistantName}} membaca item terjadwal hari ini dari Notion, mempublikasikannya ke Strapi, dan mengantrekan posting sosial yang sesuai di Buffer.",
+        "description": "Bandingkan situs dengan kompetitor dan peringkat peluang organik.",
+        "scenario": "Rencana konten meningkat ketika dimulai dari celah pencarian nyata. {{assistantName}} menggunakan Firecrawl dan DataForSEO yang bawaan untuk membandingkan situs pengguna dengan kompetitor yang ditentukan dan menilai topik yang hilang berdasarkan tujuan dan nilai.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengambil item yang dijadwalkan untuk hari ini dari Notion.",
-            "title": "{{assistantName}} membaca kalender hari ini"
+            "description": "{{assistantName}} mengrawl situs pengguna dan kompetitor yang dipilih.",
+            "title": "Situs dibandingkan"
           },
           "three": {
-            "description": "{{assistantName}} menjadwalkan posting promo di Buffer.",
-            "title": "Konten sosial diantrekan di Buffer"
+            "description": "{{assistantName}} kembalikan daftar peluang konten yang terprioritaskan.",
+            "title": "Peluang terperingkat"
           },
           "two": {
-            "description": "{{assistantName}} mempublikasikan konten ke Strapi.",
-            "title": "Dipublikasikan ke CMS"
+            "description": "{{assistantName}} menemukan kata kunci, topik, dan penutupan tujuan yang hilang.",
+            "title": "Celah pencarian diidentifikasi"
           }
         },
-        "title": "Publikasikan posting terjadwal ke Buffer"
+        "title": "Temukan celah kata kunci dan konten"
       },
       "report-ai-model-costs-slack": {
-        "description": "Setiap hari {{assistantName}} melaporkan pengeluaran token LLM dan latensi p95 per model dan rute dari Langfuse ke Slack.",
-        "scenario": "Biaya model naik perlahan di berbagai rute dan model. {{assistantName}} membaca Langfuse setiap hari dan memposting rincian pengeluaran token serta latensi p95 per model dan rute agar kejutan biaya tidak datang terlambat saat tagihan.",
+        "description": "Jelaskan insiden lalu lintas atau keamanan dan tindakan selanjutnya.",
+        "scenario": "Insiden Cloudflare memerlukan konteks sebelum menjadi noise. {{assistantName}} memeriksa lalu lintas, peristiwa keamanan, dan kesehatan layanan, menjelaskan dampak yang mungkin, dan mengembalikan tindakan selanjutnya di thread otomasi.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengambil data pengeluaran token dan jejak latensi untuk hari ini.",
-            "title": "{{assistantName}} membaca Langfuse"
+            "description": "{{assistantName}} memeriksa kesehatan layanan, pergeseran lalu lintas, dan peristiwa keamanan.",
+            "title": "Cloudflare diperiksa"
           },
           "three": {
-            "description": "{{assistantName}} memposting laporan biaya dan latensi harian.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} menyarankan tindakan dan dapat menulis isu GitHub.",
+            "title": "Tindakan selanjutnya dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} mengagregasi pengeluaran dan p95 per model dan per rute.",
-            "title": "Diuraikan per model dan rute"
+            "description": "{{assistantName}} memisahkan insiden yang terkonfirmasi dari variasi normal.",
+            "title": "Dampak dijelaskan"
           }
         },
-        "title": "Laporkan biaya model AI ke Slack"
+        "title": "Peringatkan pada insiden Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Teliti orang yang akan Anda temui sebelum setiap event kalender.",
-        "scenario": "Datang dengan persiapan berarti riset yang jarang sempat Anda lakukan. {{assistantName}} mendeteksi meeting baru, mencari tahu peserta dan perusahaannya, lalu mengirim dossier satu halaman sebelum dimulai.",
+        "description": "Bangun ringkasan yang singkat dari Calendar dan konteks email.\n",
+        "scenario": "Persiapan rapat lebih cepat ketika peserta dan riwayat percakapan sudah terhubung. {{assistantName}} memeriksa acara Calendar mendatang dan menambahkan konteks Gmail ketika tersedia.\n",
         "steps": {
           "one": {
-            "description": "{{assistantName}} dipicu pada event kalender baru.",
-            "title": "Meeting ditambahkan"
+            "description": "{{assistantName}} membaca jendela Calendar Google yang dipilih.\\n",
+            "title": "Rapat mendatang ditemukan\\n"
           },
           "three": {
-            "description": "{{assistantName}} mengirim brief satu halaman ke Slack sebelum panggilan.",
-            "title": "Dossier terkirim"
+            "description": "{{assistantName}} mengembalikan tujuan, konteks, dan pertanyaan yang disarankan.\\n",
+            "title": "Ringkasan dibuat\\n"
           },
           "two": {
-            "description": "{{assistantName}} mencari orang dan perusahaan dengan Exa.",
-            "title": "Peserta diteliti"
+            "description": "{{assistantName}} memeriksa tautan Gmail terkait.\n",
+            "title": "Konteks peserta dikumpulkan\\n"
           }
         },
-        "title": "Teliti meeting kalender Anda"
+        "title": "Persiapkan untuk rapat mendatang\\n"
       },
       "research-new-signups-apollo": {
-        "description": "Teliti setiap pendaftaran baru dan kirim snapshot singkat.",
-        "scenario": "Pendaftaran baru hanya jadi peluang kalau ada yang menyadarinya tepat waktu. {{assistantName}} memeriksa Clerk setiap jam, meneliti tiap pengguna baru dan perusahaannya dengan Apollo, lalu memposting snapshot latar belakang ke Slack.",
+        "description": "Temukan dan kualifikasi lead kreator dari X.",
+        "scenario": "Outbound melambat ketika daftarnya usang. {{assistantName}} menemukan kreator dan prospek di X yang cocok dengan profil target, mengualifikasi setiap kandidat dengan pencarian orang bawaan dan Firecrawl, lalu mengembalikan daftar outreach yang diperingkat.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengambil pengguna baru dari Clerk setiap jam.",
-            "title": "{{assistantName}} membaca pendaftaran baru"
+            "description": "{{assistantName}} mencari akun di X yang cocok dengan profil target.",
+            "title": "Kandidat ditemukan di X"
           },
           "three": {
-            "description": "{{assistantName}} memposting profil setiap pendaftar ke channel.",
-            "title": "Snapshot diposting ke Slack"
+            "description": "{{assistantName}} menilai kecocokan, menyusun pesan pembuka, dan opsional menyimpan lead ke HubSpot.",
+            "title": "Daftar outreach diperingkat"
           },
           "two": {
-            "description": "{{assistantName}} memperkaya konteks latar belakang dan perusahaan.",
-            "title": "Diteliti dengan Apollo"
+            "description": "{{assistantName}} memverifikasi peran, perusahaan, dan jangkauan dengan riset bawaan.",
+            "title": "Setiap lead dikualifikasi"
           }
         },
-        "title": "Teliti pendaftaran baru"
+        "title": "Temukan lead kreator di X"
       },
       "run-daily-query-sheets": {
-        "description": "Jalankan SQL tersimpan Anda sesuai jadwal dan tambahkan hasilnya ke Sheet.",
-        "scenario": "Laporan yang Anda buat ulang setiap pagi selalu berisi query yang sama dan tempel yang sama ke sheet. {{assistantName}} menjalankan query untuk Anda setiap hari dan menulis hasil yang diformat langsung ke Google Sheets.",
+        "description": "Tulis visibilitas pencarian dan pergerakan query ke Google Sheets.",
+        "scenario": "Performa pencarian lebih mudah diambil tindakan ketika memiliki riwayat yang konsisten. {{assistantName}} menarik metrik Search Console, menambahkan konteks Analytics ketika tersedia, dan memperbarui lembar laporan.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengeksekusi query baca-saja tersimpan Anda ke warehouse.",
-            "title": "{{assistantName}} menjalankan query"
+            "description": "{{assistantName}} membaca klik, impresi, CTR, posisi, dan query.",
+            "title": "Data pencarian dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} menambahkan hasilnya ke sheet pelacakan Anda.",
-            "title": "Ditulis ke Google Sheets"
+            "description": "{{assistantName}} menulis hasil yang dinyatakan dalam bentuk standar ke Google Sheets.",
+            "title": "Lembar kerja diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} menyusun output menjadi kolom yang rapi.",
-            "title": "Hasil diformat"
+            "description": "{{assistantName}} mengidentifikasi permintaan pencarian yang menang, menurun, dan berkembang.",
+            "title": "Pergerakan dianalisis"
           }
         },
-        "title": "Jalankan query harian ke Google Sheets"
+        "title": "Catat performa pencarian organik di Sheets"
       },
       "send-bugs-github-slack": {
-        "description": "Arsipkan laporan bertanda bug sebagai issue GitHub dan beri tahu tim di Slack.",
-        "scenario": "Laporan bug hanya berguna bagi engineer jika lengkap. {{assistantName}} mengambil label bug, menyusun langkah reproduksi dan dampak ke pelanggan, mengarsipkannya dengan rapi, lalu mempostingnya ke channel engineering.",
+        "description": "Konversikan laporan bug yang dapat diulang menjadi kerja teknis yang terstruktur.",
+        "scenario": "Nilai laporan bug hilang ketika bukti tetap berada di inbox. {{assistantName}} mengenal masalah dukungan yang dapat diulang, mengekstrak dampak dan langkah-langkah, dan menyimpan isu GitHub yang terstruktur.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} dipicu oleh label bug.",
-            "title": "Issue diberi label bug"
+            "description": "{{assistantName}} memeriksa email dukungan untuk masalah produk yang gagal yang dapat diulang.",
+            "title": "Laporan bug diidentifikasi"
           },
           "three": {
-            "description": "{{assistantName}} memposting laporan terstruktur ke Slack.",
-            "title": "Dikirim ke engineering"
+            "description": "{{assistantName}} membuat isu dan dapat menghubungkannya ke Linear.",
+            "title": "Isu GitHub disimpan"
           },
           "two": {
-            "description": "{{assistantName}} menyusun langkah, dampak, dan konteks.",
-            "title": "Repro dan dampak dikemas"
+            "description": "{{assistantName}} mengekstrak dampak, langkah-langkah, perilaku yang diharapkan, dan konteks.",
+            "title": "Bukti diterstrukturkan"
           }
         },
-        "title": "Kirim bug ke GitHub dan Slack"
+        "title": "Ubah email dukungan menjadi isu GitHub"
       },
       "sort-gmail-draft-replies": {
-        "description": "Sortir inbox Anda dan buat draf balasan untuk email yang membutuhkannya.",
-        "scenario": "Inbox yang penuh adalah pekerjaan penuh waktu. {{assistantName}} menyortir email masuk berdasarkan urgensi dan menyusun draf balasan dengan gaya Anda sendiri sehingga Anda cukup meninjau dan menyetujui, bukan mengetik dari nol.",
+        "description": "Tindak surat baru dan siapkan balasan untuk diproses oleh manusia.\\n",
+        "scenario": "Inbox yang sibuk menyembunyikan permintaan yang mendesak dan balasan yang mudah. {{assistantName}} mengelompokkan surat baru Gmail berdasarkan kepentingan dan tindakan, kemudian membuat draft balasan tanpa mengirimnya.\\n",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memindai pesan Gmail masuk.",
-            "title": "{{assistantName}} membaca email baru"
+            "description": "{{assistantName}} membaca inbox Gmail atau label yang dipilih.\\n",
+            "title": "Surat baru diproses\\n"
           },
           "three": {
-            "description": "{{assistantName}} menyiapkan balasan untuk persetujuan Anda.",
-            "title": "Balasan dibuat draf"
+            "description": "{{assistantName}} siapkan balasan untuk diproses oleh manusia.\\n",
+            "title": "Balasan dibuat\\n"
           },
           "two": {
-            "description": "{{assistantName}} menandai apa yang perlu Anda tangani sekarang versus nanti.",
-            "title": "Disortir berdasarkan urgensi"
+            "description": "{{assistantName}} mengelompokkan surat berdasarkan kepentingan, permintaan, dan tindakan berikutnya.\\n",
+            "title": "Surat diproses\\n"
           }
         },
-        "title": "Sortir Gmail dan buat draf balasan"
+        "title": "Urutkan Gmail dan balas draft\\n"
       },
       "sort-route-zendesk-tickets": {
-        "description": "Saat tiket support masuk, {{assistantName}} menetapkan tingkat keparahan, mengarahkannya ke tim yang tepat, dan membuat draf balasan pertama.",
-        "scenario": "Setiap tiket perlu triase sebelum bisa dijawab. {{assistantName}} membaca setiap tiket baru, menetapkan tingkat keparahan, mengarahkannya ke antrean yang tepat, dan membuat draf balasan pertama agar agen memulai dari draf, bukan kotak kosong.",
+        "description": "Kelas email dukungan dan buat isu Linear yang dapat diambil tindakan.",
+        "scenario": "Email dukungan memerlukan prioriti dan kepemilikan yang konsisten. {{assistantName}} membaca percakapan baru di Gmail, mengenal jenis masalah dan kepentingannya, dan membuat isu Linear untuk item yang memerlukan tindakan.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca tiket Zendesk baru.",
-            "title": "Tiket masuk"
+            "description": "{{assistantName}} memeriksa percakapan baru dan konteks yang tersedia.",
+            "title": "Email dukungan dibaca"
           },
           "three": {
-            "description": "{{assistantName}} menyiapkan respons awal yang sesuai brand.",
-            "title": "Balasan pertama dibuat draf"
+            "description": "{{assistantName}} membuat isu yang dapat diambil tindakan dan menghubungkan bukti mendukung.",
+            "title": "Isu Linear dibuat"
           },
           "two": {
-            "description": "{{assistantName}} mengklasifikasikan urgensi dan mengirimnya ke tim yang tepat.",
-            "title": "Tingkat keparahan ditetapkan dan diarahkan"
+            "description": "{{assistantName}} mengklasifikasikan kepentingan, topik, dan tim yang bertanggungjawab.",
+            "title": "Prioriti dan kepemilikan ditetapkan"
           }
         },
-        "title": "Sortir dan arahkan tiket Zendesk"
+        "title": "Triase email dukungan ke Linear"
       },
       "spot-churn-risk-stripe-zendesk": {
-        "description": "Tandai akun yang berisiko churn dan buat draf email pemulihan.",
-        "scenario": "Churn baru terlihat setelah terjadi. {{assistantName}} memeriksa Stripe dan Zendesk setiap hari untuk masalah penagihan atau lonjakan tiket, menandai akun yang berisiko, dan membuat draf email pemulihan agar seseorang bisa turun tangan lebih awal.",
+        "description": "Ringkas volume dukungan, risiko, tema, dan pekerjaan yang belum diselesaikan.",
+        "scenario": "Antrian dukungan lebih mudah dielola ketika perubahan penting terlihat. {{assistantName}} memeriksa percakapan Gmail, menyoroti masalah yang mendesak atau berulang, dan menghubungkan pekerjaan Linear atau GitHub yang terkait.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca status penagihan dari Stripe dan volume tiket dari Zendesk.",
-            "title": "{{assistantName}} memindai akun"
+            "description": "{{assistantName}} membaca percakapan Gmail baru dan yang belum diselesaikan.",
+            "title": "Aktivitas dukungan dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} membuat draf email tindak lanjut untuk ditinjau.",
-            "title": "Email pemulihan dibuat draf"
+            "description": "{{assistantName}} meringkas prioritas dalam thread otomasi.",
+            "title": "Ringkasan dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} menampilkan akun yang menunjukkan sinyal churn.",
-            "title": "Akun berisiko ditandai"
+            "description": "{{assistantName}} mengelompokkan masalah yang berulang dan menandai tindak lanjut mendesak.",
+            "title": "Risiko dan tema diidentifikasi"
           }
         },
-        "title": "Deteksi risiko churn di Stripe dan Zendesk"
+        "title": "Buat ringkasan dukungan harian"
       },
       "summarize-gmail-newsletters": {
-        "description": "Ringkas newsletter di inbox Anda menjadi satu ringkasan singkat.",
-        "scenario": "Anda berlangganan dua puluh newsletter dan tidak membaca satu pun. {{assistantName}} mengumpulkan semua yang Anda beri label newsletter dan memposting satu digest mingguan yang rapi agar Anda mendapat intinya tanpa tumpukan.",
+        "description": "Ubah surat berita yang dipilih menjadi ringkasan berulang yang berguna.\\n",
+        "scenario": "Nilai surat berita hilang ketika setiap isu bersaing untuk perhatian inbox. {{assistantName}} meringkas surat berita Gmail yang dipilih menjadi tema, tautan berguna, dan bacaan yang direkomendasikan.\\n",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca pesan di bawah label Newsletter Anda.",
-            "title": "{{assistantName}} mengumpulkan newsletter"
+            "description": "{{assistantName}} membaca pesan dari pengirim yang dipilih atau label.\\n",
+            "title": "Surat berita dikumpulkan\\n"
           },
           "three": {
-            "description": "{{assistantName}} mengirim digest mingguan.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} mengembalikan ringkasan dan dapat menyimpannya di Notion.\\n",
+            "title": "Ringkasan dibuat\\n"
           },
           "two": {
-            "description": "{{assistantName}} mengambil poin utama dari masing-masing.",
-            "title": "Diringkas menjadi satu ringkasan"
+            "description": "{{assistantName}} mengelompokkan tema dan mengidentifikasi tautan terkuat.\\n",
+            "title": "Konten berguna dikonsentrasikan\\n"
           }
         },
-        "title": "Ringkas newsletter Gmail"
+        "title": "Ringkaskan surat berita Gmail\\n"
       },
       "summarize-user-feedback-notion": {
-        "description": "Setiap minggu {{assistantName}} mengumpulkan feedback dari Productlane, Typeform, Intercom, dan GitHub, mengelompokkannya ke dalam tema, lalu memberi peringkat di Notion.",
-        "scenario": "Feedback tersebar di empat alat dan tak ada yang sempat membacanya semua. {{assistantName}} mengambil dari setiap sumber setiap minggu, mengelompokkan komentar ke dalam tema, dan menulis ringkasan berperingkat di Notion agar permintaan teratas langsung terlihat.",
+        "description": "Kelompokkan respons formulir baru menjadi inisiatif produk yang terurut.",
+        "scenario": "Umpan balik menjadi berguna ketika pola menjadi jelas. {{assistantName}} memeriksa respons Google Forms, mengelompokkan titik sakit dan permintaan yang berulang, menarik rangking temuan, dan menulis ringkasan di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} membaca feedback baru dari Productlane, Typeform, Intercom, dan GitHub.",
-            "title": "{{assistantName}} mengambil feedback"
+            "description": "{{assistantName}} membaca pengisian formulir Google Forms terbaru.",
+            "title": "Respons dikumpulkan"
           },
           "three": {
-            "description": "{{assistantName}} menulis digest berperingkat ke halaman Notion.",
-            "title": "Ringkasan disimpan ke Notion"
+            "description": "{{assistantName}} menulis ringkasan yang terprioritaskan di Notion.",
+            "title": "Temuan disimpan"
           },
           "two": {
-            "description": "{{assistantName}} mengelompokkan feedback yang terkait dan memberi peringkat tema berdasarkan frekuensi.",
-            "title": "Dikelompokkan ke dalam tema"
+            "description": "{{assistantName}} mengelompokkan titik sakit, permintaan, dan perasaan.",
+            "title": "Tema ditarik rangking"
           }
         },
-        "title": "Ringkas feedback pengguna di Notion"
+        "title": "Ringkaskan umpan balik Google Forms di Notion"
       },
       "summarize-zendesk-tickets-daily": {
-        "description": "Ringkas tiket Zendesk 24 jam terakhir dan posting ke Slack.",
-        "scenario": "Backlog support sulit terlihat sampai menjadi kebakaran. {{assistantName}} meringkas tiket 24 jam terakhir berdasarkan tingkat keparahan dan usia setiap pagi dan mempostingnya ke Slack agar tidak ada yang basi tanpa terlihat.",
+        "description": "Buat video bantuan yang disetujui dengan kapabilitas avatar bawaan.",
+        "scenario": "Beberapa jawaban dukungan lebih mudah dipahami sebagai video presenter singkat. {{assistantName}} mengubah konten FAQ yang disetujui menjadi skrip dan storyboard, kemudian menggunakan kapabilitas avatar-video bawaan setelah disetujui.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} mengambil tiket Zendesk 24 jam terakhir.",
-            "title": "{{assistantName}} membaca antrean"
+            "description": "{{assistantName}} mengenal jawaban yang disetujui dan audiens yang dituju.",
+            "title": "Konten FAQ dipilih"
           },
           "three": {
-            "description": "{{assistantName}} memposting digest support harian.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} hanya menghasilkan setelah pengguna menyetujui draft.",
+            "title": "Video avatar dihasilkan"
           },
           "two": {
-            "description": "{{assistantName}} menata tiket yang terbuka dan menandai yang sudah lama.",
-            "title": "Dikelompokkan berdasarkan tingkat keparahan dan usia"
+            "description": "{{assistantName}} membuat rencana dukungan-video yang ringkas dan akurat.",
+            "title": "Skrip dan storyboard disusun"
           }
         },
-        "title": "Ringkas tiket Zendesk setiap hari"
+        "title": "Ubah FAQ menjadi video bantuan digital-manusia"
       },
       "sync-asana-projects-notion": {
-        "description": "Gabungkan status proyek Asana ke satu board di Notion.",
-        "scenario": "Status ada di Asana, tetapi pimpinan membaca Notion. {{assistantName}} merangkum status tugas setiap hari ke satu papan Notion dan memposting ringkasan agar semua orang melihat gambaran yang sama tanpa rapat status.",
+        "description": "Jaga ringkasan proyek Notion tetap terkini dengan Asana.",
+        "scenario": "Ringkasan proyek berubah saat status tugas berubah di tempat lain. {{assistantName}} membaca proyek Asana yang dipilih dan menjaga ringkasan Notion yang sesuai tetap terkini.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik status tugas dan proyek di seluruh tim.",
-            "title": "{{assistantName}} membaca Asana"
+            "description": "{{assistantName}} memeriksa status, pemilik, tanggal jatuh tempo, dan penghalang.",
+            "title": "Proyek Asana dibaca"
           },
           "three": {
-            "description": "{{assistantName}} memposting ringkasan ke Slack.",
-            "title": "Ringkasan diposting"
+            "description": "{{assistantName}} memperbarui ringkasan dan menyoroti perubahan.",
+            "title": "Notion disinkronkan"
           },
           "two": {
-            "description": "{{assistantName}} memperbarui satu papan status Notion.",
-            "title": "Dirangkum ke satu papan"
+            "description": "{{assistantName}} membandingkan kondisi proyek saat ini dengan pandangan sebelumnya.",
+            "title": "Perubahan yang bermakna teridentifikasi"
           }
         },
         "title": "Sinkronkan proyek Asana ke Notion"
       },
       "sync-linear-roadmap-notion": {
-        "description": "Jaga roadmap Notion tetap sinkron dengan status isu Linear Anda.",
-        "scenario": "Roadmap cepat usang begitu tiket berpindah. {{assistantName}} menyinkronkan status Linear ke papan Now / Next / Later di Notion setiap hari agar roadmap yang dibaca para pemangku kepentingan selalu sesuai kenyataan.",
+        "description": "Jaga jalan rayap Now, Next, dan Later di Notion tetap terkini.",
+        "scenario": "Jalan rayap akan bergerak ketika status pengiriman berubah di tempat lain. {{assistantName}} membaca proyek dan isu yang dipilih di Linear, memetakkannya ke Now, Next, dan Later, dan memperbarui jalan rayap Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik status tiket dan milestone terkini.",
-            "title": "{{assistantName}} membaca status Linear"
+            "description": "{{assistantName}} memeriksa proyek dan isu yang dipilih, serta milestone.",
+            "title": "Status Linear dibaca"
           },
           "three": {
-            "description": "{{assistantName}} memperbarui papan roadmap Notion.",
-            "title": "Papan diperbarui di Notion"
+            "description": "{{assistantName}} memperbarui jalan rayap dan menyoroti perubahan yang berarti.",
+            "title": "Notion diperbarui"
           },
           "two": {
-            "description": "{{assistantName}} mengelompokkan pekerjaan ke kolom roadmap.",
-            "title": "Dipetakan ke Now / Next / Later"
+            "description": "{{assistantName}} mengubah status pengiriman menjadi Now, Next, dan Later.",
+            "title": "Tahap jalan rayap dipetakan"
           }
         },
-        "title": "Sinkronkan roadmap Linear ke Notion"
+        "title": "Sinkronkan jalan rayap Linear ke Notion"
       },
       "track-feature-usage-posthog": {
-        "description": "Tampilkan pergeseran mingguan terbesar dalam penggunaan fitur dari PostHog.",
-        "scenario": "Tak ada yang menyadari fitur yang perlahan kehilangan penggunaan sampai jadi masalah. {{assistantName}} memeriksa PostHog setiap minggu dan memposting fitur mana yang naik atau turun agar tim melihat perubahan adopsi lebih awal.",
+        "description": "Tampilkan perubahan terbesar mingguan dalam adopsi produk.",
+        "scenario": "Adopsi fitur berubah sebelum perubahan terdeteksi di dashboard. {{assistantName}} membandingkan sinyal adopsi Google Analytics terbaru, mengidentifikasi pergerakan yang signifikan, dan secara opsional merekam keputusan di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik penggunaan fitur untuk minggu ini.",
-            "title": "{{assistantName}} membaca PostHog"
+            "description": "{{assistantName}} mengumpulkan sinyal fitur dan audiens yang dipilih.",
+            "title": "Data adopsi dibaca"
           },
           "three": {
-            "description": "{{assistantName}} memposting perubahan adopsi ke kanal Anda.",
-            "title": "Perubahan diposting ke Slack"
+            "description": "{{assistantName}} menjelaskan apa yang bergerak dan apa yang perlu ditelusuri selanjutnya.",
+            "title": "Temuan dikembalikan"
           },
           "two": {
-            "description": "{{assistantName}} menemukan fitur yang paling naik dan paling turun.",
-            "title": "Dibandingkan dari minggu ke minggu"
+            "description": "{{assistantName}} menemukan peningkatan, penurunan, dan perbedaan segmentasi yang besar.",
+            "title": "Perubahan dibandingkan"
           }
         },
-        "title": "Lacak penggunaan fitur dengan PostHog"
+        "title": "Pantau adopsi fitur dengan Google Analytics"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "Setiap minggu {{assistantName}} melacak peringkat kata kunci target di Ahrefs dan melaporkan pergerakannya di Notion.",
-        "scenario": "Pelacakan peringkat adalah pekerjaan ekspor dan bandingkan manual. {{assistantName}} menarik kata kunci target Anda setiap minggu, membandingkan posisi, lalu menuliskan pergerakan terbesar ke Notion agar kemenangan dan penurunan SEO terlihat jelas.",
+        "description": "Crawl situs dan kembalikan daftar masalah SEO teknis yang terprioritaskan.",
+        "scenario": "Masalah SEO teknis tersembunyi di ratusan halaman. {{assistantName}} menggunakan Firecrawl dan DataForSEO yang bawaan untuk memeriksa crawlability, indexability, internal links, dan visibilitas live search tanpa memerlukan connector.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik peringkat terkini dari Ahrefs.",
-            "title": "{{assistantName}} membaca posisi kata kunci"
+            "description": "{{assistantName}} menggunakan Firecrawl untuk memeriksa halaman dan internal links.",
+            "title": "Situs telah dicrawl"
           },
           "three": {
-            "description": "{{assistantName}} menuliskan pergerakan dan tren ke Notion.",
-            "title": "Dilaporkan di Notion"
+            "description": "{{assistantName}} kembalikan perbaikan yang paling berdampak dengan bukti mendukung.",
+            "title": "Masalah terprioritaskan"
           },
           "two": {
-            "description": "{{assistantName}} membandingkan dengan minggu lalu dan menemukan perubahan terbesar.",
-            "title": "Pergerakan teridentifikasi"
+            "description": "{{assistantName}} menggunakan DataForSEO untuk memvalidasi sinyal visibilitas dan indexasi.",
+            "title": "Bukti pencarian diperiksa"
           }
         },
-        "title": "Lacak peringkat kata kunci dengan Ahrefs"
+        "title": "Audit situs web untuk SEO teknis"
       },
       "track-signup-sources-sheets": {
-        "description": "Atribusikan setiap pendaftaran baru ke sumbernya di Sheet pelacakan.",
-        "scenario": "Mengetahui asal pendaftaran berarti menggabungkan Clerk dan analitik secara manual. {{assistantName}} mengatribusikan setiap pendaftaran baru ke kanal dan kampanyenya setiap hari dan mencatatnya ke Google Sheet yang bisa Anda pivot.",
+        "description": "Query data Google Cloud dan publikasikan analisis yang dapat diperbarui.",
+        "scenario": "Data operasional penting sering berada di BigQuery tanpa pandangan yang dapat digunakan secara berulang. {{assistantName}} menjalankan query yang disetujui, mengidentifikasi tren dan anomali, dan menulis tabel hasil dan ringkasan ke Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} menarik pengguna baru dari Clerk.",
-            "title": "{{assistantName}} membaca pendaftaran baru"
+            "description": "{{assistantName}} memastikan skop BigQuery dan pertanyaan analisis.",
+            "title": "Sebuah dataset dan query dipilih"
           },
           "three": {
-            "description": "{{assistantName}} menambahkan baris yang sudah diatribusikan ke sheet Anda.",
-            "title": "Dicatat ke Google Sheets"
+            "description": "{{assistantName}} mempublikasikan tabel yang dapat diperbarui dan ringkasan yang siap untuk diambil keputusan.",
+            "title": "Hasil ditulis ke Sheets"
           },
           "two": {
-            "description": "{{assistantName}} mencocokkan setiap pendaftaran ke sumber dan kampanyenya melalui Plausible.",
-            "title": "Diatribusikan ke kanal"
+            "description": "{{assistantName}} menjalankan query dan memeriksa tren, segmentasi, dan anomali.",
+            "title": "Data cloud dianalisis"
           }
         },
-        "title": "Lacak sumber pendaftaran di Google Sheets"
+        "title": "Analisis data BigQuery di Sheets"
       },
       "watch-brand-mentions": {
-        "description": "Setiap jam {{assistantName}} mencari web, Hacker News, dan X untuk penyebutan produk Anda lalu mempostingnya ke Slack.",
-        "scenario": "Saat Anda menemukan thread tentang produk Anda, percakapannya sudah bergeser. {{assistantName}} mencari web, Reddit, dan X setiap jam dan memposting penyebutan baru ke Slack agar Anda bisa ikut saat masih berlangsung.",
+        "description": "Ubah video yang disetujui menjadi postingan dan thread platform yang sesuai.",
+        "scenario": "Video yang kuat dapat mendukung lebih dari satu saluran. {{assistantName}} memeriksa video YouTube yang dipilih, menulis X postingan dan thread, dan opsionalnya menyimpan rencana yang disetujui di Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} memindai web, Reddit, dan X dengan Exa.",
-            "title": "{{assistantName}} mencari penyebutan"
+            "description": "{{assistantName}} membaca video YouTube, transcript, dan konteks.",
+            "title": "Video dipilih"
           },
           "three": {
-            "description": "{{assistantName}} memposting setiap penyebutan dengan tautan dan konteks.",
-            "title": "Diposting ke Slack"
+            "description": "{{assistantName}} menyimpan rencana dan tidak mempublikasikannya tanpa disetujui.",
+            "title": "Konten disiapkan untuk disetujui"
           },
           "two": {
-            "description": "{{assistantName}} hanya menyimpan hasil yang baru dan relevan.",
-            "title": "Penyebutan baru difilter"
+            "description": "{{assistantName}} membuat postingan X dan opsi thread yang ringkas.",
+            "title": "Variasi sosial ditulis"
           }
         },
-        "title": "Pantau HN dan X untuk penyebutan merek"
+        "title": "Remajakan video YouTube untuk X"
       },
       "watch-sentry-after-release": {
-        "description": "Setelah setiap rilis {{assistantName}} membandingkan tingkat crash-free versi baru terhadap baseline dan menandai regresi dengan saran rollback.",
-        "scenario": "Masa paling berisiko adalah tepat setelah deploy. {{assistantName}} memantau crash-free rate dan error rate rilis baru terhadap baseline sebelumnya, dan jika memburuk {{assistantName}} menandai regresi dan menyarankan rollback.",
+        "description": "Bandingkan stabilitas setelah rilis dengan baseline sebelumnya.",
+        "scenario": "Rilis bisa terlihat sehat sementara regressi berkembang secara diam-diam. {{assistantName}} membandingkan sinyal terbaru dari Sentry dengan baseline sebelumnya dan menjelaskan apakah harus terus memantau, memperbaiki, atau membalikkan.",
         "steps": {
           "one": {
-            "description": "Setelah deploy, {{assistantName}} melacak crash-free rate dan error rate rilis di Sentry.",
-            "title": "{{assistantName}} memantau rilis baru"
+            "description": "{{assistantName}} menemukan rilis terbaru dan jendela bandingannya.",
+            "title": "Rilis teridentifikasi"
           },
           "three": {
-            "description": "Jika rilis mengalami regresi, {{assistantName}} memberi tahu Slack dan menyarankan rollback.",
-            "title": "Regresi ditandai dengan saran rollback"
+            "description": "{{assistantName}} merangkum dampak dan tindakan teraman selanjutnya.",
+            "title": "Saran diusulkan"
           },
           "two": {
-            "description": "{{assistantName}} membandingkan angka langsung dengan baseline rilis sebelumnya.",
-            "title": "Dibandingkan dengan baseline"
+            "description": "{{assistantName}} memeriksa tingkat crash-free dan regressi baru terhadap baseline.",
+            "title": "Stabilitas dibandingkan"
           }
         },
         "title": "Pantau Sentry setelah rilis"
