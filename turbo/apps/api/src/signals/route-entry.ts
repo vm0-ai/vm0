@@ -693,6 +693,88 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/shared-threads/:id/meta",
     "/api/zero/shared-threads/:id/meta",
   ],
+  // #28466: the desktop Computer Use family. The highest-traffic branded family
+  // in the repository — about 716,000 requests over the retained request-log
+  // window — and the one with the longest-lived callers: `computer-use-host.ts`
+  // in an installed Desktop build hardcodes the `okou` form of the host
+  // endpoints, and an installed build updates on its owner's schedule rather
+  // than on a deploy, so it has no window at all. The `zero` form carried
+  // measured traffic of its own and was reachable through the blanket expansion
+  // until the contract moved. Both are owed on all sixteen paths.
+  //
+  // The four rows `LEGACY_ZERO_PATHS` lists — `host/commands/next`,
+  // `audit-events`, `heartbeat`, and `hosts/start` — were served by that table
+  // before this move and are served by these rows after it: the contract no
+  // longer declares a branded path for the expansion to classify. The rows
+  // there stay untouched, and removal of either set follows #26701's evidence
+  // rules.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/computer-use/audit-events": [
+    "/api/okou/computer-use/audit-events",
+    "/api/zero/computer-use/audit-events",
+  ],
+  "/api/computer-use/authorization-requests": [
+    "/api/okou/computer-use/authorization-requests",
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken": [
+    "/api/okou/computer-use/authorization-requests/:requestToken",
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken/apply": [
+    "/api/okou/computer-use/authorization-requests/:requestToken/apply",
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+  ],
+  "/api/computer-use/commands": [
+    "/api/okou/computer-use/commands",
+    "/api/zero/computer-use/commands",
+  ],
+  "/api/computer-use/commands/:commandId": [
+    "/api/okou/computer-use/commands/:commandId",
+    "/api/zero/computer-use/commands/:commandId",
+  ],
+  "/api/computer-use/commands/:commandId/plugin-content": [
+    "/api/okou/computer-use/commands/:commandId/plugin-content",
+    "/api/zero/computer-use/commands/:commandId/plugin-content",
+  ],
+  "/api/computer-use/commands/:commandId/screenshot": [
+    "/api/okou/computer-use/commands/:commandId/screenshot",
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+  ],
+  "/api/computer-use/heartbeat": [
+    "/api/okou/computer-use/heartbeat",
+    "/api/zero/computer-use/heartbeat",
+  ],
+  "/api/computer-use/host/commands/:commandId/complete": [
+    "/api/okou/computer-use/host/commands/:commandId/complete",
+    "/api/zero/computer-use/host/commands/:commandId/complete",
+  ],
+  "/api/computer-use/host/commands/next": [
+    "/api/okou/computer-use/host/commands/next",
+    "/api/zero/computer-use/host/commands/next",
+  ],
+  "/api/computer-use/host/stop": [
+    "/api/okou/computer-use/host/stop",
+    "/api/zero/computer-use/host/stop",
+  ],
+  "/api/computer-use/hosts": [
+    "/api/okou/computer-use/hosts",
+    "/api/zero/computer-use/hosts",
+  ],
+  "/api/computer-use/hosts/start": [
+    "/api/okou/computer-use/hosts/start",
+    "/api/zero/computer-use/hosts/start",
+  ],
+  "/api/computer-use/plugin-commands": [
+    "/api/okou/computer-use/plugin-commands",
+    "/api/zero/computer-use/plugin-commands",
+  ],
+  "/api/computer-use/write-commands": [
+    "/api/okou/computer-use/write-commands",
+    "/api/zero/computer-use/write-commands",
+  ],
 };
 
 /**

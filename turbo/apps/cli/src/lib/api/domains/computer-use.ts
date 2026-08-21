@@ -189,7 +189,7 @@ export async function fetchComputerUseScreenshot(
 ): Promise<{ readonly buffer: Buffer; readonly mimeType: string }> {
   const config = await getComputerUseClientConfig();
   const response = await fetch(
-    `${config.baseUrl}/api/okou/computer-use/commands/${encodeURIComponent(
+    `${config.baseUrl}/api/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/screenshot`,
     { headers: headersWithCliClientHeaders(config.baseHeaders) },
@@ -218,7 +218,7 @@ export async function fetchComputerUsePluginContent(
 }> {
   const config = await getComputerUseClientConfig();
   const response = await fetch(
-    `${config.baseUrl}/api/okou/computer-use/commands/${encodeURIComponent(
+    `${config.baseUrl}/api/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/plugin-content`,
     { headers: headersWithCliClientHeaders(config.baseHeaders) },
