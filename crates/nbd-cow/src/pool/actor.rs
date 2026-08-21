@@ -8,7 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
 use super::lease::{DeviceAcquisition, DeviceLease};
-use super::scan::ScannedDeviceClaim;
+use super::scan::{ScanRequest, ScannedDeviceClaim};
 #[cfg(test)]
 use super::state::DevicePoolSnapshot;
 use super::state::{DevicePool, DevicePoolConfig};
@@ -105,6 +105,9 @@ struct DevicePoolActor {
     pool: DevicePool,
     commands: mpsc::UnboundedReceiver<DevicePoolCommand>,
     pending: JoinSet<Result<ScannedDeviceClaim>>,
+    active_scan: Option<ScanRequest>,
+    scan_exhausted: bool,
+    scan_faulted: bool,
 }
 
 impl DevicePoolHandle {
@@ -160,6 +163,9 @@ impl DevicePoolHandle {
                 pool,
                 commands: command_rx,
                 pending,
+                active_scan: None,
+                scan_exhausted: false,
+                scan_faulted: false,
             }
             .run(),
         );
@@ -303,7 +309,7 @@ impl DevicePoolActor {
                     self.handle_command(command).await;
                 }
                 scan = self.pending.join_next(), if has_pending => {
-                    self.pool.handle_scan_join(scan);
+                    self.handle_scan_join(scan);
                     self.ensure_waiting_progress();
                 }
                 () = sleep_until_deadline(deadline), if deadline.is_some() => {
@@ -354,11 +360,25 @@ impl DevicePoolActor {
     }
 
     fn ensure_waiting_progress(&mut self) {
-        self.pool.ensure_waiting_progress(self.pending.len());
+        let pending_scans = self.pending.len();
+        if pending_scans == 0 {
+            if self.scan_faulted {
+                self.reset_scan_cohort();
+            } else if self.scan_exhausted {
+                self.pool.defer_scan_exhaustion();
+                self.reset_scan_cohort();
+            } else if self.pool.waiting_acquires.is_empty() {
+                self.active_scan = None;
+            }
+        }
+        self.pool.ensure_waiting_progress(pending_scans);
         self.spawn_waiting_scans();
     }
 
     fn spawn_waiting_scans(&mut self) {
+        if self.scan_exhausted || self.scan_faulted {
+            return;
+        }
         let scans_to_spawn = self.pool.scans_to_spawn(self.pending.len());
         for _ in 0..scans_to_spawn {
             self.spawn_scan();
@@ -366,13 +386,47 @@ impl DevicePoolActor {
     }
 
     fn spawn_scan(&mut self) {
-        let request = self.pool.scan_request();
+        let request = self
+            .active_scan
+            .get_or_insert_with(|| self.pool.scan_request())
+            .clone();
         self.pending.spawn_blocking(move || request.run());
+    }
+
+    fn handle_scan_join(
+        &mut self,
+        scan: Option<std::result::Result<Result<ScannedDeviceClaim>, tokio::task::JoinError>>,
+    ) {
+        match scan {
+            Some(Ok(Ok(scanned))) => self.pool.handle_scan_claim(scanned),
+            Some(Ok(Err(NbdCowError::NoFreeDevice))) if !self.scan_faulted => {
+                self.scan_exhausted = true;
+            }
+            Some(Ok(Err(NbdCowError::NoFreeDevice))) => {}
+            Some(Ok(Err(error))) => self.handle_scan_fault(error),
+            Some(Err(error)) => self.handle_scan_fault(NbdCowError::Io(std::io::Error::other(
+                format!("device scan task failed: {error}"),
+            ))),
+            None => {}
+        }
+    }
+
+    fn handle_scan_fault(&mut self, error: NbdCowError) {
+        self.scan_faulted = true;
+        self.scan_exhausted = false;
+        self.pool.defer_acquire_error(error);
+    }
+
+    fn reset_scan_cohort(&mut self) {
+        self.active_scan = None;
+        self.scan_exhausted = false;
+        self.scan_faulted = false;
     }
 
     async fn abort_pending(&mut self) {
         self.pending.abort_all();
         while self.pending.join_next().await.is_some() {}
+        self.reset_scan_cohort();
     }
 }
 
