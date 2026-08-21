@@ -3491,7 +3491,7 @@ describe("chat composer templates", () => {
         createdThreadId = body.clientThreadId;
       },
       onSendRequest(body) {
-        sentThreadId = body.clientThreadId;
+        sentThreadId = body.threadId;
         sentPrompt = body.prompt;
       },
     });
