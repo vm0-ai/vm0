@@ -443,6 +443,19 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/image-io/generate",
     "/api/zero/image-io/generate",
   ],
+  // #28416. Every consumer of these four derives its URL from the contract, so
+  // no caller hardcodes the branded form — but a published CLI package embeds
+  // the contract path it was built from, and the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages pinned by execution contexts created
+  // before this deploy, bounded by the queue lifetime plus the runner's 2h
+  // `JOB_TIMEOUT` drain, plus any external holder of the `zero` form, which has
+  // no window. Removal follows the #26701 evidence gate above, not a date.
+  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
+  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
+  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
+  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
   // #28419. The goal and hosted-site contracts. `domains/host.ts` builds its
   // four URLs by hand rather than from the contract, so a published CLI holds
   // the `okou` form independently of this table; the `zero` form was reachable

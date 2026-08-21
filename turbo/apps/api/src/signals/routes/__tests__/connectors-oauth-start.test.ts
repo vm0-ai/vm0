@@ -32,6 +32,8 @@ const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
+const CLOUDFLARE_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
+const CLOUDFLARE_USERINFO_URL = "https://dash.cloudflare.com/oauth2/userinfo";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_OPENID_USERINFO_URL =
   "https://openidconnect.googleapis.com/v1/userinfo";
@@ -492,13 +494,76 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("moves api-origin callbacks to the App once the connector is enabled", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+  it("uses the direct Okou App callback for Cloudflare and reuses its exact redirect URI", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(CLOUDFLARE_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "cloudflare-test-token",
+          refresh_token: "cloudflare-refresh-token",
+          expires_in: 3600,
+          scope: "offline_access",
+        });
+      }),
+      http.get(CLOUDFLARE_USERINFO_URL, () => {
+        return HttpResponse.json({
+          sub: "cloudflare-user-123",
+          email: "cloudflare@example.test",
+          name: "Cloudflare Test User",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
-      origin: WEB_ORIGIN,
+      origin: OKOU_API_ORIGIN,
+      callbackTarget: "app",
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://dash.cloudflare.com/oauth2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "cloudflare-test-client-id",
+    );
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe(
+      "https://app.okou.ai/connectors/cloudflare/callback",
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const callback = await app.request(
+      `${OKOU_API_ORIGIN}/api/connectors/cloudflare/callback?${new URLSearchParams(
+        {
+          code: "cloudflare-authorization-code",
+          state,
+        },
+      )}`,
+      { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+    );
+
+    expect(callback.status).toBe(307);
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+  });
+
+  it("keeps the VM0 App callback for Cloudflare", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: authHeaders(),
+      origin: API_ORIGIN,
       callbackTarget: "app",
     });
 
@@ -511,10 +576,28 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
       "cloudflare-test-client-id",
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.test/connectors/cloudflare/callback",
+      "https://app.vm0.ai/connectors/cloudflare/callback",
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
     expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps an omitted Cloudflare callback target on the existing API callback", async () => {
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+    expectOkouOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 

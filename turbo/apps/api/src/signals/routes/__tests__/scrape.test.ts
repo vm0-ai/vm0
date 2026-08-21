@@ -86,7 +86,7 @@ async function rawScrapeRequest(
     routes: scrapeTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
-  const request = new Request("http://api.test/api/zero/scrape", {
+  const request = new Request("http://api.test/api/scrape", {
     method: "POST",
     headers: {
       ...authenticate(actor),

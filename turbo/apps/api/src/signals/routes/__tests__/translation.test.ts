@@ -180,7 +180,7 @@ async function expectNoUsage(actor: TranslationActor): Promise<void> {
   await expect(readUsageRecord(actor)).resolves.toStrictEqual([]);
 }
 
-describe("POST /api/zero/translate", () => {
+describe("POST /api/translate", () => {
   it("translates with fixed Qwen routing and settles each invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
