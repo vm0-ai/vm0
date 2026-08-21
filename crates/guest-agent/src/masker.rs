@@ -166,8 +166,28 @@ impl SecretMasker {
             return s;
         }
 
-        self.mask_diagnostic_lines(s.split('\n').map(String::from).collect())
-            .join("\n")
+        let mut line_endings = Vec::new();
+        let lines = s
+            .split_inclusive('\n')
+            .map(|segment| {
+                let (line, line_ending) = if let Some(line) = segment.strip_suffix("\r\n") {
+                    (line, "\r\n")
+                } else if let Some(line) = segment.strip_suffix('\n') {
+                    (line, "\n")
+                } else {
+                    (segment, "")
+                };
+                line_endings.push(line_ending);
+                line.to_string()
+            })
+            .collect();
+        let lines = self.mask_diagnostic_lines(lines);
+        let mut masked = String::with_capacity(s.len());
+        for (line, line_ending) in lines.into_iter().zip(line_endings) {
+            masked.push_str(&line);
+            masked.push_str(line_ending);
+        }
+        masked
     }
 
     /// Mask diagnostic text while preserving the caller's line boundaries.
@@ -726,7 +746,7 @@ mod tests {
     #[test]
     fn diagnostic_string_preserves_crlf_blank_lines_and_terminal_newline() {
         let engine = base64::engine::general_purpose::STANDARD;
-        let secret = "first-secret-line\nsecond-secret-line";
+        let secret = "first-secret-line\r\nsecond-secret-line";
         let encoded = engine.encode(secret);
         let masker = SecretMasker::from_raw(&encoded);
 
