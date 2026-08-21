@@ -6,7 +6,7 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@okouai/core";
-import { Check, ChevronDown, Coins, PlusCircle } from "lucide-react";
+import { Check, ChevronDown, Coins, PlusCircle, UserPlus } from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -56,10 +56,10 @@ function SlackMark({ size }: { size: number }) {
 }
 
 /** Whether the org-scoped Slack app is installed. */
-function useSlackInstalled(): boolean {
+function useSlackInstalled(): boolean | null {
   const loadable = useLastLoadable(slackOrgData$);
-  if (loadable.state !== "hasData" || !loadable.data) {
-    return false;
+  if (loadable.state !== "hasData") {
+    return null;
   }
   return loadable.data.isInstalled || loadable.data.isConnected;
 }
@@ -81,10 +81,10 @@ function useCombinedCreditLabel(): string | null {
     usagePackLoadable.state === "hasData"
       ? usagePackLoadable.data.totalCredits
       : null;
-  if (orgCredits === null || usagePackLoadable.state === "loading") {
+  if (orgCredits === null || packCredits === null) {
     return null;
   }
-  return formatLocalizedNumber(orgCredits + (packCredits ?? 0));
+  return formatLocalizedNumber(orgCredits + packCredits);
 }
 
 function CreditMenuItem({
@@ -170,10 +170,9 @@ function useGrowthActions() {
  * finished; inviting never finishes, so it is the resting state and the entry
  * always has something to say.
  */
-function GrowthEntry() {
+function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
-  const slackInstalled = useSlackInstalled();
   const { openWorks, openInvite, openCredits } = useGrowthActions();
 
   const leadIsSlack = !slackInstalled;
@@ -281,20 +280,66 @@ function GrowthEntry() {
   );
 }
 
+function InviteButton({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const openSettings = useSet(openSettingsDialogAt$);
+  const handleInvite = () => {
+    detach(openSettings("people", pageSignal), Reason.DomCallback);
+  };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleInvite}
+      className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
+      aria-hidden={isAdmin ? undefined : "true"}
+      tabIndex={isAdmin ? undefined : -1}
+      data-testid="invite-button"
+    >
+      <UserPlus size={14} />
+      {t(($) => {
+        return $.chat.agentPage.invitePeople;
+      })}
+    </Button>
+  );
+}
+
+function InviteHeader({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
+      <div className="flex items-center justify-end gap-2">
+        <InviteButton isAdmin={isAdmin} />
+      </div>
+    </header>
+  );
+}
+
+function EnabledGrowthEntryHeader() {
+  const slackInstalled = useSlackInstalled();
+  if (slackInstalled === null) {
+    return null;
+  }
+  return (
+    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
+      <div className="mx-auto flex w-full max-w-[900px] items-center justify-end gap-2">
+        <GrowthEntry slackInstalled={slackInstalled} />
+      </div>
+    </header>
+  );
+}
+
 export function GrowthEntryHeader() {
   const features = useLastResolved(featureSwitch$);
   const growthEntryEnabled =
     features?.[FeatureSwitchKey.HomeGrowthEntry] ?? false;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  if (!growthEntryEnabled || !isAdmin) {
+  if (!growthEntryEnabled) {
+    return <InviteHeader isAdmin={isAdmin} />;
+  }
+  if (!isAdmin) {
     return null;
   }
-  return (
-    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
-      <div className="mx-auto flex w-full max-w-[900px] items-center justify-end gap-2">
-        <GrowthEntry />
-      </div>
-    </header>
-  );
+  return <EnabledGrowthEntryHeader />;
 }
