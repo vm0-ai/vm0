@@ -194,6 +194,12 @@ def test_later_success_does_not_retract_report(
             b'{"status":"failed","error":{"code":"server_error"}}',
             "provider_unavailable",
         ),
+        (
+            "model-provider:deepseek",
+            "/responses",
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "provider_unavailable",
+        ),
     ],
 )
 def test_protocol_json_failures_are_reported(
