@@ -1024,6 +1024,18 @@ export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
   );
 }
 
+// The variant control sits inside a list whose only other paint is a 5% hover
+// layer, so a filled `bg-muted` track plus a raised white pill made it the
+// heaviest thing in the popover -- the eye landed on the control instead of the
+// model names. Stripped to text, the state is carried by weight and colour
+// alone, and the group drops from 28px to the 20px line box.
+const VARIANT_SEGMENT_CLASS = "h-5 bg-transparent p-0";
+
+// `text-[13px]` steps up from the segment's usual `text-xs`: without a track to
+// lend it presence, 12px read as detached from the 14px row it belongs to.
+const VARIANT_SEGMENT_ITEM_CLASS =
+  "h-5 rounded-md px-1.5 text-[13px] font-normal data-checked:bg-transparent data-checked:font-medium data-checked:shadow-none";
+
 function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
   if (option.variant) {
     const variant = option.variant;
@@ -1041,9 +1053,9 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
     // real selection.
     const highlightedVariant = selectedVariant ?? variant.options[0];
     return (
-      // The segment is `xs` (h-7), so this row drops to `py-0.5` to land on the
-      // same 32px as the plain rows around it -- `py-1.5` would make the one row
-      // that carries variants 8px taller than its neighbours.
+      // Now that the variant group is a 20px line box rather than an h-7
+      // control, this row keeps the same `py-1.5` as every other row instead of
+      // compensating with `py-0.5`.
       <div
         // The segment always fills one variant, so its checked state no longer
         // separates the active family from a default fill. `aria-current` is
@@ -1052,7 +1064,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
         // `aria-pressed` on the label button keeps its narrower meaning: the
         // base model specifically, not the family.
         aria-current={groupSelected ? "true" : undefined}
-        className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
+        className="relative flex w-full select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
       >
         <button
           type="button"
@@ -1066,6 +1078,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
         </button>
         <SegmentControl
           size="xs"
+          className={VARIANT_SEGMENT_CLASS}
           aria-label={variant.label}
           value={highlightedVariant?.label ?? null}
           onValueChange={(next: string | null) => {
@@ -1082,6 +1095,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
                 key={candidate.label}
                 value={candidate.label}
                 aria-label={candidate.label}
+                className={VARIANT_SEGMENT_ITEM_CLASS}
               >
                 {candidate.chipLabel}
               </SegmentControlItem>
