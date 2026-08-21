@@ -12,8 +12,8 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomLayer, CHANNEL_CAP, DEBUG_FIELD_MAX_BYTES, INTERNAL_TARGET, init_from_env_values,
-    init_with_base_url, with_ingest_filter,
+    AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, DEBUG_FIELD_MAX_BYTES, INTERNAL_TARGET,
+    init_from_env_values, init_with_base_url, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -94,6 +94,7 @@ where
 #[derive(Clone, Default)]
 struct CapturedAxiomIngest {
     bodies: Arc<Mutex<Vec<Vec<u8>>>>,
+    request_received: Arc<tokio::sync::Notify>,
 }
 
 impl CapturedAxiomIngest {
@@ -102,9 +103,10 @@ impl CapturedAxiomIngest {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .push(body.to_vec());
+        self.request_received.notify_one();
     }
 
-    fn events(&self) -> Vec<Value> {
+    fn requests(&self) -> Vec<Vec<Value>> {
         let bodies = self
             .bodies
             .lock()
@@ -113,7 +115,7 @@ impl CapturedAxiomIngest {
 
         bodies
             .into_iter()
-            .flat_map(|body| {
+            .map(|body| {
                 let value: Value = serde_json::from_slice(&body).unwrap_or_else(|err| {
                     panic!(
                         "captured Axiom ingest body should be valid JSON: {err}; body: {}",
@@ -126,6 +128,30 @@ impl CapturedAxiomIngest {
                 events
             })
             .collect()
+    }
+
+    fn events(&self) -> Vec<Value> {
+        self.requests().into_iter().flatten().collect()
+    }
+
+    fn request_count(&self) -> usize {
+        self.bodies.lock().unwrap_or_else(|p| p.into_inner()).len()
+    }
+
+    async fn wait_for_request(&self) {
+        const REQUEST_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+        tokio::time::timeout(REQUEST_WAIT_TIMEOUT, async {
+            loop {
+                let request_received = self.request_received.notified();
+                if self.request_count() > 0 {
+                    return;
+                }
+                request_received.await;
+            }
+        })
+        .await
+        .expect("timed out waiting for an Axiom ingest request");
     }
 }
 
@@ -177,6 +203,103 @@ fn json_contains_string(value: &Value, needle: &str) -> bool {
             .any(|(key, value)| key.contains(needle) || json_contains_string(value, needle)),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
+}
+
+fn event_markers(events: &[Value]) -> Vec<u64> {
+    events
+        .iter()
+        .map(|event| {
+            event
+                .get("marker")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| panic!("expected numeric marker in Axiom event: {event:#?}"))
+        })
+        .collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn batch_size_flushes_before_shutdown_and_residual_flushes_once() {
+    const RESIDUAL_SIZE: usize = 3;
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let _sub = tracing::subscriber::set_default(subscriber);
+
+    // Consume `interval()`'s immediately ready first tick while the batch is
+    // empty so it cannot split the exact-size batch below. With paused time,
+    // the runtime polls work ready now before advancing to this sleep's
+    // deadline, making the dispatcher poll a causal prerequisite.
+    tokio::time::sleep(Duration::from_nanos(1)).await;
+    for marker in 0..BATCH_SIZE {
+        tracing::warn!(marker = marker as u64, "batch event");
+    }
+
+    // Use real time only for the bounded HTTP observation. The deadline is
+    // shorter than BATCH_INTERVAL, so a later timer tick cannot hide a broken
+    // exact-threshold comparison.
+    tokio::time::resume();
+    captured.wait_for_request().await;
+
+    let requests = captured.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].len(), BATCH_SIZE);
+    assert_eq!(
+        event_markers(&requests[0]),
+        (0..BATCH_SIZE)
+            .map(|marker| marker as u64)
+            .collect::<Vec<_>>(),
+    );
+
+    for marker in BATCH_SIZE..BATCH_SIZE + RESIDUAL_SIZE {
+        tracing::warn!(marker = marker as u64, "batch event");
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(2).await;
+    let requests = captured.requests();
+    assert_eq!(
+        requests.iter().map(Vec::len).collect::<Vec<_>>(),
+        [BATCH_SIZE, RESIDUAL_SIZE],
+    );
+    assert_eq!(
+        event_markers(&requests.concat()),
+        (0..BATCH_SIZE + RESIDUAL_SIZE)
+            .map(|marker| marker as u64)
+            .collect::<Vec<_>>(),
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn sub_threshold_batch_flushes_on_interval_before_shutdown() {
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let _sub = tracing::subscriber::set_default(subscriber);
+
+    // Each paused-time sleep makes the runtime poll work ready at the current
+    // instant before advancing one nanosecond, so the empty tick and channel
+    // receive both complete before the test continues.
+    tokio::time::sleep(Duration::from_nanos(1)).await;
+    tracing::warn!(marker = 7_u64, "interval event");
+    tokio::time::sleep(Duration::from_nanos(1)).await;
+    assert_eq!(captured.request_count(), 0);
+
+    tokio::time::advance(BATCH_INTERVAL).await;
+    tokio::time::resume();
+    captured.wait_for_request().await;
+
+    let requests = captured.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(event_markers(&requests[0]), [7]);
+
+    guard.shutdown().await;
+    ingest.assert_calls_async(1).await;
+    assert_eq!(captured.request_count(), 1);
 }
 
 #[tokio::test]
