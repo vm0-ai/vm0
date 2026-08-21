@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.169.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.18...runner-rs-v0.169.19) (2026-08-21)
+
+
+### Bug Fixes
+
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
+
+### Refactoring
+
+* **python:** centralize openai responses event taxonomy ([#28530](https://github.com/vm0-ai/vm0/issues/28530)) ([1a9c18b](https://github.com/vm0-ai/vm0/commit/1a9c18b0756c1439d83640dc1177f4e585e4544c))
+* **python:** centralize streaming encoding capabilities ([#28526](https://github.com/vm0-ai/vm0/issues/28526)) ([4928434](https://github.com/vm0-ai/vm0/commit/4928434db79ca61bc8db5c058d67c26071c7993f))
+
 ## [0.169.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.17...runner-rs-v0.169.18) (2026-08-21)
 
 
