@@ -196,7 +196,7 @@ async fn upload_telemetry(
     let masked_log = if system_log.content.is_empty() {
         String::new()
     } else {
-        masker.mask_owned_string(system_log.content)
+        masker.mask_diagnostic_string(system_log.content)
     };
     let metrics_entries = metrics.entries;
     let sandbox_ops_entries = sandbox_ops.entries;
