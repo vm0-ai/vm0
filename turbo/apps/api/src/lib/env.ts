@@ -87,8 +87,7 @@ const SCHEMA = {
   R2_HOSTED_SITES_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
-  OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1).optional(),
-  OKOU_HOST_DOMAIN: z.string().min(1).optional(),
+  OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1),
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
   OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),
   ZERO_HOST_SCHEME: z.enum(["http", "https"]).default("https"),
@@ -193,7 +192,6 @@ type EnvShape = typeof baseEnv;
 type EnvName = keyof EnvShape;
 
 const OKOU_ENV_FALLBACKS = {
-  OKOU_HOST_DOMAIN: "ZERO_HOST_DOMAIN",
   OKOU_HOST_SCHEME: "ZERO_HOST_SCHEME",
   OKOU_PRICE_PRO: "ZERO_PRICE_PRO",
   OKOU_PRICE_TEAM: "ZERO_PRICE_TEAM",
@@ -210,7 +208,7 @@ const OKOU_ENV_FALLBACKS = {
 } as const satisfies Partial<Record<EnvName, EnvName>>;
 
 type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;
-type RequiredOkouEnvName = "OKOU_HOST_DOMAIN" | "OKOU_HOST_SCHEME";
+type RequiredOkouEnvName = "OKOU_HOST_SCHEME";
 
 const {
   get: getOverrideEnv,

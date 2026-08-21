@@ -1257,6 +1257,7 @@ async function insertHostedSiteAsPreviousApi(
       orgId: body.org_id,
       userId: body.user_id,
       slug: body.site,
+      publicBrand: "vm0",
       publicSlug: body.public_slug,
       createdFromRunId: body.run_id,
     })
@@ -1299,6 +1300,7 @@ async function writeHostedDeploymentAsPreviousApi(
         "org_id",
         "user_id",
         "run_id",
+        "public_brand",
         "status",
         "r2_prefix",
         "manifest",
@@ -1313,6 +1315,7 @@ async function writeHostedDeploymentAsPreviousApi(
         ${body.org_id},
         ${body.user_id},
         ${body.run_id},
+        'vm0',
         'uploading',
         'previous-api-scope-fixture',
         '{}'::jsonb,

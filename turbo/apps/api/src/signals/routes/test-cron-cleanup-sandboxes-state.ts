@@ -317,6 +317,7 @@ async function seedHostedPublication(
     orgId: run.orgId,
     userId: run.userId,
     slug: publicSlug,
+    publicBrand: "vm0",
     publicSlug,
     createdFromRunId: run.id,
   });
@@ -327,6 +328,7 @@ async function seedHostedPublication(
     orgId: run.orgId,
     userId: run.userId,
     runId: run.id,
+    publicBrand: "vm0",
     status: "ready",
     deploymentVersion: 1,
     artifactUrl: `https://storage.example/${hostedDeploymentId}.zip`,
