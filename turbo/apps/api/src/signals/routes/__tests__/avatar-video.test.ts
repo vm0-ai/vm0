@@ -81,6 +81,7 @@ function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
+  readonly publicBrand?: "vm0" | "okou";
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -89,6 +90,7 @@ function zeroToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: ["file:write"],
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -431,7 +433,7 @@ describe("JoggAI built-in avatar video routes", () => {
       },
       context.signal,
     );
-    const token = zeroToken({ ...fixture, runId });
+    const token = zeroToken({ ...fixture, runId, publicBrand: "okou" });
     const videoDownloadStarted = createDeferredPromise<void>(context.signal);
     const releaseVideoDownload = createDeferredPromise<void>(context.signal);
     let observedBody: unknown = null;
@@ -545,6 +547,9 @@ describe("JoggAI built-in avatar video routes", () => {
     const statusBody = asRecord(await status.json());
     expect(statusBody.status).toBe("completed");
     expect(statusBody.result).toMatchObject({
+      url: expect.stringMatching(
+        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+      ),
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
       durationSeconds: 121,
@@ -562,13 +567,17 @@ describe("JoggAI built-in avatar video routes", () => {
     });
     expect(
       context.mocks.s3.send.mock.calls.some(([command]) => {
-        return command instanceof PutObjectCommand;
+        return (
+          command instanceof PutObjectCommand &&
+          command.input.ContentType === "video/mp4" &&
+          command.input.Metadata?.["public-brand"] === "okou"
+        );
       }),
     ).toBeTruthy();
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const catalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=avatar",
+      "/api/artifacts/catalog?kind=avatar",
       { headers: authHeaders() },
     );
     expect(catalogResponse.status).toBe(200);
@@ -586,7 +595,7 @@ describe("JoggAI built-in avatar video routes", () => {
     }
 
     const detailResponse = await app.request(
-      `/api/zero/artifacts/catalog/${avatar.id}`,
+      `/api/artifacts/catalog/${avatar.id}`,
       { headers: authHeaders() },
     );
     expect(detailResponse.status).toBe(200);
@@ -601,7 +610,7 @@ describe("JoggAI built-in avatar video routes", () => {
     });
 
     const videoCatalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=video",
+      "/api/artifacts/catalog?kind=video",
       { headers: authHeaders() },
     );
     expect(videoCatalogResponse.status).toBe(200);
@@ -610,7 +619,7 @@ describe("JoggAI built-in avatar video routes", () => {
     );
 
     const fileCatalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=file",
+      "/api/artifacts/catalog?kind=file",
       { headers: authHeaders() },
     );
     expect(fileCatalogResponse.status).toBe(200);

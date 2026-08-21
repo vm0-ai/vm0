@@ -6,6 +6,7 @@ import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-id
 import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
 import type { AssistantName } from "../../signals/branding.ts";
+import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
 
 interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
@@ -49,7 +50,7 @@ export function onboardingMakeOptions(
       description: t(($) => {
         return $.onboarding.make.options[id].description;
       }),
-      imageUrl: ONBOARDING_MAKE_OPTION_IMAGES[id],
+      imageUrl: platformPublicStaticUrl(ONBOARDING_MAKE_OPTION_IMAGES[id]),
     };
   });
 }

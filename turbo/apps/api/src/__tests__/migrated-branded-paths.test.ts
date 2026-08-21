@@ -4,6 +4,23 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
+import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
+import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
+import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
+import { imageShareXRoutes } from "../signals/routes/image-share-x";
+import { queuePositionRoutes } from "../signals/routes/queue-position";
+import { scrapeRoutes } from "../signals/routes/scrape";
+import { slackChannelsRoutes } from "../signals/routes/slack-channels";
+import { slackConnectRoutes } from "../signals/routes/slack-connect";
+import { slackOauthRoutes } from "../signals/routes/slack-oauth";
+import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
+import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
+import { teamsConnectRoutes } from "../signals/routes/teams-connect";
+import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
+import { translationRoutes } from "../signals/routes/translation";
+import { weatherRoutes } from "../signals/routes/weather";
+import { webSearchRoutes } from "../signals/routes/web-search";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -16,9 +33,9 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
-// empty, so no real route can exercise the mechanism yet, and a fixture keeps a
-// later migration slice from quietly changing what these tests assert.
+// Synthetic contracts rather than real ones, so a later migration slice cannot
+// quietly change what these mechanism tests assert. The shipped table is
+// covered separately, against the real route table, further down.
 const migrationContract = c.router({
   // The shape a migrated contract has: the neutral path it declares after
   // #28278 moves it off `/api/okou/**`.
@@ -116,6 +133,30 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// The seven operations #28417 moved off `/api/okou/maps/**`, written out rather
+// than read from `mapsContract` or `MIGRATED_BRANDED_PATHS`, so dropping a
+// contract path or a table row fails the test that uses this.
+const MAPS_OPERATIONS = [
+  "geocode",
+  "reverse-geocode",
+  "directions",
+  "places/search",
+  "places/details",
+  "osm/download",
+  "osm/render",
+] as const;
+
+// The five operations #28357 moved off `/api/okou/weather/**`, written out
+// rather than read from `weatherContract` or `MIGRATED_BRANDED_PATHS`, so
+// dropping a contract path or a table row fails the test that uses this.
+const WEATHER_OPERATIONS = [
+  "current",
+  "forecast/hourly",
+  "forecast/daily",
+  "history/hourly",
+  "air-quality/current",
+] as const;
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
@@ -129,6 +170,676 @@ const BRANDED_PATHS_OWED = [
   "/api/okou/synthetic/thing",
   "/api/zero/synthetic/thing",
 ] as const;
+
+// Every route a #28278 slice has moved off `/api/okou/**`, keyed by the
+// neutral path its contract declares now and holding the two branded paths
+// released callers still reach it at. Restated here rather than read back
+// from `MIGRATED_BRANDED_PATHS` or derived from `apiNamespaceAliasPaths`: the
+// table is what a migration edits, and the function returns a neutral path
+// unchanged, so an expectation taken from either asserts nothing. Each slice
+// appends its own rows.
+const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // #28421
+  "/api/me/model-provider-accounts/:id": [
+    "/api/okou/me/model-provider-accounts/:id",
+    "/api/zero/me/model-provider-accounts/:id",
+  ],
+  "/api/me/model-provider-accounts/:id/activate": [
+    "/api/okou/me/model-provider-accounts/:id/activate",
+    "/api/zero/me/model-provider-accounts/:id/activate",
+  ],
+  "/api/me/model-provider-accounts/:id/subscription-reset": [
+    "/api/okou/me/model-provider-accounts/:id/subscription-reset",
+    "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+  ],
+  "/api/me/model-providers": [
+    "/api/okou/me/model-providers",
+    "/api/zero/me/model-providers",
+  ],
+  "/api/me/model-providers/:type": [
+    "/api/okou/me/model-providers/:type",
+    "/api/zero/me/model-providers/:type",
+  ],
+  "/api/me/model-providers/:type/subscription-reset": [
+    "/api/okou/me/model-providers/:type/subscription-reset",
+    "/api/zero/me/model-providers/:type/subscription-reset",
+  ],
+  "/api/onboarding/complete": [
+    "/api/okou/onboarding/complete",
+    "/api/zero/onboarding/complete",
+  ],
+  "/api/onboarding/status": [
+    "/api/okou/onboarding/status",
+    "/api/zero/onboarding/status",
+  ],
+  "/api/team": ["/api/okou/team", "/api/zero/team"],
+  "/api/user-model-preference": [
+    "/api/okou/user-model-preference",
+    "/api/zero/user-model-preference",
+  ],
+  "/api/user-preferences": [
+    "/api/okou/user-preferences",
+    "/api/zero/user-preferences",
+  ],
+  // #28418
+  "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
+  "/api/browsers/current": [
+    "/api/okou/browsers/current",
+    "/api/zero/browsers/current",
+  ],
+  "/api/browsers/lease": [
+    "/api/okou/browsers/lease",
+    "/api/zero/browsers/lease",
+  ],
+  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
+  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
+  "/api/finance/profile": [
+    "/api/okou/finance/profile",
+    "/api/zero/finance/profile",
+  ],
+  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
+  "/api/finance/search": [
+    "/api/okou/finance/search",
+    "/api/zero/finance/search",
+  ],
+  "/api/mcp-connectors": [
+    "/api/okou/mcp-connectors",
+    "/api/zero/mcp-connectors",
+  ],
+  "/api/seo/backlinks-summary": [
+    "/api/okou/seo/backlinks-summary",
+    "/api/zero/seo/backlinks-summary",
+  ],
+  "/api/seo/keyword-ideas": [
+    "/api/okou/seo/keyword-ideas",
+    "/api/zero/seo/keyword-ideas",
+  ],
+  "/api/seo/ranked-keywords": [
+    "/api/okou/seo/ranked-keywords",
+    "/api/zero/seo/ranked-keywords",
+  ],
+  "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
+  // #28415
+  "/api/built-in-generations/:generationId": [
+    "/api/okou/built-in-generations/:generationId",
+    "/api/zero/built-in-generations/:generationId",
+  ],
+  "/api/image-io/generate": [
+    "/api/okou/image-io/generate",
+    "/api/zero/image-io/generate",
+  ],
+  // #28416
+  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
+  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
+  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
+  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
+  // #28419
+  "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
+  "/api/goal/block": ["/api/okou/goal/block", "/api/zero/goal/block"],
+  "/api/goal/complete": ["/api/okou/goal/complete", "/api/zero/goal/complete"],
+  "/api/goal/pause": ["/api/okou/goal/pause", "/api/zero/goal/pause"],
+  "/api/goal/resume": ["/api/okou/goal/resume", "/api/zero/goal/resume"],
+  "/api/host/deployments/:deploymentId/complete": [
+    "/api/okou/host/deployments/:deploymentId/complete",
+    "/api/zero/host/deployments/:deploymentId/complete",
+  ],
+  "/api/host/deployments/prepare": [
+    "/api/okou/host/deployments/prepare",
+    "/api/zero/host/deployments/prepare",
+  ],
+  "/api/host/sites/:publicSlug/files": [
+    "/api/okou/host/sites/:publicSlug/files",
+    "/api/zero/host/sites/:publicSlug/files",
+  ],
+  "/api/host/sites/:site/deployments": [
+    "/api/okou/host/sites/:site/deployments",
+    "/api/zero/host/sites/:site/deployments",
+  ],
+  // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
+  // attribution.
+  "/api/attribution/signup": [
+    "/api/okou/attribution/signup",
+    "/api/zero/attribution/signup",
+  ],
+  "/api/chat-thread-drafts": [
+    "/api/okou/chat-thread-drafts",
+    "/api/zero/chat-thread-drafts",
+  ],
+  "/api/chat-thread-unreads": [
+    "/api/okou/chat-thread-unreads",
+    "/api/zero/chat-thread-unreads",
+  ],
+  "/api/chat-thread-unreads/mark-read": [
+    "/api/okou/chat-thread-unreads/mark-read",
+    "/api/zero/chat-thread-unreads/mark-read",
+  ],
+  "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
+  // #28422
+  "/api/artifacts/catalog": [
+    "/api/okou/artifacts/catalog",
+    "/api/zero/artifacts/catalog",
+  ],
+  "/api/artifacts/catalog/:artifactId": [
+    "/api/okou/artifacts/catalog/:artifactId",
+    "/api/zero/artifacts/catalog/:artifactId",
+  ],
+  "/api/logs": ["/api/okou/logs", "/api/zero/logs"],
+  "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
+  "/api/push-subscriptions": [
+    "/api/okou/push-subscriptions",
+    "/api/zero/push-subscriptions",
+  ],
+  "/api/realtime/token": [
+    "/api/okou/realtime/token",
+    "/api/zero/realtime/token",
+  ],
+  "/api/runs/:id": ["/api/okou/runs/:id", "/api/zero/runs/:id"],
+  "/api/runs/:id/cancel": [
+    "/api/okou/runs/:id/cancel",
+    "/api/zero/runs/:id/cancel",
+  ],
+  "/api/runs/:id/context": [
+    "/api/okou/runs/:id/context",
+    "/api/zero/runs/:id/context",
+  ],
+  "/api/runs/:id/network": [
+    "/api/okou/runs/:id/network",
+    "/api/zero/runs/:id/network",
+  ],
+  "/api/runs/:id/runner": [
+    "/api/okou/runs/:id/runner",
+    "/api/zero/runs/:id/runner",
+  ],
+  "/api/runs/:id/telemetry/agent": [
+    "/api/okou/runs/:id/telemetry/agent",
+    "/api/zero/runs/:id/telemetry/agent",
+  ],
+  "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28459: chat threads, chat events and search, shared threads,
+  // per-thread browser sessions and goals, thread workflow automations,
+  // queue position, and the X image share.
+  "/api/chat-threads": ["/api/okou/chat-threads", "/api/zero/chat-threads"],
+  "/api/chat-threads/:id": [
+    "/api/okou/chat-threads/:id",
+    "/api/zero/chat-threads/:id",
+  ],
+  "/api/chat-threads/:id/computer-use-host": [
+    "/api/okou/chat-threads/:id/computer-use-host",
+    "/api/zero/chat-threads/:id/computer-use-host",
+  ],
+  "/api/chat-threads/:id/connector-selections": [
+    "/api/okou/chat-threads/:id/connector-selections",
+    "/api/zero/chat-threads/:id/connector-selections",
+  ],
+  "/api/chat-threads/:id/draft": [
+    "/api/okou/chat-threads/:id/draft",
+    "/api/zero/chat-threads/:id/draft",
+  ],
+  "/api/chat-threads/:id/image-model": [
+    "/api/okou/chat-threads/:id/image-model",
+    "/api/zero/chat-threads/:id/image-model",
+  ],
+  "/api/chat-threads/:id/mark-read": [
+    "/api/okou/chat-threads/:id/mark-read",
+    "/api/zero/chat-threads/:id/mark-read",
+  ],
+  "/api/chat-threads/:id/mark-unread": [
+    "/api/okou/chat-threads/:id/mark-unread",
+    "/api/zero/chat-threads/:id/mark-unread",
+  ],
+  "/api/chat-threads/:id/metadata": [
+    "/api/okou/chat-threads/:id/metadata",
+    "/api/zero/chat-threads/:id/metadata",
+  ],
+  "/api/chat-threads/:id/model-selection": [
+    "/api/okou/chat-threads/:id/model-selection",
+    "/api/zero/chat-threads/:id/model-selection",
+  ],
+  "/api/chat-threads/:id/pin": [
+    "/api/okou/chat-threads/:id/pin",
+    "/api/zero/chat-threads/:id/pin",
+  ],
+  "/api/chat-threads/:id/rename": [
+    "/api/okou/chat-threads/:id/rename",
+    "/api/zero/chat-threads/:id/rename",
+  ],
+  "/api/chat-threads/:id/unpin": [
+    "/api/okou/chat-threads/:id/unpin",
+    "/api/zero/chat-threads/:id/unpin",
+  ],
+  "/api/chat-threads/:id/video-model": [
+    "/api/okou/chat-threads/:id/video-model",
+    "/api/zero/chat-threads/:id/video-model",
+  ],
+  "/api/chat-threads/:threadId/artifacts": [
+    "/api/okou/chat-threads/:threadId/artifacts",
+    "/api/zero/chat-threads/:threadId/artifacts",
+  ],
+  "/api/chat-threads/:threadId/browser": [
+    "/api/okou/chat-threads/:threadId/browser",
+    "/api/zero/chat-threads/:threadId/browser",
+  ],
+  "/api/chat-threads/:threadId/browser/close": [
+    "/api/okou/chat-threads/:threadId/browser/close",
+    "/api/zero/chat-threads/:threadId/browser/close",
+  ],
+  "/api/chat-threads/:threadId/browser/lease": [
+    "/api/okou/chat-threads/:threadId/browser/lease",
+    "/api/zero/chat-threads/:threadId/browser/lease",
+  ],
+  "/api/chat-threads/:threadId/browser/open": [
+    "/api/okou/chat-threads/:threadId/browser/open",
+    "/api/zero/chat-threads/:threadId/browser/open",
+  ],
+  "/api/chat-threads/:threadId/browser/resize": [
+    "/api/okou/chat-threads/:threadId/browser/resize",
+    "/api/zero/chat-threads/:threadId/browser/resize",
+  ],
+  "/api/chat-threads/:threadId/event-rows": [
+    "/api/okou/chat-threads/:threadId/event-rows",
+    "/api/zero/chat-threads/:threadId/event-rows",
+  ],
+  "/api/chat-threads/:threadId/event-snapshot": [
+    "/api/okou/chat-threads/:threadId/event-snapshot",
+    "/api/zero/chat-threads/:threadId/event-snapshot",
+  ],
+  "/api/chat-threads/:threadId/goal": [
+    "/api/okou/chat-threads/:threadId/goal",
+    "/api/zero/chat-threads/:threadId/goal",
+  ],
+  "/api/chat-threads/:threadId/goal/pause": [
+    "/api/okou/chat-threads/:threadId/goal/pause",
+    "/api/zero/chat-threads/:threadId/goal/pause",
+  ],
+  "/api/chat-threads/:threadId/shared-threads": [
+    "/api/okou/chat-threads/:threadId/shared-threads",
+    "/api/zero/chat-threads/:threadId/shared-threads",
+  ],
+  "/api/chat-threads/:threadId/workflow-automations": [
+    "/api/okou/chat-threads/:threadId/workflow-automations",
+    "/api/zero/chat-threads/:threadId/workflow-automations",
+  ],
+  "/api/chat-threads/events": [
+    "/api/okou/chat-threads/events",
+    "/api/zero/chat-threads/events",
+  ],
+  "/api/chat-threads/snapshot": [
+    "/api/okou/chat-threads/snapshot",
+    "/api/zero/chat-threads/snapshot",
+  ],
+  "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
+  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
+  "/api/image-share/x": ["/api/okou/image-share/x", "/api/zero/image-share/x"],
+  "/api/queue-position": [
+    "/api/okou/queue-position",
+    "/api/zero/queue-position",
+  ],
+  "/api/shared-threads/:id": [
+    "/api/okou/shared-threads/:id",
+    "/api/zero/shared-threads/:id",
+  ],
+  "/api/shared-threads/:id/meta": [
+    "/api/okou/shared-threads/:id/meta",
+    "/api/zero/shared-threads/:id/meta",
+  ],
+  // #28466
+  "/api/computer-use/audit-events": [
+    "/api/okou/computer-use/audit-events",
+    "/api/zero/computer-use/audit-events",
+  ],
+  "/api/computer-use/authorization-requests": [
+    "/api/okou/computer-use/authorization-requests",
+    "/api/zero/computer-use/authorization-requests",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken": [
+    "/api/okou/computer-use/authorization-requests/:requestToken",
+    "/api/zero/computer-use/authorization-requests/:requestToken",
+  ],
+  "/api/computer-use/authorization-requests/:requestToken/apply": [
+    "/api/okou/computer-use/authorization-requests/:requestToken/apply",
+    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
+  ],
+  "/api/computer-use/commands": [
+    "/api/okou/computer-use/commands",
+    "/api/zero/computer-use/commands",
+  ],
+  "/api/computer-use/commands/:commandId": [
+    "/api/okou/computer-use/commands/:commandId",
+    "/api/zero/computer-use/commands/:commandId",
+  ],
+  "/api/computer-use/commands/:commandId/plugin-content": [
+    "/api/okou/computer-use/commands/:commandId/plugin-content",
+    "/api/zero/computer-use/commands/:commandId/plugin-content",
+  ],
+  "/api/computer-use/commands/:commandId/screenshot": [
+    "/api/okou/computer-use/commands/:commandId/screenshot",
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+  ],
+  "/api/computer-use/heartbeat": [
+    "/api/okou/computer-use/heartbeat",
+    "/api/zero/computer-use/heartbeat",
+  ],
+  "/api/computer-use/host/commands/:commandId/complete": [
+    "/api/okou/computer-use/host/commands/:commandId/complete",
+    "/api/zero/computer-use/host/commands/:commandId/complete",
+  ],
+  "/api/computer-use/host/commands/next": [
+    "/api/okou/computer-use/host/commands/next",
+    "/api/zero/computer-use/host/commands/next",
+  ],
+  "/api/computer-use/host/stop": [
+    "/api/okou/computer-use/host/stop",
+    "/api/zero/computer-use/host/stop",
+  ],
+  "/api/computer-use/hosts": [
+    "/api/okou/computer-use/hosts",
+    "/api/zero/computer-use/hosts",
+  ],
+  "/api/computer-use/hosts/start": [
+    "/api/okou/computer-use/hosts/start",
+    "/api/zero/computer-use/hosts/start",
+  ],
+  "/api/computer-use/plugin-commands": [
+    "/api/okou/computer-use/plugin-commands",
+    "/api/zero/computer-use/plugin-commands",
+  ],
+  "/api/computer-use/write-commands": [
+    "/api/okou/computer-use/write-commands",
+    "/api/zero/computer-use/write-commands",
+  ],
+  // #28423
+  "/api/integrations/feishu": [
+    "/api/okou/integrations/feishu",
+    "/api/zero/integrations/feishu",
+  ],
+  "/api/integrations/feishu/app-id": [
+    "/api/okou/integrations/feishu/app-id",
+    "/api/zero/integrations/feishu/app-id",
+  ],
+  "/api/integrations/feishu/connect": [
+    "/api/okou/integrations/feishu/connect",
+    "/api/zero/integrations/feishu/connect",
+  ],
+  "/api/integrations/feishu/download-file": [
+    "/api/okou/integrations/feishu/download-file",
+    "/api/zero/integrations/feishu/download-file",
+  ],
+  "/api/integrations/feishu/installations/:installationId": [
+    "/api/okou/integrations/feishu/installations/:installationId",
+    "/api/zero/integrations/feishu/installations/:installationId",
+  ],
+  "/api/integrations/feishu/installations/:installationId/connect": [
+    "/api/okou/integrations/feishu/installations/:installationId/connect",
+    "/api/zero/integrations/feishu/installations/:installationId/connect",
+  ],
+  "/api/integrations/feishu/message": [
+    "/api/okou/integrations/feishu/message",
+    "/api/zero/integrations/feishu/message",
+  ],
+  "/api/integrations/feishu/upload-file/complete": [
+    "/api/okou/integrations/feishu/upload-file/complete",
+    "/api/zero/integrations/feishu/upload-file/complete",
+  ],
+  "/api/integrations/feishu/upload-file/init": [
+    "/api/okou/integrations/feishu/upload-file/init",
+    "/api/zero/integrations/feishu/upload-file/init",
+  ],
+  "/api/integrations/github/upload-file/complete": [
+    "/api/okou/integrations/github/upload-file/complete",
+    "/api/zero/integrations/github/upload-file/complete",
+  ],
+  "/api/integrations/github/upload-file/init": [
+    "/api/okou/integrations/github/upload-file/init",
+    "/api/zero/integrations/github/upload-file/init",
+  ],
+  "/api/integrations/phone/download-file": [
+    "/api/okou/integrations/phone/download-file",
+    "/api/zero/integrations/phone/download-file",
+  ],
+  "/api/integrations/phone/message": [
+    "/api/okou/integrations/phone/message",
+    "/api/zero/integrations/phone/message",
+  ],
+  "/api/integrations/phone/upload-file/complete": [
+    "/api/okou/integrations/phone/upload-file/complete",
+    "/api/zero/integrations/phone/upload-file/complete",
+  ],
+  "/api/integrations/phone/upload-file/init": [
+    "/api/okou/integrations/phone/upload-file/init",
+    "/api/zero/integrations/phone/upload-file/init",
+  ],
+  "/api/integrations/slack": [
+    "/api/okou/integrations/slack",
+    "/api/zero/integrations/slack",
+  ],
+  "/api/integrations/slack/connect": [
+    "/api/okou/integrations/slack/connect",
+    "/api/zero/integrations/slack/connect",
+  ],
+  "/api/integrations/slack/message": [
+    "/api/okou/integrations/slack/message",
+    "/api/zero/integrations/slack/message",
+  ],
+  "/api/integrations/slack/upload-file/complete": [
+    "/api/okou/integrations/slack/upload-file/complete",
+    "/api/zero/integrations/slack/upload-file/complete",
+  ],
+  "/api/integrations/slack/upload-file/init": [
+    "/api/okou/integrations/slack/upload-file/init",
+    "/api/zero/integrations/slack/upload-file/init",
+  ],
+  "/api/integrations/slack/upload-file/materialize": [
+    "/api/okou/integrations/slack/upload-file/materialize",
+    "/api/zero/integrations/slack/upload-file/materialize",
+  ],
+  "/api/integrations/strapi": [
+    "/api/okou/integrations/strapi",
+    "/api/zero/integrations/strapi",
+  ],
+  "/api/integrations/strapi/:integrationId": [
+    "/api/okou/integrations/strapi/:integrationId",
+    "/api/zero/integrations/strapi/:integrationId",
+  ],
+  "/api/integrations/strapi/:integrationId/check-test": [
+    "/api/okou/integrations/strapi/:integrationId/check-test",
+    "/api/zero/integrations/strapi/:integrationId/check-test",
+  ],
+  "/api/integrations/strapi/:integrationId/secret": [
+    "/api/okou/integrations/strapi/:integrationId/secret",
+    "/api/zero/integrations/strapi/:integrationId/secret",
+  ],
+  "/api/integrations/teams/connect": [
+    "/api/okou/integrations/teams/connect",
+    "/api/zero/integrations/teams/connect",
+  ],
+  "/api/integrations/teams/message": [
+    "/api/okou/integrations/teams/message",
+    "/api/zero/integrations/teams/message",
+  ],
+  "/api/integrations/teams/upload-file/complete": [
+    "/api/okou/integrations/teams/upload-file/complete",
+    "/api/zero/integrations/teams/upload-file/complete",
+  ],
+  "/api/integrations/teams/upload-file/init": [
+    "/api/okou/integrations/teams/upload-file/init",
+    "/api/zero/integrations/teams/upload-file/init",
+  ],
+  "/api/integrations/telegram/bots": [
+    "/api/okou/integrations/telegram/bots",
+    "/api/zero/integrations/telegram/bots",
+  ],
+  "/api/integrations/telegram/message": [
+    "/api/okou/integrations/telegram/message",
+    "/api/zero/integrations/telegram/message",
+  ],
+  "/api/integrations/telegram/upload-file/complete": [
+    "/api/okou/integrations/telegram/upload-file/complete",
+    "/api/zero/integrations/telegram/upload-file/complete",
+  ],
+  "/api/integrations/telegram/upload-file/init": [
+    "/api/okou/integrations/telegram/upload-file/init",
+    "/api/zero/integrations/telegram/upload-file/init",
+  ],
+  // #28460: the connector catalog, the connector connections, the custom
+  // connectors, the model provider connections, and the user permission grants.
+  "/api/connector-catalog": [
+    "/api/okou/connector-catalog",
+    "/api/zero/connector-catalog",
+  ],
+  "/api/connector-catalog/:connectorSlug": [
+    "/api/okou/connector-catalog/:connectorSlug",
+    "/api/zero/connector-catalog/:connectorSlug",
+  ],
+  "/api/connector-catalog/:connectorSlug/permissions": [
+    "/api/okou/connector-catalog/:connectorSlug/permissions",
+    "/api/zero/connector-catalog/:connectorSlug/permissions",
+  ],
+  "/api/connector-catalog/diagnostics": [
+    "/api/okou/connector-catalog/diagnostics",
+    "/api/zero/connector-catalog/diagnostics",
+  ],
+  "/api/connector-catalog/discovery": [
+    "/api/okou/connector-catalog/discovery",
+    "/api/zero/connector-catalog/discovery",
+  ],
+  "/api/connector-catalog/status": [
+    "/api/okou/connector-catalog/status",
+    "/api/zero/connector-catalog/status",
+  ],
+  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
+  "/api/connectors/:connectorSlug": [
+    "/api/okou/connectors/:connectorSlug",
+    "/api/zero/connectors/:connectorSlug",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+  ],
+  "/api/connectors/:connectorSlug/manual-grant": [
+    "/api/okou/connectors/:connectorSlug/manual-grant",
+    "/api/zero/connectors/:connectorSlug/manual-grant",
+  ],
+  "/api/connectors/:connectorSlug/no-auth": [
+    "/api/okou/connectors/:connectorSlug/no-auth",
+    "/api/zero/connectors/:connectorSlug/no-auth",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+  ],
+  "/api/connectors/:connectorSlug/oauth/start": [
+    "/api/okou/connectors/:connectorSlug/oauth/start",
+    "/api/zero/connectors/:connectorSlug/oauth/start",
+  ],
+  "/api/connectors/:connectorSlug/openid/start": [
+    "/api/okou/connectors/:connectorSlug/openid/start",
+    "/api/zero/connectors/:connectorSlug/openid/start",
+  ],
+  "/api/connectors/:connectorSlug/scope-diff": [
+    "/api/okou/connectors/:connectorSlug/scope-diff",
+    "/api/zero/connectors/:connectorSlug/scope-diff",
+  ],
+  "/api/connectors/diagnostics/check": [
+    "/api/okou/connectors/diagnostics/check",
+    "/api/zero/connectors/diagnostics/check",
+  ],
+  "/api/connectors/search": [
+    "/api/okou/connectors/search",
+    "/api/zero/connectors/search",
+  ],
+  "/api/connectors/steam/player": [
+    "/api/okou/connectors/steam/player",
+    "/api/zero/connectors/steam/player",
+  ],
+  "/api/custom-connectors": [
+    "/api/okou/custom-connectors",
+    "/api/zero/custom-connectors",
+  ],
+  "/api/custom-connectors/:id": [
+    "/api/okou/custom-connectors/:id",
+    "/api/zero/custom-connectors/:id",
+  ],
+  "/api/custom-connectors/:id/connection": [
+    "/api/okou/custom-connectors/:id/connection",
+    "/api/zero/custom-connectors/:id/connection",
+  ],
+  "/api/custom-connectors/:id/oauth2/start": [
+    "/api/okou/custom-connectors/:id/oauth2/start",
+    "/api/zero/custom-connectors/:id/oauth2/start",
+  ],
+  "/api/custom-connectors/:id/permissions": [
+    "/api/okou/custom-connectors/:id/permissions",
+    "/api/zero/custom-connectors/:id/permissions",
+  ],
+  "/api/custom-connectors/:id/values": [
+    "/api/okou/custom-connectors/:id/values",
+    "/api/zero/custom-connectors/:id/values",
+  ],
+  "/api/custom-connectors/oauth2/callback": [
+    "/api/okou/custom-connectors/oauth2/callback",
+    "/api/zero/custom-connectors/oauth2/callback",
+  ],
+  "/api/custom-connectors/proposals/save": [
+    "/api/okou/custom-connectors/proposals/save",
+    "/api/zero/custom-connectors/proposals/save",
+  ],
+  "/api/model-provider-connections": [
+    "/api/okou/model-provider-connections",
+    "/api/zero/model-provider-connections",
+  ],
+  "/api/model-provider-connections/:id": [
+    "/api/okou/model-provider-connections/:id",
+    "/api/zero/model-provider-connections/:id",
+  ],
+  "/api/user-permission-grants": [
+    "/api/okou/user-permission-grants",
+    "/api/zero/user-permission-grants",
+  ],
+  "/api/user-permission-grants/apply": [
+    "/api/okou/user-permission-grants/apply",
+    "/api/zero/user-permission-grants/apply",
+  ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds are not in this slice and stay
+  // branded; they are covered by `provider-console-paths.test.ts`.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
+};
 
 function missingBrandedPaths(
   routes: readonly RouteEntry[],
@@ -265,19 +976,210 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
+  // #28417 fills the table for maps. The contract declares the neutral paths,
+  // so the blanket expansion no longer derives a branded form for them and
+  // every branded maps path below exists only because of a table row. The paths
+  // are written out here rather than derived from the table, so deleting a row
+  // fails this test instead of changing what it asserts.
+  it("serves the migrated maps routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
     );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
 
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing maps registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of MAPS_OPERATIONS) {
+      const neutral = requireRoute(`/api/maps/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/maps/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
+  });
+
+  // The weather twin of the assertion above (#28357). Kept as its own test so a
+  // failure names the family that regressed, and so the paths stay written out
+  // per family rather than derived from the table under test.
+  it("serves the migrated weather routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing weather registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = requireRoute(`/api/weather/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/weather/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
+  });
+
+  // The synthetic cases above cover the mechanism; this runs the real route
+  // table through the composition production registers, so a moved contract
+  // that lost its rows fails here rather than 404ing a released caller.
+  it("serves every migrated route at its neutral path and both branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    for (const [neutral, brandedPaths] of Object.entries(
+      MIGRATED_ROUTE_PATHS,
+    )) {
+      const declared = ROUTES.filter((entry) => {
+        return entry.route.path === neutral;
+      });
+      expect(
+        declared.length,
+        `Expected a contract declaring ${neutral}`,
+      ).toBeGreaterThan(0);
+
+      for (const source of declared) {
+        for (const path of [neutral, ...brandedPaths]) {
+          const key = `${source.route.method} ${path}`;
+          const matches = registered.filter((entry) => {
+            return (
+              entry.route.method === source.route.method &&
+              entry.route.path === path
+            );
+          });
+          expect(matches, `Missing registration for ${key}`).toHaveLength(1);
+          const match = matches[0];
+          if (!match) {
+            throw new Error(`Missing registration for ${key}`);
+          }
+          expect(match.handler).toBe(source.handler);
+          expect(match.route).toStrictEqual({ ...source.route, path });
+          // A row is compatibility promised on purpose, so it must not be
+          // reported as a gap the compatibility table missed.
+          expect(match.viaNamespaceAliasFallback).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  // The #28416 twin of the weather assertion below: the four managed
+  // web-content and model routes, driven through the same production app
+  // factory. Kept per family so a failure names what regressed.
+  it("serves the migrated web-content paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: imageRecognitionRoutes, suffix: "recognize" },
+      { routes: scrapeRoutes, suffix: "scrape" },
+      { routes: translationRoutes, suffix: "translate" },
+      { routes: webSearchRoutes, suffix: "web-search" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28423 twin: the integration control plane, driven through the same
+  // production app factory. The registration assertion above rebuilds the
+  // composition itself and so cannot see how `createAppWithRoutes` wires it —
+  // if `withMigratedBrandedPaths` were dropped from or reordered in that chain,
+  // every branded integration path would 404 here while that assertion still
+  // passed. Requests are unauthenticated, so the status is whatever the auth
+  // layer returns; the point is that all three forms reach the same handler.
+  it("serves the migrated integration paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    // One GET per contract file this slice moved, written out rather than read
+    // back from `MIGRATED_BRANDED_PATHS`.
+    const families = [
+      { routes: feishuConnectRoutes, suffix: "integrations/feishu" },
+      { routes: feishuConnectRoutes, suffix: "integrations/feishu/app-id" },
+      { routes: slackConnectRoutes, suffix: "integrations/slack/connect" },
+      { routes: teamsConnectRoutes, suffix: "integrations/teams/connect" },
+      { routes: strapiIntegrationsRoutes, suffix: "integrations/strapi" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`);
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the
@@ -296,6 +1198,131 @@ describe("branded paths for migrated neutral routes", () => {
         ),
       );
     }).not.toThrow();
+  });
+
+  // The route-table assertion above rebuilds the composition itself, so it
+  // cannot see how `createAppWithRoutes` wires it. This one goes through the
+  // app factory production uses: if `withMigratedBrandedPaths` were dropped
+  // from or reordered in that chain, the branded weather paths would 404 here
+  // while the table assertion still passed. Requests are unauthenticated, so
+  // the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated weather paths through the production app factory", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: weatherRoutes,
+    });
+
+    async function statusFor(path: string): Promise<number> {
+      const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      return response.status;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = await statusFor(`/api/weather/${operation}`);
+      const okou = await statusFor(`/api/okou/weather/${operation}`);
+      const zero = await statusFor(`/api/zero/weather/${operation}`);
+
+      expect({ operation, neutral, okou, zero }).toStrictEqual({
+        operation,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28459 twin of the two assertions above, for the chat slice. Every
+  // caller of these routes in this repository derives its URL from the
+  // contract, so a request-level case is the only place a dropped row shows
+  // up as the 404 a released client would get. Requests are unauthenticated,
+  // so the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated chat-slice paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: queuePositionRoutes, method: "GET", suffix: "queue-position" },
+      { routes: imageShareXRoutes, method: "POST", suffix: "image-share/x" },
+    ] as const;
+
+    for (const { routes, method, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28464 twin of the two assertions above, driven through the app factory
+  // production uses rather than over the route table. Every path is a GET a
+  // released web build, or a connect link already sitting in a Slack, Teams, or
+  // Feishu message, still asks for. The status is whatever the handler returns
+  // without credentials or provider configuration; the point is that all three
+  // forms reach the same handler instead of falling through to 404.
+  it("serves the migrated IM connect paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect" },
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect/status" },
+      { routes: feishuOauthRoutes, suffix: "feishu/oauth/connect" },
+      { routes: slackChannelsRoutes, suffix: "slack/channels" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/connect" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
+      { routes: teamsBrowserConnectRoutes, suffix: "teams/connect" },
+      { routes: teamsOauthRoutes, suffix: "teams/oauth/connect" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
   });
 
   it("builds an app that serves every path it registers", async () => {

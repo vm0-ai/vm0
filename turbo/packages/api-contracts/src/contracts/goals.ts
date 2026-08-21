@@ -50,7 +50,7 @@ const chatThreadGoalParamsSchema = z.object({
 export const goalsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/goal",
+    path: "/api/goal",
     headers: authHeadersSchema,
     body: goalCreateRequestSchema,
     responses: {
@@ -64,7 +64,7 @@ export const goalsContract = c.router({
   },
   edit: {
     method: "PATCH",
-    path: "/api/okou/goal",
+    path: "/api/goal",
     headers: authHeadersSchema,
     body: goalEditRequestSchema,
     responses: {
@@ -79,7 +79,7 @@ export const goalsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/goal",
+    path: "/api/goal",
     headers: authHeadersSchema,
     responses: {
       200: goalResponseSchema,
@@ -92,7 +92,7 @@ export const goalsContract = c.router({
   },
   getForChatThread: {
     method: "GET",
-    path: "/api/okou/chat-threads/:threadId/goal",
+    path: "/api/chat-threads/:threadId/goal",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     responses: {
@@ -106,7 +106,7 @@ export const goalsContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/okou/goal/complete",
+    path: "/api/goal/complete",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -120,7 +120,7 @@ export const goalsContract = c.router({
   },
   block: {
     method: "POST",
-    path: "/api/okou/goal/block",
+    path: "/api/goal/block",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -134,7 +134,7 @@ export const goalsContract = c.router({
   },
   pause: {
     method: "POST",
-    path: "/api/okou/goal/pause",
+    path: "/api/goal/pause",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -148,7 +148,7 @@ export const goalsContract = c.router({
   },
   pauseForChatThread: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/goal/pause",
+    path: "/api/chat-threads/:threadId/goal/pause",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     body: c.noBody(),
@@ -163,7 +163,7 @@ export const goalsContract = c.router({
   },
   resume: {
     method: "POST",
-    path: "/api/okou/goal/resume",
+    path: "/api/goal/resume",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
@@ -177,7 +177,7 @@ export const goalsContract = c.router({
   },
   clear: {
     method: "DELETE",
-    path: "/api/okou/goal",
+    path: "/api/goal",
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {

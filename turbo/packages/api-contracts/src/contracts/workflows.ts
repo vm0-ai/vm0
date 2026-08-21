@@ -1587,7 +1587,7 @@ export type WorkflowConnectorReadinessStatus = z.infer<
 export const workflowConnectorReadinessEntrySchema = z.object({
   connectorSlug: connectorSlugSchema,
   label: z.string().min(1),
-  icon: publicConnectorCatalogIconSchema,
+  icon: publicConnectorCatalogIconSchema.optional(),
   reason: z.string().min(1),
   status: workflowConnectorReadinessStatusSchema,
 });
@@ -1810,7 +1810,7 @@ export const workflowAutomationsContract = c.router({
   },
   listForChatThread: {
     method: "GET",
-    path: "/api/okou/chat-threads/:threadId/workflow-automations",
+    path: "/api/chat-threads/:threadId/workflow-automations",
     headers: authHeadersSchema,
     pathParams: chatThreadIdParams,
     responses: {

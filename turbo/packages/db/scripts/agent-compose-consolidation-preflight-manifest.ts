@@ -180,6 +180,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/services/chat-events.command.ts|@okouai/db/schema/zero-agent|zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/chat-goal-queue.service.ts|@okouai/db/schema/zero-agent|zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/chat-search.service.ts|@okouai/db/schema/agent-compose|agentComposes:agentComposes",
+    "turbo/apps/api/src/signals/services/chat-thread-connector-selection.service.ts|@okouai/db/schema/agent-compose|agentComposes:agentComposes",
     "turbo/apps/api/src/signals/services/chat-thread-event.service.ts|@okouai/db/schema/agent-compose|agentComposes:agentComposes",
     "turbo/apps/api/src/signals/services/chat-thread.service.ts|@okouai/db/schema/zero-agent|zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/compose-data.service.ts|@okouai/db/schema/agent-compose|agentComposeVersions:agentComposeVersions,agentComposes:agentComposes",
@@ -293,6 +294,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/services/chat-goal-queue.service.ts|agentComposeId,zeroAgents",
     "turbo/apps/api/src/signals/services/chat-search.service.ts|agentComposeId,agentComposes",
     "turbo/apps/api/src/signals/services/chat-session-continuity.service.ts|agentComposeId",
+    "turbo/apps/api/src/signals/services/chat-thread-connector-selection.service.ts|agentComposeId,agentComposes",
     "turbo/apps/api/src/signals/services/chat-thread-event.service.ts|agentComposeId,agentComposes",
     "turbo/apps/api/src/signals/services/chat-thread-model.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/chat-thread.service.ts|agentComposeId,zeroAgents",
@@ -410,6 +412,8 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8",
     "#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8",
     "#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8",
+    "#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372",
+    "#28453|built-in-model-key-relation-compatibility|removal-owner:#28368-relation-contract",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

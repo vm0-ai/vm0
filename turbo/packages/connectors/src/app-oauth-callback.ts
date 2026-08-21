@@ -8,6 +8,7 @@ const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set(["slack"]);
 // every provider is ready, unlisted connectors must keep their VM0 App callback.
 const DIRECT_OKOU_OAUTH_CALLBACK_READY_CONNECTOR_SLUGS: ReadonlySet<string> =
   new Set([
+    "cloudflare",
     "gmail",
     "google-ads",
     "google-analytics",
@@ -22,6 +23,7 @@ const DIRECT_OKOU_OAUTH_CALLBACK_READY_CONNECTOR_SLUGS: ReadonlySet<string> =
     "google-search-console",
     "google-sheets",
     "microsoft-365",
+    "notion",
     "outlook-calendar",
     "outlook-mail",
     "youtube",

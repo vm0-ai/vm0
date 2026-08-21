@@ -514,7 +514,7 @@ describe("shared database worker runtime", () => {
     const clientId = await connectRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());
     context.mocks.http.get(
-      `*/api/okou/chat-threads/${dataKey.threadId}/event-snapshot`,
+      `*/api/chat-threads/${dataKey.threadId}/event-snapshot`,
       () => {
         return HttpResponse.json(
           {
@@ -549,7 +549,7 @@ describe("shared database worker runtime", () => {
       });
     });
     context.mocks.http.get(
-      `*/api/okou/chat-threads/${dataKey.threadId}/event-rows`,
+      `*/api/chat-threads/${dataKey.threadId}/event-rows`,
       () => {
         return HttpResponse.json(
           { rows: [] },
@@ -771,7 +771,7 @@ describe("shared database worker runtime", () => {
       });
     });
     context.mocks.http.get(
-      `*/api/okou/chat-threads/${dataKey.threadId}/event-rows`,
+      `*/api/chat-threads/${dataKey.threadId}/event-rows`,
       ({ request }) => {
         if (failNextPage) {
           failNextPage = false;

@@ -340,7 +340,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
 
     /**
      * Read a run's agent session id through the public activity-detail API
-     * (GET /api/okou/logs/:id) — the only session projection visible without
+     * (GET /api/logs/:id) — the only session projection visible without
      * checkpoints.
      */
     async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {

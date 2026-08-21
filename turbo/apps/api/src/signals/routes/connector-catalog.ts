@@ -5,6 +5,7 @@ import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
@@ -83,6 +84,7 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
   return {
     db: get(db$),
     featureStates: getAllFeatureStates(featureSwitchContext),
+    publicBrand: get(publicBrand$),
   };
 });
 
@@ -95,6 +97,7 @@ const listConnectorCatalogInner$ = command(
       listPublicConnectorCatalog({
         db: context.db,
         featureStates: context.featureStates,
+        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -131,6 +134,7 @@ const listConnectorCatalogStatusInner$ = command(
         db: context.db,
         featureStates: context.featureStates,
         connectors: connectorState.value.connectors,
+        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -172,6 +176,7 @@ const discoverConnectorCatalogInner$ = command(
         featureStates: context.featureStates,
         connectors: connectorState.value.connectors,
         keyword: query.keyword,
+        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -223,6 +228,7 @@ const getConnectorCatalogInner$ = command(
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
         connectors: connectorState.value.connectors,
+        publicBrand: context.publicBrand,
       }),
       signal,
     );
@@ -248,6 +254,7 @@ const getConnectorCatalogPermissionsInner$ = command(
         db: context.db,
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
+        publicBrand: context.publicBrand,
       }),
       signal,
     );

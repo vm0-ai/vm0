@@ -175,7 +175,7 @@ const sharedThreadAuthHeadersSchema: ZodSchema<
 const sharedThreadsRuntimeSpec = {
   create: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/shared-threads",
+    path: "/api/chat-threads/:threadId/shared-threads",
     headers: sharedThreadAuthHeadersSchema,
     pathParams: createSharedThreadPathParamsSchema,
     body: createSharedThreadBodySchema,
@@ -191,7 +191,7 @@ const sharedThreadsRuntimeSpec = {
   },
   get: {
     method: "GET",
-    path: "/api/okou/shared-threads/:id",
+    path: "/api/shared-threads/:id",
     pathParams: sharedThreadIdPathParamsSchema,
     responses: {
       200: sharedThreadResponseSchema,
@@ -201,7 +201,7 @@ const sharedThreadsRuntimeSpec = {
   },
   meta: {
     method: "GET",
-    path: "/api/okou/shared-threads/:id/meta",
+    path: "/api/shared-threads/:id/meta",
     pathParams: sharedThreadIdPathParamsSchema,
     responses: {
       200: sharedThreadMetaResponseSchema,
@@ -215,7 +215,7 @@ const sharedThreadsRuntimeContract = c.router(sharedThreadsRuntimeSpec);
 
 type CreateSharedThreadRoute = AppRoute<CreateSharedThreadRouteTypes> & {
   readonly method: "POST";
-  readonly path: "/api/okou/chat-threads/:threadId/shared-threads";
+  readonly path: "/api/chat-threads/:threadId/shared-threads";
   readonly headers: ZodSchema<SharedThreadAuthHeaders, SharedThreadAuthHeaders>;
   readonly pathParams: ZodSchema<
     CreateSharedThreadPathParams,
@@ -226,7 +226,7 @@ type CreateSharedThreadRoute = AppRoute<CreateSharedThreadRouteTypes> & {
 
 type ReadSharedThreadRoute = AppRoute<ReadSharedThreadRouteTypes> & {
   readonly method: "GET";
-  readonly path: "/api/okou/shared-threads/:id";
+  readonly path: "/api/shared-threads/:id";
   readonly pathParams: ZodSchema<
     SharedThreadIdPathParams,
     SharedThreadIdPathParams
@@ -235,7 +235,7 @@ type ReadSharedThreadRoute = AppRoute<ReadSharedThreadRouteTypes> & {
 
 type ReadSharedThreadMetaRoute = AppRoute<ReadSharedThreadMetaRouteTypes> & {
   readonly method: "GET";
-  readonly path: "/api/okou/shared-threads/:id/meta";
+  readonly path: "/api/shared-threads/:id/meta";
   readonly pathParams: ZodSchema<
     SharedThreadIdPathParams,
     SharedThreadIdPathParams

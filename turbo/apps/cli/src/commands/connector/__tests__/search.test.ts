@@ -544,17 +544,14 @@ describe("okou connector search command", () => {
   describe("error handling", () => {
     it("surfaces auth errors from public connector catalog status", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/okou/connector-catalog/status",
-          () => {
-            return HttpResponse.json(
-              {
-                error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-              },
-              { status: 401 },
-            );
-          },
-        ),
+        http.get("http://localhost:3000/api/connector-catalog/status", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+            },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {

@@ -80,7 +80,7 @@ function stubDiagnostic(
 ): void {
   server.use(
     http.post(
-      `${baseUrl}/api/okou/connectors/diagnostics/check`,
+      `${baseUrl}/api/connectors/diagnostics/check`,
       async ({ request }) => {
         const body: unknown = await request.json();
         const parsed = connectorCheckRequestSchema.parse(body);
@@ -684,7 +684,7 @@ describe("okou connector permission-request command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/authorization-requests",
+        "http://localhost:3000/api/computer-use/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe("Bearer run-token");
           return HttpResponse.json({

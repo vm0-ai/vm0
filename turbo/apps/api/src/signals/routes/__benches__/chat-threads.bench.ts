@@ -843,7 +843,7 @@ const authHeaders = { authorization: "Bearer clerk-session" } as const;
 
 describe("bench side-effect-free GET API routes", () => {
   bench(
-    "GET /api/okou/chat-threads/:id",
+    "GET /api/chat-threads/:id",
     async () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({
@@ -858,7 +858,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/connectors",
+    "GET /api/connectors",
     async () => {
       await ensureSeeded();
       const response = await connectorsClient.list({ headers: authHeaders });
@@ -870,7 +870,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/user-preferences",
+    "GET /api/user-preferences",
     async () => {
       await ensureSeeded();
       const response = await userPreferencesClient.get({
@@ -908,7 +908,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/me/model-providers",
+    "GET /api/me/model-providers",
     async () => {
       await ensureSeeded();
       const response = await personalModelProvidersClient.list({

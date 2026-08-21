@@ -4,6 +4,7 @@ import { hostContract } from "@okouai/api-contracts/contracts/host";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import {
   completeHostedSiteDeployment$,
   getHostedSiteDeployments$,
@@ -26,6 +27,8 @@ function internalError(message: string) {
 const prepareBody$ = bodyResultOf(hostContract.prepare);
 const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
 
   const bodyResult = await get(prepareBody$);
   signal.throwIfAborted();
@@ -44,6 +47,7 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId: "runId" in auth ? auth.runId : undefined,
+      publicBrand,
       body: bodyResult.data,
     },
     signal,

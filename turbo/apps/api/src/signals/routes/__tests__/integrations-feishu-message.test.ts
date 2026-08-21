@@ -195,7 +195,7 @@ async function connectCurrentFeishuUser(actor: FeishuTestActor): Promise<void> {
   await flushWaitUntilForTest();
 }
 
-describe("POST /api/okou/integrations/feishu/message", () => {
+describe("POST /api/integrations/feishu/message", () => {
   let captured: CapturedRequest[];
 
   beforeEach(() => {

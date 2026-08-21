@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server";
 import { translateCommand } from "../index";
 
-const TRANSLATE_URL = "http://localhost:3000/api/okou/translate";
+const TRANSLATE_URL = "http://localhost:3000/api/translate";
 
 describe("okou translate command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {

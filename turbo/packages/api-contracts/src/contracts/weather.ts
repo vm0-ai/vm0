@@ -127,7 +127,7 @@ const airQualityResponses = {
 export const weatherContract = c.router({
   current: {
     method: "POST",
-    path: "/api/okou/weather/current",
+    path: "/api/weather/current",
     headers: authHeadersSchema,
     body: weatherCurrentRequestSchema,
     responses: weatherResponses,
@@ -135,7 +135,7 @@ export const weatherContract = c.router({
   },
   forecastHourly: {
     method: "POST",
-    path: "/api/okou/weather/forecast/hourly",
+    path: "/api/weather/forecast/hourly",
     headers: authHeadersSchema,
     body: weatherForecastHourlyRequestSchema,
     responses: weatherResponses,
@@ -143,7 +143,7 @@ export const weatherContract = c.router({
   },
   forecastDaily: {
     method: "POST",
-    path: "/api/okou/weather/forecast/daily",
+    path: "/api/weather/forecast/daily",
     headers: authHeadersSchema,
     body: weatherForecastDailyRequestSchema,
     responses: weatherResponses,
@@ -151,7 +151,7 @@ export const weatherContract = c.router({
   },
   historyHourly: {
     method: "POST",
-    path: "/api/okou/weather/history/hourly",
+    path: "/api/weather/history/hourly",
     headers: authHeadersSchema,
     body: weatherHistoryHourlyRequestSchema,
     responses: weatherResponses,
@@ -159,7 +159,7 @@ export const weatherContract = c.router({
   },
   airQualityCurrent: {
     method: "POST",
-    path: "/api/okou/weather/air-quality/current",
+    path: "/api/weather/air-quality/current",
     headers: authHeadersSchema,
     body: airQualityCurrentRequestSchema,
     responses: airQualityResponses,

@@ -158,6 +158,7 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
       contentType: mimetype,
       sizeBytes: uploadedFile.size,
       url: uploadedFile.fileUrl,
+      publicBrand: object.publicBrand,
       metadata: buildMetadata({
         body,
         uploadId: body.uploadId,

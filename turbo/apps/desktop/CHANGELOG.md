@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.38.55](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.54...desktop-v0.38.55) (2026-08-21)
+
+
+### Refactoring
+
+* **api:** move computer-use off the brand namespace ([#28487](https://github.com/vm0-ai/vm0/issues/28487)) ([5edd3c9](https://github.com/vm0-ai/vm0/commit/5edd3c9c01c0a781cb4bd8d05b4de3c55faa06a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+
+## [0.38.54](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.53...desktop-v0.38.54) (2026-08-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+
+## [0.38.53](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.52...desktop-v0.38.53) (2026-08-20)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+
 ## [0.38.52](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.51...desktop-v0.38.52) (2026-08-20)
 
 

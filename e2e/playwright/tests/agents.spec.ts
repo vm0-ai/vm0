@@ -47,7 +47,7 @@ async function mockPinnedAgentGrid(
     });
   });
 
-  await page.route("**/api/okou/team", async (route) => {
+  await page.route("**/api/team", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!Array.isArray(body) || !body.every(isRecord)) {
@@ -74,7 +74,7 @@ async function mockPinnedAgentGrid(
     });
   });
 
-  await page.route("**/api/okou/user-preferences", async (route) => {
+  await page.route("**/api/user-preferences", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -124,9 +124,9 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
   await Promise.all([
     ...[
       "/api/okou/feature-switches",
-      "/api/okou/onboarding/status",
-      "/api/okou/team",
-      "/api/okou/user-preferences",
+      "/api/onboarding/status",
+      "/api/team",
+      "/api/user-preferences",
     ].map((pathname) => {
       return page.waitForResponse((response) => {
         return (
@@ -229,7 +229,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
     page.waitForResponse((response) => {
       return (
         response.request().method() === "GET" &&
-        new URL(response.url()).pathname === "/api/okou/user-preferences"
+        new URL(response.url()).pathname === "/api/user-preferences"
       );
     }),
     page.reload(),
@@ -268,7 +268,7 @@ test("reveal the default agent unread action from the whole row", async ({
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  await page.route("**/api/okou/indicators", async (route) => {
+  await page.route("**/api/indicators", async (route) => {
     await route.fulfill({
       json: {
         agents: { [defaultAgentId]: "unread" },

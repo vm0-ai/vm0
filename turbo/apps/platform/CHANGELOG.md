@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.778.1](https://github.com/vm0-ai/vm0/compare/app-v0.778.0...app-v0.778.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **platform:** keep deck import alive across the new-thread navigation ([#28491](https://github.com/vm0-ai/vm0/issues/28491)) ([67e9f2b](https://github.com/vm0-ai/vm0/commit/67e9f2bc40550d2a714964ee0135cc41e2616c75))
+
+
+### Refactoring
+
+* **api:** move artifact catalog, logs, and run reads off the brand namespace ([#28435](https://github.com/vm0-ai/vm0/issues/28435)) ([fa800f0](https://github.com/vm0-ai/vm0/commit/fa800f04ec58ad7835649b2acc6000b8538154c5))
+* **api:** move chat threads, chat events, and shared threads off the brand namespace ([#28471](https://github.com/vm0-ai/vm0/issues/28471)) ([6c2036f](https://github.com/vm0-ai/vm0/commit/6c2036fa7e5f02e01cf163ab1a515364e8ec29d8))
+* **api:** move connectors and catalog off the brand namespace ([#28490](https://github.com/vm0-ai/vm0/issues/28490)) ([942449c](https://github.com/vm0-ai/vm0/commit/942449c2866e51c0d6e7148fc0b4220d1c8feb80))
+* **api:** move integrations off the brand namespace ([#28488](https://github.com/vm0-ai/vm0/issues/28488)) ([cafdde6](https://github.com/vm0-ai/vm0/commit/cafdde60bbdcf29e58a45a0c72ec457103cf8588))
+* **api:** move slack, teams, and feishu connect routes off the brand namespace ([#28485](https://github.com/vm0-ai/vm0/issues/28485)) ([ae6999f](https://github.com/vm0-ai/vm0/commit/ae6999f9a1b4193cdf2bece16d0baba6cf343f30)), closes [#28464](https://github.com/vm0-ai/vm0/issues/28464)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+    * @okouai/core bumped to 8.577.0
+
+## [0.778.0](https://github.com/vm0-ai/vm0/compare/app-v0.777.0...app-v0.778.0) (2026-08-21)
+
+
+### Features
+
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Refactoring
+
+* **api:** move chat-thread, indicator and attribution routes off the brand namespace ([#28425](https://github.com/vm0-ai/vm0/issues/28425)) ([f0bf52e](https://github.com/vm0-ai/vm0/commit/f0bf52eb50e5f7bd30a4f3aa5eee00a5cf81d344))
+* remove expired deployment compatibility ([#28452](https://github.com/vm0-ai/vm0/issues/28452)) ([cfc81f2](https://github.com/vm0-ai/vm0/commit/cfc81f2a5b5c833db1729ad889eae7b552e20dd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+    * @okouai/connectors bumped to 1.209.0
+    * @okouai/core bumped to 8.576.0
+
+## [0.777.0](https://github.com/vm0-ai/vm0/compare/app-v0.776.0...app-v0.777.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add managed model fallback resolver ([#28301](https://github.com/vm0-ai/vm0/issues/28301)) ([745a08f](https://github.com/vm0-ai/vm0/commit/745a08fa51b6b0b51208fae1a02ec599664be115))
+
+
+### Bug Fixes
+
+* revise chat usage after late settlement ([#28378](https://github.com/vm0-ai/vm0/issues/28378)) ([21ca637](https://github.com/vm0-ai/vm0/commit/21ca637a2975b12d44aa1dce9d62633e89fb0556))
+
+
+### Refactoring
+
+* **api:** move user config and personal model provider routes off the brand namespace ([#28429](https://github.com/vm0-ai/vm0/issues/28429)) ([6ef5bd2](https://github.com/vm0-ai/vm0/commit/6ef5bd26a731fe5372c2fedd6dad7c173e1ff591))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+    * @okouai/connectors bumped to 1.208.0
+    * @okouai/core bumped to 8.575.0
+
 ## [0.776.0](https://github.com/vm0-ai/vm0/compare/app-v0.775.1...app-v0.776.0) (2026-08-20)
 
 

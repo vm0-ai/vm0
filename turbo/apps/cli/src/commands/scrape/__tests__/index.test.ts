@@ -83,22 +83,19 @@ describe("okou scrape command", () => {
   it("posts default markdown scrape requests and prints JSON", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/scrape",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json({
-            requestedUrl: "https://example.com",
-            format: "markdown",
-            mode: "standard",
-            provider: "firecrawl",
-            creditsCharged: 4,
-            billingCategory: "standard.markdown",
-            billingQuantity: 1,
-            result: { markdown: "# Example" },
-          });
-        },
-      ),
+      http.post("http://localhost:3000/api/scrape", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          requestedUrl: "https://example.com",
+          format: "markdown",
+          mode: "standard",
+          provider: "firecrawl",
+          creditsCharged: 4,
+          billingCategory: "standard.markdown",
+          billingQuantity: 1,
+          result: { markdown: "# Example" },
+        });
+      }),
     );
 
     await scrapeCommand.parseAsync([
@@ -130,24 +127,21 @@ describe("okou scrape command", () => {
   it("posts enhanced link scrape requests and prints links", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/scrape",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json({
-            requestedUrl: "https://example.com",
-            format: "links",
-            mode: "enhanced",
-            provider: "firecrawl",
-            creditsCharged: 20,
-            billingCategory: "enhanced.links",
-            billingQuantity: 1,
-            result: {
-              links: ["https://example.com/a", "https://example.com/b"],
-            },
-          });
-        },
-      ),
+      http.post("http://localhost:3000/api/scrape", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          requestedUrl: "https://example.com",
+          format: "links",
+          mode: "enhanced",
+          provider: "firecrawl",
+          creditsCharged: 20,
+          billingCategory: "enhanced.links",
+          billingQuantity: 1,
+          result: {
+            links: ["https://example.com/a", "https://example.com/b"],
+          },
+        });
+      }),
     );
 
     await scrapeCommand.parseAsync([
@@ -175,7 +169,7 @@ describe("okou scrape command", () => {
 
   it("prints markdown in human-readable mode", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/scrape", () => {
+      http.post("http://localhost:3000/api/scrape", () => {
         return HttpResponse.json({
           requestedUrl: "https://example.com",
           format: "markdown",
@@ -200,7 +194,7 @@ describe("okou scrape command", () => {
   it("rejects invalid formats before calling the API", async () => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/scrape", () => {
+      http.post("http://localhost:3000/api/scrape", () => {
         apiRequests += 1;
         return HttpResponse.json({});
       }),
@@ -223,7 +217,7 @@ describe("okou scrape command", () => {
 
   it("prints API error messages", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/scrape", () => {
+      http.post("http://localhost:3000/api/scrape", () => {
         return HttpResponse.json(
           {
             error: {

@@ -132,7 +132,7 @@ function stateFromAuthorizationUrl(authorizationUrl: string): string {
   return state;
 }
 
-describe("GET /api/zero/connector-catalog", () => {
+describe("GET /api/connector-catalog", () => {
   const seededFeatureSwitches: {
     readonly orgId: string;
     readonly userId: string;
@@ -278,6 +278,20 @@ describe("GET /api/zero/connector-catalog", () => {
       invertInDarkMode: false,
       scale: 2,
     });
+
+    const okouResponse = await accept(
+      client.list({
+        headers,
+        extraHeaders: { origin: "https://app.okou.ai" },
+      }),
+      [200],
+    );
+    const okouOpenai = okouResponse.body.connectors.find((connector) => {
+      return connector.slug === "openai";
+    });
+    expect(okouOpenai?.icon.url).toBe(
+      "https://static.okou.io/test-fixtures/connectors/openai.svg",
+    );
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

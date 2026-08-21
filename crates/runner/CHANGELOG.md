@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.169.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.17...runner-rs-v0.169.18) (2026-08-21)
+
+
+### Bug Fixes
+
+* **runner:** guard connector runtime publications ([#28495](https://github.com/vm0-ai/vm0/issues/28495)) ([641136f](https://github.com/vm0-ai/vm0/commit/641136ff637c4436f6f55871faee2647c675edf2))
+
+
+### Refactoring
+
+* **runner:** centralize gc lock probes ([#28493](https://github.com/vm0-ai/vm0/issues/28493)) ([14a8359](https://github.com/vm0-ai/vm0/commit/14a83594b6f01730b6a53561cac801f686d1fcbd))
+
+
+### Performance Improvements
+
+* **runner:** reduce workspace cache path allocations ([#28498](https://github.com/vm0-ai/vm0/issues/28498)) ([d08a325](https://github.com/vm0-ai/vm0/commit/d08a3255808888a2962d1ba9737f5f2a1ddff43f))
+
+## [0.169.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.16...runner-rs-v0.169.17) (2026-08-20)
+
+
+### Bug Fixes
+
+* **runner:** bound firewall catalog response bodies ([#28399](https://github.com/vm0-ai/vm0/issues/28399)) ([1732568](https://github.com/vm0-ai/vm0/commit/17325687f4950e089ce565d1e33737b5822b19be))
+
 ## [0.169.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.15...runner-rs-v0.169.16) (2026-08-20)
 
 

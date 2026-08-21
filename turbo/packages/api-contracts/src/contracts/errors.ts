@@ -42,6 +42,10 @@ export const ApiError = {
     status: 503 as const,
     code: "PROVIDER_UNAVAILABLE",
   },
+  MODEL_PROVIDER_UNAVAILABLE: {
+    status: 503 as const,
+    code: "MODEL_PROVIDER_UNAVAILABLE",
+  },
   CONNECTOR_READINESS_TIMEOUT: {
     status: 503 as const,
     code: "CONNECTOR_READINESS_TIMEOUT",
@@ -142,6 +146,11 @@ export const RUN_ERROR_GUIDANCE: Record<
     title: "Provider temporarily unavailable",
     guidance:
       "The model provider is temporarily unavailable. Please try again later.",
+  },
+  MODEL_PROVIDER_UNAVAILABLE: {
+    title: "Model temporarily unavailable",
+    guidance:
+      "Every managed route for this model is temporarily unavailable. Please try again later.",
   },
   PROVIDER_DELETED: {
     title: "Model provider unavailable",

@@ -6,6 +6,7 @@ import type {
   HostedSiteDeploymentsResponse,
   HostedSitePrepareRequest,
 } from "@okouai/api-contracts/contracts/host";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   hostedDeployments,
@@ -44,6 +45,7 @@ interface PrepareDeploymentArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId?: string;
+  readonly publicBrand: PublicBrand;
   readonly body: HostedSitePrepareRequest;
 }
 
@@ -129,6 +131,7 @@ type GetHostedSiteDeploymentsResult =
 
 interface ActiveSitePointer {
   readonly version: 1;
+  readonly publicBrand: PublicBrand;
   readonly publicSlug: string;
   readonly siteId: string;
   readonly deploymentId: string;
@@ -206,20 +209,45 @@ function hostedR2Config(): HostedR2ConfigResult {
   return { status: "ok", config: { bucket } };
 }
 
-function publicUrl(publicSlug: string): string {
-  return `${env("OKOU_HOST_SCHEME")}://${publicSlug}.${env("OKOU_HOST_DOMAIN")}`;
+function publicHostDomain(publicBrand: PublicBrand): string {
+  // API/config rollout fallback (bounded by the ~102-minute API rollout
+  // exposure): older deployment config has only OKOU_HOST_DOMAIN. Remove after
+  // every supported API environment provides OKOU_PUBLIC_HOST_DOMAIN; #27750.
+  return publicBrand === "okou"
+    ? (env("OKOU_PUBLIC_HOST_DOMAIN") ?? env("OKOU_HOST_DOMAIN"))
+    : env("ZERO_HOST_DOMAIN");
 }
 
-function deploymentUrl(deploymentId: string): string {
-  return publicUrl(`dpl-${deploymentId}`);
+function publicHostScheme(publicBrand: PublicBrand): string {
+  return publicBrand === "okou"
+    ? env("OKOU_HOST_SCHEME")
+    : env("ZERO_HOST_SCHEME");
 }
 
-function activePointerKey(publicSlug: string): string {
-  return `sites/${publicSlug}/active.json`;
+function publicUrl(publicBrand: PublicBrand, publicSlug: string): string {
+  return `${publicHostScheme(publicBrand)}://${publicSlug}.${publicHostDomain(publicBrand)}`;
 }
 
-function immutableDeploymentPointerKey(deploymentId: string): string {
-  return `sites/deployments/${deploymentId}.json`;
+function deploymentUrl(publicBrand: PublicBrand, deploymentId: string): string {
+  return publicUrl(publicBrand, `dpl-${deploymentId}`);
+}
+
+function pointerNamespace(publicBrand: PublicBrand): string {
+  return publicBrand === "okou" ? "sites/brands/okou" : "sites";
+}
+
+function activePointerKey(
+  publicBrand: PublicBrand,
+  publicSlug: string,
+): string {
+  return `${pointerNamespace(publicBrand)}/${publicSlug}/active.json`;
+}
+
+function immutableDeploymentPointerKey(
+  publicBrand: PublicBrand,
+  deploymentId: string,
+): string {
+  return `${pointerNamespace(publicBrand)}/deployments/${deploymentId}.json`;
 }
 
 function deploymentPrefix(
@@ -494,6 +522,7 @@ function buildManifest(args: {
   readonly spaFallback: boolean;
   readonly files: readonly HostedSiteFile[];
   readonly createdAt: Date;
+  readonly publicBrand: PublicBrand;
 }): HostedSiteManifest {
   const manifestFiles: Record<string, HostedSiteManifestFile> = {};
   for (const file of args.files) {
@@ -507,6 +536,7 @@ function buildManifest(args: {
   }
   return {
     version: 1,
+    publicBrand: args.publicBrand,
     deploymentId: args.deploymentId,
     siteId: args.siteId,
     site: args.site,
@@ -538,6 +568,7 @@ function artifactPreviewArgs(
     orgId: deployment.orgId,
     url: deployment.artifactUrl ?? deployment.url,
     contentType: "text/html",
+    publicBrand: deployment.publicBrand,
     deploymentId: deployment.id,
   };
 }
@@ -560,6 +591,7 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
     sizeBytes: deployment.sizeBytes,
     entrypoint: deployment.entrypoint,
     spaFallback: deployment.spaFallback,
+    publicBrand: deployment.publicBrand,
   };
 }
 
@@ -588,6 +620,7 @@ async function findOrCreateHostedSite(
         userId: args.userId,
         slug: publicSlug,
         requestedSlug: args.body.site,
+        publicBrand: args.publicBrand,
         chatThreadId: args.chatThreadId,
         publicSlug,
         createdFromRunId: args.runId,
@@ -639,8 +672,8 @@ async function insertHostedDeployment(
 ): Promise<HostedDeploymentRow> {
   const { deploymentVersion, site } = allocation;
   const deploymentId = crypto.randomUUID();
-  const aliasUrl = publicUrl(site.publicSlug);
-  const artifactUrl = deploymentUrl(deploymentId);
+  const aliasUrl = publicUrl(site.publicBrand, site.publicSlug);
+  const artifactUrl = deploymentUrl(site.publicBrand, deploymentId);
   const prefix = deploymentPrefix(args.orgId, site.slug, deploymentVersion);
   const manifest = buildManifest({
     deploymentId,
@@ -652,6 +685,7 @@ async function insertHostedDeployment(
     spaFallback: args.body.spaFallback,
     files: args.body.files,
     createdAt: context.now,
+    publicBrand: site.publicBrand,
   });
   const files = Object.values(manifest.files);
   const [deployment] = await db
@@ -662,6 +696,7 @@ async function insertHostedDeployment(
       orgId: args.orgId,
       userId: args.userId,
       runId: args.runId,
+      publicBrand: site.publicBrand,
       status: "uploading",
       deploymentVersion,
       artifactUrl,
@@ -815,6 +850,7 @@ function activeSitePointerForDeployment(
 ): ActiveSitePointer {
   return {
     version: 1,
+    publicBrand: deployment.publicBrand,
     publicSlug: deployment.manifest.publicSlug,
     siteId: deployment.siteId,
     deploymentId: deployment.id,
@@ -869,7 +905,10 @@ const promoteHostedSiteDeployment$ = command(
         await get(
           putHostedSitesS3Object(
             args.bucket,
-            activePointerKey(args.deployment.manifest.publicSlug),
+            activePointerKey(
+              args.deployment.publicBrand,
+              args.deployment.manifest.publicSlug,
+            ),
             JSON.stringify(args.pointer, null, 2),
             "application/json",
           ),
@@ -976,7 +1015,7 @@ export const completeHostedSiteDeployment$ = command(
       await get(
         putHostedSitesS3Object(
           hostedR2.config.bucket,
-          immutableDeploymentPointerKey(deployment.id),
+          immutableDeploymentPointerKey(deployment.publicBrand, deployment.id),
           JSON.stringify(pointer, null, 2),
           "application/json",
         ),
@@ -1273,7 +1312,7 @@ export const getHostedSiteDeployments$ = command(
         siteId: site.id,
         site: hostedSiteRequestedSlug(site),
         publicSlug: site.publicSlug,
-        aliasUrl: publicUrl(site.publicSlug),
+        aliasUrl: publicUrl(site.publicBrand, site.publicSlug),
         activeDeploymentId: site.activeDeploymentId,
         activeDeploymentVersion: site.activeDeploymentVersion,
         deployments: deployments.map((deployment) => {

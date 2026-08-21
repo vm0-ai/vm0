@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import {
+  getVm0ManagedRouteCandidates,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -11,6 +14,7 @@ import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/co
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
@@ -28,6 +32,7 @@ import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -43,11 +48,26 @@ import {
   acquireManagedModelKeyFixture,
   releaseManagedModelKeyFixture,
 } from "../services/managed-model-key-fixture";
+import {
+  resolveBuiltInModelRuntimeRoute,
+  type BuiltInModelRuntimeRoute,
+} from "../services/built-in-model-runtime-route.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
+import {
+  browserPublicBrandSchemaAvailable,
+  browserSessionCreationPublicBrandSelection,
+  browserSessionPublicBrand,
+  browserSessionPublicBrandSelection,
+  browserSessionsBeforePublicBrandMigration,
+  effectiveBrowserSessionPublicBrand,
+  persistBrowserPublicBrandIfAvailable,
+} from "../services/browser-public-brand-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
+import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
+import { steerRunNearTimeBudgetForTest } from "../services/cron-steer-run-time-budget.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -233,6 +253,31 @@ async function seedVm0ManagedModelKey(
   return selectedModel;
 }
 
+async function seedVm0ManagedModelCandidateKeys(
+  db: Db,
+  fixtureId: string,
+  selectedModel: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const vendors = new Set(
+    getVm0ManagedRouteCandidates(selectedModel).map((candidate) => {
+      return candidate.vendor;
+    }),
+  );
+  await acquireManagedModelKeyFixture(
+    db,
+    fixtureId,
+    [...vendors].map((vendor) => {
+      return {
+        vendor,
+        apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return selectedModel;
+}
+
 async function deleteVm0ManagedModelKey(
   db: Db,
   fixtureId: string,
@@ -242,29 +287,45 @@ async function deleteVm0ManagedModelKey(
   signal.throwIfAborted();
 }
 
-type Vm0ManagedModelKeyAction = Extract<
+function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
+  return {
+    provider_type: route.providerType,
+    upstream_model: route.upstreamModel,
+    model_key_id: route.modelKeyId,
+  };
+}
+
+type Vm0ManagedModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
       | "seed-vm0-managed-default-model-key"
       | "seed-vm0-managed-model-key"
-      | "delete-vm0-managed-model-key";
+      | "seed-vm0-managed-model-candidate-keys"
+      | "delete-vm0-managed-model-key"
+      | "resolve-vm0-managed-model-route"
+      | "set-vm0-managed-candidate-cooldown"
+      | "delete-vm0-managed-candidate-cooldown";
   }
 >;
 
-function isVm0ManagedModelKeyAction(
+function isVm0ManagedModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelKeyAction {
-  return (
-    body.action === "seed-vm0-managed-default-model-key" ||
-    body.action === "seed-vm0-managed-model-key" ||
-    body.action === "delete-vm0-managed-model-key"
-  );
+): body is Vm0ManagedModelAction {
+  return [
+    "seed-vm0-managed-default-model-key",
+    "seed-vm0-managed-model-key",
+    "seed-vm0-managed-model-candidate-keys",
+    "delete-vm0-managed-model-key",
+    "resolve-vm0-managed-model-route",
+    "set-vm0-managed-candidate-cooldown",
+    "delete-vm0-managed-candidate-cooldown",
+  ].includes(body.action);
 }
 
-async function vm0ManagedModelKeyActionResponse(
+async function vm0ManagedModelActionResponse(
   db: Db,
-  body: Vm0ManagedModelKeyAction,
+  body: Vm0ManagedModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -295,8 +356,78 @@ async function vm0ManagedModelKeyActionResponse(
         },
       };
     }
+    case "seed-vm0-managed-model-candidate-keys": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedModelCandidateKeys(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
     case "delete-vm0-managed-model-key": {
       await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "resolve-vm0-managed-model-route": {
+      const route = await resolveBuiltInModelRuntimeRoute(
+        db,
+        body.selected_model,
+        body.fallback_enabled,
+      );
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          managed_model_route: route
+            ? serializeManagedModelRuntimeRoute(route)
+            : null,
+        },
+      };
+    }
+    case "set-vm0-managed-candidate-cooldown": {
+      await db
+        .insert(managedModelCandidateCooldown)
+        .values({
+          selectedModel: body.selected_model,
+          providerType: body.provider_type,
+          upstreamModel: body.upstream_model,
+          unavailableUntil: new Date(body.unavailable_until),
+        })
+        .onConflictDoUpdate({
+          target: [
+            managedModelCandidateCooldown.selectedModel,
+            managedModelCandidateCooldown.providerType,
+            managedModelCandidateCooldown.upstreamModel,
+          ],
+          set: { unavailableUntil: new Date(body.unavailable_until) },
+        });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "delete-vm0-managed-candidate-cooldown": {
+      await db
+        .delete(managedModelCandidateCooldown)
+        .where(
+          and(
+            eq(
+              managedModelCandidateCooldown.selectedModel,
+              body.selected_model,
+            ),
+            eq(managedModelCandidateCooldown.providerType, body.provider_type),
+            eq(
+              managedModelCandidateCooldown.upstreamModel,
+              body.upstream_model,
+            ),
+          ),
+        );
+      signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
@@ -332,6 +463,28 @@ async function readRunApiStart(
     throw new Error("Expected a Zero run timing row");
   }
   return run.apiStartedAt?.toISOString() ?? null;
+}
+
+/**
+ * A running run cannot reach the time-budget boundary during an integration
+ * test, so the test-only route moves exactly its owned run into that state.
+ */
+async function setRunTimeBudgetElapsed(
+  db: Db,
+  runId: string,
+  elapsedMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const startedAt = new Date(nowDate().getTime() - elapsedMs);
+  const [updated] = await db
+    .update(agentRuns)
+    .set({ startedAt })
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected one running time-budget run fixture");
+  }
 }
 
 async function readThreadSessionBinding(
@@ -549,6 +702,34 @@ type ConnectorPermissionBaselineMutationAction = Extract<
   { action: "mutate-runner-job-connector-permission-baseline" }
 >;
 
+type ConnectorRuntimeTargetsMutationAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-runner-job-connector-runtime-targets" }
+>;
+
+async function setRunnerJobConnectorRuntimeTargets(
+  db: Db,
+  body: ConnectorRuntimeTargetsMutationAction,
+  signal: AbortSignal,
+): Promise<void> {
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorRuntimeTargets}',
+        ${JSON.stringify(body.connector_runtime_targets)}::jsonb,
+        true
+      )`,
+    })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a queued runner job for runtime targets");
+  }
+}
+
 async function mutateRunnerJobConnectorPermissionBaseline(
   db: Db,
   body: ConnectorPermissionBaselineMutationAction,
@@ -744,9 +925,17 @@ type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
 >;
+type ValidateBrowserPublicBrandRolloutAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "validate-browser-public-brand-rollout" }
+>;
 type ReadUsagePackInvitationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-invitation-schema-state" }
+>;
+type ReadUsagePackPurchaseSerializationSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-usage-pack-purchase-serialization-schema-state" }
 >;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
@@ -759,7 +948,9 @@ type PersistenceStateAction =
   | ReadRunClaimOwnerAction
   | ReadRunLaunchSnapshotAction
   | ReadBrowserScreenshotSchemaStateAction
+  | ValidateBrowserPublicBrandRolloutAction
   | ReadUsagePackInvitationSchemaStateAction
+  | ReadUsagePackPurchaseSerializationSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -778,7 +969,13 @@ function isPersistenceStateAction(
     case "read-browser-screenshot-schema-state": {
       return true;
     }
+    case "validate-browser-public-brand-rollout": {
+      return true;
+    }
     case "read-usage-pack-invitation-schema-state": {
+      return true;
+    }
+    case "read-usage-pack-purchase-serialization-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -797,6 +994,322 @@ async function mutateStorageState(
 ): Promise<void> {
   await removeRunCanonicalStorageState(db, body.run_id, signal);
   signal.throwIfAborted();
+}
+
+async function browserRolloutTableExists(db: Db): Promise<boolean> {
+  const [tableState] = await db
+    .select({
+      available: sql`
+        to_regclass('public.browser_sessions') IS NOT NULL
+      `.mapWith(pgBooleanDecoder),
+    })
+    .from(sql`(SELECT 1) AS browser_table_probe`)
+    .limit(1);
+  return tableState?.available === true;
+}
+
+async function createPreMigrationBrowserRolloutTables(db: Db): Promise<void> {
+  // template1 is the test suite's pre-migration database. Reproduce the 0955
+  // browser shape and its pre-existing creation-provenance stores.
+  await db.execute(sql`
+    CREATE TABLE public.browser_sessions (
+      id uuid DEFAULT gen_random_uuid() NOT NULL,
+      chat_thread_id uuid NOT NULL,
+      run_id uuid,
+      org_id text NOT NULL,
+      user_id text NOT NULL,
+      name varchar(64) NOT NULL,
+      browser_profile_id uuid,
+      status varchar(20) NOT NULL,
+      proxy_country_code varchar(2),
+      timeout_minutes integer NOT NULL,
+      suspended_at timestamp,
+      suspension_reason varchar(20),
+      created_at timestamp DEFAULT now() NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL,
+      browser_thread_profile_id uuid
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE public.agent_run_callbacks (
+      id uuid DEFAULT gen_random_uuid() NOT NULL,
+      run_id uuid NOT NULL,
+      internal_kind varchar(64),
+      payload jsonb,
+      created_at timestamp DEFAULT now() NOT NULL
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE public.browser_session_instances (
+      provider_session_id uuid NOT NULL,
+      chat_thread_id uuid NOT NULL,
+      run_id uuid NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL
+    )
+  `);
+}
+
+async function insertBrowserRolloutCallback(
+  db: Db,
+  runId: string,
+  publicBrand: "vm0" | "okou",
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO public.agent_run_callbacks (
+      id,
+      run_id,
+      internal_kind,
+      payload
+    ) VALUES (
+      ${randomUUID()},
+      ${runId},
+      'chat',
+      ${JSON.stringify({ publicBrand })}::jsonb
+    )
+  `);
+}
+
+async function insertBrowserRolloutSession(
+  db: Db,
+  chatThreadId: string,
+  runId: string | null,
+): Promise<void> {
+  // Match the previous API's INSERT by omitting the new column. Migration
+  // 0956 supplies VM0 for legacy rows and backfills branded new-API rows.
+  await db.insert(browserSessionsBeforePublicBrandMigration).values({
+    chatThreadId,
+    runId,
+    orgId: "browser-public-brand-rollout",
+    userId: "browser-public-brand-rollout",
+    name: "Browser rollout fixture",
+    status: "suspended",
+    proxyCountryCode: null,
+    timeoutMinutes: 30,
+    suspendedAt: nowDate(),
+    suspensionReason: "reconcile",
+  });
+}
+
+async function seedPreMigrationBrowserCreation(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly creationRunId: string;
+  },
+): Promise<void> {
+  // Keep an earlier foreign instance in the fixture so the production
+  // selection must correlate by chat_thread_id instead of accidentally
+  // reading the first browser instance in the database.
+  const foreignRunId = randomUUID();
+  await insertBrowserRolloutCallback(db, foreignRunId, "vm0");
+  await db.execute(sql`
+    INSERT INTO public.browser_session_instances (
+      provider_session_id,
+      chat_thread_id,
+      run_id,
+      created_at
+    ) VALUES (
+      ${randomUUID()},
+      ${randomUUID()},
+      ${foreignRunId},
+      now() - interval '1 minute'
+    )
+  `);
+
+  await insertBrowserRolloutCallback(db, args.creationRunId, "okou");
+  await insertBrowserRolloutSession(db, args.chatThreadId, args.creationRunId);
+  await db.execute(sql`
+    INSERT INTO public.browser_session_instances (
+      provider_session_id,
+      chat_thread_id,
+      run_id
+    ) VALUES (
+      ${randomUUID()},
+      ${args.chatThreadId},
+      ${args.creationRunId}
+    )
+  `);
+
+  // A later VM0 run may take over the same logical browser. The immutable
+  // first instance must continue to identify its original Okou creation.
+  const laterRunId = randomUUID();
+  await insertBrowserRolloutCallback(db, laterRunId, "vm0");
+  await db.execute(sql`
+    UPDATE public.browser_sessions
+    SET run_id = ${laterRunId}
+    WHERE chat_thread_id = ${args.chatThreadId}
+  `);
+}
+
+async function applyBrowserPublicBrandMigrationForTest(db: Db): Promise<void> {
+  await db.execute(
+    sql`ALTER TABLE public.browser_sessions ADD COLUMN public_brand text DEFAULT 'vm0' NOT NULL`,
+  );
+  await db.execute(sql`
+    WITH browser_creation_runs AS (
+      SELECT
+        browser.id AS browser_id,
+        COALESCE(
+          (
+            SELECT instance.run_id
+            FROM public.browser_session_instances AS instance
+            WHERE instance.chat_thread_id = browser.chat_thread_id
+              AND instance.created_at >= browser.created_at
+            ORDER BY instance.created_at, instance.provider_session_id
+            LIMIT 1
+          ),
+          browser.run_id
+        ) AS run_id
+      FROM public.browser_sessions AS browser
+    ),
+    browser_creation_brands AS (
+      SELECT DISTINCT ON (creation_run.browser_id)
+        creation_run.browser_id,
+        callback.payload ->> 'publicBrand' AS public_brand
+      FROM browser_creation_runs AS creation_run
+      INNER JOIN public.agent_run_callbacks AS callback
+        ON callback.run_id = creation_run.run_id
+      WHERE callback.internal_kind = 'chat'
+        AND callback.payload ->> 'publicBrand' IN ('vm0', 'okou')
+      ORDER BY
+        creation_run.browser_id,
+        callback.created_at,
+        callback.id
+    )
+    UPDATE public.browser_sessions AS browser
+    SET public_brand = creation.public_brand
+    FROM browser_creation_brands AS creation
+    WHERE browser.id = creation.browser_id
+  `);
+}
+
+async function readBrowserRolloutStoredBrand(
+  db: Db,
+  chatThreadId: string,
+  missingMessage: string,
+): Promise<"vm0" | "okou"> {
+  const [browser] = await db
+    .select({ publicBrand: browserSessionPublicBrandSelection })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, chatThreadId))
+    .limit(1);
+  if (!browser) {
+    throw new Error(missingMessage);
+  }
+  return browserSessionPublicBrand(browser.publicBrand);
+}
+
+async function readBrowserRolloutEffectiveBrand(
+  db: Db,
+  chatThreadId: string,
+): Promise<"vm0" | "okou"> {
+  const [browser] = await db
+    .select({
+      publicBrand: browserSessionPublicBrandSelection,
+      creationPublicBrand: browserSessionCreationPublicBrandSelection,
+    })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, chatThreadId))
+    .limit(1);
+  if (!browser) {
+    throw new Error("New-API browser rollout row is missing");
+  }
+  return effectiveBrowserSessionPublicBrand(
+    browser.publicBrand,
+    browser.creationPublicBrand,
+  );
+}
+
+async function cleanupBrowserRolloutFixture(
+  db: Db,
+  fixtureTableRequired: boolean,
+  chatThreadIds: readonly string[],
+): Promise<void> {
+  if (fixtureTableRequired) {
+    await db.execute(sql`DROP TABLE public.browser_sessions`);
+    await db.execute(sql`DROP TABLE public.agent_run_callbacks`);
+    await db.execute(sql`DROP TABLE public.browser_session_instances`);
+    return;
+  }
+  for (const chatThreadId of chatThreadIds) {
+    await db
+      .delete(browserSessions)
+      .where(eq(browserSessions.chatThreadId, chatThreadId));
+  }
+}
+
+async function validateBrowserPublicBrandRolloutResponse(
+  db: Db,
+  signal: AbortSignal,
+) {
+  const availableBeforeCreation = await browserPublicBrandSchemaAvailable(db);
+  signal.throwIfAborted();
+  const fixtureTableRequired = !(await browserRolloutTableExists(db));
+  if (fixtureTableRequired) {
+    await createPreMigrationBrowserRolloutTables(db);
+  }
+
+  const previousApiChatThreadId = randomUUID();
+  await insertBrowserRolloutSession(db, previousApiChatThreadId, null);
+  const previousApiPublicBrand = await readBrowserRolloutStoredBrand(
+    db,
+    previousApiChatThreadId,
+    "Previous-API browser rollout row is missing",
+  );
+
+  const newApiChatThreadId = randomUUID();
+  const creationRunId = fixtureTableRequired ? randomUUID() : null;
+  if (creationRunId) {
+    await seedPreMigrationBrowserCreation(db, {
+      chatThreadId: newApiChatThreadId,
+      creationRunId,
+    });
+  } else {
+    await insertBrowserRolloutSession(db, newApiChatThreadId, null);
+  }
+  const persisted = await persistBrowserPublicBrandIfAvailable(db, {
+    chatThreadId: newApiChatThreadId,
+    publicBrand: "okou",
+  });
+  const newApiPublicBrand = await readBrowserRolloutEffectiveBrand(
+    db,
+    newApiChatThreadId,
+  );
+
+  if (fixtureTableRequired) {
+    // Apply migration 0956 after the new-API creation. The durable chat
+    // callback must backfill the creation brand even though the initial
+    // column-less INSERT could not persist it directly.
+    await applyBrowserPublicBrandMigrationForTest(db);
+  }
+  const schemaAvailableAfterArrival =
+    await browserPublicBrandSchemaAvailable(db);
+  signal.throwIfAborted();
+  if (!schemaAvailableAfterArrival) {
+    throw new Error("Browser public-brand schema did not become available");
+  }
+  const newApiPublicBrandAfterSchemaArrival =
+    await readBrowserRolloutStoredBrand(
+      db,
+      newApiChatThreadId,
+      "New-API browser rollout row disappeared after migration",
+    );
+  await cleanupBrowserRolloutFixture(db, fixtureTableRequired, [
+    newApiChatThreadId,
+    previousApiChatThreadId,
+  ]);
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      browser_public_brand_schema_available: availableBeforeCreation,
+      previous_api_browser_public_brand: previousApiPublicBrand,
+      new_api_browser_public_brand_persisted: persisted,
+      new_api_browser_public_brand: newApiPublicBrand,
+      new_api_browser_public_brand_after_schema_arrival:
+        newApiPublicBrandAfterSchemaArrival,
+    },
+  };
 }
 
 async function persistenceStateActionResponse(
@@ -867,6 +1380,9 @@ async function persistenceStateActionResponse(
         },
       };
     }
+    case "validate-browser-public-brand-rollout": {
+      return await validateBrowserPublicBrandRolloutResponse(db, signal);
+    }
     case "read-usage-pack-invitation-schema-state": {
       const available = await usagePackInvitationPurchaseSchemaAvailable(db);
       signal.throwIfAborted();
@@ -875,6 +1391,17 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           usage_pack_invitation_schema_available: available,
+        },
+      };
+    }
+    case "read-usage-pack-purchase-serialization-schema-state": {
+      const available = await usagePackPurchaseSerializationSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          usage_pack_purchase_serialization_schema_available: available,
         },
       };
     }
@@ -921,7 +1448,12 @@ async function readRunClaimOwnerActionResponse(
 
 type TimingStateAction = Extract<
   TestRuntimeStateActionBody,
-  { action: "clear-run-api-start" | "read-run-api-start" }
+  {
+    action:
+      | "clear-run-api-start"
+      | "read-run-api-start"
+      | "steer-run-time-budget";
+  }
 >;
 
 function isTimingStateAction(
@@ -929,7 +1461,8 @@ function isTimingStateAction(
 ): body is TimingStateAction {
   return (
     body.action === "clear-run-api-start" ||
-    body.action === "read-run-api-start"
+    body.action === "read-run-api-start" ||
+    body.action === "steer-run-time-budget"
   );
 }
 
@@ -949,6 +1482,20 @@ async function timingStateActionResponse(
         body: {
           ok: true as const,
           api_started_at: await readRunApiStart(db, body.run_id, signal),
+        },
+      };
+    }
+    case "steer-run-time-budget": {
+      await setRunTimeBudgetElapsed(db, body.run_id, body.elapsed_ms, signal);
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          run_time_budget: await steerRunNearTimeBudgetForTest(
+            db,
+            body.run_id,
+            signal,
+          ),
         },
       };
     }
@@ -1485,8 +2032,8 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0ManagedModelKeyAction(body)) {
-      return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    if (isVm0ManagedModelAction(body)) {
+      return await vm0ManagedModelActionResponse(db, body, signal);
     }
     if (isCustomConnectorAuthTemplateFixtureAction(body)) {
       return await customConnectorAuthTemplateFixtureActionResponse(
@@ -1503,6 +2050,10 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "set-runner-job-connector-runtime-targets": {
+        await setRunnerJobConnectorRuntimeTargets(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "hold-org-admission-lock": {

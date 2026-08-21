@@ -1,5 +1,48 @@
 # Changelog
 
+## [8.577.0](https://github.com/vm0-ai/vm0/compare/core-v8.576.0...core-v8.577.0) (2026-08-21)
+
+
+### Features
+
+* **connectors:** enable box oauth ([#28507](https://github.com/vm0-ai/vm0/issues/28507)) ([59784c7](https://github.com/vm0-ai/vm0/commit/59784c714a10f3e66ee4208fda67ea744cb5241f))
+* **core:** enable usage pack plans for staff ([#28503](https://github.com/vm0-ai/vm0/issues/28503)) ([14a9a65](https://github.com/vm0-ai/vm0/commit/14a9a653f13e028a63e8bfe439fbf9a6c53361c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+
+## [8.576.0](https://github.com/vm0-ai/vm0/compare/core-v8.575.0...core-v8.576.0) (2026-08-21)
+
+
+### Features
+
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+
+## [8.575.0](https://github.com/vm0-ai/vm0/compare/core-v8.574.0...core-v8.575.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add managed model fallback resolver ([#28301](https://github.com/vm0-ai/vm0/issues/28301)) ([745a08f](https://github.com/vm0-ai/vm0/commit/745a08fa51b6b0b51208fae1a02ec599664be115))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+
 ## [8.574.0](https://github.com/vm0-ai/vm0/compare/core-v8.573.1...core-v8.574.0) (2026-08-20)
 
 

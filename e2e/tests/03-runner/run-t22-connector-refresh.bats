@@ -93,7 +93,7 @@ EOF
     assert_output --partial "BENTOML_ENDPOINT_SHA256=${initial_endpoint_digest}"
     refute_output --partial "BENTOML_ENDPOINT_SHA256=${updated_endpoint_digest}"
 
-    run runner_api_curl "/api/okou/runs/${first_run_id}/context"
+    run runner_api_curl "/api/runs/${first_run_id}/context"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'
@@ -172,7 +172,7 @@ EOF
     assert_output --partial "BENTOML_ENDPOINT_SHA256=${updated_endpoint_digest}"
     refute_output --partial "BENTOML_ENDPOINT_SHA256=${initial_endpoint_digest}"
 
-    run runner_api_curl "/api/okou/runs/${RUN_ID}/context"
+    run runner_api_curl "/api/runs/${RUN_ID}/context"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

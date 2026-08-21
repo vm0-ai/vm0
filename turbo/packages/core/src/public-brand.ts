@@ -72,6 +72,27 @@ export function apiUrlForPublicBrand(
 }
 
 /**
+ * The static asset domains serve the same immutable object paths. Project only
+ * the production hostname so previews, development URLs, and custom origins
+ * remain unchanged.
+ */
+export function staticUrlForPublicBrand(
+  configuredStaticUrl: string,
+  publicBrand: PublicBrand,
+): string {
+  const url = new URL(configuredStaticUrl);
+  if (publicBrand === "okou" && url.hostname === "static.vm0.io") {
+    url.hostname = "static.okou.io";
+  } else if (publicBrand === "vm0" && url.hostname === "static.okou.io") {
+    url.hostname = "static.vm0.io";
+  }
+  const projectedUrl = url.toString();
+  return configuredStaticUrl.endsWith("/")
+    ? projectedUrl
+    : projectedUrl.replace(/\/$/u, "");
+}
+
+/**
  * Both brands are served at the same time, so a single configured sending
  * domain cannot be correct for both. Map the production pair explicitly and
  * leave every other configured domain (preview, development, tests) untouched.

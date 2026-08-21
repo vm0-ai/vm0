@@ -9,6 +9,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
@@ -194,6 +195,8 @@ const postGenerateInner$ = command(
       auth.tokenType === "zero" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const admission = await set(
       startRunBuiltInAdmission$,
       { runId, kind: "video" },
@@ -213,7 +216,7 @@ const postGenerateInner$ = command(
         runId,
         request: builtInGenerationRequestWithInternal(
           avatarVideoRequestRecord(options),
-          { admissionId: admission?.id },
+          { admissionId: admission?.id, publicBrand },
         ),
       },
       signal,

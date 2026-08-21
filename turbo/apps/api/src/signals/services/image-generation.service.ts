@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import {
@@ -1947,6 +1948,7 @@ export const recordGeneratedImage$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string | undefined;
+      readonly publicBrand: PublicBrand;
       readonly pricing: ImagePricing;
       readonly generation: ParsedImageGeneration;
       readonly recordArtifact?: boolean;
@@ -1963,6 +1965,7 @@ export const recordGeneratedImage$ = command(
         extension: extensionForFormat(params.generation.outputFormat),
         body: params.generation.imageBytes,
         contentType: contentTypeForFormat(params.generation.outputFormat),
+        publicBrand: params.publicBrand,
       },
       signal,
     );
@@ -1982,6 +1985,7 @@ export const recordGeneratedImage$ = command(
           sizeBytes: params.generation.imageBytes.byteLength,
           url,
           s3Key,
+          publicBrand: params.publicBrand,
           metadata: {
             generatedBy: "zero-official-image",
             model: params.generation.model,

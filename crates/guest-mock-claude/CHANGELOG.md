@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.21.72](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.71...guest-mock-claude-v0.21.72) (2026-08-21)
+
+
+### Documentation
+
+* **rust:** clarify process-group platform guarantees ([#28483](https://github.com/vm0-ai/vm0/issues/28483)) ([3bf064d](https://github.com/vm0-ai/vm0/commit/3bf064d169e87e1d7ddae7babbd47a523ac9d4ea))
+
+## [0.21.71](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.70...guest-mock-claude-v0.21.71) (2026-08-20)
+
 ## [0.21.70](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.69...guest-mock-claude-v0.21.70) (2026-08-20)
 
 

@@ -22,7 +22,7 @@ export const feishuOauthCallbackQuerySchema = z.object({
 export const feishuOauthContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/okou/feishu/oauth/connect",
+    path: "/api/feishu/oauth/connect",
     query: feishuOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),

@@ -1131,7 +1131,6 @@
       "changeTitle": "Parallelität ändern",
       "concurrentRun_one": "{{value}} gleichzeitige Ausführung",
       "concurrentRun_other": "{{value}} gleichzeitige Ausführungen",
-      "continueToStripe": "Weiter zu Stripe",
       "decreaseAria": "Verringern Sie die zusätzliche Parallelitätsmenge",
       "dueNow": "Jetzt fällig",
       "dueToday": "Heute fällig",

@@ -11,6 +11,7 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.BoxConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
@@ -24,6 +25,9 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ManagedModelProviderFallback, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -122,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
       true,
     );

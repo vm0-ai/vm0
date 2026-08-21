@@ -10,13 +10,13 @@ const slackChannelSchema = z.object({
 });
 
 /**
- * Slack channels contract (GET /api/okou/slack/channels)
+ * Slack channels contract (GET /api/slack/channels)
  * Lists Slack channels where the bot is a member.
  */
 export const slackChannelsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/slack/channels",
+    path: "/api/slack/channels",
     headers: authHeadersSchema,
     responses: {
       200: z.object({ channels: z.array(slackChannelSchema) }),

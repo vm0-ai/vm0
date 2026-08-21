@@ -25,6 +25,9 @@ function serializeAttributes(attributes) {
 }
 
 function matchesSelector(tagName, attributes, selector) {
+  if (selector === tagName) {
+    return true;
+  }
   const match = /^(meta|link)\[(name|property|rel)(\^?=)"([^"]+)"\]$/u.exec(
     selector,
   );
@@ -53,6 +56,9 @@ function applyHandler({ attributes, handler, innerContent = "" }) {
   handler.element({
     append(content) {
       state.appendedContent += content;
+    },
+    getAttribute(name) {
+      return state.attributes.get(name) ?? null;
     },
     remove() {
       state.removed = true;
@@ -88,7 +94,12 @@ function rewritePairedTag(html, tagName, handler) {
 }
 
 function rewriteVoidTag(html, tagName, selector, handler) {
-  const pattern = tagName === "meta" ? /<meta\b[^>]*>/giu : /<link\b[^>]*>/giu;
+  const pattern =
+    tagName === "meta"
+      ? /<meta\b[^>]*>/giu
+      : tagName === "link"
+        ? /<link\b[^>]*>/giu
+        : /<img\b[^>]*>/giu;
   return html.replace(pattern, (tag) => {
     const attributes = parseAttributes(tag);
     if (!matchesSelector(tagName, attributes, selector)) {
@@ -111,6 +122,9 @@ function rewriteHtml(html, selector, handler) {
   }
   if (selector.startsWith("link[")) {
     return rewriteVoidTag(html, "link", selector, handler);
+  }
+  if (selector === "img") {
+    return rewriteVoidTag(html, "img", selector, handler);
   }
   throw new Error(`Unsupported test HTMLRewriter selector: ${selector}`);
 }
@@ -206,7 +220,12 @@ function assetEnvironment(apiOrigin = "") {
 }
 
 function tagAttribute(html, tagName, selectorAttribute, selectorValue, target) {
-  const pattern = tagName === "meta" ? /<meta\b[^>]*>/giu : /<link\b[^>]*>/giu;
+  const pattern =
+    tagName === "meta"
+      ? /<meta\b[^>]*>/giu
+      : tagName === "link"
+        ? /<link\b[^>]*>/giu
+        : /<img\b[^>]*>/giu;
   for (const match of html.matchAll(pattern)) {
     const attributes = parseAttributes(match[0]);
     if (attributes.get(selectorAttribute) === selectorValue) {
@@ -214,6 +233,14 @@ function tagAttribute(html, tagName, selectorAttribute, selectorValue, target) {
     }
   }
   return null;
+}
+
+function tagAttributeValues(html, tagName, target) {
+  const pattern = tagName === "link" ? /<link\b[^>]*>/giu : /<img\b[^>]*>/giu;
+  return [...html.matchAll(pattern)].flatMap((match) => {
+    const value = parseAttributes(match[0]).get(target);
+    return value === undefined ? [] : [value];
+  });
 }
 
 function metaContent(html, selectorAttribute, selectorValue) {
@@ -280,6 +307,19 @@ assert.equal(
   metaContent(vm0Page.html, "name", "vm0-api-origin"),
   "https://api.vm0.ai",
 );
+assert.equal(
+  metaContent(vm0Page.html, "property", "og:image"),
+  "https://static.vm0.io/web/og-image.png",
+);
+assert.ok(
+  tagAttributeValues(vm0Page.html, "link", "href").includes(
+    "https://static.vm0.io/platform/icon.svg",
+  ),
+);
+assert.equal(
+  tagAttribute(vm0Page.html, "img", "alt", "", "src"),
+  "https://static.vm0.io/platform/icon.svg",
+);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(
@@ -308,6 +348,24 @@ assert.equal(
 assert.equal(
   metaContent(okouPage.html, "name", "vm0-api-origin"),
   "https://api.okou.ai",
+);
+assert.equal(
+  metaContent(okouPage.html, "property", "og:image"),
+  "https://static.okou.io/web/og-image.png",
+);
+assert.ok(
+  tagAttributeValues(okouPage.html, "link", "href").includes(
+    "https://static.okou.io/platform/icon.svg",
+  ),
+);
+assert.ok(
+  tagAttributeValues(okouPage.html, "link", "href").some(
+    (href) => href === "https://static.okou.io",
+  ),
+);
+assert.equal(
+  tagAttribute(okouPage.html, "img", "alt", "", "src"),
+  "https://static.okou.io/platform/icon.svg",
 );
 
 const okouPreview = await requestAppPage(
@@ -455,6 +513,10 @@ assert.equal(htmlAttribute(vm0SharedHtml, "data-app-brand-name"), "VM0");
 assert.equal(
   metaContent(vm0SharedHtml, "property", "og:url"),
   `https://app.vm0.ai/share/threads/${sharedThreadId}`,
+);
+assert.equal(
+  metaContent(vm0SharedHtml, "property", "og:image"),
+  "https://static.vm0.io/web/og-image.png",
 );
 
 const oldApiSharedOnOkouHost = await requestSharedPage({

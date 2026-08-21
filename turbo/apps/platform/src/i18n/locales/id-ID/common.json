@@ -1131,7 +1131,6 @@
       "changeTitle": "Ubah concurrency",
       "concurrentRun_one": "{{value}} eksekusi concurrent",
       "concurrentRun_other": "{{value}} eksekusi concurrent",
-      "continueToStripe": "Lanjutkan ke Stripe",
       "decreaseAria": "Kurangi jumlah concurrency tambahan",
       "dueNow": "Jatuh tempo sekarang",
       "dueToday": "Jatuh tempo hari ini",

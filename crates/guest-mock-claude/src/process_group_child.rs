@@ -6,14 +6,22 @@ use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitSta
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-/// Child process spawned as its own process-group leader.
+/// A child process with platform-specific process-group behavior.
+///
+/// On Unix, the child is spawned as the leader of a new process group. On
+/// non-Unix platforms, it is spawned as a regular child process because this
+/// helper does not create a separate process group.
 pub struct ProcessGroupChild {
     child: Child,
     child_pid: u32,
 }
 
 impl ProcessGroupChild {
-    /// Spawn `command`, placing it in a new process group where supported.
+    /// Spawn `command`.
+    ///
+    /// On Unix, the child is placed in a new process group with itself as the
+    /// group leader. On non-Unix platforms, this uses ordinary
+    /// `Command::spawn` and does not create a separate process group.
     pub fn spawn(command: &mut Command) -> io::Result<Self> {
         spawn_in_process_group(command).map(Self::new)
     }
@@ -24,7 +32,11 @@ impl ProcessGroupChild {
         Self { child, child_pid }
     }
 
-    /// Return the direct child PID. On Unix this is also the expected PGID.
+    /// Return the direct child PID.
+    ///
+    /// On Unix, this is also the expected process-group ID because the child
+    /// is the group leader. On non-Unix platforms, this is only the direct
+    /// child PID because this helper does not create a process group.
     pub fn id(&self) -> u32 {
         self.child_pid
     }
@@ -44,7 +56,11 @@ impl ProcessGroupChild {
         self.child.stderr.take()
     }
 
-    /// Wait for the direct child, then clean up the process group.
+    /// Wait for the direct child and perform platform-specific cleanup.
+    ///
+    /// On Unix, this waits for the child to exit, then attempts to terminate
+    /// its process group before reaping the child. On non-Unix platforms, no
+    /// process group is created, so this only waits for the direct child.
     pub fn wait_with_group_cleanup(mut self) -> io::Result<ExitStatus> {
         wait_child_and_cleanup_group(&mut self.child, self.child_pid)
     }
@@ -57,6 +73,11 @@ impl ProcessGroupChild {
     }
 
     /// Best-effort termination for error or drop cleanup.
+    ///
+    /// On Unix, this attempts to terminate the child process group, then
+    /// attempts to kill and reap the direct child. On non-Unix platforms, no
+    /// process group is created, so only the owned direct child is passed to
+    /// `Child::kill` and `Child::wait`.
     pub fn terminate(mut self) {
         terminate_process_group(self.child_pid);
         let _ = self.child.kill();
@@ -92,13 +113,21 @@ fn wait_child_and_cleanup_group(child: &mut Child, _child_pid: u32) -> io::Resul
     child.wait()
 }
 
-/// Best-effort termination by child PID for timeout paths that cannot own `Child`.
+/// Best-effort termination by child PID for timeout paths that cannot own
+/// `Child`.
+///
+/// On Unix, this attempts to terminate the child process group and then the
+/// direct child. On non-Unix platforms, both PID-only operations are no-ops.
 pub fn terminate_child_by_pid(child_pid: u32) {
     terminate_process_group(child_pid);
     terminate_direct_child_by_pid(child_pid);
 }
 
 /// Best-effort process-group termination for a group-leader child PID.
+///
+/// On Unix, this attempts to terminate the process group led by `child_pid`.
+/// On non-Unix platforms, this is a no-op because this helper does not create
+/// a separate process group.
 pub fn terminate_process_group(child_pid: u32) {
     #[cfg(unix)]
     if let Some(process_group) = ChildProcessGroup::from_group_leader_child_id(child_pid) {

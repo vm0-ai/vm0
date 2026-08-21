@@ -46,6 +46,24 @@
 - Don't wrap every async operation in try/catch
 - Only use try/catch when you have specific error recovery logic
 
+### Externally Managed References
+**Reference ownership follows the referenced entity's authority, not where the
+identifier is stored.** A local row can contain an identifier for an entity
+whose identity and lifecycle are managed by a provider, catalog, or another
+bounded context.
+
+- Distinguish untrusted input, externally managed references, required remote
+  operations, and local invariants; they do not share one failure policy
+- Resolve a well-formed external reference against its current authority and
+  represent an expected miss as unavailable rather than an internal error
+- Fail closed: an unresolved reference must never grant capabilities,
+  credentials, targets, or ownership
+- Do not turn database failures, programmer errors, or violated local
+  invariants into "external entity unavailable"
+- Test syntax validation and current existence as separate boundaries
+
+See `docs/externally-managed-references.md` for the full rules and examples.
+
 ### Strict Type Checking
 **Maintain type safety throughout the codebase.** Never compromise on type checking.
 

@@ -9,10 +9,10 @@ const CURRENT_THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const NEW_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const OTHER_AGENT_ID = "00000000-0000-4000-8000-000000000011";
-const CREATE_URL = "http://localhost:3000/api/okou/chat-threads";
+const CREATE_URL = "http://localhost:3000/api/chat-threads";
 
 function metadataUrl(threadId: string): string {
-  return `http://localhost:3000/api/okou/chat-threads/${threadId}/metadata`;
+  return `http://localhost:3000/api/chat-threads/${threadId}/metadata`;
 }
 
 describe("okou chat create command", () => {

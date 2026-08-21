@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
@@ -107,6 +108,70 @@ export async function seedVm0ManagedModelKey(
   return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
+export async function seedVm0ManagedModelCandidateKeys(
+  context: TestContext,
+  selectedModel: string,
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
+  const response = await postAction(context, {
+    action: "seed-vm0-managed-model-candidate-keys",
+    fixture_id: fixtureId,
+    selected_model: selectedModel,
+  });
+  if (!response.selected_model) {
+    throw new Error("seedVm0ManagedModelCandidateKeys missing selected_model");
+  }
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+}
+
+type ManagedModelRuntimeRouteFixture = NonNullable<
+  TestRuntimeStateActionResponse["managed_model_route"]
+>;
+
+export async function resolveVm0ManagedModelRouteFixture(
+  context: TestContext,
+  selectedModel: string,
+  fallbackEnabled: boolean,
+): Promise<ManagedModelRuntimeRouteFixture | null> {
+  const response = await postAction(context, {
+    action: "resolve-vm0-managed-model-route",
+    selected_model: selectedModel,
+    fallback_enabled: fallbackEnabled,
+  });
+  return response.managed_model_route ?? null;
+}
+
+export async function setVm0ManagedCandidateCooldownFixture(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+  unavailableUntil: Date,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-vm0-managed-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+    unavailable_until: unavailableUntil.toISOString(),
+  });
+  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+}
+
+export function registerVm0ManagedCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+): void {
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-candidate-cooldown",
+      selected_model: selectedModel,
+      provider_type: route.provider_type,
+      upstream_model: route.upstream_model,
+    });
+  });
+}
+
 export async function readBrowserScreenshotSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {
@@ -121,6 +186,34 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
+export async function validateBrowserPublicBrandRollout(
+  context: TestContext,
+): Promise<{
+  readonly schemaAvailable: boolean;
+  readonly previousApiPublicBrand: "vm0" | "okou" | undefined;
+  readonly newApiPublicBrandPersisted: boolean;
+  readonly newApiPublicBrand: "vm0" | "okou" | undefined;
+  readonly newApiPublicBrandAfterSchemaArrival: "vm0" | "okou" | undefined;
+}> {
+  const response = await postAction(context, {
+    action: "validate-browser-public-brand-rollout",
+  });
+  if (response.browser_public_brand_schema_available === undefined) {
+    throw new Error(
+      "validateBrowserPublicBrandRollout missing schema availability",
+    );
+  }
+  return {
+    schemaAvailable: response.browser_public_brand_schema_available,
+    previousApiPublicBrand: response.previous_api_browser_public_brand,
+    newApiPublicBrandPersisted:
+      response.new_api_browser_public_brand_persisted ?? false,
+    newApiPublicBrand: response.new_api_browser_public_brand,
+    newApiPublicBrandAfterSchemaArrival:
+      response.new_api_browser_public_brand_after_schema_arrival,
+  };
+}
+
 export async function readUsagePackInvitationSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {
@@ -133,6 +226,22 @@ export async function readUsagePackInvitationSchemaAvailable(
     );
   }
   return response.usage_pack_invitation_schema_available;
+}
+
+export async function readUsagePackPurchaseSerializationSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-usage-pack-purchase-serialization-schema-state",
+  });
+  if (
+    response.usage_pack_purchase_serialization_schema_available === undefined
+  ) {
+    throw new Error(
+      "readUsagePackPurchaseSerializationSchemaAvailable missing schema availability",
+    );
+  }
+  return response.usage_pack_purchase_serialization_schema_available;
 }
 
 export async function setCustomConnectorAuthTemplateFixture(
@@ -317,6 +426,18 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
     action: "mutate-runner-job-connector-permission-baseline",
     run_id: runId,
     mode,
+  });
+}
+
+export async function setRunnerJobConnectorRuntimeTargets(
+  context: TestContext,
+  runId: string,
+  connectorRuntimeTargets: readonly ConnectorRuntimeTargetRegistration[],
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-connector-runtime-targets",
+    run_id: runId,
+    connector_runtime_targets: [...connectorRuntimeTargets],
   });
 }
 
@@ -548,6 +669,26 @@ export async function readRunApiStart(
     throw new Error("readRunApiStart missing api_started_at");
   }
   return response.api_started_at ?? null;
+}
+
+/**
+ * Move one owned running run to an elapsed-time boundary and execute the
+ * production steering flow without scanning rows owned by other test files.
+ */
+export async function steerRunTimeBudgetFixture(
+  context: TestContext,
+  runId: string,
+  elapsedMs: number,
+): Promise<NonNullable<TestRuntimeStateActionResponse["run_time_budget"]>> {
+  const response = await postAction(context, {
+    action: "steer-run-time-budget",
+    run_id: runId,
+    elapsed_ms: elapsedMs,
+  });
+  if (!response.run_time_budget) {
+    throw new Error("steerRunTimeBudgetFixture missing run_time_budget");
+  }
+  return response.run_time_budget;
 }
 
 export async function readThreadSessionBinding(

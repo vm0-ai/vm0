@@ -32,6 +32,7 @@ import {
   runnersConnectorRuntimeSyncContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelProviderFailuresContract,
   runnersPollContract,
   type CanonicalStorageManifest,
   type StorageManifest,
@@ -92,6 +93,9 @@ interface RunsListQuery {
 }
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
+>;
+type RunnerModelProviderFailureRequest = z.infer<
+  (typeof runnersModelProviderFailuresContract.report)["body"]
 >;
 type RunnerConnectorRuntimeSyncRequest = z.input<
   (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
@@ -466,10 +470,17 @@ export function createRunsApi(context: TestContext) {
       return { customerId, subscriptionId, invoiceId };
     },
 
-    async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
+    async createRun(
+      actor: ApiTestUser,
+      body: ZeroRunRequest,
+      publicBrand: PublicBrand = "vm0",
+    ) {
       const response = await accept(
         runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         [201],
@@ -487,6 +498,53 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async reportRunnerModelProviderFailure(
+      runId: string,
+      body: RunnerModelProviderFailureRequest,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRunnerModelProviderFailureAs(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      body: RunnerModelProviderFailureRequest,
+    ) {
+      return await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawRunnerModelProviderFailure(
+      validAuth: boolean,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersModelProviderFailuresContract).report({
+          headers: runnerHeaders(validAuth),
+          params: { runId },
+          body: body as RunnerModelProviderFailureRequest,
+        }),
+        statuses,
+      );
     },
 
     async requestReserveRunnerActiveInputsAs<
@@ -1092,7 +1150,7 @@ export function createRunsApi(context: TestContext) {
         signal,
         routes: runRoutes,
       });
-      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+      const response = await app.request(`/api/runs/${runId}/cancel`, {
         method: "POST",
         headers: authorization === undefined ? {} : { authorization },
       });

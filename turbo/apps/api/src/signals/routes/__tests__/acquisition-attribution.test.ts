@@ -29,7 +29,7 @@ function client() {
   );
 }
 
-describe("POST /api/zero/attribution/signup", () => {
+describe("POST /api/attribution/signup", () => {
   it("requires a Clerk session", async () => {
     const response = await client().recordSignup({
       body: {

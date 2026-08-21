@@ -1131,7 +1131,6 @@
       "changeTitle": "Change concurrency",
       "concurrentRun_one": "{{value}} concurrent run",
       "concurrentRun_other": "{{value}} concurrent runs",
-      "continueToStripe": "Continue to Stripe",
       "decreaseAria": "Decrease additional concurrency quantity",
       "dueNow": "Due now",
       "dueToday": "Due today",

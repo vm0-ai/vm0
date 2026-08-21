@@ -292,7 +292,7 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", "run-token-without-computer-use");
 
     server.use(
-      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/computer-use/commands", () => {
         return HttpResponse.json(
           {
             error: {
@@ -333,14 +333,14 @@ describe("computer-use command visibility", () => {
 
     let pollCount = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/computer-use/commands", () => {
         return HttpResponse.json({
           commandId: "cmd_poll",
           status: "queued",
         });
       }),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_poll",
+        "http://localhost:3000/api/computer-use/commands/cmd_poll",
         () => {
           pollCount += 1;
 
@@ -396,14 +396,14 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.post("https://api.okou.ai/api/okou/computer-use/commands", () => {
+      http.post("https://api.okou.ai/api/computer-use/commands", () => {
         return HttpResponse.json({
           commandId: "cmd_okou_origin",
           status: "queued",
         });
       }),
       http.get(
-        "https://api.okou.ai/api/okou/computer-use/commands/cmd_okou_origin",
+        "https://api.okou.ai/api/computer-use/commands/cmd_okou_origin",
         () => {
           return HttpResponse.json({
             id: "cmd_okou_origin",
@@ -432,7 +432,7 @@ describe("computer-use command visibility", () => {
 
     server.use(
       http.post(
-        "https://canonical.example.test/api/okou/computer-use/commands",
+        "https://canonical.example.test/api/computer-use/commands",
         () => {
           return HttpResponse.json({
             commandId: "cmd_canonical_origin",
@@ -441,7 +441,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "https://canonical.example.test/api/okou/computer-use/commands/cmd_canonical_origin",
+        "https://canonical.example.test/api/computer-use/commands/cmd_canonical_origin",
         () => {
           return HttpResponse.json({
             id: "cmd_canonical_origin",
@@ -540,7 +540,7 @@ describe("computer-use command visibility", () => {
     const appState = "snapshot_id=desktop_test_snapshot\nw0 AXWindow";
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/commands",
+        "http://localhost:3000/api/computer-use/commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body.kind).toBe("app.state");
@@ -551,32 +551,29 @@ describe("computer-use command visibility", () => {
           });
         },
       ),
-      http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_1",
-        () => {
-          return HttpResponse.json({
-            id: "cmd_1",
-            kind: "app.state",
-            status: "succeeded",
-            hostId: "host_1",
-            hostName: "Desktop",
-            payload: { app: "Slack/Test App" },
-            result: {
-              app: "Slack/Test App",
-              snapshotId: "desktop_test_snapshot",
-              appState,
-              screenshot: `data:image/png;base64,${screenshotBase64}`,
-              screenshotMimeType: "image/png",
-              screenshotWidth: 1363,
-              screenshotHeight: 1200,
-            },
-            timeoutMs: 10_000,
-            createdAt: "2026-05-21T10:00:00.000Z",
-            claimedAt: "2026-05-21T10:00:01.000Z",
-            completedAt: "2026-05-21T10:00:02.000Z",
-          });
-        },
-      ),
+      http.get("http://localhost:3000/api/computer-use/commands/cmd_1", () => {
+        return HttpResponse.json({
+          id: "cmd_1",
+          kind: "app.state",
+          status: "succeeded",
+          hostId: "host_1",
+          hostName: "Desktop",
+          payload: { app: "Slack/Test App" },
+          result: {
+            app: "Slack/Test App",
+            snapshotId: "desktop_test_snapshot",
+            appState,
+            screenshot: `data:image/png;base64,${screenshotBase64}`,
+            screenshotMimeType: "image/png",
+            screenshotWidth: 1363,
+            screenshotHeight: 1200,
+          },
+          timeoutMs: 10_000,
+          createdAt: "2026-05-21T10:00:00.000Z",
+          claimedAt: "2026-05-21T10:00:01.000Z",
+          completedAt: "2026-05-21T10:00:02.000Z",
+        });
+      }),
     );
 
     await computerUseCommand.parseAsync([
@@ -611,7 +608,7 @@ describe("computer-use command visibility", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/write-commands",
+        "http://localhost:3000/api/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -631,7 +628,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_click",
+        "http://localhost:3000/api/computer-use/commands/cmd_click",
         () => {
           return HttpResponse.json({
             id: "cmd_click",
@@ -691,7 +688,7 @@ describe("computer-use command visibility", () => {
     const appState = "snapshot_id=desktop_test_snapshot\n7 button Send";
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/write-commands",
+        "http://localhost:3000/api/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -710,7 +707,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_click_index",
+        "http://localhost:3000/api/computer-use/commands/cmd_click_index",
         () => {
           return HttpResponse.json({
             id: "cmd_click_index",
@@ -772,7 +769,7 @@ describe("computer-use command visibility", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/write-commands",
+        "http://localhost:3000/api/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -789,7 +786,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_press",
+        "http://localhost:3000/api/computer-use/commands/cmd_press",
         () => {
           return HttpResponse.json({
             id: "cmd_press",
@@ -834,7 +831,7 @@ describe("computer-use command visibility", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/write-commands",
+        "http://localhost:3000/api/computer-use/write-commands",
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
@@ -851,7 +848,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_type",
+        "http://localhost:3000/api/computer-use/commands/cmd_type",
         () => {
           return HttpResponse.json({
             id: "cmd_type",
@@ -894,14 +891,14 @@ describe("computer-use command visibility", () => {
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/plugin-commands",
+        "http://localhost:3000/api/computer-use/plugin-commands",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json({ commandId: "cmd_mcp", status: "queued" });
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_mcp",
+        "http://localhost:3000/api/computer-use/commands/cmd_mcp",
         () => {
           return HttpResponse.json({
             id: "cmd_mcp",
@@ -959,14 +956,14 @@ describe("computer-use command visibility", () => {
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/computer-use/plugin-commands",
+        "http://localhost:3000/api/computer-use/plugin-commands",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json({ commandId: "cmd_list", status: "queued" });
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_list",
+        "http://localhost:3000/api/computer-use/commands/cmd_list",
         () => {
           return HttpResponse.json({
             id: "cmd_list",
@@ -1018,7 +1015,7 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
+      http.get("http://localhost:3000/api/computer-use/hosts", () => {
         return HttpResponse.json({
           hosts: [
             {
@@ -1059,7 +1056,7 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
+      http.get("http://localhost:3000/api/computer-use/hosts", () => {
         return HttpResponse.json({ hosts: [] });
       }),
     );
@@ -1085,11 +1082,11 @@ describe("computer-use command visibility", () => {
 
     const screenshotBytes = Buffer.from("proxy-png-bytes");
     server.use(
-      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/computer-use/commands", () => {
         return HttpResponse.json({ commandId: "cmd_ptr", status: "queued" });
       }),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_ptr",
+        "http://localhost:3000/api/computer-use/commands/cmd_ptr",
         () => {
           return HttpResponse.json({
             id: "cmd_ptr",
@@ -1117,7 +1114,7 @@ describe("computer-use command visibility", () => {
         },
       ),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_ptr/screenshot",
+        "http://localhost:3000/api/computer-use/commands/cmd_ptr/screenshot",
         () => {
           return new HttpResponse(screenshotBytes, {
             status: 200,
@@ -1150,11 +1147,11 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
-      http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
+      http.post("http://localhost:3000/api/computer-use/commands", () => {
         return HttpResponse.json({ commandId: "cmd_exp", status: "queued" });
       }),
       http.get(
-        "http://localhost:3000/api/okou/computer-use/commands/cmd_exp",
+        "http://localhost:3000/api/computer-use/commands/cmd_exp",
         () => {
           return HttpResponse.json({
             id: "cmd_exp",

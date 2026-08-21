@@ -556,7 +556,7 @@ export const computerUseAuditEventListResponseSchema = z.object({
 export const computerUseHostsContract = c.router({
   start: {
     method: "POST",
-    path: "/api/okou/computer-use/hosts/start",
+    path: "/api/computer-use/hosts/start",
     headers: authHeadersSchema,
     body: computerUseRuntimeBodySchema,
     responses: {
@@ -569,7 +569,7 @@ export const computerUseHostsContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/okou/computer-use/hosts",
+    path: "/api/computer-use/hosts",
     headers: authHeadersSchema,
     responses: {
       200: computerUseHostListResponseSchema,
@@ -583,7 +583,7 @@ export const computerUseHostsContract = c.router({
 export const computerUseHeartbeatContract = c.router({
   heartbeat: {
     method: "POST",
-    path: "/api/okou/computer-use/heartbeat",
+    path: "/api/computer-use/heartbeat",
     headers: authHeadersSchema,
     body: computerUseRuntimeBodySchema,
     responses: {
@@ -595,7 +595,7 @@ export const computerUseHeartbeatContract = c.router({
   },
   stop: {
     method: "POST",
-    path: "/api/okou/computer-use/host/stop",
+    path: "/api/computer-use/host/stop",
     headers: authHeadersSchema,
     body: computerUseHostStopBodySchema,
     responses: {
@@ -609,7 +609,7 @@ export const computerUseHeartbeatContract = c.router({
 export const computerUseAuthorizationRequestsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/computer-use/authorization-requests",
+    path: "/api/computer-use/authorization-requests",
     headers: authHeadersSchema,
     body: computerUseAuthorizationRequestCreateBodySchema,
     responses: {
@@ -625,7 +625,7 @@ export const computerUseAuthorizationRequestsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/computer-use/authorization-requests/:requestToken",
+    path: "/api/computer-use/authorization-requests/:requestToken",
     headers: authHeadersSchema,
     pathParams: authorizationRequestTokenPathParamsSchema,
     responses: {
@@ -639,7 +639,7 @@ export const computerUseAuthorizationRequestsContract = c.router({
   },
   apply: {
     method: "POST",
-    path: "/api/okou/computer-use/authorization-requests/:requestToken/apply",
+    path: "/api/computer-use/authorization-requests/:requestToken/apply",
     headers: authHeadersSchema,
     pathParams: authorizationRequestTokenPathParamsSchema,
     body: computerUseAuthorizationRequestApplyBodySchema,
@@ -658,7 +658,7 @@ export const computerUseAuthorizationRequestsContract = c.router({
 export const computerUseCommandContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/computer-use/commands",
+    path: "/api/computer-use/commands",
     headers: authHeadersSchema,
     body: computerUseCommandCreateBodySchema,
     responses: {
@@ -673,7 +673,7 @@ export const computerUseCommandContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/computer-use/commands/:commandId",
+    path: "/api/computer-use/commands/:commandId",
     headers: authHeadersSchema,
     pathParams: commandIdPathParamsSchema,
     responses: {
@@ -686,7 +686,7 @@ export const computerUseCommandContract = c.router({
   },
   getScreenshot: {
     method: "GET",
-    path: "/api/okou/computer-use/commands/:commandId/screenshot",
+    path: "/api/computer-use/commands/:commandId/screenshot",
     headers: authHeadersSchema,
     pathParams: commandIdPathParamsSchema,
     responses: {
@@ -699,7 +699,7 @@ export const computerUseCommandContract = c.router({
   },
   getPluginContent: {
     method: "GET",
-    path: "/api/okou/computer-use/commands/:commandId/plugin-content",
+    path: "/api/computer-use/commands/:commandId/plugin-content",
     headers: authHeadersSchema,
     pathParams: commandIdPathParamsSchema,
     responses: {
@@ -715,7 +715,7 @@ export const computerUseCommandContract = c.router({
 export const computerUseWriteCommandContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/computer-use/write-commands",
+    path: "/api/computer-use/write-commands",
     headers: authHeadersSchema,
     body: computerUseWriteCommandCreateBodySchema,
     responses: {
@@ -733,7 +733,7 @@ export const computerUseWriteCommandContract = c.router({
 export const computerUsePluginCommandContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/computer-use/plugin-commands",
+    path: "/api/computer-use/plugin-commands",
     headers: authHeadersSchema,
     body: computerUseAnyPluginCallBodySchema,
     responses: {
@@ -751,7 +751,7 @@ export const computerUsePluginCommandContract = c.router({
 export const computerUseHostCommandsContract = c.router({
   next: {
     method: "POST",
-    path: "/api/okou/computer-use/host/commands/next",
+    path: "/api/computer-use/host/commands/next",
     headers: authHeadersSchema,
     body: computerUseHostCommandNextBodySchema,
     responses: {
@@ -762,7 +762,7 @@ export const computerUseHostCommandsContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/okou/computer-use/host/commands/:commandId/complete",
+    path: "/api/computer-use/host/commands/:commandId/complete",
     headers: authHeadersSchema,
     pathParams: commandIdPathParamsSchema,
     body: computerUseHostCommandCompleteBodySchema,
@@ -780,7 +780,7 @@ export const computerUseHostCommandsContract = c.router({
 export const computerUseAuditEventsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/computer-use/audit-events",
+    path: "/api/computer-use/audit-events",
     headers: authHeadersSchema,
     query: z.object({
       limit: z.coerce.number().int().positive().max(200).default(50),

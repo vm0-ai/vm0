@@ -122,7 +122,7 @@ function isChatThreadEventRowsResponse(
   return (
     response.ok() &&
     request.method() === "GET" &&
-    url.pathname === `/api/okou/chat-threads/${threadId}/event-rows` &&
+    url.pathname === `/api/chat-threads/${threadId}/event-rows` &&
     rawSinceSeqId !== null &&
     Number.isSafeInteger(sinceSeqId) &&
     ((sinceSeqId === 0 && sinceEventId === null) ||
@@ -171,7 +171,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/okou/connector-catalog/status", async (route) => {
+  await page.route("**/api/connector-catalog/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -313,7 +313,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/user-model-preference", async (route) => {
+  await page.route("**/api/user-model-preference", async (route) => {
     const request = route.request();
     if (request.method() === "PUT") {
       const update: unknown = request.postDataJSON();
@@ -383,7 +383,7 @@ async function mockModelPickerBoundary(page: Page): Promise<{
       },
     });
   });
-  await page.route("**/api/okou/user-model-preference", async (route) => {
+  await page.route("**/api/user-model-preference", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -450,7 +450,7 @@ async function mockChatThread(
   const createdEventId = `d${options.threadId.slice(1)}`;
   let createdEventSeqId: number | null = null;
 
-  await page.route("**/api/okou/chat-threads/snapshot", async (route) => {
+  await page.route("**/api/chat-threads/snapshot", async (route) => {
     await route.fulfill({
       json: {
         chatThreads: [],
@@ -460,7 +460,7 @@ async function mockChatThread(
     });
   });
   await page.route(
-    (url) => url.pathname === "/api/okou/chat-threads/events",
+    (url) => url.pathname === "/api/chat-threads/events",
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const rawSinceSeqId = requestUrl.searchParams.get("sinceSeqId");
@@ -497,7 +497,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/event-rows`,
+      url.pathname === `/api/chat-threads/${options.threadId}/event-rows`,
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const sinceSeqId = Number(
@@ -527,8 +527,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/draft`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}/draft`,
     async (route) => {
       await route.fulfill({
         json: { draftUserMessage: null, draftAttachments: null },
@@ -536,8 +535,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) =>
-      url.pathname === `/api/okou/chat-threads/${options.threadId}/mark-read`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}/mark-read`,
     async (route) => {
       await route.fulfill({
         json: { lastReadAt: options.createdAt, unreads: [] },
@@ -546,8 +544,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname ===
-      `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
+      url.pathname === `/api/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
@@ -557,7 +554,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) => url.pathname === `/api/okou/chat-threads/${options.threadId}`,
+    (url) => url.pathname === `/api/chat-threads/${options.threadId}`,
     async (route) => {
       await route.fulfill({
         json: {
@@ -874,8 +871,7 @@ async function mockDelayedImageLayoutThread(
 ): Promise<void> {
   await page.route(
     (url) =>
-      url.pathname ===
-      `/api/okou/chat-threads/${imageLayoutThreadId}/artifacts`,
+      url.pathname === `/api/chat-threads/${imageLayoutThreadId}/artifacts`,
     async (route) => {
       await route.fulfill({ json: { runs: [] } });
     },
