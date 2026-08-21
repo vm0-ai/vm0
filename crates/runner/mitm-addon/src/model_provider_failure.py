@@ -160,6 +160,7 @@ _report_executor = ThreadPoolExecutor(
     max_workers=_REPORT_WORKERS,
     thread_name_prefix="model-provider-failure",
 )
+_reporter_shut_down = False
 _report_futures: set[Future[int]] = set()
 
 
@@ -181,8 +182,16 @@ def configure_reporting(*, api_url: str, bearer_credential: str) -> None:
 
 
 def reset_for_tests() -> None:
+    global _report_executor, _reporter_shut_down
     drain_reports_for_tests()
     configure_reporting(api_url="", bearer_credential="")
+    with _report_lock:
+        if _reporter_shut_down:
+            _report_executor = ThreadPoolExecutor(
+                max_workers=_REPORT_WORKERS,
+                thread_name_prefix="model-provider-failure",
+            )
+            _reporter_shut_down = False
 
 
 def drain_reports_for_tests(timeout: float = 5.0) -> None:
@@ -417,11 +426,15 @@ def release_flow(flow: http.HTTPFlow) -> None:
 
 def shutdown() -> None:
     """Stop admitting reports and drain already-submitted best-effort work."""
+    global _reporter_shut_down
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
         pending = tuple(_report_futures)
-    if pending:
-        wait(pending, timeout=_REPORT_TIMEOUT_SECONDS)
+        _reporter_shut_down = True
+    _report_executor.shutdown(wait=False, cancel_futures=True)
+    running = tuple(future for future in pending if not future.cancelled())
+    if running:
+        wait(running, timeout=_REPORT_TIMEOUT_SECONDS)
 
 
 class _JsonResponseParser:
@@ -869,19 +882,24 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     report_url = (
         f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
     )
-    try:
-        future = _report_executor.submit(
-            _post_report,
-            report_url,
-            bearer_credential,
-            content,
-        )
-    except RuntimeError:
+    future: Future[int] | None = None
+    with _report_lock:
+        if not _reporter_shut_down:
+            try:
+                future = _report_executor.submit(
+                    _post_report,
+                    report_url,
+                    bearer_credential,
+                    content,
+                )
+            except RuntimeError:
+                pass
+            else:
+                _report_futures.add(future)
+    if future is None:
         _report_slots.release()
         _log_report_omitted(report_context, "reporter_shut_down")
         return
-    with _report_lock:
-        _report_futures.add(future)
     future.add_done_callback(lambda completed: _finish_report(completed, report_context))
 
 
@@ -900,12 +918,16 @@ def _post_report(url: str, bearer_credential: str, content: bytes) -> int:
 
 def _finish_report(future: Future[int], context: _ReportContext) -> None:
     try:
-        status = future.result()
-    except Exception as error:
-        _log_report_omitted(context, "delivery_failed", error_type=type(error).__name__)
-    else:
-        if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECT_MIN:
-            _log_report_omitted(context, "http_error", http_status=status)
+        if future.cancelled():
+            _log_report_omitted(context, "shutdown")
+        else:
+            try:
+                status = future.result()
+            except Exception as error:
+                _log_report_omitted(context, "delivery_failed", error_type=type(error).__name__)
+            else:
+                if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECT_MIN:
+                    _log_report_omitted(context, "http_error", http_status=status)
     finally:
         with _report_lock:
             _report_futures.discard(future)

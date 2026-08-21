@@ -1,6 +1,9 @@
 """Integration tests for trusted model-provider failure reduction."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from mitmproxy import http
@@ -17,6 +20,7 @@ from tests.model_provider_websocket_helpers import (
     feed_websocket_client_message,
     feed_websocket_server_message,
 )
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
 
 def _make_flow(
@@ -140,6 +144,55 @@ def test_report_http_failure_does_not_affect_flow(
     assert _reported_payloads(model_provider_failure_api) == [
         {"failureKind": "provider_unavailable"}
     ]
+
+
+def test_shutdown_cancels_queued_reports(
+    tmp_path,
+    real_flow,
+    model_provider_failure_api,
+):
+    release_delivery = threading.Event()
+    executor_shutdown_started = threading.Event()
+    for _ in range(16):
+        model_provider_failure_api.queue_response(204, release_event=release_delivery)
+        flow = _make_flow(
+            real_flow,
+            tmp_path / "proxy.jsonl",
+            response_status=503,
+        )
+        model_provider_failure.admit_flow(flow)
+        mitm_addon.responseheaders(flow)
+
+    assert model_provider_failure_api.wait_for_request_count(4)
+
+    original_shutdown = ThreadPoolExecutor.shutdown
+
+    def observe_shutdown(
+        executor: ThreadPoolExecutor,
+        wait: bool = True,
+        *,
+        cancel_futures: bool = False,
+    ) -> None:
+        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        executor_shutdown_started.set()
+
+    shutdown_thread = ThreadUnderTest(target=model_provider_failure.shutdown)
+    try:
+        with patch.object(ThreadPoolExecutor, "shutdown", observe_shutdown):
+            shutdown_thread.start()
+            wait_for_event(
+                executor_shutdown_started,
+                timeout=1,
+                threads=(shutdown_thread,),
+                message="failure reporter did not begin executor shutdown",
+            )
+            release_delivery.set()
+            shutdown_thread.join_and_raise(timeout=3)
+    finally:
+        release_delivery.set()
+        shutdown_thread.join(timeout=3)
+
+    assert model_provider_failure_api.request_count == 4
 
 
 @pytest.mark.parametrize(
