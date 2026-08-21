@@ -53,7 +53,7 @@ function teamsOauthConnectUrl(
   },
   origin = "https://api.vm0.test",
 ): string {
-  const url = new URL("/api/okou/teams/oauth/connect", origin);
+  const url = new URL("/api/teams/oauth/connect", origin);
   url.searchParams.set("orgId", fixture.orgId);
   url.searchParams.set("userId", fixture.userId);
   return url.toString();

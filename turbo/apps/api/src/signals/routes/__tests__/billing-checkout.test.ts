@@ -5221,7 +5221,11 @@ describe("legacy subscription usage pack migration", () => {
   });
 
   it("hides legacy migration while UsagePackPlans is disabled", async () => {
-    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "pro",
+      orgId: `org_non_staff_${randomUUID()}`,
+    });
+    expect(isStaffOrg(fixture.orgId)).toBeFalsy();
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       legacyMigrationSubscription(fixture),
     );

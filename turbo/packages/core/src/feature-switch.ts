@@ -61,7 +61,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.BoxConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Box file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -332,6 +332,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SavedBillingCreditPurchase]: {
     maintainer: "yuma@vm0.ai",

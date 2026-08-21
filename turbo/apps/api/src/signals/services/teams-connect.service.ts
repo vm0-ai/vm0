@@ -152,7 +152,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly publicBrand: PublicBrand;
 }): string {
   const url = new URL(
-    "/api/okou/teams/oauth/connect",
+    "/api/teams/oauth/connect",
     apiUrlForPublicBrand(internalApiBaseUrl(), args.publicBrand),
   );
   url.searchParams.set("orgId", args.orgId);
