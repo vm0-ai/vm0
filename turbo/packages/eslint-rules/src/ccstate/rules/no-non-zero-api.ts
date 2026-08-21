@@ -41,6 +41,13 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28459
+  "/api/chat-threads",
+  "/api/chat/events",
+  "/api/chat/search",
+  "/api/image-share/x",
+  "/api/queue-position",
+  "/api/shared-threads",
   // #28461
   "/api/agents",
   "/api/morning-brief",

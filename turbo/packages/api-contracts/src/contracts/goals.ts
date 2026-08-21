@@ -92,7 +92,7 @@ export const goalsContract = c.router({
   },
   getForChatThread: {
     method: "GET",
-    path: "/api/okou/chat-threads/:threadId/goal",
+    path: "/api/chat-threads/:threadId/goal",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     responses: {
@@ -148,7 +148,7 @@ export const goalsContract = c.router({
   },
   pauseForChatThread: {
     method: "POST",
-    path: "/api/okou/chat-threads/:threadId/goal/pause",
+    path: "/api/chat-threads/:threadId/goal/pause",
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     body: c.noBody(),

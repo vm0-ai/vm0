@@ -63,7 +63,7 @@ describe("okou search --source chat", () => {
 
   it("renders chat search results grouped by thread", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -91,7 +91,7 @@ describe("okou search --source chat", () => {
 
   it("tolerates invalid chat message timestamps", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -119,7 +119,7 @@ describe("okou search --source chat", () => {
 
   it("handles no matches", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({ results: [], hasMore: false });
       }),
     );
@@ -140,7 +140,7 @@ describe("okou search --source chat", () => {
   it("passes keyword and -C context to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -164,7 +164,7 @@ describe("okou search --source chat", () => {
   it("passes epoch --since to API instead of the default search window", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -186,7 +186,7 @@ describe("okou search --source chat", () => {
   it("passes -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -212,7 +212,7 @@ describe("okou search --source chat", () => {
     let capturedUrl: URL | undefined;
     const agentId = "550e8400-e29b-41d4-a716-446655440001";
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", ({ request }) => {
+      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -373,7 +373,7 @@ describe("okou search --source chat", () => {
 
   it("shows the hasMore hint when the API reports more results", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -403,7 +403,7 @@ describe("okou search --source chat", () => {
 
   it("surfaces API authentication errors", async () => {
     server.use(
-      http.get("http://localhost:3000/api/okou/chat/search", () => {
+      http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },

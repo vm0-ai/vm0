@@ -93,9 +93,11 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject has to be re-pointed whenever the slice it named lands: #28459
+    // migrated `/api/chat-threads`, so the connector catalog takes over here.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/connectors")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

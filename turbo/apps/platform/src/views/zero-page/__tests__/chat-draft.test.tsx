@@ -650,7 +650,7 @@ describe("chat drafts", () => {
       threadId,
       selectedModel: "claude-sonnet-4-6",
     });
-    context.mocks.http.get("*/api/okou/chat-threads/:id/draft", () => {
+    context.mocks.http.get("*/api/chat-threads/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,

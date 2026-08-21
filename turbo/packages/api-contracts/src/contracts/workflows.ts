@@ -1810,7 +1810,7 @@ export const workflowAutomationsContract = c.router({
   },
   listForChatThread: {
     method: "GET",
-    path: "/api/okou/chat-threads/:threadId/workflow-automations",
+    path: "/api/chat-threads/:threadId/workflow-automations",
     headers: authHeadersSchema,
     pathParams: chatThreadIdParams,
     responses: {

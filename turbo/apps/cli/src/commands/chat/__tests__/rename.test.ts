@@ -16,8 +16,8 @@ import { chatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
-const RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/rename`;
-const OTHER_RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/rename`;
+const RENAME_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/rename`;
+const OTHER_RENAME_URL = `http://localhost:3000/api/chat-threads/${OTHER_THREAD_ID}/rename`;
 
 describe("okou chat rename command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});

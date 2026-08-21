@@ -27,7 +27,7 @@ const THREAD_ID = "44444444-4444-4444-8444-444444444444";
 const MODEL_ID = "gpt-5.6-sol";
 const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const THREAD_METADATA_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/metadata`;
+const THREAD_METADATA_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/okou/model-policies";
 
 function zeroToken(orgId: string): string {
