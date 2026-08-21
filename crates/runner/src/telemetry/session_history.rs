@@ -75,10 +75,11 @@ pub(crate) struct SessionHistoryTelemetryMetadata {
 ///
 /// The probe identity is the tuple of hash, encoding, raw size, and encoded
 /// size. URL and download source are not part of the identity. The default
-/// probe retains observations for one hour and tracks at most 4,096 identities;
-/// expiry and capacity eviction can therefore make either observation false,
-/// including for an entry that was previously active. This metadata does not
-/// indicate that history bytes are cached or that a download was suppressed.
+/// probe uses one hour as its recent-observation window and tracks at most
+/// 4,096 identities; expiry and capacity eviction can therefore make either
+/// observation false, including for an entry that was previously active. This
+/// metadata does not indicate that history bytes are cached or that a download
+/// was suppressed.
 ///
 /// Both values are sampled before the current materializer adds its
 /// registration. `seen_recently` means that the prior matching entry was seen
