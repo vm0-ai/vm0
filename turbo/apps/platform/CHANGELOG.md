@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.778.0](https://github.com/vm0-ai/vm0/compare/app-v0.777.0...app-v0.778.0) (2026-08-21)
+
+
+### Features
+
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Refactoring
+
+* **api:** move chat-thread, indicator and attribution routes off the brand namespace ([#28425](https://github.com/vm0-ai/vm0/issues/28425)) ([f0bf52e](https://github.com/vm0-ai/vm0/commit/f0bf52eb50e5f7bd30a4f3aa5eee00a5cf81d344))
+* remove expired deployment compatibility ([#28452](https://github.com/vm0-ai/vm0/issues/28452)) ([cfc81f2](https://github.com/vm0-ai/vm0/commit/cfc81f2a5b5c833db1729ad889eae7b552e20dd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+    * @okouai/connectors bumped to 1.209.0
+    * @okouai/core bumped to 8.576.0
+
 ## [0.777.0](https://github.com/vm0-ai/vm0/compare/app-v0.776.0...app-v0.777.0) (2026-08-20)
 
 
