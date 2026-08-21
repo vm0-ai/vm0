@@ -1,5 +1,22 @@
 -- The exact Feishu member writer has been deployed since api-v1.464.0. It
 -- commits the member connector link and Feishu external identity together.
+-- Serialize with the production custom-connector reconciler before reading an
+-- installation target. The reconciler uses this key while it repairs a null or
+-- stale custom_connector_id, so observing its previous committed value could
+-- otherwise delete a member relationship that is concurrently becoming exact.
+DO $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(
+      'feishu_custom_connector:' || "installation"."id"::text,
+      0
+    )
+  )
+  FROM "feishu_org_installations" AS "installation"
+  ORDER BY "installation"."id";
+END;
+$$;
+
 -- Block concurrent status/connect/disconnect transactions so reconciliation
 -- cannot delete a member row after a reconnect has selected it but before that
 -- reconnect writes the exact relationship.

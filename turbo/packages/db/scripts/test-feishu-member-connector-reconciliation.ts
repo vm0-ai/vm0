@@ -15,6 +15,10 @@ const testDatabase = "migration_feishu_member_connector_reconciliation";
 interface ReconciliationFixture {
   readonly ambiguousConnectionId: string;
   readonly connectorIds: readonly string[];
+  readonly concurrentConnectionId: string;
+  readonly concurrentConnectorId: string;
+  readonly concurrentDefinitionId: string;
+  readonly concurrentInstallationId: string;
   readonly exactConnectionId: string;
   readonly exactConnectorId: string;
   readonly mismatchedConnectionId: string;
@@ -44,6 +48,10 @@ async function seedReconciliationFixture(
   const ambiguousConnectionId = "00000000-0000-4000-8000-000000285861";
   const unmatchedConnectionId = "00000000-0000-4000-8000-000000285862";
   const mismatchedConnectionId = "00000000-0000-4000-8000-000000285863";
+  const concurrentInstallationId = "00000000-0000-4000-8000-000000285864";
+  const concurrentConnectorId = "00000000-0000-4000-8000-000000285865";
+  const concurrentConnectionId = "00000000-0000-4000-8000-000000285866";
+  const concurrentDefinitionId = "00000000-0000-4000-8000-000000285867";
 
   await client.query(
     `
@@ -66,20 +74,40 @@ async function seedReconciliationFixture(
         "query_injections",
         "auth_mode",
         "created_by"
-      ) VALUES (
-        $1,
-        $2,
-        '_feishu-' || $3::text,
-        'Feishu member reconciliation',
-        '["https://open.feishu.cn/open-apis/"]'::jsonb,
-        '[]'::jsonb,
-        '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
-        '[]'::jsonb,
-        'oauth',
-        $4
-      )
+      ) VALUES
+        (
+          $1,
+          $2,
+          '_feishu-' || $3::text,
+          'Feishu member reconciliation',
+          '["https://open.feishu.cn/open-apis/"]'::jsonb,
+          '[]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+          '[]'::jsonb,
+          'oauth',
+          $4
+        ),
+        (
+          $5,
+          $2,
+          '_feishu-' || $6::text,
+          'Concurrent Feishu member reconciliation',
+          '["https://open.feishu.cn/open-apis/"]'::jsonb,
+          '[]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+          '[]'::jsonb,
+          'oauth',
+          $4
+        )
     `,
-    [definitionId, orgId, installationId, ownerUserId],
+    [
+      definitionId,
+      orgId,
+      installationId,
+      ownerUserId,
+      concurrentDefinitionId,
+      concurrentInstallationId,
+    ],
   );
   await client.query(
     `
@@ -93,19 +121,31 @@ async function seedReconciliationFixture(
         "token_url",
         "token_endpoint_auth_method",
         "pkce_method"
-      ) VALUES (
-        $1,
-        $2,
-        'feishu',
-        'feishu-member-reconciliation-client',
-        'encrypted-secret',
-        'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
-        'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
-        'client_secret_post',
-        'none'
-      )
+      ) VALUES
+        (
+          $1,
+          $2,
+          'feishu',
+          'feishu-member-reconciliation-client',
+          'encrypted-secret',
+          'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+          'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+          'client_secret_post',
+          'none'
+        ),
+        (
+          $3,
+          $2,
+          'feishu',
+          'feishu-member-concurrent-reconciliation-client',
+          'encrypted-secret',
+          'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+          'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+          'client_secret_post',
+          'none'
+        )
     `,
-    [definitionId, orgId],
+    [definitionId, orgId, concurrentDefinitionId],
   );
   await client.query("COMMIT");
   await client.query(
@@ -120,19 +160,38 @@ async function seedReconciliationFixture(
         "encrypted_verification_token",
         "encrypted_encrypt_key",
         "default_compose_id"
-      ) VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        'feishu-member-reconciliation-client',
-        'encrypted-secret',
-        'encrypted-verification',
-        'encrypted-key',
-        $5
-      )
+      ) VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          'feishu-member-reconciliation-client',
+          'encrypted-secret',
+          'encrypted-verification',
+          'encrypted-key',
+          $5
+        ),
+        (
+          $6,
+          $2,
+          NULL,
+          $4,
+          'feishu-member-concurrent-reconciliation-client',
+          'encrypted-secret',
+          'encrypted-verification',
+          'encrypted-key',
+          $5
+        )
     `,
-    [installationId, orgId, definitionId, ownerUserId, composeId],
+    [
+      installationId,
+      orgId,
+      definitionId,
+      ownerUserId,
+      composeId,
+      concurrentInstallationId,
+    ],
   );
   await client.query(
     `
@@ -152,7 +211,8 @@ async function seedReconciliationFixture(
         ($5, NULL, $2, true, 'oauth', 1, 'ou_ambiguous', 'user_feishu_ambiguous', $3),
         ($6, NULL, $2, false, 'oauth', 1, 'ou_ambiguous', 'user_feishu_ambiguous', $3),
         ($7, NULL, $2, true, 'oauth', 1, 'ou_different', 'user_feishu_mismatch', $3),
-        ($8, 'github', NULL, true, 'oauth', 1, 'external-unrelated', 'user_unrelated', $3)
+        ($8, 'github', NULL, true, 'oauth', 1, 'external-unrelated', 'user_unrelated', $3),
+        ($9, NULL, $10, true, 'oauth', 1, 'ou_concurrent', 'user_feishu_concurrent', $3)
     `,
     [
       exactConnectorId,
@@ -163,6 +223,8 @@ async function seedReconciliationFixture(
       ambiguousConnectorIds[1],
       mismatchedConnectorId,
       unrelatedConnectorId,
+      concurrentConnectorId,
+      concurrentDefinitionId,
     ],
   );
   await client.query(
@@ -178,7 +240,8 @@ async function seedReconciliationFixture(
         ($4, $2, 'ou_relink', 'user_feishu_relink', NULL),
         ($5, $2, 'ou_ambiguous', 'user_feishu_ambiguous', NULL),
         ($6, $2, 'ou_unmatched', 'user_feishu_unmatched', NULL),
-        ($7, $2, 'ou_mismatch', 'user_feishu_mismatch', $8)
+        ($7, $2, 'ou_mismatch', 'user_feishu_mismatch', $8),
+        ($9, $10, 'ou_concurrent', 'user_feishu_concurrent', NULL)
     `,
     [
       exactConnectionId,
@@ -189,6 +252,8 @@ async function seedReconciliationFixture(
       unmatchedConnectionId,
       mismatchedConnectionId,
       mismatchedConnectorId,
+      concurrentConnectionId,
+      concurrentInstallationId,
     ],
   );
 
@@ -200,7 +265,12 @@ async function seedReconciliationFixture(
       ...ambiguousConnectorIds,
       mismatchedConnectorId,
       unrelatedConnectorId,
+      concurrentConnectorId,
     ],
+    concurrentConnectionId,
+    concurrentConnectorId,
+    concurrentDefinitionId,
+    concurrentInstallationId,
     exactConnectionId,
     exactConnectorId,
     mismatchedConnectionId,
@@ -239,6 +309,7 @@ async function validateReconciledState(
         fixture.ambiguousConnectionId,
         fixture.unmatchedConnectionId,
         fixture.mismatchedConnectionId,
+        fixture.concurrentConnectionId,
       ],
     ],
   );
@@ -254,6 +325,12 @@ async function validateReconciledState(
       externalId: "ou_relink",
       id: fixture.relinkedConnectionId,
       openId: "ou_relink",
+    },
+    {
+      connectorId: fixture.concurrentConnectorId,
+      externalId: "ou_concurrent",
+      id: fixture.concurrentConnectionId,
+      openId: "ou_concurrent",
     },
   ]);
 
@@ -272,6 +349,87 @@ async function validateReconciledState(
     }),
     [...fixture.connectorIds].sort(),
   );
+}
+
+async function waitForPostgresBlock(
+  observer: Client,
+  blockedPid: number,
+  blockerPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const result = await observer.query<{ blocked: boolean }>(
+      `SELECT $2::integer = ANY(pg_blocking_pids($1::integer)) AS "blocked"`,
+      [blockedPid, blockerPid],
+    );
+    if (result.rows[0]?.blocked) {
+      return;
+    }
+    await observer.query(`SELECT pg_sleep(0.01)`);
+  }
+  assert.fail("migration did not wait for the Feishu target reconciler");
+}
+
+async function applyReconciliationAfterConcurrentTargetRepair(args: {
+  readonly client: Client;
+  readonly connectionString: string;
+  readonly fixture: ReconciliationFixture;
+}): Promise<void> {
+  const reconciler = new Client({ connectionString: args.connectionString });
+  const observer = new Client({ connectionString: args.connectionString });
+  await reconciler.connect();
+  await observer.connect();
+  let transactionOpen = false;
+  let migration: Promise<void> | undefined;
+  try {
+    await reconciler.query("BEGIN");
+    transactionOpen = true;
+    await reconciler.query(
+      `SELECT pg_advisory_xact_lock(
+        hashtextextended('feishu_custom_connector:' || $1::text, 0)
+      )`,
+      [args.fixture.concurrentInstallationId],
+    );
+    await reconciler.query(
+      `UPDATE "feishu_org_installations"
+       SET "custom_connector_id" = $1
+       WHERE "id" = $2`,
+      [
+        args.fixture.concurrentDefinitionId,
+        args.fixture.concurrentInstallationId,
+      ],
+    );
+    const migrationPid = await args.client.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const reconcilerPid = await reconciler.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    assert.ok(migrationPid.rows[0]?.pid);
+    assert.ok(reconcilerPid.rows[0]?.pid);
+
+    migration = applyMigrationsFromDirectoryUpToTag(
+      args.client,
+      migrationsDirectory,
+      reconciliationMigration,
+    );
+    await waitForPostgresBlock(
+      observer,
+      migrationPid.rows[0].pid,
+      reconcilerPid.rows[0].pid,
+    );
+    await reconciler.query("COMMIT");
+    transactionOpen = false;
+    await migration;
+  } finally {
+    if (transactionOpen) {
+      await reconciler.query("ROLLBACK");
+    }
+    await migration?.catch(() => {
+      return undefined;
+    });
+    await observer.end();
+    await reconciler.end();
+  }
 }
 
 export async function validateFeishuMemberConnectorReconciliation(): Promise<void> {
@@ -298,11 +456,11 @@ export async function validateFeishuMemberConnectorReconciliation(): Promise<voi
       previousMigration,
     );
     const fixture = await seedReconciliationFixture(client);
-    await applyMigrationsFromDirectoryUpToTag(
+    await applyReconciliationAfterConcurrentTargetRepair({
       client,
-      migrationsDirectory,
-      reconciliationMigration,
-    );
+      connectionString: testUrl.toString(),
+      fixture,
+    });
     await validateReconciledState(client, fixture);
 
     const migrationSql = await fs.readFile(
@@ -318,6 +476,9 @@ export async function validateFeishuMemberConnectorReconciliation(): Promise<voi
       "   ✅ ambiguous, unmatched, and mismatched members are removed",
     );
     console.log("   ✅ connector credential rows remain intact");
+    console.log(
+      "   ✅ migration waits for concurrent installation target repair",
+    );
     console.log(
       "   ✅ reconciliation reruns without changing canonical state\n",
     );
