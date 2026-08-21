@@ -857,6 +857,10 @@ async function loadConnectorAccountForDeletion(
   return connector ? { kind: "resolved", connector } : { kind: "missing" };
 }
 
+// Target-only disconnect callers omit the exact selection resolution and
+// expect the legacy string result. Default them to clear and preserve that
+// result until #27695, after the account UI ships and the ~2 day
+// old-web-client window closes.
 async function prepareBuiltinConnectorAccountDeletion(
   db: Tx,
   args: {
