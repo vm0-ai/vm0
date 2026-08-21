@@ -145,7 +145,7 @@ pub async fn run_benchmark(
         runtime_lock_path: runner_paths.mitmdump_runtime_lock(),
         api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
         client_session_id: uuid::Uuid::new_v4().to_string(),
-        server_token: None,
+        runner_token: None,
     })
     .await?;
     mitm.start().await?;
@@ -725,7 +725,7 @@ mod tests {
                 runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
                 api_url: None,
                 client_session_id: "benchmark-lifecycle-test".to_string(),
-                server_token: None,
+                runner_token: None,
             })
             .await
             .unwrap();

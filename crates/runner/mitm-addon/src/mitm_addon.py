@@ -241,7 +241,7 @@ def configure(updated: set[str]) -> None:
     )
     model_provider_failure.configure_reporting(
         api_url=get_api_url(),
-        bearer_credential=os.environ.get(model_provider_failure.SERVER_AUTH_ENV, ""),
+        bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(

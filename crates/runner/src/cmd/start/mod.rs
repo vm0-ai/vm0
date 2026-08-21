@@ -547,7 +547,7 @@ async fn run_start_with_home(
         runtime_lock_path: paths.mitmdump_runtime_lock(),
         api_url: Some(server.url.clone()),
         client_session_id: runner_client_session_id,
-        server_token: local_group_dir.is_none().then(|| server.token.clone()),
+        runner_token: local_group_dir.is_none().then(|| server.token.clone()),
     })
     .await?;
     mitm.start().await?;

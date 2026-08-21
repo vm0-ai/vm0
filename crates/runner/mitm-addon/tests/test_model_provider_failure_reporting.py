@@ -53,7 +53,7 @@ def _make_flow(
 @pytest.fixture(autouse=True)
 def model_provider_failure_api(usage_webhook_server, mitm_ctx, monkeypatch):
     bearer_credential = str(id(usage_webhook_server))
-    monkeypatch.setenv(model_provider_failure.SERVER_AUTH_ENV, bearer_credential)
+    monkeypatch.setenv(model_provider_failure.RUNNER_AUTH_ENV, bearer_credential)
     with mitm_ctx(api_url=usage_webhook_server.api_url):
         mitm_addon.configure(set())
         yield usage_webhook_server
@@ -291,10 +291,10 @@ def test_overlapping_inference_flows_report_independent_failures(
         with mitm_ctx():
             mitm_addon.response(flow)
 
-    assert _reported_payloads(model_provider_failure_api) == [
-        {"failureKind": "rate_limit"},
-        {"failureKind": "provider_unavailable"},
-    ]
+    payloads = _reported_payloads(model_provider_failure_api)
+    assert len(payloads) == 2
+    assert {"failureKind": "rate_limit"} in payloads
+    assert {"failureKind": "provider_unavailable"} in payloads
 
 
 @pytest.mark.parametrize(

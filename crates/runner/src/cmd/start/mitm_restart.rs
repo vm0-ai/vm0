@@ -142,7 +142,7 @@ mod tests {
             runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
             api_url: None,
             client_session_id: "runner-session-test".to_string(),
-            server_token: None,
+            runner_token: None,
         })
         .await
         .unwrap();
