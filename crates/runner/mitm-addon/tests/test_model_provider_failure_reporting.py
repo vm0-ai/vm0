@@ -1,7 +1,6 @@
 """Integration tests for trusted model-provider failure reduction."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from mitmproxy import http
@@ -61,7 +60,7 @@ def model_provider_failure_api(usage_webhook_server, mitm_ctx, monkeypatch):
     model_provider_failure.drain_reports_for_tests()
 
 
-def _reported_payloads(model_provider_failure_api) -> list[dict[str, Any]]:
+def _reported_payloads(model_provider_failure_api) -> list[dict[str, object]]:
     model_provider_failure.drain_reports_for_tests()
     return [request.json_body() for request in model_provider_failure_api.requests]
 
