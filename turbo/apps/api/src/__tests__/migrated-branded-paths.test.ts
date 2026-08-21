@@ -4,14 +4,20 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
+import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
+import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
+import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
+import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
+import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import { translationRoutes } from "../signals/routes/translation";
 import { weatherRoutes } from "../signals/routes/weather";
 import { webSearchRoutes } from "../signals/routes/web-search";
@@ -801,6 +807,38 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/user-permission-grants/apply",
     "/api/zero/user-permission-grants/apply",
   ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds are not in this slice and stay
+  // branded; they are covered by `provider-console-paths.test.ts`.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
 };
 
 function missingBrandedPaths(
@@ -1223,6 +1261,52 @@ describe("branded paths for migrated neutral routes", () => {
           method,
           headers: { "content-type": "application/json" },
           ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28464 twin of the two assertions above, driven through the app factory
+  // production uses rather than over the route table. Every path is a GET a
+  // released web build, or a connect link already sitting in a Slack, Teams, or
+  // Feishu message, still asks for. The status is whatever the handler returns
+  // without credentials or provider configuration; the point is that all three
+  // forms reach the same handler instead of falling through to 404.
+  it("serves the migrated IM connect paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect" },
+      { routes: feishuBrowserConnectRoutes, suffix: "feishu/connect/status" },
+      { routes: feishuOauthRoutes, suffix: "feishu/oauth/connect" },
+      { routes: slackChannelsRoutes, suffix: "slack/channels" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/connect" },
+      { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
+      { routes: teamsBrowserConnectRoutes, suffix: "teams/connect" },
+      { routes: teamsOauthRoutes, suffix: "teams/oauth/connect" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
         });
         return response.status;
       }

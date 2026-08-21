@@ -22,7 +22,7 @@ export const teamsOauthCallbackQuerySchema = z.object({
 export const teamsOauthContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/okou/teams/oauth/connect",
+    path: "/api/teams/oauth/connect",
     query: teamsOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),

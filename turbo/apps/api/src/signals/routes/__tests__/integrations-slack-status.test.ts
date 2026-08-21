@@ -81,7 +81,7 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.connectUrl).not.toBeNull();
     const connectUrl = new URL(response.body.connectUrl!);
     expect(`${connectUrl.origin}${connectUrl.pathname}`).toBe(
-      "https://www.vm0.ai/api/okou/slack/oauth/connect",
+      "https://www.vm0.ai/api/slack/oauth/connect",
     );
     expect(connectUrl.searchParams.get("orgId")).toBe(orgId);
     expect(connectUrl.searchParams.get("userId")).toBe(userId);
@@ -106,7 +106,7 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.installUrl).not.toBeNull();
     const installUrl = new URL(response.body.installUrl!);
     expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
-      "https://www.vm0.ai/api/okou/slack/oauth/install",
+      "https://www.vm0.ai/api/slack/oauth/install",
     );
     expect(installUrl.searchParams.get("orgId")).toBe(orgId);
     expect(installUrl.searchParams.get("userId")).toBe(userId);
@@ -339,9 +339,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
 
     expect(response.body.scopeMismatch).toBeTruthy();
-    expect(response.body.reinstallUrl).toContain(
-      "/api/okou/slack/oauth/install",
-    );
+    expect(response.body.reinstallUrl).toContain("/api/slack/oauth/install");
     expect(response.body.reinstallUrl).toContain("reinstall=1");
   });
 
