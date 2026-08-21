@@ -16,12 +16,7 @@ import {
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
-import {
-  Decoration,
-  DecorationSet,
-  type EditorView,
-  type NodeView,
-} from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
@@ -32,7 +27,6 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { composerImeSubmitFlushEnabled$ } from "../external/feature-switch.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -269,96 +263,6 @@ function connectComposerFeedback(
   });
 }
 
-/**
- * Assigning an attribute queues a MutationObserver record even when the value
- * is unchanged. Inside a node view's `contentDOM` those records are read by
- * ProseMirror as content changes, which can discard an in-flight IME
- * composition, so re-renders must not rewrite values that already match.
- */
-function setClassName(
-  element: HTMLElement,
-  className: string,
-  skipUnchanged: boolean,
-): void {
-  if (skipUnchanged && element.className === className) {
-    return;
-  }
-  element.className = className;
-}
-
-interface FeedbackItemNodeViewElements {
-  readonly dom: HTMLElement;
-  readonly noteDom: HTMLElement;
-  readonly placeholderDom: HTMLElement;
-  readonly contentDOM: HTMLElement;
-  readonly quoteText: HTMLElement;
-}
-
-function renderFeedbackItemNodeView(
-  elements: FeedbackItemNodeViewElements,
-  nextNode: ProseMirrorNode,
-  skipUnchanged: boolean,
-): void {
-  const { dom, noteDom, placeholderDom, contentDOM, quoteText } = elements;
-  const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-  // The top padding is breathing room for the dashed divider, so only the
-  // items that draw one get it. The first item keeps the editor's own pt-4.
-  setClassName(
-    dom,
-    `flex flex-col gap-1.5 pb-1.5${
-      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
-    }`,
-    skipUnchanged,
-  );
-  setClassName(
-    noteDom,
-    `relative${fill ? " min-h-[96px]" : ""}`,
-    skipUnchanged,
-  );
-  const placeholderHidden = nodeText(nextNode).length > 0;
-  if (!skipUnchanged || placeholderDom.hidden !== placeholderHidden) {
-    placeholderDom.hidden = placeholderHidden;
-  }
-  setClassName(
-    contentDOM,
-    "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
-      `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`,
-    skipUnchanged,
-  );
-  if (!skipUnchanged || quoteText.textContent !== quote) {
-    quoteText.textContent = quote;
-  }
-}
-
-interface EditorViewWithDomObserver extends EditorView {
-  readonly domObserver: {
-    readonly flush: () => void;
-    readonly forceFlush: () => void;
-  };
-}
-
-/**
- * ProseMirror defers reading the contenteditable while an IME composition is in
- * flight. On a busy page the composed tail can still be missing from
- * `editor.state.doc` after the composition gate settles, which submits only the
- * already committed prefix. Flushing the observer applies those pending DOM
- * changes before the document is serialized.
- *
- * Every `EditorView` constructs `domObserver`, but prosemirror-view marks it
- * internal and omits it from the published types, so it is reached through a
- * cast. A future rename must fail loudly here rather than silently restore the
- * truncated submission.
- *
- * Both calls are needed. `flush` returns early while a deferred flush is
- * scheduled, which is the state a composition leaves behind, and `forceFlush`
- * clears that timer but does nothing when no flush is pending.
- */
-function flushPendingDomChanges(editor: Editor): void {
-  const { domObserver } = editor.view as EditorViewWithDomObserver;
-  domObserver.forceFlush();
-  domObserver.flush();
-}
-
 function createReadInputForSubmissionCommand(
   editor: Editor,
   compositionGate: CompositionGate,
@@ -366,11 +270,7 @@ function createReadInputForSubmissionCommand(
 ) {
   return command(({ get }, signal: AbortSignal) => {
     const includeQuoteOnlyFeedback = get(quoteOnlyFeedbackEnabled$);
-    const flushBeforeRead = get(composerImeSubmitFlushEnabled$);
     return compositionGate.runWhenSettled(() => {
-      if (flushBeforeRead) {
-        flushPendingDomChanges(editor);
-      }
       return {
         prompt: workflowComposerDocToString(editor, includeQuoteOnlyFeedback),
         editorDocument: createEditorDocumentSnapshot(
@@ -638,7 +538,6 @@ function createFeedbackItemNodeView(
   node: ProseMirrorNode,
   removeFeedback: (id: number) => void,
   localizedUi: Set<() => void>,
-  skipUnchangedWrites: () => boolean,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.feedbackItem = "";
@@ -702,11 +601,18 @@ function createFeedbackItemNodeView(
     contentDOM.setAttribute("aria-label", placeholder);
   }
   function render(nextNode: ProseMirrorNode): void {
-    renderFeedbackItemNodeView(
-      { dom, noteDom, placeholderDom, contentDOM, quoteText },
-      nextNode,
-      skipUnchangedWrites(),
-    );
+    const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
+    // The top padding is breathing room for the dashed divider, so only the
+    // items that draw one get it. The first item keeps the editor's own pt-4.
+    dom.className = `flex flex-col gap-1.5 pb-1.5${
+      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+    }`;
+    noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
+    placeholderDom.hidden = nodeText(nextNode).length > 0;
+    contentDOM.className =
+      "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
+      `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
+    quoteText.textContent = quote;
   }
   removeButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -1603,7 +1509,6 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
-  skipUnchangedNoteWrites: boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1775,9 +1680,6 @@ function createFeedbackItemNode(
             runtime.removeFeedback(id);
           },
           runtime.localizedUi,
-          () => {
-            return runtime.skipUnchangedNoteWrites;
-          },
         );
       };
     },
@@ -2135,7 +2037,6 @@ function createMountEditorCommand({
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       const includeQuoteOnlyFeedback = get(quoteOnlyFeedbackEnabled$);
-      runtime.skipUnchangedNoteWrites = get(composerImeSubmitFlushEnabled$);
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
@@ -2587,7 +2488,6 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
-    skipUnchangedNoteWrites: false,
   };
 }
 
