@@ -229,8 +229,10 @@ async fn batch_size_flushes_before_shutdown_and_residual_flushes_once() {
     let _sub = tracing::subscriber::set_default(subscriber);
 
     // Consume `interval()`'s immediately ready first tick while the batch is
-    // empty so it cannot split the exact-size batch below.
-    tokio::task::yield_now().await;
+    // empty so it cannot split the exact-size batch below. With paused time,
+    // the runtime polls work ready now before advancing to this sleep's
+    // deadline, making the dispatcher poll a causal prerequisite.
+    tokio::time::sleep(Duration::from_nanos(1)).await;
     for marker in 0..BATCH_SIZE {
         tracing::warn!(marker = marker as u64, "batch event");
     }
@@ -279,11 +281,12 @@ async fn sub_threshold_batch_flushes_on_interval_before_shutdown() {
     let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     let _sub = tracing::subscriber::set_default(subscriber);
 
-    // Consume the immediate empty tick, then let the dispatcher move the
-    // event from the channel into its batch before advancing the clock.
-    tokio::task::yield_now().await;
+    // Each paused-time sleep makes the runtime poll work ready at the current
+    // instant before advancing one nanosecond, so the empty tick and channel
+    // receive both complete before the test continues.
+    tokio::time::sleep(Duration::from_nanos(1)).await;
     tracing::warn!(marker = 7_u64, "interval event");
-    tokio::task::yield_now().await;
+    tokio::time::sleep(Duration::from_nanos(1)).await;
     assert_eq!(captured.request_count(), 0);
 
     tokio::time::advance(BATCH_INTERVAL).await;
