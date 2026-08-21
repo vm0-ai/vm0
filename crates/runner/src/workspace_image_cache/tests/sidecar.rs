@@ -277,17 +277,47 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
         EncodedTooLarge,
     }
 
-    for case in [
-        InvalidSidecarCase::MissingMetadata,
-        InvalidSidecarCase::MalformedMetadata,
-        InvalidSidecarCase::UnsupportedRepresentation,
-        InvalidSidecarCase::MetadataSymlink,
-        InvalidSidecarCase::MissingBody,
-        InvalidSidecarCase::BodySymlink,
-        InvalidSidecarCase::SessionMismatch,
-        InvalidSidecarCase::InvalidHash,
-        InvalidSidecarCase::InvalidSize,
-        InvalidSidecarCase::EncodedTooLarge,
+    for (case, expected_miss) in [
+        (
+            InvalidSidecarCase::MissingMetadata,
+            WorkspaceSessionHistorySidecarMiss::Missing,
+        ),
+        (
+            InvalidSidecarCase::MalformedMetadata,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
+        (
+            InvalidSidecarCase::UnsupportedRepresentation,
+            WorkspaceSessionHistorySidecarMiss::UnsupportedFormat,
+        ),
+        (
+            InvalidSidecarCase::MetadataSymlink,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
+        (
+            InvalidSidecarCase::MissingBody,
+            WorkspaceSessionHistorySidecarMiss::BodyMissing,
+        ),
+        (
+            InvalidSidecarCase::BodySymlink,
+            WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::SessionMismatch,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::InvalidHash,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::InvalidSize,
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+        ),
+        (
+            InvalidSidecarCase::EncodedTooLarge,
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -371,13 +401,47 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
             }
         }
 
-        assert!(
+        assert_eq!(
             cache
                 .probe_session_history_sidecar(&cache_key, &identity)
                 .await
-                .is_err(),
+                .unwrap_err(),
+            expected_miss,
             "case: {case:?}"
         );
+    }
+}
+
+#[test]
+fn workspace_session_history_sidecar_miss_strings_are_stable() {
+    for (miss, expected) in [
+        (
+            WorkspaceSessionHistorySidecarMiss::NoCacheHit,
+            "no_cache_hit",
+        ),
+        (WorkspaceSessionHistorySidecarMiss::Missing, "missing"),
+        (
+            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
+            "invalid_metadata",
+        ),
+        (
+            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
+            "identity_mismatch",
+        ),
+        (
+            WorkspaceSessionHistorySidecarMiss::UnsupportedFormat,
+            "unsupported_format",
+        ),
+        (
+            WorkspaceSessionHistorySidecarMiss::BodyMissing,
+            "body_missing",
+        ),
+        (
+            WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch,
+            "file_identity_mismatch",
+        ),
+    ] {
+        assert_eq!(miss.as_str(), expected);
     }
 }
 
