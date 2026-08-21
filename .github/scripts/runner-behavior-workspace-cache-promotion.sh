@@ -167,7 +167,7 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
 while [ "$writer_attempt" -lt 50 ]; do
   writer_size=$(stat -c %s /home/user/workspace/live-writer 2>/dev/null || printf 0)
   case "$writer_size" in
-    ''|*[!0-9]*) ;;
+    ""|*[!0-9]*) ;;
     *) [ "$writer_size" -gt 13 ] && exit 0 ;;
   esac
   writer_attempt=$((writer_attempt + 1))
