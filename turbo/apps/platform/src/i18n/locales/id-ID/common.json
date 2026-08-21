@@ -598,6 +598,8 @@
       "categories": "Kategori template",
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
+      "deleteImportedTemplateDescription": "Tindakan ini menghapus templat untuk semua orang yang dapat mengaksesnya. Tindakan ini tidak dapat dibatalkan.",
+      "deleteImportedTemplateTitle": "Hapus {{title}}?",
       "filters": {
         "age": "Usia",
         "all": "Semua",
@@ -632,6 +634,7 @@
       "previousHtmlPreview": "pratinjau HTML sebelumnya {{title}}",
       "previousSlide": "Pratinjau slide sebelumnya",
       "recommended": "Direkomendasikan",
+      "renameImportedTemplate": "Ganti nama templat",
       "searchConnector": "Cari templat",
       "searchConnectors": "Cari templat",
       "selected": "Templat: {{title}}",

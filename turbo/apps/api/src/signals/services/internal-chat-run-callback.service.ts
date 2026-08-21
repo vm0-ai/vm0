@@ -668,8 +668,8 @@ interface CreateQueuedChatRunInput {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
   /**
-   * Guidance packages to mount for this run, one per private template the
-   * queued message selected and its sender still owns.
+   * Guidance packages to mount for this run, one per uploaded template the
+   * queued message selected and its sender may still access.
    */
   readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
   readonly publicBrand?: PublicBrand;
@@ -3087,10 +3087,10 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
  * What a queued message's own selections contribute to the run this dispatch
  * is about to create: the guidance block and the packages that back it.
  *
- * Ownership is re-checked here rather than trusted from the send that queued
- * the message. The row can be deleted while the message waits, and a volume
- * this user may not read must never be assembled — so the same lookup decides
- * both what is mounted and what the prompt is allowed to mention.
+ * Access is re-checked here rather than trusted from the send that queued the
+ * message. The row can be deleted or made private while the message waits, and
+ * a volume this user may not read must never be assembled — so the same lookup
+ * decides both what is mounted and what the prompt is allowed to mention.
  */
 async function resolveQueuedMessageTemplateContext(args: {
   readonly db: ReadonlyDb;
@@ -3110,7 +3110,7 @@ async function resolveQueuedMessageTemplateContext(args: {
   const mountedUserPresentationTemplateIds =
     await authorizedUserPresentationTemplateIds(args.db, {
       orgId: args.orgId,
-      ownerUserId: args.userId,
+      userId: args.userId,
       templateIds: selectedUserPresentationTemplateIds(
         args.userMessageProjection?.templates ?? [],
       ),

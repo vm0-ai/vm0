@@ -5,6 +5,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const presentationTemplateVisibilitySchema = z.enum(["private", "public"]);
+
 export const MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES = 100 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PAGES = 100;
 export const MAX_PRESENTATION_TEMPLATE_PAGE_BYTES = 25 * 1024 * 1024;
@@ -33,6 +35,12 @@ const presentationTemplateSummarySchema = z.object({
   sourceFilename: z.string(),
   coverUrl: z.string().url().nullable(),
   pageCount: z.number().int().nonnegative(),
+  /**
+   * Optional during the app/API rollout window. The API always returns these
+   * fields once workspace sharing is available; an older API does not.
+   */
+  visibility: presentationTemplateVisibilitySchema.optional(),
+  canManage: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -46,9 +54,14 @@ const presentationTemplateIdParamsSchema = z.object({
   templateId: z.uuid(),
 });
 
-const updatePresentationTemplateBodySchema = z.object({
-  title: z.string().trim().min(1).max(255),
-});
+const updatePresentationTemplateBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(255).optional(),
+    visibility: presentationTemplateVisibilitySchema.optional(),
+  })
+  .refine((body) => {
+    return body.title !== undefined || body.visibility !== undefined;
+  }, "A title or visibility change is required");
 
 /**
  * Everything a finished analysis hands back, in one call.
@@ -91,7 +104,8 @@ export const presentationTemplatesContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "List presentation templates owned by the current user",
+    summary:
+      "List presentation templates available to the current workspace member",
   },
   get: {
     method: "GET",
@@ -120,7 +134,7 @@ export const presentationTemplatesContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Rename a presentation template",
+    summary: "Update a presentation template",
   },
   delete: {
     method: "DELETE",
@@ -143,6 +157,15 @@ export type PresentationTemplatesContract =
   typeof presentationTemplatesContract;
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
+>;
+export type PresentationTemplateDetail = z.infer<
+  typeof presentationTemplateDetailSchema
+>;
+export type PresentationTemplateVisibility = z.infer<
+  typeof presentationTemplateVisibilitySchema
+>;
+export type UpdatePresentationTemplateBody = z.infer<
+  typeof updatePresentationTemplateBodySchema
 >;
 export type PublishPresentationTemplateBody = z.infer<
   typeof publishPresentationTemplateBodySchema

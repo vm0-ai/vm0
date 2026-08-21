@@ -11,7 +11,10 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import { refreshOwnPresentationTemplates$ } from "./presentation-template-library.ts";
+import {
+  createImportedPresentationTemplateSignals,
+  refreshPresentationTemplates$,
+} from "./presentation-template-library.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
@@ -361,7 +364,7 @@ function createTemplatePickerDialogSignals() {
     if (open) {
       // Opening is the moment the imported catalog has to be current: an import
       // started here finishes later in another thread, and cover URLs expire.
-      set(refreshOwnPresentationTemplates$);
+      set(refreshPresentationTemplates$);
     }
   });
 
@@ -879,6 +882,8 @@ export function createComposerUiSignals() {
   const list = createTemplatePickerListSignals();
   const cards = createTemplateCardSignals();
   const detail = createTemplateDetailStateSignals();
+  const importedPresentationTemplates =
+    createImportedPresentationTemplateSignals();
   const resources = createTemplatePreviewResourceSignals(list, cards, detail);
   const applySelection$ =
     createApplyPresentationTemplateDetailSelectionSignal(detail);
@@ -898,6 +903,7 @@ export function createComposerUiSignals() {
       ...list.signals,
       ...cards.signals,
       ...detail.signals,
+      ...importedPresentationTemplates,
       ...resources,
       loadPresentationTemplateHtmlPreview,
       openPresentationTemplateDetailPreview$,

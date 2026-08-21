@@ -615,6 +615,8 @@
       "categories": "Categorías de plantilla",
       "category": "Categoría de plantilla",
       "chooseVoice": "Elige una voz para {{title}}",
+      "deleteImportedTemplateDescription": "Esto elimina la plantilla para todas las personas que pueden acceder a ella. Esta acción no se puede deshacer.",
+      "deleteImportedTemplateTitle": "¿Eliminar {{title}}?",
       "filters": {
         "age": "Edad",
         "all": "Todos",
@@ -650,6 +652,7 @@
       "previousHtmlPreview": "Vista previa HTML anterior de {{title}}",
       "previousSlide": "Vista previa de la diapositiva anterior",
       "recommended": "Recomendado",
+      "renameImportedTemplate": "Cambiar nombre de la plantilla",
       "searchConnector": "Buscar plantillas",
       "searchConnectors": "Buscar plantillas",
       "selected": "Plantilla: {{title}}",

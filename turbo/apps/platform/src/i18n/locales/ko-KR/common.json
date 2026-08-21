@@ -598,6 +598,8 @@
       "categories": "템플릿 카테고리",
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
+      "deleteImportedTemplateDescription": "이 템플릿에 액세스할 수 있는 모든 사용자에게서 템플릿이 제거됩니다. 이 작업은 실행 취소할 수 없습니다.",
+      "deleteImportedTemplateTitle": "{{title}}을(를) 삭제할까요?",
       "filters": {
         "age": "연령",
         "all": "전체",
@@ -632,6 +634,7 @@
       "previousHtmlPreview": "{{title}} 이전 HTML 미리보기",
       "previousSlide": "이전 슬라이드 미리보기",
       "recommended": "추천",
+      "renameImportedTemplate": "템플릿 이름 바꾸기",
       "searchConnector": "템플릿 검색",
       "searchConnectors": "템플릿 검색",
       "selected": "템플릿: {{title}}",

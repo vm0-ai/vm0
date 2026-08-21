@@ -247,7 +247,7 @@ interface PreparedNormalSend {
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
   /**
-   * Guidance packages to mount for this run, one per private template the
+   * Guidance packages to mount for this run, one per uploaded template the
    * message selected and this caller was authorised for.
    */
   readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
@@ -1097,7 +1097,7 @@ function resolveSelectedTemplateContext(
 }
 
 /**
- * Row ids for the private templates a message selected, in selection order.
+ * Row ids for the uploaded templates a message selected, in selection order.
  *
  * Authorised here rather than at dispatch: the run mounts one storage volume
  * per id, and a volume the caller may not read must never be assembled at all.
@@ -1133,7 +1133,7 @@ async function validateGenerationTemplatePrompt(
   }
   const authorizedIds = await authorizedUserPresentationTemplateIds(db, {
     orgId: args.orgId,
-    ownerUserId: args.userId,
+    userId: args.userId,
     templateIds: selectedIds,
   });
   if (authorizedIds.length !== selectedIds.length) {

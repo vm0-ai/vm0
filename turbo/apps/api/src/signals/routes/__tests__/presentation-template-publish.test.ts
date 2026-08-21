@@ -357,6 +357,109 @@ describe("presentation template publish", () => {
     ).toBeTruthy();
   });
 
+  it("shares a public template with workspace members while keeping management owner-only", async () => {
+    const owner = bdd.user();
+    if (!owner.orgId) {
+      throw new Error("Presentation template sharing requires an organization");
+    }
+    const member = bdd.user({
+      orgId: owner.orgId,
+      orgRole: "org:member",
+    });
+    await enablePresentationTemplates(owner);
+    await enablePresentationTemplates(member);
+    const fixture = installS3Fixture();
+    const inputs = await uploadInputs(owner, fixture, tarGz(guidance()));
+
+    mocks.clerk.session(owner.userId, owner.orgId);
+    const published = await accept(
+      templateClient().publish({
+        headers: webHeaders(),
+        body: { title: "Workspace brand", ...inputs },
+      }),
+      [200],
+    );
+    expect(published.body).toMatchObject({
+      visibility: "private",
+      canManage: true,
+    });
+
+    const shared = await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+    expect(shared.body).toMatchObject({
+      visibility: "public",
+      canManage: true,
+    });
+
+    mocks.clerk.session(member.userId, member.orgId);
+    const listedForMember = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(listedForMember.body).toStrictEqual([
+      expect.objectContaining({
+        id: published.body.id,
+        visibility: "public",
+        canManage: false,
+      }),
+    ]);
+    const detailForMember = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [200],
+    );
+    expect(detailForMember.body.pageUrls).toHaveLength(2);
+    expect(detailForMember.body.canManage).toBeFalsy();
+
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { title: "Member rename" },
+      }),
+      [404],
+    );
+    await accept(
+      templateClient().delete({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [404],
+    );
+
+    mocks.clerk.session(owner.userId, owner.orgId);
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "private" },
+      }),
+      [200],
+    );
+
+    mocks.clerk.session(member.userId, member.orgId);
+    const privateList = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(privateList.body).toStrictEqual([]);
+    await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [404],
+    );
+  });
+
   it("deletes a template exactly once when two requests race", async () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);

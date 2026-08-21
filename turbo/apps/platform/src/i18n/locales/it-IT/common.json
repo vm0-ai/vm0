@@ -615,6 +615,8 @@
       "categories": "Categorie di modelli",
       "category": "Categoria modello",
       "chooseVoice": "Scegli una voce per {{title}}",
+      "deleteImportedTemplateDescription": "Questa operazione rimuove il modello per chiunque possa accedervi e non può essere annullata.",
+      "deleteImportedTemplateTitle": "Eliminare {{title}}?",
       "filters": {
         "age": "Età",
         "all": "Tutti",
@@ -650,6 +652,7 @@
       "previousHtmlPreview": "{{title}} anteprima HTML precedente",
       "previousSlide": "Anteprima della diapositiva precedente",
       "recommended": "Consigliato",
+      "renameImportedTemplate": "Rinomina modello",
       "searchConnector": "Cerca modelli",
       "searchConnectors": "Cerca modelli",
       "selected": "Modello: {{title}}",

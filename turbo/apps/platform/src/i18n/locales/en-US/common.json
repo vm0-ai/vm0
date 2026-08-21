@@ -598,6 +598,8 @@
       "categories": "Template categories",
       "category": "Template category",
       "chooseVoice": "Choose a voice for {{title}}",
+      "deleteImportedTemplateDescription": "This removes the template for everyone who can access it. This action cannot be undone.",
+      "deleteImportedTemplateTitle": "Delete {{title}}?",
       "filters": {
         "age": "Age",
         "all": "All",
@@ -632,6 +634,7 @@
       "previousHtmlPreview": "{{title}} previous HTML preview",
       "previousSlide": "Preview previous slide",
       "recommended": "Recommended",
+      "renameImportedTemplate": "Rename template",
       "searchConnector": "Search templates",
       "searchConnectors": "Search templates",
       "selected": "Template: {{title}}",
