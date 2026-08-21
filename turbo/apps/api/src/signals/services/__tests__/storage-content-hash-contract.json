@@ -1,0 +1,76 @@
+[
+  {
+    "name": "empty files hash storage prefix only",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [],
+    "expected": "4c679c352da0ad578c21cc413e4afa83c32d467424725129795dda25d1c5ea4e"
+  },
+  {
+    "name": "single file",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [{ "path": "a.txt", "hash": "deadbeef", "size": 0 }],
+    "expected": "3d7165d60d7fd53858323feb1cc04b0116aee77858b4aea45beba855f7816fc0"
+  },
+  {
+    "name": "multiple files sort independently of input order",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "b.txt", "hash": "222", "size": 0 },
+      { "path": "a.txt", "hash": "111", "size": 0 },
+      { "path": "c.txt", "hash": "333", "size": 0 }
+    ],
+    "expected": "384d77579354ce230d8a7465343e1530e2561eab48a94d63e0bf80f90307e24c"
+  },
+  {
+    "name": "different storage id changes the hash",
+    "storageId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "files": [],
+    "expected": "d87bf91de459004a9512e649c3484a8ced316fe5547149ec3f6b6ae669ac79ff"
+  },
+  {
+    "name": "nested paths sort lexicographically",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "src/main.rs", "hash": "bbb", "size": 0 },
+      { "path": "README.md", "hash": "ccc", "size": 0 },
+      { "path": "src/lib.rs", "hash": "aaa", "size": 0 }
+    ],
+    "expected": "e7158d0cbdae3793daa8352a6197eab9f772d8cb8784c941d921e81f5d4b09d6"
+  },
+  {
+    "name": "colon paths sort as formatted entries",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "a", "hash": "b:1", "size": 0 },
+      { "path": "a:b", "hash": "0", "size": 0 }
+    ],
+    "expected": "dad70e0a6e8e7e343fc611ce5ee2bc01b6af55b01fe1d61e690528f53fad1098"
+  },
+  {
+    "name": "path prefix with colon sorts as formatted entries",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "a", "hash": "z", "size": 0 },
+      { "path": "a:", "hash": "0", "size": 0 }
+    ],
+    "expected": "055c09bcf0d3d460e27b88995bf7966f9e134c1db34887d1ab527f5386b7f0cc"
+  },
+  {
+    "name": "equal formatted entries do not depend on stable sorting",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "a", "hash": "b:c", "size": 0 },
+      { "path": "a:b", "hash": "c", "size": 0 }
+    ],
+    "expected": "383ab29556e8eac75c8fd2e4e06877071b7db78598a41ed92af860f5c70f0e54"
+  },
+  {
+    "name": "non-BMP paths sort like JavaScript default string sort",
+    "storageId": "01234567-89ab-cdef-0123-456789abcdef",
+    "files": [
+      { "path": "\ue000.txt", "hash": "222", "size": 0 },
+      { "path": "\ud83d\udca9.txt", "hash": "111", "size": 0 }
+    ],
+    "expected": "537ee6d2902093ce26bea40719e1236c99f1d5394e26445cfe9cd6d9ae228f61"
+  }
+]

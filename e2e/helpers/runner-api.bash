@@ -188,7 +188,7 @@ runner_e2e_delete_chat_thread() {
 
 runner_e2e_delete_workflow() {
     local workflow_id="$1"
-    runner_api_curl "/api/okou/workflows/${workflow_id}" -X DELETE
+    runner_api_curl "/api/workflows/${workflow_id}" -X DELETE
 }
 
 runner_e2e_wait_for_chat_event() {

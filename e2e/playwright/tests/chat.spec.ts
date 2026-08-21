@@ -87,7 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
@@ -205,7 +205,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/agents/*/user-connectors", async (route) => {
+  await page.route("**/api/agents/*/user-connectors", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;

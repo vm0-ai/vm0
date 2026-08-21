@@ -47,7 +47,7 @@ teardown() {
             ]
         }
     ')
-    run runner_api_curl "/api/okou/workflows" \
+    run runner_api_curl "/api/workflows" \
         -X POST \
         -d "$workflow_payload"
     echo "$output"
@@ -119,7 +119,7 @@ EOF
             ]
         }
     ')
-    run runner_api_curl "/api/okou/workflows/${WORKFLOW_ID}" \
+    run runner_api_curl "/api/workflows/${WORKFLOW_ID}" \
         -X PATCH \
         -d "$update_payload"
     echo "$output"

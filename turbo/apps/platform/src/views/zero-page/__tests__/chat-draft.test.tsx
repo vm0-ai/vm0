@@ -323,7 +323,7 @@ describe("chat drafts", () => {
       url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
     };
     mockAgentChatPage(agentId);
-    context.mocks.http.get("*/api/okou/agents/:id/draft", () => {
+    context.mocks.http.get("*/api/agents/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,
@@ -401,13 +401,10 @@ describe("chat drafts", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.http.patch(
-      "*/api/okou/agents/:id/draft",
-      async ({ request }) => {
-        draftPatches.push((await request.json()) as Record<string, unknown>);
-        return new Response(null, { status: 200 });
-      },
-    );
+    context.mocks.http.patch("*/api/agents/:id/draft", async ({ request }) => {
+      draftPatches.push((await request.json()) as Record<string, unknown>);
+      return new Response(null, { status: 200 });
+    });
 
     detachedSetupPage({
       context,

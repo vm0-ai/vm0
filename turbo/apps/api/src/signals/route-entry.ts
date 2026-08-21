@@ -1360,6 +1360,108 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
   "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
+  // #28461: the agent reads and writes, the manual Morning Brief trigger, and
+  // the workflow and workflow-automation management routes. Every caller in
+  // this repository derives its URL from the contract, so nothing here still
+  // asks for a branded form; released builds do. Two surfaces hold these paths,
+  // and each has its own window.
+  //
+  // A published CLI package embeds the contract path it was built from and
+  // stays pinned by an execution context's `CLI_PKG_URL` — `okou agent`,
+  // `okou workflow`, and `okou workflow automation` are the commands behind
+  // these paths. That artifact drains over the maximum queue lifetime plus the
+  // maximum claimed execution and finalization lifetime, with execution bounded
+  // by the runner's 2h `JOB_TIMEOUT`, as `docs/deployment-compatibility.md`
+  // describes for commit-addressed CLI artifacts.
+  //
+  // A browser tab holding already-loaded platform code keeps calling the `okou`
+  // path it was built against until it navigates or reloads: the ~2 day
+  // old-web-client window in `docs/fallback.md` section 7, and the longer of
+  // the two. The `zero` form was reachable through the blanket expansion until
+  // the contract moved. Both forms are owed, and both retire under #26701's
+  // evidence rules rather than on either clock.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/agents": ["/api/okou/agents", "/api/zero/agents"],
+  "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
+  "/api/agents/:id/custom-connectors": [
+    "/api/okou/agents/:id/custom-connectors",
+    "/api/zero/agents/:id/custom-connectors",
+  ],
+  "/api/agents/:id/draft": [
+    "/api/okou/agents/:id/draft",
+    "/api/zero/agents/:id/draft",
+  ],
+  "/api/agents/:id/instructions": [
+    "/api/okou/agents/:id/instructions",
+    "/api/zero/agents/:id/instructions",
+  ],
+  "/api/agents/:id/user-connectors": [
+    "/api/okou/agents/:id/user-connectors",
+    "/api/zero/agents/:id/user-connectors",
+  ],
+  "/api/morning-brief/trigger": [
+    "/api/okou/morning-brief/trigger",
+    "/api/zero/morning-brief/trigger",
+  ],
+  "/api/workflow-automations": [
+    "/api/okou/workflow-automations",
+    "/api/zero/workflow-automations",
+  ],
+  "/api/workflow-automations/:id": [
+    "/api/okou/workflow-automations/:id",
+    "/api/zero/workflow-automations/:id",
+  ],
+  "/api/workflow-automations/:id/disable": [
+    "/api/okou/workflow-automations/:id/disable",
+    "/api/zero/workflow-automations/:id/disable",
+  ],
+  "/api/workflow-automations/:id/enable": [
+    "/api/okou/workflow-automations/:id/enable",
+    "/api/zero/workflow-automations/:id/enable",
+  ],
+  "/api/workflow-automations/:id/run": [
+    "/api/okou/workflow-automations/:id/run",
+    "/api/zero/workflow-automations/:id/run",
+  ],
+  "/api/workflow-automations/:id/webhook-secret": [
+    "/api/okou/workflow-automations/:id/webhook-secret",
+    "/api/zero/workflow-automations/:id/webhook-secret",
+  ],
+  "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
+  "/api/workflows/:workflowId": [
+    "/api/okou/workflows/:workflowId",
+    "/api/zero/workflows/:workflowId",
+  ],
+  "/api/workflows/:workflowId/automations": [
+    "/api/okou/workflows/:workflowId/automations",
+    "/api/zero/workflows/:workflowId/automations",
+  ],
+  "/api/workflows/:workflowId/chat-thread": [
+    "/api/okou/workflows/:workflowId/chat-thread",
+    "/api/zero/workflows/:workflowId/chat-thread",
+  ],
+  "/api/workflows/:workflowId/connector-readiness": [
+    "/api/okou/workflows/:workflowId/connector-readiness",
+    "/api/zero/workflows/:workflowId/connector-readiness",
+  ],
+  "/api/workflows/:workflowId/copy": [
+    "/api/okou/workflows/:workflowId/copy",
+    "/api/zero/workflows/:workflowId/copy",
+  ],
+  "/api/workflows/:workflowId/demote": [
+    "/api/okou/workflows/:workflowId/demote",
+    "/api/zero/workflows/:workflowId/demote",
+  ],
+  "/api/workflows/:workflowId/publish": [
+    "/api/okou/workflows/:workflowId/publish",
+    "/api/zero/workflows/:workflowId/publish",
+  ],
+  "/api/workflows/:workflowId/run": [
+    "/api/okou/workflows/:workflowId/run",
+    "/api/zero/workflows/:workflowId/run",
+  ],
   // #28463: avatar video, banking, the browser authorization requests, inbound
   // email, the GitHub user-connect start, mail drafts, people search,
   // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
