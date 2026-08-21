@@ -2406,7 +2406,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
   });
 
-  it("loads scoped connector runtime from the exact projection and reuses it", async () => {
+  it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
     const api = createRunsApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
@@ -2428,24 +2428,65 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
     };
 
-    const firstRun = await createProjectedRun("cold exact runtime projection");
-    const firstEvents = apiDispatchTimingEventsForRun(firstRun.runId);
-    expectApiDispatchActions(firstEvents, [
+    const concurrentRuns = await Promise.all(
+      Array.from({ length: 2 }, async (_, index) => {
+        return await createProjectedRun(
+          `concurrent exact runtime projection ${index}`,
+        );
+      }),
+    );
+    const concurrentEvents = concurrentRuns.map((run) => {
+      return apiDispatchTimingEventsForRun(run.runId);
+    });
+    const concurrentLoads = concurrentEvents.map((events) => {
+      return singleApiDispatchEvent(
+        events,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      );
+    });
+    const cacheOutcomes = concurrentLoads.map((event) => {
+      return event.connector_catalog_projection_cache_outcome;
+    });
+    expect(
+      cacheOutcomes.filter((outcome) => {
+        return outcome === "miss";
+      }),
+    ).toHaveLength(1);
+    expect(
+      cacheOutcomes.filter((outcome) => {
+        return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    for (const load of concurrentLoads) {
+      expect(load).toStrictEqual(
+        expect.objectContaining({
+          connector_catalog_runtime_selection_source: "projection",
+        }),
+      );
+    }
+    const missIndex = cacheOutcomes.indexOf("miss");
+    if (missIndex === -1) {
+      throw new Error("Expected one cold runtime projection load");
+    }
+    const missEvents = concurrentEvents[missIndex];
+    const missLoad = concurrentLoads[missIndex];
+    if (missEvents === undefined || missLoad === undefined) {
+      throw new Error("Expected timing for the cold runtime projection load");
+    }
+    expectApiDispatchActions(missEvents, [
       "api_dispatch_connector_catalog_load_runtime_snapshot",
       "api_dispatch_connector_catalog_query_projection_identity",
       "api_dispatch_connector_catalog_query_projection_rows",
       "api_dispatch_connector_catalog_count_projection_rows",
       "api_dispatch_connector_catalog_materialize_projection",
     ]);
-    expectNoApiDispatchActions(firstEvents, [
-      "api_dispatch_connector_catalog_query_identity",
-      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
-    ]);
-    const firstLoad = singleApiDispatchEvent(
-      firstEvents,
-      "api_dispatch_connector_catalog_load_runtime_snapshot",
-    );
-    expect(firstLoad).toStrictEqual(
+    for (const events of concurrentEvents) {
+      expectNoApiDispatchActions(events, [
+        "api_dispatch_connector_catalog_query_identity",
+        ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+      ]);
+    }
+    expect(missLoad).toStrictEqual(
       expect.objectContaining({
         connector_catalog_runtime_selection_source: "projection",
         connector_catalog_projection_cache_outcome: "miss",
@@ -2455,13 +2496,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         connector_catalog_materialized_connector_count_bucket: "1",
       }),
     );
-    expect(firstLoad).not.toHaveProperty(
+    expect(missLoad).not.toHaveProperty(
       "connector_catalog_projection_fallback_reason",
     );
-    expect(firstLoad).not.toHaveProperty(
+    expect(missLoad).not.toHaveProperty(
       "connector_catalog_accepted_cache_outcome",
     );
-    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    for (const run of concurrentRuns) {
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
 
     const repeatedRun = await createProjectedRun(
       "warm exact runtime projection",
