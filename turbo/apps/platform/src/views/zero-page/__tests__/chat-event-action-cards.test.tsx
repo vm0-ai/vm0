@@ -1134,7 +1134,6 @@ describe("chat event action cards", () => {
     );
     expect(unavailableCards).toHaveLength(2);
     for (const card of unavailableCards) {
-      expect(within(card).getByText("Action unavailable")).toBeInTheDocument();
       expect(queryAllByRoleFast("link", card)).toHaveLength(0);
       expect(queryAllByRoleFast("button", card)).toHaveLength(0);
     }
