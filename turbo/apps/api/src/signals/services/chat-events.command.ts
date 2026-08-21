@@ -927,7 +927,7 @@ async function withBuiltInModelRuntimeRoute(
   const selectedModel = configuration.modelPin.selectedModel;
   if (!selectedModel) {
     return providerUnavailable(
-      "No model provider configured: no VM0 managed model is selected",
+      "No model provider configured: no built-in model is selected",
     );
   }
   const builtInModelRuntimeRoute = await resolveBuiltInModelRuntimeRoute(
@@ -942,7 +942,7 @@ async function withBuiltInModelRuntimeRoute(
           "Every managed route for this model is temporarily unavailable",
         )
       : providerUnavailable(
-          "No model provider configured: no VM0 managed model key is configured",
+          "No model provider configured: no built-in model key is configured",
         );
 }
 

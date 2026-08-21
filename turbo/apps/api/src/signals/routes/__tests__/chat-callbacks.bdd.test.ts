@@ -1163,6 +1163,10 @@ describe("CHAT-02: completed chat callback", () => {
         'The "prompt" values are shown as plain text, not rendered as Markdown',
       ),
     ]);
+    expect(followupSystemPrompts[0]).toContain(
+      "Supported built-in generation tasks:",
+    );
+    expect(followupSystemPrompts[0]).not.toContain("VM0");
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);

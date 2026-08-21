@@ -54,7 +54,7 @@ const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
 const FOLLOWUP_CONTEXT_MESSAGE_CAP = 8;
 const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
-  "Supported VM0 built-in generation tasks:",
+  "Supported built-in generation tasks:",
   "- image: create or edit images and visual assets.",
   "- video: create short generated videos.",
   "- presentation: create slide decks or presentation documents.",
@@ -478,7 +478,7 @@ async function generateRecommendedFollowups(
           `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
           "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
           'The "prompt" values are shown as plain text, not rendered as Markdown, so formatting characters will appear literally. Do not use Markdown or presentation-only syntax inside prompt values, including backticks around technical names, bold or italic markers, links, or bullet markers.',
-          'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks VM0 to create one of the supported built-in generation outputs.',
+          'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks for one of the supported built-in generation outputs.',
           BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
           "For generate items, include generationType as one of: image, video, presentation, website.",
           'Return only a JSON array of objects like {"prompt":"...","kind":"talk"} or {"prompt":"...","kind":"generate","generationType":"website"}. No markdown or extra text.',
