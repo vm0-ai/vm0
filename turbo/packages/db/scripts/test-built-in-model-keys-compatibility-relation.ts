@@ -10,6 +10,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "0956_lean_spitfire";
 const expansionMigration = "0957_built_in_model_keys_compatibility_relation";
+const switchMigration = "0958_built_in_model_keys_physical_switch";
 const testDatabase = "migration_built_in_model_keys_relation";
 
 const legacyRelation = "vm0_api_keys";
@@ -18,6 +19,14 @@ const relationIdentifiers = {
   [canonicalRelation]: '"built_in_model_keys"',
   [legacyRelation]: '"vm0_api_keys"',
 } as const;
+const expectedColumns = [
+  "id",
+  "vendor",
+  "api_key",
+  "label",
+  "created_at",
+  "updated_at",
+];
 
 type RelationName = keyof typeof relationIdentifiers;
 
@@ -44,15 +53,30 @@ async function expectDatabaseFailure(
 }
 
 async function validateMigrationSql(): Promise<void> {
-  const migrationSql = await fs.readFile(
+  const expansionSql = await fs.readFile(
     path.join(migrationsDirectory, `${expansionMigration}.sql`),
     "utf8",
   );
-  const normalizedSql = migrationSql.trim().replace(/\s+/gu, " ");
+  const normalizedExpansionSql = expansionSql.trim().replace(/\s+/gu, " ");
   assert.equal(
-    normalizedSql,
+    normalizedExpansionSql,
     'CREATE VIEW "built_in_model_keys" AS SELECT "id", "vendor", "api_key", "label", "created_at", "updated_at" FROM "vm0_api_keys";',
   );
+
+  const switchSql = await fs.readFile(
+    path.join(migrationsDirectory, `${switchMigration}.sql`),
+    "utf8",
+  );
+  const normalizedSwitchSql = switchSql
+    .replaceAll("--> statement-breakpoint", "")
+    .trim()
+    .replace(/\s+/gu, " ");
+  assert.equal(
+    normalizedSwitchSql,
+    'DROP VIEW "built_in_model_keys"; ALTER TABLE "vm0_api_keys" RENAME TO "built_in_model_keys"; ALTER TABLE "built_in_model_keys" RENAME CONSTRAINT "vm0_api_keys_pkey" TO "built_in_model_keys_pkey"; ALTER INDEX "idx_vm0_api_keys_vendor" RENAME TO "idx_built_in_model_keys_vendor"; CREATE VIEW "vm0_api_keys" AS SELECT "id", "vendor", "api_key", "label", "created_at", "updated_at" FROM "built_in_model_keys";',
+  );
+  assert.equal(/vm0:non-transactional|LOCK TABLE/u.test(switchSql), false);
+  assert.equal(/INSERT INTO|UPDATE |DELETE FROM/u.test(switchSql), false);
 }
 
 async function seedPreExpansionRow(client: Client): Promise<void> {
@@ -135,14 +159,6 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
       AND "table_name" IN ('built_in_model_keys', 'vm0_api_keys')
     ORDER BY "table_name", "ordinal_position"
   `);
-  const expectedColumns = [
-    "id",
-    "vendor",
-    "api_key",
-    "label",
-    "created_at",
-    "updated_at",
-  ];
   assert.deepEqual(
     columns.rows,
     [canonicalRelation, legacyRelation].flatMap((relationName) => {
@@ -165,6 +181,125 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
   `);
   assert.deepEqual(viewMetadata.rows, [
     { isInsertableInto: "YES", isUpdatable: "YES" },
+  ]);
+}
+
+async function validateSwitchedCatalog(client: Client): Promise<void> {
+  const relations = await client.query<{
+    relationKind: string;
+    relationName: string;
+  }>(`
+    SELECT
+      "relname" AS "relationName",
+      "relkind"::text AS "relationKind"
+    FROM "pg_class"
+    INNER JOIN "pg_namespace"
+      ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+    WHERE "pg_namespace"."nspname" = 'public'
+      AND "pg_class"."relname" IN (
+        'built_in_model_keys',
+        'vm0_api_keys'
+      )
+    ORDER BY "pg_class"."relname"
+  `);
+  assert.deepEqual(relations.rows, [
+    { relationKind: "r", relationName: canonicalRelation },
+    { relationKind: "v", relationName: legacyRelation },
+  ]);
+
+  const columns = await client.query<{
+    columnName: string;
+    relationName: string;
+  }>(`
+    SELECT
+      "table_name" AS "relationName",
+      "column_name" AS "columnName"
+    FROM "information_schema"."columns"
+    WHERE "table_schema" = 'public'
+      AND "table_name" IN ('built_in_model_keys', 'vm0_api_keys')
+    ORDER BY "table_name", "ordinal_position"
+  `);
+  assert.deepEqual(
+    columns.rows,
+    [canonicalRelation, legacyRelation].flatMap((relationName) => {
+      return expectedColumns.map((columnName) => {
+        return { columnName, relationName };
+      });
+    }),
+  );
+
+  const viewMetadata = await client.query<{
+    isInsertableInto: string;
+    isUpdatable: string;
+    relationName: string;
+  }>(`
+    SELECT
+      "table_name" AS "relationName",
+      "is_insertable_into" AS "isInsertableInto",
+      "is_updatable" AS "isUpdatable"
+    FROM "information_schema"."views"
+    WHERE "table_schema" = 'public'
+      AND "table_name" IN ('built_in_model_keys', 'vm0_api_keys')
+    ORDER BY "table_name"
+  `);
+  assert.deepEqual(viewMetadata.rows, [
+    {
+      isInsertableInto: "YES",
+      isUpdatable: "YES",
+      relationName: legacyRelation,
+    },
+  ]);
+
+  const primaryKey = await client.query<{
+    constraintName: string;
+    relationName: string;
+  }>(`
+    SELECT
+      "pg_constraint"."conname" AS "constraintName",
+      "pg_class"."relname" AS "relationName"
+    FROM "pg_constraint"
+    INNER JOIN "pg_class"
+      ON "pg_class"."oid" = "pg_constraint"."conrelid"
+    INNER JOIN "pg_namespace"
+      ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+    WHERE "pg_namespace"."nspname" = 'public'
+      AND "pg_class"."relname" = 'built_in_model_keys'
+      AND "pg_constraint"."contype" = 'p'
+  `);
+  assert.deepEqual(primaryKey.rows, [
+    {
+      constraintName: "built_in_model_keys_pkey",
+      relationName: canonicalRelation,
+    },
+  ]);
+
+  const physicalIndexes = await client.query<{
+    isUnique: boolean;
+    objectName: string;
+  }>(`
+    SELECT
+      "index_relation"."relname" AS "objectName",
+      "pg_index"."indisunique" AS "isUnique"
+    FROM "pg_index"
+    INNER JOIN "pg_class" AS "table_relation"
+      ON "table_relation"."oid" = "pg_index"."indrelid"
+    INNER JOIN "pg_class" AS "index_relation"
+      ON "index_relation"."oid" = "pg_index"."indexrelid"
+    INNER JOIN "pg_namespace"
+      ON "pg_namespace"."oid" = "table_relation"."relnamespace"
+    WHERE "pg_namespace"."nspname" = 'public'
+      AND "table_relation"."relname" = 'built_in_model_keys'
+      AND "index_relation"."relname" IN (
+        'built_in_model_keys_pkey',
+        'idx_built_in_model_keys_vendor',
+        'idx_vm0_api_keys_vendor',
+        'vm0_api_keys_pkey'
+      )
+    ORDER BY "index_relation"."relname"
+  `);
+  assert.deepEqual(physicalIndexes.rows, [
+    { isUnique: true, objectName: "built_in_model_keys_pkey" },
+    { isUnique: true, objectName: "idx_built_in_model_keys_vendor" },
   ]);
 }
 
@@ -205,6 +340,19 @@ async function validateHistoricalRow(client: Client): Promise<void> {
     },
   ]);
   assert.deepEqual(canonicalRows, legacyRows);
+}
+
+async function countRows(
+  client: Client,
+  relation: RelationName,
+): Promise<number> {
+  const relationIdentifier = relationIdentifiers[relation];
+  const result = await client.query<{ count: number }>(
+    `SELECT count(*)::integer AS "count" FROM ${relationIdentifier}`,
+  );
+  const count = result.rows[0]?.count;
+  assert.ok(count !== undefined);
+  return count;
 }
 
 async function validateCrossRelationLock(
@@ -259,11 +407,12 @@ async function validateStatementShapes(
   databaseUrl: string,
   relation: RelationName,
   counterpart: RelationName,
+  stage: "expand" | "switch",
 ): Promise<void> {
   const relationIdentifier = relationIdentifiers[relation];
-  const vendor = `${relation}-statement-shapes`;
-  const apiKey = `${relation}-initial-key`;
-  const initialLabel = `${relation}-initial-label`;
+  const vendor = `${stage}-${relation}-statement-shapes`;
+  const apiKey = `${stage}-${relation}-initial-key`;
+  const initialLabel = `${stage}-${relation}-initial-label`;
 
   const inserted = await client.query<KeyRow>(
     `
@@ -290,7 +439,7 @@ async function validateStatementShapes(
     inserted.rows,
   );
 
-  const doNothingVendor = `${relation}-do-nothing`;
+  const doNothingVendor = `${stage}-${relation}-do-nothing`;
   const doNothingSql = `
       INSERT INTO ${relationIdentifier} (
         "id",
@@ -305,7 +454,7 @@ async function validateStatementShapes(
   `;
   const insertedWithoutConflict = await client.query(doNothingSql, [
     doNothingVendor,
-    `${relation}-do-nothing-key`,
+    `${stage}-${relation}-do-nothing-key`,
   ]);
   assert.equal(insertedWithoutConflict.rowCount, 1);
   const doNothingRows = await selectKeyByVendor(
@@ -317,7 +466,7 @@ async function validateStatementShapes(
   const [doNothingRow] = doNothingRows;
   assert.ok(doNothingRow);
   assert.match(doNothingRow.id, /^[0-9a-f-]{36}$/u);
-  assert.equal(doNothingRow.api_key, `${relation}-do-nothing-key`);
+  assert.equal(doNothingRow.api_key, `${stage}-${relation}-do-nothing-key`);
   assert.equal(doNothingRow.label, null);
   assert.deepEqual(
     await selectKeyByVendor(client, counterpart, doNothingVendor),
@@ -325,7 +474,7 @@ async function validateStatementShapes(
   );
   const ignoredConflict = await client.query(doNothingSql, [
     doNothingVendor,
-    `${relation}-ignored-key`,
+    `${stage}-${relation}-ignored-key`,
   ]);
   assert.equal(ignoredConflict.rowCount, 0);
 
@@ -345,15 +494,15 @@ async function validateStatementShapes(
     `,
     [
       vendor,
-      `${relation}-conflicting-key`,
-      `${relation}-conflicting-label`,
+      `${stage}-${relation}-conflicting-key`,
+      `${stage}-${relation}-conflicting-label`,
       vendor,
     ],
   );
   assert.deepEqual(upserted.rows, inserted.rows);
 
   const updatedAt = new Date("2026-08-21T00:00:00.000Z");
-  const updatedLabel = `${relation}-runtime-state-fixture`;
+  const updatedLabel = `${stage}-${relation}-runtime-state-fixture`;
   const updated = await client.query<KeyRow>(
     `
       UPDATE ${relationIdentifier}
@@ -395,7 +544,7 @@ async function validateStatementShapes(
 
 export async function validateBuiltInModelKeysCompatibilityRelation(): Promise<void> {
   console.log(
-    "=== Validate built-in model key relation compatibility expansion ===\n",
+    "=== Validate built-in model key relation compatibility transition ===\n",
   );
 
   const databaseUrl = process.env.DATABASE_URL;
@@ -435,18 +584,54 @@ export async function validateBuiltInModelKeysCompatibilityRelation(): Promise<v
       testUrl.toString(),
       legacyRelation,
       canonicalRelation,
+      "expand",
     );
     await validateStatementShapes(
       client,
       testUrl.toString(),
       canonicalRelation,
       legacyRelation,
+      "expand",
     );
 
-    console.log("   ✅ the legacy table remains the physical relation");
-    console.log("   ✅ the canonical view exposes the six explicit columns");
+    const rowCountBeforeSwitch = await countRows(client, legacyRelation);
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      switchMigration,
+    );
+
+    await validateSwitchedCatalog(client);
+    await validateHistoricalRow(client);
+    assert.equal(
+      await countRows(client, canonicalRelation),
+      rowCountBeforeSwitch,
+    );
+    await validateStatementShapes(
+      client,
+      testUrl.toString(),
+      legacyRelation,
+      canonicalRelation,
+      "switch",
+    );
+    await validateStatementShapes(
+      client,
+      testUrl.toString(),
+      canonicalRelation,
+      legacyRelation,
+      "switch",
+    );
+
+    console.log("   ✅ expand-stage compatibility remains covered");
+    console.log("   ✅ the canonical table retains every pre-switch row");
     console.log(
-      "   ✅ both identities support SELECT, INSERT RETURNING, targeted conflict handling, UPDATE RETURNING, DELETE RETURNING, and cross-relation row locking\n",
+      "   ✅ the legacy view exposes the six explicit, auto-updatable columns",
+    );
+    console.log(
+      "   ✅ the physical constraint and indexes use canonical names",
+    );
+    console.log(
+      "   ✅ both stages and identities support SELECT, INSERT RETURNING, targeted conflict handling, UPDATE RETURNING, DELETE RETURNING, and cross-relation row locking\n",
     );
   } finally {
     await client.end();
