@@ -10,7 +10,8 @@
 //!
 //! A sync response must contain each requested target exactly once. Valid
 //! builtin policy and custom firewall updates are prepared independently, then
-//! committed through one checked registry transaction. Authoritative custom
+//! committed through one registry transaction that holds their registration
+//! and generations current through the atomic write. Authoritative custom
 //! absence removes only that candidate, while unresolved results retain
 //! last-known-good state and retry. Transport, validation, queue, and registry
 //! publication failures also retain last-known-good state and install a capped,
@@ -51,8 +52,8 @@ use super::api::{ApiClient, ConnectorRuntimeSyncOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::proxy::{
-    ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryUpdate,
-    CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
+    ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryTransaction,
+    ConnectorRuntimeRegistryUpdate, CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
 };
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
@@ -862,18 +863,56 @@ impl ConnectorRuntimeSyncCore {
             return false;
         };
         if !prepared_publications.is_empty() {
-            let updates = prepared_publications
-                .iter()
-                .map(|publication| publication.update.clone())
-                .collect::<Vec<_>>();
-            let publication = snapshot
-                .registry
-                .apply_connector_runtime_updates_if_run_matches(
-                    &snapshot.source_ip,
-                    &run_id.to_string(),
-                    &updates,
-                )
-                .await;
+            let transaction: Result<ConnectorRuntimeRegistryTransaction<'_>, RunnerError> =
+                snapshot
+                    .registry
+                    .connector_runtime_registry_transaction()
+                    .await;
+            let (prepared_publications, publication) = match transaction {
+                Ok(transaction) => {
+                    // Acquire the registry transaction before active state so notifications can
+                    // advance while the registry lock is contended. Holding both through the
+                    // write orders every commit against generation and registration changes.
+                    let active_runs = self.inner.active_runs.lock().await;
+                    let Some(active) = active_runs.get(&run_id) else {
+                        return false;
+                    };
+                    if &active.cancel != registration_cancel {
+                        return false;
+                    }
+                    let prepared_publications = prepared_publications
+                        .into_iter()
+                        .filter(|publication| {
+                            active
+                                .connectors
+                                .get(&publication.target.target)
+                                .is_some_and(|connector| {
+                                    connector.generation == publication.target.generation
+                                })
+                        })
+                        .collect::<Vec<_>>();
+                    if prepared_publications.is_empty() {
+                        drop(active_runs);
+                        drop(transaction);
+                        (prepared_publications, Ok(Some(Vec::new())))
+                    } else {
+                        let updates = prepared_publications
+                            .iter()
+                            .map(|publication| publication.update.clone())
+                            .collect::<Vec<_>>();
+                        let publication = transaction
+                            .apply_updates_if_run_matches(
+                                &snapshot.source_ip,
+                                &run_id.to_string(),
+                                &updates,
+                            )
+                            .await;
+                        drop(active_runs);
+                        (prepared_publications, publication)
+                    }
+                }
+                Err(error) => (prepared_publications, Err(error)),
+            };
             match publication {
                 Ok(Some(outcomes)) => {
                     for (prepared, published) in prepared_publications.into_iter().zip(outcomes) {
@@ -2469,8 +2508,10 @@ mod tests {
         core: &ConnectorRuntimeSyncCore,
         run_id: RunId,
         connector_slugs: &[&str],
+        update_attempt_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     ) -> (
         tempfile::TempDir,
+        std::path::PathBuf,
         std::path::PathBuf,
         Vec<ConnectorRuntimeTarget>,
     ) {
@@ -2506,6 +2547,11 @@ mod tests {
             .collect::<HashMap<_, _>>();
         let (dir, registry, registry_path) =
             registered_runtime_registry(run_id, &firewalls, &policies).await;
+        let lock_path = dir.path().join("proxy-registry.lock");
+        let registry = match update_attempt_tx {
+            Some(tx) => registry.with_connector_runtime_update_attempt_tx(tx),
+            None => registry,
+        };
         core.register_run(ConnectorRuntimeSyncRegistration {
             run_id,
             source_ip: "10.200.0.2",
@@ -2514,7 +2560,7 @@ mod tests {
             refreshes: None,
         })
         .await;
-        (dir, registry_path, targets)
+        (dir, registry_path, lock_path, targets)
     }
 
     async fn slack_policy(registry_path: &std::path::Path) -> serde_json::Value {
@@ -3426,8 +3472,8 @@ mod tests {
         let server = MockServer::start();
         let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
-        let (_dir, registry_path, targets) =
-            register_builtin_runtime(&core, run_id, &["slack", "github", "linear"]).await;
+        let (_dir, registry_path, _lock_path, targets) =
+            register_builtin_runtime(&core, run_id, &["slack", "github", "linear"], None).await;
         let unexpected_target = builtin_target("notion");
         let runtime_sync = server.mock(|when, then| {
             when.method(POST)
@@ -3527,8 +3573,8 @@ mod tests {
         let server = MockServer::start();
         let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
-        let (_dir, registry_path, targets) =
-            register_builtin_runtime(&core, run_id, &["slack", "github"]).await;
+        let (_dir, registry_path, _lock_path, targets) =
+            register_builtin_runtime(&core, run_id, &["slack", "github"], None).await;
         let stale_batch = targets
             .iter()
             .cloned()
@@ -3576,6 +3622,103 @@ mod tests {
             registry_json["vms"]["10.200.0.2"]["networkPolicies"]["github"]["allow"],
             json!(["issues:write"])
         );
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn batch_drops_target_superseded_while_registry_transaction_waits() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (update_attempt_tx, mut update_attempt_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_dir, registry_path, lock_path, targets) =
+            register_builtin_runtime(&core, run_id, &["slack", "github"], Some(update_attempt_tx))
+                .await;
+        let old_batch = targets
+            .iter()
+            .cloned()
+            .map(|target| ConnectorSyncTarget {
+                target,
+                generation: 0,
+            })
+            .collect::<Vec<_>>();
+        let runtime_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({ "targets": targets }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [
+                        {
+                            "target": targets[0],
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["stale:write"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                        },
+                        {
+                            "target": targets[1],
+                            "state": "available",
+                            "networkPolicy": {
+                                "allow": ["current:write"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "deny",
+                            },
+                        },
+                    ],
+                }));
+        });
+        let registry_guard = crate::lock::acquire(lock_path)
+            .await
+            .expect("registry lock should be acquired");
+        let sync_task = tokio::spawn({
+            let core = core.clone();
+            async move {
+                core.sync_connector_runtime_batch_now(run_id, &old_batch)
+                    .await
+            }
+        });
+
+        tokio::time::timeout(SYNC_PUBLICATION_TEST_TIMEOUT, update_attempt_rx.recv())
+            .await
+            .expect("old publication should reach the registry transaction before timeout")
+            .expect("old publication should attempt the registry transaction");
+        core.notify_connector_runtime_sync(run_id, targets[0].clone())
+            .await;
+        drop(registry_guard);
+
+        assert!(
+            sync_task
+                .await
+                .expect("old connector runtime sync task should finish")
+        );
+        runtime_sync.assert_calls(1);
+        let newer_request = recv_sync_request(&mut requests).await;
+        assert_eq!(
+            newer_request.targets,
+            vec![ConnectorSyncTarget {
+                target: targets[0].clone(),
+                generation: 1,
+            }]
+        );
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        let policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        assert_eq!(policies["slack"]["allow"], json!(["last-known-good"]));
+        assert_eq!(policies["github"]["allow"], json!(["current:write"]));
+        let active_runs = core.inner.active_runs.lock().await;
+        assert_eq!(active_runs[&run_id].connectors[&targets[0]].generation, 1);
+        assert_eq!(active_runs[&run_id].connectors[&targets[1]].generation, 0);
+        drop(active_runs);
         core.unregister_run(run_id).await;
     }
 
