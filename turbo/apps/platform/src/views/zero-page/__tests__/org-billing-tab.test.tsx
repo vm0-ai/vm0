@@ -485,14 +485,15 @@ describe("organization billing settings", () => {
       "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
+      "Built-in SEO, lead, web, and market data",
       "Voice input, 300 a day",
       "Email support",
     ]) {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team leads with the scale upgrades, then makes the built-in APIs concrete
-       enough to show what a team can put those ten concurrent runs to work on. */
+    /* Team lists only what a buyer gains by moving up from Pro, so nothing
+       under "built for teams" is a capability Pro already ships. */
     expect(
       within(teamPlan).getByText("Everything in Pro, built for teams"),
     ).toBeInTheDocument();
@@ -500,9 +501,6 @@ describe("organization billing settings", () => {
       "10 agents running at once",
       "Add more concurrency any time",
       "Trigger agents from any system via webhook",
-      "Built-in SEO research",
-      "Built-in lead generation",
-      "Built-in web and market data",
       "Voice input, 500 a day",
       "Priority support",
     ]) {
@@ -515,6 +513,7 @@ describe("organization billing settings", () => {
       "7 shared agents, unlimited private",
       "Scheduled and event automations",
       "Video and avatar generation",
+      "Built-in SEO, lead, web, and market data",
       "Email support",
     ]) {
       expect(within(teamPlan).queryByText(item)).toBeNull();

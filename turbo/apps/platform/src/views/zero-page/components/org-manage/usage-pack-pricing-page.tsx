@@ -787,10 +787,14 @@ function PlanPrice({
    flagship models rather than asking "Every model" to carry the claim, then
    keeps BYOK as its own value prop.
 
-   Team keeps Pro's baseline implicit, then spells out the scale upgrades and
-   built-in data capabilities a team can put to work. Those APIs also exist on
-   Pro, so the label says "built for teams" rather than claiming every line
-   after it is a Team-only entitlement.
+   The built-in research APIs ship on Pro, so they sit in Pro's list. One line
+   covers SEO, lead, web, and market data instead of three, which names the
+   whole capability without pushing Pro's list past a scannable length.
+
+   Team then carries only what a buyer gets by moving up from Pro: more
+   concurrency, concurrency they can keep adding to, webhook triggers, a higher
+   voice ceiling, and priority support. Every line under "built for teams" is a
+   real Team upgrade, so the shorter list is the accurate one.
 
    Team's webhook line names both the mechanism and the outcome. "Trigger
    agents from any system via webhook" makes its difference from scheduled and
@@ -817,15 +821,6 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
       i18n.t(($) => {
         return $.billing.plans.highlights.webhookAutomations;
       }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.builtInSeoResearch;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.builtInLeadGeneration;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.highlights.builtInWebMarketData;
-      }),
       voiceInput,
       i18n.t(($) => {
         return $.billing.plans.highlights.supportPriority;
@@ -851,6 +846,9 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     }),
     i18n.t(($) => {
       return $.billing.plans.highlights.videoGeneration;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.builtInResearchData;
     }),
     voiceInput,
     i18n.t(($) => {
