@@ -115,7 +115,7 @@ EOF
                 expiresIn: "1h"
             }]
         }')
-    run runner_api_curl "/api/okou/user-permission-grants/apply" \
+    run runner_api_curl "/api/user-permission-grants/apply" \
         -X PUT \
         -d "$grant_payload"
     echo "$output"

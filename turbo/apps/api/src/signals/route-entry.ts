@@ -775,6 +775,334 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/computer-use/write-commands",
     "/api/zero/computer-use/write-commands",
   ],
+  // #28423: the integration control plane and the CLI messaging and file
+  // surfaces for Feishu, Slack, Microsoft Teams, Telegram, GitHub, AgentPhone,
+  // and Strapi. Two callers hold a branded form independently of the contract:
+  // `downloadFeishuFile` and `downloadPhoneFile` in the CLI build their URL by
+  // hand, so a published package keeps asking for the `okou` path it shipped
+  // with. Every other caller derives its URL from the contract, which a
+  // published CLI package still embeds at the version it was built from, and
+  // the `zero` form was reachable through the blanket expansion until the
+  // contract moved. Both are owed.
+  //
+  // Surfaces: commit-addressed CLI packages pinned by execution contexts
+  // created before this deploy, which drain over the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`, and a released
+  // platform tab holding the branded connect and Strapi paths until it
+  // navigates or reloads (~2 days). Neither window is the removal condition:
+  // these rows retire under #26701's evidence rules like every other row here.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/integrations/feishu": [
+    "/api/okou/integrations/feishu",
+    "/api/zero/integrations/feishu",
+  ],
+  "/api/integrations/feishu/app-id": [
+    "/api/okou/integrations/feishu/app-id",
+    "/api/zero/integrations/feishu/app-id",
+  ],
+  "/api/integrations/feishu/connect": [
+    "/api/okou/integrations/feishu/connect",
+    "/api/zero/integrations/feishu/connect",
+  ],
+  "/api/integrations/feishu/download-file": [
+    "/api/okou/integrations/feishu/download-file",
+    "/api/zero/integrations/feishu/download-file",
+  ],
+  "/api/integrations/feishu/installations/:installationId": [
+    "/api/okou/integrations/feishu/installations/:installationId",
+    "/api/zero/integrations/feishu/installations/:installationId",
+  ],
+  "/api/integrations/feishu/installations/:installationId/connect": [
+    "/api/okou/integrations/feishu/installations/:installationId/connect",
+    "/api/zero/integrations/feishu/installations/:installationId/connect",
+  ],
+  "/api/integrations/feishu/message": [
+    "/api/okou/integrations/feishu/message",
+    "/api/zero/integrations/feishu/message",
+  ],
+  "/api/integrations/feishu/upload-file/complete": [
+    "/api/okou/integrations/feishu/upload-file/complete",
+    "/api/zero/integrations/feishu/upload-file/complete",
+  ],
+  "/api/integrations/feishu/upload-file/init": [
+    "/api/okou/integrations/feishu/upload-file/init",
+    "/api/zero/integrations/feishu/upload-file/init",
+  ],
+  "/api/integrations/github/upload-file/complete": [
+    "/api/okou/integrations/github/upload-file/complete",
+    "/api/zero/integrations/github/upload-file/complete",
+  ],
+  "/api/integrations/github/upload-file/init": [
+    "/api/okou/integrations/github/upload-file/init",
+    "/api/zero/integrations/github/upload-file/init",
+  ],
+  "/api/integrations/phone/download-file": [
+    "/api/okou/integrations/phone/download-file",
+    "/api/zero/integrations/phone/download-file",
+  ],
+  "/api/integrations/phone/message": [
+    "/api/okou/integrations/phone/message",
+    "/api/zero/integrations/phone/message",
+  ],
+  "/api/integrations/phone/upload-file/complete": [
+    "/api/okou/integrations/phone/upload-file/complete",
+    "/api/zero/integrations/phone/upload-file/complete",
+  ],
+  "/api/integrations/phone/upload-file/init": [
+    "/api/okou/integrations/phone/upload-file/init",
+    "/api/zero/integrations/phone/upload-file/init",
+  ],
+  "/api/integrations/slack": [
+    "/api/okou/integrations/slack",
+    "/api/zero/integrations/slack",
+  ],
+  "/api/integrations/slack/connect": [
+    "/api/okou/integrations/slack/connect",
+    "/api/zero/integrations/slack/connect",
+  ],
+  "/api/integrations/slack/message": [
+    "/api/okou/integrations/slack/message",
+    "/api/zero/integrations/slack/message",
+  ],
+  "/api/integrations/slack/upload-file/complete": [
+    "/api/okou/integrations/slack/upload-file/complete",
+    "/api/zero/integrations/slack/upload-file/complete",
+  ],
+  "/api/integrations/slack/upload-file/init": [
+    "/api/okou/integrations/slack/upload-file/init",
+    "/api/zero/integrations/slack/upload-file/init",
+  ],
+  "/api/integrations/slack/upload-file/materialize": [
+    "/api/okou/integrations/slack/upload-file/materialize",
+    "/api/zero/integrations/slack/upload-file/materialize",
+  ],
+  "/api/integrations/strapi": [
+    "/api/okou/integrations/strapi",
+    "/api/zero/integrations/strapi",
+  ],
+  "/api/integrations/strapi/:integrationId": [
+    "/api/okou/integrations/strapi/:integrationId",
+    "/api/zero/integrations/strapi/:integrationId",
+  ],
+  "/api/integrations/strapi/:integrationId/check-test": [
+    "/api/okou/integrations/strapi/:integrationId/check-test",
+    "/api/zero/integrations/strapi/:integrationId/check-test",
+  ],
+  "/api/integrations/strapi/:integrationId/secret": [
+    "/api/okou/integrations/strapi/:integrationId/secret",
+    "/api/zero/integrations/strapi/:integrationId/secret",
+  ],
+  "/api/integrations/teams/connect": [
+    "/api/okou/integrations/teams/connect",
+    "/api/zero/integrations/teams/connect",
+  ],
+  "/api/integrations/teams/message": [
+    "/api/okou/integrations/teams/message",
+    "/api/zero/integrations/teams/message",
+  ],
+  "/api/integrations/teams/upload-file/complete": [
+    "/api/okou/integrations/teams/upload-file/complete",
+    "/api/zero/integrations/teams/upload-file/complete",
+  ],
+  "/api/integrations/teams/upload-file/init": [
+    "/api/okou/integrations/teams/upload-file/init",
+    "/api/zero/integrations/teams/upload-file/init",
+  ],
+  "/api/integrations/telegram/bots": [
+    "/api/okou/integrations/telegram/bots",
+    "/api/zero/integrations/telegram/bots",
+  ],
+  "/api/integrations/telegram/message": [
+    "/api/okou/integrations/telegram/message",
+    "/api/zero/integrations/telegram/message",
+  ],
+  "/api/integrations/telegram/upload-file/complete": [
+    "/api/okou/integrations/telegram/upload-file/complete",
+    "/api/zero/integrations/telegram/upload-file/complete",
+  ],
+  "/api/integrations/telegram/upload-file/init": [
+    "/api/okou/integrations/telegram/upload-file/init",
+    "/api/zero/integrations/telegram/upload-file/init",
+  ],
+  // #28460: the connector catalog, the connector connections and their
+  // authorization starts, the custom connectors, the model provider
+  // connections, and the user permission grants. Two surfaces hold these
+  // branded paths. A released web or app build keeps calling the form it was
+  // compiled against until it reloads, the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7; and a commit-addressed CLI package pinned by
+  // an execution context's `CLI_PKG_URL` keeps calling it for that context's
+  // queue lifetime plus claimed execution, bounded by the runner's 2h
+  // `JOB_TIMEOUT`. Neither window is the removal condition on its own: a row
+  // retires under the #26701 evidence gate above, like every other row here.
+  "/api/connector-catalog": [
+    "/api/okou/connector-catalog",
+    "/api/zero/connector-catalog",
+  ],
+  "/api/connector-catalog/:connectorSlug": [
+    "/api/okou/connector-catalog/:connectorSlug",
+    "/api/zero/connector-catalog/:connectorSlug",
+  ],
+  "/api/connector-catalog/:connectorSlug/permissions": [
+    "/api/okou/connector-catalog/:connectorSlug/permissions",
+    "/api/zero/connector-catalog/:connectorSlug/permissions",
+  ],
+  "/api/connector-catalog/diagnostics": [
+    "/api/okou/connector-catalog/diagnostics",
+    "/api/zero/connector-catalog/diagnostics",
+  ],
+  "/api/connector-catalog/discovery": [
+    "/api/okou/connector-catalog/discovery",
+    "/api/zero/connector-catalog/discovery",
+  ],
+  "/api/connector-catalog/status": [
+    "/api/okou/connector-catalog/status",
+    "/api/zero/connector-catalog/status",
+  ],
+  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
+  "/api/connectors/:connectorSlug": [
+    "/api/okou/connectors/:connectorSlug",
+    "/api/zero/connectors/:connectorSlug",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions",
+  ],
+  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
+    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
+  ],
+  "/api/connectors/:connectorSlug/manual-grant": [
+    "/api/okou/connectors/:connectorSlug/manual-grant",
+    "/api/zero/connectors/:connectorSlug/manual-grant",
+  ],
+  "/api/connectors/:connectorSlug/no-auth": [
+    "/api/okou/connectors/:connectorSlug/no-auth",
+    "/api/zero/connectors/:connectorSlug/no-auth",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
+  ],
+  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
+    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
+  ],
+  "/api/connectors/:connectorSlug/oauth/start": [
+    "/api/okou/connectors/:connectorSlug/oauth/start",
+    "/api/zero/connectors/:connectorSlug/oauth/start",
+  ],
+  "/api/connectors/:connectorSlug/openid/start": [
+    "/api/okou/connectors/:connectorSlug/openid/start",
+    "/api/zero/connectors/:connectorSlug/openid/start",
+  ],
+  "/api/connectors/:connectorSlug/scope-diff": [
+    "/api/okou/connectors/:connectorSlug/scope-diff",
+    "/api/zero/connectors/:connectorSlug/scope-diff",
+  ],
+  "/api/connectors/diagnostics/check": [
+    "/api/okou/connectors/diagnostics/check",
+    "/api/zero/connectors/diagnostics/check",
+  ],
+  "/api/connectors/search": [
+    "/api/okou/connectors/search",
+    "/api/zero/connectors/search",
+  ],
+  "/api/connectors/steam/player": [
+    "/api/okou/connectors/steam/player",
+    "/api/zero/connectors/steam/player",
+  ],
+  "/api/custom-connectors": [
+    "/api/okou/custom-connectors",
+    "/api/zero/custom-connectors",
+  ],
+  "/api/custom-connectors/:id": [
+    "/api/okou/custom-connectors/:id",
+    "/api/zero/custom-connectors/:id",
+  ],
+  "/api/custom-connectors/:id/connection": [
+    "/api/okou/custom-connectors/:id/connection",
+    "/api/zero/custom-connectors/:id/connection",
+  ],
+  "/api/custom-connectors/:id/oauth2/start": [
+    "/api/okou/custom-connectors/:id/oauth2/start",
+    "/api/zero/custom-connectors/:id/oauth2/start",
+  ],
+  "/api/custom-connectors/:id/permissions": [
+    "/api/okou/custom-connectors/:id/permissions",
+    "/api/zero/custom-connectors/:id/permissions",
+  ],
+  "/api/custom-connectors/:id/values": [
+    "/api/okou/custom-connectors/:id/values",
+    "/api/zero/custom-connectors/:id/values",
+  ],
+  "/api/custom-connectors/oauth2/callback": [
+    "/api/okou/custom-connectors/oauth2/callback",
+    "/api/zero/custom-connectors/oauth2/callback",
+  ],
+  "/api/custom-connectors/proposals/save": [
+    "/api/okou/custom-connectors/proposals/save",
+    "/api/zero/custom-connectors/proposals/save",
+  ],
+  "/api/model-provider-connections": [
+    "/api/okou/model-provider-connections",
+    "/api/zero/model-provider-connections",
+  ],
+  "/api/model-provider-connections/:id": [
+    "/api/okou/model-provider-connections/:id",
+    "/api/zero/model-provider-connections/:id",
+  ],
+  "/api/user-permission-grants": [
+    "/api/okou/user-permission-grants",
+    "/api/zero/user-permission-grants",
+  ],
+  "/api/user-permission-grants/apply": [
+    "/api/okou/user-permission-grants/apply",
+    "/api/zero/user-permission-grants/apply",
+  ],
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
+  // eight paths a provider console holds stay branded and are not moved here —
+  // they are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  //
+  // These rows hold two surfaces open. A released web or app build keeps the
+  // branded path it was compiled against until a refresh loads a build that
+  // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
+  // The OAuth-start paths have a second holder that no client version bounds: a
+  // connect or install link the API handed out earlier lives in a Slack, Teams,
+  // or Feishu message a user can still click, and `/api/okou/slack/oauth/install`
+  // is measured traffic listed in `LEGACY_ZERO_PATHS` above, which after this
+  // move only these rows can serve. Removal follows the #26701 evidence gate
+  // like every other row, not either clock.
+  "/api/feishu/connect": [
+    "/api/okou/feishu/connect",
+    "/api/zero/feishu/connect",
+  ],
+  "/api/feishu/connect/status": [
+    "/api/okou/feishu/connect/status",
+    "/api/zero/feishu/connect/status",
+  ],
+  "/api/feishu/oauth/connect": [
+    "/api/okou/feishu/oauth/connect",
+    "/api/zero/feishu/oauth/connect",
+  ],
+  "/api/slack/channels": [
+    "/api/okou/slack/channels",
+    "/api/zero/slack/channels",
+  ],
+  "/api/slack/oauth/connect": [
+    "/api/okou/slack/oauth/connect",
+    "/api/zero/slack/oauth/connect",
+  ],
+  "/api/slack/oauth/install": [
+    "/api/okou/slack/oauth/install",
+    "/api/zero/slack/oauth/install",
+  ],
+  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
+  "/api/teams/oauth/connect": [
+    "/api/okou/teams/oauth/connect",
+    "/api/zero/teams/oauth/connect",
+  ],
 };
 
 /**

@@ -1,6 +1,6 @@
 {
-  "id": "11acebf1-429f-4f20-8ece-c2442edb42c9",
-  "prevId": "1333bcee-4e77-46a0-b7fa-ef5d92b97895",
+  "id": "fa18ed3c-561d-49c5-8e31-841f593c0c48",
+  "prevId": "11acebf1-429f-4f20-8ece-c2442edb42c9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17608,19 +17608,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "error": {
-          "name": "error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "source_storage_key": {
           "name": "source_storage_key",
           "type": "text",
@@ -17710,10 +17697,6 @@
         "chk_presentation_templates_visibility": {
           "name": "chk_presentation_templates_visibility",
           "value": "\"presentation_templates\".\"visibility\" IN ('private', 'public')"
-        },
-        "chk_presentation_templates_status": {
-          "name": "chk_presentation_templates_status",
-          "value": "\"presentation_templates\".\"status\" IN ('pending', 'processing', 'ready', 'failed')"
         }
       },
       "isRLSEnabled": false

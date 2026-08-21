@@ -13,7 +13,7 @@ import {
  * Each vendor has one platform-held key.
  */
 export const builtInModelKeys = pgTable(
-  "vm0_api_keys",
+  "built_in_model_keys",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     vendor: varchar("vendor", { length: 50 }).notNull(),
@@ -23,6 +23,6 @@ export const builtInModelKeys = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
-    return [uniqueIndex("idx_vm0_api_keys_vendor").on(table.vendor)];
+    return [uniqueIndex("idx_built_in_model_keys_vendor").on(table.vendor)];
   },
 );

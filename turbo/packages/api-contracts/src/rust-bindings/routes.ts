@@ -5,6 +5,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelProviderFailuresContract,
   runnersPollContract,
 } from "../contracts/runners";
 import {
@@ -64,6 +65,11 @@ export const rustRouteBindings = [
       "receipt",
     ],
     rustConstName: "RECEIPT",
+  },
+  {
+    route: runnersModelProviderFailuresContract.report,
+    rustModulePath: ["runners", "runs", "by_run_id", "model_provider_failures"],
+    rustConstName: "REPORT",
   },
   {
     route: runnersConnectorRuntimeSyncContract.sync,

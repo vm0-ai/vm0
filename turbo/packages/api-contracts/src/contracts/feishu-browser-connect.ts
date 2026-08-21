@@ -16,7 +16,7 @@ const feishuConnectTokenSchema = z.object({
 export const feishuBrowserConnectContract = c.router({
   connect: {
     method: "GET",
-    path: "/api/okou/feishu/connect",
+    path: "/api/feishu/connect",
     query: feishuConnectTokenSchema.partial(),
     responses: {
       307: c.noBody(),
@@ -26,7 +26,7 @@ export const feishuBrowserConnectContract = c.router({
   },
   connectFromApp: {
     method: "POST",
-    path: "/api/okou/feishu/connect",
+    path: "/api/feishu/connect",
     headers: authHeadersSchema,
     body: feishuConnectTokenSchema,
     responses: {
@@ -45,7 +45,7 @@ export const feishuBrowserConnectContract = c.router({
   },
   getStatus: {
     method: "GET",
-    path: "/api/okou/feishu/connect/status",
+    path: "/api/feishu/connect/status",
     headers: authHeadersSchema,
     query: feishuConnectTokenSchema,
     responses: {
