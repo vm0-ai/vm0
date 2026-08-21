@@ -176,7 +176,6 @@ export const loadMoreUsageRecord$ = command(
         return retryablePages;
       });
     });
-    signal.throwIfAborted();
     if (get(myUsageRecordGeneration$) !== generation) {
       return;
     }
