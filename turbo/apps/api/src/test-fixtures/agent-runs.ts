@@ -218,25 +218,6 @@ export async function readRunIdentityMismatchWriteCountsFixture(args: {
   };
 }
 
-/**
- * Age one claimed run without moving the shared test clock. Sweeps that select
- * runs by elapsed runtime are global, so a mocked clock would also age every
- * concurrent test file's rows in the shared database.
- */
-export async function backdateRunStartedAtFixture(args: {
-  readonly runId: string;
-  readonly startedAt: Date;
-}): Promise<void> {
-  const updated = await db()
-    .update(agentRuns)
-    .set({ startedAt: args.startedAt })
-    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "running")))
-    .returning({ id: agentRuns.id });
-  if (updated.length !== 1) {
-    throw new Error("Expected one running run to become historical");
-  }
-}
-
 export async function readRunModelRuntimeRouteFixture(runId: string) {
   const [run] = await db()
     .select({

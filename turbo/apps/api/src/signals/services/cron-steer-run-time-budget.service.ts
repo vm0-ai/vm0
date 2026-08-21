@@ -34,9 +34,14 @@ interface RunTimeBudgetCandidate {
   readonly chatThreadId: string;
 }
 
+interface RunTimeBudgetCandidateScope {
+  readonly runId: string;
+}
+
 async function loadRunTimeBudgetCandidates(
   db: Db,
   startedBefore: Date,
+  scope: RunTimeBudgetCandidateScope | undefined,
 ): Promise<readonly RunTimeBudgetCandidate[]> {
   return await db
     .select({
@@ -50,10 +55,11 @@ async function loadRunTimeBudgetCandidates(
         eq(agentRuns.status, "running"),
         lte(agentRuns.startedAt, startedBefore),
         isNotNull(agentRuns.triggerSource),
+        scope ? eq(agentRuns.id, scope.runId) : undefined,
       ),
     )
     .orderBy(agentRuns.startedAt)
-    .limit(RUN_TIME_BUDGET_SCAN_LIMIT);
+    .limit(scope ? 1 : RUN_TIME_BUDGET_SCAN_LIMIT);
 }
 
 /**
@@ -117,6 +123,41 @@ async function persistRunTimeBudgetInput(
   });
 }
 
+async function steerRunsNearTimeBudget(
+  db: Db,
+  scope: RunTimeBudgetCandidateScope | undefined,
+  signal: AbortSignal,
+): Promise<{ readonly scanned: number; readonly steered: number }> {
+  const createdAt = nowDate();
+  const startedBefore = new Date(
+    createdAt.getTime() - RUN_TIME_BUDGET_STEER_AT_MS,
+  );
+  const candidates = await loadRunTimeBudgetCandidates(
+    db,
+    startedBefore,
+    scope,
+  );
+  signal.throwIfAborted();
+
+  let steered = 0;
+  for (const candidate of candidates) {
+    if (
+      await persistRunTimeBudgetInput(db, {
+        candidate,
+        startedBefore,
+        createdAt,
+      })
+    ) {
+      steered += 1;
+    }
+    signal.throwIfAborted();
+    await notifyRunningChatRunOfPendingInput(db, candidate.chatThreadId);
+    signal.throwIfAborted();
+  }
+
+  return { scanned: candidates.length, steered };
+}
+
 /**
  * Steer every chat run that reached its time budget. A run stays a candidate
  * until it ends, so an unclaimed steer is re-announced to the runner on the
@@ -124,30 +165,15 @@ async function persistRunTimeBudgetInput(
  */
 export const steerRunsNearTimeBudget$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const db = set(writeDb$);
-    const createdAt = nowDate();
-    const startedBefore = new Date(
-      createdAt.getTime() - RUN_TIME_BUDGET_STEER_AT_MS,
-    );
-    const candidates = await loadRunTimeBudgetCandidates(db, startedBefore);
-    signal.throwIfAborted();
-
-    let steered = 0;
-    for (const candidate of candidates) {
-      if (
-        await persistRunTimeBudgetInput(db, {
-          candidate,
-          startedBefore,
-          createdAt,
-        })
-      ) {
-        steered += 1;
-      }
-      signal.throwIfAborted();
-      await notifyRunningChatRunOfPendingInput(db, candidate.chatThreadId);
-      signal.throwIfAborted();
-    }
-
-    return { scanned: candidates.length, steered };
+    return await steerRunsNearTimeBudget(set(writeDb$), undefined, signal);
   },
 );
+
+/** Scope the global sweep to one owned run for shared-database route tests. */
+export async function steerRunNearTimeBudgetForTest(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<{ readonly scanned: number; readonly steered: number }> {
+  return await steerRunsNearTimeBudget(db, { runId }, signal);
+}
