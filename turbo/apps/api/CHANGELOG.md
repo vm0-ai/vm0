@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.469.0](https://github.com/vm0-ai/vm0/compare/api-v1.468.0...api-v1.469.0) (2026-08-21)
+
+
+### Features
+
+* **api:** add managed model provider failure endpoint ([#28451](https://github.com/vm0-ai/vm0/issues/28451)) ([238a43a](https://github.com/vm0-ai/vm0/commit/238a43a6dc281b65e06a212fbd5203d82b5f5cf6))
+* **core:** enable usage pack plans for staff ([#28503](https://github.com/vm0-ai/vm0/issues/28503)) ([14a9a65](https://github.com/vm0-ai/vm0/commit/14a9a653f13e028a63e8bfe439fbf9a6c53361c0))
+
+
+### Bug Fixes
+
+* **connectors:** handle removed catalog references ([#28450](https://github.com/vm0-ai/vm0/issues/28450)) ([17d96ad](https://github.com/vm0-ai/vm0/commit/17d96ad7f324571e121833ed6c6e15b13258158f))
+
+
+### Refactoring
+
+* **api:** move artifact catalog, logs, and run reads off the brand namespace ([#28435](https://github.com/vm0-ai/vm0/issues/28435)) ([fa800f0](https://github.com/vm0-ai/vm0/commit/fa800f04ec58ad7835649b2acc6000b8538154c5))
+* **api:** move chat threads, chat events, and shared threads off the brand namespace ([#28471](https://github.com/vm0-ai/vm0/issues/28471)) ([6c2036f](https://github.com/vm0-ai/vm0/commit/6c2036fa7e5f02e01cf163ab1a515364e8ec29d8))
+* **api:** move computer-use off the brand namespace ([#28487](https://github.com/vm0-ai/vm0/issues/28487)) ([5edd3c9](https://github.com/vm0-ai/vm0/commit/5edd3c9c01c0a781cb4bd8d05b4de3c55faa06a8))
+* **api:** move connectors and catalog off the brand namespace ([#28490](https://github.com/vm0-ai/vm0/issues/28490)) ([942449c](https://github.com/vm0-ai/vm0/commit/942449c2866e51c0d6e7148fc0b4220d1c8feb80))
+* **api:** move integrations off the brand namespace ([#28488](https://github.com/vm0-ai/vm0/issues/28488)) ([cafdde6](https://github.com/vm0-ai/vm0/commit/cafdde60bbdcf29e58a45a0c72ec457103cf8588))
+* **api:** move slack, teams, and feishu connect routes off the brand namespace ([#28485](https://github.com/vm0-ai/vm0/issues/28485)) ([ae6999f](https://github.com/vm0-ai/vm0/commit/ae6999f9a1b4193cdf2bece16d0baba6cf343f30)), closes [#28464](https://github.com/vm0-ai/vm0/issues/28464)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.346.0
+    * @okouai/core bumped to 8.577.0
+    * @okouai/db bumped to 1.212.1
+
 ## [1.468.0](https://github.com/vm0-ai/vm0/compare/api-v1.467.0...api-v1.468.0) (2026-08-21)
 
 
