@@ -186,7 +186,7 @@ interface RunScopedContext {
   readonly agentId: string;
 }
 
-describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
+describe("POST /api/integrations/slack/upload-file/complete", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
   const usageFixtures: UsageStateFixture[] = [];
 

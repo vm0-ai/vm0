@@ -34,28 +34,32 @@ pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     Ok(file)
 }
 
-/// Check whether an opened lock fd still refers to the file currently at `path`.
-///
-/// Returns `false` if the file was unlinked and recreated (stale inode),
-/// meaning the caller should retry lock acquisition.
-fn metadata_is_current_inode(lock_meta: std::fs::Metadata, path: &Path) -> bool {
-    let Ok(path_meta) = std::fs::symlink_metadata(path) else {
-        return false;
+fn metadata_is_current_inode(lock_meta: std::fs::Metadata, path: &Path) -> RunnerResult<bool> {
+    let path_meta = match std::fs::symlink_metadata(path) {
+        Ok(path_meta) => path_meta,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "lstat lock {}: {e}",
+                path.display()
+            )));
+        }
     };
-    lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino()
+    Ok(lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino())
 }
 
-fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
-    let Ok(lock_meta) = lock.metadata() else {
-        return true;
-    };
+/// Check whether an acquired lock still refers to the file currently at `path`.
+pub(crate) fn lock_matches_path(lock: &Flock<File>, path: &Path) -> RunnerResult<bool> {
+    let lock_meta = lock.metadata().map_err(|e| {
+        RunnerError::Internal(format!("stat locked fd for {}: {e}", path.display()))
+    })?;
     metadata_is_current_inode(lock_meta, path)
 }
 
-fn file_is_current_inode(file: &File, path: &Path) -> bool {
-    let Ok(lock_meta) = file.metadata() else {
-        return true;
-    };
+fn file_matches_path(file: &File, path: &Path) -> RunnerResult<bool> {
+    let lock_meta = file
+        .metadata()
+        .map_err(|e| RunnerError::Internal(format!("stat lock fd for {}: {e}", path.display())))?;
     metadata_is_current_inode(lock_meta, path)
 }
 
@@ -102,7 +106,7 @@ enum LockAcquire {
 
 async fn acquire_result_once(path: &Path, mode: LockMode) -> RunnerResult<LockAcquire> {
     let attempt_path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || acquire_result_blocking(&attempt_path, mode, |_| Ok(())))
+    tokio::task::spawn_blocking(move || acquire_result_blocking(&attempt_path, mode))
         .await
         .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
 }
@@ -129,32 +133,11 @@ async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<Lock
     }
 }
 
-fn acquire_result_blocking(
-    path: &Path,
-    mode: LockMode,
-    mut after_lock: impl FnMut(&Path) -> RunnerResult<()>,
-) -> RunnerResult<LockAcquire> {
-    for _ in 0..LOCK_REPLACED_MAX_RETRIES {
-        let file = open_lock_file(path)?;
-        let lock = match Flock::lock(file, mode.nonblocking_arg()) {
-            Ok(lock) => lock,
-            Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
-                if file_is_current_inode(&file, path) {
-                    return Ok(LockAcquire::Busy);
-                }
-                continue;
-            }
-            Err((_file, e)) => return Err(mode.map_error(path, e)),
-        };
-        after_lock(path)?;
-        if is_current_inode(&lock, path) {
-            return Ok(LockAcquire::Acquired(lock));
-        }
-    }
-    Err(RunnerError::Internal(format!(
-        "lock {} was repeatedly replaced while acquiring",
-        path.display()
-    )))
+fn acquire_result_blocking(path: &Path, mode: LockMode) -> RunnerResult<LockAcquire> {
+    acquire_result_blocking_with_open(path, mode, |path| open_lock_file(path).map(Some))?
+        .ok_or_else(|| {
+            RunnerError::Internal(format!("create lock {} returned missing", path.display()))
+        })
 }
 
 fn acquire_existing_result_blocking(
@@ -162,27 +145,30 @@ fn acquire_existing_result_blocking(
     mode: LockMode,
 ) -> RunnerResult<Option<LockAcquire>> {
     debug_assert!(matches!(mode, LockMode::TryExclusive | LockMode::TryShared));
+    acquire_result_blocking_with_open(path, mode, open_existing_lock_file)
+}
+
+fn acquire_result_blocking_with_open(
+    path: &Path,
+    mode: LockMode,
+    mut open: impl FnMut(&Path) -> RunnerResult<Option<File>>,
+) -> RunnerResult<Option<LockAcquire>> {
     for _ in 0..LOCK_REPLACED_MAX_RETRIES {
-        let file = match open_existing_lock_file(path)? {
+        let file = match open(path)? {
             Some(file) => file,
             None => return Ok(None),
         };
         let lock = match Flock::lock(file, mode.nonblocking_arg()) {
             Ok(lock) => lock,
             Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
-                if file_is_current_inode(&file, path) {
+                if file_matches_path(&file, path)? {
                     return Ok(Some(LockAcquire::Busy));
                 }
                 continue;
             }
-            Err((_file, e)) => {
-                return Err(RunnerError::Internal(format!(
-                    "flock {}: {e}",
-                    path.display()
-                )));
-            }
+            Err((_file, e)) => return Err(mode.map_error(path, e)),
         };
-        if is_current_inode(&lock, path) {
+        if lock_matches_path(&lock, path)? {
             return Ok(Some(LockAcquire::Acquired(lock)));
         }
     }
@@ -309,7 +295,13 @@ pub(crate) async fn acquire_with_contention_timeout_after_busy_for_test(
 }
 
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
-    match acquire_result_with(path, LockMode::TryExclusive).await? {
+    tokio::task::spawn_blocking(move || try_acquire_or_busy_blocking(&path))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+pub(crate) fn try_acquire_or_busy_blocking(path: &Path) -> RunnerResult<TryLock> {
+    match acquire_result_blocking(path, LockMode::TryExclusive)? {
         LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
         LockAcquire::Busy => Ok(TryLock::Busy),
     }
@@ -323,12 +315,15 @@ pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> 
 }
 
 pub async fn try_acquire_existing_or_missing(path: PathBuf) -> RunnerResult<ExistingTryLock> {
-    match tokio::task::spawn_blocking(move || {
-        acquire_existing_result_blocking(&path, LockMode::TryExclusive)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??
-    {
+    tokio::task::spawn_blocking(move || try_acquire_existing_or_missing_blocking(&path))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+pub(crate) fn try_acquire_existing_or_missing_blocking(
+    path: &Path,
+) -> RunnerResult<ExistingTryLock> {
+    match acquire_existing_result_blocking(path, LockMode::TryExclusive)? {
         Some(LockAcquire::Acquired(lock)) => Ok(ExistingTryLock::Acquired(lock)),
         Some(LockAcquire::Busy) => Ok(ExistingTryLock::Busy),
         None => Ok(ExistingTryLock::Missing),
@@ -360,6 +355,15 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn replace_lock_path(path: &Path) -> RunnerResult<()> {
+        std::fs::remove_file(path).map_err(|e| {
+            RunnerError::Internal(format!("remove replaced lock {}: {e}", path.display()))
+        })?;
+        std::fs::write(path, b"replacement").map_err(|e| {
+            RunnerError::Internal(format!("write replaced lock {}: {e}", path.display()))
+        })
     }
 
     #[tokio::test]
@@ -558,21 +562,11 @@ mod tests {
         let path = dir.path().join("test.lock");
         let mut replacements = 0;
 
-        let result = acquire_result_blocking(&path, LockMode::Exclusive, |path| {
+        let result = acquire_result_blocking_with_open(&path, LockMode::Exclusive, |path| {
+            let file = open_lock_file(path)?;
             replacements += 1;
-            match std::fs::remove_file(path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    return Err(RunnerError::Internal(format!(
-                        "remove replaced lock {}: {e}",
-                        path.display()
-                    )));
-                }
-            }
-            std::fs::write(path, b"replacement").map_err(|e| {
-                RunnerError::Internal(format!("write replaced lock {}: {e}", path.display()))
-            })
+            replace_lock_path(path)?;
+            Ok(Some(file))
         });
         let error = match result {
             Ok(_) => panic!("lock acquisition should fail after repeated replacement"),
@@ -584,6 +578,81 @@ mod tests {
             error.to_string().contains("repeatedly replaced"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn existing_acquire_returns_bounded_error_when_lock_path_keeps_being_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        std::fs::write(&path, b"initial").unwrap();
+        let mut replacements = 0;
+
+        let result = acquire_result_blocking_with_open(&path, LockMode::TryExclusive, |path| {
+            let file = open_existing_lock_file(path)?.unwrap();
+            replacements += 1;
+            replace_lock_path(path)?;
+            Ok(Some(file))
+        });
+        let error = match result {
+            Ok(_) => panic!("existing lock acquisition should fail after repeated replacement"),
+            Err(error) => error,
+        };
+
+        assert_eq!(replacements, LOCK_REPLACED_MAX_RETRIES);
+        assert!(
+            error.to_string().contains("repeatedly replaced"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn acquire_retries_a_stale_successful_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let mut attempts = 0;
+
+        let result = acquire_result_blocking_with_open(&path, LockMode::TryExclusive, |path| {
+            let file = open_lock_file(path)?;
+            attempts += 1;
+            if attempts == 1 {
+                replace_lock_path(path)?;
+            }
+            Ok(Some(file))
+        })
+        .unwrap()
+        .unwrap();
+        let LockAcquire::Acquired(lock) = result else {
+            panic!("replacement retry should acquire the current lock path");
+        };
+
+        assert_eq!(attempts, 2);
+        assert!(lock_matches_path(&lock, &path).unwrap());
+    }
+
+    #[test]
+    fn acquire_retries_a_stale_contended_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let holder = Flock::lock(open_lock_file(&path).unwrap(), FlockArg::LockExclusive).unwrap();
+        let mut attempts = 0;
+
+        let result = acquire_result_blocking_with_open(&path, LockMode::TryExclusive, |path| {
+            let file = open_lock_file(path)?;
+            attempts += 1;
+            if attempts == 1 {
+                replace_lock_path(path)?;
+            }
+            Ok(Some(file))
+        })
+        .unwrap()
+        .unwrap();
+        let LockAcquire::Acquired(lock) = result else {
+            panic!("stale contention must not report the replacement path busy");
+        };
+
+        assert_eq!(attempts, 2);
+        assert!(lock_matches_path(&lock, &path).unwrap());
+        drop(holder);
     }
 
     #[tokio::test]
@@ -715,6 +784,37 @@ mod tests {
         assert!(matches!(result, ExistingTryLock::Busy));
     }
 
+    #[test]
+    fn try_acquire_existing_or_missing_blocking_tightens_safe_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        std::fs::write(&path, b"lock").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let result = try_acquire_existing_or_missing_blocking(&path).unwrap();
+
+        assert!(matches!(result, ExistingTryLock::Acquired(_)));
+        assert_eq!(mode(&path), 0o600);
+    }
+
+    #[test]
+    fn try_acquire_existing_or_missing_blocking_rejects_unsafe_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        std::fs::write(&path, b"lock").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o622)).unwrap();
+
+        let error = match try_acquire_existing_or_missing_blocking(&path) {
+            Ok(_) => panic!("group/other-writable lock file must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
+        );
+    }
+
     #[tokio::test]
     async fn try_acquire_existing_shared_or_missing_does_not_create_missing_lock() {
         let dir = tempfile::tempdir().unwrap();
@@ -763,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn file_inode_check_detects_replaced_path() {
+    fn file_identity_check_detects_replaced_path() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.lock");
         let file = open_lock_file(&path).unwrap();
@@ -772,8 +872,28 @@ mod tests {
         drop(open_lock_file(&path).unwrap());
 
         assert!(
-            !file_is_current_inode(&file, &path),
+            !file_matches_path(&file, &path).unwrap(),
             "inode check must reject an opened lock fd whose path was recreated"
+        );
+    }
+
+    #[test]
+    fn lock_identity_check_rejects_symlink_to_same_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let alias = dir.path().join("alias.lock");
+        let lock = try_acquire_or_busy_blocking(&path).unwrap();
+        let TryLock::Acquired(lock) = lock else {
+            panic!("new lock path must be free");
+        };
+
+        std::fs::hard_link(&path, &alias).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        symlink(&alias, &path).unwrap();
+
+        assert!(
+            !lock_matches_path(&lock, &path).unwrap(),
+            "identity check must reject a symlink even when it resolves to the locked inode"
         );
     }
 
