@@ -8,10 +8,7 @@ import {
   type ScopeDiffResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type {
-  ConnectorAccountDeleteResolution,
-  ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodGrantMetadata,
@@ -83,7 +80,10 @@ import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.servic
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
-import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
+import {
+  prepareConnectorAccountDeletion,
+  type ConnectorAccountDeletionSelectionPolicy,
+} from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
   replaceConnectorConnection,
@@ -868,7 +868,7 @@ async function prepareBuiltinConnectorAccountDeletion(
     readonly userId: string;
     readonly connectorSlug: string;
     readonly connectionId: string;
-    readonly selectionResolution?: ConnectorAccountDeleteResolution;
+    readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
   },
 ) {
   return await prepareConnectorAccountDeletion(db, {
@@ -881,7 +881,7 @@ async function prepareBuiltinConnectorAccountDeletion(
 }
 
 function completedConnectorDeletionResult(
-  selectionResolution: ConnectorAccountDeleteResolution | undefined,
+  selectionResolution: ConnectorAccountDeletionSelectionPolicy | undefined,
   deletion: {
     readonly resolvedSelectionCount: number;
     readonly promotedDefaultConnectionId: string | null;
@@ -892,6 +892,18 @@ function completedConnectorDeletionResult(
     : ("deleted" as const);
 }
 
+type DeleteConnectorLocalStateResult =
+  | "deleted"
+  | "missing"
+  | "ambiguous"
+  | "invalid-replacement"
+  | "referenced"
+  | {
+      readonly kind: "deleted";
+      readonly resolvedSelectionCount: number;
+      readonly promotedDefaultConnectionId: string | null;
+    };
+
 export const deleteConnectorLocalState$ = command(
   async (
     { get, set },
@@ -901,20 +913,10 @@ export const deleteConnectorLocalState$ = command(
       readonly connectorSlug: string;
       readonly sourceId?: string;
       readonly snapshot?: ConnectorRuntimeSnapshot | null;
-      readonly selectionResolution?: ConnectorAccountDeleteResolution;
+      readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
     },
     signal: AbortSignal,
-  ): Promise<
-    | "deleted"
-    | "missing"
-    | "ambiguous"
-    | "invalid-replacement"
-    | {
-        readonly kind: "deleted";
-        readonly resolvedSelectionCount: number;
-        readonly promotedDefaultConnectionId: string | null;
-      }
-  > => {
+  ): Promise<DeleteConnectorLocalStateResult> => {
     const writeDb = set(writeDb$);
     const snapshot =
       args.snapshot === undefined

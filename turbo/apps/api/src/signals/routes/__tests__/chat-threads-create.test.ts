@@ -373,6 +373,27 @@ describe("POST /api/zero/chat-threads", () => {
         target: { kind: "builtin", connectorSlug: "openai" },
       },
     ]);
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    const disconnect = await accept(
+      connectorAccountsClient().disconnectSingleAccount({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+      [409],
+    );
+    expect(disconnect.body.error.message).toBe(
+      "Connector account is selected by chat threads",
+    );
+    const preservedAfterDisconnect = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(preservedAfterDisconnect.body.selections).toStrictEqual(
+      selections.body.selections,
+    );
     const readToken = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
@@ -686,6 +707,32 @@ describe("POST /api/zero/chat-threads", () => {
       }),
     ).toStrictEqual(
       expect.arrayContaining([httpConnectionId, mcpConnectionId]),
+    );
+
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    for (const customConnectorId of [httpConnector.id, mcpConnector.id]) {
+      const disconnect = await accept(
+        connectorAccountsClient().disconnectSingleAccount({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            target: { kind: "custom", customConnectorId },
+          },
+        }),
+        [409],
+      );
+      expect(disconnect.body.error.message).toBe(
+        "Connector account is selected by chat threads",
+      );
+    }
+    const preservedAfterDisconnect = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(preservedAfterDisconnect.body.selections).toStrictEqual(
+      selections.body.selections,
     );
   });
 

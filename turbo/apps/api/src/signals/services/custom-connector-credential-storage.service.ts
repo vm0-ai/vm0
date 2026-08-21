@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import type { ConnectorAccountDeleteResolution } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
 
 import type { Db } from "../external/db";
@@ -11,7 +10,11 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
-import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
+import {
+  prepareConnectorAccountDeletion,
+  type ConnectorAccountDeletionSelectionPolicy,
+} from "./connector-account-lifecycle.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -90,10 +93,20 @@ export async function upsertCustomConnectorStoredValues(
 }
 
 export async function deleteCustomConnectorMemberConnection(
-  db: Db,
-  args: CustomConnectorMemberConnection,
+  db: Tx,
+  args: CustomConnectorMemberConnection & {
+    readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
+  },
   signal: AbortSignal,
-): Promise<"deleted" | "missing" | "ambiguous"> {
+): Promise<
+  "deleted" | "missing" | "ambiguous" | "invalid-replacement" | "referenced"
+> {
+  await lockConnectorAccountTarget(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "custom", customConnectorId: args.connectorId },
+  });
+  signal.throwIfAborted();
   const resolution = await resolveConnectorAccount(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -108,6 +121,20 @@ export async function deleteCustomConnectorMemberConnection(
   }
   if (resolution.kind !== "resolved") {
     return "missing";
+  }
+  if (args.selectionResolution) {
+    const deletion = await deleteCustomConnectorMemberConnectionExact(
+      db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId: args.connectorId,
+        memberConnectorId: resolution.account.connectorId,
+        selectionResolution: args.selectionResolution,
+      },
+      signal,
+    );
+    return deletion.kind;
   }
   await deleteCustomConnectorMemberConnectionById(
     db,
@@ -158,12 +185,13 @@ export async function deleteCustomConnectorMemberConnectionExact(
   db: Tx,
   args: CustomConnectorMemberConnection & {
     readonly memberConnectorId: string;
-    readonly selectionResolution: ConnectorAccountDeleteResolution;
+    readonly selectionResolution: ConnectorAccountDeletionSelectionPolicy;
   },
   signal: AbortSignal,
 ): Promise<
   | { readonly kind: "missing" }
   | { readonly kind: "invalid-replacement" }
+  | { readonly kind: "referenced" }
   | {
       readonly kind: "deleted";
       readonly resolvedSelectionCount: number;

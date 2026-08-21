@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  connectorAccountsContract,
   connectorAccountDisplayNameSchema,
   connectorAccountDeleteResolutionSchema,
   connectorAccountListQuerySchema,
@@ -133,6 +134,27 @@ describe("connector account contracts", () => {
     expect(
       connectorAccountDeleteResolutionSchema.safeParse({ kind: "reassign" })
         .success,
+    ).toBe(false);
+  });
+
+  it("accepts only a target for safe single-account disconnect", () => {
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "builtin", connectorSlug: "github" },
+      }),
+    ).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "github" },
+    });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "custom", customConnectorId },
+      }),
+    ).toStrictEqual({ target: { kind: "custom", customConnectorId } });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.safeParse({
+        target: { kind: "builtin", connectorSlug: "github" },
+        connectionId,
+      }).success,
     ).toBe(false);
   });
 });

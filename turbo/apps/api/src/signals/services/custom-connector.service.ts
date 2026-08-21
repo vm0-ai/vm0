@@ -98,6 +98,7 @@ import {
   connectorAccountSiblingWritesEnabled,
   normalizeConnectorAccountMutation,
 } from "./connector-account-mutation.service";
+import type { ConnectorAccountRejectDeletionPolicy } from "./connector-account-lifecycle.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2973,6 +2974,14 @@ export const setCustomConnectorValues$ = command(
   },
 );
 
+type DisconnectCustomConnectorResult =
+  | "deleted"
+  | "missing-definition"
+  | "missing-account"
+  | "ambiguous"
+  | "referenced"
+  | "managed";
+
 export const disconnectCustomConnector$ = command(
   async (
     { set },
@@ -2980,11 +2989,10 @@ export const disconnectCustomConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorId: string;
+      readonly selectionResolution?: ConnectorAccountRejectDeletionPolicy;
     },
     signal: AbortSignal,
-  ): Promise<
-    NotFoundResponse | ConflictResponse | ForbiddenResponse | undefined
-  > => {
+  ): Promise<DisconnectCustomConnectorResult> => {
     const writeDb = set(writeDb$);
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const disconnected = await writeDb.transaction(async (tx) => {
@@ -3014,33 +3022,35 @@ export const disconnectCustomConnector$ = command(
         .limit(1);
       signal.throwIfAborted();
       if (!connector) {
-        return false;
+        return "missing-definition" as const;
       }
       if (
         isIntegrationManagedCustomConnectorProviderAdapter(
           connector.oauthProviderAdapter,
         )
       ) {
-        return integrationManagedCustomConnectorMutationForbidden();
+        return "managed" as const;
       }
       const result = await deleteCustomConnectorMemberConnection(
         tx,
         args,
         signal,
       );
-      if (result === "ambiguous") {
-        return conflict("Multiple connector accounts require an exact choice");
+      if (result === "invalid-replacement") {
+        throw new Error(
+          "Single-account custom connector deletion resolved a replacement",
+        );
       }
-      return true;
+      return result === "missing" && !args.selectionResolution
+        ? ("deleted" as const)
+        : result === "missing"
+          ? ("missing-account" as const)
+          : result;
     });
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (disconnected === false) {
-      signal.throwIfAborted();
-      return notFound("Custom connector not found");
-    }
-    if (disconnected !== true) {
+    if (disconnected !== "deleted") {
       signal.throwIfAborted();
       return disconnected;
     }
@@ -3049,7 +3059,7 @@ export const disconnectCustomConnector$ = command(
       signal,
       postCommitAbort,
     );
-    return undefined;
+    return "deleted";
   },
 );
 

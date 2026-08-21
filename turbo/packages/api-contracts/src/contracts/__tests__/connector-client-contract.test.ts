@@ -13,6 +13,7 @@ import {
   userConnectorUpdateSchema,
 } from "../user-connectors";
 import { connectorCatalogContract } from "../connector-catalog";
+import { connectorAccountsContract } from "../connector-accounts";
 import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
@@ -369,6 +370,12 @@ describe("connector path parameter contracts", () => {
       params: { connectorSlug: "github" },
       headers: {},
     });
+    await initClient(connectorAccountsContract, config).disconnectSingleAccount(
+      {
+        headers: {},
+        body: { target: { kind: "builtin", connectorSlug: "github" } },
+      },
+    );
     await initClient(connectorCatalogContract, config).permissions({
       params: { connectorSlug: "github" },
       headers: {},
@@ -381,6 +388,7 @@ describe("connector path parameter contracts", () => {
 
     expect(paths).toStrictEqual([
       "https://api.example.test/api/connectors/github",
+      "https://api.example.test/api/connector-accounts/single-account",
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",
     ]);

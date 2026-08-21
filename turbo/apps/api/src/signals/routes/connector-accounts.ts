@@ -7,6 +7,7 @@ import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
@@ -22,8 +23,14 @@ import {
 } from "../services/connector-account-lifecycle.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
 import { deleteConnectorLocalState$ } from "../services/connector-data.service";
-import { deleteCustomConnectorAccount$ } from "../services/custom-connector.service";
+import {
+  deleteCustomConnectorAccount$,
+  disconnectCustomConnector$,
+  integrationManagedCustomConnectorMutationForbidden,
+} from "../services/custom-connector.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
+
+const log = logger("api:connector-account-mutation");
 
 const connectorAccountsEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -197,6 +204,145 @@ const deletionImpactInner$ = computed(async (get) => {
   };
 });
 
+type SingleAccountDisconnectOutcome =
+  | "missing"
+  | "ambiguous"
+  | "referenced"
+  | "managed"
+  | "deleted";
+
+function observeSingleAccountDisconnect(args: {
+  readonly targetKind: ConnectorAccountTarget["kind"];
+  readonly outcome: SingleAccountDisconnectOutcome;
+  readonly accountCardinality?: "zero" | "one" | "multiple";
+}): void {
+  log.debug("Resolved single-account connector disconnect", {
+    targetKind: args.targetKind,
+    outcome: args.outcome,
+    ...(args.accountCardinality
+      ? { accountCardinality: args.accountCardinality }
+      : {}),
+  });
+}
+
+const disconnectSingleAccountInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    const body = await get(
+      bodyResultOf(connectorAccountsContract.disconnectSingleAccount),
+    );
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    if (body.data.target.kind === "builtin") {
+      const result = await set(
+        deleteConnectorLocalState$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          connectorSlug: body.data.target.connectorSlug,
+          selectionResolution: { kind: "reject" },
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (typeof result !== "string") {
+        observeSingleAccountDisconnect({
+          targetKind: "builtin",
+          outcome: "deleted",
+          accountCardinality: "one",
+        });
+        return { status: 204 as const, body: undefined };
+      }
+      if (result === "missing") {
+        observeSingleAccountDisconnect({
+          targetKind: "builtin",
+          outcome: "missing",
+          accountCardinality: "zero",
+        });
+        return notFound("Connector account not found");
+      }
+      if (result === "ambiguous") {
+        observeSingleAccountDisconnect({
+          targetKind: "builtin",
+          outcome: "ambiguous",
+          accountCardinality: "multiple",
+        });
+        return conflict("Multiple connector accounts require an exact choice");
+      }
+      if (result === "referenced") {
+        observeSingleAccountDisconnect({
+          targetKind: "builtin",
+          outcome: "referenced",
+          accountCardinality: "one",
+        });
+        return conflict("Connector account is selected by chat threads");
+      }
+      throw new Error(
+        "Single-account built-in deletion returned an exact-account result",
+      );
+    }
+
+    const result = await set(
+      disconnectCustomConnector$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        connectorId: body.data.target.customConnectorId,
+        selectionResolution: { kind: "reject" },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result === "deleted") {
+      observeSingleAccountDisconnect({
+        targetKind: "custom",
+        outcome: "deleted",
+        accountCardinality: "one",
+      });
+      return { status: 204 as const, body: undefined };
+    }
+    if (result === "missing-account") {
+      observeSingleAccountDisconnect({
+        targetKind: "custom",
+        outcome: "missing",
+        accountCardinality: "zero",
+      });
+      return notFound("Connector account not found");
+    }
+    if (result === "missing-definition") {
+      observeSingleAccountDisconnect({
+        targetKind: "custom",
+        outcome: "missing",
+      });
+      return notFound("Connector target not found");
+    }
+    if (result === "ambiguous") {
+      observeSingleAccountDisconnect({
+        targetKind: "custom",
+        outcome: "ambiguous",
+        accountCardinality: "multiple",
+      });
+      return conflict("Multiple connector accounts require an exact choice");
+    }
+    if (result === "referenced") {
+      observeSingleAccountDisconnect({
+        targetKind: "custom",
+        outcome: "referenced",
+        accountCardinality: "one",
+      });
+      return conflict("Connector account is selected by chat threads");
+    }
+    observeSingleAccountDisconnect({
+      targetKind: "custom",
+      outcome: "managed",
+    });
+    return integrationManagedCustomConnectorMutationForbidden();
+  },
+);
+
 const deleteInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
@@ -253,6 +399,9 @@ const deleteInner$ = command(
       if (result === "invalid-replacement") {
         return conflict("Replacement connector account is not available");
       }
+      if (result === "referenced") {
+        return conflict("Connector account is selected by chat threads");
+      }
       throw new Error("Exact connector account deletion returned no result");
     }
     if (result.kind === "missing" || result.kind === "managed") {
@@ -260,6 +409,9 @@ const deleteInner$ = command(
     }
     if (result.kind === "invalid-replacement") {
       return conflict("Replacement connector account is not available");
+    }
+    if (result.kind === "referenced") {
+      return conflict("Connector account is selected by chat threads");
     }
     return {
       status: 200 as const,
@@ -304,6 +456,10 @@ export const connectorAccountRoutes: readonly RouteEntry[] = [
   {
     route: connectorAccountsContract.deletionImpact,
     handler: authRoute(readAuth, deletionImpactInner$),
+  },
+  {
+    route: connectorAccountsContract.disconnectSingleAccount,
+    handler: authRoute(writeAuth, disconnectSingleAccountInner$),
   },
   {
     route: connectorAccountsContract.delete,
