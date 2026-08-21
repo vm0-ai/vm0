@@ -64,6 +64,7 @@ _HTTP_STATUS_INTERNAL_SERVER_ERROR = 500
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_SERVICE_UNAVAILABLE = 503
 _HTTP_STATUS_GATEWAY_TIMEOUT = 504
+_HTTP_STATUS_EDGE_NETWORK_TIMEOUT = 524
 _HTTP_STATUS_SITE_OVERLOADED = 529
 _HTTP_STATUS_SUCCESS_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
@@ -711,7 +712,11 @@ def _failure_kind_from_http_status(status: int, firewall_name: str) -> FailureKi
         return "billing"
     if status == _HTTP_STATUS_TOO_MANY_REQUESTS:
         return "rate_limit"
-    if status in (_HTTP_STATUS_REQUEST_TIMEOUT, _HTTP_STATUS_GATEWAY_TIMEOUT):
+    if status in (
+        _HTTP_STATUS_REQUEST_TIMEOUT,
+        _HTTP_STATUS_GATEWAY_TIMEOUT,
+        _HTTP_STATUS_EDGE_NETWORK_TIMEOUT,
+    ):
         return "timeout"
     if status in (
         _HTTP_STATUS_BAD_GATEWAY,

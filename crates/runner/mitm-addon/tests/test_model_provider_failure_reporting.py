@@ -104,6 +104,24 @@ def test_rate_limit_response_reports_normalized_failure(
         mitm_addon.response(flow)
 
 
+def test_openrouter_edge_timeout_reports_normalized_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        firewall_name="model-provider:openrouter",
+        response_status=524,
+    )
+
+    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": "timeout"}]
+
+
 def test_report_http_failure_does_not_affect_flow(
     tmp_path,
     real_flow,
