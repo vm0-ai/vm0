@@ -52,6 +52,18 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/runs/${runId}/context`)",
     },
+    // #28460's MSW patterns, and the connector OAuth callback that was neutral
+    // before the slice: `/api/connectors` covers everything below it, so this
+    // path stops being distinguishable once the family moves.
+    {
+      code: 'context.mocks.http.get("*/api/connector-catalog/status", handler)',
+    },
+    {
+      code: "fetchFn(`/api/custom-connectors/${id}/values`)",
+    },
+    {
+      code: 'window.open("/api/connectors/github/callback")',
+    },
     // #28462 moved the org, model provider, and usage routes, which the
     // platform reaches both directly and through its MSW patterns.
     {
@@ -73,8 +85,9 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/billing/status")',
       errors: [{ messageId: "nonZeroApi" }],
     },
+    // A longer sibling of a migrated connector path is not itself migrated.
     {
-      code: 'window.open("/api/connectors/github/callback")',
+      code: 'fetchFn("/api/connectors-legacy/github")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
@@ -91,22 +104,18 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
       errors: [{ messageId: "nonZeroApi" }],
     },
+    // `/api/org` is a prefix entry, so the rule must still reject a longer
+    // sibling that only looks like it.
     {
       code: 'fetchFn("/api/organizations")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // `/api/model-provider-connections` waits for its own slice, so the
-    // `/api/model-providers` entry must not cover it.
-    {
-      code: 'fetchFn("/api/model-provider-connections")',
-      errors: [{ messageId: "nonZeroApi" }],
-    },
     // A neutral path whose contract has not moved yet stays a violation. The
-    // subject has to be re-pointed whenever its slice lands: #28459 migrated
-    // the previous one, `/api/chat-threads/snapshot`, which silently turned
-    // this guard into a passing assertion about an allowed path.
+    // subject has to be a family no slice has migrated: #28459 added
+    // `/api/chat-threads` to the allow list, which made the previous subject
+    // legal and left this case asserting the opposite of the rule.
     {
-      code: 'fetchFn("/api/workflows")',
+      code: 'fetchFn("/api/memory/entries")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],
