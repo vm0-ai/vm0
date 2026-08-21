@@ -67,16 +67,18 @@ const MINIMUM_DECLARED_ROUTES = 100;
  * The known declaration proving the walk reached real routes rather than an
  * accidentally empty barrel.
  *
- * `POST /api/okou/slack/events` is one of the eight
+ * `POST /api/okou/slack/events` is one of the six
  * `FINAL_PROVIDER_CONSOLE_PATHS` in `apps/api`. A third-party provider console
  * holds each of those URLs, which is why #28278 excludes them and why they stay
  * branded under #26701: they keep their branded form after every migrating path
  * has left, making them the most stable branded declarations in the package.
- * Any of the eight works here.
+ * Any of the six works here.
  *
- * If those eight ever move as well, re-anchor this on a path the package still
- * declares — do not delete the sentinel. Without it, the legacy-namespace
- * guard below passes vacuously the moment the walk returns nothing.
+ * The set is not permanent — #28544 dropped it from eight by moving the two
+ * Feishu paths that no console actually held. If the remaining six ever move as
+ * well, re-anchor this on a path the package still declares — do not delete the
+ * sentinel. Without it, the legacy-namespace guard below passes vacuously the
+ * moment the walk returns nothing.
  */
 const RETAINED_BRANDED_ROUTE = {
   method: "POST",
@@ -124,7 +126,7 @@ describe("branded API namespace declarations", () => {
   // Shows the floor above survives #28278 finishing, without waiting for it.
   // A migrating route does not disappear, it becomes neutral, so the routes
   // already neutral today are a lower bound on the total once the branded
-  // count reaches the eight retained paths. Clearing the floor on that subset
+  // count reaches the six retained paths. Clearing the floor on that subset
   // alone means draining the branded set cannot reach it.
   it("clears the floor on neutral routes alone", () => {
     const neutralRoutes = routes.filter(({ path }) => {

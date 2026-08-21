@@ -2300,11 +2300,14 @@ describe("Feishu integration", () => {
     });
     const legacyConnectResponse = await oauthApp.request(connectUrl);
     expect(legacyConnectResponse.status).toBe(307);
+    // The branch taken only when `callbackTarget` is absent. #28544 moved this
+    // producer off the legacy `/api/zero/**` namespace and onto the neutral
+    // path the contract now declares; the branded forms stay routable.
     expect(
       new URL(
         legacyConnectResponse.headers.get("location") ?? "",
       ).searchParams.get("redirect_uri"),
-    ).toBe("https://www.vm0.test/api/zero/feishu/oauth/callback");
+    ).toBe("https://www.vm0.test/api/integrations/feishu/oauth/callback");
 
     const appConnectUrl = new URL(connectUrl);
     appConnectUrl.searchParams.set("callbackTarget", "app");
@@ -2372,7 +2375,7 @@ describe("Feishu integration", () => {
     expectCustomConnectorInvalidations([member.userId]);
     expect(oauthTokenRedirectUris).toStrictEqual([
       `${APP_ORIGIN}/connectors/feishu/callback`,
-      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+      "https://www.vm0.test/api/integrations/feishu/oauth/callback",
     ]);
     await flushWaitUntilForTest();
 
