@@ -120,6 +120,79 @@ def test_later_success_clears_previous_failure(tmp_path, real_flow, mitm_ctx):
     assert not failure_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("firewall_name", "request_path", "body", "expected_kind"),
+    [
+        (
+            "model-provider:anthropic-api-key",
+            "/v1/messages",
+            b'{"type":"error","error":{"type":"overloaded_error"}}',
+            "provider_unavailable",
+        ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/chat/completions",
+            b'{"error":{"code":"insufficient_quota"}}',
+            "billing",
+        ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/responses",
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "provider_unavailable",
+        ),
+    ],
+)
+def test_protocol_json_failures_are_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    firewall_name: str,
+    request_path: str,
+    body: bytes,
+    expected_kind: str,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        firewall_name=firewall_name,
+        request_path=request_path,
+        response_body=body,
+    )
+
+    _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
+
+    assert json.loads(failure_path.read_text()) == {"failureKind": expected_kind}
+
+
+@pytest.mark.parametrize(
+    ("request_path", "response_status"),
+    [
+        ("/v1/models", 429),
+        ("/v1/chat/completions", 403),
+    ],
+)
+def test_ineligible_http_response_is_not_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    request_path: str,
+    response_status: int,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        request_path=request_path,
+        response_status=response_status,
+    )
+
+    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+
+    assert not failure_path.exists()
+
+
 def test_openrouter_schema_error_is_not_reported(tmp_path, real_flow, mitm_ctx):
     failure_path = tmp_path / "model-provider-failure.json"
     failure_path.write_text('{"failureKind":"rate_limit"}')
@@ -217,6 +290,70 @@ def test_connection_error_is_reported(tmp_path, real_flow, mitm_ctx):
     assert json.loads(failure_path.read_text()) == {"failureKind": "connection"}
 
 
+def test_terminal_sse_success_wins_over_late_connection_error(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    failure_path.write_text('{"failureKind":"rate_limit"}')
+    body = b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        firewall_name="model-provider:anthropic-api-key",
+        request_path="/v1/messages",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(body)
+    flow.error = Error("connection reset after terminal event")
+
+    with mitm_ctx():
+        mitm_addon.error(flow)
+
+    assert not failure_path.exists()
+
+
+def test_generic_http_error_interruption_is_not_reported(tmp_path, real_flow, mitm_ctx):
+    failure_path = tmp_path / "model-provider-failure.json"
+    flow = _make_flow(real_flow, failure_path, response_status=400)
+    model_provider_failure.admit_flow(flow)
+    flow.error = Error("connection reset while reading error body")
+
+    with mitm_ctx():
+        mitm_addon.error(flow)
+
+    assert not failure_path.exists()
+
+
+def test_openrouter_stable_failure_survives_response_interruption(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    body = b'{"error":{"metadata":{"error_type":"provider_unavailable"}}}'
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        firewall_name="model-provider:openrouter",
+        response_status=500,
+        response_body=body,
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(body)
+    flow.error = Error("connection reset after error body")
+
+    with mitm_ctx():
+        mitm_addon.error(flow)
+
+    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+
+
 def test_websocket_failure_is_reported(
     tmp_path,
     real_flow,
@@ -231,6 +368,7 @@ def test_websocket_failure_is_reported(
     mitm_addon.responseheaders(flow)
 
     with mitm_ctx():
+        mitm_addon.response(flow)
         feed_websocket_client_message(flow, b'{"type":"response.create"}')
         feed_websocket_server_message(
             flow,
@@ -261,6 +399,7 @@ def test_websocket_prewarm_does_not_change_previous_failure(
     mitm_addon.responseheaders(flow)
 
     with mitm_ctx():
+        mitm_addon.response(flow)
         feed_websocket_client_message(
             flow,
             b'{"type":"response.create","generate":false}',

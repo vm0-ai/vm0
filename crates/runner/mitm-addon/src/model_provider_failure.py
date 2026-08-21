@@ -59,6 +59,8 @@ _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_SERVICE_UNAVAILABLE = 503
 _HTTP_STATUS_GATEWAY_TIMEOUT = 504
 _HTTP_STATUS_SITE_OVERLOADED = 529
+_HTTP_STATUS_SUCCESS_MIN = 200
+_HTTP_STATUS_REDIRECT_MIN = 300
 
 _AUTHENTICATION_CODES = frozenset(("authentication", "authentication_error", "invalid_api_key"))
 _BILLING_CODES = frozenset(("billing", "billing_error", "insufficient_quota", "payment_required"))
@@ -232,16 +234,7 @@ def finish_http_response(flow: http.HTTPFlow) -> None:
             _retry_after_seconds(response.status_code, response.headers),
         )
     else:
-        finish = flow.metadata.pop(_RESPONSE_FINISH, None)
-        if callable(finish):
-            parsed_outcome = finish()
-            outcome = parsed_outcome if isinstance(parsed_outcome, _Outcome) else _unknown_outcome()
-        elif response.raw_content:
-            parser = _JsonResponseParser(flow_state.protocol)
-            parser.feed(response.raw_content)
-            outcome = parser.finish()
-        else:
-            outcome = _unknown_outcome()
+        outcome = _finish_response_body(flow, flow_state.protocol)
     _settle_http_flow(flow, flow_state, outcome)
 
 
@@ -253,7 +246,31 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
         if flow_state.pending_intent == "normal" or flow_state.active_intent == "normal":
             _apply_outcome(flow, flow_state, _failure_outcome("connection"))
     else:
-        _apply_outcome(flow, flow_state, _failure_outcome("connection"))
+        response = flow.response
+        failure_kind = (
+            _failure_kind_from_http_status(
+                response.status_code,
+                flow_metadata.firewall_name(flow.metadata),
+            )
+            if response is not None
+            else None
+        )
+        if failure_kind is not None and response is not None:
+            outcome = _failure_outcome(
+                failure_kind,
+                _retry_after_seconds(response.status_code, response.headers),
+            )
+        elif response is None:
+            outcome = _failure_outcome("connection")
+        else:
+            parsed_outcome = _finish_response_body(flow, flow_state.protocol)
+            if parsed_outcome.kind != "unknown":
+                outcome = parsed_outcome
+            elif _HTTP_STATUS_SUCCESS_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN:
+                outcome = _failure_outcome("connection")
+            else:
+                outcome = _unknown_outcome()
+        _apply_outcome(flow, flow_state, outcome)
     flow_state.terminal_observed = True
 
 
@@ -517,6 +534,19 @@ def _extract_json(body: bytes) -> JsonExtractionResult:
     return extractor.finish()
 
 
+def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
+    finish = flow.metadata.pop(_RESPONSE_FINISH, None)
+    if callable(finish):
+        parsed_outcome = finish()
+        return parsed_outcome if isinstance(parsed_outcome, _Outcome) else _unknown_outcome()
+    response = flow.response
+    if response is not None and response.raw_content:
+        parser = _JsonResponseParser(protocol)
+        parser.feed(response.raw_content)
+        return parser.finish()
+    return _unknown_outcome()
+
+
 def _outcome_from_json(protocol: _Protocol, result: JsonExtractionResult) -> _Outcome:
     if not result.complete:
         return _unknown_outcome()
@@ -717,7 +747,7 @@ def _write_summary(flow: http.HTTPFlow, path_value: str, failure: Failure) -> No
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4()}.tmp")
+    temporary = path.with_name(f".{path.name}.vm0tmp-{uuid.uuid4()}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
