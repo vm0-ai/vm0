@@ -101,13 +101,10 @@ describe("okou seo command", () => {
       tasks: [{ result: [{ title: "Coffee" }] }],
     });
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/seo/serp",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json(response);
-        },
-      ),
+      http.post("http://localhost:3000/api/seo/serp", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json(response);
+      }),
     );
 
     await seoCommand.parseAsync([
@@ -147,7 +144,7 @@ describe("okou seo command", () => {
     });
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/seo/keyword-ideas",
+        "http://localhost:3000/api/seo/keyword-ideas",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json(response);
@@ -178,13 +175,10 @@ describe("okou seo command", () => {
   it("posts supported DataForSEO search engines", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/seo/serp",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json(dataForSeoResponse("serp", {}));
-        },
-      ),
+      http.post("http://localhost:3000/api/seo/serp", async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json(dataForSeoResponse("serp", {}));
+      }),
     );
 
     await seoCommand.parseAsync([
@@ -214,7 +208,7 @@ describe("okou seo command", () => {
   it("rejects mobile DataForSEO Google News before calling the API", async () => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/seo/serp", () => {
+      http.post("http://localhost:3000/api/seo/serp", () => {
         apiRequests += 1;
         return HttpResponse.json(dataForSeoResponse("serp", {}));
       }),

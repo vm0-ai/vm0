@@ -77,7 +77,7 @@ async function createRunForAgent(actor: ApiTestUser, agentId: string) {
   });
 }
 
-describe("GET /api/zero/mcp-connectors", () => {
+describe("GET /api/mcp-connectors", () => {
   it("returns only the current Agent's MCP grants", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
