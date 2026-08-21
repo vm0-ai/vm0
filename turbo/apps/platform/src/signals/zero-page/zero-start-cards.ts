@@ -1,4 +1,4 @@
-import { computed, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   WORKFLOW_TEMPLATE_ITEMS,
   type WorkflowTemplateItem,
@@ -7,10 +7,13 @@ import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-id
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { avatarTemplatesEnabled$ } from "../external/feature-switch.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
+import { slackOrgData$ } from "./zero-slack.ts";
 
 /**
- * Entry kinds on the chat landing page. The values match the template picker
- * categories so a card can open the picker straight on its own tab.
+ * Entry kinds on the chat landing page. The creation kinds match the template
+ * picker categories so a card can open the picker straight on its own tab;
+ * `slack` is the one kind that sets something up rather than making something,
+ * and it draws from the same pool so the row never grows a second line.
  */
 const START_CARD_KINDS = [
   "slides",
@@ -19,6 +22,7 @@ const START_CARD_KINDS = [
   "video",
   "avatar",
   "workflow",
+  "slack",
 ] as const;
 
 export type StartCardKind = (typeof START_CARD_KINDS)[number];
@@ -80,18 +84,62 @@ export const startCardWorkflowConnectorIcons$ = computed(
   },
 );
 
-export const startCardKinds$ = computed((get): readonly StartCardKind[] => {
-  const avatarEnabled = get(avatarTemplatesEnabled$);
-  const workflowTemplate = get(startCardWorkflowTemplate$);
-  return get(internalStartCardOrder$)
-    .filter((kind) => {
-      if (kind === "avatar") {
-        return avatarEnabled;
-      }
-      if (kind === "workflow") {
-        return workflowTemplate !== undefined;
-      }
-      return true;
-    })
-    .slice(0, START_CARD_COUNT);
+/**
+ * The OAuth URL the Slack card sends the member to, or `null` when the card
+ * has nothing to offer: the workspace is already connected, or this member is
+ * not an admin and the app has not been installed yet.
+ */
+export const slackStartCardUrl$ = computed(
+  async (get): Promise<string | null> => {
+    const status = await get(slackOrgData$);
+    if (status.isConnected) {
+      return null;
+    }
+    return (status.isInstalled ? status.connectUrl : status.installUrl) ?? null;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// "How it works" dialog visibility — view-local state managed in signals layer
+// ---------------------------------------------------------------------------
+
+const slackHowItWorksOpenState$ = state(false);
+
+/** Whether the Slack explainer dialog is open. */
+export const slackHowItWorksOpen$ = computed((get) => {
+  return get(slackHowItWorksOpenState$);
 });
+
+/** Show or hide the Slack explainer dialog. */
+export const setSlackHowItWorksOpen$ = command(({ set }, open: boolean) => {
+  set(slackHowItWorksOpenState$, open);
+});
+
+/**
+ * The kinds drawn for this page load.
+ *
+ * Async because the Slack card's eligibility comes from the integration
+ * status. Resolving it before the draw is what keeps a card from being swapped
+ * out from under the reader a moment after the row paints.
+ */
+export const startCardKinds$ = computed(
+  async (get): Promise<readonly StartCardKind[]> => {
+    const avatarEnabled = get(avatarTemplatesEnabled$);
+    const workflowTemplate = get(startCardWorkflowTemplate$);
+    const slackUrl = await get(slackStartCardUrl$);
+    return get(internalStartCardOrder$)
+      .filter((kind) => {
+        if (kind === "avatar") {
+          return avatarEnabled;
+        }
+        if (kind === "workflow") {
+          return workflowTemplate !== undefined;
+        }
+        if (kind === "slack") {
+          return slackUrl !== null;
+        }
+        return true;
+      })
+      .slice(0, START_CARD_COUNT);
+  },
+);

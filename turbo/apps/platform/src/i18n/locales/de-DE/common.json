@@ -2019,8 +2019,11 @@
         "channels": "Alle Kanäle",
         "connect": "Verbinden",
         "description": "Per DM schreiben oder in jedem Channel @erwähnen",
+        "dialogBody": "@Erwähne es wie eine Kollegin. Es nutzt die Tools, die dein Workspace bereits verbunden hat, zeigt jeden Schritt und postet das fertige Ergebnis zurück in den Channel.",
+        "dialogTitle": "So arbeitet {{assistantName}} in Slack",
+        "howItWorks": "So funktioniert es",
         "install": "Zu Slack hinzufügen",
-        "openChannelsAria": "Kanäle öffnen",
+        "openAria": "So arbeitet {{assistantName}} in Slack",
         "title": "{{assistantName}} zu Slack hinzufügen"
       },
       "startWithPrompt": "Erstellen",

@@ -2019,8 +2019,11 @@
         "channels": "All channels",
         "connect": "Connect",
         "description": "DM it or @mention it in any channel",
+        "dialogBody": "@mention it like a teammate. It uses the tools your workspace already connected, shows every step it takes, and posts the finished work back in the channel.",
+        "dialogTitle": "How {{assistantName}} works in Slack",
+        "howItWorks": "How it works",
         "install": "Add to Slack",
-        "openChannelsAria": "Open channels",
+        "openAria": "How {{assistantName}} works in Slack",
         "title": "Add {{assistantName}} to Slack"
       },
       "startWithPrompt": "Create",

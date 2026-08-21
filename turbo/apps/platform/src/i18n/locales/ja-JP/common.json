@@ -2018,8 +2018,11 @@
         "channels": "すべてのチャンネル",
         "connect": "接続する",
         "description": "DM で話しかけるか、任意のチャンネルで @メンション",
+        "dialogBody": "同僚と同じように @メンションするだけです。ワークスペースに接続済みのツールを使い、手順をひとつずつ示しながら、仕上がったものをチャンネルに返します。",
+        "dialogTitle": "Slack での {{assistantName}} の働き方",
+        "howItWorks": "使い方を見る",
         "install": "Slack に追加",
-        "openChannelsAria": "チャンネルを開く",
+        "openAria": "Slack での {{assistantName}} の働き方",
         "title": "Slack に {{assistantName}} を追加"
       },
       "startWithPrompt": "作成",

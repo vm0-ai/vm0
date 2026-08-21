@@ -2060,8 +2060,11 @@
         "channels": "Todos los canales",
         "connect": "Conectar",
         "description": "Escríbele por MD o menciónalo en cualquier canal",
+        "dialogBody": "Menciónalo como a un compañero. Usa las herramientas que tu espacio ya tiene conectadas, muestra cada paso que da y publica el trabajo terminado en el canal.",
+        "dialogTitle": "Cómo trabaja {{assistantName}} en Slack",
+        "howItWorks": "Cómo funciona",
         "install": "Añadir a Slack",
-        "openChannelsAria": "Abrir canales",
+        "openAria": "Cómo trabaja {{assistantName}} en Slack",
         "title": "Añadir {{assistantName}} a Slack"
       },
       "startWithPrompt": "Crear",

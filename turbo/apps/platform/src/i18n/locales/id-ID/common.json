@@ -2018,8 +2018,11 @@
         "channels": "Semua kanal",
         "connect": "Hubungkan",
         "description": "Kirim DM atau @sebut di kanal mana pun",
+        "dialogBody": "Sebut namanya seperti rekan kerja. Ia memakai alat yang sudah terhubung di workspace Anda, menampilkan setiap langkahnya, lalu mengirim hasil jadinya kembali ke kanal.",
+        "dialogTitle": "Cara {{assistantName}} bekerja di Slack",
+        "howItWorks": "Cara kerjanya",
         "install": "Tambahkan ke Slack",
-        "openChannelsAria": "Buka kanal",
+        "openAria": "Cara {{assistantName}} bekerja di Slack",
         "title": "Tambahkan {{assistantName}} ke Slack"
       },
       "startWithPrompt": "Buat",

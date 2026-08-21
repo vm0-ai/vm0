@@ -2060,8 +2060,11 @@
         "channels": "Todos os canais",
         "connect": "Conectar",
         "description": "Mande uma DM ou @mencione em qualquer canal",
+        "dialogBody": "Mencione como faria com um colega. Ele usa as ferramentas que seu espaço já conectou, mostra cada passo que dá e publica o trabalho pronto de volta no canal.",
+        "dialogTitle": "Como {{assistantName}} trabalha no Slack",
+        "howItWorks": "Como funciona",
         "install": "Adicionar ao Slack",
-        "openChannelsAria": "Abrir canais",
+        "openAria": "Como {{assistantName}} trabalha no Slack",
         "title": "Adicionar {{assistantName}} ao Slack"
       },
       "startWithPrompt": "Criar",

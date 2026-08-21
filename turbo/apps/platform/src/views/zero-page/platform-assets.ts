@@ -8,6 +8,10 @@ export function avatarSvgAssetUrl(filename: string): string {
   return zeroPageAssetUrl(`assets/avatar-svg/${filename}`);
 }
 
+/** The looping clip in the Slack start card's "how it works" dialog. */
+export const slackHowItWorksVideo = zeroPageAssetUrl(
+  "assets/slack-how-it-works-1f407cd378ba.mp4",
+);
 export const emptyArtifactImg = zeroPageAssetUrl("assets/empty-artifact.webp");
 export const emptyChatImg = zeroPageAssetUrl("assets/empty-chat.webp");
 export const emptyAutomationsImg = zeroPageAssetUrl(

@@ -2019,8 +2019,11 @@
         "channels": "सभी चैनल",
         "connect": "जोड़ना",
         "description": "इसे DM करें या किसी भी चैनल में @मेंशन करें",
+        "dialogBody": "इसे साथी की तरह @मेंशन करें। यह आपके वर्कस्पेस से पहले से जुड़े टूल इस्तेमाल करता है, हर कदम दिखाता है, और तैयार काम चैनल में वापस पोस्ट कर देता है।",
+        "dialogTitle": "Slack में {{assistantName}} कैसे काम करता है",
+        "howItWorks": "यह कैसे काम करता है",
         "install": "Slack में जोड़ें",
-        "openChannelsAria": "चैनल खोलें",
+        "openAria": "Slack में {{assistantName}} कैसे काम करता है",
         "title": "{{assistantName}} को Slack में जोड़ें"
       },
       "startWithPrompt": "बनाएं",

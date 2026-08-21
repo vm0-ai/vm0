@@ -1,16 +1,22 @@
 import type { ReactNode } from "react";
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import { Button } from "@okouai/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@okouai/ui/components/ui/dialog";
 import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-composer-signals.ts";
 import {
+  setSlackHowItWorksOpen$,
+  slackHowItWorksOpen$,
+  slackStartCardUrl$,
   startCardKinds$,
   startCardWorkflowConnectorIcons$,
   startCardWorkflowTemplate$,
@@ -23,6 +29,7 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { slackHowItWorksVideo } from "./platform-assets.ts";
 import { openFreshOAuth } from "./slack-oauth-window.ts";
 import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
 
@@ -58,6 +65,11 @@ function kindAccent(kind: StartCardKind): string {
     case "workflow": {
       return "#97918A";
     }
+    case "slack": {
+      // Slack's own green rather than its aubergine: at the 14% the tiles are
+      // washed in, aubergine lands on a cold grey and drops out of the row.
+      return "#2EB67D";
+    }
   }
 }
 
@@ -70,20 +82,41 @@ const LINE_ALPHA = "59";
 const SOFT_ALPHA = "40";
 const FILL_ALPHA = "8C";
 
-// The Slack card is the one tile whose art is a brand mark, so its wash is
-// taken from that brand rather than from the avatar palette above.
-const SLACK_ACCENT = "#4A154B";
-
 const slackIconImg = settingsIconAssetUrl("slack");
 
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
 type WorkflowArtIcon = StartCardConnectorIcon | undefined;
 
-// The artwork carries its own padding — the mark covers 45% of the canvas — so
-// the box is scaled up to land a 32px mark, the size of the avatar card's
-// portrait chip.
-function SlackArt() {
-  return <img src={slackIconImg} alt="" className="size-8 scale-[2.2]" />;
+/**
+ * A reply beside the mark: the same two-part build as the avatar card's
+ * portrait and waveform, which is what lets a brand mark sit in this row
+ * without reading as a pasted-in logo. The mark's artwork covers 45% of its
+ * own canvas, so the box is scaled up to land it at 28px.
+ */
+function SlackArt({ accent }: { accent: string }) {
+  return (
+    <div className="relative h-[34px] w-[52px]">
+      <span
+        className="absolute right-0 top-px flex w-[30px] flex-col gap-[3px] rounded-[7px] border bg-card px-[5px] py-1.5"
+        style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+      >
+        <span
+          className="h-[3px] rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
+        <span
+          className="h-[3px] w-3/5 rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
+      </span>
+      <span
+        className="absolute bottom-0 left-0 grid size-[30px] place-items-center overflow-hidden rounded-full border bg-card"
+        style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+      >
+        <img src={slackIconImg} alt="" className="size-7 scale-[2.2]" />
+      </span>
+    </div>
+  );
 }
 
 function SlidesArt({ accent }: { accent: string }) {
@@ -410,9 +443,13 @@ interface StartCardContent {
   readonly prompt: string;
 }
 
-/** Shape of `chat.startCards.kinds` in the common namespace. */
+/**
+ * Shape of `chat.startCards.kinds` in the common namespace. The workflow card
+ * takes its words from the drawn template and the Slack card has its own block,
+ * so neither appears here.
+ */
 type StartCardCopy = Record<
-  Exclude<StartCardKind, "workflow">,
+  Exclude<StartCardKind, "workflow" | "slack">,
   StartCardContent
 >;
 
@@ -467,39 +504,25 @@ function StartCard({
 }
 
 /**
- * Slack setup, as a card in the same row.
+ * Slack setup, drawn from the same pool as the creation kinds.
  *
- * Unlike its neighbours this one can be finished, so it is drawn only while
- * there is a step left to take and disappears once the workspace is connected.
- * The card itself opens the channels page — every other channel and the full
- * Slack state live there — and the hover overlay carries the one step this
- * member can actually take.
+ * Unlike its neighbours this one can be finished, so `startCardKinds$` drops it
+ * from the pool once the workspace is connected. Both of its actions explain or
+ * navigate — the install itself lives in the dialog and on the channels page,
+ * so a stray click on the card never fires an OAuth window.
  */
-function SlackStartCard() {
+function SlackStartCard({ art }: { art: ReactNode }) {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const navigate = useSet(detachedNavigateTo$);
-  const slackLoadable = useLastLoadable(slackOrgData$);
-  if (slackLoadable.state !== "hasData") {
-    return null;
-  }
-  const slack = slackLoadable.data;
-  if (slack.isConnected) {
-    return null;
-  }
-  // Before the workspace install only an admin gets a URL, and after it every
-  // member gets their own connect URL. Without one there is no step to offer.
-  const setupUrl = slack.isInstalled ? slack.connectUrl : slack.installUrl;
-  if (!setupUrl) {
-    return null;
-  }
-  const openChannels = () => {
-    navigate(ROUTES.works);
+  const setDialogOpen = useSet(setSlackHowItWorksOpen$);
+  const openDialog = () => {
+    setDialogOpen(true);
   };
   return (
     <StartCardShell
-      accent={SLACK_ACCENT}
-      art={<SlackArt />}
+      accent={kindAccent("slack")}
+      art={art}
       title={t(
         ($) => {
           return $.chat.startCards.slack.title;
@@ -509,36 +532,112 @@ function SlackStartCard() {
       description={t(($) => {
         return $.chat.startCards.slack.description;
       })}
-      openAriaLabel={t(($) => {
-        return $.chat.startCards.slack.openChannelsAria;
-      })}
-      onOpen={openChannels}
+      openAriaLabel={t(
+        ($) => {
+          return $.chat.startCards.slack.openAria;
+        },
+        { assistantName },
+      )}
+      onOpen={openDialog}
       actions={
         <>
           <OverlayAction
-            label={
-              slack.isInstalled
-                ? t(($) => {
-                    return $.chat.startCards.slack.connect;
-                  })
-                : t(($) => {
-                    return $.chat.startCards.slack.install;
-                  })
-            }
-            onClick={() => {
-              openFreshOAuth(setupUrl);
-            }}
+            label={t(($) => {
+              return $.chat.startCards.slack.howItWorks;
+            })}
+            onClick={openDialog}
           />
           <OverlayAction
             secondary
             label={t(($) => {
               return $.chat.startCards.slack.channels;
             })}
-            onClick={openChannels}
+            onClick={() => {
+              navigate(ROUTES.works);
+            }}
           />
         </>
       }
     />
+  );
+}
+
+/**
+ * What the Slack card explains: a channel answering a mention, the work it does
+ * in the open, and the finished thing landing in the thread. The clip is muted
+ * and loops, so it needs no controls; the two actions underneath are the only
+ * places the install actually starts.
+ */
+function SlackHowItWorksDialog({ setupUrl }: { setupUrl: string }) {
+  const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
+  const navigate = useSet(detachedNavigateTo$);
+  const open = useGet(slackHowItWorksOpen$);
+  const setOpen = useSet(setSlackHowItWorksOpen$);
+  const installed = useLastResolved(slackOrgData$)?.isInstalled ?? false;
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      {/* Wider than the default dialog: at `max-w-lg` the 16:10 clip is only
+          464px across, too small to read the channel it is showing. */}
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {t(
+              ($) => {
+                return $.chat.startCards.slack.dialogTitle;
+              },
+              { assistantName },
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {t(
+              ($) => {
+                return $.chat.startCards.slack.dialogBody;
+              },
+              { assistantName },
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="overflow-hidden rounded-xl border-[0.7px] border-border">
+          <video
+            src={slackHowItWorksVideo}
+            className="block w-full"
+            autoPlay
+            loop
+            muted
+            playsInline
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setOpen(false);
+              navigate(ROUTES.works);
+            }}
+          >
+            {t(($) => {
+              return $.chat.startCards.slack.channels;
+            })}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              openFreshOAuth(setupUrl);
+            }}
+          >
+            {installed
+              ? t(($) => {
+                  return $.chat.startCards.slack.connect;
+                })
+              : t(($) => {
+                  return $.chat.startCards.slack.install;
+                })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -548,7 +647,8 @@ export function StartCards({
   onSelectPrompt: (prompt: string) => void;
 }) {
   const { t } = useTranslation();
-  const kinds = useGet(startCardKinds$);
+  const kinds = useLastResolved(startCardKinds$);
+  const setupUrl = useLastResolved(slackStartCardUrl$) ?? null;
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
   const setTemplateCategory = useSet(
@@ -582,7 +682,7 @@ export function StartCards({
   };
 
   const contentFor = (
-    kind: StartCardKind,
+    kind: Exclude<StartCardKind, "slack">,
     template: WorkflowTemplateItem | undefined,
   ): StartCardContent => {
     if (kind === "workflow") {
@@ -609,16 +709,23 @@ export function StartCards({
       video: <VideoArt accent={accent} />,
       avatar: <AvatarArt accent={accent} />,
       workflow: <WorkflowArt accent={accent} />,
+      slack: <SlackArt accent={accent} />,
     };
     return art[kind];
   };
 
+  // The draw waits on the Slack integration status, and a card's height is the
+  // 72px tile plus its padding — holding that height keeps the composer above
+  // from jumping when the row lands.
   return (
     <div
       data-testid="start-cards"
-      className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid min-h-[104px] w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
     >
-      {kinds.map((kind) => {
+      {(kinds ?? []).map((kind) => {
+        if (kind === "slack") {
+          return <SlackStartCard key={kind} art={artFor(kind)} />;
+        }
         return (
           <StartCard
             key={kind}
@@ -632,9 +739,10 @@ export function StartCards({
           />
         );
       })}
-      {/* Last, on its own line under the row: the kinds above are what to make
-          next, and this is a one-time setup that leaves once it is done. */}
-      <SlackStartCard />
+      {/* Only mounted alongside its card: nothing else on the page opens it. */}
+      {kinds?.includes("slack") && setupUrl !== null && (
+        <SlackHowItWorksDialog setupUrl={setupUrl} />
+      )}
     </div>
   );
 }

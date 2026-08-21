@@ -2018,8 +2018,11 @@
         "channels": "모든 채널",
         "connect": "연결",
         "description": "DM을 보내거나 아무 채널에서나 @멘션하세요",
+        "dialogBody": "동료처럼 @멘션하세요. 워크스페이스에 이미 연결된 도구를 사용하고, 모든 단계를 보여주며, 완성된 결과를 채널에 다시 올립니다.",
+        "dialogTitle": "Slack에서 {{assistantName}}가 일하는 방식",
+        "howItWorks": "작동 방식 보기",
         "install": "Slack에 추가",
-        "openChannelsAria": "채널 열기",
+        "openAria": "Slack에서 {{assistantName}}가 일하는 방식",
         "title": "Slack에 {{assistantName}} 추가"
       },
       "startWithPrompt": "만들기",

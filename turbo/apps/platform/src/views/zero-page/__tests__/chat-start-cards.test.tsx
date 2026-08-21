@@ -176,7 +176,11 @@ describe("chat start cards", () => {
     expect(screen.queryByText("Templates")).toBeNull();
   });
 
-  it("adds a Slack card below the row while the workspace is not installed", async () => {
+  // The Slack card joins the same draw as the creation kinds rather than
+  // being pinned, so which three land is random. What is deterministic is that
+  // the row never grows a second line, and that the card leaves the pool for
+  // good once there is nothing left to set up.
+  it("keeps the row at three cards while the workspace still needs setup", async () => {
     mockSlackStatus({ isAdmin: true, installUrl: SLACK_INSTALL_URL });
 
     detachedSetupPage({
@@ -190,21 +194,16 @@ describe("chat start cards", () => {
     ).resolves.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(startCards()).toHaveLength(4);
+      expect(startCards()).toHaveLength(3);
     });
-    const slackCard = startCards()[3];
-    expect(slackCard).toHaveTextContent("Add Zero to Slack");
-    expect(slackCard).toHaveTextContent("All channels");
-
-    click(screen.getByText("Add to Slack"));
-
-    expect(window.open).toHaveBeenCalledWith(
-      expect.stringContaining("state=install"),
-      "_blank",
-    );
+    // Every drawn card carries exactly one of the two action pairs.
+    expect(
+      screen.queryAllByText("Create").length +
+        screen.queryAllByText("How it works").length,
+    ).toBe(3);
   });
 
-  it("offers the personal connect step once the workspace is installed", async () => {
+  it("offers a personal connect step once the workspace is installed", async () => {
     mockSlackStatus({
       isInstalled: true,
       isAdmin: false,
@@ -222,19 +221,12 @@ describe("chat start cards", () => {
     ).resolves.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(startCards()).toHaveLength(4);
+      expect(startCards()).toHaveLength(3);
     });
-    expect(startCards()[3]).toHaveTextContent("Connect");
-
-    click(screen.getByText("Connect"));
-
-    expect(window.open).toHaveBeenCalledWith(
-      expect.stringContaining("state=connect"),
-      "_blank",
-    );
+    expect(screen.queryByText("Add to Slack")).toBeNull();
   });
 
-  it("drops the Slack card once the workspace is connected", async () => {
+  it("drops Slack from the pool once the workspace is connected", async () => {
     mockSlackStatus({ isInstalled: true, isConnected: true });
 
     detachedSetupPage({
@@ -249,5 +241,7 @@ describe("chat start cards", () => {
 
     expect(startCards()).toHaveLength(3);
     expect(screen.queryByText("Add Zero to Slack")).toBeNull();
+    expect(screen.queryByText("How it works")).toBeNull();
+    expect(screen.getAllByText("Create")).toHaveLength(3);
   });
 });
