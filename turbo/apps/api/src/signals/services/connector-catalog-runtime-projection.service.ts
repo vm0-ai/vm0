@@ -172,8 +172,10 @@ export async function connectorCatalogRuntimeProjectionSchemaAvailable(
     .from(sql`(SELECT 1) AS connector_catalog_projection_schema_probe`)
     .limit(1);
   const available = state?.available ?? false;
-  // New API instances can serve before migration 0963. Cache only success so
-  // an already-warm instance observes the schema as soon as migration arrives.
+  // DB/API rollout can expose new code before migration 0963 for the observed
+  // ~102-minute maximum. Cache only success so a warm instance sees migration
+  // arrival. Remove this probe and its rollout test once 0963 is outside the
+  // production rollback window; tracked by #28275.
   cache.available = available;
   return available;
 }
