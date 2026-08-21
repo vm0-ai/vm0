@@ -145,7 +145,7 @@ async function seedSendableContext(): Promise<UploadCompleteFixture> {
   };
 }
 
-describe("POST /api/okou/integrations/telegram/upload-file/complete", () => {
+describe("POST /api/integrations/telegram/upload-file/complete", () => {
   const fixtures: UploadCompleteFixture[] = [];
 
   afterEach(async () => {
