@@ -1657,7 +1657,7 @@ def _release_terminal_flow_state(
 
 
 def websocket_end(flow: http.HTTPFlow) -> None:
-    """Report model-provider usage extracted from a WebSocket-upgraded response."""
+    """Settle model-provider failure and usage for a WebSocket-upgraded response."""
     try:
         model_provider_failure.finish_websocket(flow)
         run_id = flow_metadata.run_id(flow.metadata)
@@ -1937,7 +1937,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 
 
 def done():
-    """Flush pending usage reports and forwarding workers before mitmproxy exits.
+    """Flush pending reports and forwarding workers before mitmproxy exits.
 
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
@@ -1949,7 +1949,8 @@ def done():
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer
     shutdown is also bounded and best-effort; if it times out, process shutdown
-    continues with accepted log entries possibly still pending.
+    continues with accepted log entries possibly still pending. Model-provider
+    failure delivery stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
