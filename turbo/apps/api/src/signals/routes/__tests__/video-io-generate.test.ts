@@ -455,7 +455,7 @@ async function seedVideoFixture(
 async function orgCredits(fixture: VideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const app = createVideoIoTestApp(fixture.pricingResolution);
-  const response = await app.request("/api/zero/billing/status", {
+  const response = await app.request("/api/billing/status", {
     headers: authHeaders(),
   });
   expect(response.status).toBe(200);

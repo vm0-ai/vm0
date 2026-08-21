@@ -22,7 +22,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
 
-describe("GET /api/zero/billing/invoices", () => {
+describe("GET /api/billing/invoices", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
   });

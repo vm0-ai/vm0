@@ -4657,7 +4657,6 @@
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
         "models": "Modelos",
-        "modelVariants": "Variantes de {{model}}",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
           "balanced": "Custo e desempenho equilibrados",

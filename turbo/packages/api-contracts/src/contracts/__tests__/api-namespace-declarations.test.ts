@@ -51,29 +51,31 @@ function declaredRoutes(): readonly DeclaredRoute[] {
 describe("branded API namespace declarations", () => {
   const routes = declaredRoutes();
 
+  // The named sample proves the walk above actually reaches a declaration
+  // rather than passing on an empty list. It must be a path #28278 does not
+  // move, or the sample rots the moment that slice lands: a provider console
+  // holds this URL, so it stays branded under #26701.
   it("enumerates branded contract routes through the package barrel", () => {
     const brandedRoutes = routes.filter(({ path }) => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    // The guard here is that the barrel walk still finds routes at all: if
-    // `toDeclaredRoute` stopped matching, or the barrel stopped re-exporting
-    // the contracts, both counts would collapse and every assertion below
-    // would pass vacuously. It is sized against the total rather than the
-    // branded subset because #28278 is deliberately driving the branded count
-    // to zero — it was 78 of 407 when this slice moved 22 routes, already
-    // under the previous branded-only floor of 100. The total does not shrink
-    // as routes migrate, so it keeps measuring what this assertion is for.
+    // The guard is that the barrel walk still reaches a broad set of
+    // declarations: if `toDeclaredRoute` stopped matching, or the barrel
+    // stopped re-exporting the contracts, the list would collapse and every
+    // assertion below would pass vacuously. #28457 kept this as a floor on the
+    // branded subset and lowered it to 50; #28461 moves it to the total
+    // instead, because the branded count is what #28278 is deliberately
+    // driving to zero, so any floor on it has to be re-tuned every few slices
+    // and becomes unsatisfiable at the end. The total does not shrink as
+    // routes migrate.
     expect(routes.length).toBeGreaterThan(100);
     // Still non-empty, so the branded filter itself stays exercised. This one
     // retires with the last branded contract path under #26701.
     expect(brandedRoutes.length).toBeGreaterThan(0);
     expect(
       brandedRoutes.some(({ method, path }) => {
-        return (
-          method === "POST" &&
-          path === "/api/okou/billing/concurrency-checkout/preview"
-        );
+        return method === "POST" && path === "/api/okou/slack/events";
       }),
     ).toBe(true);
   });
