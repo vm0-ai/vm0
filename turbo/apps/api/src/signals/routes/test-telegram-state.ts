@@ -982,6 +982,15 @@ async function seedTelegramPostFixtureForAction(
   };
 
   await seedTelegramPostAgent(db, seed, signal);
+  await ensureAgentInstructionsStorageFixture(
+    db,
+    {
+      orgId: seed.orgId,
+      userId: seed.userId,
+      agentName: seed.name,
+    },
+    signal,
+  );
   if (readActionBoolean(body, "seed_default_agent", true)) {
     await seedTelegramPostDefaultAgent(db, seed, signal);
   }
