@@ -372,13 +372,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComposerImeSubmitFlush]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Protect in-flight IME composition in the chat composer: skip unchanged feedback note DOM writes and flush pending DOM changes before reading a submission.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
