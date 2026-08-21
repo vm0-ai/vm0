@@ -337,7 +337,6 @@ export const publishPresentationTemplate$ = command(
         orgId: args.orgId,
         ownerUserId: args.ownerUserId,
         title: body.title,
-        status: "ready",
         sourceStorageKey: source.storageKey,
         sourceFilename: source.filename,
         pageKeys: pages.map((page) => {
