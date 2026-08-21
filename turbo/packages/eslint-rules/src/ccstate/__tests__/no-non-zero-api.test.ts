@@ -101,9 +101,12 @@ ruleTester.run("no-non-zero-api", rule, {
       code: 'fetchFn("/api/model-provider-connections")',
       errors: [{ messageId: "nonZeroApi" }],
     },
-    // A neutral path whose contract has not moved yet stays a violation.
+    // A neutral path whose contract has not moved yet stays a violation. The
+    // subject has to be re-pointed whenever its slice lands: #28459 migrated
+    // the previous one, `/api/chat-threads/snapshot`, which silently turned
+    // this guard into a passing assertion about an allowed path.
     {
-      code: 'fetchFn("/api/chat-threads/snapshot")',
+      code: 'fetchFn("/api/workflows")',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

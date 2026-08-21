@@ -6,7 +6,9 @@ import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
+import { imageShareXRoutes } from "../signals/routes/image-share-x";
 import { orgReadRoutes } from "../signals/routes/org-read";
+import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
 import { translationRoutes } from "../signals/routes/translation";
 import { weatherRoutes } from "../signals/routes/weather";
@@ -345,6 +347,133 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28459: chat threads, chat events and search, shared threads,
+  // per-thread browser sessions and goals, thread workflow automations,
+  // queue position, and the X image share.
+  "/api/chat-threads": ["/api/okou/chat-threads", "/api/zero/chat-threads"],
+  "/api/chat-threads/:id": [
+    "/api/okou/chat-threads/:id",
+    "/api/zero/chat-threads/:id",
+  ],
+  "/api/chat-threads/:id/computer-use-host": [
+    "/api/okou/chat-threads/:id/computer-use-host",
+    "/api/zero/chat-threads/:id/computer-use-host",
+  ],
+  "/api/chat-threads/:id/connector-selections": [
+    "/api/okou/chat-threads/:id/connector-selections",
+    "/api/zero/chat-threads/:id/connector-selections",
+  ],
+  "/api/chat-threads/:id/draft": [
+    "/api/okou/chat-threads/:id/draft",
+    "/api/zero/chat-threads/:id/draft",
+  ],
+  "/api/chat-threads/:id/image-model": [
+    "/api/okou/chat-threads/:id/image-model",
+    "/api/zero/chat-threads/:id/image-model",
+  ],
+  "/api/chat-threads/:id/mark-read": [
+    "/api/okou/chat-threads/:id/mark-read",
+    "/api/zero/chat-threads/:id/mark-read",
+  ],
+  "/api/chat-threads/:id/mark-unread": [
+    "/api/okou/chat-threads/:id/mark-unread",
+    "/api/zero/chat-threads/:id/mark-unread",
+  ],
+  "/api/chat-threads/:id/metadata": [
+    "/api/okou/chat-threads/:id/metadata",
+    "/api/zero/chat-threads/:id/metadata",
+  ],
+  "/api/chat-threads/:id/model-selection": [
+    "/api/okou/chat-threads/:id/model-selection",
+    "/api/zero/chat-threads/:id/model-selection",
+  ],
+  "/api/chat-threads/:id/pin": [
+    "/api/okou/chat-threads/:id/pin",
+    "/api/zero/chat-threads/:id/pin",
+  ],
+  "/api/chat-threads/:id/rename": [
+    "/api/okou/chat-threads/:id/rename",
+    "/api/zero/chat-threads/:id/rename",
+  ],
+  "/api/chat-threads/:id/unpin": [
+    "/api/okou/chat-threads/:id/unpin",
+    "/api/zero/chat-threads/:id/unpin",
+  ],
+  "/api/chat-threads/:id/video-model": [
+    "/api/okou/chat-threads/:id/video-model",
+    "/api/zero/chat-threads/:id/video-model",
+  ],
+  "/api/chat-threads/:threadId/artifacts": [
+    "/api/okou/chat-threads/:threadId/artifacts",
+    "/api/zero/chat-threads/:threadId/artifacts",
+  ],
+  "/api/chat-threads/:threadId/browser": [
+    "/api/okou/chat-threads/:threadId/browser",
+    "/api/zero/chat-threads/:threadId/browser",
+  ],
+  "/api/chat-threads/:threadId/browser/close": [
+    "/api/okou/chat-threads/:threadId/browser/close",
+    "/api/zero/chat-threads/:threadId/browser/close",
+  ],
+  "/api/chat-threads/:threadId/browser/lease": [
+    "/api/okou/chat-threads/:threadId/browser/lease",
+    "/api/zero/chat-threads/:threadId/browser/lease",
+  ],
+  "/api/chat-threads/:threadId/browser/open": [
+    "/api/okou/chat-threads/:threadId/browser/open",
+    "/api/zero/chat-threads/:threadId/browser/open",
+  ],
+  "/api/chat-threads/:threadId/browser/resize": [
+    "/api/okou/chat-threads/:threadId/browser/resize",
+    "/api/zero/chat-threads/:threadId/browser/resize",
+  ],
+  "/api/chat-threads/:threadId/event-rows": [
+    "/api/okou/chat-threads/:threadId/event-rows",
+    "/api/zero/chat-threads/:threadId/event-rows",
+  ],
+  "/api/chat-threads/:threadId/event-snapshot": [
+    "/api/okou/chat-threads/:threadId/event-snapshot",
+    "/api/zero/chat-threads/:threadId/event-snapshot",
+  ],
+  "/api/chat-threads/:threadId/goal": [
+    "/api/okou/chat-threads/:threadId/goal",
+    "/api/zero/chat-threads/:threadId/goal",
+  ],
+  "/api/chat-threads/:threadId/goal/pause": [
+    "/api/okou/chat-threads/:threadId/goal/pause",
+    "/api/zero/chat-threads/:threadId/goal/pause",
+  ],
+  "/api/chat-threads/:threadId/shared-threads": [
+    "/api/okou/chat-threads/:threadId/shared-threads",
+    "/api/zero/chat-threads/:threadId/shared-threads",
+  ],
+  "/api/chat-threads/:threadId/workflow-automations": [
+    "/api/okou/chat-threads/:threadId/workflow-automations",
+    "/api/zero/chat-threads/:threadId/workflow-automations",
+  ],
+  "/api/chat-threads/events": [
+    "/api/okou/chat-threads/events",
+    "/api/zero/chat-threads/events",
+  ],
+  "/api/chat-threads/snapshot": [
+    "/api/okou/chat-threads/snapshot",
+    "/api/zero/chat-threads/snapshot",
+  ],
+  "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
+  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
+  "/api/image-share/x": ["/api/okou/image-share/x", "/api/zero/image-share/x"],
+  "/api/queue-position": [
+    "/api/okou/queue-position",
+    "/api/zero/queue-position",
+  ],
+  "/api/shared-threads/:id": [
+    "/api/okou/shared-threads/:id",
+    "/api/zero/shared-threads/:id",
+  ],
+  "/api/shared-threads/:id/meta": [
+    "/api/okou/shared-threads/:id/meta",
+    "/api/zero/shared-threads/:id/meta",
+  ],
   // #28462: feature switches, model policies, org model providers and their
   // device-auth sessions, the org profile and membership routes, and the usage
   // reads.
@@ -754,6 +883,48 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ operation, neutral, okou, zero }).toStrictEqual({
         operation,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28459 twin of the two assertions above, for the chat slice. Every
+  // caller of these routes in this repository derives its URL from the
+  // contract, so a request-level case is the only place a dropped row shows
+  // up as the 404 a released client would get. Requests are unauthenticated,
+  // so the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated chat-slice paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: queuePositionRoutes, method: "GET", suffix: "queue-position" },
+      { routes: imageShareXRoutes, method: "POST", suffix: "image-share/x" },
+    ] as const;
+
+    for (const { routes, method, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
         neutral,
         okou: neutral,
         zero: neutral,

@@ -22,8 +22,8 @@ const INITIAL_SEQ_ID = 1;
 const RENAME_SEQ_ID = 2;
 const SORT_SEQ_ID = 3;
 const REFRESH_SEQ_ID = 4;
-const SNAPSHOT_URL = "http://localhost:3000/api/okou/chat-threads/snapshot";
-const EVENTS_URL = "http://localhost:3000/api/okou/chat-threads/events";
+const SNAPSHOT_URL = "http://localhost:3000/api/chat-threads/snapshot";
+const EVENTS_URL = "http://localhost:3000/api/chat-threads/events";
 
 function zeroToken(): string {
   const payload = Buffer.from(
