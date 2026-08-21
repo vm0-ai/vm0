@@ -958,6 +958,66 @@ class TestModelProviderWebSocketPrewarmUsage:
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
 
+    def test_model_websocket_usage_free_conflicting_terminal_id_fails_open(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        sensitive_marker = "conflicting-terminal-sensitive-marker"
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                _openai_websocket_created_frame("warm-active"),
+            )
+            feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "other-response",
+                            "output": [
+                                {
+                                    "type": "message",
+                                    "content": [{"type": "output_text", "text": sensitive_marker}],
+                                }
+                            ],
+                        },
+                    }
+                ).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "warm-active",
+                    input_tokens=17,
+                    output_tokens=0,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 17)]
+        assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+        correlation_entries = _correlation_entries(flow)
+        assert len(correlation_entries) == 1
+        assert correlation_entries[0]["reason"] == "invalid_lifecycle"
+        assert sensitive_marker not in json.dumps(correlation_entries)
+
     def test_model_websocket_malformed_client_frame_retires_unbound_prewarm(
         self,
         tmp_path,
