@@ -154,6 +154,14 @@ export async function setVm0ManagedCandidateCooldownFixture(
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
+  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+}
+
+export function registerVm0ManagedCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+): void {
   onTestFinished(async () => {
     await postAction(context, {
       action: "delete-vm0-managed-candidate-cooldown",
@@ -661,6 +669,26 @@ export async function readRunApiStart(
     throw new Error("readRunApiStart missing api_started_at");
   }
   return response.api_started_at ?? null;
+}
+
+/**
+ * Move one owned running run to an elapsed-time boundary and execute the
+ * production steering flow without scanning rows owned by other test files.
+ */
+export async function steerRunTimeBudgetFixture(
+  context: TestContext,
+  runId: string,
+  elapsedMs: number,
+): Promise<NonNullable<TestRuntimeStateActionResponse["run_time_budget"]>> {
+  const response = await postAction(context, {
+    action: "steer-run-time-budget",
+    run_id: runId,
+    elapsed_ms: elapsedMs,
+  });
+  if (!response.run_time_budget) {
+    throw new Error("steerRunTimeBudgetFixture missing run_time_budget");
+  }
+  return response.run_time_budget;
 }
 
 export async function readThreadSessionBinding(

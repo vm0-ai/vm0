@@ -9,6 +9,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelProviderFailuresContract,
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
@@ -82,6 +83,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
+import { extendManagedModelCandidateCooldown } from "../services/built-in-model-runtime-route.service";
 import {
   recordActiveInputDeliveryReceipt,
   reserveActiveInputDelivery,
@@ -130,6 +132,7 @@ const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
+const DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS = 60;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
@@ -768,6 +771,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
+const modelProviderFailureBody$ = bodyResultOf(
+  runnersModelProviderFailuresContract.report,
+);
 const connectorRuntimeSyncBody$ = bodyResultOf(
   runnersConnectorRuntimeSyncContract.sync,
 );
@@ -2557,6 +2563,77 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+const modelProviderFailureInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+    if (auth.type !== "official-runner") {
+      return forbidden(
+        "Only official runners can report model provider failures",
+      );
+    }
+
+    const body = await get(modelProviderFailureBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersModelProviderFailuresContract.report),
+    ).runId;
+    const db = set(writeDb$);
+    const [run] = await db
+      .select({
+        modelProvider: agentRuns.modelProvider,
+        selectedModel: agentRuns.selectedModel,
+        modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+        modelRuntimeModel: agentRuns.modelRuntimeModel,
+        vm0ModelKeyId: agentRuns.vm0ModelKeyId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (
+      !run ||
+      run.modelProvider !== "vm0" ||
+      !run.selectedModel ||
+      !run.modelRuntimeProvider ||
+      !run.modelRuntimeModel ||
+      !run.vm0ModelKeyId
+    ) {
+      L.debug("Managed model provider failure report ignored", { runId });
+      return { status: 200 as const, body: { outcome: "ignored" as const } };
+    }
+
+    const retryAfterSeconds =
+      body.data.retryAfterSeconds ??
+      DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS;
+    const unavailableUntil = await extendManagedModelCandidateCooldown(db, {
+      selectedModel: run.selectedModel,
+      providerType: run.modelRuntimeProvider,
+      upstreamModel: run.modelRuntimeModel,
+      retryAfterSeconds,
+    });
+    signal.throwIfAborted();
+    L.debug("Managed model provider failure report recorded", {
+      runId,
+      selectedModel: run.selectedModel,
+      providerType: run.modelRuntimeProvider,
+      upstreamModel: run.modelRuntimeModel,
+      failureKind: body.data.failureKind,
+      retryAfterSeconds,
+      unavailableUntil: unavailableUntil.toISOString(),
+    });
+    return { status: 200 as const, body: { outcome: "recorded" as const } };
+  },
+);
+
 const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
@@ -2803,6 +2880,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersModelProviderFailuresContract.report,
+    handler: modelProviderFailureInner$,
   },
   {
     route: runnersActiveInputsContract.reserve,

@@ -67,6 +67,7 @@ import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
+import { steerRunNearTimeBudgetForTest } from "../services/cron-steer-run-time-budget.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -462,6 +463,28 @@ async function readRunApiStart(
     throw new Error("Expected a Zero run timing row");
   }
   return run.apiStartedAt?.toISOString() ?? null;
+}
+
+/**
+ * A running run cannot reach the time-budget boundary during an integration
+ * test, so the test-only route moves exactly its owned run into that state.
+ */
+async function setRunTimeBudgetElapsed(
+  db: Db,
+  runId: string,
+  elapsedMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const startedAt = new Date(nowDate().getTime() - elapsedMs);
+  const [updated] = await db
+    .update(agentRuns)
+    .set({ startedAt })
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected one running time-budget run fixture");
+  }
 }
 
 async function readThreadSessionBinding(
@@ -1425,7 +1448,12 @@ async function readRunClaimOwnerActionResponse(
 
 type TimingStateAction = Extract<
   TestRuntimeStateActionBody,
-  { action: "clear-run-api-start" | "read-run-api-start" }
+  {
+    action:
+      | "clear-run-api-start"
+      | "read-run-api-start"
+      | "steer-run-time-budget";
+  }
 >;
 
 function isTimingStateAction(
@@ -1433,7 +1461,8 @@ function isTimingStateAction(
 ): body is TimingStateAction {
   return (
     body.action === "clear-run-api-start" ||
-    body.action === "read-run-api-start"
+    body.action === "read-run-api-start" ||
+    body.action === "steer-run-time-budget"
   );
 }
 
@@ -1453,6 +1482,20 @@ async function timingStateActionResponse(
         body: {
           ok: true as const,
           api_started_at: await readRunApiStart(db, body.run_id, signal),
+        },
+      };
+    }
+    case "steer-run-time-budget": {
+      await setRunTimeBudgetElapsed(db, body.run_id, body.elapsed_ms, signal);
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          run_time_budget: await steerRunNearTimeBudgetForTest(
+            db,
+            body.run_id,
+            signal,
+          ),
         },
       };
     }

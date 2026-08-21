@@ -4820,6 +4820,12 @@ function IllustrationTemplateGrid({
  * Hands the chosen deck to the composer, which attaches it, sends it, and
  * navigates into the new thread. Importing is the ordinary chat path with the
  * message written for the user, not a separate upload flow.
+ *
+ * The import owns the root signal, like the ordinary send and upload controls:
+ * from the new-thread composer it outlives the page it started on. A page
+ * signal is aborted by the very navigation this send performs, which would kill
+ * the in-flight thread create and the run that follows it, leaving a thread the
+ * user can see but the server never recorded.
  */
 function PptImportCard({
   signals,
@@ -4829,7 +4835,7 @@ function PptImportCard({
   onImported: () => void;
 }) {
   const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
   const importDeck = useSet(importPresentationTemplateDeck$);
   const label = t(($) => {
     return $.artifacts.templates.importDeck;
@@ -4865,7 +4871,7 @@ function PptImportCard({
             }
             onImported();
             detach(
-              importDeck({ signals, file }, pageSignal),
+              importDeck({ signals, file }, rootSignal),
               Reason.DomCallback,
             );
           }}

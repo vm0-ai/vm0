@@ -108,6 +108,43 @@ pub mod runners {
                 }
             }
         }
+
+        /// DTOs for reporting bounded managed model provider failures.
+        pub mod model_provider_failures {
+            /// Bounded provider-independent failure eligible for route cooldown.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestFailureKind {
+                /// Provider authentication failed.
+                #[serde(rename = "authentication")]
+                Authentication,
+                /// Provider billing rejected the request.
+                #[serde(rename = "billing")]
+                Billing,
+                /// Provider rate limiting rejected the request.
+                #[serde(rename = "rate_limit")]
+                RateLimit,
+                /// The provider route was unavailable or overloaded.
+                #[serde(rename = "provider_unavailable")]
+                ProviderUnavailable,
+                /// The provider inference request timed out.
+                #[serde(rename = "timeout")]
+                Timeout,
+                /// The provider connection failed.
+                #[serde(rename = "connection")]
+                Connection,
+            }
+
+            /// Request body for reporting a managed model provider failure.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct Request {
+                /// Normalized eligible provider failure kind.
+                pub failure_kind: RequestFailureKind,
+                /// Optional bounded provider retry delay in seconds.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub retry_after_seconds: Option<i64>,
+            }
+        }
     }
 
     /// Storage manifest DTOs used by runners to mount volumes and artifacts.
