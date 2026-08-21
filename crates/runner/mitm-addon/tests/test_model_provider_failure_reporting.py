@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from mitmproxy import http
+from mitmproxy.connection import ConnectionState
 from mitmproxy.flow import Error
 
 import flow_metadata_keys as metadata_keys
@@ -454,6 +455,25 @@ def test_connection_error_is_reported(
     assert _reported_payloads(model_provider_failure_api) == [{"failureKind": "connection"}]
 
 
+def test_client_disconnect_is_not_reported(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl")
+    flow.response = None
+    flow.client_conn.state = ConnectionState.CLOSED
+    flow.server_conn.state = ConnectionState.OPEN
+    model_provider_failure.admit_flow(flow)
+    flow.error = Error("client disconnected")
+
+    with mitm_ctx():
+        mitm_addon.error(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
 def test_terminal_sse_success_wins_over_late_connection_error(
     tmp_path,
     real_flow,
@@ -552,6 +572,39 @@ def test_websocket_failure_is_reported(
     assert _reported_payloads(model_provider_failure_api) == [
         {"failureKind": "provider_unavailable"}
     ]
+
+
+@pytest.mark.parametrize(
+    ("client_state", "server_state", "expected"),
+    [
+        (ConnectionState.OPEN, ConnectionState.CLOSED, [{"failureKind": "connection"}]),
+        (ConnectionState.CLOSED, ConnectionState.OPEN, []),
+    ],
+)
+def test_websocket_connection_outcome_uses_connection_direction(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+    client_state: ConnectionState,
+    server_state: ConnectionState,
+    expected: list[dict[str, str]],
+    model_provider_failure_api,
+):
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    flow.client_conn.state = client_state
+    flow.server_conn.state = server_state
+    capture_deferred_websocket_trims(monkeypatch)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        flow.error = Error("connection closed")
+        mitm_addon.error(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == expected
 
 
 @pytest.mark.parametrize(

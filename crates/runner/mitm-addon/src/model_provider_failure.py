@@ -316,7 +316,9 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
     if flow_state.protocol != "openai_responses_websocket" and flow_state.terminal_observed:
         return
     if flow_state.protocol == "openai_responses_websocket":
-        if flow_state.pending_intent == "normal" or flow_state.active_intent == "normal":
+        if (
+            flow_state.pending_intent == "normal" or flow_state.active_intent == "normal"
+        ) and _upstream_connection_failed(flow):
             _apply_outcome(flow, flow_state, _failure_outcome("connection"))
     else:
         response = flow.response
@@ -333,13 +335,17 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
                 failure_kind,
                 _retry_after_seconds(response.status_code, response.headers),
             )
-        elif response is None:
+        elif response is None and _upstream_connection_failed(flow):
             outcome = _failure_outcome("connection")
         else:
             parsed_outcome = _finish_response_body(flow, flow_state.protocol)
             if parsed_outcome.kind != "unknown":
                 outcome = parsed_outcome
-            elif _HTTP_STATUS_SUCCESS_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN:
+            elif (
+                response is not None
+                and _HTTP_STATUS_SUCCESS_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
+                and _upstream_connection_failed(flow)
+            ):
                 outcome = _failure_outcome("connection")
             else:
                 outcome = _unknown_outcome()
@@ -600,6 +606,12 @@ def _response_can_have_body(flow: http.HTTPFlow, response: http.Response) -> boo
 def _has_event_stream_media_type(response: http.Response) -> bool:
     content_type = response.headers.get("content-type", "")
     return content_type.partition(";")[0].strip(" \t").lower() == "text/event-stream"
+
+
+def _upstream_connection_failed(flow: http.HTTPFlow) -> bool:
+    return bool(flow.server_conn.error) or (
+        not flow.server_conn.connected and flow.client_conn.connected
+    )
 
 
 def _new_json_extractor() -> JsonSelectiveExtractor:
