@@ -799,6 +799,8 @@ async function loadZeroRunPostAuthorizationContext(
           selection: await loadConnectorRuntimeSelection(db, {
             timing: args.timing,
             requestedConnectorSlugs: bootstrapContext.allowedConnectorSlugs,
+            metadataConnectorSlugs:
+              bootstrapContext.connectorCatalogMetadataSlugs,
           }),
         };
   signal.throwIfAborted();

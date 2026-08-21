@@ -58,12 +58,16 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
+  corruptApiTestConnectorCatalogRuntimeProjectionDigest,
   deleteApiTestConnectorCatalogCompatibility,
+  deleteApiTestConnectorCatalogRuntimeProjectionRow,
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -347,6 +351,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES = [
   "api_dispatch_connector_catalog_load_runtime_snapshot",
+  "api_dispatch_connector_catalog_query_projection_identity",
   "api_dispatch_connector_catalog_query_identity",
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES = [
@@ -2360,6 +2365,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     mockOptionalEnv(capabilityIdentityEnvName, capabilityIdentityEnvValue);
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-scoped-runtime-${randomUUID()}`,
+      runtimeProjection: true,
     });
     await replaceApiTestConnectorCatalogFilteredAuthMethods([
       {
@@ -2373,17 +2379,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "omit a compatibility-filtered connector method",
       ["x"],
     );
-    expectConnectorCatalogLoadTiming({
-      events: apiDispatchTimingEventsForRun(filteredRun.runId),
-      acceptedCacheOutcome: "miss",
-      acceptedCacheMissReason: "catalog_identity_changed",
-      runtimeCacheOutcome: "miss",
-      requestedConnectorCount: "known",
-      requestedConnectorCountBucket: "1",
-      materializedConnectorCountBucket: "1",
-      resolvedConnectorFraction: "up_to_25_percent",
-      validation: { outcome: "attested" },
-    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(filteredRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+      }),
+    );
     await api.heartbeatRunner(runnerGroup);
     const filteredClaim = await api.claimRunnerJob(filteredRun.runId);
     expect(filteredClaim.environment ?? {}).not.toHaveProperty("X_TOKEN");
@@ -2399,6 +2406,300 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "no_builtin_targets",
     );
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
+  });
+
+  it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "x-projection-access",
+      refreshToken: "x-projection-refresh",
+    });
+    const createProjectedRun = async (prompt: string) => {
+      return await api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
+          allowedCustomConnectorIds: [],
+        },
+      });
+    };
+
+    const concurrentRuns = await Promise.all(
+      Array.from({ length: 2 }, async (_, index) => {
+        return await createProjectedRun(
+          `concurrent exact runtime projection ${index}`,
+        );
+      }),
+    );
+    const concurrentEvents = concurrentRuns.map((run) => {
+      return apiDispatchTimingEventsForRun(run.runId);
+    });
+    const concurrentLoads = concurrentEvents.map((events) => {
+      return singleApiDispatchEvent(
+        events,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      );
+    });
+    const cacheOutcomes = concurrentLoads.map((event) => {
+      return event.connector_catalog_projection_cache_outcome;
+    });
+    expect(
+      cacheOutcomes.filter((outcome) => {
+        return outcome === "miss";
+      }),
+    ).toHaveLength(1);
+    expect(
+      cacheOutcomes.filter((outcome) => {
+        return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    for (const load of concurrentLoads) {
+      expect(load).toStrictEqual(
+        expect.objectContaining({
+          connector_catalog_runtime_selection_source: "projection",
+        }),
+      );
+    }
+    const missIndex = cacheOutcomes.indexOf("miss");
+    if (missIndex === -1) {
+      throw new Error("Expected one cold runtime projection load");
+    }
+    const missEvents = concurrentEvents[missIndex];
+    const missLoad = concurrentLoads[missIndex];
+    if (missEvents === undefined || missLoad === undefined) {
+      throw new Error("Expected timing for the cold runtime projection load");
+    }
+    expectApiDispatchActions(missEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_count_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+    ]);
+    for (const events of concurrentEvents) {
+      expectNoApiDispatchActions(events, [
+        "api_dispatch_connector_catalog_query_identity",
+        ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+      ]);
+    }
+    expect(missLoad).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_requested_connector_count_bucket: "2_4",
+        connector_catalog_metadata_connector_count_bucket: "0",
+        connector_catalog_materialized_connector_count_bucket: "1",
+      }),
+    );
+    expect(missLoad).not.toHaveProperty(
+      "connector_catalog_projection_fallback_reason",
+    );
+    expect(missLoad).not.toHaveProperty(
+      "connector_catalog_accepted_cache_outcome",
+    );
+    const coldRun = concurrentRuns[missIndex];
+    if (coldRun === undefined) {
+      throw new Error("Expected the cold runtime projection run");
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const coldClaim = await api.claimRunnerJob(coldRun.runId);
+    expect(findFirewallEntry(coldClaim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+      sourceId: expect.any(String),
+    });
+    expectClaimNetworkPolicyRefreshPath(coldRun.runId, "baseline");
+    for (const run of concurrentRuns) {
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
+
+    const repeatedRun = await createProjectedRun(
+      "warm exact runtime projection",
+    );
+    const repeatedEvents = apiDispatchTimingEventsForRun(repeatedRun.runId);
+    expectApiDispatchActions(repeatedEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+    ]);
+    expectNoApiDispatchActions(repeatedEvents, [
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_count_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+      "api_dispatch_connector_catalog_query_identity",
+      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        repeatedEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "hit",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("falls back for an incomplete projection and observes reconciliation", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-incomplete-runtime-projection-${randomUUID()}`,
+    );
+    const catalogVersion = `api-test-incomplete-runtime-projection-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion,
+      runtimeProjection: true,
+    });
+    await deleteApiTestConnectorCatalogRuntimeProjectionRow("x");
+    const { actor, agentId } = await entitledRunActor();
+    const createProjectedRun = async (prompt: string) => {
+      return await api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
+      });
+    };
+
+    const fallbackRun = await createProjectedRun(
+      "incomplete runtime projection",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(fallbackRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "incomplete",
+      }),
+    );
+    await api.requestCancelRun(actor, fallbackRun.runId, [200]);
+
+    await installApiTestConnectorCatalog({
+      catalogVersion,
+      runtimeProjection: true,
+    });
+    const repairedRun = await createProjectedRun(
+      "reconciled runtime projection",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(repairedRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, repairedRun.runId, [200]);
+  });
+
+  it("bounds repeated projection identity replacement with full fallback", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-unstable-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-unstable-runtime-projection-initial-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements([
+      `api-test-unstable-runtime-projection-first-${randomUUID()}`,
+      `api-test-unstable-runtime-projection-second-${randomUUID()}`,
+    ]);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "bound repeated runtime projection identity replacement",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(run.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "unstable",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("falls back when a selected projection row fails digest verification", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-digest-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-digest-runtime-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("x");
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "digest-mismatched runtime projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(run.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "digest_mismatch",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps exact-empty create and claim independent from catalog availability", async () => {
@@ -10378,6 +10679,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-custom-permission-run-${randomUUID()}`,
+      runtimeProjection: true,
     });
 
     const restoredRun = await api.createRun(actor, {
@@ -10385,21 +10687,29 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the reconnected custom connector",
       modelProvider: "anthropic-api-key",
     });
-    expectApiDispatchActions(
-      apiDispatchTimingEventsForRun(restoredRun.runId),
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    const restoredTimingEvents = apiDispatchTimingEventsForRun(
+      restoredRun.runId,
     );
-    expectConnectorCatalogLoadTiming({
-      events: apiDispatchTimingEventsForRun(restoredRun.runId),
-      acceptedCacheOutcome: "miss",
-      acceptedCacheMissReason: "catalog_identity_changed",
-      runtimeCacheOutcome: "miss",
-      requestedConnectorCount: "known",
-      requestedConnectorCountBucket: "0",
-      materializedConnectorCountBucket: "0",
-      resolvedConnectorFraction: "none",
-      validation: { outcome: "attested" },
-    });
+    expectApiDispatchActions(restoredTimingEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        restoredTimingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_requested_connector_count_bucket: "0",
+        connector_catalog_metadata_connector_count_bucket: "1",
+        connector_catalog_materialized_connector_count_bucket: "0",
+      }),
+    );
     const restoredClaim = await api.claimRunnerJob(restoredRun.runId);
     const customApis = inlineFirewallApis(
       restoredClaim.firewalls,
@@ -10423,6 +10733,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "inline",
       customConnectorId: custom.id,
     });
+    expect(findFirewallEntry(restoredClaim.firewalls, "slack")).toBeUndefined();
+    expect(restoredClaim.networkPolicies ?? {}).not.toHaveProperty("slack");
     expect(restoredClaim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,
@@ -10445,6 +10757,39 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(restoredSkillMount?.versionId).toBe(updatedSkill.versionId);
 
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
+
+    const directRun = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "use the direct scoped custom connector",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: [],
+        allowedCustomConnectorIds: [custom.id],
+      },
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(directRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "hit",
+        connector_catalog_requested_connector_count_bucket: "0",
+        connector_catalog_metadata_connector_count_bucket: "1",
+      }),
+    );
+    const directClaim = await api.claimRunnerJob(directRun.runId);
+    expect(
+      inlineFirewallApis(directClaim.firewalls, internalName)[0]?.permissions,
+    ).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(findFirewallEntry(directClaim.firewalls, "slack")).toBeUndefined();
+    expect(directClaim.networkPolicies ?? {}).not.toHaveProperty("slack");
+    await api.requestCancelRun(actor, directRun.runId, [200]);
   });
 
   it("fails closed when a custom skill version belongs to another storage", async () => {

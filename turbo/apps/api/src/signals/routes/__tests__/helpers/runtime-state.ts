@@ -200,6 +200,22 @@ export async function readUsagePackInvitationSchemaAvailable(
   return response.usage_pack_invitation_schema_available;
 }
 
+export async function readConnectorCatalogRuntimeProjectionSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-connector-catalog-runtime-projection-schema-state",
+  });
+  if (
+    response.connector_catalog_runtime_projection_schema_available === undefined
+  ) {
+    throw new Error(
+      "readConnectorCatalogRuntimeProjectionSchemaAvailable missing schema availability",
+    );
+  }
+  return response.connector_catalog_runtime_projection_schema_available;
+}
+
 export async function readUsagePackPurchaseSerializationSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {

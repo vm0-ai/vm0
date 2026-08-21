@@ -29,14 +29,15 @@ import {
 
 import { singleton } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
+import { onRejection } from "../utils";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import type {
+  ConnectorCatalogArtifactConnector,
   ConnectorCatalogAuthMethod,
   ConnectorCatalogSkill,
 } from "./connector-catalog-artifacts/artifacts";
 import {
-  acceptedConnectorCatalogMethodIsCompatible,
-  getAcceptedConnectorCatalogResolutionDetail,
+  getConnectorCatalogResolutionDetail,
   listAcceptedConnectorCatalogAvailableSlugs,
   loadAcceptedConnectorCatalogSnapshot,
   type AcceptedConnectorCatalogSnapshot,
@@ -45,7 +46,16 @@ import {
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import {
+  countConnectorCatalogRuntimeProjectionRows,
+  readConnectorCatalogRuntimeProjectionIdentity,
+  readConnectorCatalogRuntimeProjectionRows,
+  type ConnectorCatalogRuntimeProjectionFallbackReason,
+  type ConnectorCatalogRuntimeProjectionIdentity,
+  type ConnectorCatalogRuntimeProjectionReadyIdentity,
+} from "./connector-catalog-runtime-projection.service";
+import {
   createAcceptedConnectorServerFirewallCatalog,
+  createAcceptedConnectorServerFirewallCatalogFromConnectors,
   selectConnectorServerFirewalls,
   type ConnectorServerFirewallCatalog,
   type ConnectorServerFirewallMetadataCatalog,
@@ -452,20 +462,11 @@ function runtimeMethodEntry(args: {
 }
 
 function runtimeConnector(
-  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-  connectorSlug: ConnectorSlug,
+  connector: ConnectorCatalogArtifactConnector,
+  filteredMethodKeys: ReadonlySet<string>,
 ): ConnectorRuntimeConnector {
-  const connector = acceptedSnapshot.connectorBySlug.get(connectorSlug);
-  if (connector === undefined) {
-    throw new Error("Accepted connector runtime source is unavailable");
-  }
-  const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
-    snapshot: acceptedSnapshot,
-    connectorSlug,
-  });
-  if (catalogConnector === null) {
-    throw new Error("Accepted connector runtime relationship is incomplete");
-  }
+  const connectorSlug = connector.slug;
+  const catalogConnector = getConnectorCatalogResolutionDetail(connector);
   const catalogMethods = new Map(
     catalogConnector.authMethods.map((method) => {
       return [method.id, method];
@@ -477,13 +478,7 @@ function runtimeConnector(
     if (method.visible) {
       authoredVisibleMethodIds.add(method.id);
     }
-    if (
-      !acceptedConnectorCatalogMethodIsCompatible({
-        snapshot: acceptedSnapshot,
-        connectorSlug,
-        authMethodId: method.id,
-      })
-    ) {
+    if (filteredMethodKeys.has(methodKey(connectorSlug, method.id))) {
       continue;
     }
     const catalogMethod = catalogMethods.get(method.id);
@@ -543,7 +538,14 @@ function materializeConnectorRuntimeEntry(
   if (cached !== undefined) {
     return cached;
   }
-  const connector = runtimeConnector(acceptedSnapshot, connectorSlug);
+  const source = acceptedSnapshot.connectorBySlug.get(connectorSlug);
+  if (source === undefined) {
+    throw new Error("Accepted connector runtime source is unavailable");
+  }
+  const connector = runtimeConnector(
+    source,
+    acceptedSnapshot.filteredMethodKeys,
+  );
   connectors.set(connectorSlug, connector);
   return connector;
 }
@@ -621,63 +623,505 @@ function selectedRuntimeConnectors(
   );
 }
 
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function uniqueSortedConnectorSlugs(
+  connectorSlugs: readonly ConnectorSlug[],
+): readonly ConnectorSlug[] {
+  return [...new Set(connectorSlugs)].sort(compareStrings);
+}
+
+function projectionIdentityKey(
+  identity: ConnectorCatalogRuntimeProjectionIdentity,
+): string {
+  return [
+    identity.projectionSetId,
+    identity.sourceId,
+    identity.schemaVersion,
+    identity.catalogVersion,
+    identity.catalogDigest,
+    identity.capabilityDigest,
+    identity.projectionVersion,
+    identity.connectorCount,
+  ].join("\0");
+}
+
+function externalCatalogIdentity(
+  identity: ConnectorCatalogRuntimeProjectionIdentity,
+): ExternalCatalogIdentity {
+  return {
+    sourceId: identity.sourceId,
+    schemaVersion: identity.schemaVersion,
+    catalogVersion: identity.catalogVersion,
+    catalogDigest: identity.catalogDigest,
+    capabilityDigest: identity.capabilityDigest,
+  };
+}
+
+function runtimeSelectionProjectionKey(args: {
+  readonly identity: ConnectorCatalogRuntimeProjectionIdentity;
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): string {
+  return [
+    projectionIdentityKey(args.identity),
+    "runtime",
+    ...args.runtimeConnectorSlugs,
+    "metadata",
+    ...args.metadataConnectorSlugs,
+  ].join("\0");
+}
+
+function requestedProjectionConnectorSlugs(args: {
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): readonly ConnectorSlug[] {
+  return uniqueSortedConnectorSlugs([
+    ...args.runtimeConnectorSlugs,
+    ...args.metadataConnectorSlugs,
+  ]);
+}
+
+function selectedArtifacts(args: {
+  readonly connectorBySlug: ReadonlyMap<
+    ConnectorSlug,
+    ConnectorCatalogArtifactConnector
+  >;
+  readonly connectorSlugs: readonly ConnectorSlug[];
+}): readonly ConnectorCatalogArtifactConnector[] {
+  return args.connectorSlugs.flatMap((connectorSlug) => {
+    const connector = args.connectorBySlug.get(connectorSlug);
+    return connector === undefined ? [] : [connector];
+  });
+}
+
+function runtimeSelectionFromProjectedConnectors(args: {
+  readonly projection: ConnectorCatalogRuntimeProjectionReadyIdentity;
+  readonly connectors: readonly ConnectorCatalogArtifactConnector[];
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): ConnectorRuntimeSelection {
+  const connectorBySlug = new Map(
+    args.connectors.map((connector) => {
+      return [connector.slug, connector] as const;
+    }),
+  );
+  const runtimeArtifacts = selectedArtifacts({
+    connectorBySlug,
+    connectorSlugs: args.runtimeConnectorSlugs,
+  });
+  const runtimeConnectors = new Map(
+    runtimeArtifacts.map((connector) => {
+      return [
+        connector.slug,
+        runtimeConnector(connector, args.projection.filteredMethodKeys),
+      ] as const;
+    }),
+  );
+  const runtimeCatalog =
+    createAcceptedConnectorServerFirewallCatalogFromConnectors({
+      connectors: runtimeArtifacts,
+      runtimeMethodsForSlug: (connectorSlug) => {
+        return [
+          ...(runtimeConnectors.get(connectorSlug)?.methods.values() ?? []),
+        ].map((method) => {
+          return method.method;
+        });
+      },
+    });
+  const metadataArtifacts = selectedArtifacts({
+    connectorBySlug,
+    connectorSlugs: uniqueSortedConnectorSlugs([
+      ...args.runtimeConnectorSlugs,
+      ...args.metadataConnectorSlugs,
+    ]),
+  });
+  const metadataCatalog =
+    createAcceptedConnectorServerFirewallCatalogFromConnectors({
+      connectors: metadataArtifacts,
+      runtimeMethodsForSlug: (connectorSlug) => {
+        return [
+          ...(runtimeConnectors.get(connectorSlug)?.methods.values() ?? []),
+        ].map((method) => {
+          return method.method;
+        });
+      },
+    });
+  return {
+    catalogIdentity: externalCatalogIdentity(args.projection.identity),
+    connectors: runtimeConnectors,
+    serverFirewalls: selectConnectorServerFirewalls({
+      catalog: runtimeCatalog,
+      connectorSlugs: args.runtimeConnectorSlugs,
+    }),
+    serverFirewallMetadata: metadataCatalog,
+  };
+}
+
+async function loadCompleteRuntimeSelection(args: {
+  readonly db: ReadonlyDb;
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): Promise<ConnectorRuntimeSelection> {
+  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
+    args.db,
+    args.timing,
+  );
+  const connectorSlugs = acceptedRequestedConnectorSlugs(
+    acceptedSnapshot,
+    args.runtimeConnectorSlugs,
+  );
+  args.timing.recordCatalogFacts({
+    rawSize: acceptedSnapshot.catalogRawSize,
+    compressedSize: acceptedSnapshot.catalogCompressedSize,
+    connectorCount: acceptedSnapshot.artifact.connectors.length,
+    resolvedConnectorCount: connectorSlugs.length,
+  });
+  const { state, created } = connectorRuntimeState(
+    acceptedSnapshot,
+    args.timing,
+  );
+  const missingConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+    return !state.connectors.has(connectorSlug);
+  });
+  const cacheMiss = created || missingConnectorSlugs.length > 0;
+  args.timing.recordRuntimeCacheOutcome(cacheMiss ? "miss" : "hit");
+  args.timing.recordMaterializedConnectorCount(missingConnectorSlugs.length);
+  if (cacheMiss) {
+    args.timing.measureSync(
+      "api_dispatch_connector_catalog_materialize_runtime_snapshot",
+      () => {
+        for (const connectorSlug of missingConnectorSlugs) {
+          materializeConnectorRuntimeEntry(
+            state.acceptedSnapshot,
+            state.connectors,
+            connectorSlug,
+          );
+        }
+      },
+    );
+  }
+  return {
+    catalogIdentity: acceptedSnapshot.identity,
+    connectors: selectedRuntimeConnectors(state, connectorSlugs),
+    serverFirewalls: selectConnectorServerFirewalls({
+      catalog: state.serverFirewalls,
+      connectorSlugs,
+    }),
+    serverFirewallMetadata: selectConnectorServerFirewalls({
+      catalog: state.serverFirewalls,
+      connectorSlugs: uniqueSortedConnectorSlugs([
+        ...connectorSlugs,
+        ...args.metadataConnectorSlugs,
+      ]),
+    }),
+  };
+}
+
+interface RuntimeSelectionLoad {
+  readonly selection: ConnectorRuntimeSelection;
+  readonly source: "projection" | "full_fallback";
+  readonly fallbackReason?: ConnectorCatalogRuntimeProjectionFallbackReason;
+}
+
+interface RuntimeSelectionBuildResult {
+  readonly key: string;
+  readonly load: RuntimeSelectionLoad;
+  readonly cacheable: boolean;
+}
+
+interface RuntimeSelectionCache {
+  completed:
+    | {
+        readonly key: string;
+        readonly load: RuntimeSelectionLoad;
+      }
+    | undefined;
+  inFlight:
+    | {
+        readonly key: string;
+        readonly promise: Promise<RuntimeSelectionBuildResult>;
+      }
+    | undefined;
+}
+
+const runtimeSelectionCache = singleton((): RuntimeSelectionCache => {
+  return { completed: undefined, inFlight: undefined };
+});
+
+async function completeRuntimeSelectionFallback(args: {
+  readonly db: ReadonlyDb;
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+  readonly reason: ConnectorCatalogRuntimeProjectionFallbackReason;
+}): Promise<RuntimeSelectionLoad> {
+  return {
+    selection: await loadCompleteRuntimeSelection(args),
+    source: "full_fallback",
+    fallbackReason: args.reason,
+  };
+}
+
+async function completeRuntimeSelectionBuildFallback(args: {
+  readonly db: ReadonlyDb;
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+  readonly key: string;
+  readonly reason: ConnectorCatalogRuntimeProjectionFallbackReason;
+}): Promise<RuntimeSelectionBuildResult> {
+  return {
+    key: args.key,
+    cacheable: false,
+    load: await completeRuntimeSelectionFallback(args),
+  };
+}
+
+function materializeProjectedRuntimeSelection(args: {
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly projection: ConnectorCatalogRuntimeProjectionReadyIdentity;
+  readonly connectors: readonly ConnectorCatalogArtifactConnector[];
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): ConnectorRuntimeSelection {
+  const selection = args.timing.measureSync(
+    "api_dispatch_connector_catalog_materialize_projection",
+    () => {
+      return runtimeSelectionFromProjectedConnectors(args);
+    },
+  );
+  args.timing.recordMaterializedConnectorCount(selection.connectors.size);
+  return selection;
+}
+
+async function buildProjectedRuntimeSelection(args: {
+  readonly db: ReadonlyDb;
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly projection: ConnectorCatalogRuntimeProjectionReadyIdentity;
+  readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
+  readonly metadataConnectorSlugs: readonly ConnectorSlug[];
+}): Promise<RuntimeSelectionBuildResult> {
+  let projection = args.projection;
+  const selectedConnectorSlugs = requestedProjectionConnectorSlugs(args);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const key = runtimeSelectionProjectionKey({
+      identity: projection.identity,
+      runtimeConnectorSlugs: args.runtimeConnectorSlugs,
+      metadataConnectorSlugs: args.metadataConnectorSlugs,
+    });
+    const rows = await args.timing.measure(
+      "api_dispatch_connector_catalog_query_projection_rows",
+      async () => {
+        return await readConnectorCatalogRuntimeProjectionRows({
+          db: args.db,
+          projection,
+          connectorSlugs: selectedConnectorSlugs,
+        });
+      },
+    );
+    if (rows.kind === "fallback") {
+      return await completeRuntimeSelectionBuildFallback({
+        ...args,
+        key,
+        reason: rows.reason,
+      });
+    }
+    if (rows.missingConnectorSlugs.length === 0) {
+      const selection = materializeProjectedRuntimeSelection({
+        ...args,
+        projection,
+        connectors: rows.connectors,
+      });
+      return {
+        key,
+        cacheable: true,
+        load: {
+          selection,
+          source: "projection",
+        },
+      };
+    }
+    const actualConnectorCount = await args.timing.measure(
+      "api_dispatch_connector_catalog_count_projection_rows",
+      async () => {
+        return await countConnectorCatalogRuntimeProjectionRows({
+          db: args.db,
+          identity: projection.identity,
+        });
+      },
+    );
+    const confirmedRows =
+      actualConnectorCount === projection.identity.connectorCount
+        ? await args.timing.measure(
+            "api_dispatch_connector_catalog_query_projection_rows",
+            async () => {
+              return await readConnectorCatalogRuntimeProjectionRows({
+                db: args.db,
+                projection,
+                connectorSlugs: rows.missingConnectorSlugs,
+              });
+            },
+          )
+        : undefined;
+    const latest = await args.timing.measure(
+      "api_dispatch_connector_catalog_query_projection_identity",
+      async () => {
+        return await readConnectorCatalogRuntimeProjectionIdentity(args.db);
+      },
+    );
+    if (latest.kind === "fallback") {
+      return await completeRuntimeSelectionBuildFallback({
+        ...args,
+        key,
+        reason: latest.reason,
+      });
+    }
+    if (
+      projectionIdentityKey(latest.projection.identity) !==
+      projectionIdentityKey(projection.identity)
+    ) {
+      if (attempt === 0) {
+        projection = latest.projection;
+        continue;
+      }
+      return await completeRuntimeSelectionBuildFallback({
+        ...args,
+        key,
+        reason: "unstable",
+      });
+    }
+    if (actualConnectorCount !== projection.identity.connectorCount) {
+      return await completeRuntimeSelectionBuildFallback({
+        ...args,
+        key,
+        reason: "incomplete",
+      });
+    }
+    if (confirmedRows?.kind === "fallback") {
+      return await completeRuntimeSelectionBuildFallback({
+        ...args,
+        key,
+        reason: confirmedRows.reason,
+      });
+    }
+    const selection = materializeProjectedRuntimeSelection({
+      ...args,
+      projection,
+      connectors: [...rows.connectors, ...(confirmedRows?.connectors ?? [])],
+    });
+    return {
+      key,
+      cacheable: true,
+      load: {
+        selection,
+        source: "projection",
+      },
+    };
+  }
+  throw new Error("Connector runtime projection retry exhausted");
+}
+
+function clearRuntimeSelectionInFlight(
+  cache: RuntimeSelectionCache,
+  key: string,
+  promise: Promise<RuntimeSelectionBuildResult>,
+): void {
+  if (cache.inFlight?.key === key && cache.inFlight.promise === promise) {
+    cache.inFlight = undefined;
+  }
+}
+
 export async function loadConnectorRuntimeSelection(
   db: ReadonlyDb,
   options: {
     readonly timing: ApiDispatchTimingCollector;
     readonly requestedConnectorSlugs: readonly ConnectorSlug[];
+    readonly metadataConnectorSlugs?: readonly ConnectorSlug[];
   },
 ): Promise<ConnectorRuntimeSelection> {
+  const runtimeConnectorSlugs = uniqueSortedConnectorSlugs(
+    options.requestedConnectorSlugs,
+  );
+  const metadataConnectorSlugs = uniqueSortedConnectorSlugs(
+    options.metadataConnectorSlugs ?? [],
+  );
   const timing = new ConnectorCatalogLoadTiming(
     options.timing,
     options.requestedConnectorSlugs.length,
+    options.metadataConnectorSlugs?.length ?? 0,
   );
   return await timing.measureComplete(async () => {
-    const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
+    const identity = await timing.measure(
+      "api_dispatch_connector_catalog_query_projection_identity",
+      async () => {
+        return await readConnectorCatalogRuntimeProjectionIdentity(db);
+      },
+    );
+    if (identity.kind === "fallback") {
+      const load = await completeRuntimeSelectionFallback({
+        db,
+        timing,
+        runtimeConnectorSlugs,
+        metadataConnectorSlugs,
+        reason: identity.reason,
+      });
+      timing.recordProjectionResult({
+        source: load.source,
+        cacheOutcome: "not_applicable",
+        fallbackReason: load.fallbackReason,
+      });
+      return load.selection;
+    }
+    const key = runtimeSelectionProjectionKey({
+      identity: identity.projection.identity,
+      runtimeConnectorSlugs,
+      metadataConnectorSlugs,
+    });
+    const cache = runtimeSelectionCache();
+    if (cache.completed?.key === key) {
+      timing.recordMaterializedConnectorCount(0);
+      timing.recordProjectionResult({
+        source: cache.completed.load.source,
+        cacheOutcome: "hit",
+        fallbackReason: cache.completed.load.fallbackReason,
+      });
+      return cache.completed.load.selection;
+    }
+    if (cache.inFlight?.key === key) {
+      const result = await cache.inFlight.promise;
+      timing.recordMaterializedConnectorCount(0);
+      timing.recordProjectionResult({
+        source: result.load.source,
+        cacheOutcome: "in_flight",
+        fallbackReason: result.load.fallbackReason,
+      });
+      return result.load.selection;
+    }
+    const promise = buildProjectedRuntimeSelection({
       db,
       timing,
-    );
-    const connectorSlugs = acceptedRequestedConnectorSlugs(
-      acceptedSnapshot,
-      options.requestedConnectorSlugs,
-    );
-    timing.recordCatalogFacts({
-      rawSize: acceptedSnapshot.catalogRawSize,
-      compressedSize: acceptedSnapshot.catalogCompressedSize,
-      connectorCount: acceptedSnapshot.artifact.connectors.length,
-      resolvedConnectorCount: connectorSlugs.length,
+      projection: identity.projection,
+      runtimeConnectorSlugs,
+      metadataConnectorSlugs,
     });
-    const { state, created } = connectorRuntimeState(acceptedSnapshot, timing);
-    const missingConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
-      return !state.connectors.has(connectorSlug);
+    cache.inFlight = { key, promise };
+    const result = await onRejection(promise, () => {
+      clearRuntimeSelectionInFlight(cache, key, promise);
     });
-    const cacheMiss = created || missingConnectorSlugs.length > 0;
-    timing.recordRuntimeCacheOutcome(cacheMiss ? "miss" : "hit");
-    timing.recordMaterializedConnectorCount(missingConnectorSlugs.length);
-    if (cacheMiss) {
-      timing.measureSync(
-        "api_dispatch_connector_catalog_materialize_runtime_snapshot",
-        () => {
-          for (const connectorSlug of missingConnectorSlugs) {
-            materializeConnectorRuntimeEntry(
-              state.acceptedSnapshot,
-              state.connectors,
-              connectorSlug,
-            );
-          }
-        },
-      );
+    clearRuntimeSelectionInFlight(cache, key, promise);
+    if (result.cacheable) {
+      cache.completed = { key: result.key, load: result.load };
     }
-    const connectors = selectedRuntimeConnectors(state, connectorSlugs);
-    return {
-      catalogIdentity: acceptedSnapshot.identity,
-      connectors,
-      serverFirewalls: selectConnectorServerFirewalls({
-        catalog: state.serverFirewalls,
-        connectorSlugs,
-      }),
-      serverFirewallMetadata: state.serverFirewalls,
-    };
+    timing.recordProjectionResult({
+      source: result.load.source,
+      cacheOutcome: "miss",
+      fallbackReason: result.load.fallbackReason,
+    });
+    return result.load.selection;
   });
 }
 
