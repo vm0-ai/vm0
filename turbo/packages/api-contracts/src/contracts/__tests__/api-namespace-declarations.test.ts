@@ -60,7 +60,12 @@ describe("branded API namespace declarations", () => {
       return brandedApiNamespace(path) !== undefined;
     });
 
-    expect(brandedRoutes.length).toBeGreaterThan(100);
+    // A floor, not a snapshot: #28278 moves branded families off the namespace
+    // one slice at a time (the billing slice #28457 alone dropped 34 routes),
+    // so the exact count shrinks as slices land. The floor must stay below the
+    // remaining branded count while still proving the barrel walk reaches a
+    // broad set of declarations rather than a handful of samples.
+    expect(brandedRoutes.length).toBeGreaterThan(50);
     expect(
       brandedRoutes.some(({ method, path }) => {
         return method === "POST" && path === "/api/okou/slack/events";
