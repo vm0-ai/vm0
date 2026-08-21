@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use nix::fcntl::Flock;
@@ -11,7 +10,7 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::types::MAX_HELD_WORKSPACE_STATES;
 
-use super::entry::is_cache_key_name;
+use super::entry::{CacheEntryPaths, is_cache_key_name};
 use super::fs::{
     allocated_bytes, cache_entry_dir_is_dir, entry_file_type_is_dir,
     fs_stats_with_additional_available, is_workspace_tmp_path_name,
@@ -34,7 +33,7 @@ pub(super) struct GcCandidate {
 
 struct GcCacheEntry {
     cache_key: String,
-    entry_dir: PathBuf,
+    paths: CacheEntryPaths,
 }
 
 #[derive(Default)]
@@ -210,7 +209,7 @@ impl WorkspaceImageCache {
                     result?
                 }
                 None => GcEntryInventory {
-                    candidate: self.gc_candidate(entry.cache_key.clone()).await,
+                    candidate: self.gc_candidate_for_entry(&entry).await,
                     ..GcEntryInventory::default()
                 },
             };
@@ -229,8 +228,8 @@ impl WorkspaceImageCache {
         entry: &GcCacheEntry,
         dry_run: bool,
     ) -> RunnerResult<GcEntryInventory> {
-        let current = self.workspace_image_cache_current_image(&entry.cache_key);
-        let current_metadata = match fs::symlink_metadata(&current).await {
+        let current = entry.paths.current_image();
+        let current_metadata = match fs::symlink_metadata(current).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return self
@@ -239,8 +238,8 @@ impl WorkspaceImageCache {
             }
             Err(e) => return Err(e.into()),
         };
-        let metadata_path = self.workspace_image_cache_metadata(&entry.cache_key);
-        let metadata = match self.read_metadata_file(&metadata_path).await {
+        let metadata_path = entry.paths.metadata();
+        let metadata = match self.read_metadata_file(metadata_path).await {
             Ok(metadata) => metadata,
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 return self
@@ -282,6 +281,7 @@ impl WorkspaceImageCache {
         let candidate = self
             .gc_candidate_from_observation(
                 entry.cache_key.clone(),
+                &entry.paths,
                 current_metadata,
                 metadata.last_used_at,
             )
@@ -298,7 +298,7 @@ impl WorkspaceImageCache {
         dry_run: bool,
         reason: GcWholeEntryReason,
     ) -> RunnerResult<GcEntryInventory> {
-        let allocated = workspace_cache_path_allocated_bytes(&entry.entry_dir).await;
+        let allocated = workspace_cache_path_allocated_bytes(entry.paths.entry_dir()).await;
         if dry_run {
             match &reason {
                 GcWholeEntryReason::Stale => info!(
@@ -319,7 +319,7 @@ impl WorkspaceImageCache {
             });
         }
 
-        match fs::remove_dir_all(&entry.entry_dir).await {
+        match fs::remove_dir_all(entry.paths.entry_dir()).await {
             Ok(()) => {
                 match &reason {
                     GcWholeEntryReason::Stale => info!(
@@ -342,14 +342,14 @@ impl WorkspaceImageCache {
             Err(e) => match &reason {
                 GcWholeEntryReason::Stale => warn!(
                     cache_key = entry.cache_key,
-                    path = %entry.entry_dir.display(),
+                    path = %entry.paths.entry_dir().display(),
                     error = %e,
                     "failed to delete stale workspace image cache entry"
                 ),
                 GcWholeEntryReason::Unusable(reason) => warn!(
                     cache_key = entry.cache_key,
                     reason,
-                    path = %entry.entry_dir.display(),
+                    path = %entry.paths.entry_dir().display(),
                     error = %e,
                     "failed to delete unusable workspace image cache entry"
                 ),
@@ -357,7 +357,7 @@ impl WorkspaceImageCache {
         }
 
         let pre_cleanup_freed_bytes = self.gc_temporary_paths(entry, false).await?;
-        let candidate = self.gc_candidate(entry.cache_key.clone()).await;
+        let candidate = self.gc_candidate_for_entry(entry).await;
         Ok(GcEntryInventory {
             pre_cleanup_freed_bytes,
             candidate,
@@ -404,7 +404,7 @@ impl WorkspaceImageCache {
             }
             return Ok(Some(GcCacheEntry {
                 cache_key,
-                entry_dir: entry.path(),
+                paths: CacheEntryPaths::from_entry_dir(entry.path()),
             }));
         }
         Ok(None)
@@ -418,7 +418,7 @@ impl WorkspaceImageCache {
         else {
             return Ok(None);
         };
-        if !cache_entry_dir_is_dir(&entry.entry_dir).await? {
+        if !cache_entry_dir_is_dir(entry.paths.entry_dir()).await? {
             return Ok(None);
         }
         Ok(Some(lock))
@@ -458,7 +458,7 @@ impl WorkspaceImageCache {
 
     async fn gc_temporary_paths(&self, entry: &GcCacheEntry, dry_run: bool) -> RunnerResult<u64> {
         let mut freed: u64 = 0;
-        let mut files = match fs::read_dir(&entry.entry_dir).await {
+        let mut files = match fs::read_dir(entry.paths.entry_dir()).await {
             Ok(files) => files,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
             Err(e) => return Err(e.into()),
@@ -512,7 +512,7 @@ impl WorkspaceImageCache {
         };
         let mut candidates = Vec::new();
         while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
-            let Some(candidate) = self.gc_candidate(entry.cache_key).await else {
+            let Some(candidate) = self.gc_candidate_for_entry(&entry).await else {
                 continue;
             };
             candidates.push(candidate);
@@ -523,12 +523,11 @@ impl WorkspaceImageCache {
     async fn gc_candidate_from_observation(
         &self,
         cache_key: String,
+        paths: &CacheEntryPaths,
         file_metadata: std::fs::Metadata,
         last_used_at: String,
     ) -> GcCandidate {
-        let sidecar_allocated = self
-            .session_history_sidecar_allocated_bytes(&cache_key)
-            .await;
+        let sidecar_allocated = self.session_history_sidecar_allocated_bytes(paths).await;
         GcCandidate {
             cache_key,
             allocated_bytes: allocated_bytes(&file_metadata).saturating_add(sidecar_allocated),
@@ -538,25 +537,37 @@ impl WorkspaceImageCache {
         }
     }
 
-    pub(super) async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
-        let entry_dir = self.workspace_image_cache_entry_dir(&cache_key);
-        if !cache_entry_dir_is_dir(&entry_dir).await.ok()? {
+    async fn gc_candidate_for_entry(&self, entry: &GcCacheEntry) -> Option<GcCandidate> {
+        if !cache_entry_dir_is_dir(entry.paths.entry_dir()).await.ok()? {
             return None;
         }
-        let metadata_path = self.workspace_image_cache_metadata(&cache_key);
-        let current_path = self.workspace_image_cache_current_image(&cache_key);
-        let file_metadata = fs::symlink_metadata(&current_path).await.ok()?;
+        let file_metadata = fs::symlink_metadata(entry.paths.current_image())
+            .await
+            .ok()?;
         if !file_metadata.is_file() {
             return None;
         }
-        let last_used_at = match self.read_metadata_file(&metadata_path).await {
+        let last_used_at = match self.read_metadata_file(entry.paths.metadata()).await {
             Ok(metadata) => metadata.last_used_at,
             Err(_) if self.inner.cache_scope.is_empty() => String::new(),
             Err(_) => return None,
         };
         Some(
-            self.gc_candidate_from_observation(cache_key, file_metadata, last_used_at)
-                .await,
+            self.gc_candidate_from_observation(
+                entry.cache_key.clone(),
+                &entry.paths,
+                file_metadata,
+                last_used_at,
+            )
+            .await,
         )
+    }
+
+    pub(super) async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
+        let entry = GcCacheEntry {
+            paths: self.entry_paths(&cache_key),
+            cache_key,
+        };
+        self.gc_candidate_for_entry(&entry).await
     }
 }

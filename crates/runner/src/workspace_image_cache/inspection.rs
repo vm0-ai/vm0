@@ -116,14 +116,15 @@ impl WorkspaceImageCache {
                 }));
             }
         };
-        if !cache_entry_dir_is_dir(&entry_dir).await? {
+        let entry_paths = super::entry::CacheEntryPaths::from_entry_dir(entry_dir);
+        if !cache_entry_dir_is_dir(entry_paths.entry_dir()).await? {
             drop(lock);
             return Ok(None);
         }
-        let temporary = inspect_temporary_paths(&entry_dir).await?;
+        let temporary = inspect_temporary_paths(entry_paths.entry_dir()).await?;
 
-        let current = self.workspace_image_cache_current_image(&cache_key);
-        let current_metadata = match fs::symlink_metadata(&current).await {
+        let current = entry_paths.current_image();
+        let current_metadata = match fs::symlink_metadata(current).await {
             Ok(metadata) => Some(metadata),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {
@@ -131,8 +132,8 @@ impl WorkspaceImageCache {
                 return Err(e.into());
             }
         };
-        let metadata_path = self.workspace_image_cache_metadata(&cache_key);
-        let (metadata, metadata_read_error) = match self.read_metadata_file(&metadata_path).await {
+        let metadata_path = entry_paths.metadata();
+        let (metadata, metadata_read_error) = match self.read_metadata_file(metadata_path).await {
             Ok(metadata) => (Some(metadata), None),
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => (None, None),
             Err(RunnerError::Internal(_)) => (None, None),
@@ -140,13 +141,13 @@ impl WorkspaceImageCache {
         };
         let current_allocated_bytes = match current_metadata.as_ref() {
             Some(metadata) if metadata.is_dir() => {
-                workspace_cache_path_allocated_bytes(&current).await
+                workspace_cache_path_allocated_bytes(current).await
             }
             Some(metadata) => allocated_bytes(metadata),
             None => 0,
         };
         let persistent_allocated_bytes = current_allocated_bytes.saturating_add(
-            self.session_history_sidecar_allocated_bytes(&cache_key)
+            self.session_history_sidecar_allocated_bytes(&entry_paths)
                 .await,
         );
 
