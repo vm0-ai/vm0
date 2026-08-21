@@ -447,6 +447,7 @@ async function seedRunOwnershipForAction(
     runId,
     orgId: run.orgId,
     userId: run.userId,
+    publicBrand: "vm0",
     name: "cleanup-browser",
     status: "suspended",
     timeoutMinutes: 30,

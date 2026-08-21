@@ -83,13 +83,7 @@ export const browserSessions = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    // Old API after migration compatibility for the observed ~102-minute
-    // DB/API rollout window. Remove the default after old writers and rollback
-    // have drained; tracked by #28449.
-    publicBrand: text("public_brand")
-      .$type<PublicBrand>()
-      .default("vm0")
-      .notNull(),
+    publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     // Nullable compatibility references let the current API omit legacy
     // profile identity while preserving the previous API's statement shapes.
