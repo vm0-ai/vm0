@@ -65,6 +65,8 @@ const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
 const FAL_FLUX_MEDIA_URL = "https://fal.media/files/test/flux-redux.jpg";
 const FAL_QWEN_IMAGE_3_URL =
   "https://queue.fal.run/alibaba/qwen-image-3/text-to-image";
+const FAL_QWEN_IMAGE_3_EDIT_URL =
+  "https://queue.fal.run/alibaba/qwen-image-3/edit";
 const FAL_QWEN_IMAGE_3_MEDIA_URL =
   "https://fal.media/files/test/qwen-image-3.png";
 const FAL_NANO_BANANA_2_URL = "https://queue.fal.run/fal-ai/nano-banana-2";
@@ -2031,6 +2033,107 @@ describe("POST /api/image-io/generate", () => {
     });
     await expect(orgCredits(fixture)).resolves.toBe(
       1000 - FAL_QWEN_IMAGE_3_HIGH_TIER_CREDITS,
+    );
+  });
+
+  it("edits with Qwen Image 3 through fal and caps its reference images at three", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: QWEN_IMAGE_3_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let falCalls = 0;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_3_EDIT_URL, async ({ request }) => {
+        falCalls += 1;
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("qwen-image-3-edit-request"));
+      }),
+      http.get(FAL_QWEN_IMAGE_3_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const rejected = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "merge these four references",
+        model: "qwen-image-3",
+        imageUrls: [
+          MOCKUP_IMAGE_URL,
+          SECOND_MOCKUP_IMAGE_URL,
+          THIRD_MOCKUP_IMAGE_URL,
+          "https://example.com/mockup-4.png",
+        ],
+      }),
+    });
+
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toStrictEqual({
+      error: {
+        message: "imageUrls supports at most 3 images",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(falCalls).toBe(0);
+
+    const sourceImageUrls = [
+      MOCKUP_IMAGE_URL,
+      SECOND_MOCKUP_IMAGE_URL,
+      THIRD_MOCKUP_IMAGE_URL,
+    ];
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle the product shot to match the reference lighting",
+        model: "qwen-image-3",
+        imageUrls: sourceImageUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_QWEN_IMAGE_3_MEDIA_URL,
+          width: 1024,
+          height: 768,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      creditsCharged: FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
+      model: "alibaba/qwen-image-3/text-to-image",
+      billingCategory: "output_image.1k",
+      sourceUrl: FAL_QWEN_IMAGE_3_MEDIA_URL,
+    });
+    expect(falCalls).toBe(1);
+    expect(observedBody).toMatchObject({ image_urls: sourceImageUrls });
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
     );
   });
 
