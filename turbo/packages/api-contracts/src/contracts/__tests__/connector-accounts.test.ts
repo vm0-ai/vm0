@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   connectorAccountDisplayNameSchema,
+  connectorAccountDeleteResolutionSchema,
+  connectorAccountListQuerySchema,
   connectorAccountMutationIntentSchema,
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
@@ -75,5 +77,51 @@ describe("connector account contracts", () => {
       connectionId,
       target: { kind: "custom", customConnectorId },
     });
+  });
+
+  it("requires one target for bounded account detail queries", () => {
+    expect(
+      connectorAccountListQuerySchema.parse({
+        kind: "builtin",
+        connectorSlug: "github",
+        limit: "100",
+        search: "  work  ",
+      }),
+    ).toStrictEqual({
+      kind: "builtin",
+      connectorSlug: "github",
+      limit: 100,
+      search: "work",
+    });
+    expect(
+      connectorAccountListQuerySchema.safeParse({
+        kind: "custom",
+        connectorSlug: "github",
+        customConnectorId,
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorAccountListQuerySchema.safeParse({
+        kind: "builtin",
+        connectorSlug: "github",
+        limit: 101,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires an explicit sparse-selection deletion resolution", () => {
+    expect(
+      connectorAccountDeleteResolutionSchema.parse({ kind: "clear" }),
+    ).toStrictEqual({ kind: "clear" });
+    expect(
+      connectorAccountDeleteResolutionSchema.parse({
+        kind: "reassign",
+        connectionId,
+      }),
+    ).toStrictEqual({ kind: "reassign", connectionId });
+    expect(
+      connectorAccountDeleteResolutionSchema.safeParse({ kind: "reassign" })
+        .success,
+    ).toBe(false);
   });
 });
