@@ -1158,16 +1158,17 @@ function ModelFirstModelPickerContentLayout({
   return (
     <SelectContent
       className={cn(
+        // The same width every model picker uses. The wider panel width was
+        // there for the media rows' variant segments, which sat beside the
+        // model name; now that a family contributes one row, the widest row is
+        // a name beside a badge again.
+        "min-w-[260px]",
         mediaModelPanel
-          ? // One width for every category, so switching tabs never resizes the
-            // popover: it is sized for the chat rows, which carry a provider
-            // label and a price tier badge beside the model name. The 294px
-            // bordered cap leaves a 292px scroll viewport: enough for the
-            // compact header and seven model rows, while an eighth adds one
-            // 32px row plus its 4px gap. The max-width only bites below a 348px
-            // viewport, where 332px would otherwise run past the screen edge.
-            "max-h-[294px] min-w-[332px] max-w-[calc(100vw-1rem)]"
-          : "max-h-[280px] min-w-[260px]",
+          ? // The 294px bordered cap leaves a 292px scroll viewport: enough for
+            // the compact header and seven model rows, while an eighth adds one
+            // 32px row plus its 4px gap.
+            "max-h-[294px]"
+          : "max-h-[280px]",
       )}
     >
       {/* A media-model panel replaces the model rows, so keep the selected run
