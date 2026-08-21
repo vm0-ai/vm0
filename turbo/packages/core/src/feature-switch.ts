@@ -378,6 +378,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
   },
+  [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Re-read every composer block from the live contenteditable before serializing a submission, recovering text a broken mobile composition left only in the DOM, and report each recovery.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
