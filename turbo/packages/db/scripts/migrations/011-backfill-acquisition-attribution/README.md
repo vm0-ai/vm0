@@ -19,7 +19,3 @@ The script is dry-run by default. It checks that every acquisition column is
 present before reading targets. Apply mode only updates rows whose
 `acquisition_recorded_at` is still null, making retries idempotent and keeping
 live first-touch writes authoritative.
-
-Run it through the manual **Backfill Acquisition Attribution** GitHub Action.
-Review the dry-run summary and sanitized JSON artifact before selecting
-`mode=apply` and `confirmed_apply=yes`.
