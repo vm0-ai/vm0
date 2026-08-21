@@ -343,6 +343,86 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28461
+  "/api/agents": ["/api/okou/agents", "/api/zero/agents"],
+  "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
+  "/api/agents/:id/custom-connectors": [
+    "/api/okou/agents/:id/custom-connectors",
+    "/api/zero/agents/:id/custom-connectors",
+  ],
+  "/api/agents/:id/draft": [
+    "/api/okou/agents/:id/draft",
+    "/api/zero/agents/:id/draft",
+  ],
+  "/api/agents/:id/instructions": [
+    "/api/okou/agents/:id/instructions",
+    "/api/zero/agents/:id/instructions",
+  ],
+  "/api/agents/:id/user-connectors": [
+    "/api/okou/agents/:id/user-connectors",
+    "/api/zero/agents/:id/user-connectors",
+  ],
+  "/api/morning-brief/trigger": [
+    "/api/okou/morning-brief/trigger",
+    "/api/zero/morning-brief/trigger",
+  ],
+  "/api/workflow-automations": [
+    "/api/okou/workflow-automations",
+    "/api/zero/workflow-automations",
+  ],
+  "/api/workflow-automations/:id": [
+    "/api/okou/workflow-automations/:id",
+    "/api/zero/workflow-automations/:id",
+  ],
+  "/api/workflow-automations/:id/disable": [
+    "/api/okou/workflow-automations/:id/disable",
+    "/api/zero/workflow-automations/:id/disable",
+  ],
+  "/api/workflow-automations/:id/enable": [
+    "/api/okou/workflow-automations/:id/enable",
+    "/api/zero/workflow-automations/:id/enable",
+  ],
+  "/api/workflow-automations/:id/run": [
+    "/api/okou/workflow-automations/:id/run",
+    "/api/zero/workflow-automations/:id/run",
+  ],
+  "/api/workflow-automations/:id/webhook-secret": [
+    "/api/okou/workflow-automations/:id/webhook-secret",
+    "/api/zero/workflow-automations/:id/webhook-secret",
+  ],
+  "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
+  "/api/workflows/:workflowId": [
+    "/api/okou/workflows/:workflowId",
+    "/api/zero/workflows/:workflowId",
+  ],
+  "/api/workflows/:workflowId/automations": [
+    "/api/okou/workflows/:workflowId/automations",
+    "/api/zero/workflows/:workflowId/automations",
+  ],
+  "/api/workflows/:workflowId/chat-thread": [
+    "/api/okou/workflows/:workflowId/chat-thread",
+    "/api/zero/workflows/:workflowId/chat-thread",
+  ],
+  "/api/workflows/:workflowId/connector-readiness": [
+    "/api/okou/workflows/:workflowId/connector-readiness",
+    "/api/zero/workflows/:workflowId/connector-readiness",
+  ],
+  "/api/workflows/:workflowId/copy": [
+    "/api/okou/workflows/:workflowId/copy",
+    "/api/zero/workflows/:workflowId/copy",
+  ],
+  "/api/workflows/:workflowId/demote": [
+    "/api/okou/workflows/:workflowId/demote",
+    "/api/zero/workflows/:workflowId/demote",
+  ],
+  "/api/workflows/:workflowId/publish": [
+    "/api/okou/workflows/:workflowId/publish",
+    "/api/zero/workflows/:workflowId/publish",
+  ],
+  "/api/workflows/:workflowId/run": [
+    "/api/okou/workflows/:workflowId/run",
+    "/api/zero/workflows/:workflowId/run",
+  ],
 };
 
 function missingBrandedPaths(

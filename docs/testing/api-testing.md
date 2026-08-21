@@ -38,8 +38,8 @@ function apiClient() {
   return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
-describe("GET /api/okou/agents", () => {
-  it("returns an agent created through POST /api/okou/agents", async () => {
+describe("GET /api/agents", () => {
+  it("returns an agent created through POST /api/agents", async () => {
     context.mocks.clerk.session("user_api_test", "org_api_test");
     context.mocks.s3.send.mockResolvedValue({});
 

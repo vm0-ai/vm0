@@ -193,7 +193,7 @@ function stubAgentConnectors(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/okou/agents/${AGENT_ID}/user-connectors`, () => {
+    http.get(`${baseUrl}/api/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,

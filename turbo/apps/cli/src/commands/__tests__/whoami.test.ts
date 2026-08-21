@@ -601,7 +601,7 @@ describe("okou whoami command", () => {
           }),
         ]),
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
@@ -687,7 +687,7 @@ describe("okou whoami command", () => {
           }),
         ]),
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["server-only"],
@@ -747,7 +747,7 @@ describe("okou whoami command", () => {
         }),
         mockUserPermissionGrantsHandler(),
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -813,7 +813,7 @@ describe("okou whoami command", () => {
           },
         ),
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -882,7 +882,7 @@ describe("okou whoami command", () => {
         }),
         mockUserPermissionGrantsHandler(),
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -961,7 +961,7 @@ describe("okou whoami command", () => {
         ]),
         // user-connectors API fails
         http.get(
-          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json(
               { error: { message: "Forbidden", code: "FORBIDDEN" } },

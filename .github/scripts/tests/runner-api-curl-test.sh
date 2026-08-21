@@ -155,7 +155,7 @@ assert_file_excludes "$stderr_file" "sensitive-request-payload"
 assert_file_excludes "$stderr_file" "sensitive-query-value"
 
 MOCK_CURL_MODE=no-fail-with-body
-MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/agents/agent-1"
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/agents/agent-1"
 MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fokou%%2Fagents%%2Fagent-1+status%%3A%{http_code}&timeline=past12Hours\n'
 if delete_runner_agent_for_stage0_teardown "agent-1" \
     >"$stdout_file" 2>"$stderr_file"; then

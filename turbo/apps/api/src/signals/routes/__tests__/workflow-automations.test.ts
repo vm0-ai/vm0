@@ -2445,7 +2445,7 @@ describe("okou workflow automations", () => {
     const response = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/workflows/${workflowId}/automations`, {
+    }).request(`/api/workflows/${workflowId}/automations`, {
       method: "POST",
       headers: {
         ...authHeaders(),
@@ -3084,7 +3084,7 @@ describe("okou workflow automations", () => {
     const failedEnable = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/workflow-automations/${created.body.id}/enable`, {
+    }).request(`/api/workflow-automations/${created.body.id}/enable`, {
       method: "POST",
       headers: authHeaders(),
     });

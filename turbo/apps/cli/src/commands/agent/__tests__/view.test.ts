@@ -120,11 +120,11 @@ describe("okou agent view command", () => {
   describe("successful view", () => {
     it("should display agent info", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -144,14 +144,14 @@ describe("okou agent view command", () => {
 
     it("should display preset avatar", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
             avatarUrl: "preset:2",
           });
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
@@ -170,14 +170,14 @@ describe("okou agent view command", () => {
 
     it("should display custom svg avatar", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
             avatarUrl: "svg:r3s4h1c2f5h",
           });
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
@@ -196,14 +196,14 @@ describe("okou agent view command", () => {
 
     it("should not display avatar when null", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
             avatarUrl: null,
           });
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
@@ -219,11 +219,11 @@ describe("okou agent view command", () => {
 
     it("should resolve connector summary from connector defaults", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
@@ -259,11 +259,11 @@ describe("okou agent view command", () => {
             return HttpResponse.json({ permissions: serverOnlyDetail });
           },
         ),
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["server-only"],
@@ -282,18 +282,18 @@ describe("okou agent view command", () => {
 
     it("should show instructions content with --instructions flag", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/instructions",
+          "http://localhost:3000/api/agents/my-agent/instructions",
           () => {
             return HttpResponse.json({
               content: "Do the thing",
@@ -316,18 +316,18 @@ describe("okou agent view command", () => {
 
     it("should show empty instructions message when no instructions set", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/instructions",
+          "http://localhost:3000/api/agents/my-agent/instructions",
           () => {
             return HttpResponse.json({ content: null, filename: null });
           },
@@ -349,13 +349,13 @@ describe("okou agent view command", () => {
   describe("--permissions flag", () => {
     it("should show detailed permissions with allow/deny icons", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
           });
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
@@ -392,11 +392,11 @@ describe("okou agent view command", () => {
 
     it("should show full access for connectors without policies", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -417,11 +417,11 @@ describe("okou agent view command", () => {
 
     it("should handle connectors without permissions gracefully", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["custom-connector"],
@@ -446,11 +446,11 @@ describe("okou agent view command", () => {
   describe("connector identity", () => {
     it("should show identity in connector summary line", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -466,11 +466,11 @@ describe("okou agent view command", () => {
 
     it("should show full identity in permissions detail", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -491,11 +491,11 @@ describe("okou agent view command", () => {
 
     it("should work without identity when connector API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -517,11 +517,11 @@ describe("okou agent view command", () => {
 
     it("should skip identity for connectors without identity data", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -548,11 +548,11 @@ describe("okou agent view command", () => {
 
     it("should show needs reconnect warning in identity line", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -576,11 +576,11 @@ describe("okou agent view command", () => {
 
     it("should show email-only identity when no username", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -603,7 +603,7 @@ describe("okou agent view command", () => {
   describe("error handling", () => {
     it("should handle not found error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/missing", () => {
+        http.get("http://localhost:3000/api/agents/missing", () => {
           return HttpResponse.json(
             { error: { message: "Agent not found", code: "NOT_FOUND" } },
             { status: 404 },
@@ -620,11 +620,11 @@ describe("okou agent view command", () => {
 
     it("should fail instead of treating permission API errors as no metadata", async () => {
       server.use(
-        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
         http.get(
-          "http://localhost:3000/api/okou/agents/my-agent/user-connectors",
+          "http://localhost:3000/api/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },

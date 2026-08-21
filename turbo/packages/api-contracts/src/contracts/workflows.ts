@@ -1609,7 +1609,7 @@ const workflowIdParams = z.object({ workflowId: z.string().uuid() });
 export const workflowsCollectionContract = c.router({
   list: {
     method: "GET",
-    path: "/api/okou/workflows",
+    path: "/api/workflows",
     headers: authHeadersSchema,
     query: z.object({ agentId: z.string().uuid().optional() }),
     responses: {
@@ -1621,7 +1621,7 @@ export const workflowsCollectionContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/okou/workflows",
+    path: "/api/workflows",
     headers: authHeadersSchema,
     body: workflowCreateRequestSchema,
     responses: {
@@ -1639,7 +1639,7 @@ export const workflowsCollectionContract = c.router({
 export const workflowsDetailContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/workflows/:workflowId",
+    path: "/api/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     responses: {
@@ -1652,7 +1652,7 @@ export const workflowsDetailContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/okou/workflows/:workflowId",
+    path: "/api/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: workflowUpdateRequestSchema,
@@ -1668,7 +1668,7 @@ export const workflowsDetailContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/workflows/:workflowId",
+    path: "/api/workflows/:workflowId",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1682,7 +1682,7 @@ export const workflowsDetailContract = c.router({
   },
   copy: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/copy",
+    path: "/api/workflows/:workflowId/copy",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: workflowCopyRequestSchema,
@@ -1698,7 +1698,7 @@ export const workflowsDetailContract = c.router({
   },
   chatThread: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/chat-thread",
+    path: "/api/workflows/:workflowId/chat-thread",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1712,7 +1712,7 @@ export const workflowsDetailContract = c.router({
   },
   run: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/run",
+    path: "/api/workflows/:workflowId/run",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1730,7 +1730,7 @@ export const workflowsDetailContract = c.router({
   },
   connectorReadiness: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/connector-readiness",
+    path: "/api/workflows/:workflowId/connector-readiness",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1752,7 +1752,7 @@ export const workflowsDetailContract = c.router({
 export const workflowVisibilityContract = c.router({
   publish: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/publish",
+    path: "/api/workflows/:workflowId/publish",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1768,7 +1768,7 @@ export const workflowVisibilityContract = c.router({
   },
   demote: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/demote",
+    path: "/api/workflows/:workflowId/demote",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: c.noBody(),
@@ -1799,7 +1799,7 @@ export type WorkflowWebhookSecretResponse = z.infer<
 export const workflowAutomationsContract = c.router({
   listWorkspace: {
     method: "GET",
-    path: "/api/okou/workflow-automations",
+    path: "/api/workflow-automations",
     headers: authHeadersSchema,
     responses: {
       200: workflowAutomationsListResponseSchema,
@@ -1823,7 +1823,7 @@ export const workflowAutomationsContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/okou/workflows/:workflowId/automations",
+    path: "/api/workflows/:workflowId/automations",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     responses: {
@@ -1836,7 +1836,7 @@ export const workflowAutomationsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/okou/workflows/:workflowId/automations",
+    path: "/api/workflows/:workflowId/automations",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     body: workflowAutomationCreateRequestSchema,
@@ -1853,7 +1853,7 @@ export const workflowAutomationsContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/okou/workflow-automations/:id",
+    path: "/api/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     responses: {
@@ -1866,7 +1866,7 @@ export const workflowAutomationsContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/okou/workflow-automations/:id",
+    path: "/api/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: workflowAutomationUpdateRequestSchema,
@@ -1882,7 +1882,7 @@ export const workflowAutomationsContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/workflow-automations/:id",
+    path: "/api/workflow-automations/:id",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1896,7 +1896,7 @@ export const workflowAutomationsContract = c.router({
   },
   enable: {
     method: "POST",
-    path: "/api/okou/workflow-automations/:id/enable",
+    path: "/api/workflow-automations/:id/enable",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1913,7 +1913,7 @@ export const workflowAutomationsContract = c.router({
   },
   disable: {
     method: "POST",
-    path: "/api/okou/workflow-automations/:id/disable",
+    path: "/api/workflow-automations/:id/disable",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1927,7 +1927,7 @@ export const workflowAutomationsContract = c.router({
   },
   run: {
     method: "POST",
-    path: "/api/okou/workflow-automations/:id/run",
+    path: "/api/workflow-automations/:id/run",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),
@@ -1943,7 +1943,7 @@ export const workflowAutomationsContract = c.router({
   },
   revealWebhookSecret: {
     method: "POST",
-    path: "/api/okou/workflow-automations/:id/webhook-secret",
+    path: "/api/workflow-automations/:id/webhook-secret",
     headers: authHeadersSchema,
     pathParams: automationIdParams,
     body: c.noBody(),

@@ -81,14 +81,11 @@ describe("okou workflow delete command", () => {
   describe("successful delete", () => {
     it("should delete with --yes flag without prompting", async () => {
       server.use(
-        http.get(
-          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
-          () => {
-            return HttpResponse.json(detailResponse());
-          },
-        ),
+        http.get(`http://localhost:3000/api/workflows/${WORKFLOW_ID}`, () => {
+          return HttpResponse.json(detailResponse());
+        }),
         http.delete(
-          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/workflows/${WORKFLOW_ID}`,
           () => {
             return new HttpResponse(null, { status: 204 });
           },
@@ -105,11 +102,11 @@ describe("okou workflow delete command", () => {
     it("should resolve a workflow name before deleting", async () => {
       let deletedWorkflowId: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/okou/workflows", () => {
+        http.get("http://localhost:3000/api/workflows", () => {
           return HttpResponse.json([workflowSummary()]);
         }),
         http.get(
-          `http://localhost:3000/api/okou/workflows/${RESOLVED_WORKFLOW_ID}`,
+          `http://localhost:3000/api/workflows/${RESOLVED_WORKFLOW_ID}`,
           () => {
             return HttpResponse.json(
               detailResponse({
@@ -121,7 +118,7 @@ describe("okou workflow delete command", () => {
           },
         ),
         http.delete(
-          "http://localhost:3000/api/okou/workflows/:workflowId",
+          "http://localhost:3000/api/workflows/:workflowId",
           ({ params }) => {
             deletedWorkflowId = params.workflowId as string;
             return new HttpResponse(null, { status: 204 });
@@ -146,15 +143,12 @@ describe("okou workflow delete command", () => {
     it("should handle not found error", async () => {
       const missingId = "99999999-9999-9999-9999-999999999999";
       server.use(
-        http.get(
-          `http://localhost:3000/api/okou/workflows/${missingId}`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "Workflow not found", code: "NOT_FOUND" } },
-              { status: 404 },
-            );
-          },
-        ),
+        http.get(`http://localhost:3000/api/workflows/${missingId}`, () => {
+          return HttpResponse.json(
+            { error: { message: "Workflow not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -166,12 +160,9 @@ describe("okou workflow delete command", () => {
 
     it("should require --yes in non-interactive mode", async () => {
       server.use(
-        http.get(
-          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
-          () => {
-            return HttpResponse.json(detailResponse({ displayName: null }));
-          },
-        ),
+        http.get(`http://localhost:3000/api/workflows/${WORKFLOW_ID}`, () => {
+          return HttpResponse.json(detailResponse({ displayName: null }));
+        }),
       );
 
       await expect(async () => {

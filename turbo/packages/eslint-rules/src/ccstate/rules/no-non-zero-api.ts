@@ -41,6 +41,11 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28461
+  "/api/agents",
+  "/api/morning-brief",
+  "/api/workflow-automations",
+  "/api/workflows",
 ];
 
 /**

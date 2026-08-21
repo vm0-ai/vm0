@@ -131,7 +131,7 @@ create_runner_agent() {
     payload="$(jq -nc \
         --arg displayName "$display_name" \
         '{displayName: $displayName, visibility: "private"}')"
-    response="$(runner_api_curl "/api/okou/agents" -X POST -d "$payload")" || return 1
+    response="$(runner_api_curl "/api/agents" -X POST -d "$payload")" || return 1
     jq -er '.agentId | select(type == "string" and length > 0)' <<< "$response"
 }
 
@@ -141,7 +141,7 @@ set_runner_agent_instructions() {
     local payload
 
     payload="$(jq -nc --arg content "$content" '{content: $content}')"
-    runner_api_curl "/api/okou/agents/$agent_id/instructions" \
+    runner_api_curl "/api/agents/$agent_id/instructions" \
         -X PUT \
         -d "$payload" \
         >/dev/null
@@ -149,7 +149,7 @@ set_runner_agent_instructions() {
 
 delete_runner_agent() {
     local agent_id="$1"
-    runner_api_curl "/api/okou/agents/$agent_id" -X DELETE >/dev/null
+    runner_api_curl "/api/agents/$agent_id" -X DELETE >/dev/null
 }
 
 # Temporary Stage 0 E2E teardown containment. Remove this helper and restore
@@ -160,7 +160,7 @@ delete_runner_agent_for_stage0_teardown() {
     local response http_status response_body
 
     response="$(runner_api_curl \
-        "/api/okou/agents/$agent_id" \
+        "/api/agents/$agent_id" \
         -X DELETE \
         --no-fail-with-body \
         --write-out $'\n%{http_code}')" || return

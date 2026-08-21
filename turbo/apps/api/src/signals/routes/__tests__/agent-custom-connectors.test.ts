@@ -150,7 +150,7 @@ describe("GET /api/zero/custom-connectors/:id/permissions", () => {
   });
 });
 
-describe("GET /api/zero/agents/:id/custom-connectors", () => {
+describe("GET /api/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestAgentCustomConnectors(
       null,
@@ -256,7 +256,7 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
   });
 });
 
-describe("PUT /api/zero/agents/:id/custom-connectors", () => {
+describe("PUT /api/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestUpdateAgentCustomConnectors(
       null,

@@ -115,7 +115,7 @@ function stubConnectorsWithCatalogSlugs(
 
 function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
+    `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
