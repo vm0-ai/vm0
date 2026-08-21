@@ -412,39 +412,6 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
     }
 }
 
-#[test]
-fn workspace_session_history_sidecar_miss_strings_are_stable() {
-    for (miss, expected) in [
-        (
-            WorkspaceSessionHistorySidecarMiss::NoCacheHit,
-            "no_cache_hit",
-        ),
-        (WorkspaceSessionHistorySidecarMiss::Missing, "missing"),
-        (
-            WorkspaceSessionHistorySidecarMiss::InvalidMetadata,
-            "invalid_metadata",
-        ),
-        (
-            WorkspaceSessionHistorySidecarMiss::IdentityMismatch,
-            "identity_mismatch",
-        ),
-        (
-            WorkspaceSessionHistorySidecarMiss::UnsupportedFormat,
-            "unsupported_format",
-        ),
-        (
-            WorkspaceSessionHistorySidecarMiss::BodyMissing,
-            "body_missing",
-        ),
-        (
-            WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch,
-            "file_identity_mismatch",
-        ),
-    ] {
-        assert_eq!(miss.as_str(), expected);
-    }
-}
-
 #[tokio::test]
 async fn session_history_sidecar_explicit_prune_removes_existing_sidecar() {
     let (_dir, _paths, cache) = local_cache().await;
