@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.468.0](https://github.com/vm0-ai/vm0/compare/api-v1.467.0...api-v1.468.0) (2026-08-21)
+
+
+### Features
+
+* **api:** persist explicit thread connector account overrides ([#28355](https://github.com/vm0-ai/vm0/issues/28355)) ([772de1c](https://github.com/vm0-ai/vm0/commit/772de1c01b70948fb41c07e3db4e5c6e7a01cada))
+* **artifacts:** emit branded cdn urls ([#28411](https://github.com/vm0-ai/vm0/issues/28411)) ([9dd558f](https://github.com/vm0-ai/vm0/commit/9dd558f3043a5ffdf72627fa367ae8750be3e86d))
+* **connectors:** enable direct okou oauth callback for cloudflare ([#28424](https://github.com/vm0-ai/vm0/issues/28424)) ([0a63071](https://github.com/vm0-ai/vm0/commit/0a63071d1a98f7d2e52c89af64185123da81fdaa))
+* **connectors:** enable direct okou oauth callback for notion ([#28434](https://github.com/vm0-ai/vm0/issues/28434)) ([fa9916f](https://github.com/vm0-ai/vm0/commit/fa9916f3b0784d2f5f0e064e3077d117c80b8085))
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Refactoring
+
+* **api:** move browser, finance, seo, and mcp connector routes off /api/okou ([#28433](https://github.com/vm0-ai/vm0/issues/28433)) ([1e4bdf3](https://github.com/vm0-ai/vm0/commit/1e4bdf3432ab0e27ae70da59abacdf4d74c14b60))
+* **api:** move built-in-generations and image-io off the brand namespace ([#28432](https://github.com/vm0-ai/vm0/issues/28432)) ([d1c6c7c](https://github.com/vm0-ai/vm0/commit/d1c6c7c9d2b29af4c95949661fd9bcbd5359df54))
+* **api:** move chat-thread, indicator and attribution routes off the brand namespace ([#28425](https://github.com/vm0-ai/vm0/issues/28425)) ([f0bf52e](https://github.com/vm0-ai/vm0/commit/f0bf52eb50e5f7bd30a4f3aa5eee00a5cf81d344))
+* **api:** move host and goal routes off the brand namespace ([#28431](https://github.com/vm0-ai/vm0/issues/28431)) ([f4adc23](https://github.com/vm0-ai/vm0/commit/f4adc23a09b8e8d3f813964a85f0fe5523c52c5c))
+* **api:** move web-search, scrape, recognize and translate off the brand namespace ([#28427](https://github.com/vm0-ai/vm0/issues/28427)) ([c8a9733](https://github.com/vm0-ai/vm0/commit/c8a9733a23590ae1513816b344e0e3e7da89d5c0))
+* remove expired deployment compatibility ([#28452](https://github.com/vm0-ai/vm0/issues/28452)) ([cfc81f2](https://github.com/vm0-ai/vm0/commit/cfc81f2a5b5c833db1729ad889eae7b552e20dd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+    * @okouai/connectors bumped to 1.209.0
+    * @okouai/core bumped to 8.576.0
+    * @okouai/db bumped to 1.212.0
+
 ## [1.467.0](https://github.com/vm0-ai/vm0/compare/api-v1.466.0...api-v1.467.0) (2026-08-20)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.576.0](https://github.com/vm0-ai/vm0/compare/core-v8.575.0...core-v8.576.0) (2026-08-21)
+
+
+### Features
+
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.345.0
+
 ## [8.575.0](https://github.com/vm0-ai/vm0/compare/core-v8.574.0...core-v8.575.0) (2026-08-20)
 
 
