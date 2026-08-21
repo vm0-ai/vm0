@@ -33,7 +33,7 @@ const responseBody = {
   operation: { method: "GET", path: "/youtube/comments" },
   billingCategory: "request",
   billingQuantity: 1,
-  creditsCharged: 5,
+  creditsCharged: 3,
   result: {
     transcript: "Welcome to the complete transcript.",
     transcriptSegments: [{ text: "segment detail", start: 0, duration: 1.5 }],
