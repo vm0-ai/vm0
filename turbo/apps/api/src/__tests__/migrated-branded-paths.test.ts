@@ -205,6 +205,44 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/user-preferences",
     "/api/zero/user-preferences",
   ],
+  // #28418
+  "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
+  "/api/browsers/current": [
+    "/api/okou/browsers/current",
+    "/api/zero/browsers/current",
+  ],
+  "/api/browsers/lease": [
+    "/api/okou/browsers/lease",
+    "/api/zero/browsers/lease",
+  ],
+  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
+  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
+  "/api/finance/profile": [
+    "/api/okou/finance/profile",
+    "/api/zero/finance/profile",
+  ],
+  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
+  "/api/finance/search": [
+    "/api/okou/finance/search",
+    "/api/zero/finance/search",
+  ],
+  "/api/mcp-connectors": [
+    "/api/okou/mcp-connectors",
+    "/api/zero/mcp-connectors",
+  ],
+  "/api/seo/backlinks-summary": [
+    "/api/okou/seo/backlinks-summary",
+    "/api/zero/seo/backlinks-summary",
+  ],
+  "/api/seo/keyword-ideas": [
+    "/api/okou/seo/keyword-ideas",
+    "/api/zero/seo/keyword-ideas",
+  ],
+  "/api/seo/ranked-keywords": [
+    "/api/okou/seo/ranked-keywords",
+    "/api/zero/seo/ranked-keywords",
+  ],
+  "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
   // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
   // attribution.
   "/api/attribution/signup": [

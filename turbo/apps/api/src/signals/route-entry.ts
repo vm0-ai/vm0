@@ -380,6 +380,51 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/weather/air-quality/current",
     "/api/zero/weather/air-quality/current",
   ],
+  // #28418: the browser, finance, SEO, and MCP connector routes. The callers
+  // these rows keep working are a released web or app client, which holds the
+  // branded path until a refresh loads a build that derives the neutral one
+  // (~2 days), and a CLI artifact pinned by an execution context's
+  // `CLI_PKG_URL`, which holds it for that context's queue and claimed-run
+  // lifetime. Neither window is the removal condition on its own: a row is
+  // removed under #26701's evidence rules, because the request log retains
+  // about three days and cannot tell a drained caller from a weekly one.
+  "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
+  "/api/browsers/current": [
+    "/api/okou/browsers/current",
+    "/api/zero/browsers/current",
+  ],
+  "/api/browsers/lease": [
+    "/api/okou/browsers/lease",
+    "/api/zero/browsers/lease",
+  ],
+  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
+  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
+  "/api/finance/profile": [
+    "/api/okou/finance/profile",
+    "/api/zero/finance/profile",
+  ],
+  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
+  "/api/finance/search": [
+    "/api/okou/finance/search",
+    "/api/zero/finance/search",
+  ],
+  "/api/mcp-connectors": [
+    "/api/okou/mcp-connectors",
+    "/api/zero/mcp-connectors",
+  ],
+  "/api/seo/backlinks-summary": [
+    "/api/okou/seo/backlinks-summary",
+    "/api/zero/seo/backlinks-summary",
+  ],
+  "/api/seo/keyword-ideas": [
+    "/api/okou/seo/keyword-ideas",
+    "/api/zero/seo/keyword-ideas",
+  ],
+  "/api/seo/ranked-keywords": [
+    "/api/okou/seo/ranked-keywords",
+    "/api/zero/seo/ranked-keywords",
+  ],
+  "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
   // #28420. Every caller of these five derives its URL from the contract, so
   // nothing in this repository still asks for a branded form. Released builds
   // do: a browser tab holding already-loaded platform code keeps calling the
