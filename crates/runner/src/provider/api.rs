@@ -3024,8 +3024,9 @@ mod tests {
         assert!(first_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
         let provider_for_discover = Arc::clone(&provider);
-        let discover_task =
-            tokio::spawn(async move { provider_for_discover.discover().await.unwrap() });
+        let discover_task = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+            provider_for_discover.discover().await.unwrap()
+        }));
         let excluded_poll_request = server
             .next_request("poll request excluding the transiently failed claim")
             .await;
