@@ -131,7 +131,7 @@ async function expectCheckpointSucceeds(
   expect(response.status).toBe(200);
 }
 
-describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
+describe("DELETE /api/agents/:id bounded deletion interlock", () => {
   it("vetoes a target-owned legacy version without invalidating a shared Run", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);

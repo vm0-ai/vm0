@@ -35,8 +35,8 @@ import {
   onboardingWorkflowCategories,
   type OnboardingWorkflow,
   type OnboardingWorkflowCategory,
-  type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
+import type { OnboardingWorkflowCategoryId } from "./onboarding-workflow-specs.ts";
 import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
@@ -81,16 +81,8 @@ export function WorkflowConnectorPills({
 }: {
   readonly connectorSlugs: readonly ConnectorSlug[];
 }) {
-  const { t } = useTranslation();
-
   if (connectorSlugs.length === 0) {
-    return (
-      <span className="inline-flex min-h-7 items-center rounded-full border border-border bg-muted/30 px-2.5 text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.onboarding.common.noConnectorRequired;
-        })}
-      </span>
-    );
+    return null;
   }
   return (
     <span className="flex items-center gap-1.5" aria-hidden="true">
@@ -227,11 +219,11 @@ function WorkflowCard({
           {workflow.description}
         </span>
       </span>
-      <span className="relative z-10 flex items-center justify-between gap-3">
+      <span className="relative z-10 flex items-center gap-3">
         <WorkflowConnectorPills connectorSlugs={workflow.connectorSlugs} />
         <button
           type="button"
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-primary"
+          className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:bg-gray-50 hover:text-primary dark:hover:bg-gray-50/10"
           aria-label={t(($) => {
             return $.onboarding.common.previewWorkflowDetails;
           })}
@@ -311,6 +303,82 @@ function WorkflowOptions({
   );
 }
 
+function representativeCategoryConnectors(
+  category: OnboardingWorkflowCategory,
+): readonly ConnectorSlug[] {
+  const counts = new Map<
+    ConnectorSlug,
+    { readonly count: number; readonly firstSeen: number }
+  >();
+  let nextOrder = 0;
+  for (const workflow of category.workflows) {
+    for (const connectorSlug of new Set(workflow.connectorSlugs)) {
+      const current = counts.get(connectorSlug);
+      counts.set(connectorSlug, {
+        count: (current?.count ?? 0) + 1,
+        firstSeen: current?.firstSeen ?? nextOrder++,
+      });
+    }
+  }
+  return [...counts.entries()]
+    .sort((left, right) => {
+      return (
+        right[1].count - left[1].count || left[1].firstSeen - right[1].firstSeen
+      );
+    })
+    .slice(0, 3)
+    .map(([connectorSlug]) => {
+      return connectorSlug;
+    });
+}
+
+const CATEGORY_CONNECTOR_TILE_CLASSES = [
+  "-right-2.5 top-2.5 rotate-[7deg] opacity-[0.16]",
+  "right-6 top-6 -rotate-[5deg] opacity-[0.1]",
+  "right-14 top-2 rotate-[3deg] opacity-[0.06]",
+] as const;
+
+function CategoryConnectorBackground({
+  category,
+}: {
+  readonly category: OnboardingWorkflowCategory;
+}) {
+  const catalogBySlugLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
+  if (catalogBySlugLoadable.state !== "hasData") {
+    return null;
+  }
+  const connectors = representativeCategoryConnectors(category).flatMap(
+    (connectorSlug) => {
+      const icon = catalogBySlugLoadable.data.get(connectorSlug)?.icon;
+      return icon ? [{ connectorSlug, icon }] : [];
+    },
+  );
+  if (connectors.length === 0) {
+    return null;
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] [-webkit-mask-image:linear-gradient(to_left,black_58%,transparent_96%)] [mask-image:linear-gradient(to_left,black_58%,transparent_96%)]"
+    >
+      {connectors.map(({ connectorSlug, icon }, index) => {
+        return (
+          <span
+            key={connectorSlug}
+            className={cn(
+              "absolute inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/35 bg-gray-50/40 shadow-[0_6px_18px_hsl(220_12%_20%/0.02)] dark:bg-gray-50/[0.06]",
+              CATEGORY_CONNECTOR_TILE_CLASSES[index],
+            )}
+          >
+            <ConnectorIcon icon={icon} size={20} />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function CategoryOptions({
   categories,
   onSelect,
@@ -329,14 +397,17 @@ function CategoryOptions({
             onClick={() => {
               onSelect(category);
             }}
-            className="flex min-h-[130px] min-w-0 flex-col items-start gap-2.5 rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
+            className="relative isolate flex min-h-[130px] min-w-0 flex-col items-start overflow-hidden rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-muted/40">
-              <CategoryIcon size={21} aria-hidden="true" />
-            </span>
-            <span className="text-sm font-semibold">{category.title}</span>
-            <span className="text-xs leading-[1.35] text-muted-foreground">
-              {category.description}
+            <CategoryConnectorBackground category={category} />
+            <span className="relative z-10 flex min-w-0 flex-col items-start gap-2.5">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-muted/40">
+                <CategoryIcon size={21} aria-hidden="true" />
+              </span>
+              <span className="text-sm font-semibold">{category.title}</span>
+              <span className="text-xs leading-[1.35] text-muted-foreground">
+                {category.description}
+              </span>
             </span>
           </button>
         );
@@ -367,7 +438,7 @@ export function OnboardingWorkflowPickerPage() {
   const setUi = useSet(updateOnboardingUi$);
   const searchParams = useGet(searchParams$);
   const pageSignal = useGet(pageSignal$);
-  const [completeLoadable, complete] = useLoadableSet(completeOnboarding$);
+  const [, complete] = useLoadableSet(completeOnboarding$);
   const { navigateTo } = useOnboardingNavigation();
   const categories = onboardingWorkflowCategories(t, assistantName);
   const previewWorkflow = findPreviewWorkflow(categories, ui.workflowPreviewId);
@@ -386,13 +457,11 @@ export function OnboardingWorkflowPickerPage() {
     });
   };
 
-  const handleContinue = (): void => {
-    if (!selectedWorkflowId) {
-      return;
-    }
+  const handleWorkflowSelect = (workflowId: string): void => {
+    setDraft({ workflowId });
     // "Talk to Zero and make my own" skips the customize step and hands the
     // user straight into the product; preset workflows keep the run page.
-    if (selectedWorkflowId === CUSTOM_WORKFLOW_ID) {
+    if (workflowId === CUSTOM_WORKFLOW_ID) {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
       const completeAndOpenHome = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
@@ -405,7 +474,7 @@ export function OnboardingWorkflowPickerPage() {
       updates: {
         choice: "workflow",
         category: draft.categoryId,
-        workflow: selectedWorkflowId,
+        workflow: workflowId,
       },
       remove: ["template"],
     });
@@ -437,24 +506,14 @@ export function OnboardingWorkflowPickerPage() {
                 return $.onboarding.workflowPicker.description;
               })
         }
-        footer={
-          <OnboardingFooter
-            onBack={handleBack}
-            onPrimary={handleContinue}
-            primaryLabel={t(($) => {
-              return $.onboarding.common.continue;
-            })}
-            primaryDisabled={!selectedWorkflowId}
-            busy={completeLoadable.state === "loading"}
-          />
-        }
+        footer={<OnboardingFooter onBack={handleBack} />}
       >
         {selectedCategory ? (
           <WorkflowOptions
             category={selectedCategory}
             selectedId={selectedWorkflowId}
             onSelect={(workflowId) => {
-              setDraft({ workflowId });
+              handleWorkflowSelect(workflowId);
             }}
             onPreview={(workflow) => {
               setUi({ workflowPreviewId: workflow.id });
@@ -479,8 +538,8 @@ export function OnboardingWorkflowPickerPage() {
             setUi({ workflowPreviewId: null });
           }}
           onSelect={() => {
-            setDraft({ workflowId: previewWorkflow.id });
             setUi({ workflowPreviewId: null });
+            handleWorkflowSelect(previewWorkflow.id);
           }}
         />
       ) : null}

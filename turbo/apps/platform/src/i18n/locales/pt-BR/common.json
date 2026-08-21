@@ -1524,6 +1524,14 @@
       "view": "Ver"
     },
     "agentPage": {
+      "growth": {
+        "addInSlack": "Adicionar {{assistantName}} no Slack",
+        "connect": "Conectar",
+        "credits": "Créditos",
+        "inSlack": "{{assistantName}} está no Slack",
+        "inviteMember": "Convidar membro",
+        "otherChannels": "Telegram e telefone"
+      },
       "invitePeople": "Convidar pessoas",
       "taglines": {
         "anonymous": {
@@ -3118,7 +3126,6 @@
       "dialogPreview": "Prévia de {{title}}",
       "gotIt": "Entendi",
       "next": "Próximo",
-      "noConnectorRequired": "Nenhum conector necessário",
       "previewWorkflowDetails": "Prévia dos detalhes do fluxo de trabalho",
       "selectTemplate": "Selecionar este modelo",
       "selectThisTemplate": "Selecionar este modelo",
@@ -3295,7 +3302,7 @@
     },
     "workflowRun": {
       "continueWithZero": "Continuar com o {{assistantName}}",
-      "createDraft": "Criar rascunho",
+      "createWorkflow": "Criar fluxo de trabalho",
       "customNoteLabel": "Descreva seu fluxo de trabalho",
       "customNotePlaceholder": "Descreva o que você quer que o {{assistantName}} construa",
       "customTitle": "Descreva seu fluxo de trabalho",
@@ -3305,1030 +3312,1030 @@
     },
     "workflows": {
       "alert-metric-moves-slack": {
-        "description": "Monitore suas métricas-chave e avise o Slack quando uma mudar drasticamente.",
-        "scenario": "Quando um problema de métrica aparece na revisão semanal, já está desatualizado. O {{assistantName}} monitora uma métrica chave a cada hora e avisa o Slack no momento em que ela sai da faixa normal.",
+        "description": "Encontre mudanças significativas no site e explique as causas prováveis.",
+        "scenario": "Uma mudança de métrica a aguçar é mais importante quando o contexto acompanha-a. {{assistantName}} monitora o Google Analytics e adiciona evidências de busca ou canais pagos quando conectados.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê a métrica a cada hora.",
-            "title": "{{assistantName}} verifica a métrica"
+            "description": "{{assistantName}} lê as medidas de tráfego e conversão selecionadas.",
+            "title": "As métricas-chave são verificadas"
           },
           "three": {
-            "description": "{{assistantName}} publica um alerta com a divergência.",
-            "title": "Alerta publicado no Slack"
+            "description": "{{assistantName}} retorna as causas prováveis e o próximo passo diagnóstico.",
+            "title": "A mudança é explicada"
           },
           "two": {
-            "description": "{{assistantName}} sinaliza valores fora da faixa esperada.",
-            "title": "Comparado à faixa normal"
+            "description": "{{assistantName}} compara os valores atuais com o intervalo esperado.",
+            "title": "Movimento incomum é encontrado"
           }
         },
-        "title": "Alerta quando uma métrica muda"
+        "title": "Alerta para mudanças de tráfego e conversão"
       },
       "auto-merge-github-prs": {
-        "description": "Revise PRs rotulados como prontos para mesclar, aguarde o CI, depois mescle e publique no Slack.",
-        "scenario": "Mesclar um PR significa monitorar o CI, reexaminar a diferença e lembrar de publicar que foi enviado. O {{assistantName}} observa o rótulo pronto para mesclar, revisa a alteração, aguarda os testes ficarem verdes, mescla e informa o canal.",
+        "description": "Revisar solicitações de fusão prontas, aguardar o CI e fusionar as mudanças aprovadas.",
+        "scenario": "Fusionar um PR significa observar verificações e reler as diferenças. {{assistantName}} pega o rótulo pronto para fusão, revisa a mudança, aguarda o CI e fusiona apenas sob a regra que você aprovar.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} pega pull requests assim que eles têm seu rótulo de mesclagem.",
-            "title": "Um PR é rotulado como pronto para mesclar"
+            "description": "{{assistantName}} detecta o rótulo pronto para fusão.",
+            "title": "Um PR está pronto"
           },
           "three": {
-            "description": "O {{assistantName}} mescla o PR e publica o resultado no seu canal.",
-            "title": "Mesclado e publicado no Slack"
+            "description": "{{assistantName}} fusiona apenas após as condições de segurança aprovadas passarem.",
+            "title": "Fusionado sob sua regra"
           },
           "two": {
-            "description": "O {{assistantName}} lê a diferença e aguarda até que todos os testes obrigatórios sejam aprovados.",
-            "title": "{{assistantName}} revisa e aguarda o CI"
+            "description": "{{assistantName}} verifica as diferenças e aguarda o CI necessário.",
+            "title": "{{assistantName}} revisa a mudança"
           }
         },
-        "title": "Mesclar PRs do GitHub automaticamente"
+        "title": "Auto-mergimento de PRs do GitHub"
       },
       "blog-posts-to-x": {
-        "description": "Todo dia, o {{assistantName}} transforma novos posts de blog publicados em variantes sociais e as coloca em fila no X através do Buffer.",
-        "scenario": "Um post de blog pode ser dez posts sociais, mas ninguém tem tempo para cortá-los. O {{assistantName}} identifica novos posts publicados, elabora um conjunto de variantes para o X e as coloca em fila no Buffer para aprovação.",
+        "description": "Encontre páginas em decréscimo e transforme-as em breves de atualização priorizadas.",
+        "scenario": "Conteúdo existente tem mais potencial do que um novo artigo. {{assistantName}} usa o Firecrawl e o DataForSEO integrados para encontrar páginas que não estão performando bem, mapear a demanda atual e recomendar atualizações focadas.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} detecta novos posts publicados no Strapi.",
-            "title": "{{assistantName}} encontra novos posts"
+            "description": "{{assistantName}} navega no site e identifica candidatos a atualização prováveis.",
+            "title": "Páginas existentes são revisadas"
           },
           "three": {
-            "description": "{{assistantName}} agenda as variantes para revisão.",
-            "title": "Colocado em fila no Buffer"
+            "description": "{{assistantName}} prioriza páginas e especifica as atualizações necessárias.",
+            "title": "Breves de atualização são criadas"
           },
           "two": {
-            "description": "{{assistantName}} elabora vários posts para o X de cada artigo.",
-            "title": "Cortado em variantes sociais"
+            "description": "{{assistantName}} verifica resultados de busca, palavras-chave e cobertura competitiva.",
+            "title": "Demanda atual é mapeada"
           }
         },
-        "title": "Transformar posts de blog em posts sociais"
+        "title": "Construa um plano de atualização de conteúdo SEO"
       },
       "build-weekly-deck-gamma": {
-        "description": "Transforme as métricas da semana em um deck pronto para apresentação no Gamma.",
-        "scenario": "O deck de métricas semanal é o mesmo slide com novos números toda vez. O {{assistantName}} puxa os dados, constrói o deck no Gamma e publica no Slack para que a revisão esteja pronta antes da reunião.",
+        "description": "Rastreie receita, despesas, recebíveis e fluxo de caixa no Sheets.",
+        "scenario": "As revisões financeiras se tornam lentas quando os números devem ser reconstruídos à mão. {{assistantName}} puxa as métricas aprovadas do QuickBooks e mantém um painel pronto para tomada de decisão no Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê as métricas das planilhas e análises.",
-            "title": "{{assistantName}} coleta os números"
+            "description": "{{assistantName}} lê receita, despesas, recebíveis e fluxo de caixa.",
+            "title": "Os dados financeiros são coletados"
           },
           "three": {
-            "description": "{{assistantName}} compartilha o deck finalizado.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} escreve a visão financeira atual no Google Sheets.",
+            "title": "O painel é atualizado"
           },
           "two": {
-            "description": "{{assistantName}} monta o deck de métricas recorrentes.",
-            "title": "Deck construído no Gamma"
+            "description": "{{assistantName}} calcula tendências, exceções e totais de relatório.",
+            "title": "As métricas são organizadas"
           }
         },
-        "title": "Criar o deck semanal no Gamma"
+        "title": "Construa um painel financeiro do QuickBooks"
       },
       "business-review-gamma": {
-        "description": "Transforme as métricas do mês em uma apresentação de revisão de negócios no Gamma.",
-        "scenario": "A revisão semanal de negócios é uma apresentação recorrente que alguém reconstrói manualmente. O {{assistantName}} puxa receita e crescimento, monta a apresentação no Gamma e a deixa pronta antes da reunião.",
+        "description": "Combina dados financeiros, de crescimento e operacionais em uma única revisão.",
+        "scenario": "Uma revisão mensal deve explicar o negócio, não apenas repetir painéis. {{assistantName}} combina QuickBooks, Google Analytics e Google Sheets e adiciona contexto HubSpot quando disponível.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê MRR, burn e crescimento do Stripe e Clerk.",
-            "title": "O {{assistantName}} puxa os números"
+            "description": "{{assistantName}} lê métricas financeiras, de crescimento e operacionais.",
+            "title": "Dados do negócio são coletados"
           },
           "three": {
-            "description": "O {{assistantName}} compartilha a apresentação finalizada.",
-            "title": "Pronto para apresentar"
+            "description": "{{assistantName}} retorna uma revisão mensal concisa e pronta para decisão.",
+            "title": "A revisão é preparada"
           },
           "two": {
-            "description": "O {{assistantName}} monta a revisão de negócios recorrente.",
-            "title": "Apresentação construída no Gamma"
+            "description": "{{assistantName}} conecta tendências, variação do plano, vitórias e riscos.",
+            "title": "Desempenho é analisado"
           }
         },
-        "title": "Construir a revisão de negócios no Gamma"
+        "title": "Construir uma revisão mensal do negócio"
       },
       "catch-calendar-conflicts": {
-        "description": "Verifique seu calendário em busca de reservas duplas e alerte você com antecedência.",
-        "scenario": "Reservas duplas só são descobertas quando duas reuniões começam ao mesmo tempo. O {{assistantName}} verifica cada novo evento em relação ao seu calendário e à disponibilidade do Cal.com e alerta você sobre conflitos antes que eles ocorram.",
+        "description": "Detecte reservas duplas e janelas de programação difíceis cedo.",
+        "scenario": "Conflitos do calendário são mais fáceis de resolver antes do dia da reunião. {{assistantName}} verifica novos eventos para sobreposições, viagens e conflitos de preparação e explica as opções.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} é acionado quando um novo evento chega ao seu calendário.",
-            "title": "Um evento é criado"
+            "description": "{{assistantName}} lê o evento e o calendário circundante.",
+            "title": "Um novo evento é verificado"
           },
           "three": {
-            "description": "{{assistantName}} alerta você sobre o conflito e opções.",
-            "title": "Conflito sinalizado no Slack"
+            "description": "{{assistantName}} explica o conflito e pode esboçar uma nota do Gmail.",
+            "title": "Opções de resolução são retornadas"
           },
           "two": {
-            "description": "{{assistantName}} compara com eventos existentes e disponibilidade.",
-            "title": "Verificado para conflitos"
+            "description": "{{assistantName}} detecta sobreposições e janelas de transição impossíveis.",
+            "title": "Conflitos são identificados"
           }
         },
-        "title": "Identificar conflitos no Google Calendar"
+        "title": "Detecte conflitos do Google Calendar"
       },
       "catch-leads-gmail": {
-        "description": "Identifique sinais de compra em novos e-mails e registre os leads qualificados.",
-        "scenario": "Leads quentes se escondem em uma caixa de entrada movimentada e esfriam. O {{assistantName}} lê os e-mails recebidos em busca de sinais de compra, enriquece o remetente com Apollo, registra o lead em uma planilha e sugere o próximo passo no Slack.",
+        "description": "Resuma o movimento de etapas, negociações estagnadas, riscos e mudanças de projeção.",
+        "scenario": "Revisões de pipeline são mais claras quando as mudanças chegam antes da reunião. {{assistantName}} compara o pipeline atual do HubSpot com o snapshot anterior e retorna um resumo semanal conciso.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê o Gmail recebido em busca de sinais de compra.",
-            "title": "{{assistantName}} escaneia novos e-mails"
+            "description": "{{assistantName}} coleta negociações, etapas, responsáveis, datas e atividades.",
+            "title": "O pipeline é lido"
           },
           "three": {
-            "description": "{{assistantName}} publica o lead e um próximo passo recomendado no Slack.",
-            "title": "Próximo passo sugerido"
+            "description": "{{assistantName}} retorna próximas ações e, opcionalmente, atualiza planilhas do Google.",
+            "title": "O resumo é criado"
           },
           "two": {
-            "description": "{{assistantName}} enriquece com Apollo e adiciona uma linha à sua planilha.",
-            "title": "Lead enriquecido e registrado"
+            "description": "{{assistantName}} encontra mudanças, negociações estagnadas, obstáculos e desvios de projeção.",
+            "title": "Mudanças e riscos são analisados"
           }
         },
-        "title": "Capturar leads do Gmail"
+        "title": "Crie um resumo semanal do pipeline do HubSpot"
       },
       "chase-overdue-asana-tasks": {
-        "description": "Encontre tarefas do Asana em atraso e lembre seus responsáveis no Slack.",
-        "scenario": "Tarefas em atraso precisam de alguém para cobrá-las, e essa pessoa está sempre ocupada. O {{assistantName}} verifica o Asana diariamente em busca de tarefas vencidas e lembra cada responsável no Slack.",
+        "description": "Prepare lembretes específicos para os proprietários sem enviar automaticamente.",
+        "scenario": "Trabalho atrasado precisa de contexto, não de empurrões genéricos. {{assistantName}} agrupa tarefas atrasadas do Asana por proprietário e esboça um lembrete conciso do Gmail para cada pessoa.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê as tarefas que estão além da data de vencimento.",
-            "title": "{{assistantName}} verifica o Asana"
+            "description": "{{assistantName}} lê tarefas do Asana que estão atrasadas.",
+            "title": "Trabalho atrasado é encontrado"
           },
           "three": {
-            "description": "{{assistantName}} envia mensagens diretas a cada responsável com sua lista de tarefas em atraso.",
-            "title": "Lembretes enviados no Slack"
+            "description": "{{assistantName}} cria lembretes para revisão humana e nunca os envia.",
+            "title": "Esboços do Gmail são preparados"
           },
           "two": {
-            "description": "{{assistantName}} agrupa o trabalho em atraso por responsável.",
-            "title": "Responsáveis identificados"
+            "description": "{{assistantName}} prepara o contexto do projeto e das barreiras relevantes.",
+            "title": "Tarefas são agrupadas por proprietário"
           }
         },
-        "title": "Cobrar tarefas do Asana em atraso"
+        "title": "Esboce lembretes do Gmail para tarefas do Asana atrasadas"
       },
       "check-posthog-signup-funnel": {
-        "description": "Acompanhe o funil de inscrição e envie a maior queda para o Slack.",
-        "scenario": "Funis só ajudam se alguém os executar. O {{assistantName}} roda o funil de inscrição semanalmente, encontra a etapa que perde mais pessoas e publica no Slack para que a equipe saiba onde focar.",
+        "description": "Compare Google Ads e Meta Ads no mesmo base de desempenho.",
+        "scenario": "Os canais pagos são difíceis de comparar quando cada plataforma relata de forma diferente. {{assistantName}} normaliza o gasto, as conversões, o CPM e o ROI entre Google Ads e Meta Ads.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} executa o funil de inscrição no PostHog durante a semana.",
-            "title": "{{assistantName}} roda o funil"
+            "description": "{{assistantName}} lê ambos os plataformas para o mesmo período de relatório.",
+            "title": "Os dados de anúncio são coletados"
           },
           "three": {
-            "description": "{{assistantName}} publica a perda e a tendência.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} destaca a eficiência, o ritmo e opcionalmente atualiza o Sheets.",
+            "title": "As diferenças entre os canais são explicadas"
           },
           "two": {
-            "description": "{{assistantName}} encontra a etapa com a maior queda.",
-            "title": "Maior queda identificada"
+            "description": "{{assistantName}} calcula métricas comparáveis de gasto, conversão, CPM e ROI.",
+            "title": "O desempenho é normalizado"
           }
         },
-        "title": "Verificar o funil de inscrição do PostHog"
+        "title": "Compare canais de aquisição paga"
       },
       "compare-google-ads-last-month": {
-        "description": "Todo dia, o {{assistantName}} compara gastos do Google Ads e Meta Ads, CPA e ROAS em relação ao período anterior e sinaliza anomalias no Slack.",
-        "scenario": "Problemas de pacing em anúncios custam dinheiro a cada dia que passam despercebidos. O {{assistantName}} compara gastos, CPA e ROAS com o período anterior diariamente e sinaliza qualquer desvio no Slack.",
+        "description": "Monitore a eficiência, o ritmo e o desvio de desempenho dos meios pagos.",
+        "scenario": "O orçamento pode desviar antes que o proprietário da campanha note. {{assistantName}} compara Google Ads e Meta Ads em gastos, conversões, CPM e ROI e destaca onde a ação é necessária.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa gastos, CPA e conversões do Google e Meta Ads.",
-            "title": "{{assistantName}} lê o desempenho dos anúncios"
+            "description": "{{assistantName}} lê ambos os plataformas de anúncios para o período selecionado.",
+            "title": "Dados de campanha são coletados"
           },
           "three": {
-            "description": "{{assistantName}} publica a comparação e destaca desvios.",
-            "title": "Anomalias sinalizadas no Slack"
+            "description": "{{assistantName}} retorna a comparação e, opcionalmente, atualiza as Planilhas.",
+            "title": "Ações são recomendadas"
           },
           "two": {
-            "description": "{{assistantName}} calcula as variações e o pacing.",
-            "title": "Comparado ao período anterior"
+            "description": "{{assistantName}} normaliza o desempenho e identifica desvios materiais.",
+            "title": "Eficiência é comparada"
           }
         },
-        "title": "Comparar Google Ads com o mês passado"
+        "title": "Compare Google Ads e Meta Ads"
       },
       "daily-company-brief-slack": {
-        "description": "Reúna dados de produto, crescimento e receita em um resumo diário no Slack.",
-        "scenario": "A visão completa está em cinco ferramentas que ninguém verifica juntas. O {{assistantName}} reúne crescimento, receita, saúde do produto e engenharia todas as manhãs e publica um pulso da empresa no Slack: conquistas, riscos e o que precisa de atenção.",
+        "description": "Combina crescimento, pipeline e contexto financeiro opcional.",
+        "scenario": "A imagem da empresa está espalhada por vários sistemas. {{assistantName}} combina Google Analytics e HubSpot, adiciona contexto QuickBooks quando disponível, e retorna vitórias, riscos e decisões que importam.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê crescimento, receita, erros e entregas em toda a sua stack.",
-            "title": "O {{assistantName}} coleta os sinais"
+            "description": "{{assistantName}} lê crescimento, pipeline e dados financeiros disponíveis.",
+            "title": "Sinais da empresa são coletados"
           },
           "three": {
-            "description": "O {{assistantName}} publica o resumo diário da empresa.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} resuma prioridades no fio de automação.",
+            "title": "A pulsação é retornada"
           },
           "two": {
-            "description": "O {{assistantName}} escreve conquistas, riscos e o que precisa de atenção.",
-            "title": "Montado em um pulso"
+            "description": "{{assistantName}} conecta movimentos ao longo do negócio.",
+            "title": "Vitórias e riscos são identificados"
           }
         },
-        "title": "Publicar um resumo diário da empresa no Slack"
+        "title": "Criar uma pulsação diária da empresa"
       },
       "daily-industry-news-slack": {
-        "description": "Reúna as notícias relevantes do dia da indústria em um resumo no Slack.",
-        "scenario": "Manter-se atualizado significa uma dúzia de abas que você nunca abre. O {{assistantName}} escaneia as últimas 24 horas de notícias sobre IA e concorrentes todos os dias e publica um breve resumo no Slack para que você possa ler um resumo em vez de várias fontes.",
+        "description": "Monitorar posição de caixa QuickBooks e risco de recebíveis.",
+        "scenario": "Problemas de fluxo de caixa são mais baratos de resolver antes que se tornem urgentes. {{assistantName}} verifica fluxo de caixa QuickBooks e faturas atrasadas, explica riscos materiais e pode elaborar e-mails de seguimento para revisão.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} pesquisa a cobertura de IA e concorrentes do último dia com Exa.",
-            "title": "O {{assistantName}} escaneia as notícias"
+            "description": "{{assistantName}} lê fluxo de caixa, recebíveis e faturas atrasadas.",
+            "title": "Risco financeiro é verificado"
           },
           "three": {
-            "description": "O {{assistantName}} publica o resumo diário de notícias.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} explica o risco e pode preparar e-mails de seguimento no Gmail.",
+            "title": "O alerta é retornado"
           },
           "two": {
-            "description": "O {{assistantName}} resume o que realmente importa.",
-            "title": "Destilado em um resumo"
+            "description": "{{assistantName}} marca saldos em atraso e sinais de pressão de caixa.",
+            "title": "Mudanças significativas são identificadas"
           }
         },
-        "title": "Publicar notícias diárias da indústria no Slack"
+        "title": "Alertar sobre fluxo de caixa e faturas atrasadas"
       },
       "draft-github-release-notes-notion": {
-        "description": "Transforme os PRs mesclados desde o último lançamento em notas limpas no Notion.",
-        "scenario": "Escrever notas de lançamento significa rolar o histórico de PRs e traduzir commits em linguagem simples. O {{assistantName}} faz isso quando você rotula um PR como enviado: ele reúne tudo que foi mesclado desde a última tag e rascunha notas legíveis no Notion.",
+        "description": "Transformar PRs fusionados em notas de liberação claras e direcionadas ao usuário.",
+        "scenario": "As notas de liberação não devem exigir tradução manual de um log de commits. {{assistantName}} coleta os PRs fusionados desde a última liberação e os transforma em um cronograma conciso no Notion.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado pelo seu rótulo de lançamento.",
-            "title": "Um PR é rotulado como enviado"
+            "description": "{{assistantName}} coleta PRs desde a última liberação.",
+            "title": "Trabalho fusionado é coletado"
           },
           "three": {
-            "description": "O {{assistantName}} rascunha notas de lançamento limpas e agrupadas em uma página do Notion.",
-            "title": "Notas de lançamento salvas no Notion"
+            "description": "{{assistantName}} redige a redação das notas de liberação no Notion.",
+            "title": "Notas são salvas"
           },
           "two": {
-            "description": "O {{assistantName}} coleta tudo que foi mesclado desde a última tag de lançamento.",
-            "title": "{{assistantName}} reúne PRs mesclados"
+            "description": "{{assistantName}} agrupa o trabalho e explica o impacto do usuário.",
+            "title": "Mudanças são traduzidas"
           }
         },
-        "title": "Rascunhar notas de lançamento do GitHub no Notion"
+        "title": "Redigir notas de liberação do GitHub no Notion"
       },
       "draft-newsletter-mailchimp": {
-        "description": "Todo mês, o {{assistantName}} monta uma newsletter a partir de recursos lançados e prepara um rascunho no Mailchimp.",
-        "scenario": "A newsletter mensal sempre começa a partir de uma página em branco. O {{assistantName}} reúne o que foi lançado no GitHub, elabora a edição e a prepara no Mailchimp para que você edite em vez de criar.",
+        "description": "Combine Analytics e Search Console em um relatório orgânico único.",
+        "scenario": "O crescimento orgânico vive em tráfego e dados de busca. {{assistantName}} combina o Analytics do Google com o Search Console, explica movimentos e oportunidades e, opcionalmente, registra trabalho subsequente no Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê os recursos mesclados e destaques do GitHub.",
-            "title": "{{assistantName}} reúne o que foi lançado"
+            "description": "{{assistantName}} lê o comportamento do site e o desempenho de busca.",
+            "title": "Dados orgânicos são coletados"
           },
           "three": {
-            "description": "{{assistantName}} cria uma campanha de rascunho pronta para edição.",
-            "title": "Preparado no Mailchimp"
+            "description": "{{assistantName}} retorna prioridades e, opcionalmente, salva-as no Notion.",
+            "title": "O breve é criado"
           },
           "two": {
-            "description": "{{assistantName}} escreve a edição na sua voz.",
-            "title": "Newsletter rascunhada"
+            "description": "{{assistantName}} conecta páginas de destino, consultas, conversões e tendências.",
+            "title": "Crescimento é analisado"
           }
         },
-        "title": "Rascunhar a newsletter no Mailchimp"
+        "title": "Crie um breve de crescimento orgânico"
       },
       "draft-replies-notion-faq": {
-        "description": "Redija respostas para tickets com base na sua FAQ do Notion.",
-        "scenario": "A maioria das perguntas já está respondida na documentação. O {{assistantName}} lê a pergunta recebida, consulta a FAQ no Notion e redige uma resposta baseada na sua própria documentação para que um agente aprove.",
+        "description": "Baseie respostas de e-mails de suporte em uma FAQ aprovada no Notion.",
+        "scenario": "A maioria das perguntas de suporte já tem uma resposta aprovada em algum lugar. {{assistantName}} lê o e-mail, encontra a orientação relevante no Notion e rascuna uma resposta baseada nisso para revisão.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê a nova conversa no Intercom ou Gmail.",
-            "title": "Uma pergunta chega"
+            "description": "{{assistantName}} lê a conversa do Gmail e o contexto do cliente.",
+            "title": "Uma pergunta de suporte chega"
           },
           "three": {
-            "description": "O {{assistantName}} prepara uma resposta alinhada à marca.",
-            "title": "Resposta redigida para revisão"
+            "description": "{{assistantName}} prepara uma resposta e nunca envia automaticamente.",
+            "title": "Uma resposta é rascunhada"
           },
           "two": {
-            "description": "O {{assistantName}} encontra a resposta relevante na sua documentação.",
-            "title": "O {{assistantName}} verifica a FAQ do Notion"
+            "description": "{{assistantName}} encontra a orientação aprovada relevante no Notion.",
+            "title": "A FAQ é verificada"
           }
         },
-        "title": "Redigir respostas da sua FAQ do Notion"
+        "title": "Rascunho de respostas da FAQ"
       },
       "file-gmail-invoices-drive": {
-        "description": "Arquive e-mails de faturas no Drive e registre cada um em uma planilha.",
-        "scenario": "As faturas se acumulam na caixa de entrada e a conciliação é uma correria. O {{assistantName}} arquiva cada fatura rotulada na pasta correta do Drive e registra o valor e a data de vencimento na sua planilha de despesas à medida que chega.",
+        "description": "Armazene arquivos de faturas e registre o item contábil correspondente.",
+        "scenario": "Faturas criam trabalho de limpeza quando arquivos e registros contábeis se desviam. {{assistantName}} arquiva anexos do Gmail no Drive, registra a fatura ou despesa no QuickBooks e pode atualizar uma planilha de conciliação.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} é acionado pela sua etiqueta de Faturas no Gmail.",
-            "title": "Uma fatura é rotulada"
+            "description": "{{assistantName}} lê mensagens do Gmail e anexos selecionados.",
+            "title": "Faturas de e-mail são identificadas"
           },
           "three": {
-            "description": "{{assistantName}} registra o valor e a data de vencimento na planilha de despesas.",
-            "title": "Registrada em uma planilha"
+            "description": "{{assistantName}} registra o item e, opcionalmente, atualiza o Google Sheets.",
+            "title": "QuickBooks é atualizado"
           },
           "two": {
-            "description": "{{assistantName}} salva o anexo na pasta correta.",
-            "title": "Arquivada no Google Drive"
+            "description": "{{assistantName}} salva o documento no Drive e extrai dados contábeis.",
+            "title": "Arquivos e detalhes são capturados"
           }
         },
-        "title": "Arquivar faturas do Gmail no Google Drive"
+        "title": "Arquive faturas do Gmail no Drive e no QuickBooks"
       },
       "file-sentry-crashes-github": {
-        "description": "Classifique novos erros do Sentry por impacto no usuário e registre os piores como problemas do GitHub.",
-        "scenario": "Novas falhas ficam ocultas no Sentry até que alguém procure. O {{assistantName}} verifica a cada hora, classifica os erros pelo número de usuários afetados, abre um problema no GitHub para os que importam e avisa quem é o responsável pelo código.",
+        "description": "Classificar novos erros por impacto e arquivar os mais açãoáveis.",
+        "scenario": "Erros de alto impacto podem ficar inapercebidos em feeds de erros. {{assistantName}} revisa novos falhas do Sentry, classifica-os por severidade e usuários afetados, e arquiva os que precisam de trabalho de engenharia.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê erros não resolvidos e suas contagens de eventos da última hora.",
-            "title": "{{assistantName}} puxa novos erros do Sentry"
+            "description": "{{assistantName}} coleta erros não resolvidos e sinais de impacto do Sentry.",
+            "title": "{{assistantName}} lê novos erros"
           },
           "three": {
-            "description": "O {{assistantName}} abre um problema no GitHub com o stack trace e notifica o responsável no Slack.",
-            "title": "Problemas registrados e responsável notificado"
+            "description": "{{assistantName}} cria issues açãoáveis e opcionalmente os vincula no Linear.",
+            "title": "Issues do GitHub são arquivadas"
           },
           "two": {
-            "description": "O {{assistantName}} classifica por usuários afetados e filtra ruídos de baixo impacto.",
-            "title": "Classificados por impacto no usuário"
+            "description": "{{assistantName}} separa regressões urgentes de ruído de menor impacto.",
+            "title": "Impacto é classificado"
           }
         },
-        "title": "Registrar falhas do Sentry como problemas do GitHub"
+        "title": "Arquivos do Sentry caem como issues do GitHub"
       },
       "fixes-to-notion-help-docs": {
-        "description": "Quando um ticket é marcado como resolvido, o {{assistantName}} transforma a correção em um artigo de ajuda reutilizável no Notion.",
-        "scenario": "A mesma pergunta volta porque a correção nunca foi documentada. O {{assistantName}} transforma cada ticket resolvido em um artigo de ajuda limpo e reutilizável no Notion para que a resposta exista na próxima vez.",
+        "description": "Converta soluções confirmadas no GitHub em orientação Notion reutilizável.",
+        "scenario": "A mesma pergunta de suporte retorna quando a solução não é documentada. {{assistantName}} lê issues do GitHub resolvidas e transforma a resolução aprovada em um artigo de ajuda Notion claro.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado quando um ticket é fechado.",
-            "title": "Um ticket é resolvido"
+            "description": "{{assistantName}} lê a issue do GitHub, a solução e o impacto do usuário.",
+            "title": "Um bug resolvido é selecionado"
           },
           "three": {
-            "description": "O {{assistantName}} adiciona o artigo ao seu centro de ajuda.",
-            "title": "Salvo no Notion"
+            "description": "{{assistantName}} escreve o rascunho reutilizável no Notion.",
+            "title": "O artigo de ajuda é salvo"
           },
           "two": {
-            "description": "O {{assistantName}} redige um guia claro a partir da resolução.",
-            "title": "Correção redigida"
+            "description": "{{assistantName}} transforma a resolução em passos de resolução de problemas claros.",
+            "title": "Orientação é rascunhada"
           }
         },
-        "title": "Transformar correções em documentos de ajuda no Notion"
+        "title": "Transforme bugs resolvidos em documentos de ajuda"
       },
       "flag-figma-designs-no-task": {
-        "description": "Sinalizar designs do Figma que ainda não têm uma tarefa vinculada ao Linear.",
-        "scenario": "Designs terminam silenciosamente sem nunca se tornarem tickets de construção. O {{assistantName}} verifica o Figma diariamente em busca de quadros marcados como prontos que não têm uma tarefa vinculada ao Linear e sinaliza as lacunas no Slack antes que elas escapem.",
+        "description": "Converter uma especificação de produto aprovada em trabalho Linear escopulado.",
+        "scenario": "Especificações aprovadas ainda precisam se tornar trabalho executável. {{assistantName}} lê uma especificação do Notion e cria um projeto do Linear com metas, issues escopuladas, dependências e critérios de aceitação.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê quadros e suas tarefas vinculadas.",
-            "title": "{{assistantName}} verifica quadros do Figma"
+            "description": "{{assistantName}} lê a especificação do Notion aprovada de produto.",
+            "title": "A especificação é revisada"
           },
           "three": {
-            "description": "O {{assistantName}} lista os designs não vinculados no seu canal.",
-            "title": "Lacunas publicadas no Slack"
+            "description": "{{assistantName}} cria o projeto e opcionalmente vincula contexto do GitHub.",
+            "title": "O projeto do Linear é criado"
           },
           "two": {
-            "description": "O {{assistantName}} sinaliza designs prontos que estão faltando um ticket de construção.",
-            "title": "Encontra quadros sem uma tarefa"
+            "description": "{{assistantName}} identifica metas, issues, dependências e critérios.",
+            "title": "Trabalho é estruturado"
           }
         },
-        "title": "Sinalizar designs do Figma sem uma tarefa"
+        "title": "Transformar uma especificação do Notion em um projeto do Linear"
       },
       "flagged-gmail-todoist-tasks": {
-        "description": "Transforme os e-mails que você sinaliza em tarefas do Todoist automaticamente.",
-        "scenario": "Sinalizar um e-mail apenas adia a decisão. O {{assistantName}} pega a sinalização, pesquisa o tópico e a conversa anterior, e registra uma tarefa no Todoist com o contexto já anexado.",
+        "description": "Criar tarefas açãoáveis a partir de mensagens com um rótulo selecionado.",
+        "scenario": "E-mails importantes ficam mais fáceis de concluir quando saem do caixa de entrada como tarefas claras. {{assistantName}} transforma mensagens marcadas do Gmail em itens do Todoist com datas de vencimento e contexto de origem.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} é acionado pela sua etiqueta de tarefas no Gmail.",
-            "title": "Você sinaliza um e-mail"
+            "description": "{{assistantName}} detecta o rótulo selecionado e lê a mensagem.",
+            "title": "Um e-mail do Gmail é marcado"
           },
           "three": {
-            "description": "{{assistantName}} cria uma tarefa pronta para fazer com links.",
-            "title": "Tarefa registrada no Todoist"
+            "description": "{{assistantName}} cria a tarefa com um link de origem.",
+            "title": "Uma tarefa do Todoist é criada"
           },
           "two": {
-            "description": "{{assistantName}} coleta o contexto da conversa anterior e informações da web com a Exa.",
-            "title": "{{assistantName}} pesquisa"
+            "description": "{{assistantName}} identifica a tarefa, data de vencimento e contexto de apoio.",
+            "title": "A ação é extraída"
           }
         },
-        "title": "Transformar e-mails sinalizados do Gmail em tarefas do Todoist"
+        "title": "Transformar e-mails marcados em tarefas do Todoist"
       },
       "github-idea-to-notion-spec": {
-        "description": "Expanda um problema rotulado do GitHub em uma especificação de produto estruturada no Notion.",
-        "scenario": "Uma ideia de uma linha em um problema não é uma especificação. O {{assistantName}} pega o rótulo precisa-especificação e expande o problema em um PRD estruturado no Notion com problema, usuários, requisitos e critérios de aceitação prontos para refinar.",
+        "description": "Expande uma ideia rotulada do GitHub em uma especificação de produto estruturada.",
+        "scenario": "Boas ideias muitas vezes param em uma breve descrição de issue. {{assistantName}} transforma uma ideia rotulada do GitHub em uma especificação clara do Notion, com o problema, evidências, escopo, métricas, riscos e perguntas abertas.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado pelo rótulo e lê o problema.",
-            "title": "Um problema é rotulado como precisa-especificação"
+            "description": "{{assistantName}} lê a issue rotulada do GitHub e o contexto relacionado.",
+            "title": "Uma ideia é selecionada"
           },
           "three": {
-            "description": "O {{assistantName}} cria a página PRD estruturada no Notion.",
-            "title": "Salvo no Notion"
+            "description": "{{assistantName}} escreve o rascunho estruturado no Notion.",
+            "title": "A especificação é salva"
           },
           "two": {
-            "description": "O {{assistantName}} rascunha problema, usuários, requisitos e critérios de aceitação.",
-            "title": "{{assistantName}} expande para um PRD"
+            "description": "{{assistantName}} expande o problema, o escopo, os critérios de sucesso e os riscos.",
+            "title": "A especificação é desenvolvida"
           }
         },
         "title": "Transformar uma ideia do GitHub em uma especificação do Notion"
       },
       "gmail-followups-auto": {
-        "description": "Encontre contatos que não responderam e elabore o próximo follow-up.",
-        "scenario": "O follow-up é onde os negócios são fechados e onde são esquecidos. O {{assistantName}} avança suas sequências diariamente e elabora o próximo contato para cada não-resposta, para que nada fique esquecido.",
+        "description": "Prepare respostas de vendas contextualizadas para revisão humana.",
+        "scenario": "Boas respostas precisam do registro da negociação e da conversa relacionada. {{assistantName}} combina o contexto do HubSpot com o fio de e-mail relacionado e esboça uma resposta concisa sem enviá-la.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê quem não respondeu no Instantly e Apollo.",
-            "title": "{{assistantName}} verifica o status da sequência"
+            "description": "{{assistantName}} lê o registro do HubSpot e a atividade recente.",
+            "title": "O contexto da negociação é revisado"
           },
           "three": {
-            "description": "{{assistantName}} prepara os rascunhos para sua aprovação.",
-            "title": "Pronto no Gmail"
+            "description": "{{assistantName}} prepara um esboço de e-mail do Gmail para revisão humana.",
+            "title": "Uma resposta é esboçada"
           },
           "two": {
-            "description": "{{assistantName}} escreve o follow-up para cada contato.",
-            "title": "Próximo contato elaborado"
+            "description": "{{assistantName}} identifica perguntas abertas, compromissos e prazos.",
+            "title": "O fio de e-mail é verificado"
           }
         },
-        "title": "Enviar follow-ups do Gmail automaticamente"
+        "title": "Esboce respostas de e-mail do Gmail no HubSpot"
       },
       "gmail-reconnect-reminders": {
-        "description": "Destaque contatos importantes com quem você não enviou e-mail há um tempo.",
-        "scenario": "Relacionamentos se desvanecem quando você está focado. O {{assistantName}} revisa sua caixa de entrada e calendário semanalmente, destaca contatos significativos com quem você não se comunicou recentemente e sugere uma abertura natural para reconectar.",
+        "description": "Encontrar contatos importantes que ficaram quietos e elaborar abordagens.",
+        "scenario": "Relacionamentos importantes se apagam quando ninguém nota o silêncio. {{assistantName}} revisa o Gmail, adiciona histórico do calendário quando disponível e elabora notas de reestabelecimento pensativas.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê o histórico recente de e-mails e calendário.",
-            "title": "O {{assistantName}} revisa seus contatos"
+            "description": "{{assistantName}} verifica atividade recente no Gmail e contexto de contato.",
+            "title": "Histórico de relacionamentos é revisado"
           },
           "three": {
-            "description": "O {{assistantName}} publica cada contato com uma abertura sugerida.",
-            "title": "Aberturas sugeridas"
+            "description": "{{assistantName}} elabora mensagens pessoais para revisão humana.",
+            "title": "Rascunhos de reestabelecimento são preparados"
           },
           "two": {
-            "description": "O {{assistantName}} encontra contatos significativos com quem você não se comunicou ultimamente.",
-            "title": "Relacionamentos silenciosos destacados"
+            "description": "{{assistantName}} identifica contatos valiosos sem interação recente.",
+            "title": "Relacionamentos em silêncio são classificados"
           }
         },
-        "title": "Receber lembretes de reconexão do Gmail"
+        "title": "Expor relacionamentos para reestabelecer contato"
       },
       "highlight-key-emails-gmail": {
-        "description": "Destaque os poucos e-mails que realmente precisam da sua atenção.",
-        "scenario": "Uma caixa de entrada cheia entope os três e-mails que importam. O {{assistantName}} lê seu e-mail todas as manhãs e destaca apenas aqueles que realmente precisam de você, publicados no Slack.",
+        "description": "Encontrar os e-mails do Gmail que mais precisam de uma resposta executiva.",
+        "scenario": "Um caixa de e-mails executivo mistura decisões importantes com tráfego rotineiro. {{assistantName}} identifica os e-mails que importam, explica por quê e elabora respostas sem enviar.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} escaneia os e-mails da noite no Gmail.",
-            "title": "O {{assistantName}} lê a caixa de entrada"
+            "description": "{{assistantName}} lê e-mails recentes do Gmail e contexto do calendário disponível.",
+            "title": "A caixa de entrada é revisada"
           },
           "three": {
-            "description": "O {{assistantName}} publica a lista com o motivo de cada um ser importante.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} resuma cada item e elabora respostas para revisão.",
+            "title": "Respostas são preparadas"
           },
           "two": {
-            "description": "O {{assistantName}} filtra os poucos que precisam da sua atenção.",
-            "title": "Prioridades identificadas"
+            "description": "{{assistantName}} prioriza decisões, compromissos e solicitações sensíveis.",
+            "title": "Mensagens importantes são classificadas"
           }
         },
-        "title": "Destacar e-mails importantes no Gmail"
+        "title": "Destacar e-mails-chave"
       },
       "investor-update-google-docs": {
-        "description": "Monte métricas e destaques em uma atualização para investidores no Docs.",
-        "scenario": "A atualização mensal para investidores sempre começa tarde e do zero. O {{assistantName}} reúne os KPIs e destaques e redige a atualização no Google Docs para que você refine em vez de montar.",
+        "description": "Combina dados financeiros e de crescimento em um rascunho do Google Docs.",
+        "scenario": "Atualizações para investidores levam tempo porque a história e os números vivem separados. {{assistantName}} combina QuickBooks e Google Analytics, adiciona contexto HubSpot quando disponível e elabora a atualização no Google Docs.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} puxa receita e crescimento do Stripe e Sheets.",
-            "title": "O {{assistantName}} reúne KPIs"
+            "description": "{{assistantName}} lê métricas financeiras, de crescimento e pipeline disponível.",
+            "title": "Métricas atuais são coletadas"
           },
           "three": {
-            "description": "O {{assistantName}} deixa um rascunho pronto para edição.",
-            "title": "Editável no Google Docs"
+            "description": "{{assistantName}} escreve a atualização para investidores no Google Docs.",
+            "title": "A atualização é elaborada"
           },
           "two": {
-            "description": "O {{assistantName}} escreve a narrativa e as métricas.",
-            "title": "Atualização redigida"
+            "description": "{{assistantName}} conecta progresso, lições, riscos e próximas prioridades.",
+            "title": "A narrativa é desenvolvida"
           }
         },
-        "title": "Redigir a atualização para investidores no Google Docs"
+        "title": "Elaborar uma atualização para investidores"
       },
       "log-gong-calls-hubspot": {
-        "description": "Puxe notas e próximos passos de uma chamada do Gong para o negócio no HubSpot.",
-        "scenario": "As notas da chamada nunca vão para o CRM enquanto estão frescas. O {{assistantName}} lê a transcrição do Gong após cada chamada e escreve o resumo e os próximos passos automaticamente no negócio do HubSpot.",
+        "description": "Transforme transcrições de reuniões em decisões e próximas ações do CRM.",
+        "scenario": "Detalhes importantes de chamadas importantes desaparecem quando as anotações ficam fora do CRM. {{assistantName}} transforma transcrições de reuniões do Google Meet em decisões, objeções, compromissos e itens de ação no HubSpot.",
         "steps": {
           "one": {
-            "description": "Após a chamada, o {{assistantName}} puxa as notas da gravação do Gong.",
-            "title": "O {{assistantName}} lê a transcrição"
+            "description": "{{assistantName}} lê a transcrição mais recente e o contexto da reunião.",
+            "title": "Uma transcrição de reunião chega"
           },
           "three": {
-            "description": "O {{assistantName}} escreve as notas no registro do negócio.",
-            "title": "Registrado no HubSpot"
+            "description": "{{assistantName}} registra o resumo e pode esboçar uma resposta de e-mail do Gmail.",
+            "title": "O HubSpot é atualizado"
           },
           "two": {
-            "description": "O {{assistantName}} extrai decisões e follow-ups.",
-            "title": "Resumo e próximos passos redigidos"
+            "description": "{{assistantName}} identifica decisões, objeções, compromissos e responsáveis.",
+            "title": "Sinais de vendas são extraídos"
           }
         },
-        "title": "Registrar chamadas do Gong no HubSpot"
+        "title": "Registre itens de ação de reuniões do Google Meet no HubSpot"
       },
       "meeting-notes-asana-tasks": {
-        "description": "Transforme notas de reunião em tarefas atribuídas e com prazo no Asana.",
-        "scenario": "Os itens de ação morrem nas notas da reunião. O {{assistantName}} lê a transcrição após cada reunião, extrai as tarefas e cria tarefas atribuídas no Asana para que as decisões realmente se tornem trabalho.",
+        "description": "Crie trabalho projetado a partir de transcrições de reuniões.",
+        "scenario": "Ações de reunião desaparecem quando permanecem dentro das anotações. {{assistantName}} lê transcrições do Google Meet, identifica compromissos e responsáveis, e cria tarefas do Asana claras.",
         "steps": {
           "one": {
-            "description": "Após a reunião, o {{assistantName}} puxa as notas do Fireflies.",
-            "title": "{{assistantName}} lê a transcrição"
+            "description": "{{assistantName}} lê a transcrição da reunião e o contexto do Calendário.",
+            "title": "Uma transcrição de reunião chega"
           },
           "three": {
-            "description": "{{assistantName}} registra as tarefas atribuídas com prazos.",
-            "title": "Tarefas criadas no Asana"
+            "description": "{{assistantName}} cria trabalho atribuído com contexto de origem.",
+            "title": "Tarefas do Asana são criadas"
           },
           "two": {
-            "description": "{{assistantName}} identifica as tarefas e os responsáveis.",
-            "title": "Itens de ação extraídos"
+            "description": "{{assistantName}} identifica tarefas, responsáveis, datas de vencimento e dependências.",
+            "title": "Ações são extraídas"
           }
         },
-        "title": "Transformar notas de reunião em tarefas do Asana"
+        "title": "Transforme anotações do Google Meet em tarefas do Asana"
       },
       "meeting-recaps-slack": {
-        "description": "Compartilhe um resumo com decisões e itens de ação após cada reunião.",
-        "scenario": "Os detalhes de uma reunião se perdem até a próxima. O {{assistantName}} lê a transcrição depois e envia um resumo claro das decisões e itens de ação para que nada se perca.",
+        "description": "Transformar transcrições de reuniões em resumos concisos e itens de ação.",
+        "scenario": "Decisões de reuniões são perdidas quando a transcrição nunca é processada. {{assistantName}} lê transcrições de reuniões do Google Meet e escreve as decisões-chave, ações e responsáveis em documentos do Google Docs.",
         "steps": {
           "one": {
-            "description": "Após a reunião, o {{assistantName}} puxa as notas do Fireflies.",
-            "title": "{{assistantName}} lê a transcrição"
+            "description": "{{assistantName}} lê a transcrição e o contexto do calendário disponível.",
+            "title": "Uma transcrição de reunião chega"
           },
           "three": {
-            "description": "{{assistantName}} entrega o resumo no Gmail ou Slack.",
-            "title": "Enviado para você"
+            "description": "{{assistantName}} escreve o resumo estruturado no Google Docs.",
+            "title": "O resumo é salvo"
           },
           "two": {
-            "description": "{{assistantName}} resume as decisões e itens de ação.",
-            "title": "Resumo escrito"
+            "description": "{{assistantName}} identifica resultados, responsáveis, datas de vencimento e perguntas abertas.",
+            "title": "Decisões e ações são extraídas"
           }
         },
-        "title": "Receber resumos de reuniões no Slack"
+        "title": "Salvar resumos de reuniões do Google Meet em documentos do Google Docs"
       },
       "morning-brief-slack": {
-        "description": "Todas as manhãs, o {{assistantName}} envia um resumo com sua agenda e os e-mails que precisam de você, e publica no Slack.",
-        "scenario": "Os primeiros dez minutos do dia são gastos tentando entender o que o dia realmente é. O {{assistantName}} monta sua agenda e os e-mails que precisam de você e publica um resumo matinal no Slack antes de você se sentar.",
+        "description": "Combinar e-mails importantes, agenda do dia e contexto opcional do Notion.",
+        "scenario": "Um bom planejamento da manhã precisa tanto do caixa de entrada quanto do calendário. {{assistantName}} revisa o Gmail e o Google Calendar, adiciona contexto do Notion quando disponível e retorna um resumo diário curto.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa o calendário de hoje e os e-mails prioritários.",
-            "title": "{{assistantName}} lê seu dia"
+            "description": "{{assistantName}} lê e-mails importantes e a agenda do dia.",
+            "title": "Entradas do dia são coletadas"
           },
           "three": {
-            "description": "{{assistantName}} envia o resumo matinal.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} cria um plano focado no fio de automação.",
+            "title": "O resumo é retornado"
           },
           "two": {
-            "description": "{{assistantName}} escreve sua agenda e o que precisa de atenção.",
-            "title": "Resumo montado"
+            "description": "{{assistantName}} identifica compromissos, preparação e acompanhamento.",
+            "title": "Prioridades são conectadas"
           }
         },
-        "title": "Receber um resumo matinal no Slack"
+        "title": "Criar um resumo da manhã"
       },
       "new-gmail-contacts-hubspot": {
-        "description": "Adicione e enriqueça remetentes de e-mail desconhecidos como contatos do HubSpot.",
-        "scenario": "Contatos se perdem quando ninguém os registra. O {{assistantName}} nota um e-mail de alguém que ainda não está no HubSpot, cria o registro e o enriquece com Apollo para que o CRM permaneça completo sem entrada manual.",
+        "description": "Crie ou enriqueça contatos do CRM a partir de conversas de e-mail relevantes.",
+        "scenario": "Novas relações muitas vezes ficam presas na caixa de entrada. {{assistantName}} identifica correspondentes relevantes do Gmail, verifica o HubSpot para duplicatas e cria ou enriquece o registro do contato.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} verifica os e-mails recebidos em relação ao CRM.",
-            "title": "{{assistantName}} identifica um remetente desconhecido"
+            "description": "{{assistantName}} revisa conversas de e-mail relevantes do Gmail.",
+            "title": "Novos correspondentes são identificados"
           },
           "three": {
-            "description": "{{assistantName}} registra o contato e a fonte na linha do tempo.",
-            "title": "Registrado para acompanhamento"
+            "description": "{{assistantName}} cria ou enriquece o registro do HubSpot.",
+            "title": "O contato é atualizado"
           },
           "two": {
-            "description": "{{assistantName}} adiciona a pessoa ao HubSpot e enriquece com Apollo.",
-            "title": "Contato criado e enriquecido"
+            "description": "{{assistantName}} encontra registros existentes e detalhes faltantes.",
+            "title": "O HubSpot é verificado"
           }
         },
-        "title": "Adicionar novos contatos do Gmail ao HubSpot"
+        "title": "Adicione novos contatos do Gmail ao HubSpot"
       },
       "onboard-new-hires-asana": {
-        "description": "Crie a lista de verificação de tarefas de integração para cada novo contratado no Asana.",
-        "scenario": "A integração é a mesma lista de verificação toda vez, feita manualmente. O {{assistantName}} detecta um novo contratado, cria o projeto de integração no Asana e configura seus documentos iniciais no Drive.",
+        "description": "Transforme submissões aprovadas de entrada em um plano de onboarding do Asana.",
+        "scenario": "O setup do novo funcionário é mais confiável quando cada submissão aprovada segue o mesmo plano. {{assistantName}} lê submissões do Google Forms, cria tarefas no Asana e pode arquivar documentos no Drive.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} detecta o novo registro no Deel.",
-            "title": "Um novo contratado é adicionado"
+            "description": "{{assistantName}} lê o formulário do novo funcionário e os detalhes necessários.",
+            "title": "Uma submissão é aprovada"
           },
           "three": {
-            "description": "{{assistantName}} configura documentos iniciais no Google Drive.",
-            "title": "Documentos provisionados"
+            "description": "{{assistantName}} cria o plano e, opcionalmente, arquiva documentos no Drive.",
+            "title": "Asana é atualizado"
           },
           "two": {
-            "description": "{{assistantName}} inicia o projeto de integração com tarefas atribuídas.",
-            "title": "Lista de verificação criada no Asana"
+            "description": "{{assistantName}} mapeia o cargo e a data de início às tarefas e responsáveis.",
+            "title": "O plano de onboarding é construído"
           }
         },
-        "title": "Integrar novos contratados no Asana"
+        "title": "Onboard novos funcionários com formulários do Google"
       },
       "post-daily-metrics-slack": {
-        "description": "Publicar visitantes diários, inscrições e números de ativação no Slack.",
-        "scenario": "Verificar três painéis antes do café não é o ritual favorito de ninguém. O {{assistantName}} puxa visitantes, inscrições e ativações todas as manhãs e publica os números no Slack para que o dia comece com os KPIs já no canal.",
+        "description": "Resuma o tráfego, a aquisição, a conversão e as mudanças notáveis.",
+        "scenario": "O movimento diário do site não deve exigir a abertura de vários relatórios. {{assistantName}} lê o Google Analytics, adiciona o contexto do Search Console quando disponível e retorna um resumo conciso no fio de automação.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê tráfego, inscrições e ativações das suas ferramentas de análise.",
-            "title": "{{assistantName}} puxa as métricas"
+            "description": "{{assistantName}} lê o tráfego, a aquisição e as métricas de conversão.",
+            "title": "Os dados do site são coletados"
           },
           "three": {
-            "description": "O {{assistantName}} publica a atualização matinal de KPI.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} resuma o que mudou e o que merece atenção.",
+            "title": "O resumo é retornado"
           },
           "two": {
-            "description": "O {{assistantName}} formata os números-chave com contexto dia a dia.",
-            "title": "Montado em um instantâneo de KPI"
+            "description": "{{assistantName}} compara o desempenho e destaca movimentos significativos.",
+            "title": "As mudanças são identificadas"
           }
         },
-        "title": "Publicar métricas diárias no Slack"
+        "title": "Crie um resumo diário de métricas do site"
       },
       "post-github-updates-slack": {
-        "description": "Toda manhã de dia útil, o {{assistantName}} compila seu trabalho mesclado e em andamento do GitHub e Linear em uma atualização de progresso para o Slack.",
-        "scenario": "As reuniões diárias consomem tempo e metade delas é apenas relembrar o que você fez. O {{assistantName}} compila seus PRs mesclados e tickets em andamento do Linear todas as manhãs e publica uma atualização de progresso organizada para que a reunião assíncrona se escreva sozinha.",
+        "description": "Revisar acesso à nuvem, contas de serviço e serviços expostos.",
+        "scenario": "Permissões do Google Cloud podem deslizar à medida que os projetos crescem. {{assistantName}} revisa as permissões do IAM do Google Cloud, contas de serviço, chaves, serviços habilitados e exposição pública, e retorna um relatório de risco só de leitura com recomendações claras para correção.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê seu trabalho mesclado e aberto do GitHub e Linear.",
-            "title": "{{assistantName}} coleta sua atividade"
+            "description": "{{assistantName}} inventoria as associações do IAM, contas, chaves e serviços.",
+            "title": "Acesso à nuvem é revisado"
           },
           "three": {
-            "description": "O {{assistantName}} publica a atualização no seu canal de reunião diária toda manhã de dia útil.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} recomenda correções e opcionalmente redige issues do GitHub aprovadas.",
+            "title": "Correções são preparadas"
           },
           "two": {
-            "description": "O {{assistantName}} escreve um resumo de progresso curto e legível.",
-            "title": "Resumido em uma atualização"
+            "description": "{{assistantName}} marca privilégios excessivos, credenciais obsoletas e exposição pública.",
+            "title": "Risco é avaliado"
           }
         },
-        "title": "Publicar atualizações do GitHub no Slack"
+        "title": "Auditoria de permissões do Google Cloud e serviços"
       },
       "post-release-notes-slack": {
-        "description": "Rascunhe um changelog do trabalho recentemente enviado e publique no Slack.",
-        "scenario": "O changelog que os usuários veem é diferente do log de commits. O {{assistantName}} é acionado pelo rótulo de lançamento, rascunha um resumo amigável voltado para o usuário do que foi enviado e publica no Slack e Notion.",
+        "description": "Transformar recentes trabalhos enviados no GitHub em um cronograma de alterações aprovado.",
+        "scenario": "Trabalhos enviados são fáceis de perder dentro de solicitações de pull. {{assistantName}} coleta mudanças recentes no GitHub, redige notas de lançamento legíveis e publica a versão aprovada no Notion.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado pelo rótulo de lançamento.",
-            "title": "Um PR é rotulado como lançamento"
+            "description": "{{assistantName}} coleta mudanças recentemente mescladas no GitHub.",
+            "title": "Trabalhos enviados são coletados"
           },
           "three": {
-            "description": "O {{assistantName}} compartilha o anúncio em ambos os lugares.",
-            "title": "Publicado no Slack e Notion"
+            "description": "{{assistantName}} salva as notas de lançamento finais no Notion.",
+            "title": "A versão aprovada é publicada"
           },
           "two": {
-            "description": "O {{assistantName}} escreve um resumo voltado para o usuário do que mudou.",
-            "title": "{{assistantName}} rascunha o changelog"
+            "description": "{{assistantName}} agrupa mudanças e explica seu impacto no usuário.",
+            "title": "Notas de lançamento são redigidas"
           }
         },
-        "title": "Publicar notas de lançamento no Slack"
+        "title": "Publicar notas de lançamento no Notion"
       },
       "prep-google-calendar-meetings": {
-        "description": "Pesquise participantes externos e envie um resumo antes das reuniões.",
-        "scenario": "Entrar em uma chamada sem preparação significa improvisar. O {{assistantName}} identifica novas reuniões externas, pesquisa o participante e a empresa com Apollo, puxa o contexto de chamadas anteriores do Gong e te envia um resumo de uma página antes de começar.",
+        "description": "Crie um briefing focado para reuniões externas programadas.",
+        "scenario": "A preparação da reunião não deve começar cinco minutos antes da chamada. {{assistantName}} revisa o evento do calendário e adiciona contexto de contato e CRM quando disponível.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado quando um participante externo entra no seu calendário.",
-            "title": "Uma reunião é adicionada"
+            "description": "{{assistantName}} lê a janela selecionada do Google Calendar.",
+            "title": "Reuniões programadas são encontradas"
           },
           "three": {
-            "description": "O {{assistantName}} te envia um dossiê de uma página antes da chamada.",
-            "title": "Resumo enviado para o Slack"
+            "description": "{{assistantName}} retorna metas, contexto, riscos e perguntas sugeridas.",
+            "title": "O briefing é preparado"
           },
           "two": {
-            "description": "O {{assistantName}} enriquece a pessoa e a empresa com Apollo e Gong.",
-            "title": "Participante pesquisado"
+            "description": "{{assistantName}} verifica o HubSpot quando conectado.",
+            "title": "Contexto dos participantes é coletado"
           }
         },
-        "title": "Preparar reuniões do Google Calendar"
+        "title": "Prepare-se para reuniões do Google Calendar"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "Todo dia, o {{assistantName}} publica o conteúdo agendado para hoje do calendário do Notion no Strapi e coloca os posts sociais em fila no Buffer.",
-        "scenario": "Um calendário de conteúdo só funciona se alguém clicar em publicar. O {{assistantName}} lê os itens agendados para hoje no Notion, publica no Strapi e coloca os posts sociais correspondentes em fila no Buffer.",
+        "description": "Compare o site com concorrentes e identifique oportunidades orgânicas.",
+        "scenario": "Planos de conteúdo melhoram quando começam com lacunas de busca reais. {{assistantName}} usa o Firecrawl e o DataForSEO integrados para comparar o site do usuário com concorrentes nomeados e classificar tópicos faltantes por intenção e valor.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa os itens agendados para hoje do Notion.",
-            "title": "{{assistantName}} lê o calendário de hoje"
+            "description": "{{assistantName}} navega no site do usuário e nos concorrentes selecionados.",
+            "title": "Sites são comparados"
           },
           "three": {
-            "description": "{{assistantName}} agenda os posts promocionais no Buffer.",
-            "title": "Social agendado no Buffer"
+            "description": "{{assistantName}} retorna uma lista priorizada de oportunidades de conteúdo.",
+            "title": "Oportunidades são classificadas"
           },
           "two": {
-            "description": "{{assistantName}} publica o conteúdo no Strapi.",
-            "title": "Publicado no CMS"
+            "description": "{{assistantName}} encontra palavras-chave, tópicos e cobertura de intenção faltantes.",
+            "title": "Lacunas de busca são identificadas"
           }
         },
-        "title": "Publicar posts agendados no Buffer"
+        "title": "Encontre lacunas de palavras-chave e conteúdo"
       },
       "report-ai-model-costs-slack": {
-        "description": "Todos os dias, o {{assistantName}} reporta gastos de tokens LLM e latência p95 por modelo e rota do Langfuse para o Slack.",
-        "scenario": "Os gastos com modelos aumentam silenciosamente entre rotas e modelos. O {{assistantName}} lê o Langfuse todos os dias e publica uma análise de gastos de tokens e latência p95 por modelo e rota para que surpresas de custo nunca esperem até a fatura.",
+        "description": "Explicar incidentes de tráfego ou segurança e a próxima resposta.",
+        "scenario": "Incidentes do Cloudflare precisam de contexto antes de precisarem de ruído. {{assistantName}} revisa tráfego, eventos de segurança e saúde do serviço, explica o impacto provável e retorna as próximas ações no fio de automação.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} puxa gastos de tokens e rastros de latência do dia.",
-            "title": "{{assistantName}} lê o Langfuse"
+            "description": "{{assistantName}} revisa a saúde do serviço, movimentações de tráfego e eventos de segurança.",
+            "title": "Cloudflare é verificado"
           },
           "three": {
-            "description": "O {{assistantName}} publica o relatório diário de custos e latência.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} recomenda uma resposta e pode redigir uma issue do GitHub.",
+            "title": "Próximas ações são retornadas"
           },
           "two": {
-            "description": "O {{assistantName}} agrega gastos e p95 por modelo e por rota.",
-            "title": "Dividido por modelo e rota"
+            "description": "{{assistantName}} separa incidentes confirmados de variação normal.",
+            "title": "Impacto é explicado"
           }
         },
-        "title": "Relatar custos de modelos de IA no Slack"
+        "title": "Alerta sobre incidentes do Cloudflare"
       },
       "research-calendar-meetings": {
-        "description": "Pesquise as pessoas que você vai encontrar antes de cada evento no calendário.",
-        "scenario": "Chegar preparado significa fazer pesquisas que você raramente tem tempo. O {{assistantName}} nota novas reuniões, pesquisa os participantes e suas empresas, e envia um dossiê de uma página antes que comece.",
+        "description": "Construir breves resumos a partir do Calendário e contexto de e-mail.",
+        "scenario": "A preparação para reuniões é mais rápida quando o histórico de participantes e conversas já estão conectados. {{assistantName}} revisa eventos futuros no Calendário e adiciona contexto de Gmail quando disponível.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} é acionado em novos eventos do calendário.",
-            "title": "Uma reunião é adicionada"
+            "description": "{{assistantName}} lê a janela do Calendário do Google selecionada.",
+            "title": "Reuniões futuras são encontradas"
           },
           "three": {
-            "description": "{{assistantName}} envia um resumo de uma página no Slack antes da chamada.",
-            "title": "Dossiê entregue"
+            "description": "{{assistantName}} retorna objetivos, contexto e perguntas sugeridas.",
+            "title": "Resumos são preparados"
           },
           "two": {
-            "description": "{{assistantName}} pesquisa as pessoas e a empresa com a Exa.",
-            "title": "Participantes pesquisados"
+            "description": "{{assistantName}} verifica fios de e-mail relacionados.",
+            "title": "Contexto dos participantes é coletado"
           }
         },
-        "title": "Pesquise suas reuniões no calendário"
+        "title": "Preparar para reuniões futuras"
       },
       "research-new-signups-apollo": {
-        "description": "Pesquise cada nova inscrição e publique um rápido resumo.",
-        "scenario": "Uma nova inscrição é uma oportunidade apenas se alguém notar a tempo. O {{assistantName}} verifica o Clerk a cada hora, pesquisa cada novo usuário e sua empresa com Apollo e publica um resumo de fundo no Slack.",
+        "description": "Encontre e qualifique leads de criadores no X.",
+        "scenario": "A prospecção trava quando a lista fica desatualizada. {{assistantName}} encontra criadores e prospects no X que combinam com o perfil-alvo, qualifica cada um com a busca de pessoas integrada e o Firecrawl e devolve uma lista de contato priorizada.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa novos usuários do Clerk a cada hora.",
-            "title": "{{assistantName}} lê novas inscrições"
+            "description": "{{assistantName}} busca no X contas que combinam com o perfil-alvo.",
+            "title": "Candidatos são encontrados no X"
           },
           "three": {
-            "description": "{{assistantName}} publica o perfil de cada inscrição no canal.",
-            "title": "Resumo publicado no Slack"
+            "description": "{{assistantName}} avalia a aderência, redige a mensagem inicial e opcionalmente salva os leads no HubSpot.",
+            "title": "A lista de contato é priorizada"
           },
           "two": {
-            "description": "{{assistantName}} enriquece o contexto de fundo e da empresa.",
-            "title": "Pesquisado com Apollo"
+            "description": "{{assistantName}} verifica cargo, empresa e alcance com a pesquisa integrada.",
+            "title": "Cada lead é qualificado"
           }
         },
-        "title": "Pesquisar novas inscrições"
+        "title": "Encontrar leads de criadores no X"
       },
       "run-daily-query-sheets": {
-        "description": "Execute sua SQL salva em um cronograma e anexe os resultados a uma planilha.",
-        "scenario": "O relatório que você reconstrói todas as manhãs é a mesma consulta e o mesmo colar em uma planilha. O {{assistantName}} executa a consulta para você todos os dias e escreve os resultados formatados diretamente no Google Sheets.",
+        "description": "Escreva a visibilidade de busca e o movimento de consulta no Google Sheets.",
+        "scenario": "O desempenho orgânico é mais fácil de agir quando tem uma história consistente. {{assistantName}} puxa métricas do Search Console, adiciona o contexto do Analytics quando disponível e atualiza uma planilha de relatórios.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} executa sua consulta salva como somente leitura contra o armazém.",
-            "title": "{{assistantName}} executa a consulta"
+            "description": "{{assistantName}} lê cliques, impressões, CTR, posição e consultas.",
+            "title": "Os dados de busca são coletados"
           },
           "three": {
-            "description": "O {{assistantName}} anexa os resultados à sua planilha de acompanhamento.",
-            "title": "Escrito no Google Sheets"
+            "description": "{{assistantName}} escreve os resultados normalizados no Google Sheets.",
+            "title": "A planilha é atualizada"
           },
           "two": {
-            "description": "O {{assistantName}} organiza a saída em colunas limpas.",
-            "title": "Resultados formatados"
+            "description": "{{assistantName}} identifica demanda de busca vencedora, decrescente e emergente.",
+            "title": "O movimento é analisado"
           }
         },
-        "title": "Executar uma consulta diária no Google Sheets"
+        "title": "Registre o desempenho orgânico de busca no Sheets"
       },
       "send-bugs-github-slack": {
-        "description": "Registre relatórios marcados como bugs como problemas no GitHub e avise a equipe no Slack.",
-        "scenario": "Um relatório de bug só é útil para os engenheiros se estiver completo. O {{assistantName}} identifica o rótulo de bug, monta os passos de reprodução e o impacto no cliente, registra de forma organizada e publica no canal de engenharia.",
+        "description": "Converta relatos de bugs reproduzíveis em trabalho de engenharia estruturado.",
+        "scenario": "Os relatos de bugs perdem valor quando as evidências ficam no inbox. {{assistantName}} identifica problemas de suporte reproduzíveis, extrai impacto e passos, e arquiva um issue do GitHub estruturado.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} é acionado pelo rótulo de bug.",
-            "title": "Um problema é rotulado como bug"
+            "description": "{{assistantName}} revisa e-mails de suporte em busca de falhas de produto reproduzíveis.",
+            "title": "Problemas de bugs são identificados"
           },
           "three": {
-            "description": "O {{assistantName}} publica o relatório estruturado no Slack.",
-            "title": "Enviado para engenharia"
+            "description": "{{assistantName}} cria o issue e pode vinculá-lo no Linear.",
+            "title": "Um issue do GitHub é arquivado"
           },
           "two": {
-            "description": "O {{assistantName}} monta os passos, impacto e contexto.",
-            "title": "Reprodução e impacto organizados"
+            "description": "{{assistantName}} extrai impacto, passos, comportamento esperado e contexto.",
+            "title": "Evidências são estruturadas"
           }
         },
-        "title": "Enviar bugs para GitHub e Slack"
+        "title": "Transforme e-mails de suporte em issues do GitHub"
       },
       "sort-gmail-draft-replies": {
-        "description": "Classifique sua caixa de entrada e rascunhe respostas para os e-mails que precisam delas.",
-        "scenario": "Uma caixa de entrada cheia é um trabalho em tempo integral. O {{assistantName}} classifica os e-mails recebidos por urgência e rascunha respostas na sua voz para que você possa revisar e aprovar em vez de digitar do zero.",
+        "description": "Tratar novos e-mails e preparar respostas para revisão humana.",
+        "scenario": "Um caixa de entrada lotado esconde tanto solicitações urgentes quanto respostas fáceis. {{assistantName}} agrupa novos e-mails do Gmail por urgência e ação, então redige respostas sem enviar.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} verifica as mensagens recebidas no Gmail.",
-            "title": "{{assistantName}} lê novos e-mails"
+            "description": "{{assistantName}} lê o caixa de entrada ou rótulo selecionado do Gmail.",
+            "title": "Novos e-mails são revisados"
           },
           "three": {
-            "description": "{{assistantName}} prepara respostas para sua aprovação.",
-            "title": "Respostas rascunhadas"
+            "description": "{{assistantName}} prepara respostas para revisão humana.",
+            "title": "Respostas são redigidas"
           },
           "two": {
-            "description": "{{assistantName}} rotula o que precisa de atenção agora versus depois.",
-            "title": "Classificado por urgência"
+            "description": "{{assistantName}} agrupa e-mails por urgência, solicitação e próxima ação.",
+            "title": "Mensagens são triadas"
           }
         },
-        "title": "Classificar Gmail e rascunhar respostas"
+        "title": "Organizar o Gmail e responder草稿"
       },
       "sort-route-zendesk-tickets": {
-        "description": "Quando um ticket de suporte chega, o {{assistantName}} define sua gravidade, o direciona para a equipe certa e redige uma primeira resposta.",
-        "scenario": "Todo ticket precisa de triagem antes de ser respondido. O {{assistantName}} lê cada novo ticket, atribui gravidade, o direciona para a fila correta e redige uma primeira resposta para que os agentes comecem a partir de um rascunho, não de uma caixa em branco.",
+        "description": "Classifique e-mails de suporte e crie itens de trabalho açãoáveis no Linear.",
+        "scenario": "Os e-mails de suporte precisam de priorização e responsabilidade consistentes. {{assistantName}} lê novas conversas do Gmail, identifica o tipo de problema e a urgência, e cria trabalho no Linear para itens que precisam de ação.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê o novo ticket do Zendesk.",
-            "title": "Um ticket chega"
+            "description": "{{assistantName}} revisa novas conversas e contexto disponível.",
+            "title": "Os e-mails de suporte são lidos"
           },
           "three": {
-            "description": "O {{assistantName}} prepara uma resposta inicial alinhada à marca.",
-            "title": "Primeira resposta redigida"
+            "description": "{{assistantName}} cria itens de trabalho açãoáveis e vincula evidências de suporte.",
+            "title": "Trabalho no Linear é criado"
           },
           "two": {
-            "description": "O {{assistantName}} classifica a urgência e envia para a equipe certa.",
-            "title": "Gravidade definida e direcionada"
+            "description": "{{assistantName}} classifica urgência, tema e equipe responsável.",
+            "title": "Prioridade e responsabilidade são definidas"
           }
         },
-        "title": "Classificar e direcionar tickets do Zendesk"
+        "title": "Triagem de emails de suporte para o Linear"
       },
       "spot-churn-risk-stripe-zendesk": {
-        "description": "Marque contas em risco de churn e redija um e-mail de recuperação.",
-        "scenario": "O churn é óbvio apenas depois que acontece. O {{assistantName}} verifica diariamente o Stripe e o Zendesk em busca de problemas de cobrança ou picos de tickets, marca as contas em risco e redige um e-mail de recuperação para que alguém possa intervir cedo.",
+        "description": "Resuma o volume de suporte, riscos, temas e trabalho não resolvido.",
+        "scenario": "Uma fila de suporte é mais fácil de gerenciar quando as mudanças importantes são visíveis. {{assistantName}} revisa conversas do Gmail, destaca problemas urgentes ou recorrentes e vincula trabalho relacionado no Linear ou no GitHub.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê o status de cobrança do Stripe e o volume de tickets do Zendesk.",
-            "title": "O {{assistantName}} escaneia contas"
+            "description": "{{assistantName}} lê novas e não resolvidas conversas do Gmail.",
+            "title": "Atividade de suporte é coletada"
           },
           "three": {
-            "description": "O {{assistantName}} redige um e-mail de contato para revisão.",
-            "title": "E-mail de recuperação redigido"
+            "description": "{{assistantName}} resuma prioridades no fio de automação.",
+            "title": "O resumo é retornado"
           },
           "two": {
-            "description": "O {{assistantName}} destaca contas que mostram sinais de churn.",
-            "title": "Contas em risco marcadas"
+            "description": "{{assistantName}} agrupa problemas recorrentes e marca seguidos urgentes.",
+            "title": "Riscos e temas são identificados"
           }
         },
-        "title": "Identificar risco de churn no Stripe e Zendesk"
+        "title": "Crie um resumo diário de suporte"
       },
       "summarize-gmail-newsletters": {
-        "description": "Resuma as newsletters na sua caixa de entrada em um breve resumo.",
-        "scenario": "Você se inscreve em vinte newsletters e não lê nenhuma. O {{assistantName}} coleta tudo que você rotulou como newsletter e publica um resumo semanal organizado para que você receba as informações sem a pilha.",
+        "description": "Transformar newsletters selecionadas em um resumo útil e recorrente.",
+        "scenario": "O valor das newsletters desaparece quando cada edição concorre pela atenção do caixa de entrada. {{assistantName}} resumir newsletters selecionadas do Gmail em temas, links úteis e leituras recomendadas.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê mensagens sob sua etiqueta de Newsletters.",
-            "title": "{{assistantName}} coleta newsletters"
+            "description": "{{assistantName}} lê mensagens dos remetentes selecionados ou rótulo.",
+            "title": "Newsletter são coletadas"
           },
           "three": {
-            "description": "{{assistantName}} envia o resumo semanal.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} retorna o resumo e pode salvar em Notion.",
+            "title": "O resumo é criado"
           },
           "two": {
-            "description": "{{assistantName}} extrai os pontos principais de cada uma.",
-            "title": "Resumido em um resumo"
+            "description": "{{assistantName}} agrupa temas e identifica os links mais úteis.",
+            "title": "Conteúdo útil é distilado"
           }
         },
         "title": "Resumir newsletters do Gmail"
       },
       "summarize-user-feedback-notion": {
-        "description": "Toda semana, o {{assistantName}} coleta feedback do Productlane, Typeform, Intercom e GitHub, agrupa em temas e classifica no Notion.",
-        "scenario": "O feedback está espalhado por quatro ferramentas e ninguém tem tempo para ler tudo. O {{assistantName}} puxa de cada fonte semanalmente, agrupa os comentários em temas e escreve um resumo classificado no Notion para que os principais pedidos sejam óbvios.",
+        "description": "Agrupar novas respostas de formulários em insights de produto classificados.",
+        "scenario": "O feedback se torna útil quando padrões são visíveis. {{assistantName}} revisa as respostas dos formulários do Google, agrupa pontos de dor e solicitações recorrentes, classifica as descobertas e escreve o resumo no Notion.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} lê novos feedbacks do Productlane, Typeform, Intercom e GitHub.",
-            "title": "{{assistantName}} puxa feedback"
+            "description": "{{assistantName}} lê as últimas submissões dos formulários do Google.",
+            "title": "Respostas são coletadas"
           },
           "three": {
-            "description": "O {{assistantName}} escreve o resumo classificado em uma página do Notion.",
-            "title": "Resumo salvo no Notion"
+            "description": "{{assistantName}} escreve um resumo priorizado no Notion.",
+            "title": "Insights são salvas"
           },
           "two": {
-            "description": "O {{assistantName}} agrupa feedbacks relacionados e classifica temas por frequência.",
-            "title": "Agrupado em temas"
+            "description": "{{assistantName}} agrupa pontos de dor, solicitações e sentimentos.",
+            "title": "Temas são classificados"
           }
         },
-        "title": "Resumir feedback de usuários no Notion"
+        "title": "Resumir feedback de formulários do Google no Notion"
       },
       "summarize-zendesk-tickets-daily": {
-        "description": "Resuma o último dia de tickets do Zendesk e publique no Slack.",
-        "scenario": "O backlog de suporte é difícil de ver até que se torne um incêndio. O {{assistantName}} resume o último dia de tickets por gravidade e idade todas as manhãs e publica no Slack para que nada fique sem atenção.",
+        "description": "Crie vídeos de suporte aprovados com a capacidade de avatar integrada.",
+        "scenario": "Algumas respostas de suporte são mais fáceis de seguir como um vídeo de apresentador curto. {{assistantName}} transforma conteúdo de FAQ aprovado em roteiro e storyboard, depois usa a capacidade de avatar-video integrada após revisão.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} puxa as últimas 24 horas de tickets do Zendesk.",
-            "title": "O {{assistantName}} lê a fila"
+            "description": "{{assistantName}} identifica a resposta aprovada e o público-alvo.",
+            "title": "Conteúdo da FAQ é selecionado"
           },
           "three": {
-            "description": "O {{assistantName}} publica o resumo diário de suporte.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} gera apenas após o usuário aprovar o rascunho.",
+            "title": "O vídeo de avatar é gerado"
           },
           "two": {
-            "description": "O {{assistantName}} organiza os tickets abertos e sinaliza os antigos.",
-            "title": "Agrupados por gravidade e idade"
+            "description": "{{assistantName}} cria um plano de suporte-vídeo conciso e preciso.",
+            "title": "Um roteiro e storyboard são rascunhados"
           }
         },
-        "title": "Resumir tickets do Zendesk diariamente"
+        "title": "Transforme FAQs em vídeos de suporte digital-humano"
       },
       "sync-asana-projects-notion": {
-        "description": "Consolide o status dos projetos do Asana em um único quadro no Notion.",
-        "scenario": "O status está no Asana, mas a liderança lê o Notion. O {{assistantName}} consolida o status das tarefas diariamente em um quadro do Notion e publica um resumo para que todos vejam a mesma situação sem uma reunião de status.",
+        "description": "Mantenha uma visão geral do projeto do Notion atualizada com o Asana.",
+        "scenario": "Resumos de projetos podem se desviar quando o status das tarefas muda em outro lugar. {{assistantName}} lê projetos selecionados do Asana e mantém a visão geral correspondente no Notion atualizada.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa o status das tarefas e projetos entre as equipes.",
-            "title": "{{assistantName}} lê o Asana"
+            "description": "{{assistantName}} revisa o status, os responsáveis, as datas de vencimento e os obstáculos.",
+            "title": "Projetos do Asana são lidos"
           },
           "three": {
-            "description": "{{assistantName}} publica um resumo no Slack.",
-            "title": "Resumo publicado"
+            "description": "{{assistantName}} atualiza a visão geral e destaca as alterações.",
+            "title": "Notion é sincronizada"
           },
           "two": {
-            "description": "{{assistantName}} atualiza um único quadro de status no Notion.",
-            "title": "Consolidado em um quadro"
+            "description": "{{assistantName}} compara o estado atual do projeto com a visão anterior.",
+            "title": "Mudanças significativas são identificadas"
           }
         },
-        "title": "Sincronizar projetos do Asana com o Notion"
+        "title": "Sincronize projetos do Asana com o Notion"
       },
       "sync-linear-roadmap-notion": {
-        "description": "Mantenha um roadmap no Notion em sincronia com o status dos seus problemas do Linear.",
-        "scenario": "Roadmaps ficam desatualizados no momento em que os tickets se movem. O {{assistantName}} sincroniza o status do Linear em um quadro Agora / Próximo / Depois no Notion todos os dias para que os stakeholders do roadmap leiam sempre a realidade.",
+        "description": "Manter um roadmapping Now, Next, Later atualizado no Notion.",
+        "scenario": "Roadmaps se desviam quando o status de entrega muda em outro lugar. {{assistantName}} lê projetos e issues selecionados do Linear, os mapas para Now, Next, Later e mantém o roadmapping do Notion atualizado.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} puxa os estados atuais dos tickets e marcos.",
-            "title": "{{assistantName}} lê o status do Linear"
+            "description": "{{assistantName}} revisa projetos, issues e milestones selecionados.",
+            "title": "Status do Linear é lido"
           },
           "three": {
-            "description": "O {{assistantName}} atualiza o quadro do roadmap no Notion.",
-            "title": "Quadro atualizado no Notion"
+            "description": "{{assistantName}} atualiza o roadmapping e destaca mudanças significativas.",
+            "title": "Notion é atualizado"
           },
           "two": {
-            "description": "O {{assistantName}} organiza o trabalho em colunas do roadmap.",
-            "title": "Mapeado para Agora / Próximo / Depois"
+            "description": "{{assistantName}} converte o status de entrega em Now, Next, Later.",
+            "title": "Etapas do roadmapping são mapeadas"
           }
         },
-        "title": "Sincronizar o roadmap do Linear com o Notion"
+        "title": "Sincronizar o roadmapping do Linear com o Notion"
       },
       "track-feature-usage-posthog": {
-        "description": "Identifique as maiores mudanças semanais no uso de recursos a partir do PostHog.",
-        "scenario": "Ninguém percebe um recurso perdendo uso silenciosamente até que se torne um problema. O {{assistantName}} verifica o PostHog semanalmente e publica quais recursos estão subindo ou caindo para que a equipe veja as mudanças de adoção cedo.",
+        "description": "Expor as maiores mudanças semanais na adoção do produto.",
+        "scenario": "Mudanças na adoção de recursos podem ocorrer antes de uma revisão de painel. {{assistantName}} compara as últimas sinalizações de uso do Google Analytics, identifica movimentos significativos e, opcionalmente, registra decisões no Notion.",
         "steps": {
           "one": {
-            "description": "O {{assistantName}} puxa o uso de recursos da semana.",
-            "title": "{{assistantName}} lê o PostHog"
+            "description": "{{assistantName}} coleta os sinais de uso do recurso e do público selecionados.",
+            "title": "Dados de adoção são lidos"
           },
           "three": {
-            "description": "O {{assistantName}} publica as mudanças de adoção no seu canal.",
-            "title": "Mudanças publicadas no Slack"
+            "description": "{{assistantName}} explica o que mudou e o que investigar a seguir.",
+            "title": "Insights são retornados"
           },
           "two": {
-            "description": "O {{assistantName}} encontra os maiores aumentos e quedas.",
-            "title": "Comparado semana a semana"
+            "description": "{{assistantName}} encontra os maiores ganhos, quedas e diferenças de segmento.",
+            "title": "Mudanças são comparadas"
           }
         },
-        "title": "Rastrear uso de recursos com PostHog"
+        "title": "Monitorar adoção de recursos com o Google Analytics"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "Toda semana, o {{assistantName}} rastreia as classificações de palavras-chave-alvo no Ahrefs e relata os movimentos no Notion.",
-        "scenario": "O rastreamento de classificações é uma tarefa manual de exportação e comparação. O {{assistantName}} puxa suas palavras-chave-alvo semanalmente, compara posições e escreve os maiores movimentos no Notion para que as vitórias e quedas de SEO sejam óbvias.",
+        "description": "Realize uma navegação no site e retorne uma lista priorizada de problemas de SEO técnico.",
+        "scenario": "Problemas de SEO técnico escondem-se em centenas de páginas. {{assistantName}} usa o Firecrawl e o DataForSEO integrados para inspecionar a crawlabilidade, indexação, links internos e visibilidade no vivo do motor de busca sem a necessidade de um conector.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa as classificações atuais do Ahrefs.",
-            "title": "{{assistantName}} lê as posições das palavras-chave"
+            "description": "{{assistantName}} usa o Firecrawl para inspecionar páginas e links internos.",
+            "title": "O site é navegado"
           },
           "three": {
-            "description": "{{assistantName}} escreve os movimentos e a tendência no Notion.",
-            "title": "Relatado no Notion"
+            "description": "{{assistantName}} retorna as correções de maior impacto com evidências de apoio.",
+            "title": "Problemas são priorizados"
           },
           "two": {
-            "description": "{{assistantName}} compara com a semana passada e encontra as maiores mudanças.",
-            "title": "Movimentos identificados"
+            "description": "{{assistantName}} usa o DataForSEO para validar sinais de visibilidade e indexação.",
+            "title": "É verificado a evidência de busca"
           }
         },
-        "title": "Rastrear posições de palavras-chave com Ahrefs"
+        "title": "Auditoria técnica da SEO de um site"
       },
       "track-signup-sources-sheets": {
-        "description": "Atribua cada nova inscrição à sua fonte em uma planilha de rastreamento.",
-        "scenario": "Saber de onde vêm as inscrições significa conectar o Clerk à análise manualmente. O {{assistantName}} atribui cada nova inscrição ao seu canal e campanha diariamente e registra em uma planilha do Google que você pode pivotar.",
+        "description": "Consulte dados do Google Cloud e publique uma análise atualizável.",
+        "scenario": "Os dados operacionais importantes frequentemente ficam no BigQuery sem uma visão recursiva útil. {{assistantName}} executa a consulta aprovada, identifica tendências e anomalias e escreve uma tabela de resultados e resumo no Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} puxa novos usuários do Clerk.",
-            "title": "{{assistantName}} lê novas inscrições"
+            "description": "{{assistantName}} confirma o escopo do BigQuery e a pergunta de análise.",
+            "title": "Um conjunto de dados e uma consulta são selecionados"
           },
           "three": {
-            "description": "{{assistantName}} adiciona as linhas atribuídas à sua planilha.",
-            "title": "Registrado no Google Sheets"
+            "description": "{{assistantName}} publica uma tabela atualizável e um resumo pronto para tomada de decisão.",
+            "title": "Os resultados são escritos no Sheets"
           },
           "two": {
-            "description": "{{assistantName}} combina cada inscrição à sua fonte e campanha via Plausible.",
-            "title": "Atribuído a um canal"
+            "description": "{{assistantName}} executa a consulta e verifica tendências, segmentos e anomalias.",
+            "title": "Os dados da nuvem são analisados"
           }
         },
-        "title": "Rastrear fontes de inscrição no Google Sheets"
+        "title": "Analise dados do BigQuery no Sheets"
       },
       "watch-brand-mentions": {
-        "description": "A cada hora, o {{assistantName}} busca na web, Hacker News e X por menções ao seu produto e as publica no Slack.",
-        "scenario": "Quando você encontra o tópico sobre seu produto, a conversa já avançou. O {{assistantName}} busca na web, Reddit e X a cada hora e publica menções frescas no Slack para que você possa intervir enquanto está ao vivo.",
+        "description": "Transforme vídeos aprovados em postagens e fios nativos de plataformas.",
+        "scenario": "Um vídeo forte pode apoiar mais de uma plataforma. {{assistantName}} revisa um vídeo do YouTube selecionado, elabora X postagens e fios, e, opcionalmente, salva o plano aprovado no Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} escaneia a web, Reddit e X com o Exa.",
-            "title": "{{assistantName}} busca por menções"
+            "description": "{{assistantName}} lê o vídeo do YouTube, a transcrição e o contexto.",
+            "title": "Um vídeo é selecionado"
           },
           "three": {
-            "description": "{{assistantName}} publica cada menção com um link e contexto.",
-            "title": "Publicado no Slack"
+            "description": "{{assistantName}} salva o plano e nunca publica sem aprovação.",
+            "title": "Conteúdo é preparado para aprovação"
           },
           "two": {
-            "description": "{{assistantName}} mantém apenas os resultados frescos e relevantes.",
-            "title": "Novas menções filtradas"
+            "description": "{{assistantName}} cria postagens e opções de fio concisas para X.",
+            "title": "Variáveis sociais são elaboradas"
           }
         },
-        "title": "Monitorar HN e X por menções à marca"
+        "title": "Reproveite vídeos do YouTube para X"
       },
       "watch-sentry-after-release": {
-        "description": "Após cada lançamento, o {{assistantName}} compara a taxa de ausência de falhas da nova versão com a linha de base e sinaliza uma regressão com uma sugestão de rollback.",
-        "scenario": "A janela mais arriscada é logo após um deploy. O {{assistantName}} monitora a taxa de ausência de falhas e de erros do novo lançamento em comparação com a linha de base anterior, e se as coisas piorarem, sinaliza a regressão e sugere um rollback.",
+        "description": "Comparar a estabilidade pós-liberação com a baseline anterior.",
+        "scenario": "Uma liberação pode parecer saudável enquanto regressões se acumulam silenciosamente. {{assistantName}} compara as últimas sinais do Sentry com a baseline anterior e explica se deve continuar observando, corrigir para frente ou reverter.",
         "steps": {
           "one": {
-            "description": "Após um deploy, o {{assistantName}} acompanha a taxa de ausência de falhas e de erros no Sentry.",
-            "title": "{{assistantName}} monitora o novo lançamento"
+            "description": "{{assistantName}} encontra a última liberação e seu intervalo de comparação.",
+            "title": "Uma liberação é identificada"
           },
           "three": {
-            "description": "Se o lançamento regredir, o {{assistantName}} alerta o Slack e sugere um rollback.",
-            "title": "Regressão sinalizada com uma dica de rollback"
+            "description": "{{assistantName}} resume o impacto e a ação mais segura.",
+            "title": "Uma resposta é recomendada"
           },
           "two": {
-            "description": "O {{assistantName}} compara os números ao vivo com a linha de base do lançamento anterior.",
-            "title": "Comparado com a linha de base"
+            "description": "{{assistantName}} verifica a taxa de liberações sem erros e novas regressões contra a baseline.",
+            "title": "Estabilidade é comparada"
           }
         },
-        "title": "Monitorar Sentry após um lançamento"
+        "title": "Observar o Sentry após uma liberação"
       }
     }
   },

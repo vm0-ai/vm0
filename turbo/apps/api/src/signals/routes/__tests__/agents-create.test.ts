@@ -53,7 +53,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-describe("POST /api/zero/agents", () => {
+describe("POST /api/agents", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().create({ headers: {}, body: {} }),

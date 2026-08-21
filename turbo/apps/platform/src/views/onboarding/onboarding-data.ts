@@ -1,8 +1,10 @@
-import {
-  WORKFLOW_TEMPLATE_ITEMS,
-  type WorkflowTemplateItem,
-} from "@okouai/core";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import {
+  ONBOARDING_WORKFLOW_SPECS,
+  type OnboardingWorkflowCategoryId,
+  type OnboardingWorkflowId,
+  type OnboardingWorkflowSpec,
+} from "./onboarding-workflow-specs.ts";
 import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
 import type { AssistantName } from "../../signals/branding.ts";
@@ -55,17 +57,6 @@ export function onboardingMakeOptions(
   });
 }
 
-export type OnboardingWorkflowCategoryId =
-  | "engineering"
-  | "product"
-  | "data"
-  | "marketing"
-  | "sales"
-  | "support"
-  | "ceo"
-  | "operations"
-  | "everyone";
-
 export interface OnboardingWorkflow {
   readonly id: OnboardingWorkflowId;
   readonly categoryId: OnboardingWorkflowCategoryId;
@@ -85,185 +76,8 @@ export interface OnboardingWorkflowCategory {
   readonly workflows: readonly OnboardingWorkflow[];
 }
 
-interface WorkflowPromptTemplate {
-  readonly id: WorkflowTemplateItem["id"];
-  readonly promptGuidance: string;
-  readonly connectorSlugs: readonly ConnectorSlug[];
-}
-
-interface SupplementalWorkflowTemplate extends WorkflowPromptTemplate {
-  readonly id: `workflow-template:${string}`;
-}
-
-function supplementalWorkflowTemplate(input: {
-  readonly id: string;
-  readonly prompt: string;
-  readonly connectorSlugs: readonly ConnectorSlug[];
-  readonly requiredConnectorSlugs: readonly ConnectorSlug[];
-}): SupplementalWorkflowTemplate {
-  const optionalConnectorSlugs = input.connectorSlugs.filter(
-    (connectorSlug) => {
-      return !input.requiredConnectorSlugs.includes(connectorSlug);
-    },
-  );
-  const connectorLine =
-    optionalConnectorSlugs.length > 0
-      ? `Connectors: ${input.requiredConnectorSlugs.join(", ")} required; ${optionalConnectorSlugs.join(", ")} optional.`
-      : `Connectors: ${input.requiredConnectorSlugs.join(", ")} required.`;
-  return {
-    id: `workflow-template:${input.id}`,
-    connectorSlugs: input.connectorSlugs,
-    promptGuidance: `${input.prompt}\n\n${connectorLine} Connect any missing required connectors before running.`,
-  };
-}
-
-const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
-  [
-    supplementalWorkflowTemplate({
-      id: "watch-sentry-after-release",
-      prompt:
-        "@Zero compare the latest release's crash-free rate in Sentry against the previous baseline and tell #dev whether it regressed, with a rollback suggestion if it did.",
-      connectorSlugs: ["sentry", "github", "vercel", "slack"],
-      requiredConnectorSlugs: ["sentry", "slack"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "post-github-updates-slack",
-      prompt:
-        "@Zero compile my merged and in-progress work from GitHub and Linear into a short progress update and post it to Slack.",
-      connectorSlugs: ["github", "linear", "sentry", "slack"],
-      requiredConnectorSlugs: ["github", "slack"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "report-ai-model-costs-slack",
-      prompt:
-        "@Zero report today's LLM token spend and p95 latency per model and route from Langfuse and post it to Slack.",
-      connectorSlugs: ["langfuse", "slack"],
-      requiredConnectorSlugs: ["langfuse", "slack"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "summarize-user-feedback-notion",
-      prompt:
-        "@Zero gather recent user feedback from Productlane, Typeform, Intercom, and GitHub, cluster it into themes, and write a ranked summary in Notion.",
-      connectorSlugs: [
-        "productlane",
-        "typeform",
-        "intercom",
-        "github",
-        "notion",
-      ],
-      requiredConnectorSlugs: ["notion"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "watch-brand-mentions",
-      prompt:
-        "@Zero search the web, Hacker News, and X for recent mentions of our product and post them to Slack.",
-      connectorSlugs: ["exa", "x", "slack"],
-      requiredConnectorSlugs: ["exa", "slack"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "sort-route-zendesk-tickets",
-      prompt:
-        "@Zero go through the new Zendesk tickets, set each one's severity, route it to the right team, and draft a first reply.",
-      connectorSlugs: ["zendesk", "linear"],
-      requiredConnectorSlugs: ["zendesk"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "fixes-to-notion-help-docs",
-      prompt:
-        "@Zero take a recently resolved ticket and turn the fix into a reusable help article in Notion.",
-      connectorSlugs: ["notion", "zendesk"],
-      requiredConnectorSlugs: ["notion", "zendesk"],
-    }),
-    supplementalWorkflowTemplate({
-      id: "morning-brief-slack",
-      prompt:
-        "@Zero send me a brief with today's schedule and the emails that need me and post it to Slack.",
-      connectorSlugs: ["gmail", "google-calendar", "slack"],
-      requiredConnectorSlugs: ["gmail", "google-calendar", "slack"],
-    }),
-  ];
-
-const WORKFLOW_IDS_BY_CATEGORY = {
-  engineering: [
-    "auto-merge-github-prs",
-    "file-sentry-crashes-github",
-    "watch-sentry-after-release",
-    "post-github-updates-slack",
-    "draft-github-release-notes-notion",
-    "report-ai-model-costs-slack",
-  ],
-  product: [
-    "github-idea-to-notion-spec",
-    "summarize-user-feedback-notion",
-    "post-release-notes-slack",
-    "sync-linear-roadmap-notion",
-    "track-feature-usage-posthog",
-    "flag-figma-designs-no-task",
-  ],
-  data: [
-    "post-daily-metrics-slack",
-    "run-daily-query-sheets",
-    "check-posthog-signup-funnel",
-    "alert-metric-moves-slack",
-    "track-signup-sources-sheets",
-    "build-weekly-deck-gamma",
-  ],
-  marketing: [
-    "track-keyword-ranks-ahrefs",
-    "publish-scheduled-posts-buffer",
-    "blog-posts-to-x",
-    "draft-newsletter-mailchimp",
-    "compare-google-ads-last-month",
-    "watch-brand-mentions",
-  ],
-  sales: [
-    "catch-leads-gmail",
-    "new-gmail-contacts-hubspot",
-    "research-new-signups-apollo",
-    "gmail-followups-auto",
-    "prep-google-calendar-meetings",
-    "log-gong-calls-hubspot",
-  ],
-  support: [
-    "sort-route-zendesk-tickets",
-    "draft-replies-notion-faq",
-    "send-bugs-github-slack",
-    "fixes-to-notion-help-docs",
-    "spot-churn-risk-stripe-zendesk",
-    "summarize-zendesk-tickets-daily",
-  ],
-  ceo: [
-    "daily-company-brief-slack",
-    "daily-industry-news-slack",
-    "business-review-gamma",
-    "highlight-key-emails-gmail",
-    "investor-update-google-docs",
-    "gmail-reconnect-reminders",
-  ],
-  operations: [
-    "sync-asana-projects-notion",
-    "meeting-notes-asana-tasks",
-    "file-gmail-invoices-drive",
-    "onboard-new-hires-asana",
-    "chase-overdue-asana-tasks",
-    "catch-calendar-conflicts",
-  ],
-  everyone: [
-    "sort-gmail-draft-replies",
-    "morning-brief-slack",
-    "research-calendar-meetings",
-    "summarize-gmail-newsletters",
-    "meeting-recaps-slack",
-    "flagged-gmail-todoist-tasks",
-  ],
-} as const satisfies Readonly<
-  Record<OnboardingWorkflowCategoryId, readonly string[]>
->;
-
-export type OnboardingWorkflowId =
-  (typeof WORKFLOW_IDS_BY_CATEGORY)[OnboardingWorkflowCategoryId][number];
-
 const WORKFLOW_CATEGORY_IDS = [
+  "everyone",
   "engineering",
   "product",
   "data",
@@ -272,54 +86,44 @@ const WORKFLOW_CATEGORY_IDS = [
   "support",
   "ceo",
   "operations",
-  "everyone",
 ] as const satisfies readonly OnboardingWorkflowCategoryId[];
 
 const WORKFLOW_STEP_KEYS = ["one", "two", "three"] as const;
 
-const ALL_WORKFLOW_TEMPLATES: readonly WorkflowPromptTemplate[] = [
-  ...WORKFLOW_TEMPLATE_ITEMS,
-  ...SUPPLEMENTAL_WORKFLOW_TEMPLATES,
-];
-
-// Derives the required connectors from the "Connectors: X required; Y optional"
-// line embedded in promptGuidance, so this stays the single source of truth with
-// the guidance text. Templates without that line resolve to no required connectors.
-function requiredConnectorSlugs(
-  promptGuidance: string,
-  connectorSlugs: readonly ConnectorSlug[],
+function workflowOptionalConnectorSlugs(
+  spec: OnboardingWorkflowSpec,
 ): readonly ConnectorSlug[] {
-  const match = promptGuidance.match(/Connectors:\s*([^.;\n]*?)\s+required/u);
-  const captured = match?.[1];
-  if (captured === undefined) {
-    return [];
-  }
-  const declared = new Set(
-    captured
-      .split(",")
-      .map((value) => {
-        return value.trim();
-      })
-      .filter((value) => {
-        return value.length > 0;
-      }),
-  );
-  return connectorSlugs.filter((connectorSlug) => {
-    return declared.has(connectorSlug);
-  });
+  return spec.optionalConnectorSlugs ?? [];
 }
 
 function workflowPromptForAssistant(
-  promptGuidance: string,
+  spec: OnboardingWorkflowSpec,
+  title: string,
   assistantName: AssistantName,
 ): string {
-  if (assistantName === "Zero") {
-    return promptGuidance;
-  }
-  // Core workflow templates retain their legacy canonical token. Brand only
-  // this user-visible Platform projection, where every standalone Zero token
-  // denotes the assistant identity.
-  return promptGuidance.replace(/\bZero\b/gu, assistantName);
+  const optionalConnectorSlugs = workflowOptionalConnectorSlugs(spec);
+  const connectorLine =
+    spec.requiredConnectorSlugs.length === 0
+      ? "No connectors are required. Use the built-in capabilities named in the template behavior."
+      : optionalConnectorSlugs.length > 0
+        ? `Connectors: ${spec.requiredConnectorSlugs.join(", ")} required; ${optionalConnectorSlugs.join(", ")} optional.`
+        : `Connectors: ${spec.requiredConnectorSlugs.join(", ")} required.`;
+  return [
+    "# Workflow Template Context",
+    "",
+    `The user selected the built-in onboarding workflow template: ${title} (workflow-template:${spec.id}).`,
+    `Use the workflow-setup skill to help the user create or remix a workflow for this ${assistantName} agent.`,
+    "Do not execute an existing workflow. This template is only context for creating or updating a workflow.",
+    "Save the reusable workflow draft as soon as the template behavior is clear. Do not wait for connector setup or automation details.",
+    "Keep the draft without an automation until the user confirms any missing trigger and safety choices.",
+    "",
+    "Template behavior:",
+    `- ${spec.prompt}`,
+    "",
+    connectorLine,
+    "",
+    "Create the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger, scope, destination, or safety detail. Do not inspect connector setup until a workflow or automation command reports that it is required.",
+  ].join("\n");
 }
 
 function onboardingWorkflow(
@@ -328,27 +132,26 @@ function onboardingWorkflow(
   t: TFunction<"common">,
   assistantName: AssistantName,
 ): OnboardingWorkflow {
-  const template = ALL_WORKFLOW_TEMPLATES.find((candidate) => {
-    return candidate.id === `workflow-template:${id}`;
+  const spec = ONBOARDING_WORKFLOW_SPECS[categoryId].find((candidate) => {
+    return candidate.id === id;
   });
-  if (!template) {
+  if (!spec) {
     throw new Error(`Missing onboarding workflow template: ${id}`);
   }
+  const title = t(($) => {
+    return $.onboarding.workflows[id].title;
+  });
+  const optionalConnectorSlugs = workflowOptionalConnectorSlugs(spec);
   return {
     id,
     categoryId,
-    title: t(($) => {
-      return $.onboarding.workflows[id].title;
-    }),
+    title,
     description: t(($) => {
       return $.onboarding.workflows[id].description;
     }),
-    prompt: workflowPromptForAssistant(template.promptGuidance, assistantName),
-    connectorSlugs: template.connectorSlugs,
-    requiredConnectorSlugs: requiredConnectorSlugs(
-      template.promptGuidance,
-      template.connectorSlugs,
-    ),
+    prompt: workflowPromptForAssistant(spec, title, assistantName),
+    connectorSlugs: [...spec.requiredConnectorSlugs, ...optionalConnectorSlugs],
+    requiredConnectorSlugs: spec.requiredConnectorSlugs,
     scenario: t(($) => {
       return $.onboarding.workflows[id].scenario;
     }),
@@ -378,8 +181,8 @@ export function onboardingWorkflowCategories(
       description: t(($) => {
         return $.onboarding.categories[id].description;
       }),
-      workflows: WORKFLOW_IDS_BY_CATEGORY[id].map((workflowId) => {
-        return onboardingWorkflow(workflowId, id, t, assistantName);
+      workflows: ONBOARDING_WORKFLOW_SPECS[id].map((spec) => {
+        return onboardingWorkflow(spec.id, id, t, assistantName);
       }),
     };
   });
@@ -395,9 +198,9 @@ function onboardingWorkflowIdentity(workflowIdValue: string | null): {
     return null;
   }
   for (const categoryId of WORKFLOW_CATEGORY_IDS) {
-    for (const id of WORKFLOW_IDS_BY_CATEGORY[categoryId]) {
-      if (id === workflowIdValue) {
-        return { id, categoryId };
+    for (const spec of ONBOARDING_WORKFLOW_SPECS[categoryId]) {
+      if (spec.id === workflowIdValue) {
+        return { id: spec.id, categoryId };
       }
     }
   }

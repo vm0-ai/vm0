@@ -14,7 +14,7 @@ import { nowDate } from "../lib/time";
 // Production Agent APIs intentionally do not expose internal Compose names,
 // immutable version ids, or arbitrary legacy version content. Surviving tests
 // use this fixture only when that historical state is the behavior under test;
-// setup that only needs a current Agent must use POST /api/okou/agents.
+// setup that only needs a current Agent must use POST /api/agents.
 
 type HistoricalAgentComposeContent = z.infer<
   typeof agentComposeApiContentSchema

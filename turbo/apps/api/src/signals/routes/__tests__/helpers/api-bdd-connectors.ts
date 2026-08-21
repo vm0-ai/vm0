@@ -2326,17 +2326,14 @@ export function createConnectorBddApi(context: TestContext) {
         signal: context.signal,
         routes: agentsRoutes,
       });
-      return await app.request(
-        `/api/zero/agents/${agentId}/custom-connectors`,
-        {
-          method: "PUT",
-          headers: {
-            ...authenticate(actor),
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(body),
+      return await app.request(`/api/agents/${agentId}/custom-connectors`, {
+        method: "PUT",
+        headers: {
+          ...authenticate(actor),
+          "content-type": "application/json",
         },
-      );
+        body: JSON.stringify(body),
+      });
     },
 
     async updateAgentCustomConnectors(

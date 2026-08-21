@@ -91,6 +91,15 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: 'fetchFn("/api/model-providers/claude-code/device-auth/sessions")',
     },
+    // #28461 moved the agent, workflow, and workflow-automation routes, so the
+    // MSW patterns the platform tests register are accepted with their route
+    // parameters still in template form.
+    {
+      code: 'context.mocks.http.get("*/api/agents/:id/user-connectors", handler)',
+    },
+    {
+      code: "fetchFn(`/api/workflows/${workflowId}/publish`)",
+    },
   ],
   invalid: [
     {
