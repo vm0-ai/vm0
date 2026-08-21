@@ -9,7 +9,7 @@ const integrations = createBddIntegrationApi(context);
 
 const SLACK_LIST_URL = "https://slack.com/api/conversations.list";
 
-describe("GET /api/okou/slack/channels", () => {
+describe("GET /api/slack/channels", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await integrations.requestListSlackChannels(null, [401]);
 

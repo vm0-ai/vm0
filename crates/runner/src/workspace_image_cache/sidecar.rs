@@ -250,10 +250,10 @@ impl WorkspaceImageCache {
         run_id: RunId,
         publication: WorkspaceSessionHistorySidecarPublication<'_>,
     ) -> RunnerResult<()> {
-        let paths = self.entry_paths(cache_key);
         match publication {
             WorkspaceSessionHistorySidecarPublication::PreserveExisting => {}
             WorkspaceSessionHistorySidecarPublication::Replace(source) => {
+                let paths = self.entry_paths(cache_key);
                 self.publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
                     .await?;
             }
@@ -271,10 +271,12 @@ impl WorkspaceImageCache {
         let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
     }
 
-    pub(super) async fn session_history_sidecar_allocated_bytes(&self, cache_key: &str) -> u64 {
-        let paths = self.entry_paths(cache_key);
+    pub(super) async fn session_history_sidecar_allocated_bytes(
+        &self,
+        paths: &CacheEntryPaths,
+    ) -> u64 {
         let mut allocated = 0_u64;
-        for body_path in session_history_sidecar_body_paths(&paths) {
+        for body_path in session_history_sidecar_body_paths(paths) {
             allocated = allocated.saturating_add(
                 workspace_cache_existing_path_allocated_bytes(&body_path)
                     .await
@@ -324,7 +326,7 @@ impl WorkspaceImageCache {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Ok(());
         };
-        let tmp_metadata_path = self.workspace_image_cache_tmp_sidecar_metadata(cache_key, run_id);
+        let tmp_metadata_path = paths.tmp_session_history_sidecar_metadata(run_id);
         let sidecar_metadata_path = paths.session_history_sidecar_metadata();
         let sidecar_body_path = paths.entry_dir().join(body_slot.file_name());
         let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
