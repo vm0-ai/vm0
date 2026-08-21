@@ -902,7 +902,7 @@ async function seedMemberRole(args: {
   await store.set(seedOrgMembership$, args, context.signal);
 }
 
-describe("POST /api/zero/billing/checkout", () => {
+describe("POST /api/billing/checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     setZeroPrice();
@@ -2316,7 +2316,7 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 });
 
-describe("POST /api/zero/billing/usage-pack-checkout", () => {
+describe("POST /api/billing/usage-pack-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     setZeroPrice();
@@ -14547,7 +14547,7 @@ describe("usage pack allocation management", () => {
   });
 });
 
-describe("POST /api/zero/billing/checkout/complete", () => {
+describe("POST /api/billing/checkout/complete", () => {
   beforeEach(() => {
     setZeroPrice();
   });
@@ -14865,7 +14865,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
   });
 });
 
-describe("POST /api/zero/billing/concurrency-checkout", () => {
+describe("POST /api/billing/concurrency-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     setZeroPrice();
@@ -19768,7 +19768,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
   });
 });
 
-describe("POST /api/zero/billing/credit-checkout", () => {
+describe("POST /api/billing/credit-checkout", () => {
   beforeEach(() => {
     setZeroPrice();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));

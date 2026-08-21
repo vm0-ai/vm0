@@ -248,7 +248,7 @@ async function enableChatForward(page: Page): Promise<void> {
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
-  await page.route("**/api/okou/billing/status", async (route) => {
+  await page.route("**/api/billing/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body)) {

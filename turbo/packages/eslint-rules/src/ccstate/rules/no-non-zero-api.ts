@@ -5,9 +5,9 @@
  * Catches string literals and template literals containing /api/ paths
  * that do not start with the canonical /api/okou/ namespace.
  *
- * Good: "/api/okou/billing/status"
- * Bad: "/api/zero/billing/status"
- * Bad: "/api/billing/status"
+ * Good: "/api/okou/org"
+ * Bad: "/api/zero/org"
+ * Bad: "/api/org"
  *
  * #28278 moves product routes off the brand namespace one slice at a time, so
  * a neutral path is a violation until its contract has actually moved. The
@@ -41,6 +41,9 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28457. One prefix rather than the 34 moved paths: every one of them sits
+  // under `/api/billing/`, and nothing else does.
+  "/api/billing",
 ];
 
 /**

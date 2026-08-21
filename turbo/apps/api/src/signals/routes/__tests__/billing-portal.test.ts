@@ -43,7 +43,7 @@ const RESTRICTED_PORTAL_CONFIGURATION = {
   },
 } as const;
 
-describe("POST /api/zero/billing/portal", () => {
+describe("POST /api/billing/portal", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
   });

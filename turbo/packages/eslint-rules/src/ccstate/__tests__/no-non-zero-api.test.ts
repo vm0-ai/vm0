@@ -12,7 +12,7 @@ ruleTester.run("no-non-zero-api", rule, {
   valid: [
     // Current Platform calls use the canonical Okou namespace.
     {
-      code: 'const url = "/api/okou/billing/status"',
+      code: 'const url = "/api/okou/org"',
     },
     {
       code: "fetchFn(`/api/okou/agents/${agentId}`)",
@@ -52,14 +52,24 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: "fetchFn(`/api/runs/${runId}/context`)",
     },
+    // #28457 moved the whole billing surface, so the prefix covers a nested
+    // path and a substituted parameter alike.
+    {
+      code: 'fetchFn("/api/billing/status")',
+    },
+    {
+      code: "fetchFn(`/api/billing/redeem/${campaign}`)",
+    },
   ],
   invalid: [
     {
-      code: 'const url = "/api/zero/billing/status"',
+      code: 'const url = "/api/zero/org"',
       errors: [{ messageId: "nonZeroApi" }],
     },
+    // A longer sibling of the billing prefix is a different route family, so
+    // #28457's allow-list entry must not reach it.
     {
-      code: 'fetchFn("/api/billing/status")',
+      code: 'fetchFn("/api/billing-exports/status")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
