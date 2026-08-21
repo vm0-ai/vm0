@@ -1501,6 +1501,10 @@
       "stop": "停止",
       "view": "見る"
     },
+    "actionUnavailable": {
+      "description": "このアクションはこのチャットのものではないか、無効になっています。",
+      "title": "アクションを利用できません"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Slack に {{assistantName}} を追加",

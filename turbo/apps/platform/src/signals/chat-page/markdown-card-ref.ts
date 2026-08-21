@@ -20,6 +20,7 @@ export type MarkdownCardRef =
     }
   | { readonly kind: "connector-action"; readonly signals: ConnectorSignals }
   | { readonly kind: "permission-action"; readonly signals: PermissionSignals }
+  | { readonly kind: "unavailable-action" }
   | {
       readonly kind: "computer-use-authorization";
       readonly signals: ComputerUseAuthorizationSignals;
