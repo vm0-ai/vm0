@@ -1,7 +1,7 @@
 /**
  * App Logs API Handlers
  *
- * Mock handlers for /api/okou/logs endpoints
+ * Mock handlers for /api/logs endpoints
  */
 
 import {
@@ -57,7 +57,7 @@ const mockLogDetails: LogDetail[] = [
 ];
 
 export const appLogsHandlers = [
-  // GET /api/okou/logs/:id - Get log detail
+  // GET /api/logs/:id - Get log detail
   mockApi(logsByIdContract.getById, ({ params, respond }) => {
     const { id } = params;
     const logDetail = mockLogDetails.find((log) => log.id === id);

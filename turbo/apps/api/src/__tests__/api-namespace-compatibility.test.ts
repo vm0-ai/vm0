@@ -256,11 +256,12 @@ describe("API namespace compatibility", () => {
   // every mechanism assertion in this file still passes. This pins that the
   // literal list is what fails, so such a migration cannot go green and then
   // 404 in production. Removing the path from the list is the way out, and it
-  // has to be deliberate.
+  // has to be deliberate. The subject must be a path #28278 has not moved yet,
+  // so it is one a provider console holds: those stay branded under #26701.
   it("reports the branded registrations a neutral contract migration would drop", () => {
-    const canonical = "/api/okou/realtime/token";
-    const legacy = "/api/zero/realtime/token";
-    const neutral = "/api/realtime/token";
+    const canonical = "/api/okou/slack/events";
+    const legacy = "/api/zero/slack/events";
+    const neutral = "/api/slack/events";
     expect(
       LEGACY_ZERO_PATHS[canonical],
       `${canonical} must stay in the compatibility list for this guard to mean anything`,

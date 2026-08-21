@@ -477,13 +477,10 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const pushBrowser = mockPushBrowserSupport();
     let capturedSubscription: unknown;
-    context.mocks.http.post(
-      "*/api/okou/push-subscriptions",
-      async ({ request }) => {
-        capturedSubscription = await request.json();
-        return new Response(null, { status: 204 });
-      },
-    );
+    context.mocks.http.post("*/api/push-subscriptions", async ({ request }) => {
+      capturedSubscription = await request.json();
+      return new Response(null, { status: 204 });
+    });
     mockChatLifecycle(context);
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });

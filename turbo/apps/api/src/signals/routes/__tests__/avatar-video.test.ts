@@ -577,7 +577,7 @@ describe("JoggAI built-in avatar video routes", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const catalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=avatar",
+      "/api/artifacts/catalog?kind=avatar",
       { headers: authHeaders() },
     );
     expect(catalogResponse.status).toBe(200);
@@ -595,7 +595,7 @@ describe("JoggAI built-in avatar video routes", () => {
     }
 
     const detailResponse = await app.request(
-      `/api/zero/artifacts/catalog/${avatar.id}`,
+      `/api/artifacts/catalog/${avatar.id}`,
       { headers: authHeaders() },
     );
     expect(detailResponse.status).toBe(200);
@@ -610,7 +610,7 @@ describe("JoggAI built-in avatar video routes", () => {
     });
 
     const videoCatalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=video",
+      "/api/artifacts/catalog?kind=video",
       { headers: authHeaders() },
     );
     expect(videoCatalogResponse.status).toBe(200);
@@ -619,7 +619,7 @@ describe("JoggAI built-in avatar video routes", () => {
     );
 
     const fileCatalogResponse = await app.request(
-      "/api/zero/artifacts/catalog?kind=file",
+      "/api/artifacts/catalog?kind=file",
       { headers: authHeaders() },
     );
     expect(fileCatalogResponse.status).toBe(200);

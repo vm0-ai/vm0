@@ -11,7 +11,7 @@ import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-pos
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [
-  // GET /api/okou/runs/:id
+  // GET /api/runs/:id
   mockApi(runsByIdContract.getById, ({ respond }) =>
     respond(200, {
       runId: "a0000000-0000-4000-a000-000000000001",
@@ -24,7 +24,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/okou/runs/:id/telemetry/agent
+  // GET /api/runs/:id/telemetry/agent
   mockApi(runAgentEventsContract.getAgentEvents, ({ respond }) =>
     respond(200, {
       events: [],
@@ -34,7 +34,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/okou/runs/queue
+  // GET /api/runs/queue
   mockApi(runsQueueContract.getQueue, ({ respond }) =>
     respond(200, {
       concurrency: {
@@ -50,7 +50,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // POST /api/okou/runs/:id/cancel
+  // POST /api/runs/:id/cancel
   mockApi(runsCancelContract.cancel, ({ params, respond }) =>
     respond(200, {
       id: params.id,
@@ -59,7 +59,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/okou/runs/:id/context
+  // GET /api/runs/:id/context
   mockApi(runContextContract.getContext, ({ params, respond }) =>
     respond(200, {
       prompt: "Test prompt",
@@ -77,7 +77,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/okou/runs/:id/network
+  // GET /api/runs/:id/network
   mockApi(runNetworkLogsContract.getNetworkLogs, ({ respond }) =>
     respond(200, { networkLogs: [], hasMore: false }),
   ),

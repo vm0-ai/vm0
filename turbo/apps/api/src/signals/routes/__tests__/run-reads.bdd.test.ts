@@ -2456,7 +2456,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const cursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
     const networkLogs = await reads.rawApiRequest(
       actor,
-      timeLogQueryPath(`/api/zero/runs/${runId}/network`, {
+      timeLogQueryPath(`/api/runs/${runId}/network`, {
         cursor,
         limit: 1,
         order: "asc",
