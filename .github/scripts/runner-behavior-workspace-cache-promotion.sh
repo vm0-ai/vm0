@@ -66,18 +66,24 @@ wait_for_unit_inactive() {
   fail "$UNIT is still active after stop"
 }
 
-cleanup() {
-  echo "--- Cleanup ---"
+stop_active_attempt() {
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   wait_for_unit_inactive
   if [ -n "$WRITER_EXEC_PID" ]; then
     kill "$WRITER_EXEC_PID" 2>/dev/null || true
     wait "$WRITER_EXEC_PID" 2>/dev/null || true
+    WRITER_EXEC_PID=""
   fi
   if [ -n "$SUBMIT_PID" ]; then
     kill "$SUBMIT_PID" 2>/dev/null || true
     wait "$SUBMIT_PID" 2>/dev/null || true
+    SUBMIT_PID=""
   fi
+}
+
+cleanup() {
+  echo "--- Cleanup ---"
+  stop_active_attempt
   sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
 }
 trap cleanup EXIT
@@ -204,14 +210,7 @@ exit 42' 2>&1)
       fi
 
       echo "RETRY: concurrent control exec missed its deadline on attempt ${ATTEMPT}"
-      sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
-      wait_for_unit_inactive
-      kill "$WRITER_EXEC_PID" 2>/dev/null || true
-      wait "$WRITER_EXEC_PID" 2>/dev/null || true
-      WRITER_EXEC_PID=""
-      kill "$SUBMIT_PID" 2>/dev/null || true
-      wait "$SUBMIT_PID" 2>/dev/null || true
-      SUBMIT_PID=""
+      stop_active_attempt
       continue
     fi
 
