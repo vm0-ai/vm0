@@ -158,7 +158,7 @@ export type AvatarVideoVoice = z.infer<typeof avatarVideoVoiceSchema>;
 export const avatarVideoContract = c.router({
   generate: {
     method: "POST",
-    path: "/api/okou/avatar-video/generate",
+    path: "/api/avatar-video/generate",
     headers: authHeadersSchema,
     body: avatarVideoGenerateRequestSchema,
     responses: {
@@ -177,7 +177,7 @@ export const avatarVideoContract = c.router({
   },
   avatars: {
     method: "GET",
-    path: "/api/okou/avatar-video/avatars",
+    path: "/api/avatar-video/avatars",
     headers: authHeadersSchema,
     query: avatarVideoAvatarsQuerySchema,
     responses: {
@@ -191,7 +191,7 @@ export const avatarVideoContract = c.router({
   },
   voices: {
     method: "GET",
-    path: "/api/okou/avatar-video/voices",
+    path: "/api/avatar-video/voices",
     headers: authHeadersSchema,
     query: avatarVideoVoicesQuerySchema,
     responses: {

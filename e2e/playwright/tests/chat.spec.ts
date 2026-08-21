@@ -850,7 +850,7 @@ async function setupDelayedImageRoutes(
   };
   await routeImage(userImageUrl, userImageRequested);
   await routeImage(assistantImageUrl, assistantImageRequested);
-  await page.route("**/api/okou/web/file-url?*", async (route) => {
+  await page.route("**/api/web/file-url?*", async (route) => {
     const fileId = new URL(route.request().url()).searchParams.get("file_id");
     if (fileId !== "playwright-delayed-user-image") {
       await route.continue();
@@ -1716,7 +1716,7 @@ test("image lightbox centers and pans across the full viewer", async ({
   const imageUrl = new URL("/playwright/lightbox-geometry.svg", appUrl).href;
   const uploadUrl = new URL("/playwright/lightbox-upload", appUrl).href;
 
-  await page.route("**/api/okou/uploads/prepare", async (route) => {
+  await page.route("**/api/uploads/prepare", async (route) => {
     await route.fulfill({
       json: {
         id: "playwright-lightbox-geometry",
@@ -1835,7 +1835,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/okou/avatar-video/avatars**", async (route) => {
+  await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {
         avatars: [
@@ -1852,7 +1852,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/okou/avatar-video/voices**", async (route) => {
+  await page.route("**/api/avatar-video/voices**", async (route) => {
     await route.fulfill({
       json: {
         voices: [

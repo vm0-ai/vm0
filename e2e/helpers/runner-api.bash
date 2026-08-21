@@ -65,7 +65,7 @@ runner_e2e_upload_text() {
         --arg contentType "$content_type" \
         --argjson size "$size" \
         '{filename: $filename, contentType: $contentType, size: $size}')
-    prepared=$(runner_api_curl "/api/okou/uploads/prepare" \
+    prepared=$(runner_api_curl "/api/uploads/prepare" \
         -X POST \
         -d "$payload") || return
     upload_url=$(jq -er '.uploadUrl | select(type == "string" and length > 0)' \
@@ -99,7 +99,7 @@ runner_e2e_upload_text() {
         --arg id "$upload_id" \
         --arg contentType "$content_type" \
         '{id: $id, contentType: $contentType}')
-    completed=$(runner_api_curl "/api/okou/uploads/complete" \
+    completed=$(runner_api_curl "/api/uploads/complete" \
         -X POST \
         -d "$payload") || return
     jq -ce '{id, filename, contentType, size}' <<<"$completed"

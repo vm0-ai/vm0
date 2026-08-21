@@ -48,7 +48,7 @@ describe("okou banking command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/banking/transactions",
+        "http://localhost:3000/api/banking/transactions",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -106,7 +106,7 @@ describe("okou banking command", () => {
 
   it("renders provider and account data in human output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/banking/accounts", () => {
+      http.post("http://localhost:3000/api/banking/accounts", () => {
         return HttpResponse.json({
           operation: "accounts",
           provider: "finicity",

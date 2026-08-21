@@ -3320,7 +3320,7 @@ describe("workflow detail page", () => {
           id: integrationId,
           name: "Marketing CMS",
           baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/okou/strapi/events/${integrationId}`,
+          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
           secretLastFour: "abcd",
           lastTestedAt: "2026-07-28T04:00:00.000Z",
           lastReceivedAt: null,

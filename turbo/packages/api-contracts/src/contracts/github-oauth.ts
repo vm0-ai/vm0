@@ -45,7 +45,7 @@ export const githubOauthContract = c.router({
   },
   connect: {
     method: "GET",
-    path: "/api/okou/github/oauth/connect",
+    path: "/api/github/oauth/connect",
     query: githubOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
