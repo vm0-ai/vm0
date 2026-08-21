@@ -364,6 +364,7 @@ Options:
     1536x1024, or 1024x1536.
     seedream5-pro accepts 1K, 1.5K, 2K, auto, or supported custom sizes;
     seedream5-lite accepts 2K, 3K, 4K, auto, or supported custom sizes.
+    qwen-image-3 accepts at most 4,194,304 total pixels.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.

@@ -43,12 +43,17 @@ const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
 const NANO_BANANA_2_LITE_MODEL = "google/nano-banana-2-lite";
 const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
+const QWEN_IMAGE_3_MODEL = "alibaba/qwen-image-3/text-to-image";
 const QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS = 3;
 /**
  * fal prices Qwen Image 3 per generated image in two resolution tiers, split at
  * 2,250,000 output pixels: $0.04 at or below it, $0.075 above it.
  */
 const QWEN_IMAGE_3_STANDARD_TIER_MAX_PIXELS = 2_250_000;
+/** fal caps Qwen Image 3 output at 2048x2048 total pixels. */
+const QWEN_IMAGE_3_MAX_PIXELS = 2048 * 2048;
+/** Largest fal flexible-size preset, used when a request carries `auto`. */
+const FAL_SIZE_PRESET_MAX_PIXELS = 1024 * 1024;
 const SEEDREAM_5_PRO_MODEL = "dola-seedream-5-0-pro-260628";
 const SEEDREAM_5_LITE_MODEL = "seedream-5-0-lite-260128";
 const SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS = 14;
@@ -245,10 +250,10 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: false,
   },
-  "alibaba/qwen-image-3/text-to-image": {
+  [QWEN_IMAGE_3_MODEL]: {
     alias: "qwen-image-3",
     promptless: false,
-    endpointId: "alibaba/qwen-image-3/text-to-image",
+    endpointId: QWEN_IMAGE_3_MODEL,
     imageToImageEndpointId: "alibaba/qwen-image-3/edit",
     sourceImageInput: "image_urls",
     provider: "fal",
@@ -871,6 +876,11 @@ function validateImageSize(
   if (pixels < IMAGE_IO_MIN_PIXELS || pixels > IMAGE_IO_MAX_PIXELS) {
     return badRequest(
       `Unsupported image size: ${size}; total pixels must be between ${IMAGE_IO_MIN_PIXELS} and ${IMAGE_IO_MAX_PIXELS}`,
+    );
+  }
+  if (model === QWEN_IMAGE_3_MODEL && pixels > QWEN_IMAGE_3_MAX_PIXELS) {
+    return badRequest(
+      `Unsupported image size for ${modelConfig.alias}: ${size}; total pixels must be at most ${QWEN_IMAGE_3_MAX_PIXELS}`,
     );
   }
 
@@ -1814,12 +1824,18 @@ function megapixelsForImage(
   return Math.max(1, Math.ceil((parsed.width * parsed.height) / 1_000_000));
 }
 
+/**
+ * fal returns Qwen Image 3 files without dimensions, so the tier falls back to
+ * the requested size. An unparsed size means the request carried `auto` and
+ * therefore sent a fal size preset; every preset fal accepts tops out at
+ * 1024x1024, which stays under the tier split.
+ */
 function pixelsForImage(image: FalImageFile, options: ImageOptions): number {
   if (image.width && image.height) {
     return image.width * image.height;
   }
   const parsed = parseSize(options.size);
-  return parsed ? parsed.width * parsed.height : 0;
+  return parsed ? parsed.width * parsed.height : FAL_SIZE_PRESET_MAX_PIXELS;
 }
 
 function falPixelTierImageCategory(
