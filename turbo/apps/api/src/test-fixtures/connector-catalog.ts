@@ -5,6 +5,8 @@ import { getConnectorAuthProviderRegistrationCapabilities } from "@okouai/connec
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
+  connectorCatalogRuntimeProjections,
+  connectorCatalogRuntimeProjectionSets,
   connectorCatalogSyncState,
 } from "@okouai/db/schema/connector-catalog";
 import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
@@ -27,6 +29,10 @@ import {
   connectorCatalogCompatibilityEvaluationSchema,
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
+import {
+  CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+  persistConnectorCatalogRuntimeProjection,
+} from "../signals/services/connector-catalog-runtime-projection.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
 import {
   currentConnectorCatalogValidatorIdentity,
@@ -76,7 +82,10 @@ export function mockApiTestConnectorProviderConfiguration(): void {
 }
 
 export async function installApiTestConnectorCatalog(
-  options: { readonly catalogVersion?: string } = {},
+  options: {
+    readonly catalogVersion?: string;
+    readonly runtimeProjection?: boolean;
+  } = {},
 ): Promise<void> {
   const catalogVersion =
     options.catalogVersion ?? DEFAULT_API_TEST_CONNECTOR_CATALOG_VERSION;
@@ -163,6 +172,15 @@ export async function installApiTestConnectorCatalog(
       capability,
       validator: currentConnectorCatalogValidatorIdentity(),
     });
+    if (options.runtimeProjection === true) {
+      await persistConnectorCatalogRuntimeProjection({
+        db: tx,
+        sourceId: source.sourceId,
+        identity: { catalogVersion, catalogDigest },
+        artifact: catalog,
+        projectedAt: activatedAt,
+      });
+    }
   });
 }
 
@@ -462,4 +480,174 @@ export async function deleteApiTestConnectorCatalogCompatibilityEvaluation(
     )
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
   requireSingleCatalogMutation(deleted, "compatibility evaluation deletion");
+}
+
+export async function deleteApiTestConnectorCatalogRuntimeProjectionRow(
+  connectorSlug: string,
+): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const deleted = await db
+    .delete(connectorCatalogRuntimeProjections)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjections.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.projectionVersion,
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+        ),
+        eq(connectorCatalogRuntimeProjections.connectorSlug, connectorSlug),
+      ),
+    )
+    .returning({
+      connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
+    });
+  requireSingleCatalogMutation(deleted, "runtime projection row deletion");
+}
+
+export async function corruptApiTestConnectorCatalogRuntimeProjectionDigest(
+  connectorSlug: string,
+): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const updated = await db
+    .update(connectorCatalogRuntimeProjections)
+    .set({ connectorDigest: `sha256:${"0".repeat(64)}` })
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjections.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.projectionVersion,
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+        ),
+        eq(connectorCatalogRuntimeProjections.connectorSlug, connectorSlug),
+      ),
+    )
+    .returning({
+      connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
+    });
+  requireSingleCatalogMutation(updated, "runtime projection digest corruption");
+}
+
+export async function readApiTestConnectorCatalogRuntimeProjection(): Promise<{
+  readonly connectorCount: number;
+  readonly connectorSlugs: readonly string[];
+} | null> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const [setRow] = await db
+    .select({
+      connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
+    })
+    .from(connectorCatalogRuntimeProjectionSets)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjectionSets.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjectionSets.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.projectionVersion,
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+        ),
+      ),
+    )
+    .limit(1);
+  if (setRow === undefined) {
+    return null;
+  }
+  const rows = await db
+    .select({ connectorSlug: connectorCatalogRuntimeProjections.connectorSlug })
+    .from(connectorCatalogRuntimeProjections)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjections.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjections.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjections.projectionVersion,
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+        ),
+      ),
+    )
+    .orderBy(asc(connectorCatalogRuntimeProjections.connectorSlug));
+  return {
+    connectorCount: setRow.connectorCount,
+    connectorSlugs: rows.map((row) => {
+      return row.connectorSlug;
+    }),
+  };
+}
+
+export async function deleteApiTestConnectorCatalogRuntimeProjectionSet(): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const deleted = await db
+    .delete(connectorCatalogRuntimeProjectionSets)
+    .where(
+      and(
+        eq(connectorCatalogRuntimeProjectionSets.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogRuntimeProjectionSets.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.catalogDigest,
+          identity.catalogDigest,
+        ),
+        eq(
+          connectorCatalogRuntimeProjectionSets.projectionVersion,
+          CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+        ),
+      ),
+    )
+    .returning({ sourceId: connectorCatalogRuntimeProjectionSets.sourceId });
+  requireSingleCatalogMutation(deleted, "runtime projection set deletion");
 }

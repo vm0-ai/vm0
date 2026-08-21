@@ -12,7 +12,10 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
+import type {
+  ConnectorCatalogCompatibilityEvaluationPayload,
+  ConnectorCatalogRuntimeProjection,
+} from "@okouai/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -231,6 +234,121 @@ export const connectorCatalogActiveSnapshot = pgTable(
       check(
         "connector_catalog_active_snapshot_catalog_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+    ];
+  },
+);
+
+export const connectorCatalogRuntimeProjectionSets = pgTable(
+  "connector_catalog_runtime_projection_sets",
+  {
+    sourceId: varchar("source_id", { length: 64 }).notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
+    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
+    projectionVersion: integer("projection_version").notNull(),
+    connectorCount: integer("connector_count").notNull(),
+    projectedAt: timestamp("projected_at").notNull(),
+  },
+  (table) => {
+    return [
+      primaryKey({
+        name: "connector_catalog_runtime_projection_sets_pk",
+        columns: [
+          table.sourceId,
+          table.schemaVersion,
+          table.catalogVersion,
+          table.catalogDigest,
+          table.projectionVersion,
+        ],
+      }),
+      foreignKey({
+        name: "connector_catalog_runtime_projection_sets_sync_state_fk",
+        columns: [table.sourceId, table.schemaVersion],
+        foreignColumns: [
+          connectorCatalogSyncState.sourceId,
+          connectorCatalogSyncState.schemaVersion,
+        ],
+      }),
+      check(
+        "connector_catalog_projection_sets_schema_positive",
+        sql`${table.schemaVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_projection_sets_version_positive",
+        sql`${table.projectionVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_projection_sets_count_positive",
+        sql`${table.connectorCount} > 0`,
+      ),
+      check(
+        "connector_catalog_projection_sets_digest_valid",
+        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+    ];
+  },
+);
+
+export const connectorCatalogRuntimeProjections = pgTable(
+  "connector_catalog_runtime_projections",
+  {
+    sourceId: varchar("source_id", { length: 64 }).notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
+    catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
+    projectionVersion: integer("projection_version").notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
+    connectorDigest: varchar("connector_digest", { length: 71 }).notNull(),
+    connector: jsonb("connector")
+      .$type<ConnectorCatalogRuntimeProjection>()
+      .notNull(),
+  },
+  (table) => {
+    return [
+      primaryKey({
+        name: "connector_catalog_runtime_projections_pk",
+        columns: [
+          table.sourceId,
+          table.schemaVersion,
+          table.catalogVersion,
+          table.catalogDigest,
+          table.projectionVersion,
+          table.connectorSlug,
+        ],
+      }),
+      foreignKey({
+        name: "connector_catalog_runtime_projections_set_fk",
+        columns: [
+          table.sourceId,
+          table.schemaVersion,
+          table.catalogVersion,
+          table.catalogDigest,
+          table.projectionVersion,
+        ],
+        foreignColumns: [
+          connectorCatalogRuntimeProjectionSets.sourceId,
+          connectorCatalogRuntimeProjectionSets.schemaVersion,
+          connectorCatalogRuntimeProjectionSets.catalogVersion,
+          connectorCatalogRuntimeProjectionSets.catalogDigest,
+          connectorCatalogRuntimeProjectionSets.projectionVersion,
+        ],
+      }).onDelete("cascade"),
+      check(
+        "connector_catalog_projections_schema_positive",
+        sql`${table.schemaVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_projections_version_positive",
+        sql`${table.projectionVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_projections_catalog_digest_valid",
+        sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_projections_connector_digest_valid",
+        sql`${table.connectorDigest} ~ '^sha256:[a-f0-9]{64}$'`,
       ),
     ];
   },

@@ -63,6 +63,10 @@ import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import {
+  connectorCatalogRuntimeProjectionSchemaAvailable,
+  persistConnectorCatalogRuntimeProjection,
+} from "./connector-catalog-runtime-projection.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import { publishConnectorRuntimeSyncWakeups } from "./connector-runtime-wakeup.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
@@ -806,6 +810,15 @@ async function commitCandidate(
         capability: args.capability,
         validator: args.validator,
       });
+      if (await connectorCatalogRuntimeProjectionSchemaAvailable(tx)) {
+        await persistConnectorCatalogRuntimeProjection({
+          db: tx,
+          sourceId: args.sourceId,
+          identity: args.candidate.identity,
+          artifact: args.candidate.artifact,
+          projectedAt: args.attemptedAt,
+        });
+      }
       return "accepted" as const;
     }),
   );

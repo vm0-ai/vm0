@@ -201,6 +201,7 @@ import {
   type StoredValueRow,
 } from "./custom-connector.service";
 import {
+  loadCustomConnectorPermissionBundleDependencySlugs,
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
 } from "./custom-connector-permission-bundle.service";
@@ -8889,7 +8890,10 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
+  const connectorCatalogSelection = await connectorCatalogSelectionForRun({
+    ...args,
+    orgId: args.createArgs.orgId,
+  });
   signal.throwIfAborted();
   const threadConnectorSelectionIds =
     await resolvePreparedThreadConnectorSelections(
@@ -9047,6 +9051,7 @@ async function materializePreparedConnectorContext(args: {
 
 async function connectorCatalogSelectionForRun(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
@@ -9054,12 +9059,22 @@ async function connectorCatalogSelectionForRun(args: {
   if (isEmptyRunConnectorScope(args.connectorScope)) {
     return { kind: "empty" };
   }
-  const selection =
-    args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSelection(args.db, {
-      timing: args.timing,
-      requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-    }));
+  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+    return {
+      kind: "scoped",
+      selection: args.preloadedConnectorCatalogSnapshot,
+    };
+  }
+  const metadataConnectorSlugs =
+    await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
+      orgId: args.orgId,
+      customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+    });
+  const selection = await loadConnectorRuntimeSelection(args.db, {
+    timing: args.timing,
+    requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+    metadataConnectorSlugs,
+  });
   return { kind: "scoped", selection };
 }
 

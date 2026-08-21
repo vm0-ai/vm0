@@ -52,6 +52,7 @@ import {
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
+import { connectorCatalogRuntimeProjectionSchemaAvailable } from "../services/connector-catalog-runtime-projection.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
@@ -921,6 +922,10 @@ type ReadUsagePackPurchaseSerializationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-purchase-serialization-schema-state" }
 >;
+type ReadConnectorCatalogRuntimeProjectionSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-connector-catalog-runtime-projection-schema-state" }
+>;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -934,6 +939,7 @@ type PersistenceStateAction =
   | ReadBrowserScreenshotSchemaStateAction
   | ReadUsagePackInvitationSchemaStateAction
   | ReadUsagePackPurchaseSerializationSchemaStateAction
+  | ReadConnectorCatalogRuntimeProjectionSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -956,6 +962,9 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-usage-pack-purchase-serialization-schema-state": {
+      return true;
+    }
+    case "read-connector-catalog-runtime-projection-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -1063,6 +1072,18 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           usage_pack_purchase_serialization_schema_available: available,
+        },
+      };
+    }
+    case "read-connector-catalog-runtime-projection-schema-state": {
+      const available =
+        await connectorCatalogRuntimeProjectionSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          connector_catalog_runtime_projection_schema_available: available,
         },
       };
     }

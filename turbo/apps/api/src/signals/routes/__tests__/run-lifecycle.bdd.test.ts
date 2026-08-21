@@ -58,7 +58,9 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
+  corruptApiTestConnectorCatalogRuntimeProjectionDigest,
   deleteApiTestConnectorCatalogCompatibility,
+  deleteApiTestConnectorCatalogRuntimeProjectionRow,
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
@@ -347,6 +349,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES = [
   "api_dispatch_connector_catalog_load_runtime_snapshot",
+  "api_dispatch_connector_catalog_query_projection_identity",
   "api_dispatch_connector_catalog_query_identity",
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES = [
@@ -2360,6 +2363,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     mockOptionalEnv(capabilityIdentityEnvName, capabilityIdentityEnvValue);
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-scoped-runtime-${randomUUID()}`,
+      runtimeProjection: true,
     });
     await replaceApiTestConnectorCatalogFilteredAuthMethods([
       {
@@ -2373,17 +2377,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "omit a compatibility-filtered connector method",
       ["x"],
     );
-    expectConnectorCatalogLoadTiming({
-      events: apiDispatchTimingEventsForRun(filteredRun.runId),
-      acceptedCacheOutcome: "miss",
-      acceptedCacheMissReason: "catalog_identity_changed",
-      runtimeCacheOutcome: "miss",
-      requestedConnectorCount: "known",
-      requestedConnectorCountBucket: "1",
-      materializedConnectorCountBucket: "1",
-      resolvedConnectorFraction: "up_to_25_percent",
-      validation: { outcome: "attested" },
-    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(filteredRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+      }),
+    );
     await api.heartbeatRunner(runnerGroup);
     const filteredClaim = await api.claimRunnerJob(filteredRun.runId);
     expect(filteredClaim.environment ?? {}).not.toHaveProperty("X_TOKEN");
@@ -2399,6 +2404,192 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "no_builtin_targets",
     );
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
+  });
+
+  it("loads scoped connector runtime from the exact projection and reuses it", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
+    const { actor, agentId } = await entitledRunActor();
+    const createProjectedRun = async (prompt: string) => {
+      return await api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
+          allowedCustomConnectorIds: [],
+        },
+      });
+    };
+
+    const firstRun = await createProjectedRun("cold exact runtime projection");
+    const firstEvents = apiDispatchTimingEventsForRun(firstRun.runId);
+    expectApiDispatchActions(firstEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_count_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+    ]);
+    expectNoApiDispatchActions(firstEvents, [
+      "api_dispatch_connector_catalog_query_identity",
+      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+    ]);
+    const firstLoad = singleApiDispatchEvent(
+      firstEvents,
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+    );
+    expect(firstLoad).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_requested_connector_count_bucket: "2_4",
+        connector_catalog_metadata_connector_count_bucket: "0",
+        connector_catalog_materialized_connector_count_bucket: "1",
+      }),
+    );
+    expect(firstLoad).not.toHaveProperty(
+      "connector_catalog_projection_fallback_reason",
+    );
+    expect(firstLoad).not.toHaveProperty(
+      "connector_catalog_accepted_cache_outcome",
+    );
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+
+    const repeatedRun = await createProjectedRun(
+      "warm exact runtime projection",
+    );
+    const repeatedEvents = apiDispatchTimingEventsForRun(repeatedRun.runId);
+    expectApiDispatchActions(repeatedEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+    ]);
+    expectNoApiDispatchActions(repeatedEvents, [
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_count_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+      "api_dispatch_connector_catalog_query_identity",
+      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        repeatedEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "hit",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("falls back for an incomplete projection and observes reconciliation", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-incomplete-runtime-projection-${randomUUID()}`,
+    );
+    const catalogVersion = `api-test-incomplete-runtime-projection-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion,
+      runtimeProjection: true,
+    });
+    await deleteApiTestConnectorCatalogRuntimeProjectionRow("x");
+    const { actor, agentId } = await entitledRunActor();
+    const createProjectedRun = async (prompt: string) => {
+      return await api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
+      });
+    };
+
+    const fallbackRun = await createProjectedRun(
+      "incomplete runtime projection",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(fallbackRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "incomplete",
+      }),
+    );
+    await api.requestCancelRun(actor, fallbackRun.runId, [200]);
+
+    await installApiTestConnectorCatalog({
+      catalogVersion,
+      runtimeProjection: true,
+    });
+    const repairedRun = await createProjectedRun(
+      "reconciled runtime projection",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(repairedRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, repairedRun.runId, [200]);
+  });
+
+  it("falls back when a selected projection row fails digest verification", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-digest-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-digest-runtime-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("x");
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "digest-mismatched runtime projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(run.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "digest_mismatch",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps exact-empty create and claim independent from catalog availability", async () => {
@@ -10378,6 +10569,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-custom-permission-run-${randomUUID()}`,
+      runtimeProjection: true,
     });
 
     const restoredRun = await api.createRun(actor, {
@@ -10385,21 +10577,29 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the reconnected custom connector",
       modelProvider: "anthropic-api-key",
     });
-    expectApiDispatchActions(
-      apiDispatchTimingEventsForRun(restoredRun.runId),
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    const restoredTimingEvents = apiDispatchTimingEventsForRun(
+      restoredRun.runId,
     );
-    expectConnectorCatalogLoadTiming({
-      events: apiDispatchTimingEventsForRun(restoredRun.runId),
-      acceptedCacheOutcome: "miss",
-      acceptedCacheMissReason: "catalog_identity_changed",
-      runtimeCacheOutcome: "miss",
-      requestedConnectorCount: "known",
-      requestedConnectorCountBucket: "0",
-      materializedConnectorCountBucket: "0",
-      resolvedConnectorFraction: "none",
-      validation: { outcome: "attested" },
-    });
+    expectApiDispatchActions(restoredTimingEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_connector_catalog_query_projection_identity",
+      "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_materialize_projection",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        restoredTimingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_requested_connector_count_bucket: "0",
+        connector_catalog_metadata_connector_count_bucket: "1",
+        connector_catalog_materialized_connector_count_bucket: "0",
+      }),
+    );
     const restoredClaim = await api.claimRunnerJob(restoredRun.runId);
     const customApis = inlineFirewallApis(
       restoredClaim.firewalls,
@@ -10423,6 +10623,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "inline",
       customConnectorId: custom.id,
     });
+    expect(findFirewallEntry(restoredClaim.firewalls, "slack")).toBeUndefined();
+    expect(restoredClaim.networkPolicies ?? {}).not.toHaveProperty("slack");
     expect(restoredClaim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,

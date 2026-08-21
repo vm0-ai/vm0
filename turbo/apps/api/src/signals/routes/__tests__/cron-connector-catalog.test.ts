@@ -51,9 +51,11 @@ import {
   apiTestConnectorCatalogValidationAuthority,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
+  deleteApiTestConnectorCatalogRuntimeProjectionSet,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
+  readApiTestConnectorCatalogRuntimeProjection,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
@@ -1664,6 +1666,12 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
+    });
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
@@ -1680,6 +1688,10 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStatus);
 
     mockNow(new Date("2026-07-15T08:01:00.000Z"));
+    await deleteApiTestConnectorCatalogRuntimeProjectionSet();
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toBeNull();
     const callsBeforeUnchanged = context.mocks.s3.send.mock.calls.length;
     const unchanged = await syncCatalog();
     expect(unchanged.body).toMatchObject({
@@ -1704,17 +1716,35 @@ describe("connector catalog valid lifecycle", () => {
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(first.pointer),
     });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
+    });
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: second.version },
     });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [second.connectorSlug],
+    });
 
     serveObjects(catalogObjects([first, second], first));
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: first.version },
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
     });
 
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
