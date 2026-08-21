@@ -104,13 +104,13 @@ pub struct BuildArgs {
     guest_write_file: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-tool-shell binary [default: bundled]")
+        arg(long, help = "Path to guest-tool-exec binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-tool-shell binary (required)")
+        arg(long, help = "Path to guest-tool-exec binary (required)")
     )]
-    guest_tool_shell: Option<PathBuf>,
+    guest_tool_exec: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
@@ -132,7 +132,7 @@ impl BuildArgs {
             "guest-mock-codex" => self.guest_mock_codex.take(),
             "guest-reseed" => self.guest_reseed.take(),
             "guest-write-file" => self.guest_write_file.take(),
-            "guest-tool-shell" => self.guest_tool_shell.take(),
+            "guest-tool-exec" => self.guest_tool_exec.take(),
             _ => None,
         }
     }

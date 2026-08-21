@@ -732,24 +732,30 @@ wait
     }
 
     #[test]
-    fn rootfs_scripts_preserve_and_verify_real_bash_for_tool_launcher() {
+    fn rootfs_scripts_install_explicit_runtime_tool_hooks_without_replacing_bash() {
         assert!(
-            CUSTOMIZE_SCRIPT.contains("REAL_BASH_DEST=\"/bin/bash.vm0-real\""),
-            "customize-rootfs.sh should use the canonical preserved Bash path"
+            CUSTOMIZE_SCRIPT.contains("TOOL_EXEC_DEST=\"/usr/local/bin/guest-tool-exec\""),
+            "customize-rootfs.sh should use the canonical tool executor path"
         );
         assert!(
-            CUSTOMIZE_SCRIPT
-                .contains("sudo chroot \"$MOUNT_DIR\" mv -- \"$bash_dest\" \"$real_bash_dest\""),
-            "customize-rootfs.sh should preserve Bash before installing the launcher"
+            CUSTOMIZE_SCRIPT.contains("\"command\": \"/usr/local/bin/guest-tool-exec hook\""),
+            "customize-rootfs.sh should configure the Claude Code tool hook"
         );
         assert!(
-            VERIFY_SCRIPT
-                .contains("check_required_executable \"$REAL_BASH_DEST\" \"preserved Bash\""),
-            "verify-rootfs.sh should require the preserved Bash executable"
+            CUSTOMIZE_SCRIPT.contains("command = \"/usr/local/bin/guest-tool-exec hook\""),
+            "customize-rootfs.sh should configure the Codex tool hook"
         );
         assert!(
-            VERIFY_SCRIPT.contains("if [[ \"$dest\" == \"$TOOL_SHELL_DEST\" ]]"),
-            "template verification should not classify distribution Bash as guest contamination"
+            !CUSTOMIZE_SCRIPT.contains("/bin/bash.vm0-real"),
+            "customize-rootfs.sh should leave the distribution Bash executable untouched"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains("check_required_file_contains \"$CLAUDE_TOOL_HOOK_DEST\""),
+            "verify-rootfs.sh should verify the Claude Code tool hook"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains("check_required_file_contains \"$CODEX_TOOL_HOOK_DEST\""),
+            "verify-rootfs.sh should verify the Codex tool hook"
         );
     }
 

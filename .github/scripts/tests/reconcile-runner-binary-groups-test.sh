@@ -127,7 +127,7 @@ SH
           "guest-mock-claude": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
           "guest-mock-codex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
           "guest-reseed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-          "guest-tool-shell": "2222222222222222222222222222222222222222222222222222222222222222",
+          "guest-tool-exec": "2222222222222222222222222222222222222222222222222222222222222222",
           "guest-write-file": "1111111111111111111111111111111111111111111111111111111111111111"
         }
       }

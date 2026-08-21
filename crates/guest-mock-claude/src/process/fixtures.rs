@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
+use super::bash_tool_command;
+
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 const POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
@@ -595,7 +597,7 @@ impl Drop for ParallelToolOomFixture {
 }
 
 fn spawn_bash_tool(script: &str) -> Result<Child, String> {
-    Command::new("bash")
+    bash_tool_command()
         .args(["-c", script])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

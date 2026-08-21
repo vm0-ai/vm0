@@ -1,4 +1,5 @@
 import {
+  createBashTool,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
@@ -93,6 +94,11 @@ function createRuntimeFactory(args: {
       sessionManager,
       sessionStartEvent,
       model,
+      customTools: [
+        createBashTool(cwd, {
+          shellPath: "/usr/local/bin/guest-tool-exec",
+        }),
+      ],
     });
     return {
       ...created,

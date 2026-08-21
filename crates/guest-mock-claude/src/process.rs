@@ -4,8 +4,18 @@ mod stream_json_input;
 
 use crate::args::ParsedArgs;
 use crate::scenario::MockScenario;
+use guest_contracts::process_containment::{TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOL_EXEC_PATH};
 use std::io::BufReader;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
+
+fn bash_tool_command() -> Command {
+    let binary = if std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV).is_some() {
+        TOOL_EXEC_PATH
+    } else {
+        "bash"
+    };
+    Command::new(binary)
+}
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
     if parsed.input_format == "stream-json" {

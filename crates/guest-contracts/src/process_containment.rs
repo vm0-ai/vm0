@@ -3,7 +3,7 @@
 //! Each exec operation owns an empty parent cgroup with `control` and
 //! `workload` children. Ordinary execs run directly in `workload`. For an agent
 //! operation, `workload` is an empty domain containing a `runtime` leaf for the
-//! agent CLI and a `tools` domain with one child per shell invocation.
+//! agent CLI and a `tools` domain with one child per managed shell tool.
 
 use std::collections::HashMap;
 use std::io;
@@ -34,6 +34,9 @@ pub const TOOLS_CGROUP_NAME: &str = "tools";
 /// Prefix for one shell invocation cgroup below [`TOOLS_CGROUP_NAME`].
 pub const TOOL_CGROUP_NAME_PREFIX: &str = "tool-";
 
+/// Guest shell executor selected by supported agent runtimes at tool dispatch.
+pub const TOOL_EXEC_PATH: &str = "/usr/local/bin/guest-tool-exec";
+
 /// Cgroup v2 controllers required for workload resource isolation.
 pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 
@@ -49,8 +52,8 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
-/// Runner-owned endpoint used by the VM0 shell launcher to request a unique
-/// tool cgroup before it executes user code.
+/// Runner-owned endpoint used by [`TOOL_EXEC_PATH`] to request a unique tool
+/// cgroup before it executes user code.
 pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count validated for workload containment.

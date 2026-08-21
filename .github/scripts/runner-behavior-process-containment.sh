@@ -104,6 +104,13 @@ case "$relative" in
   /vm0-exec/exec-*/workload/tools/tool-*) ;;
   *) echo "Bash tool is outside its tool cgroup: $relative" >&2; exit 1 ;;
 esac
+bash_executable=$(readlink -f /bin/bash)
+tool_executor=$(readlink -f /usr/local/bin/guest-tool-exec)
+current_executable=$(readlink -f /proc/$$/exe)
+test "$bash_executable" != "$tool_executor" \
+  || { echo "distribution Bash was replaced by the tool executor" >&2; exit 1; }
+test "$current_executable" = "$bash_executable" \
+  || { echo "tool executor did not hand off to distribution Bash" >&2; exit 1; }
 tools=${relative%/*}
 workload=${tools%/tools}
 operation=${workload%/workload}

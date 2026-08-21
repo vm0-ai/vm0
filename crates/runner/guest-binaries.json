@@ -35,11 +35,11 @@
     "destination": "/sbin/guest-write-file"
   },
   {
-    "package": "guest-tool-shell",
-    "binary": "guest-tool-shell",
-    "pathEnv": "GUEST_TOOL_SHELL_PATH",
-    "bundledEnv": "BUNDLED_GUEST_TOOL_SHELL",
-    "destination": "/bin/bash"
+    "package": "guest-tool-exec",
+    "binary": "guest-tool-exec",
+    "pathEnv": "GUEST_TOOL_EXEC_PATH",
+    "bundledEnv": "BUNDLED_GUEST_TOOL_EXEC",
+    "destination": "/usr/local/bin/guest-tool-exec"
   },
   {
     "package": "guest-mock-claude",

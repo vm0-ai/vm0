@@ -70,7 +70,7 @@
         "crates/guest-session-prune": {
             "release-type": "rust"
         },
-        "crates/guest-tool-shell": {
+        "crates/guest-tool-exec": {
             "release-type": "rust"
         },
         "crates/guest-common": {
