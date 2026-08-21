@@ -66,6 +66,8 @@ fi
 # Enforced by the `ca_constants_in_sync_across_scripts`
 # test in cmd/build.rs at compile time.
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+CLAUDE_TOOL_HOOK_DEST="/etc/claude-code/managed-settings.d/90-tool-containment.json"
+CODEX_TOOL_HOOK_DEST="/etc/codex/requirements.toml"
 
 # ---------------------------------------------------------------------------
 # Cleanup
@@ -214,6 +216,22 @@ check_required_executable() {
   fi
 }
 
+check_required_file_contains() {
+  local path="$1" pattern="$2" name="$3"
+  local resolved_path
+  if ! resolved_path="$(resolve_rootfs_path "$path")"; then
+    errors+=("${name} cannot resolve rootfs path at ${path}")
+    return
+  fi
+  if [[ ! -f "${MOUNT_DIR}${resolved_path}" ]]; then
+    errors+=("${name} not found at ${path}")
+  elif grep -Fq -- "$pattern" "${MOUNT_DIR}${resolved_path}"; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} is missing required content at ${path}")
+  fi
+}
+
 check_bin() {
   local pattern="$1" name="$2"
   # shellcheck disable=SC2086
@@ -244,6 +262,12 @@ if [[ "$MODE" == "rootfs" ]]; then
   for dest in "${GUEST_DESTINATIONS[@]}"; do
     check_required_executable "$dest" "$dest"
   done
+  check_required_file_contains "$CLAUDE_TOOL_HOOK_DEST" \
+    '"command": "/usr/local/bin/guest-tool-exec hook"' \
+    "Claude Code tool-containment hook"
+  check_required_file_contains "$CODEX_TOOL_HOOK_DEST" \
+    'command = "/usr/local/bin/guest-tool-exec hook"' \
+    "Codex tool-containment hook"
 else
   guest_contamination=0
   for dest in "${GUEST_DESTINATIONS[@]}"; do

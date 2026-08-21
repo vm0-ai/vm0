@@ -23,11 +23,12 @@
 //!
 //! Running operations observe their timeout, explicit cancellation, and
 //! connection cancellation; output delivery failures also request operation
-//! cancellation. Setup failures kill and reap the child, force process
-//! containment cleanup, and cancel or join every I/O worker started so far.
-//! Running completion coordinates stdin cancellation with child reaping, then
-//! cleans containment, joins stdin, waits for and joins both output drains, and
-//! only then resolves captured output and the terminal result.
+//! cancellation. Setup failures kill and reap the child, stop placement, force
+//! process containment cleanup, and cancel or join every I/O worker started so
+//! far. Running completion coordinates stdin cancellation with child reaping,
+//! then stops placement before cleaning containment, joins stdin, waits for and
+//! joins both output drains, and only then resolves captured output and the
+//! terminal result.
 //!
 //! # Completion boundary
 //!
@@ -51,7 +52,9 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
-use guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
+use guest_contracts::process_containment::{
+    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+};
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
@@ -68,7 +71,7 @@ use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::process_containment::{
     ExecProcessContainment, ProcessContainmentCleanupMode, ProcessContainmentError,
-    ProcessContainmentMode,
+    ProcessContainmentMode, WorkloadPlacementBootstrap,
 };
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
@@ -461,6 +464,7 @@ impl ExecCompletion<'_> {
 struct ExecSetup {
     child: Child,
     process_containment: ExecProcessContainment,
+    placement_bootstrap: Option<WorkloadPlacementBootstrap>,
     stdin_writer: Option<StdinWriter>,
     drain_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
@@ -468,12 +472,17 @@ struct ExecSetup {
 }
 
 impl ExecSetup {
-    fn new(child: Child, process_containment: ExecProcessContainment) -> Self {
+    fn new(
+        child: Child,
+        process_containment: ExecProcessContainment,
+        placement_bootstrap: Option<WorkloadPlacementBootstrap>,
+    ) -> Self {
         let drain_cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
         Self {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer: None,
             drain_cancel,
             drain_done_tx,
@@ -526,6 +535,7 @@ impl ExecSetup {
         let ExecSetup {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -534,6 +544,7 @@ impl ExecSetup {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child(child);
+        drop(placement_bootstrap);
         let containment_result =
             cleanup_process_containment(process_containment, ProcessContainmentCleanupMode::Forced);
         join_stdin_writer_after_kill(stdin_writer);
@@ -548,12 +559,14 @@ impl ExecSetup {
         let ExecSetup {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer: _,
             drain_cancel: _,
             drain_done_tx: _,
             drain_done_rx: _,
         } = self;
         kill_and_reap_child(child);
+        drop(placement_bootstrap);
         let _ =
             cleanup_process_containment(process_containment, ProcessContainmentCleanupMode::Forced);
         completion.release_without_result();
@@ -595,6 +608,7 @@ impl ExecSetupWithStdout {
         let ExecSetup {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -603,6 +617,7 @@ impl ExecSetupWithStdout {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child(child);
+        drop(placement_bootstrap);
         let containment_result =
             cleanup_process_containment(process_containment, ProcessContainmentCleanupMode::Forced);
         join_stdin_writer_after_kill(stdin_writer);
@@ -626,6 +641,7 @@ impl ExecSetupWithStdout {
         let ExecSetup {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer,
             drain_cancel,
             drain_done_tx,
@@ -636,6 +652,7 @@ impl ExecSetupWithStdout {
         RunningExec {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -657,6 +674,7 @@ impl ExecSetupWithStdout {
 struct RunningExec {
     child: Child,
     process_containment: ExecProcessContainment,
+    placement_bootstrap: Option<WorkloadPlacementBootstrap>,
     stdin_writer: Option<StdinWriter>,
     stdout_handle: JoinHandle<()>,
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
@@ -677,6 +695,7 @@ impl RunningExec {
         let RunningExec {
             child,
             process_containment,
+            placement_bootstrap,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -712,6 +731,7 @@ impl RunningExec {
         let cancellation_observed =
             connection_cancel.load(Ordering::Acquire) || exec_cancel.load(Ordering::Acquire);
         let cleanup_mode = cleanup_mode_for_wait_outcome(&outcome, cancellation_observed);
+        drop(placement_bootstrap);
         let containment_result = cleanup_process_containment(process_containment, cleanup_mode);
         join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
         if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
@@ -990,11 +1010,12 @@ fn run_exec_operation_worker<S>(
     let env_refs = env_refs(&request.env);
     let mut env_with_control;
     let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
-        env_with_control = Vec::with_capacity(env_refs.len() + 2);
+        env_with_control = Vec::with_capacity(env_refs.len() + 3);
         env_with_control.extend_from_slice(&env_refs);
         env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
         if let Some(bootstrap) = workload_bootstrap.as_ref() {
             env_with_control.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, bootstrap.endpoint()));
+            env_with_control.push((TOOL_CGROUP_PROCS_ENDPOINT_ENV, bootstrap.tool_endpoint()));
         }
         env_with_control.as_slice()
     } else {
@@ -1017,15 +1038,13 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
-    let _workload_bootstrap = workload_bootstrap;
-
     let SpawnedShellCommand {
         child,
         env_script,
         process_containment,
     } = spawned;
     let _env_script = env_script;
-    let mut setup = ExecSetup::new(child, process_containment);
+    let mut setup = ExecSetup::new(child, process_containment, workload_bootstrap);
 
     if request.lifecycle == ExecOperationLifecycle::Supervised
         && let Err(e) = send_exec_started(request.seq, setup.child.id(), &writer)

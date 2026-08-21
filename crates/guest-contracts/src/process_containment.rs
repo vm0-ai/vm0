@@ -1,10 +1,9 @@
 //! Shared guest process-containment and resource-policy contract.
 //!
 //! Each exec operation owns an empty parent cgroup with `control` and
-//! `workload` leaves. A process-control-enabled Guest Agent runs in `control`;
-//! every agent CLI and ordinary exec runs in `workload`. The parent remains
-//! empty so it can distribute cgroup v2 controllers and act as the recursive
-//! cleanup boundary.
+//! `workload` children. Ordinary execs run directly in `workload`. For an agent
+//! operation, `workload` is an empty domain containing a `runtime` leaf for the
+//! agent CLI and a `tools` domain with one child per managed shell tool.
 
 use std::collections::HashMap;
 use std::io;
@@ -23,8 +22,20 @@ pub const EXEC_CGROUP_NAME_PREFIX: &str = "exec-";
 /// Leaf reserved for the trusted Guest Agent control process.
 pub const CONTROL_CGROUP_NAME: &str = "control";
 
-/// Leaf containing agent CLIs, tools, and ordinary exec processes.
+/// Workload leaf for ordinary execs and domain for agent operations.
 pub const WORKLOAD_CGROUP_NAME: &str = "workload";
+
+/// Leaf containing the agent CLI and its runtime helpers.
+pub const RUNTIME_CGROUP_NAME: &str = "runtime";
+
+/// Empty domain containing one cgroup per agent shell tool.
+pub const TOOLS_CGROUP_NAME: &str = "tools";
+
+/// Prefix for one shell invocation cgroup below [`TOOLS_CGROUP_NAME`].
+pub const TOOL_CGROUP_NAME_PREFIX: &str = "tool-";
+
+/// Guest shell executor selected by supported agent runtimes at tool dispatch.
+pub const TOOL_EXEC_PATH: &str = "/usr/local/bin/guest-tool-exec";
 
 /// Cgroup v2 controllers required for workload resource isolation.
 pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
@@ -41,6 +52,10 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
+/// Runner-owned endpoint used by [`TOOL_EXEC_PATH`] to request a unique tool
+/// cgroup before it executes user code.
+pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
+
 /// Smallest Runner profile vCPU count validated for workload containment.
 pub const MIN_PROFILE_VCPU: u32 = 1;
 
@@ -52,7 +67,7 @@ pub const MIN_PROFILE_MEMORY_MB: u32 = 1024;
 /// CPU bandwidth period used for workload cgroups.
 pub const WORKLOAD_CPU_PERIOD_US: u64 = 100_000;
 
-/// CPU time per period reserved outside each workload leaf for control work.
+/// CPU time per period reserved outside each operation workload cgroup.
 pub const CONTROL_CPU_RESERVE_US: u64 = 10_000;
 
 /// Minimum accumulated CPU throttling reported as material pressure.
@@ -76,12 +91,15 @@ pub const WORKLOAD_MEMORY_RESERVE_BYTES: u64 = 128 * 1024 * 1024;
 /// Value written to workload `memory.high` to avoid unmonitored soft-limit reclaim.
 pub const WORKLOAD_MEMORY_HIGH: &str = "max";
 
-/// Value written to workload `memory.oom.group` for per-process OOM selection.
+/// Value written to the workload domain's `memory.oom.group`.
 ///
-/// The agent runtime and its tool descendants share the workload cgroup. Keeping
-/// group OOM disabled lets the kernel kill an individual high-memory process
-/// without unconditionally terminating the entire agent runtime.
+/// Keeping group OOM disabled prevents a parent-limit OOM from unconditionally
+/// terminating the entire operation. Managed shell-tool leaves opt into group
+/// OOM independently through [`TOOL_MEMORY_OOM_GROUP`].
 pub const WORKLOAD_MEMORY_OOM_GROUP: &str = "0";
+
+/// Value written to each individual tool's `memory.oom.group`.
+pub const TOOL_MEMORY_OOM_GROUP: &str = "1";
 
 /// Value written to workload `pids.max` while no production ceiling is calibrated.
 ///
@@ -191,7 +209,7 @@ fn value_or_zero(values: &HashMap<&str, u64>, key: &str) -> u64 {
     values.get(key).copied().unwrap_or(0)
 }
 
-/// Calibrated cgroup v2 resource policy for one workload leaf.
+/// Calibrated cgroup v2 resource policy for one operation workload domain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorkloadResourcePolicy {
     /// Workload CPU quota in microseconds per [`Self::cpu_period_us`].
