@@ -4,9 +4,7 @@ import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import {
-  readAgentRunVersionFixture,
-} from "../../../test-fixtures/agent-compose-provenance";
+import { readAgentRunVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
 import {
   holdAgentDeletionRowLockFixture,
   holdAgentRunInsertFixture,
@@ -370,10 +368,7 @@ describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
     await expect(
       bdd.readAgent(survivorOwner, survivor.agentId),
     ).resolves.toMatchObject({ agentId: survivor.agentId });
-    const survivorRunRead = await api.readRun(
-      survivorOwner,
-      survivorRun.runId,
-    );
+    const survivorRunRead = await api.readRun(survivorOwner, survivorRun.runId);
     expect(survivorRunRead).toMatchObject({
       runId: survivorRun.runId,
       status: "pending",
