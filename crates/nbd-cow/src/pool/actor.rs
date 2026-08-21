@@ -362,6 +362,9 @@ impl DevicePoolActor {
     fn ensure_waiting_progress(&mut self) {
         let pending_scans = self.pending.len();
         if pending_scans == 0 {
+            // One worker can reach the end of the shared cursor while peers are
+            // still checking offsets they already reserved. Exhaustion becomes
+            // authoritative only after every worker in the cohort has joined.
             if self.scan_faulted {
                 self.reset_scan_cohort();
             } else if self.scan_exhausted {
@@ -412,6 +415,8 @@ impl DevicePoolActor {
     }
 
     fn handle_scan_fault(&mut self, error: NbdCowError) {
+        // A failed worker may have reserved an offset without completing its
+        // checks, so this cohort can no longer prove clean exhaustion.
         self.scan_faulted = true;
         self.scan_exhausted = false;
         self.pool.defer_acquire_error(error);
