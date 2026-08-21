@@ -5,6 +5,9 @@ import { onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
+  readAgentRunVersionFixture,
+} from "../../../test-fixtures/agent-compose-provenance";
+import {
   holdAgentDeletionRowLockFixture,
   holdAgentRunInsertFixture,
   holdAgentRunLocksFixture,
@@ -192,26 +195,42 @@ describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
     await expect(
       readAgentLifecycleCountsFixture(target.agentId),
     ).resolves.toStrictEqual({ agents: 1, sessions: 1, runs: 1 });
-    await expect(
-      api.readRun(actor, targetHistoricalRun.runId),
-    ).resolves.toMatchObject({
+    const targetHistoricalRunRead = await api.readRun(
+      actor,
+      targetHistoricalRun.runId,
+    );
+    expect(targetHistoricalRunRead).toMatchObject({
       runId: targetHistoricalRun.runId,
-      agentComposeVersionId: targetVersionId,
     });
+    expect(targetHistoricalRunRead).not.toHaveProperty("agentComposeVersionId");
+    await expect(
+      readAgentRunVersionFixture(targetHistoricalRun.runId),
+    ).resolves.toBe(targetVersionId);
     await expect(bdd.readAgent(actor, survivor.agentId)).resolves.toMatchObject(
       { agentId: survivor.agentId },
     );
-    await expect(api.readRun(actor, survivorRun.runId)).resolves.toMatchObject({
+    const survivorRunRead = await api.readRun(actor, survivorRun.runId);
+    expect(survivorRunRead).toMatchObject({
       runId: survivorRun.runId,
-      agentComposeVersionId: targetVersionId,
       status: "pending",
     });
-    await expect(
-      api.readRun(actor, survivorHistoricalRun.runId),
-    ).resolves.toMatchObject({
+    expect(survivorRunRead).not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(survivorRun.runId)).resolves.toBe(
+      targetVersionId,
+    );
+    const survivorHistoricalRunRead = await api.readRun(
+      actor,
+      survivorHistoricalRun.runId,
+    );
+    expect(survivorHistoricalRunRead).toMatchObject({
       runId: survivorHistoricalRun.runId,
-      agentComposeVersionId: targetVersionId,
     });
+    expect(survivorHistoricalRunRead).not.toHaveProperty(
+      "agentComposeVersionId",
+    );
+    await expect(
+      readAgentRunVersionFixture(survivorHistoricalRun.runId),
+    ).resolves.toBe(targetVersionId);
     await expectCheckpointSucceeds(actor, survivorRun.runId);
     await expect(readUsageEventRunIdFixture(usageEventId)).resolves.toBe(
       targetHistoricalRun.runId,
@@ -249,11 +268,15 @@ describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
         code: "CONFLICT",
       },
     });
-    await expect(api.readRun(actor, targetRun.runId)).resolves.toMatchObject({
+    const targetRunRead = await api.readRun(actor, targetRun.runId);
+    expect(targetRunRead).toMatchObject({
       runId: targetRun.runId,
-      agentComposeVersionId: versionId,
       status: "pending",
     });
+    expect(targetRunRead).not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(targetRun.runId)).resolves.toBe(
+      versionId,
+    );
     await expect(bdd.readAgent(actor, target.agentId)).resolves.toMatchObject({
       agentId: target.agentId,
     });
@@ -347,13 +370,18 @@ describe("DELETE /api/zero/agents/:id bounded deletion interlock", () => {
     await expect(
       bdd.readAgent(survivorOwner, survivor.agentId),
     ).resolves.toMatchObject({ agentId: survivor.agentId });
-    await expect(
-      api.readRun(survivorOwner, survivorRun.runId),
-    ).resolves.toMatchObject({
+    const survivorRunRead = await api.readRun(
+      survivorOwner,
+      survivorRun.runId,
+    );
+    expect(survivorRunRead).toMatchObject({
       runId: survivorRun.runId,
-      agentComposeVersionId: survivorVersionId,
       status: "pending",
     });
+    expect(survivorRunRead).not.toHaveProperty("agentComposeVersionId");
+    await expect(readAgentRunVersionFixture(survivorRun.runId)).resolves.toBe(
+      survivorVersionId,
+    );
     await expectCheckpointSucceeds(survivorOwner, survivorRun.runId);
     await expect(
       readUsageEventRunIdFixture(pendingUsageId),

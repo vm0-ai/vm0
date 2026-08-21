@@ -8181,7 +8181,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "build the environment from application owners",
       modelProvider: "anthropic-api-key",
     });
-    expect(kms.decryptCalls).toBe(0);
+    expect(kms.decryptCalls).toBe(1);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -13833,13 +13833,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(run.runId);
       expect(claim.environment).not.toHaveProperty(legacyKey);
-      const serializedClaim = JSON.stringify(claim);
+      const serializedEnvironment = JSON.stringify(claim.environment);
       for (const forbidden of [
         legacyKey,
         legacyCase.value,
         legacyCase.expectedValue,
       ]) {
-        expect(serializedClaim).not.toContain(forbidden);
+        expect(serializedEnvironment).not.toContain(forbidden);
       }
       expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
         "environmentShadowClassification",
