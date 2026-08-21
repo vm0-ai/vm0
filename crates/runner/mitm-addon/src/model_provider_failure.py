@@ -224,13 +224,26 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
         flow.metadata[_RESPONSE_FINISH] = _unknown_outcome
         return None
 
+    final_outcome: _Outcome | None = None
+
     def finish() -> _Outcome:
-        if decode_session.finish_error() is not None:
-            return _unknown_outcome()
-        return parser.finish()
+        nonlocal final_outcome
+        if final_outcome is None:
+            final_outcome = (
+                _unknown_outcome() if decode_session.finish_error() is not None else parser.finish()
+            )
+        return final_outcome
+
+    def observe(chunk: bytes) -> None:
+        if chunk:
+            decode_session.feed(chunk)
+            return
+        # mitmproxy calls streaming transformations with an empty chunk at EOM,
+        # before it forwards the downstream end-of-message marker.
+        _settle_http_flow(flow, flow_state, finish())
 
     flow.metadata[_RESPONSE_FINISH] = finish
-    return decode_session.feed
+    return observe
 
 
 def finish_http_response(flow: http.HTTPFlow) -> None:

@@ -54,8 +54,10 @@ def _make_flow(
 def _finish_http_flow(flow, *, body: bytes | None, mitm_ctx) -> None:
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
     if body is not None:
-        response_stream(flow)(body)
+        stream(body)
+    stream(b"")
     with mitm_ctx():
         mitm_addon.response(flow)
 
@@ -332,6 +334,34 @@ def test_sse_failure_is_written_before_response_hook(tmp_path, real_flow, mitm_c
     model_provider_failure.admit_flow(flow)
     mitm_addon.responseheaders(flow)
     response_stream(flow)(body)
+
+    assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+
+def test_json_failure_is_written_at_stream_end_before_response_hook(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    failure_path = tmp_path / "model-provider-failure.json"
+    body = b'{"status":"failed","error":{"code":"server_error"}}'
+    flow = _make_flow(
+        real_flow,
+        failure_path,
+        request_path="/v1/responses",
+        response_body=body,
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
+    stream(body)
+
+    assert not failure_path.exists()
+
+    stream(b"")
 
     assert json.loads(failure_path.read_text()) == {"failureKind": "provider_unavailable"}
 
