@@ -57,6 +57,15 @@ export const connectors = pgTable(
         .where(
           sql`${table.connectorSlug} = 'stripe' AND ${table.authMethod} = 'oauth'`,
         ),
+      index("idx_connectors_org_user_custom_connector")
+        .on(
+          table.orgId,
+          table.userId,
+          table.customConnectorId,
+          table.createdAt,
+          table.id,
+        )
+        .where(sql`${table.customConnectorId} IS NOT NULL`),
       uniqueIndex("idx_connectors_org_user_custom_connector_default")
         .on(table.orgId, table.userId, table.customConnectorId)
         .where(
@@ -81,6 +90,15 @@ export const connectors = pgTable(
         "chk_connectors_identity",
         sql`num_nonnulls(${table.connectorSlug}, ${table.customConnectorId}) = 1`,
       ),
+      index("idx_connectors_org_user_slug")
+        .on(
+          table.orgId,
+          table.userId,
+          table.connectorSlug,
+          table.createdAt,
+          table.id,
+        )
+        .where(sql`${table.connectorSlug} IS NOT NULL`),
       uniqueIndex("idx_connectors_org_user_slug_default")
         .on(table.orgId, table.userId, table.connectorSlug)
         .where(

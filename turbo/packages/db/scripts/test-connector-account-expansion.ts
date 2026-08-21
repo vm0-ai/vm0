@@ -10,7 +10,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "0945_add_byteplus_seedream_5_pricing";
 const expansionMigration = "0946_connector_account_expansion";
-const contractionMigration = "0958_giant_cyclops";
+const contractionMigration = "0961_connector_account_lifecycle";
 const testDatabase = "migration_connector_account_expansion";
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -693,22 +693,30 @@ async function validateConnectorAccountContraction(
   `);
   assert.deepEqual(column.rows, [{ isNullable: "NO" }]);
 
-  const indexes = await client.query<{ name: string }>(`
-    SELECT "indexname" AS "name"
+  const indexes = await client.query<{
+    name: string;
+    isUnique: boolean;
+  }>(`
+    SELECT
+      "indexname" AS "name",
+      "indexdef" LIKE 'CREATE UNIQUE INDEX%' AS "isUnique"
     FROM "pg_indexes"
     WHERE "schemaname" = 'public'
       AND "indexname" LIKE 'idx_connectors_org_user_%'
     ORDER BY "indexname"
   `);
-  assert.deepEqual(
-    indexes.rows.map((row) => {
-      return row.name;
-    }),
-    [
-      "idx_connectors_org_user_custom_connector_default",
-      "idx_connectors_org_user_slug_default",
-    ],
-  );
+  assert.deepEqual(indexes.rows, [
+    {
+      name: "idx_connectors_org_user_custom_connector",
+      isUnique: false,
+    },
+    {
+      name: "idx_connectors_org_user_custom_connector_default",
+      isUnique: true,
+    },
+    { name: "idx_connectors_org_user_slug", isUnique: false },
+    { name: "idx_connectors_org_user_slug_default", isUnique: true },
+  ]);
 
   const siblingBuiltInId = "00000000-0000-4000-8000-000000276881";
   const siblingCustomId = "00000000-0000-4000-8000-000000276882";
@@ -834,6 +842,14 @@ export async function validateConnectorAccountExpansion(): Promise<void> {
   assert.match(
     contractionSql,
     /DROP INDEX CONCURRENTLY IF EXISTS "idx_connectors_org_user_custom_connector"/u,
+  );
+  assert.match(
+    contractionSql,
+    /CREATE INDEX CONCURRENTLY "idx_connectors_org_user_custom_connector"/u,
+  );
+  assert.match(
+    contractionSql,
+    /CREATE INDEX CONCURRENTLY "idx_connectors_org_user_slug"/u,
   );
 
   const admin = new Client({ connectionString: adminUrl.toString() });
