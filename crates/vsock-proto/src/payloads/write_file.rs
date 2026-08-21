@@ -69,6 +69,16 @@ pub fn validate_write_file(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_WRITE_FILE, seq, &encode_write_file(...))` without allocating
 /// separate payload and frame vectors.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `path` or `content` cannot fit its wire length
+/// field, or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_write_file_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -103,6 +113,16 @@ pub fn validate_private_write_file(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_WRITE_FILE, seq, &encode_private_write_file(...))` without
 /// allocating separate payload and frame vectors.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `path` or `content` cannot fit its wire length
+/// field, or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_private_write_file_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -145,6 +165,17 @@ pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), Pro
 /// separate payload and frame vectors.
 ///
 /// This applies the same input constraints documented by [`encode_write_files`].
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `files` is empty, the file count exceeds its
+/// wire length field, a path or content length exceeds its wire length field,
+/// or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_write_files_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,

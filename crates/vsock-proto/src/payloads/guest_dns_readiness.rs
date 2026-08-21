@@ -73,6 +73,16 @@ pub fn encode_guest_dns_readiness_request(
 }
 
 /// Encode a full guest DNS readiness request frame into `frame`.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `timeout_ms` is zero, `hostname` is empty,
+/// exceeds the configured hostname limit, contains a NUL byte, or cannot fit
+/// the hostname wire-length field.
+///
+/// Request validation runs before the shared frame encoder clears `frame`, so
+/// validation errors leave the destination unchanged. After validation
+/// succeeds, frame construction follows the shared clear-and-write behavior.
 pub fn encode_guest_dns_readiness_request_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
