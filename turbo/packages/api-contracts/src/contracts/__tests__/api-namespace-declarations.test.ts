@@ -48,37 +48,104 @@ function declaredRoutes(): readonly DeclaredRoute[] {
   return routes;
 }
 
+/**
+ * A lower bound on how many routes the barrel walk must find.
+ *
+ * It counts every declared route rather than only the branded ones. #28278 is
+ * driving the branded count to zero deliberately, so a floor measured against
+ * the set being removed is guaranteed to fail — first at the threshold, then
+ * once more per merged slice. Migrating a path rewrites its namespace without
+ * dropping the declaration, so the total does not fall as that work lands.
+ */
+const MINIMUM_DECLARED_ROUTES = 100;
+
+/**
+ * The known declaration proving the walk reached real routes rather than an
+ * accidentally empty barrel.
+ *
+ * `POST /api/okou/slack/events` is one of the eight
+ * `FINAL_PROVIDER_CONSOLE_PATHS` in `apps/api`. A third-party provider console
+ * holds each of those URLs, which is why #28278 excludes them: they keep their
+ * branded form after every migrating path has left, making them the most
+ * stable branded declarations in the package. Any of the eight works here.
+ *
+ * If those eight ever move as well, re-anchor this on a path the package still
+ * declares — do not delete the sentinel. Without it, the legacy-namespace
+ * guard below passes vacuously the moment the walk returns nothing.
+ */
+const RETAINED_BRANDED_ROUTE = {
+  method: "POST",
+  path: "/api/okou/slack/events",
+} as const;
+
+function declaresRetainedBrandedRoute(
+  routes: readonly DeclaredRoute[],
+): boolean {
+  return routes.some(({ method, path }) => {
+    return (
+      method === RETAINED_BRANDED_ROUTE.method &&
+      path === RETAINED_BRANDED_ROUTE.path
+    );
+  });
+}
+
+function legacyNamespaceDeclarations(
+  routes: readonly DeclaredRoute[],
+): readonly string[] {
+  return routes
+    .filter(({ path }) => {
+      return brandedApiNamespace(path) === "zero";
+    })
+    .map(({ declaration, method, path }) => {
+      return `${declaration} declares ${method} ${path}`;
+    });
+}
+
 describe("branded API namespace declarations", () => {
   const routes = declaredRoutes();
 
-  it("enumerates branded contract routes through the package barrel", () => {
-    const brandedRoutes = routes.filter(({ path }) => {
-      return brandedApiNamespace(path) !== undefined;
-    });
-
-    expect(brandedRoutes.length).toBeGreaterThan(100);
-    expect(
-      brandedRoutes.some(({ method, path }) => {
-        return (
-          method === "POST" &&
-          path === "/api/okou/billing/concurrency-checkout/preview"
-        );
-      }),
-    ).toBe(true);
+  it("enumerates contract routes through the package barrel", () => {
+    expect(routes.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
+    expect(declaresRetainedBrandedRoute(routes)).toBe(true);
   });
 
   it("declares every branded contract path in the Okou namespace", () => {
-    const legacyDeclarations = routes
-      .filter(({ path }) => {
-        return brandedApiNamespace(path) === "zero";
-      })
-      .map(({ declaration, method, path }) => {
-        return `${declaration} declares ${method} ${path}`;
-      });
-
     expect(
-      legacyDeclarations,
+      legacyNamespaceDeclarations(routes),
       "A declared contract path is the URL its ts-rest clients request, so a /api/zero/ declaration makes current clients produce legacy-namespace traffic. Declare branded paths as /api/okou/...; the /api/zero/ alias exists only for already-released clients.",
     ).toStrictEqual([]);
+  });
+
+  it("keeps the sentinel true once every migrating path is neutral", () => {
+    const migrated: readonly DeclaredRoute[] = Array.from(
+      { length: MINIMUM_DECLARED_ROUTES + 1 },
+      (_value, index) => {
+        return {
+          declaration: `migratedContract.route${index}`,
+          method: "GET",
+          path: `/api/migrated/${index}`,
+        };
+      },
+    );
+    const endState: readonly DeclaredRoute[] = [
+      ...migrated,
+      { declaration: "slackEventsContract.post", ...RETAINED_BRANDED_ROUTE },
+    ];
+
+    expect(endState.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
+    expect(declaresRetainedBrandedRoute(endState)).toBe(true);
+    expect(legacyNamespaceDeclarations(endState)).toStrictEqual([]);
+  });
+
+  it("reports a contract that declares a legacy namespace path", () => {
+    expect(
+      legacyNamespaceDeclarations([
+        {
+          declaration: "legacyContract.get",
+          method: "GET",
+          path: "/api/zero/health",
+        },
+      ]),
+    ).toStrictEqual(["legacyContract.get declares GET /api/zero/health"]);
   });
 });
