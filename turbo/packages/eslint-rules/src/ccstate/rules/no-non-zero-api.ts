@@ -41,6 +41,13 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/push-subscriptions",
   "/api/realtime/token",
   "/api/runs",
+  // #28459
+  "/api/chat-threads",
+  "/api/chat/events",
+  "/api/chat/search",
+  "/api/image-share/x",
+  "/api/queue-position",
+  "/api/shared-threads",
   // #28460. `/api/connectors` also covers the OAuth callback below it, which
   // was already neutral: once the connector family moves, the prefix a caller
   // writes no longer distinguishes the two.
