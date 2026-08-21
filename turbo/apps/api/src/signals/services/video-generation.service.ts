@@ -661,14 +661,12 @@ function normalizeVideoModel(value: string): VideoModel | null {
   return null;
 }
 
+// Every catalog model is accepted here, so the hint names them all. `public`
+// only decides which of them the composer picker offers.
 function videoModelList(): string {
-  return VIDEO_MODELS.filter((model) => {
-    return VIDEO_MODEL_CONFIGS[model].public;
-  })
-    .map((model) => {
-      return VIDEO_MODEL_CONFIGS[model].alias;
-    })
-    .join(", ");
+  return VIDEO_MODELS.map((model) => {
+    return VIDEO_MODEL_CONFIGS[model].alias;
+  }).join(", ");
 }
 
 export function videoProviderForModel(model: VideoModel): VideoProvider {
