@@ -1528,7 +1528,7 @@
         "credits": "Créditos",
         "inSlack": "{{assistantName}} está en Slack",
         "inviteMember": "Invitar a un miembro",
-        "otherChannels": "Teams, Telegram y teléfono"
+        "otherChannels": "Telegram y teléfono"
       },
       "taglines": {
         "anonymous": {

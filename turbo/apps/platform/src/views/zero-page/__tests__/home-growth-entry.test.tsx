@@ -60,6 +60,12 @@ describe("home growth entry", () => {
     const slackAction = within(menu).getByTestId("growth-slack");
     expect(slackAction).toHaveTextContent("Add Zero in Slack");
     expect(slackAction).toHaveTextContent("Connect");
+    const otherChannels = within(menu).getByText("Telegram and phone");
+    expect(otherChannels).toBeInTheDocument();
+    expect(otherChannels.parentElement?.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("telegram-2d9ff5d01146.svg"),
+    );
 
     await user.click(slackAction);
     await waitFor(() => {

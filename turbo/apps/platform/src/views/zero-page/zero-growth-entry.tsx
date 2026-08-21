@@ -6,13 +6,7 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@okouai/core";
-import {
-  Check,
-  ChevronDown,
-  Coins,
-  MessageSquare,
-  PlusCircle,
-} from "lucide-react";
+import { Check, ChevronDown, Coins, PlusCircle } from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -38,6 +32,7 @@ import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.ts
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 
 const slackIconImg = settingsIconAssetUrl("slack");
+const telegramIconImg = settingsIconAssetUrl("telegram");
 
 // The nav rail draws this asset the same way: the artwork carries its own
 // padding, so it is scaled up inside a box the size we actually want.
@@ -256,7 +251,7 @@ function GrowthEntry() {
         </DropdownMenuItem>
 
         <DropdownMenuItem className="gap-3 px-3 py-2.5" onClick={openWorks}>
-          <MessageSquare className="text-muted-foreground" />
+          <img src={telegramIconImg} alt="" className="h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate">
             {t(($) => {
               return $.chat.agentPage.growth.otherChannels;
