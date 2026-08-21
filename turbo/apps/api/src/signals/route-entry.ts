@@ -552,6 +552,157 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28423: the integration control plane and the CLI messaging and file
+  // surfaces for Feishu, Slack, Microsoft Teams, Telegram, GitHub, AgentPhone,
+  // and Strapi. Two callers hold a branded form independently of the contract:
+  // `downloadFeishuFile` and `downloadPhoneFile` in the CLI build their URL by
+  // hand, so a published package keeps asking for the `okou` path it shipped
+  // with. Every other caller derives its URL from the contract, which a
+  // published CLI package still embeds at the version it was built from, and
+  // the `zero` form was reachable through the blanket expansion until the
+  // contract moved. Both are owed.
+  //
+  // Surfaces: commit-addressed CLI packages pinned by execution contexts
+  // created before this deploy, which drain over the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`, and a released
+  // platform tab holding the branded connect and Strapi paths until it
+  // navigates or reloads (~2 days). Neither window is the removal condition:
+  // these rows retire under #26701's evidence rules like every other row here.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/integrations/feishu": [
+    "/api/okou/integrations/feishu",
+    "/api/zero/integrations/feishu",
+  ],
+  "/api/integrations/feishu/app-id": [
+    "/api/okou/integrations/feishu/app-id",
+    "/api/zero/integrations/feishu/app-id",
+  ],
+  "/api/integrations/feishu/connect": [
+    "/api/okou/integrations/feishu/connect",
+    "/api/zero/integrations/feishu/connect",
+  ],
+  "/api/integrations/feishu/download-file": [
+    "/api/okou/integrations/feishu/download-file",
+    "/api/zero/integrations/feishu/download-file",
+  ],
+  "/api/integrations/feishu/installations/:installationId": [
+    "/api/okou/integrations/feishu/installations/:installationId",
+    "/api/zero/integrations/feishu/installations/:installationId",
+  ],
+  "/api/integrations/feishu/installations/:installationId/connect": [
+    "/api/okou/integrations/feishu/installations/:installationId/connect",
+    "/api/zero/integrations/feishu/installations/:installationId/connect",
+  ],
+  "/api/integrations/feishu/message": [
+    "/api/okou/integrations/feishu/message",
+    "/api/zero/integrations/feishu/message",
+  ],
+  "/api/integrations/feishu/upload-file/complete": [
+    "/api/okou/integrations/feishu/upload-file/complete",
+    "/api/zero/integrations/feishu/upload-file/complete",
+  ],
+  "/api/integrations/feishu/upload-file/init": [
+    "/api/okou/integrations/feishu/upload-file/init",
+    "/api/zero/integrations/feishu/upload-file/init",
+  ],
+  "/api/integrations/github/upload-file/complete": [
+    "/api/okou/integrations/github/upload-file/complete",
+    "/api/zero/integrations/github/upload-file/complete",
+  ],
+  "/api/integrations/github/upload-file/init": [
+    "/api/okou/integrations/github/upload-file/init",
+    "/api/zero/integrations/github/upload-file/init",
+  ],
+  "/api/integrations/phone/download-file": [
+    "/api/okou/integrations/phone/download-file",
+    "/api/zero/integrations/phone/download-file",
+  ],
+  "/api/integrations/phone/message": [
+    "/api/okou/integrations/phone/message",
+    "/api/zero/integrations/phone/message",
+  ],
+  "/api/integrations/phone/upload-file/complete": [
+    "/api/okou/integrations/phone/upload-file/complete",
+    "/api/zero/integrations/phone/upload-file/complete",
+  ],
+  "/api/integrations/phone/upload-file/init": [
+    "/api/okou/integrations/phone/upload-file/init",
+    "/api/zero/integrations/phone/upload-file/init",
+  ],
+  "/api/integrations/slack": [
+    "/api/okou/integrations/slack",
+    "/api/zero/integrations/slack",
+  ],
+  "/api/integrations/slack/connect": [
+    "/api/okou/integrations/slack/connect",
+    "/api/zero/integrations/slack/connect",
+  ],
+  "/api/integrations/slack/message": [
+    "/api/okou/integrations/slack/message",
+    "/api/zero/integrations/slack/message",
+  ],
+  "/api/integrations/slack/upload-file/complete": [
+    "/api/okou/integrations/slack/upload-file/complete",
+    "/api/zero/integrations/slack/upload-file/complete",
+  ],
+  "/api/integrations/slack/upload-file/init": [
+    "/api/okou/integrations/slack/upload-file/init",
+    "/api/zero/integrations/slack/upload-file/init",
+  ],
+  "/api/integrations/slack/upload-file/materialize": [
+    "/api/okou/integrations/slack/upload-file/materialize",
+    "/api/zero/integrations/slack/upload-file/materialize",
+  ],
+  "/api/integrations/strapi": [
+    "/api/okou/integrations/strapi",
+    "/api/zero/integrations/strapi",
+  ],
+  "/api/integrations/strapi/:integrationId": [
+    "/api/okou/integrations/strapi/:integrationId",
+    "/api/zero/integrations/strapi/:integrationId",
+  ],
+  "/api/integrations/strapi/:integrationId/check-test": [
+    "/api/okou/integrations/strapi/:integrationId/check-test",
+    "/api/zero/integrations/strapi/:integrationId/check-test",
+  ],
+  "/api/integrations/strapi/:integrationId/secret": [
+    "/api/okou/integrations/strapi/:integrationId/secret",
+    "/api/zero/integrations/strapi/:integrationId/secret",
+  ],
+  "/api/integrations/teams/connect": [
+    "/api/okou/integrations/teams/connect",
+    "/api/zero/integrations/teams/connect",
+  ],
+  "/api/integrations/teams/message": [
+    "/api/okou/integrations/teams/message",
+    "/api/zero/integrations/teams/message",
+  ],
+  "/api/integrations/teams/upload-file/complete": [
+    "/api/okou/integrations/teams/upload-file/complete",
+    "/api/zero/integrations/teams/upload-file/complete",
+  ],
+  "/api/integrations/teams/upload-file/init": [
+    "/api/okou/integrations/teams/upload-file/init",
+    "/api/zero/integrations/teams/upload-file/init",
+  ],
+  "/api/integrations/telegram/bots": [
+    "/api/okou/integrations/telegram/bots",
+    "/api/zero/integrations/telegram/bots",
+  ],
+  "/api/integrations/telegram/message": [
+    "/api/okou/integrations/telegram/message",
+    "/api/zero/integrations/telegram/message",
+  ],
+  "/api/integrations/telegram/upload-file/complete": [
+    "/api/okou/integrations/telegram/upload-file/complete",
+    "/api/zero/integrations/telegram/upload-file/complete",
+  ],
+  "/api/integrations/telegram/upload-file/init": [
+    "/api/okou/integrations/telegram/upload-file/init",
+    "/api/zero/integrations/telegram/upload-file/init",
+  ],
 };
 
 /**

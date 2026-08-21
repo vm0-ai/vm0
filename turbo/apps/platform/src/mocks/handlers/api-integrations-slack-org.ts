@@ -34,12 +34,12 @@ export function resetMockSlackOrgIntegration(): void {
 }
 
 export const apiIntegrationsSlackOrgHandlers = [
-  // GET /api/okou/integrations/slack
+  // GET /api/integrations/slack
   mockApi(integrationsSlackContract.getStatus, ({ respond }) => {
     return respond(200, mockSlackOrgData);
   }),
 
-  // DELETE /api/okou/integrations/slack
+  // DELETE /api/integrations/slack
   mockApi(integrationsSlackContract.disconnect, ({ query, respond }) => {
     if (query.action === "uninstall") {
       mockSlackOrgData = {
