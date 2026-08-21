@@ -259,11 +259,17 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
     let masked_telemetry_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/telemetry")
-            .body_includes(format!("system log {session_id} ***"));
+            .body_includes(format!("system log {session_id} ***"))
+            .body_includes(r#""action_type":"telemetry_secret_mask""#)
+            .body_includes(r#""duration_ms":17"#)
+            .body_includes(r#""success":false"#)
+            .body_includes(r#""error":"sandbox failure: ***""#);
         then.status(200);
     });
 
-    let secret_values = base64::engine::general_purpose::STANDARD.encode(secret);
+    let secret_values = [secret, "error"]
+        .map(|value| base64::engine::general_purpose::STANDARD.encode(value))
+        .join(",");
     let masker = std::sync::Arc::new(SecretMasker::from_raw(&secret_values));
     let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
         "test-run-001".to_string(),
@@ -283,6 +289,13 @@ async fn telemetry_preserves_runtime_session_id_and_masks_secrets() {
 
     std::fs::write(system_log, format!("system log {session_id} {secret}\n"))
         .expect("system log should be written");
+    let sandbox_error = format!("sandbox failure: {secret}");
+    guest_common::telemetry::record_sandbox_op(
+        "telemetry_secret_mask",
+        Duration::from_millis(17),
+        false,
+        Some(&sandbox_error),
+    );
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Final)
         .await
