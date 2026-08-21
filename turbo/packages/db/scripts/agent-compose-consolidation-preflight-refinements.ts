@@ -13,7 +13,7 @@ import {
   fingerprintSortedSet,
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
-import { isExactHistoricalProductBuilderCandidate } from "../../../apps/api/src/signals/services/historical-product-builder";
+import { isExactHistoricalProductBuilderCandidate } from "./agent-compose-consolidation-preflight-historical-product-builder";
 
 export const ENVIRONMENT_PRIMARY_CLASSES = [
   "variableReferenceOnly",

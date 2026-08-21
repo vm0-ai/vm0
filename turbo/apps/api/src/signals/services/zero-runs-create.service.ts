@@ -24,10 +24,7 @@ import {
   appUrlForPublicBrand,
 } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@okouai/db/schema/agent-compose";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command } from "ccstate";
@@ -52,6 +49,7 @@ import {
   type RunConnectorCatalogSelection,
   type ZeroRunModelPin,
 } from "./agent-run-create.service";
+import { buildZeroAgentComposeContent } from "./agent-compose-content";
 import {
   resolveChatThreadSession,
   type ChatThreadSessionResolution,
@@ -122,20 +120,10 @@ interface ZeroAgentRunRecord {
   readonly sound: string | null;
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
-  readonly content: ZeroAgentComposeContent;
 }
 
 function optionalAgentSetting(value: string | null): string | undefined {
   return value === null ? undefined : value;
-}
-
-interface ZeroAgentConfig {
-  readonly framework?: string;
-}
-
-interface ZeroAgentComposeContent {
-  readonly agent?: ZeroAgentConfig;
-  readonly agents?: Record<string, ZeroAgentConfig | undefined>;
 }
 
 interface HttpRunCallback {
@@ -532,24 +520,14 @@ async function loadZeroAgent(
       sound: zeroAgents.sound,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
-      content: agentComposeVersions.content,
     })
     .from(zeroAgents)
     .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
     .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentComposes.headVersionId),
-    )
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
 
-  return agent
-    ? {
-        ...agent,
-        content: agent.content as ZeroAgentComposeContent,
-      }
-    : null;
+  return agent ?? null;
 }
 
 function buildZeroRunExtraEnvironment(args: {
@@ -857,6 +835,9 @@ function buildZeroCreateAgentRunArgs(args: {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
+  const productAgentExecutionPlan = {
+    content: buildZeroAgentComposeContent(args.agent.name),
+  };
   return {
     userId: command.auth.userId,
     orgId: command.auth.orgId,
@@ -900,7 +881,7 @@ function buildZeroCreateAgentRunArgs(args: {
     }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
-    productAgentName: args.agent.name,
+    productAgentExecutionPlan,
     zeroTokenPublicBrand: command.publicBrand,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,

@@ -123,11 +123,26 @@ describe("runner claim response contract", () => {
     expect(context).toMatchObject({
       runId: "00000000-0000-4000-8000-000000020985",
       reuseKey: "thread:00000000-0000-4000-8000-000000020986",
-      agentComposeVersionId:
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       modelUsageProvider: "fixture-model",
     });
+    expect(context).not.toHaveProperty("agentComposeVersionId");
     expect(context).not.toHaveProperty("experimentalProfile");
+  });
+
+  it("normalizes the retired version field out of queued contexts", () => {
+    const context = compatibleStoredExecutionContextSchema.parse({
+      storageMounts: [],
+      connectorRuntimeTargets: [],
+      environment: null,
+      secretValueEnvironmentKeys: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "claude-code",
+      agentComposeVersionId:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+
+    expect(context).not.toHaveProperty("agentComposeVersionId");
   });
 
   it("does not expose the API-only connector permission baseline", () => {
@@ -174,7 +189,6 @@ describe("Pi sandbox execution contract", () => {
     runId: "22222222-2222-4222-8222-222222222222",
     prompt: "continue",
     appendSystemPrompt: null,
-    agentComposeVersionId: null,
     vars: null,
     experimentalProfile: "vm0/large",
     runnerPreference: {
@@ -596,7 +610,6 @@ describe("runner poll response contract", () => {
     runId: "22222222-2222-4222-8222-222222222222",
     prompt: "continue",
     appendSystemPrompt: null,
-    agentComposeVersionId: null,
     vars: null,
     runnerPreference: {
       kind: "noPreference" as const,
@@ -855,7 +868,6 @@ describe("runner resume session contract", () => {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
@@ -898,7 +910,6 @@ describe("runner resume session contract", () => {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };
@@ -931,7 +942,6 @@ describe("runner resume session contract", () => {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };
@@ -999,7 +1009,6 @@ describe("runner resume session contract", () => {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };

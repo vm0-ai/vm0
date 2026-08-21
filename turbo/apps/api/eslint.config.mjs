@@ -386,10 +386,6 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Exact pre-redaction classification and bucket boundaries are a finite,
-      // security-sensitive matrix that cannot be exhaustively observed through
-      // the product Run route without leaking the compared environment maps.
-      "src/signals/services/__tests__/agent-environment-shadow.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // A pre-migration schema cannot be constructed through a production API.

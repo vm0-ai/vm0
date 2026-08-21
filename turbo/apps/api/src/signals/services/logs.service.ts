@@ -7,11 +7,7 @@ import {
   type LogsFilters,
   type TriggerSource,
 } from "@okouai/api-contracts/contracts/logs";
-import { isSupportedFramework } from "@okouai/core/frameworks";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
@@ -36,35 +32,6 @@ type ServiceDb = Pick<Db, "select" | "selectDistinct">;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function extractFramework(composeContent: unknown): string | null {
-  if (
-    !composeContent ||
-    typeof composeContent !== "object" ||
-    Array.isArray(composeContent)
-  ) {
-    return null;
-  }
-
-  const agents = (composeContent as { readonly agents?: unknown }).agents;
-  if (!agents || typeof agents !== "object" || Array.isArray(agents)) {
-    return null;
-  }
-
-  const [firstAgent] = Object.values(agents);
-  if (
-    !firstAgent ||
-    typeof firstAgent !== "object" ||
-    Array.isArray(firstAgent)
-  ) {
-    return null;
-  }
-
-  const framework = (firstAgent as { readonly framework?: unknown }).framework;
-  return typeof framework === "string" && isSupportedFramework(framework)
-    ? framework
-    : null;
-}
 
 function normalizeTriggerSource(
   source: string | null | undefined,
@@ -179,15 +146,11 @@ export function logsList(
           triggerSource: agentRuns.triggerSource,
           agentId: zeroAgents.id,
           composeName: agentComposes.name,
-          composeContent: agentComposeVersions.content,
+          launchSnapshot: agentRuns.launchSnapshot,
           displayName: zeroAgents.displayName,
           cliAgentSessionId: conversations.cliAgentSessionId,
         })
         .from(agentRuns)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-        )
         .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
         .leftJoin(
           agentComposes,
@@ -219,7 +182,7 @@ export function logsList(
           sessionId: run.cliAgentSessionId ?? null,
           agentId: run.agentId ?? null,
           displayName: run.displayName ?? null,
-          framework: extractFramework(run.composeContent),
+          framework: run.launchSnapshot?.framework ?? null,
           triggerSource: normalizeTriggerSource(run.triggerSource),
           status: run.status as LogStatus,
           prompt: run.prompt,
@@ -368,7 +331,6 @@ export function logDetail(
     const [result] = await db
       .select({
         run: agentRuns,
-        composeVersion: agentComposeVersions,
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: agentRuns.triggerSource,
@@ -376,10 +338,6 @@ export function logDetail(
         selectedModel: agentRuns.selectedModel,
       })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
       .where(
@@ -397,7 +355,6 @@ export function logDetail(
 
     const {
       run,
-      composeVersion,
       agentId,
       agentDisplayName,
       triggerSource,
@@ -406,10 +363,10 @@ export function logDetail(
     } = result;
     const runResult = run.result as RunResult | null;
     const agentSessionId = runResult?.agentSessionId ?? null;
-    const composeContent = composeVersion?.content ?? null;
     const framework =
       (await get(runContextCliAgentType(params.runId))) ??
-      extractFramework(composeContent);
+      run.launchSnapshot?.framework ??
+      null;
 
     return {
       id: run.id,
