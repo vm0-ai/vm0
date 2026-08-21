@@ -107,7 +107,7 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-export const managedModelProviderFailureKindSchema = z.enum([
+const managedModelProviderFailureKindSchema = z.enum([
   "authentication",
   "billing",
   "rate_limit",
