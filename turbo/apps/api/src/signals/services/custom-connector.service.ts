@@ -2982,6 +2982,8 @@ type DisconnectCustomConnectorResult =
   | "referenced"
   | "managed";
 
+// The target-only custom route omits selectionResolution and retains its
+// legacy idempotent, selection-clearing behavior until #27695's drain gate.
 export const disconnectCustomConnector$ = command(
   async (
     { set },

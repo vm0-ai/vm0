@@ -497,7 +497,7 @@ describe("connector account lifecycle routes", () => {
     expect(accounts.body.connections).toHaveLength(2);
   });
 
-  it("serializes concurrent explicit single-account writes", async () => {
+  it("serializes concurrent single-account writes and disconnects", async () => {
     const fixture = await seedFixture();
     await setConnectorAccountsEnabled(fixture, true);
 
@@ -995,7 +995,7 @@ describe("connector account lifecycle routes", () => {
         { id: work.id, displayName: "Work", isDefault: true },
       ]);
 
-      await accept(
+      const disconnects = await Promise.all([
         accountClient().disconnectSingleAccount({
           headers: authHeaders(),
           body: {
@@ -1005,8 +1005,25 @@ describe("connector account lifecycle routes", () => {
             },
           },
         }),
-        [204],
-      );
+        accountClient().disconnectSingleAccount({
+          headers: authHeaders(),
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+          },
+        }),
+      ]);
+      expect(
+        disconnects
+          .map((response) => {
+            return response.status;
+          })
+          .sort((left, right) => {
+            return left - right;
+          }),
+      ).toStrictEqual([204, 404]);
       const disconnected = await accept(
         accountClient().connections({
           headers: authHeaders(),
@@ -1019,22 +1036,6 @@ describe("connector account lifecycle routes", () => {
         [200],
       );
       expect(disconnected.body.connections).toStrictEqual([]);
-
-      const missingDisconnect = await accept(
-        accountClient().disconnectSingleAccount({
-          headers: authHeaders(),
-          body: {
-            target: {
-              kind: "custom",
-              customConnectorId: definition.body.id,
-            },
-          },
-        }),
-        [404],
-      );
-      expect(missingDisconnect.body.error.message).toBe(
-        "Connector account not found",
-      );
     },
   );
 });

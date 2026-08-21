@@ -13,6 +13,7 @@ import { resolveConnectorAccount } from "./connector-account-resolution.service"
 import {
   prepareConnectorAccountDeletion,
   type ConnectorAccountDeletionSelectionPolicy,
+  type ConnectorAccountRejectDeletionPolicy,
 } from "./connector-account-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
@@ -95,7 +96,7 @@ export async function upsertCustomConnectorStoredValues(
 export async function deleteCustomConnectorMemberConnection(
   db: Tx,
   args: CustomConnectorMemberConnection & {
-    readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
+    readonly selectionResolution?: ConnectorAccountRejectDeletionPolicy;
   },
   signal: AbortSignal,
 ): Promise<
