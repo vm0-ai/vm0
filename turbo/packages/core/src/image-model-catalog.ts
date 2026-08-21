@@ -38,6 +38,10 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "qwen-image",
     label: "Qwen Image",
   },
+  "alibaba/qwen-image-3/text-to-image": {
+    alias: "qwen-image-3",
+    label: "Qwen Image 3",
+  },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
     label: "Seedream 4",
@@ -54,6 +58,10 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "nano-banana-2",
     label: "Nano Banana 2",
   },
+  "google/nano-banana-2-lite": {
+    alias: "nano-banana-2-lite",
+    label: "Nano Banana 2 Lite",
+  },
 } as const satisfies Record<ImageModelId, ImageModelConfig>;
 
 export type ImageModel = ImageModelId;
@@ -67,9 +75,11 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 /**
  * Catalog models offered by the user-facing picker, in display order. The
  * picker presents one model per family rather than every catalog entry:
- * Seedream 4, the Flux Ultra and Seedream Lite siblings, and Qwen Image are all
- * deliberately absent. Every one of them stays generatable through its alias
- * and through defaults that already point at it.
+ * Seedream 4, the Flux Ultra, Seedream Lite, and Nano Banana 2 Lite siblings,
+ * and the superseded Qwen Image are all deliberately absent. Every one of them
+ * stays generatable through its alias and through defaults that already point
+ * at it. Qwen Image 3 is the family's one entry, so the picker offers Qwen
+ * again without carrying the generation it replaces.
  */
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
@@ -77,6 +87,7 @@ export const PUBLIC_IMAGE_MODELS = [
   "fal-ai/nano-banana-2",
   "fal-ai/flux-pro/v1.1",
   "dola-seedream-5-0-pro-260628",
+  "alibaba/qwen-image-3/text-to-image",
 ] as const satisfies readonly ImageModel[];
 
 export const IMAGE_MODEL_ALIASES = {
@@ -85,11 +96,14 @@ export const IMAGE_MODEL_ALIASES = {
   "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
   "qwen-image": "fal-ai/qwen-image",
+  "qwen-image-3": "alibaba/qwen-image-3/text-to-image",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
   "seedream5-pro": "dola-seedream-5-0-pro-260628",
   "seedream5-lite": "seedream-5-0-lite-260128",
   "nano-banana-2": "fal-ai/nano-banana-2",
   "nano-banana2": "fal-ai/nano-banana-2",
+  "nano-banana-2-lite": "google/nano-banana-2-lite",
+  "nano-banana2-lite": "google/nano-banana-2-lite",
 } as const satisfies Readonly<Record<string, ImageModel>>;
 
 /** Global fallback when no more specific image model default exists. */

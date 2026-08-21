@@ -588,6 +588,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/qwen-image", [
     ["output_megapixel", usd(0.02), 1],
   ]),
+  // Qwen Image 3 is billed per image in two resolution tiers, split at
+  // 2,250,000 output pixels.
+  ...usageGroup("image", "alibaba/qwen-image-3/text-to-image", [
+    ["output_image.1k", usd(0.04), 1],
+    ["output_image.2k", usd(0.075), 1],
+  ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],
   ]),
@@ -603,6 +609,11 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
   ...usageGroup("image", "fal-ai/nano-banana-2", [
     ["output_image", usd(0.08), 1],
+  ]),
+  // Nano Banana 2 Lite is token billed at $37.50 per 1M output image tokens
+  // and always returns 1K images (1024x1024 = 1120 tokens): $0.042 per image.
+  ...usageGroup("image", "google/nano-banana-2-lite", [
+    ["output_image", usd(0.042), 1],
   ]),
   // Background removal transform (fal cost is $0).
   ...usageGroup("image", "fal-ai/birefnet/v2", [["output_image", usd(0), 1]]),
