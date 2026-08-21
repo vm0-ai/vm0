@@ -17,7 +17,7 @@ setup_file() {
     runner_e2e_require_environment
 
     local feature_switches
-    feature_switches="$(runner_api_curl "/api/okou/feature-switches" \
+    feature_switches="$(runner_api_curl "/api/feature-switches" \
         -X POST \
         -d '{"switches":{"realAgentInPreview":true,"piLoop":true}}')"
     jq -e '
@@ -127,7 +127,7 @@ run_real_claude_steer() {
 }
 
 @test "vm0-managed real claude returns a successful answer" {
-    run runner_api_curl "/api/okou/model-policies"
+    run runner_api_curl "/api/model-policies"
     assert_success
     run jq -e --arg model "$REAL_CLAUDE_MODEL" '
         any(.policies[]?;
@@ -153,7 +153,7 @@ run_real_claude_steer() {
 }
 
 @test "vm0-managed real pi loop returns a successful answer" {
-    run runner_api_curl "/api/okou/model-policies"
+    run runner_api_curl "/api/model-policies"
     assert_success
     run jq -e '
         any(.policies[]?;

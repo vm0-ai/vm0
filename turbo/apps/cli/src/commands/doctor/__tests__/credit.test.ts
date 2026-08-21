@@ -5,7 +5,7 @@ import { server } from "../../../mocks/server";
 import { creditCommand } from "../credit";
 
 function stubOrg(overrides: { readonly name?: string } = {}) {
-  return http.get("http://localhost:3000/api/okou/org", () => {
+  return http.get("http://localhost:3000/api/org", () => {
     return HttpResponse.json({
       id: "org-doctor",
       slug: "doctor-org",
@@ -86,7 +86,7 @@ describe("okou doctor credit command", () => {
   it("does not request org members", async () => {
     let memberRequests = 0;
     server.use(
-      http.get("http://localhost:3000/api/okou/org/members", () => {
+      http.get("http://localhost:3000/api/org/members", () => {
         memberRequests += 1;
         return HttpResponse.json(
           {

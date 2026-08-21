@@ -80,6 +80,17 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: 'fetchFn("/api/feishu/connect/status")',
     },
+    // #28462 moved the org, model provider, and usage routes, which the
+    // platform reaches both directly and through its MSW patterns.
+    {
+      code: 'context.mocks.http.get("*/api/org/logo", handler)',
+    },
+    {
+      code: 'const url = "/api/usage/members"',
+    },
+    {
+      code: 'fetchFn("/api/model-providers/claude-code/device-auth/sessions")',
+    },
   ],
   invalid: [
     {
@@ -90,10 +101,6 @@ ruleTester.run("no-non-zero-api", rule, {
     // #28457's allow-list entry must not reach it.
     {
       code: 'fetchFn("/api/billing-exports/status")',
-      errors: [{ messageId: "nonZeroApi" }],
-    },
-    {
-      code: 'const url = "/api/usage/members"',
       errors: [{ messageId: "nonZeroApi" }],
     },
     // A longer sibling of a migrated connector path is not itself migrated.
@@ -113,6 +120,12 @@ ruleTester.run("no-non-zero-api", rule, {
     // list must not match it by prefix.
     {
       code: 'fetchFn("/api/push-subscriptions-legacy")',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    // `/api/org` is a prefix entry, so the rule must still reject a longer
+    // sibling that only looks like it.
+    {
+      code: 'fetchFn("/api/organizations")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     // A neutral path whose contract has not moved yet stays a violation. The

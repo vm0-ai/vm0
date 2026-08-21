@@ -5,7 +5,7 @@
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
  * NOT AN AUTHORIZATION BOUNDARY. Every registered switch accepts user overrides
- * through `POST /api/zero/feature-switches`. For money-granting, credential, or
+ * through `POST /api/feature-switches`. For money-granting, credential, or
  * privilege-escalation endpoints, gate with a hard identity check (e.g.
  * `isStaffOrg()` from `./staff-org`) instead of this system.
  */

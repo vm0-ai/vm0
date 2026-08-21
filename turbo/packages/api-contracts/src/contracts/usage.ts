@@ -26,12 +26,12 @@ const usageMembersResponseSchema = z.object({
 });
 
 /**
- * Zero contract for GET /api/okou/usage/members
+ * Usage contract for GET /api/usage/members
  */
 export const usageMembersContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/usage/members",
+    path: "/api/usage/members",
     headers: authHeadersSchema,
     query: z.object({
       range: usageRecordRangeSchema.default("billingPeriod"),
