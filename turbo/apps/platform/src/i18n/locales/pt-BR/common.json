@@ -3296,25 +3296,6 @@
         },
         "title": "Arquivos do Sentry caem como issues do GitHub"
       },
-      "find-creator-leads-x": {
-        "description": "Encontre e qualifique leads de criadores no X.",
-        "scenario": "A prospecção trava quando a lista fica desatualizada. {{assistantName}} encontra criadores e prospects no X que combinam com o perfil-alvo, qualifica cada um com a busca de pessoas integrada e o Firecrawl e devolve uma lista de contato priorizada.",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}} busca no X contas que combinam com o perfil-alvo.",
-            "title": "Candidatos são encontrados no X"
-          },
-          "three": {
-            "description": "{{assistantName}} avalia a aderência, redige a mensagem inicial e opcionalmente salva os leads no HubSpot.",
-            "title": "A lista de contato é priorizada"
-          },
-          "two": {
-            "description": "{{assistantName}} verifica cargo, empresa e alcance com a pesquisa integrada.",
-            "title": "Cada lead é qualificado"
-          }
-        },
-        "title": "Encontrar leads de criadores no X"
-      },
       "fixes-to-notion-help-docs": {
         "description": "Converta soluções confirmadas no GitHub em orientação Notion reutilizável.",
         "scenario": "A mesma pergunta de suporte retorna quando a solução não é documentada. {{assistantName}} lê issues do GitHub resolvidas e transforma a resolução aprovada em um artigo de ajuda Notion claro.",
@@ -3715,23 +3696,23 @@
         "title": "Preparar para reuniões futuras"
       },
       "research-new-signups-apollo": {
-        "description": "Adicione contexto de empresa pública e função aos novos leads do CRM.",
-        "scenario": "Um novo registro do CRM raramente contém contexto suficiente para um primeiro movimento útil. {{assistantName}} pesquisa informações de empresa pública e de função, resuma os achados e enriquece o lead do HubSpot.",
+        "description": "Encontre e qualifique leads de criadores no X.",
+        "scenario": "A prospecção trava quando a lista fica desatualizada. {{assistantName}} encontra criadores e prospects no X que combinam com o perfil-alvo, qualifica cada um com a busca de pessoas integrada e o Firecrawl e devolve uma lista de contato priorizada.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lê os leads do HubSpot recentemente adicionados.",
-            "title": "Novos leads são encontrados"
+            "description": "{{assistantName}} busca no X contas que combinam com o perfil-alvo.",
+            "title": "Candidatos são encontrados no X"
           },
           "three": {
-            "description": "{{assistantName}} adiciona o resumo e o próximo passo sugerido ao lead.",
-            "title": "O HubSpot é enriquecido"
+            "description": "{{assistantName}} avalia a aderência, redige a mensagem inicial e opcionalmente salva os leads no HubSpot.",
+            "title": "A lista de contato é priorizada"
           },
           "two": {
-            "description": "{{assistantName}} coleta sinais relevantes de empresa, função e produto da web.",
-            "title": "Contexto público é pesquisado"
+            "description": "{{assistantName}} verifica cargo, empresa e alcance com a pesquisa integrada.",
+            "title": "Cada lead é qualificado"
           }
         },
-        "title": "Pesquise novos leads do HubSpot"
+        "title": "Encontrar leads de criadores no X"
       },
       "run-daily-query-sheets": {
         "description": "Escreva a visibilidade de busca e o movimento de consulta no Google Sheets.",

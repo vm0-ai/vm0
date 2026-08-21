@@ -3296,25 +3296,6 @@
         },
         "title": "File Sentry crashano come problemi di GitHub"
       },
-      "find-creator-leads-x": {
-        "description": "Trova e qualifica lead di creator su X.",
-        "scenario": "L'outbound si blocca quando la lista è obsoleta. {{assistantName}} trova su X creator e potenziali clienti in linea con il profilo target, li qualifica con la ricerca di persone integrata e Firecrawl e restituisce una lista di contatto prioritizzata.",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}} cerca su X gli account in linea con il profilo target.",
-            "title": "I candidati vengono trovati su X"
-          },
-          "three": {
-            "description": "{{assistantName}} valuta l'affinità, redige un primo messaggio e salva i lead in HubSpot se richiesto.",
-            "title": "La lista di contatto viene prioritizzata"
-          },
-          "two": {
-            "description": "{{assistantName}} verifica ruolo, azienda e portata con la ricerca integrata.",
-            "title": "Ogni lead viene qualificato"
-          }
-        },
-        "title": "Trova lead di creator su X"
-      },
       "fixes-to-notion-help-docs": {
         "description": "Converte i fix approvati su GitHub in guida di aiuto Notion riutilizzabile.",
         "scenario": "La stessa domanda di supporto torna quando il fix non è mai documentato. {{assistantName}} legge le issue di GitHub risolte e trasforma la risoluzione approvata in una chiara guida di aiuto Notion.",
@@ -3715,23 +3696,23 @@
         "title": "Preparare per le riunioni future"
       },
       "research-new-signups-apollo": {
-        "description": "Aggiungi contesto aziendale e ruolo pubblico ai nuovi lead CRM.\\n",
-        "scenario": "Un nuovo record CRM raramente contiene abbastanza contesto per un primo passo utile. {{assistantName}} ricerca informazioni aziendali e di ruolo pubbliche, riassume i risultati e raffina il lead HubSpot.\\n",
+        "description": "Trova e qualifica lead di creator su X.",
+        "scenario": "L'outbound si blocca quando la lista è obsoleta. {{assistantName}} trova su X creator e potenziali clienti in linea con il profilo target, li qualifica con la ricerca di persone integrata e Firecrawl e restituisce una lista di contatto prioritizzata.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} legge i nuovi lead aggiunti a HubSpot.\\n",
-            "title": "Sono trovati nuovi lead\\n"
+            "description": "{{assistantName}} cerca su X gli account in linea con il profilo target.",
+            "title": "I candidati vengono trovati su X"
           },
           "three": {
-            "description": "{{assistantName}} aggiunge la riassunto e il passo successivo suggerito al lead.\\n",
-            "title": "HubSpot viene raffinato\\n"
+            "description": "{{assistantName}} valuta l'affinità, redige un primo messaggio e salva i lead in HubSpot se richiesto.",
+            "title": "La lista di contatto viene prioritizzata"
           },
           "two": {
-            "description": "{{assistantName}} raccolge segnali rilevanti aziendali, di ruolo e di prodotto dalla rete.\\n",
-            "title": "Si ricerca contesto pubblico\\n"
+            "description": "{{assistantName}} verifica ruolo, azienda e portata con la ricerca integrata.",
+            "title": "Ogni lead viene qualificato"
           }
         },
-        "title": "Ricerca nuovi lead HubSpot\\n"
+        "title": "Trova lead di creator su X"
       },
       "run-daily-query-sheets": {
         "description": "Scrivi la visibilità dei ricerchi e il movimento delle query in Google Sheets.",

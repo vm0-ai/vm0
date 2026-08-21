@@ -3252,25 +3252,6 @@
         },
         "title": "Datei Sentry bricht als GitHub-Issues auf"
       },
-      "find-creator-leads-x": {
-        "description": "Creator-Leads auf X finden und qualifizieren.",
-        "scenario": "Outbound stockt, wenn die Liste veraltet ist. {{assistantName}} findet Creator und Interessenten auf X, die zum Zielprofil passen, qualifiziert sie mit der integrierten Personensuche und Firecrawl und liefert eine priorisierte Outreach-Liste.",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}} durchsucht X nach Konten, die zum Zielprofil passen.",
-            "title": "Kandidaten werden auf X gefunden"
-          },
-          "three": {
-            "description": "{{assistantName}} bewertet die Passung, entwirft eine Ansprache und speichert Leads optional in HubSpot.",
-            "title": "Die Outreach-Liste wird priorisiert"
-          },
-          "two": {
-            "description": "{{assistantName}} prüft Rolle, Unternehmen und Reichweite mit integrierter Recherche.",
-            "title": "Jeder Lead wird qualifiziert"
-          }
-        },
-        "title": "Creator-Leads auf X finden"
-      },
       "fixes-to-notion-help-docs": {
         "description": "Wandeln Sie bestätigte GitHub-Fixes in wiederverwendbare Notion-Beratungen um.",
         "scenario": "Die gleiche Support-Frage kehrt zurück, wenn die Lösung nicht dokumentiert ist. {{assistantName}} liest gelöste GitHub-Aufgaben und wandelt die genehmigte Lösung in eine klare Notion-Hilfe-Artikel um.",
@@ -3671,23 +3652,23 @@
         "title": "Bereiten Sie auf kommende Termine vor.\\n"
       },
       "research-new-signups-apollo": {
-        "description": "Füge öffentliche Unternehmens- und Rolleninformationen zu neuen CRM-Leads hinzu.",
-        "scenario": "Ein neues CRM-Objekt enthält oft nicht genügend Kontext für eine nützliche erste Aktion. {{assistantName}} forscht nach öffentlichen Unternehmens- und Rolleninformationen, fasst die Ergebnisse zusammen und verfeinert das HubSpot-Objekt.",
+        "description": "Creator-Leads auf X finden und qualifizieren.",
+        "scenario": "Outbound stockt, wenn die Liste veraltet ist. {{assistantName}} findet Creator und Interessenten auf X, die zum Zielprofil passen, qualifiziert sie mit der integrierten Personensuche und Firecrawl und liefert eine priorisierte Outreach-Liste.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} liest die neu hinzugefügten HubSpot-Leads.",
-            "title": "Neue Leads werden gefunden"
+            "description": "{{assistantName}} durchsucht X nach Konten, die zum Zielprofil passen.",
+            "title": "Kandidaten werden auf X gefunden"
           },
           "three": {
-            "description": "{{assistantName}} fügt die Zusammenfassung und den vorgeschlagenen nächsten Schritt zum Lead hinzu.",
-            "title": "HubSpot wird verfeinert"
+            "description": "{{assistantName}} bewertet die Passung, entwirft eine Ansprache und speichert Leads optional in HubSpot.",
+            "title": "Die Outreach-Liste wird priorisiert"
           },
           "two": {
-            "description": "{{assistantName}} sammelt relevante Unternehmens-, Rollen- und Produktinformationen aus der Web.",
-            "title": "Öffentlicher Kontext wird geforscht"
+            "description": "{{assistantName}} prüft Rolle, Unternehmen und Reichweite mit integrierter Recherche.",
+            "title": "Jeder Lead wird qualifiziert"
           }
         },
-        "title": "Führe neue HubSpot-Leads auf"
+        "title": "Creator-Leads auf X finden"
       },
       "run-daily-query-sheets": {
         "description": "Schreiben Sie Suchsichtbarkeit und Suchanfragenbewegungen in Google Sheets.",

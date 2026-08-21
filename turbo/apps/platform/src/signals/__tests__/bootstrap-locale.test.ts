@@ -584,6 +584,13 @@ describe("bootstrap locale", () => {
       }),
     ).toBe("Zero überprüft die Änderungen.");
 
+    await context.store.set(setLocale$, "hi-IN", context.signal);
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["summarize-zendesk-tickets-daily"].title;
+      }),
+    ).toBe("FAQ को डिजिटल-ह्यूमन सपोर्ट वीडियो में बदलें");
+
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 

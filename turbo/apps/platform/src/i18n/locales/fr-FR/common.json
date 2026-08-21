@@ -3296,25 +3296,6 @@
         },
         "title": "Sentry envoie des incidents comme des problèmes GitHub"
       },
-      "find-creator-leads-x": {
-        "description": "Trouvez et qualifiez des leads créateurs sur X.",
-        "scenario": "La prospection s'essouffle quand la liste est obsolète. {{assistantName}} trouve sur X les créateurs et prospects correspondant au profil cible, les qualifie avec la recherche de personnes intégrée et Firecrawl, puis renvoie une liste de contact priorisée.",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}} recherche sur X les comptes correspondant au profil cible.",
-            "title": "Des candidats sont trouvés sur X"
-          },
-          "three": {
-            "description": "{{assistantName}} évalue l'adéquation, rédige un premier message et enregistre éventuellement les leads dans HubSpot.",
-            "title": "La liste de contact est priorisée"
-          },
-          "two": {
-            "description": "{{assistantName}} vérifie le rôle, l'entreprise et l'audience avec la recherche intégrée.",
-            "title": "Chaque lead est qualifié"
-          }
-        },
-        "title": "Trouver des leads créateurs sur X"
-      },
       "fixes-to-notion-help-docs": {
         "description": "Convertissez les corrections GitHub confirmées en guidance Notion réutilisable.",
         "scenario": "La même question de support revient lorsque la correction n'est jamais documentée. {{assistantName}} lit les corrections GitHub résolues et transforme la résolution approuvée en un article de aide Notion clair.",
@@ -3715,23 +3696,23 @@
         "title": "Préparer les prochaines réunions"
       },
       "research-new-signups-apollo": {
-        "description": "Ajouter un contexte de société publique et de poste aux nouveaux enregistrements CRM.",
-        "scenario": "Un nouvel enregistrement CRM rarement contient assez de contexte pour une première action utile. {{assistantName}} recherche des informations de société et de poste publiques, résume les résultats et enrichit le prospect HubSpot.",
+        "description": "Trouvez et qualifiez des leads créateurs sur X.",
+        "scenario": "La prospection s'essouffle quand la liste est obsolète. {{assistantName}} trouve sur X les créateurs et prospects correspondant au profil cible, les qualifie avec la recherche de personnes intégrée et Firecrawl, puis renvoie une liste de contact priorisée.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} lit les nouveaux enregistrements HubSpot ajoutés récemment.",
-            "title": "Des prospects nouveaux sont trouvés"
+            "description": "{{assistantName}} recherche sur X les comptes correspondant au profil cible.",
+            "title": "Des candidats sont trouvés sur X"
           },
           "three": {
-            "description": "{{assistantName}} ajoute le résumé et les étapes suivantes recommandées au prospect.",
-            "title": "HubSpot est enrichi"
+            "description": "{{assistantName}} évalue l'adéquation, rédige un premier message et enregistre éventuellement les leads dans HubSpot.",
+            "title": "La liste de contact est priorisée"
           },
           "two": {
-            "description": "{{assistantName}} rassemble des signaux pertinents sur la société, le poste et le produit depuis le web.",
-            "title": "Un contexte public est recherché"
+            "description": "{{assistantName}} vérifie le rôle, l'entreprise et l'audience avec la recherche intégrée.",
+            "title": "Chaque lead est qualifié"
           }
         },
-        "title": "Rechercher de nouveaux prospects HubSpot"
+        "title": "Trouver des leads créateurs sur X"
       },
       "run-daily-query-sheets": {
         "description": "Écrire la visibilité des recherches et le mouvement des requêtes dans Google Sheets.",

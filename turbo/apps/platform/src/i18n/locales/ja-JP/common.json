@@ -3251,25 +3251,6 @@
         },
         "title": "SentryでファイルがGitHubの問題としてクラッシュする"
       },
-      "find-creator-leads-x": {
-        "description": "Xからクリエイターのリードを見つけて選別します。",
-        "scenario": "リストが古くなるとアウトバウンドは停滞します。{{assistantName}}はターゲット像に合うクリエイターや見込み客をXで見つけ、組み込みの人物検索とFirecrawlで選別し、優先順位を付けたアプローチリストを返します。",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}}はターゲット像に合うアカウントをXで検索します。",
-            "title": "Xで候補が見つかる"
-          },
-          "three": {
-            "description": "{{assistantName}}は適合度を評価し、初回メッセージを作成し、必要に応じてHubSpotに保存します。",
-            "title": "アプローチリストが順位付けされる"
-          },
-          "two": {
-            "description": "{{assistantName}}は組み込みのリサーチで役割、会社、影響力を確認します。",
-            "title": "各リードが選別される"
-          }
-        },
-        "title": "Xでクリエイターのリードを見つける"
-      },
       "fixes-to-notion-help-docs": {
         "description": "承認されたGitHubの修正を再利用可能なNotionのガイダンスに変換する。",
         "scenario": "同じサポート質問が修正が記録されていない場合、同じサポート質問が再発します。{{assistantName}}は解決済みのGitHubのissueと修正を読み、承認された解決策を明確なNotionのヘルプ記事に変換します。",
@@ -3670,23 +3651,23 @@
         "title": "予定会議の準備をする"
       },
       "research-new-signups-apollo": {
-        "description": "新しいCRMリードに公開会社と役職のコンテキストを追加する。",
-        "scenario": "新しいCRMレコードは有用な最初の動きのために十分なコンテキストを含むことが稀です。{{assistantName}}は公開会社と役職の情報をリサーチし、見つけた内容を要約し、HubSpotリードを充実させる。",
+        "description": "Xからクリエイターのリードを見つけて選別します。",
+        "scenario": "リストが古くなるとアウトバウンドは停滞します。{{assistantName}}はターゲット像に合うクリエイターや見込み客をXで見つけ、組み込みの人物検索とFirecrawlで選別し、優先順位を付けたアプローチリストを返します。",
         "steps": {
           "one": {
-            "description": "{{assistantName}}は最近追加されたHubSpotリードを読みます。",
-            "title": "新しいリードが見つかります"
+            "description": "{{assistantName}}はターゲット像に合うアカウントをXで検索します。",
+            "title": "Xで候補が見つかる"
           },
           "three": {
-            "description": "{{assistantName}}は要約と次に采取すべきステップをリードに追加します。",
-            "title": "HubSpotが充実されます"
+            "description": "{{assistantName}}は適合度を評価し、初回メッセージを作成し、必要に応じてHubSpotに保存します。",
+            "title": "アプローチリストが順位付けされる"
           },
           "two": {
-            "description": "{{assistantName}}は関連する会社、役職、および製品のシグナルをウェブから集めます。",
-            "title": "公開コンテキストがリサーチされます"
+            "description": "{{assistantName}}は組み込みのリサーチで役割、会社、影響力を確認します。",
+            "title": "各リードが選別される"
           }
         },
-        "title": "新しいHubSpotリードのリサーチ"
+        "title": "Xでクリエイターのリードを見つける"
       },
       "run-daily-query-sheets": {
         "description": "検索の可視性とクエリの動きをGoogle シートに記入する。",

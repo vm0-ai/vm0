@@ -3251,25 +3251,6 @@
         },
         "title": "파일 세ｎｔｒｙ가 GitHub 이슈로 변합니다"
       },
-      "find-creator-leads-x": {
-        "description": "X에서 크리에이터 리드를 찾아 검증합니다.",
-        "scenario": "리스트가 오래되면 아웃바운드가 멈춥니다. {{assistantName}}은 목표 프로필에 맞는 크리에이터와 잠재 고객을 X에서 찾고, 내장 인물 검색과 Firecrawl로 검증한 뒤 우선순위가 매겨진 아웃리치 목록을 반환합니다.",
-        "steps": {
-          "one": {
-            "description": "{{assistantName}}은 목표 프로필에 맞는 계정을 X에서 검색합니다.",
-            "title": "X에서 후보를 찾습니다"
-          },
-          "three": {
-            "description": "{{assistantName}}은 적합도를 평가하고 첫 메시지를 작성하며 필요 시 HubSpot에 저장합니다.",
-            "title": "아웃리치 목록의 우선순위를 정합니다"
-          },
-          "two": {
-            "description": "{{assistantName}}은 내장 리서치로 역할, 회사, 영향력을 확인합니다.",
-            "title": "각 리드를 검증합니다"
-          }
-        },
-        "title": "X에서 크리에이터 리드 찾기"
-      },
       "fixes-to-notion-help-docs": {
         "description": "승인된 깃허브 수정 사항을 재사용 가능한 노션 가이드로 변환하기.",
         "scenario": "수정 사항이 문서화되지 않은 경우 동일한 지원 질문이 다시 발생합니다. {{assistantName}}은 해결된 깃허브 이슈를 읽고 승인된 해결 방법을 명확한 노션 도움말 문서로 변환합니다.",
@@ -3670,23 +3651,23 @@
         "title": "임박한 회의 준비\\n"
       },
       "research-new-signups-apollo": {
-        "description": "새로운 CRM 리드에 공개 회사와 역할 맥락 추가하기.",
-        "scenario": "새로운 CRM 기록은 일반적으로 유용한 첫 번째 움직임을 위한 충분한 맥락을 제공하지 않습니다. {{assistantName}}은 공개 회사와 역할 정보를 연구하고 발견한 내용을 요약하여 HubSpot 리드를 풍부하게 합니다.",
+        "description": "X에서 크리에이터 리드를 찾아 검증합니다.",
+        "scenario": "리스트가 오래되면 아웃바운드가 멈춥니다. {{assistantName}}은 목표 프로필에 맞는 크리에이터와 잠재 고객을 X에서 찾고, 내장 인물 검색과 Firecrawl로 검증한 뒤 우선순위가 매겨진 아웃리치 목록을 반환합니다.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}은 최근 추가된 HubSpot 리드를 검토합니다.",
-            "title": "새로운 리드가 발견됩니다"
+            "description": "{{assistantName}}은 목표 프로필에 맞는 계정을 X에서 검색합니다.",
+            "title": "X에서 후보를 찾습니다"
           },
           "three": {
-            "description": "{{assistantName}}은 요약과 제안된 다음 단계를 리드에 추가합니다.",
-            "title": "HubSpot이 풍부하게 됩니다"
+            "description": "{{assistantName}}은 적합도를 평가하고 첫 메시지를 작성하며 필요 시 HubSpot에 저장합니다.",
+            "title": "아웃리치 목록의 우선순위를 정합니다"
           },
           "two": {
-            "description": "{{assistantName}}은 웹에서 관련 회사, 역할 및 제품 신호를 수집합니다.",
-            "title": "공개 맥락이 연구됩니다"
+            "description": "{{assistantName}}은 내장 리서치로 역할, 회사, 영향력을 확인합니다.",
+            "title": "각 리드를 검증합니다"
           }
         },
-        "title": "새로운 HubSpot 리드 연구하기"
+        "title": "X에서 크리에이터 리드 찾기"
       },
       "run-daily-query-sheets": {
         "description": "검색 노출 및 쿼리 움직임을 Google Sheets에 기록합니다.",

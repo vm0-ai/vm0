@@ -203,12 +203,6 @@ export const ONBOARDING_WORKFLOW_SPECS = {
     {
       id: "research-new-signups-apollo",
       prompt:
-        "Create a workflow that researches newly added HubSpot leads with built-in public web research, summarizes company and role context, and writes the summary back to the lead. Do not request a separate research connector.",
-      requiredConnectorSlugs: ["hubspot"],
-    },
-    {
-      id: "find-creator-leads-x",
-      prompt:
         "Create a lead-generation workflow that finds creators and prospects on X who match the user's target profile, then qualifies each candidate with the built-in Perplexity people search and Firecrawl capabilities to confirm role, company, audience, and recent work. Score fit, return a ranked outreach list with a personalized opening message for human review, and optionally save qualified leads to HubSpot. Do not request a separate research or enrichment connector, and never send outreach automatically.",
       requiredConnectorSlugs: ["x"],
       optionalConnectorSlugs: ["hubspot"],

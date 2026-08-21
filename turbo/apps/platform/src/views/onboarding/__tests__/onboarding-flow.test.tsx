@@ -482,6 +482,44 @@ describe("onboarding flow", () => {
     },
   );
 
+  it("renders exactly six workflows for each role", async () => {
+    await openMakePage();
+    chooseMakeOption("Workflow automation");
+
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+
+    const roles = [
+      "Everyone",
+      "Engineer",
+      "Product",
+      "Data",
+      "Marketing",
+      "Sales",
+      "Support",
+      "CEO",
+      "Operations",
+    ] as const;
+    let workflowCount = 0;
+    for (const role of roles) {
+      click(buttonByText(role));
+      await expect(
+        screen.findByRole("heading", { name: `${role} workflows` }),
+      ).resolves.toBeInTheDocument();
+
+      const workflowCards = screen.getAllByRole("article");
+      expect(workflowCards).toHaveLength(6);
+      workflowCount += workflowCards.length;
+
+      click(buttonByText("Back"));
+      await expect(
+        screen.findByRole("heading", { name: "What do you work on?" }),
+      ).resolves.toBeInTheDocument();
+    }
+    expect(workflowCount).toBe(54);
+  });
+
   it("uses card actions throughout workflow onboarding", async () => {
     mockCatalogItem({
       slug: "github",
