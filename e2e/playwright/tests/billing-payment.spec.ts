@@ -70,7 +70,7 @@ test("credit balance bars render with matching outer corner radii", async ({
 });
 
 async function enableUsagePackPlans(page: Page): Promise<void> {
-  await page.route("**/api/okou/feature-switches", async (route) => {
+  await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {

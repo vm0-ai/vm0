@@ -30,13 +30,12 @@ const invitationPurchaseConfirmResponseSchema = z.union([
 ]);
 
 /**
- * Zero contract for /api/okou/org/members
- * Proxies to /api/org/members
+ * Org contract for /api/org/members
  */
 export const orgMembersContract = c.router({
   members: {
     method: "GET",
-    path: "/api/okou/org/members",
+    path: "/api/org/members",
     headers: authHeadersSchema,
     responses: {
       200: orgMembersResponseSchema,
@@ -51,7 +50,7 @@ export const orgMembersContract = c.router({
   },
   updateRole: {
     method: "PATCH",
-    path: "/api/okou/org/members",
+    path: "/api/org/members",
     headers: authHeadersSchema,
     body: updateOrgMemberRoleRequestSchema,
     responses: {
@@ -66,7 +65,7 @@ export const orgMembersContract = c.router({
   },
   removeMember: {
     method: "DELETE",
-    path: "/api/okou/org/members",
+    path: "/api/org/members",
     headers: authHeadersSchema,
     body: removeOrgMemberRequestSchema,
     responses: {
@@ -84,13 +83,12 @@ export const orgMembersContract = c.router({
 export type OrgMembersContract = typeof orgMembersContract;
 
 /**
- * Zero contract for POST /api/okou/org/invite
- * Proxies to POST /api/org/invite
+ * Org contract for POST /api/org/invite
  */
 export const orgInviteContract = c.router({
   invite: {
     method: "POST",
-    path: "/api/okou/org/invite",
+    path: "/api/org/invite",
     headers: authHeadersSchema,
     body: inviteOrgMemberRequestSchema,
     responses: {
@@ -106,7 +104,7 @@ export const orgInviteContract = c.router({
   },
   previewPurchase: {
     method: "POST",
-    path: "/api/okou/org/invite/purchase/preview",
+    path: "/api/org/invite/purchase/preview",
     headers: authHeadersSchema,
     body: previewOrgInvitationPurchaseRequestSchema,
     responses: {
@@ -123,7 +121,7 @@ export const orgInviteContract = c.router({
   },
   confirmPurchase: {
     method: "POST",
-    path: "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    path: "/api/org/invite/purchase/:purchaseId/confirm",
     pathParams: z.object({ purchaseId: z.uuid() }),
     headers: authHeadersSchema,
     body: z.object({
@@ -143,7 +141,7 @@ export const orgInviteContract = c.router({
   },
   revoke: {
     method: "DELETE",
-    path: "/api/okou/org/invite",
+    path: "/api/org/invite",
     headers: authHeadersSchema,
     body: revokeInvitationRequestSchema,
     responses: {
@@ -161,12 +159,12 @@ export const orgInviteContract = c.router({
 export type OrgInviteContract = typeof orgInviteContract;
 
 /**
- * Zero contract for /api/okou/org/membership-requests
+ * Org contract for /api/org/membership-requests
  */
 export const orgMembershipRequestsContract = c.router({
   accept: {
     method: "POST",
-    path: "/api/okou/org/membership-requests",
+    path: "/api/org/membership-requests",
     headers: authHeadersSchema,
     body: membershipRequestActionSchema,
     responses: {
@@ -180,7 +178,7 @@ export const orgMembershipRequestsContract = c.router({
   },
   reject: {
     method: "DELETE",
-    path: "/api/okou/org/membership-requests",
+    path: "/api/org/membership-requests",
     headers: authHeadersSchema,
     body: membershipRequestActionSchema,
     responses: {

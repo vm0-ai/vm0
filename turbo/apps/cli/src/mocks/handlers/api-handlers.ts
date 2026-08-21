@@ -313,8 +313,8 @@ export const apiHandlers = [
     },
   ),
 
-  // GET /api/okou/org - getOrg
-  http.get("http://localhost:3000/api/okou/org", () => {
+  // GET /api/org - getOrg
+  http.get("http://localhost:3000/api/org", () => {
     return HttpResponse.json(
       {
         id: "org-default",

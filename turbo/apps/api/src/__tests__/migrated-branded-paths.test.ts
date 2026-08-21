@@ -4,7 +4,9 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
+import { orgReadRoutes } from "../signals/routes/org-read";
 import { scrapeRoutes } from "../signals/routes/scrape";
 import { translationRoutes } from "../signals/routes/translation";
 import { weatherRoutes } from "../signals/routes/weather";
@@ -343,6 +345,69 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28462: feature switches, model policies, org model providers and their
+  // device-auth sessions, the org profile and membership routes, and the usage
+  // reads.
+  "/api/feature-switches": [
+    "/api/okou/feature-switches",
+    "/api/zero/feature-switches",
+  ],
+  "/api/model-policies": [
+    "/api/okou/model-policies",
+    "/api/zero/model-policies",
+  ],
+  "/api/model-providers": [
+    "/api/okou/model-providers",
+    "/api/zero/model-providers",
+  ],
+  "/api/model-providers/:type": [
+    "/api/okou/model-providers/:type",
+    "/api/zero/model-providers/:type",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions",
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/claude-code/device-auth/sessions/complete": [
+    "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+  ],
+  "/api/model-providers/codex/device-auth/sessions": [
+    "/api/okou/model-providers/codex/device-auth/sessions",
+    "/api/zero/model-providers/codex/device-auth/sessions",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/cancel": [
+    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
+    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+  ],
+  "/api/model-providers/codex/device-auth/sessions/complete": [
+    "/api/okou/model-providers/codex/device-auth/sessions/complete",
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+  ],
+  "/api/org": ["/api/okou/org", "/api/zero/org"],
+  "/api/org/delete": ["/api/okou/org/delete", "/api/zero/org/delete"],
+  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
+  "/api/org/invite/purchase/:purchaseId/confirm": [
+    "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    "/api/zero/org/invite/purchase/:purchaseId/confirm",
+  ],
+  "/api/org/invite/purchase/preview": [
+    "/api/okou/org/invite/purchase/preview",
+    "/api/zero/org/invite/purchase/preview",
+  ],
+  "/api/org/leave": ["/api/okou/org/leave", "/api/zero/org/leave"],
+  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
+  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
+  "/api/org/membership-requests": [
+    "/api/okou/org/membership-requests",
+    "/api/zero/org/membership-requests",
+  ],
+  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
+  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
 };
 
 function missingBrandedPaths(
@@ -689,6 +754,47 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ operation, neutral, okou, zero }).toStrictEqual({
         operation,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28462 twin, driven through the same production app factory. An
+  // installed desktop build hardcodes `/api/okou/org` and
+  // `/api/okou/feature-switches` rather than deriving them from a contract, and
+  // it has no expiry window, so these are the two rows a dropped registration
+  // would strand longest. Requests are unauthenticated, so the status is
+  // whatever the auth layer returns — the point is that all three forms reach
+  // the same handler instead of falling through to 404.
+  it("serves the migrated org and feature-switch paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const families = [
+      { routes: orgReadRoutes, suffix: "org" },
+      { routes: featureSwitchesRoutes, suffix: "feature-switches" },
+    ];
+
+    for (const { routes, suffix } of families) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
+        });
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
         neutral,
         okou: neutral,
         zero: neutral,

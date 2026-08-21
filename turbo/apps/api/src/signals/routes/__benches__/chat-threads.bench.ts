@@ -896,7 +896,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/okou/org",
+    "GET /api/org",
     async () => {
       await ensureSeeded();
       const response = await orgClient.get({ headers: authHeaders });
