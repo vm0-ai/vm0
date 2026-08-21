@@ -107,17 +107,14 @@ describe("okou browser command", () => {
     let requestBody: unknown;
     let authorization: string | null = null;
     server.use(
-      http.post(
-        "http://localhost:3000/api/okou/browsers",
-        async ({ request }) => {
-          requestBody = await request.json();
-          authorization = request.headers.get("authorization");
-          return HttpResponse.json(
-            { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
-            { status: 201 },
-          );
-        },
-      ),
+      http.post("http://localhost:3000/api/browsers", async ({ request }) => {
+        requestBody = await request.json();
+        authorization = request.headers.get("authorization");
+        return HttpResponse.json(
+          { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
+          { status: 201 },
+        );
+      }),
     );
 
     await browserCommand.parseAsync([
@@ -148,7 +145,7 @@ describe("okou browser command", () => {
   it("opens the thread browser, reports its reclaim time, and hides connection secrets", async () => {
     let useRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/okou/browsers/use", () => {
+      http.post("http://localhost:3000/api/browsers/use", () => {
         useRequests += 1;
         return HttpResponse.json(
           {
@@ -179,7 +176,7 @@ describe("okou browser command", () => {
     let leaseBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/browsers/lease",
+        "http://localhost:3000/api/browsers/lease",
         async ({ request }) => {
           leaseRequests += 1;
           leaseBody = await request.json();
@@ -203,7 +200,7 @@ describe("okou browser command", () => {
 
   it("keeps provider connection URLs out of JSON output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/browsers", () => {
+      http.post("http://localhost:3000/api/browsers", () => {
         return HttpResponse.json(
           { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
           { status: 201 },

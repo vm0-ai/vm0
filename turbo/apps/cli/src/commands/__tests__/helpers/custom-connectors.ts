@@ -68,7 +68,7 @@ export function stubRunMcpConnectors(
   connectors: readonly McpConnector[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/mcp-connectors`, () => {
+  return http.get(`${origin}/api/mcp-connectors`, () => {
     return HttpResponse.json({ connectors });
   });
 }
