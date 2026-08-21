@@ -245,7 +245,14 @@ describe("okou social command", () => {
     );
 
     await expect(
-      socialCommand.parseAsync(["node", "cli", "request", "/linkedin/profile"]),
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "request",
+        "/linkedin/profile",
+        "--query",
+        "url=https://linkedin.com/in/example",
+      ]),
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(

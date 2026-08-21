@@ -118,7 +118,16 @@ function logProviderFailure(
   });
 }
 
-function providerHttpError(status: number): SocialKitErrorResponse {
+function providerErrorMessage(body: unknown): string | undefined {
+  return isRecord(body) && typeof body.message === "string"
+    ? body.message
+    : undefined;
+}
+
+function providerHttpError(
+  status: number,
+  body: unknown,
+): SocialKitErrorResponse {
   switch (status) {
     case 400: {
       return errorResponse(
@@ -134,11 +143,21 @@ function providerHttpError(status: number): SocialKitErrorResponse {
       );
     }
     case 403: {
-      return errorResponse(
-        503,
-        "SocialKit provider quota is exhausted",
-        "SOCIALKIT_QUOTA_EXHAUSTED",
-      );
+      const message = providerErrorMessage(body);
+      if (message === "Invalid Access key") {
+        return badGateway(
+          "SocialKit provider authentication failed",
+          "SOCIALKIT_AUTH_ERROR",
+        );
+      }
+      if (message === "Request limit exceeded for this month") {
+        return errorResponse(
+          503,
+          "SocialKit provider quota is exhausted",
+          "SOCIALKIT_QUOTA_EXHAUSTED",
+        );
+      }
+      return badGateway("SocialKit request failed", "SOCIALKIT_UPSTREAM_ERROR");
     }
     case 404: {
       return errorResponse(
@@ -239,7 +258,9 @@ async function fetchSocialKit(
   }
   if (!settled.value.response.ok) {
     logProviderFailure(operation, "http_error", settled.value.response.status);
-    return errorResult(providerHttpError(settled.value.response.status));
+    return errorResult(
+      providerHttpError(settled.value.response.status, settled.value.body),
+    );
   }
   return { kind: "body", body: settled.value.body };
 }
