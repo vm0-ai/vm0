@@ -1481,8 +1481,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // table is keyed by the branded path a contract declares, so once these
   // contracts declare their neutral paths a leftover row simply stops firing.
   // That is the reason to delete it: a row that can no longer match anything
-  // reads as a live console commitment while doing nothing, and only
-  // `provider-console-paths.test.ts` probing the table would notice.
+  // reads as a live console commitment while doing nothing. Nothing executable
+  // can catch that, so the restated list in `provider-console-paths.test.ts` is
+  // where the six remaining console paths are recorded.
   //
   // The events row is the load-bearing one. Each Feishu installation registered
   // its event subscription URL in its own Feishu app console, which we cannot
