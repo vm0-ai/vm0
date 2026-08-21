@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from mitmproxy import http
 
+import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_encoding_negotiation
@@ -228,6 +229,52 @@ def test_normalize_accept_encoding_for_body_inspection(
         is None
     )
     assert request_headers.get_all(_ACCEPT_ENCODING) == values
+
+
+def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) -> None:
+    supported_encodings = body_decoding.stream_decodable_content_encodings()
+    request_headers = headers(
+        (
+            _ACCEPT_ENCODING,
+            ", ".join((*supported_encodings, "br", "zstd")),
+        )
+    )
+
+    response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
+
+    normalized_encodings = tuple(
+        raw_coding.strip().partition(";")[0]
+        for value in request_headers.get_all(_ACCEPT_ENCODING)
+        for raw_coding in value.split(",")
+    )
+    assert normalized_encodings == supported_encodings
+    for encoding in normalized_encodings:
+        session = body_decoding.create_stream_decode_session(
+            headers(("Content-Encoding", encoding)),
+            lambda _chunk: None,
+        )
+        assert session is not None
+
+
+def test_wildcard_expansion_uses_stream_decoder_capability_order(headers) -> None:
+    request_headers = headers((_ACCEPT_ENCODING, "br, zstd, *;q=0.5, identity;q=0"))
+
+    response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
+
+    compression_encodings = tuple(
+        encoding
+        for encoding in body_decoding.stream_decodable_content_encodings()
+        if encoding != "identity"
+    )
+    assert request_headers.get_all(_ACCEPT_ENCODING) == [
+        ", ".join((*[f"{encoding};q=0.5" for encoding in compression_encodings], "identity;q=0"))
+    ]
+    for encoding in compression_encodings:
+        session = body_decoding.create_stream_decode_session(
+            headers(("Content-Encoding", encoding)),
+            lambda _chunk: None,
+        )
+        assert session is not None
 
 
 def _model_provider_registry(
