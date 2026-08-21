@@ -343,6 +343,16 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/runs/:id/telemetry/agent",
   ],
   "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
+  // #28465. Keys hold their path parameters verbatim, because the table is
+  // matched against `entry.route.path` rather than an expanded request path.
+  "/api/desktop/updates/:channel/:platform/:arch/dmg": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+  ],
+  "/api/desktop/updates/:channel/:platform/:arch/release": [
+    "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+  ],
 };
 
 function missingBrandedPaths(

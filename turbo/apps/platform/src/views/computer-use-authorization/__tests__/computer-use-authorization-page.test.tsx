@@ -269,9 +269,7 @@ describe("computer use authorization page", () => {
     });
     expect(downloadLink).toHaveAttribute(
       "href",
-      expect.stringContaining(
-        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
-      ),
+      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
     );
     expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
   });
@@ -306,9 +304,7 @@ describe("computer use authorization page", () => {
     });
     expect(downloadLink).toHaveAttribute(
       "href",
-      expect.stringContaining(
-        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
-      ),
+      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
     );
   });
 

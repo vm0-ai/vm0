@@ -65,7 +65,7 @@ export const desktopUpdatesContract = c.router({
   },
   releasePage: {
     method: "GET",
-    path: "/api/okou/desktop/updates/:channel/:platform/:arch/release",
+    path: "/api/desktop/updates/:channel/:platform/:arch/release",
     pathParams: z.object({
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
@@ -79,7 +79,7 @@ export const desktopUpdatesContract = c.router({
   },
   dmgDownload: {
     method: "GET",
-    path: "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
+    path: "/api/desktop/updates/:channel/:platform/:arch/dmg",
     pathParams: z.object({
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
