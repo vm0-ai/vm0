@@ -2408,6 +2408,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
   it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
     const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
       `test-run-lifecycle-runtime-projection-${randomUUID()}`,
@@ -2417,7 +2418,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runtimeProjection: true,
     });
     await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
-    const { actor, agentId } = await entitledRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "x-projection-access",
+      refreshToken: "x-projection-refresh",
+    });
     const createProjectedRun = async (prompt: string) => {
       return await api.createDirectRun(actor, {
         ...zeroBackedDirectRunBody({ agentId, prompt }),
@@ -2502,6 +2509,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(missLoad).not.toHaveProperty(
       "connector_catalog_accepted_cache_outcome",
     );
+    const coldRun = concurrentRuns[missIndex];
+    if (coldRun === undefined) {
+      throw new Error("Expected the cold runtime projection run");
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const coldClaim = await api.claimRunnerJob(coldRun.runId);
+    expect(findFirewallEntry(coldClaim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+      sourceId: expect.any(String),
+    });
+    expectClaimNetworkPolicyRefreshPath(coldRun.runId, "baseline");
     for (const run of concurrentRuns) {
       await api.requestCancelRun(actor, run.runId, [200]);
     }

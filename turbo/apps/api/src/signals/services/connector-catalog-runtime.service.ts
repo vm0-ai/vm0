@@ -647,6 +647,18 @@ function projectionIdentityKey(
   ].join("\0");
 }
 
+function externalCatalogIdentity(
+  identity: ConnectorCatalogRuntimeProjectionIdentity,
+): ExternalCatalogIdentity {
+  return {
+    sourceId: identity.sourceId,
+    schemaVersion: identity.schemaVersion,
+    catalogVersion: identity.catalogVersion,
+    catalogDigest: identity.catalogDigest,
+    capabilityDigest: identity.capabilityDigest,
+  };
+}
+
 function runtimeSelectionProjectionKey(args: {
   readonly identity: ConnectorCatalogRuntimeProjectionIdentity;
   readonly runtimeConnectorSlugs: readonly ConnectorSlug[];
@@ -737,7 +749,7 @@ function runtimeSelectionFromProjectedConnectors(args: {
       },
     });
   return {
-    catalogIdentity: args.projection.identity,
+    catalogIdentity: externalCatalogIdentity(args.projection.identity),
     connectors: runtimeConnectors,
     serverFirewalls: selectConnectorServerFirewalls({
       catalog: runtimeCatalog,
