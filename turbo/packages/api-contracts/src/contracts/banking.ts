@@ -104,7 +104,7 @@ const bankingTransactionsResponses = {
 export const bankingContract = c.router({
   accounts: {
     method: "POST",
-    path: "/api/okou/banking/accounts",
+    path: "/api/banking/accounts",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: bankingAccountsResponses,
@@ -112,7 +112,7 @@ export const bankingContract = c.router({
   },
   balances: {
     method: "POST",
-    path: "/api/okou/banking/balances",
+    path: "/api/banking/balances",
     headers: authHeadersSchema,
     body: bankingBalancesRequestSchema,
     responses: bankingBalancesResponses,
@@ -120,7 +120,7 @@ export const bankingContract = c.router({
   },
   transactions: {
     method: "POST",
-    path: "/api/okou/banking/transactions",
+    path: "/api/banking/transactions",
     headers: authHeadersSchema,
     body: bankingTransactionsRequestSchema,
     responses: bankingTransactionsResponses,

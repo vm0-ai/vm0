@@ -109,7 +109,7 @@ describe("okou mail", () => {
   it("links an existing Gmail draft and prints only the review URL", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/mail/drafts/link",
+        "http://localhost:3000/api/mail/drafts/link",
         async ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-token",
@@ -140,7 +140,7 @@ describe("okou mail", () => {
 
   it("adds a callback prompt to the review URL for a single draft", async () => {
     server.use(
-      http.post("http://localhost:3000/api/okou/mail/drafts/link", () => {
+      http.post("http://localhost:3000/api/mail/drafts/link", () => {
         return HttpResponse.json(
           {
             mailDraftId: MAIL_DRAFT_ID,

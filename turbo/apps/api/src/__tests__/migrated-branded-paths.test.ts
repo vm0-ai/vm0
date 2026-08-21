@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { avatarVideoRoutes } from "../signals/routes/avatar-video";
+import { bankingRoutes } from "../signals/routes/banking";
 import { billingStatusRoutes } from "../signals/routes/billing-status";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
@@ -12,6 +14,7 @@ import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
 import { orgReadRoutes } from "../signals/routes/org-read";
+import { peopleSearchRoutes } from "../signals/routes/people-search";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
@@ -23,7 +26,11 @@ import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-conne
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import { translationRoutes } from "../signals/routes/translation";
+import { uploadsPrepareRoutes } from "../signals/routes/uploads-prepare";
+import { videoIoGenerateRoutes } from "../signals/routes/video-io-generate";
+import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
 import { weatherRoutes } from "../signals/routes/weather";
+import { webFileUrlRoutes } from "../signals/routes/web-file-url";
 import { webSearchRoutes } from "../signals/routes/web-search";
 import {
   assertUniqueRouteRegistrations,
@@ -1145,6 +1152,114 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/teams/oauth/callback",
   ],
   "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
+  // #28463: avatar video, banking, browser authorization requests, inbound
+  // email, the GitHub user-connect start, mail drafts, people search,
+  // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
+  // the web file reads.
+  "/api/avatar-video/avatars": [
+    "/api/okou/avatar-video/avatars",
+    "/api/zero/avatar-video/avatars",
+  ],
+  "/api/avatar-video/generate": [
+    "/api/okou/avatar-video/generate",
+    "/api/zero/avatar-video/generate",
+  ],
+  "/api/avatar-video/voices": [
+    "/api/okou/avatar-video/voices",
+    "/api/zero/avatar-video/voices",
+  ],
+  "/api/banking/accounts": [
+    "/api/okou/banking/accounts",
+    "/api/zero/banking/accounts",
+  ],
+  "/api/banking/balances": [
+    "/api/okou/banking/balances",
+    "/api/zero/banking/balances",
+  ],
+  "/api/banking/transactions": [
+    "/api/okou/banking/transactions",
+    "/api/zero/banking/transactions",
+  ],
+  "/api/browser/authorization-requests": [
+    "/api/okou/browser/authorization-requests",
+    "/api/zero/browser/authorization-requests",
+  ],
+  "/api/browser/authorization-requests/:requestToken": [
+    "/api/okou/browser/authorization-requests/:requestToken",
+    "/api/zero/browser/authorization-requests/:requestToken",
+  ],
+  "/api/browser/authorization-requests/:requestToken/apply": [
+    "/api/okou/browser/authorization-requests/:requestToken/apply",
+    "/api/zero/browser/authorization-requests/:requestToken/apply",
+  ],
+  "/api/email/inbound": ["/api/okou/email/inbound", "/api/zero/email/inbound"],
+  "/api/github/oauth/connect": [
+    "/api/okou/github/oauth/connect",
+    "/api/zero/github/oauth/connect",
+  ],
+  "/api/mail/drafts/:mailDraftId": [
+    "/api/okou/mail/drafts/:mailDraftId",
+    "/api/zero/mail/drafts/:mailDraftId",
+  ],
+  "/api/mail/drafts/:mailDraftId/attachments/:partId": [
+    "/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
+    "/api/zero/mail/drafts/:mailDraftId/attachments/:partId",
+  ],
+  "/api/mail/drafts/:mailDraftId/send": [
+    "/api/okou/mail/drafts/:mailDraftId/send",
+    "/api/zero/mail/drafts/:mailDraftId/send",
+  ],
+  "/api/mail/drafts/link": [
+    "/api/okou/mail/drafts/link",
+    "/api/zero/mail/drafts/link",
+  ],
+  "/api/people-search": ["/api/okou/people-search", "/api/zero/people-search"],
+  "/api/presentation-templates": [
+    "/api/okou/presentation-templates",
+    "/api/zero/presentation-templates",
+  ],
+  "/api/presentation-templates/:templateId": [
+    "/api/okou/presentation-templates/:templateId",
+    "/api/zero/presentation-templates/:templateId",
+  ],
+  "/api/strapi/events/:integrationId": [
+    "/api/okou/strapi/events/:integrationId",
+    "/api/zero/strapi/events/:integrationId",
+  ],
+  "/api/uploads/complete": [
+    "/api/okou/uploads/complete",
+    "/api/zero/uploads/complete",
+  ],
+  "/api/uploads/multipart/abort": [
+    "/api/okou/uploads/multipart/abort",
+    "/api/zero/uploads/multipart/abort",
+  ],
+  "/api/uploads/multipart/complete": [
+    "/api/okou/uploads/multipart/complete",
+    "/api/zero/uploads/multipart/complete",
+  ],
+  "/api/uploads/prepare": [
+    "/api/okou/uploads/prepare",
+    "/api/zero/uploads/prepare",
+  ],
+  "/api/video-io/generate": [
+    "/api/okou/video-io/generate",
+    "/api/zero/video-io/generate",
+  ],
+  "/api/voice-io/quota": [
+    "/api/okou/voice-io/quota",
+    "/api/zero/voice-io/quota",
+  ],
+  "/api/voice-io/speech": [
+    "/api/okou/voice-io/speech",
+    "/api/zero/voice-io/speech",
+  ],
+  "/api/voice-io/stt": ["/api/okou/voice-io/stt", "/api/zero/voice-io/stt"],
+  "/api/web/download-file": [
+    "/api/okou/web/download-file",
+    "/api/zero/web/download-file",
+  ],
+  "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
   // Both branded forms used to be the declared paths, so these rows are the
   // only thing registering them now — the events one is what keeps the two
@@ -1485,6 +1600,76 @@ describe("branded paths for migrated neutral routes", () => {
 
       async function statusFor(path: string): Promise<number> {
         const response = await app.request(`${REQUEST_ORIGIN}${path}`);
+        return response.status;
+      }
+
+      const neutral = await statusFor(`/api/${suffix}`);
+      const okou = await statusFor(`/api/okou/${suffix}`);
+      const zero = await statusFor(`/api/zero/${suffix}`);
+
+      expect({ suffix, neutral, okou, zero }).toStrictEqual({
+        suffix,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
+  });
+
+  // The #28463 twin of the two assertions above, and the one that covers a GET
+  // as well as a POST: the slice moved a mix of methods, and a row is matched on
+  // `entry.route.path` alone, so a family whose reads and writes share a prefix
+  // has to be exercised on both. Every branded path below exists only because of
+  // a table row, and the request goes through the app factory production wires,
+  // so a row that never reaches the registration chain fails here rather than
+  // 404ing a released CLI or platform build.
+  it("serves the migrated product paths through the production app factory", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const endpoints = [
+      {
+        routes: avatarVideoRoutes,
+        method: "GET",
+        suffix: "avatar-video/voices",
+      },
+      {
+        routes: avatarVideoRoutes,
+        method: "POST",
+        suffix: "avatar-video/generate",
+      },
+      { routes: bankingRoutes, method: "POST", suffix: "banking/accounts" },
+      { routes: peopleSearchRoutes, method: "POST", suffix: "people-search" },
+      {
+        routes: uploadsPrepareRoutes,
+        method: "POST",
+        suffix: "uploads/prepare",
+      },
+      {
+        routes: videoIoGenerateRoutes,
+        method: "POST",
+        suffix: "video-io/generate",
+      },
+      { routes: voiceIoQuotaRoutes, method: "GET", suffix: "voice-io/quota" },
+      { routes: webFileUrlRoutes, method: "GET", suffix: "web/file-url" },
+    ] as const;
+
+    for (const { routes, method, suffix } of endpoints) {
+      const app = createAppWithRoutes({ signal: context.signal, routes });
+
+      async function statusFor(path: string): Promise<number> {
+        const response = await app.request(
+          `${REQUEST_ORIGIN}${path}`,
+          method === "GET"
+            ? { method }
+            : {
+                method,
+                headers: { "content-type": "application/json" },
+                body: "{}",
+              },
+        );
         return response.status;
       }
 

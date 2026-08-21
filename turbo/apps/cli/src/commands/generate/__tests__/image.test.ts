@@ -816,8 +816,10 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
     expect(helpOutput).toContain(
-      "Nano Banana 2 and Seedream 5 Lite accept up to 14",
+      "Nano Banana 2 models and Seedream 5 Lite accept up to 14",
     );
+    expect(helpOutput).toContain("qwen-image-3");
+    expect(helpOutput).toContain("nano-banana-2-lite");
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");

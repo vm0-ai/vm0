@@ -20,7 +20,7 @@ pub use state::{DevicePool, DevicePoolConfig};
 
 pub(crate) use lease::DeviceAcquireSource;
 
-/// Maximum blocking NBD scans running concurrently.
+/// Maximum blocking workers sharing one active demand scan.
 const MAX_PENDING: usize = 4;
 
 /// Default cooldown period (milliseconds) after disconnecting a device.

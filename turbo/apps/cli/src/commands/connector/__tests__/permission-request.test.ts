@@ -765,7 +765,7 @@ describe("okou connector permission-request command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/browser/authorization-requests",
+        "http://localhost:3000/api/browser/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe("Bearer run-token");
           return HttpResponse.json({

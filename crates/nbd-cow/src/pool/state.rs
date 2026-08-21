@@ -92,6 +92,8 @@ pub struct DevicePool {
     pub(super) lease_return: Option<mpsc::WeakUnboundedSender<DevicePoolCommand>>,
     /// Acquire errors that raced with still-pending scans.
     pub(super) deferred_acquire_errors: VecDeque<NbdCowError>,
+    /// A complete shared scan that found no claim, deferred behind cooldown.
+    pub(super) deferred_scan_exhaustion: bool,
     /// Acquire requests waiting for a scan or an expired cooldown claim.
     pub(super) waiting_acquires: VecDeque<oneshot::Sender<Result<DeviceAcquisition>>>,
     /// Total number of NBD devices (from sysfs nbds_max).
@@ -131,6 +133,7 @@ impl DevicePool {
             cooldown: VecDeque::new(),
             lease_return: None,
             deferred_acquire_errors: VecDeque::new(),
+            deferred_scan_exhaustion: false,
             waiting_acquires: VecDeque::new(),
             max_devices,
             config,
@@ -182,23 +185,27 @@ impl DevicePool {
 
         if self.waiting_acquires.is_empty() {
             self.deferred_acquire_errors.clear();
+            self.deferred_scan_exhaustion = false;
             return;
         }
 
-        if pending_scans == 0
-            && !self.deferred_acquire_errors.is_empty()
-            && !self.cooldown_timer_pending()
-        {
-            self.fail_deferred_acquire_errors();
+        if pending_scans == 0 && !self.cooldown_timer_pending() {
+            if !self.deferred_acquire_errors.is_empty() {
+                self.fail_deferred_acquire_errors();
+            } else if self.deferred_scan_exhaustion {
+                self.fail_all_waiters();
+            }
         }
 
         if self.waiting_acquires.is_empty() {
             self.deferred_acquire_errors.clear();
+            self.deferred_scan_exhaustion = false;
         }
     }
 
     pub(super) fn scans_to_spawn(&self, pending_scans: usize) -> usize {
-        if !self.active || !self.deferred_acquire_errors.is_empty() {
+        if !self.active || !self.deferred_acquire_errors.is_empty() || self.deferred_scan_exhaustion
+        {
             return 0;
         }
         let remaining_capacity = MAX_PENDING.saturating_sub(pending_scans);
@@ -207,43 +214,27 @@ impl DevicePool {
     }
 
     pub(super) fn scan_request(&self) -> ScanRequest {
-        ScanRequest {
-            max_devices: self.max_devices,
-            exclude: self.tracked_indices(),
-            lock_dir: self.lock_dir.clone(),
-            device_appears_free: self.device_appears_free,
-        }
+        ScanRequest::new(
+            self.max_devices,
+            self.tracked_indices(),
+            self.lock_dir.clone(),
+            self.device_appears_free,
+        )
     }
 
-    pub(super) fn handle_scan_join(
-        &mut self,
-        scan: Option<std::result::Result<Result<ScannedDeviceClaim>, tokio::task::JoinError>>,
-    ) {
-        match scan {
-            Some(Ok(Ok(scanned))) => {
-                let (claim, scan_duration) = scanned.into_parts();
-                if self.is_tracked(claim.index()) {
-                    tracing::warn!(
-                        device_index = claim.index(),
-                        "dropping scan result because index is already tracked"
-                    );
-                } else {
-                    self.assign_claim_to_waiter(
-                        claim,
-                        DeviceAcquireSource::DemandScan,
-                        Some(scan_duration),
-                    );
-                }
-            }
-            Some(Ok(Err(e))) => {
-                self.defer_acquire_error(e);
-            }
-            Some(Err(e)) if !self.waiting_acquires.is_empty() => {
-                self.defer_acquire_error(NbdCowError::Io(std::io::Error::other(format!(
-                    "device scan task failed: {e}"
-                ))));
-            }
-            Some(Err(_)) | None => {}
+    pub(super) fn handle_scan_claim(&mut self, scanned: ScannedDeviceClaim) {
+        let (claim, scan_duration) = scanned.into_parts();
+        if self.is_tracked(claim.index()) {
+            tracing::warn!(
+                device_index = claim.index(),
+                "dropping scan result because index is already tracked"
+            );
+        } else {
+            self.assign_claim_to_waiter(
+                claim,
+                DeviceAcquireSource::DemandScan,
+                Some(scan_duration),
+            );
         }
     }
 
@@ -287,11 +278,17 @@ impl DevicePool {
         false
     }
 
-    fn defer_acquire_error(&mut self, error: NbdCowError) {
+    pub(super) fn defer_acquire_error(&mut self, error: NbdCowError) {
         if self.waiting_acquires.is_empty() {
             return;
         }
         self.deferred_acquire_errors.push_back(error);
+    }
+
+    pub(super) fn defer_scan_exhaustion(&mut self) {
+        if !self.waiting_acquires.is_empty() {
+            self.deferred_scan_exhaustion = true;
+        }
     }
 
     fn fail_deferred_acquire_errors(&mut self) {
@@ -390,6 +387,7 @@ impl DevicePool {
         }
         self.fail_all_waiters();
         self.deferred_acquire_errors.clear();
+        self.deferred_scan_exhaustion = false;
     }
 
     pub(super) fn finish_cleanup(&mut self) {

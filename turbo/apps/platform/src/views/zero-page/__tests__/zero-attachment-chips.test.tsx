@@ -135,12 +135,12 @@ beforeEach(() => {
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.browser.blobDownload();
-  context.mocks.http.get("/api/okou/web/download-file", () => {
+  context.mocks.http.get("/api/web/download-file", () => {
     return new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     });
   });
-  context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+  context.mocks.http.get("/api/web/file-url", ({ request }) => {
     const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
     return HttpResponse.json({ url: presignedFileUrl(fileId) });
   });
@@ -1090,7 +1090,7 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
       expect(request.credentials).toBe("include");
       expect(request.headers.get("authorization")).toMatch(/^Bearer /);
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
@@ -1152,7 +1152,7 @@ describe("zero attachment chips", () => {
       `https://r2.example.com/artifacts/${fileId}?sig=thread-owner-2`,
     ] as const;
     let nextOwnerUrl = 0;
-    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
       const url = ownerUrls[Math.min(nextOwnerUrl, ownerUrls.length - 1)]!;
       nextOwnerUrl += 1;
@@ -1257,7 +1257,7 @@ describe("zero attachment chips", () => {
       second: `https://r2.example.com/artifacts/${fileId}?sig=page-owner-2`,
     } as const;
     let pageOwner: keyof typeof pageUrls = "first";
-    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
       return HttpResponse.json({ url: pageUrls[pageOwner] });
     });
@@ -3370,7 +3370,7 @@ describe("zero attachment chips", () => {
     });
     // Guard against regressing to the canonical route, which needs an
     // Authorization header that the download fetch does not carry.
-    context.mocks.http.get("/api/okou/web/download-file", () => {
+    context.mocks.http.get("/api/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {

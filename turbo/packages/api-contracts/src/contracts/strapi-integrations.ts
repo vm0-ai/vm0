@@ -109,7 +109,7 @@ export const strapiIntegrationsContract = c.router({
 export const strapiEventsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/strapi/events/:integrationId",
+    path: "/api/strapi/events/:integrationId",
     pathParams: integrationIdParams,
     headers: z.object({
       authorization: z.string().optional(),
