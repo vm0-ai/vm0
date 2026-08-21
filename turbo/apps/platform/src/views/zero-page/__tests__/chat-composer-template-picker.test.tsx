@@ -38,6 +38,8 @@ import {
   tabByText,
   presentationTemplateGridScrollContainer,
   mockActiveTemplateThread,
+  mockAgent,
+  mockOrgModelRoutes,
   trackTemplatePreviewImagePreloads,
   mockImmediateIdleCallback,
   mockUrlObjectMethods,
@@ -3474,6 +3476,64 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(sentPrompts).toStrictEqual(["Never mind the deck"]);
+    });
+  });
+
+  it("creates the thread and starts the run when importing from a new chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    let createdThreadId: string | undefined;
+    let sentThreadId: string | undefined;
+    let sentPrompt: string | undefined;
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate(body) {
+        createdThreadId = body.clientThreadId;
+      },
+      onSendRequest(body) {
+        sentThreadId = body.clientThreadId;
+        sentPrompt = body.prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-deck",
+      filename: "brand-system.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: 2048,
+      url: "https://cdn.vm7.io/artifacts/test/upload-deck/brand-system.pptx",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const importInput = await waitFor(() => {
+      return screen.getByLabelText("Import your own deck");
+    });
+
+    await user.upload(
+      importInput,
+      new File(["deck"], "brand-system.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+
+    // Importing from the new-thread composer creates the thread and then
+    // navigates into it. Both calls have to survive that navigation: a signal
+    // the navigation aborts leaves the user on a thread the server never
+    // recorded, with no run to answer them and nothing on screen saying so.
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+      expect(sentPrompt).toContain("reusable presentation template");
+      expect(sentThreadId).toBe(createdThreadId);
     });
   });
 
