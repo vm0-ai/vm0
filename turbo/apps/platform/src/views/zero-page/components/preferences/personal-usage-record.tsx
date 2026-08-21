@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
   ChevronDown,
   Clock,
@@ -14,7 +14,6 @@ import type {
   UsageRecordRange,
   UsageRecordResponse,
   UsageRecordRow,
-  UsageRecordScope,
   UsageRecordSource,
 } from "@okouai/api-contracts/contracts/usage-record";
 import type { UsageMembersResponse } from "@okouai/api-contracts/contracts/usage";
@@ -39,6 +38,8 @@ import {
   myUsageRecordAsync$,
   teamMemberUsageAsync$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { closeSettingsModal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { nowDate } from "../../../../lib/time.ts";
@@ -578,15 +579,10 @@ function UsageRecordSummary({
   );
 }
 
-function UsageRecordList({
-  data,
-  scope,
-}: {
-  data: UsageRecordResponse;
-  scope: UsageRecordScope;
-}) {
+function UsageRecordList({ data }: { data: UsageRecordResponse }) {
   const { t } = useTranslation();
   const loadMore = useSet(loadMoreUsageRecord$);
+  const pageSignal = useGet(pageSignal$);
   const maxCredits = Math.max(
     1,
     ...data.rows.map((row) => {
@@ -620,7 +616,11 @@ function UsageRecordList({
             size="sm"
             className="h-9 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"
             onClick={() => {
-              loadMore(scope);
+              detach(
+                loadMore(pageSignal),
+                Reason.DomCallback,
+                "personal usage record paging",
+              );
             }}
           >
             {t(($) => {
@@ -636,11 +636,9 @@ function UsageRecordList({
 function UsageRecordContent({
   loadable,
   range,
-  scope,
 }: {
   loadable: UsageRecordLoadable;
   range: UsageRecordRange;
-  scope: UsageRecordScope;
 }) {
   const { t } = useTranslation();
   return (
@@ -662,7 +660,7 @@ function UsageRecordContent({
             })}
           />
         ) : (
-          <UsageRecordList data={loadable.data} scope={scope} />
+          <UsageRecordList data={loadable.data} />
         ))}
     </section>
   );
@@ -724,7 +722,7 @@ function TeamMemberUsageContent({
 
 export function PersonalUsageRecord({ range }: { range: UsageRecordRange }) {
   const loadable = useLastLoadable(myUsageRecordAsync$);
-  return <UsageRecordContent loadable={loadable} range={range} scope="mine" />;
+  return <UsageRecordContent loadable={loadable} range={range} />;
 }
 
 export function TeamUsageRecord({ range }: { range: UsageRecordRange }) {

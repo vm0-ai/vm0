@@ -5,6 +5,8 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import {
   usageRecordContract,
+  type UsageRecordRange,
+  type UsageRecordResponse,
   type UsageRecordRow,
 } from "@okouai/api-contracts/contracts/usage-record";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -204,13 +206,46 @@ function mockEmptyUsagePackCredits(): void {
   });
 }
 
+interface UsageRecordRequestLog {
+  readonly pages: number[];
+  readonly pageSizes: number[];
+  readonly ranges: UsageRecordRange[];
+}
+
+function personalUsagePage(
+  rows: UsageRecordRow[],
+  page: number,
+  pageSize: number,
+): UsageRecordResponse {
+  const offset = (page - 1) * pageSize;
+  return {
+    period: {
+      start: "2026-03-01T00:00:00.000Z",
+      end: "2026-04-01T00:00:00.000Z",
+    },
+    rows: rows.slice(offset, offset + pageSize),
+    totalCredits: rows.reduce((sum, row) => {
+      return sum + row.credits;
+    }, 0),
+    pagination: {
+      page,
+      pageSize,
+      total: rows.length,
+    },
+  };
+}
+
 function mockPersonalUsageStory(
   rows: UsageRecordRow[] = usageRows(),
   tier: "limited-free-1" | "pro" = "pro",
   mockUsagePackCredits = true,
   role: "admin" | "member" = "admin",
-): string[] {
-  const requestedRanges: string[] = [];
+): UsageRecordRequestLog {
+  const requests: UsageRecordRequestLog = {
+    pages: [],
+    pageSizes: [],
+    ranges: [],
+  };
 
   context.mocks.data.org({
     id: "org_1",
@@ -219,29 +254,15 @@ function mockPersonalUsageStory(
   });
   mockBillingStatus(tier);
   context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
-    requestedRanges.push(query.range);
-    const offset = (query.page - 1) * query.pageSize;
-
-    return respond(200, {
-      period: {
-        start: "2026-03-01T00:00:00.000Z",
-        end: "2026-04-01T00:00:00.000Z",
-      },
-      rows: rows.slice(offset, offset + query.pageSize),
-      totalCredits: rows.reduce((sum, row) => {
-        return sum + row.credits;
-      }, 0),
-      pagination: {
-        page: query.page,
-        pageSize: query.pageSize,
-        total: rows.length,
-      },
-    });
+    requests.pages.push(query.page);
+    requests.pageSizes.push(query.pageSize);
+    requests.ranges.push(query.range);
+    return respond(200, personalUsagePage(rows, query.page, query.pageSize));
   });
   if (mockUsagePackCredits) {
     mockEmptyUsagePackCredits();
   }
-  return requestedRanges;
+  return requests;
 }
 
 async function openUsageSettings(
@@ -664,7 +685,7 @@ describe("personal usage settings", () => {
 
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
-    const requestedRanges = mockPersonalUsageStory();
+    const requests = mockPersonalUsageStory();
     await openUsageSettings(true, "usage-records");
 
     await waitFor(() => {
@@ -674,7 +695,7 @@ describe("personal usage settings", () => {
     expect(screen.getByText("1.1K")).toBeInTheDocument();
     expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
-    expect(requestedRanges).toContain("today");
+    expect(requests.ranges).toContain("today");
 
     await user.hover(screen.getByTestId("usage-kind-segment-other"));
 
@@ -723,14 +744,84 @@ describe("personal usage settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Extended agent audit")).toBeInTheDocument();
     });
+    expect(requests.pages).toStrictEqual([1, 2]);
+    expect(requests.pageSizes).toStrictEqual([20, 20]);
 
     click(screen.getByText("Today"));
     click(await screen.findByText("Last 7 days"));
 
     await waitFor(() => {
       expect(screen.getByText("Last 7 days")).toBeInTheDocument();
-      expect(requestedRanges).toContain("7d");
+      expect(requests.ranges).toContain("7d");
+      expect(requests.pages.at(-1)).toBe(1);
     });
+  });
+
+  it("loads personal usage beyond 100 rows with bounded pages", async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 101 }, (_, index) => {
+      const rowNumber = index + 1;
+      return usageRow({
+        title: `Usage record ${rowNumber}`,
+        credits: rowNumber,
+        runId: `run-usage-${rowNumber}`,
+      });
+    });
+    const requests = mockPersonalUsageStory(rows);
+
+    await openUsageSettings(true, "usage-records");
+
+    await expect(
+      screen.findByText("Usage record 20"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Usage record 21")).not.toBeInTheDocument();
+
+    for (const rowNumber of [21, 41, 61, 81, 101]) {
+      await user.click(screen.getByText("Load more"));
+      await expect(
+        screen.findByText(`Usage record ${rowNumber}`),
+      ).resolves.toBeInTheDocument();
+    }
+
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    expect(requests.pages).toStrictEqual([1, 2, 3, 4, 5, 6]);
+    expect(requests.pageSizes).toStrictEqual([20, 20, 20, 20, 20, 20]);
+  });
+
+  it("retries a personal usage page after a failed request", async () => {
+    const user = userEvent.setup();
+    const rows = usageRows();
+    let secondPageAttempts = 0;
+    mockPersonalUsageStory(rows);
+    context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
+      if (query.page === 2) {
+        secondPageAttempts += 1;
+        if (secondPageAttempts === 1) {
+          return respond(500, {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Usage page temporarily unavailable",
+            },
+          });
+        }
+      }
+      return respond(200, personalUsagePage(rows, query.page, query.pageSize));
+    });
+
+    await openUsageSettings(true, "usage-records");
+    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Load more"));
+    await expect(
+      screen.findByText("Usage page temporarily unavailable"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Load more"));
+    await expect(
+      screen.findByText("Extended agent audit"),
+    ).resolves.toBeInTheDocument();
+    expect(secondPageAttempts).toBe(2);
   });
 
   it("shows model names for limited-free-1 usage", async () => {
@@ -821,31 +912,42 @@ describe("personal usage settings", () => {
       role: "admin",
     });
     mockBillingStatus();
-    let usageRequests = 0;
+    const initialRows = [
+      usageRow({
+        title: "Initial usage row",
+        credits: 100,
+        runId: "run-initial",
+      }),
+      ...Array.from({ length: 19 }, (_, index) => {
+        return usageRow({
+          title: `Initial usage filler ${index + 1}`,
+          credits: 10,
+          runId: `run-initial-filler-${index + 1}`,
+        });
+      }),
+      usageRow({
+        title: "Initial usage second page",
+        credits: 200,
+        runId: "run-initial-page-two",
+      }),
+    ];
+    const refreshedRows = [
+      usageRow({
+        title: "Realtime refreshed usage",
+        credits: 450,
+        runId: "run-refreshed",
+      }),
+    ];
+    let refreshed = false;
     context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
-      usageRequests += 1;
-      const rows =
-        usageRequests === 1
-          ? [
-              usageRow({
-                title: "Initial usage row",
-                credits: 100,
-                runId: "run-initial",
-              }),
-            ]
-          : [
-              usageRow({
-                title: "Realtime refreshed usage",
-                credits: 450,
-                runId: "run-refreshed",
-              }),
-            ];
+      const rows = refreshed ? refreshedRows : initialRows;
+      const offset = (query.page - 1) * query.pageSize;
       return respond(200, {
         period: {
           start: "2026-03-01T00:00:00.000Z",
           end: "2026-04-01T00:00:00.000Z",
         },
-        rows,
+        rows: rows.slice(offset, offset + query.pageSize),
         totalCredits: rows.reduce((sum, row) => {
           return sum + row.credits;
         }, 0),
@@ -867,11 +969,20 @@ describe("personal usage settings", () => {
       ).toBeTruthy();
     });
 
+    click(screen.getByText("Load more"));
+    await expect(
+      screen.findByText("Initial usage second page"),
+    ).resolves.toBeInTheDocument();
+
+    refreshed = true;
     context.mocks.ably.trigger("billing:changed");
 
     await waitFor(() => {
       expect(screen.getByText("Realtime refreshed usage")).toBeInTheDocument();
       expect(screen.queryByText("Initial usage row")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Initial usage second page"),
+      ).not.toBeInTheDocument();
     });
   });
 });
