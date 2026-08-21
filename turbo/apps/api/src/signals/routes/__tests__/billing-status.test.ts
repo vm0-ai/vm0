@@ -74,7 +74,7 @@ function mockMemberRole(
   });
 }
 
-describe("GET /api/zero/billing/status", () => {
+describe("GET /api/billing/status", () => {
   const track = createFixtureTracker<BillingStatusFixture>((fixture) => {
     return store.set(deleteBillingStatusOrg$, fixture, context.signal);
   });
