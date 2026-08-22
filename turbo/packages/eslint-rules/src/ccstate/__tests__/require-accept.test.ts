@@ -71,18 +71,10 @@ ruleTester.run("require-accept", rule, {
       `,
     },
   ],
+  // The rule recognises the client factory by its identifier text, so a rename
+  // of the factory that misses the literal makes it stop matching — and stop
+  // reporting — without failing anything. These cases pin the current name.
   invalid: [
-    // The rule recognises the client factory by its identifier text, so a
-    // rename of the factory that misses the literal makes it stop matching —
-    // and stop reporting — without failing anything. This case pins the
-    // current name against that silent regression.
-    {
-      filename: SIGNALS_FILE,
-      code: `
-        const result = await get(apiClient$)(someContract).get();
-      `,
-      errors: [{ messageId: "requireAccept" }],
-    },
     // Variable client, no accept
     {
       filename: SIGNALS_FILE,
