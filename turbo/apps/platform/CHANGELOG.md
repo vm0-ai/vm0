@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.780.3](https://github.com/vm0-ai/vm0/compare/app-v0.780.2...app-v0.780.3) (2026-08-22)
+
+
+### Refactoring
+
+* **platform:** rename the zero client factory to a neutral api name ([#28615](https://github.com/vm0-ai/vm0/issues/28615)) ([8a6a043](https://github.com/vm0-ai/vm0/commit/8a6a043acd0725a1c799ec70f8c8590658341ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.2
+    * @okouai/connectors bumped to 1.210.0
+    * @okouai/core bumped to 8.580.3
+
 ## [0.780.2](https://github.com/vm0-ai/vm0/compare/app-v0.780.1...app-v0.780.2) (2026-08-22)
 
 

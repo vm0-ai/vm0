@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.474.0](https://github.com/vm0-ai/vm0/compare/api-v1.473.2...api-v1.474.0) (2026-08-22)
+
+
+### Features
+
+* **connectors:** enable direct okou oauth callbacks for four providers ([#28616](https://github.com/vm0-ai/vm0/issues/28616)) ([ced2d38](https://github.com/vm0-ai/vm0/commit/ced2d38e547693fa58789d69ed4a55d280e99ec9))
+
+
+### Refactoring
+
+* **platform:** rename the zero client factory to a neutral api name ([#28615](https://github.com/vm0-ai/vm0/issues/28615)) ([8a6a043](https://github.com/vm0-ai/vm0/commit/8a6a043acd0725a1c799ec70f8c8590658341ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.2
+    * @okouai/connectors bumped to 1.210.0
+    * @okouai/core bumped to 8.580.3
+    * @okouai/db bumped to 1.215.3
+
 ## [1.473.2](https://github.com/vm0-ai/vm0/compare/api-v1.473.1...api-v1.473.2) (2026-08-22)
 
 
