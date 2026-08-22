@@ -128,6 +128,7 @@ import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
+import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 
 export const schema = {
   ...userSchema,
@@ -260,6 +261,7 @@ export const schema = {
   ...mailDraftSchema,
   ...browserSessionSchema,
   ...presentationTemplateSchema,
+  ...piResourceSnapshotSchema,
 };
 
 export type DatabaseSchema = typeof schema;

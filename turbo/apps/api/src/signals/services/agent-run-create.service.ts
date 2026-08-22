@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CLAUDE_CONFIG_DIR,
@@ -7,6 +7,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   type PiLaunchConfig,
+  type PiApiFirstTurnConfig,
   type PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
@@ -168,6 +169,7 @@ import {
 import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
@@ -223,7 +225,20 @@ import {
   WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
-import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
+import {
+  resolvePiSandboxModelConfig,
+  shouldUsePiExecution,
+} from "./pi-sandbox-config";
+import {
+  piResourceDiscoveryMounts,
+  piResourceSnapshotDigest,
+} from "./pi-resource-snapshot.service";
+import {
+  PI_API_FIRST_TURN_TIMEOUT_MS,
+  PI_API_FIRST_TURN_URL_TTL_SECONDS,
+  piApiFirstTurnObjectKey,
+  requirePiApiFirstTurnExecutionContext,
+} from "./pi-api-first-turn-config";
 import {
   activePersonalModelProviderAccount,
   ensurePersonalModelProviderAccount,
@@ -5735,6 +5750,7 @@ async function resolveLatestPiResumeSession(
     .where(
       and(
         eq(agentRuns.chatThreadId, chatThreadId),
+        eq(agentRuns.status, "completed"),
         isNotNull(agentRuns.triggerSource),
         eq(conversations.cliAgentType, "pi"),
         eq(conversations.cliAgentSessionId, chatThreadId),
@@ -6923,6 +6939,29 @@ interface PreparedPiLaunchResources {
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
 }
 
+type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+
+function piBaseSession(
+  resumeSession: StoredExecutionContext["resumeSession"] | undefined,
+  sessionId: string,
+): PiApiFirstTurnConfig["baseSession"] {
+  if (!resumeSession) {
+    return { sessionId, sha256: null };
+  }
+  if (resumeSession.sessionId !== sessionId) {
+    throw new Error("Pi resume session id does not match the launch session");
+  }
+  return {
+    sessionId,
+    sha256:
+      "historyRef" in resumeSession
+        ? resumeSession.historyRef.hash
+        : createHash("sha256")
+            .update(resumeSession.sessionHistory, "utf8")
+            .digest("hex"),
+  };
+}
+
 function storedExecutionContextWithPiResources(
   context: StoredExecutionContext,
   resources: PreparedPiLaunchResources | undefined,
@@ -6946,7 +6985,11 @@ function storedExecutionContextWithPiResources(
 }
 
 async function preparePiLaunchResources(args: {
+  readonly get: ComputedGetter;
   readonly db: Db;
+  readonly runId: string;
+  readonly apiStartTime: number;
+  readonly storageMounts: StoredExecutionContext["storageMounts"];
   readonly piSandbox: PiModelConfig | undefined;
   readonly chatThreadId: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
@@ -6972,9 +7015,43 @@ async function preparePiLaunchResources(args: {
           return await resolveLatestPiResumeSession(args.db, chatThreadId);
         },
       );
+      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+      const [manifestUrl, sessionUrl] = await Promise.all([
+        args.get(
+          generatePresignedGetUrl(
+            bucket,
+            piApiFirstTurnObjectKey(args.runId, "manifest"),
+            PI_API_FIRST_TURN_URL_TTL_SECONDS,
+            undefined,
+            true,
+          ),
+        ),
+        args.get(
+          generatePresignedGetUrl(
+            bucket,
+            piApiFirstTurnObjectKey(args.runId, "session"),
+            PI_API_FIRST_TURN_URL_TTL_SECONDS,
+            undefined,
+            true,
+          ),
+        ),
+      ]);
       return {
         modelConfig: piSandbox,
-        launchConfig: { schemaVersion: 2 },
+        launchConfig: {
+          schemaVersion: 2,
+          apiFirstTurn: {
+            schemaVersion: 1,
+            resourceSnapshotDigest: piResourceSnapshotDigest(
+              piResourceDiscoveryMounts(args.storageMounts),
+            ),
+            manifestUrl,
+            sessionUrl,
+            deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
+            baseSession: piBaseSession(resumeSession, chatThreadId),
+            sandboxEventSequenceStart: 1,
+          },
+        },
         resumeSession,
       };
     },
@@ -7081,7 +7158,11 @@ function buildRunnerJobPayload(
       builtContextDraftPromise,
     );
     const piResources = await preparePiLaunchResources({
+      get,
       db,
+      runId: args.run.id,
+      apiStartTime: args.apiStartTime,
+      storageMounts: builtContext.context.storageMounts,
       piSandbox: args.piSandbox,
       chatThreadId: args.chatThreadId,
       timing: args.timing,
@@ -8160,17 +8241,12 @@ function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
 ): boolean {
-  const isPiLoopModel =
-    createArgs.selectedModelOverride ===
-      ("deepseek-v4-flash" satisfies SupportedRunModel) ||
-    createArgs.selectedModelOverride ===
-      ("deepseek-v4-pro" satisfies SupportedRunModel);
-  return (
-    createArgs.chatThreadId !== undefined &&
-    isWebChatTriggerSource(createArgs.body.triggerSource) &&
-    isPiLoopModel &&
-    isFeatureEnabled(FeatureSwitchKey.PiLoop, featureSwitchContext)
-  );
+  return shouldUsePiExecution({
+    chatThreadId: createArgs.chatThreadId,
+    selectedModel: createArgs.selectedModelOverride,
+    triggerSource: createArgs.body.triggerSource,
+    featureSwitchContext,
+  });
 }
 
 function resolvePreparedPiModelConfig(args: {
@@ -8181,7 +8257,13 @@ function resolvePreparedPiModelConfig(args: {
   if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
     return undefined;
   }
-  return resolvePiSandboxModelConfig(args.modelProvider) ?? undefined;
+  const config = resolvePiSandboxModelConfig(args.modelProvider);
+  if (!config) {
+    throw new Error(
+      "Selected Pi execution requires a supported Pi model provider configuration",
+    );
+  }
+  return config;
 }
 
 async function resolveRunModelProvider(
@@ -9413,6 +9495,21 @@ function committedAtomicLaunchResponse(args: {
       runContextRegisteredAt,
       dispatchTimingsRegisteredAt,
     },
+    ...(args.committed.runnerJobPayload.executionContext.piLaunchConfig
+      ? {
+          piApiFirstTurn: {
+            runId: args.committed.run.id,
+            runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+            userId: args.createArgs.userId,
+            orgId: args.createArgs.orgId,
+            prompt: args.createArgs.body.prompt,
+            appendSystemPrompt: args.createArgs.body.appendSystemPrompt ?? null,
+            executionContext: requirePiApiFirstTurnExecutionContext(
+              args.committed.runnerJobPayload.executionContext,
+            ),
+          },
+        }
+      : {}),
   };
   const response = createdRunResponse(args.committed.run, {
     status: "pending",

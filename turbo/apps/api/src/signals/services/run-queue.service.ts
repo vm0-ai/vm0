@@ -41,6 +41,10 @@ import {
   type PendingRunActivation,
 } from "./agent-run-activation.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
+import {
+  refreshPiApiFirstTurnDeadline,
+  requirePiApiFirstTurnExecutionContext,
+} from "./pi-api-first-turn-config";
 
 const L = logger("RunQueue");
 
@@ -78,12 +82,15 @@ interface QueueCandidate {
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
   readonly chatThreadId: string | null;
+  readonly prompt: string | null;
+  readonly appendSystemPrompt: string | null;
 }
 
 interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
   readonly profile: string;
+  readonly executionContext: QueuedRunnerJobPayload["executionContext"];
 }
 
 type PreparedPendingRunActivation = Omit<PendingRunActivation, "timing">;
@@ -191,6 +198,10 @@ async function insertPromotedRunnerJob(
 
   const timestamps = runnerJobQueueTimestamps();
   const profile = args.payload.profile;
+  const executionContext = refreshPiApiFirstTurnDeadline(
+    args.payload.executionContext,
+    promotedAt,
+  );
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -199,10 +210,7 @@ async function insertPromotedRunnerJob(
       profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       reuseKey: args.payload.reuseKey,
-      executionContext: {
-        ...args.payload.executionContext,
-        apiStartTime: promotedAt,
-      },
+      executionContext,
       ...timestamps,
     })
     .returning({ createdAt: runnerJobQueue.createdAt });
@@ -213,6 +221,7 @@ async function insertPromotedRunnerJob(
     createdAt: runnerJob.createdAt,
     apiStartedAt: promotedAt,
     profile,
+    executionContext,
   };
 }
 
@@ -233,6 +242,8 @@ async function loadDrainCandidates(
       encryptedParams: agentRunQueue.encryptedParams,
       runStatus: agentRuns.status,
       chatThreadId: agentRuns.chatThreadId,
+      prompt: agentRuns.prompt,
+      appendSystemPrompt: agentRuns.appendSystemPrompt,
     })
     .from(agentRunQueue)
     .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
@@ -345,6 +356,22 @@ async function promoteQueuedCandidate(
           historyGenerationRunId: payload.historyGenerationRunId,
           createdAt: runnerJob.createdAt,
         },
+        ...(runnerJob.executionContext.piLaunchConfig &&
+        args.row.prompt !== null
+          ? {
+              piApiFirstTurn: {
+                runId: args.row.runId,
+                runnerGroup: payload.runnerGroup,
+                userId: args.row.userId,
+                orgId: args.orgId,
+                prompt: args.row.prompt,
+                appendSystemPrompt: args.row.appendSystemPrompt,
+                executionContext: requirePiApiFirstTurnExecutionContext(
+                  runnerJob.executionContext,
+                ),
+              },
+            }
+          : {}),
       },
     };
   });

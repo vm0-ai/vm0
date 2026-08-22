@@ -1,18 +1,27 @@
 import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
+import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderPiChatCompletionsUrl,
   getProviderBaseUrl,
+  getSecretNameForType,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isPiAgentModelSupported,
   type PiOpenAICompatibleProvider,
 } from "@okouai/pi-agent-runtime";
 
+import { isWebChatTriggerSource } from "./chat-trigger-source.service";
+
 /**
- * Resolve the non-secret model metadata consumed by the sandbox-only Pi
- * runtime. Provider credentials continue through the ordinary runner secret
- * environment and never enter the API execution path.
+ * Resolve non-secret model metadata shared by the sandbox Pi runtime and the
+ * required API first-turn slot. Credentials remain in the ordinary encrypted
+ * run context and are never embedded in this launch metadata.
  */
 
 function piDefaultBaseUrl(concreteType: string): string | undefined {
@@ -56,6 +65,30 @@ function piProvider(concreteType: string): PiOpenAICompatibleProvider | null {
   }
 }
 
+function piCredentialSecretName(concreteType: string): string | null {
+  if (concreteType === "codex-oauth-token") {
+    return "CHATGPT_ACCESS_TOKEN";
+  }
+  return getSecretNameForType(concreteType as ModelProviderType) ?? null;
+}
+
+export function shouldUsePiExecution(args: {
+  readonly chatThreadId: string | undefined;
+  readonly selectedModel: string | undefined;
+  readonly triggerSource: TriggerSource;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): boolean {
+  const isPiModel =
+    args.selectedModel === "deepseek-v4-flash" ||
+    args.selectedModel === "deepseek-v4-pro";
+  return (
+    args.chatThreadId !== undefined &&
+    isWebChatTriggerSource(args.triggerSource) &&
+    isPiModel &&
+    isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
+  );
+}
+
 export function resolvePiSandboxModelConfig(
   provider: {
     readonly type: string;
@@ -70,7 +103,12 @@ export function resolvePiSandboxModelConfig(
   }
   const concreteType = provider.concreteType ?? provider.type;
   const providerId = piProvider(concreteType);
-  if (!isPiSandboxCompatibleProviderType(concreteType) || !providerId) {
+  const credentialSecretName = piCredentialSecretName(concreteType);
+  if (
+    !isPiSandboxCompatibleProviderType(concreteType) ||
+    !providerId ||
+    !credentialSecretName
+  ) {
     return null;
   }
   const baseUrl =
@@ -89,7 +127,13 @@ export function resolvePiSandboxModelConfig(
       : providerId === "codex"
         ? "CHATGPT_ACCESS_TOKEN"
         : "OPENAI_API_KEY";
-  const config = { provider: providerId, baseUrl, model, apiKeyEnv } as const;
+  const config = {
+    provider: providerId,
+    baseUrl,
+    model,
+    apiKeyEnv,
+    credentialSecretName,
+  } as const;
   return isPiAgentModelSupported({
     provider: config.provider,
     baseUrl: config.baseUrl,

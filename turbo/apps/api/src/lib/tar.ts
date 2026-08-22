@@ -12,21 +12,31 @@ interface ExtractedBinaryTarFile {
   readonly content: Buffer;
 }
 
+interface TarExtractionOptions {
+  readonly strictUtf8?: boolean;
+}
+
 function normalizeTarPath(path: string): string {
   return path.replace(/^\.\//, "");
 }
 
-function readTarString(buffer: Buffer, start: number, end: number): string {
+function readTarString(
+  buffer: Buffer,
+  start: number,
+  end: number,
+  strictUtf8 = false,
+): string {
   const slice = buffer.subarray(start, end);
   const nullIndex = slice.indexOf(0);
-  return slice
-    .subarray(0, nullIndex !== -1 ? nullIndex : slice.length)
-    .toString("utf8");
+  const value = slice.subarray(0, nullIndex !== -1 ? nullIndex : slice.length);
+  return strictUtf8
+    ? new TextDecoder("utf-8", { fatal: true }).decode(value)
+    : value.toString("utf8");
 }
 
-function readTarPath(header: Buffer): string {
-  const name = readTarString(header, 0, 100);
-  const prefix = readTarString(header, 345, 500);
+function readTarPath(header: Buffer, strictUtf8: boolean): string {
+  const name = readTarString(header, 0, 100, strictUtf8);
+  const prefix = readTarString(header, 345, 500, strictUtf8);
   return normalizeTarPath(prefix ? `${prefix}/${name}` : name);
 }
 
@@ -37,8 +47,14 @@ function isRegularFile(typeFlag: string): boolean {
 function extractBinaryFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
+  maxOutputBytes?: number,
+  options?: TarExtractionOptions,
 ): readonly ExtractedBinaryTarFile[] {
-  const tarBuffer = gunzipSync(gzBuffer);
+  const tarBuffer = gunzipSync(gzBuffer, {
+    ...(maxOutputBytes === undefined
+      ? {}
+      : { maxOutputLength: maxOutputBytes }),
+  });
   const normalizedTargets = targetPaths
     ? new Set(
         targetPaths.map((path) => {
@@ -59,7 +75,7 @@ function extractBinaryFilesFromTarGz(
       break;
     }
 
-    const name = readTarPath(header);
+    const name = readTarPath(header, options?.strictUtf8 === true);
     const sizeStr = header.subarray(124, 136).toString("utf8").trim();
     const size = Number.parseInt(sizeStr, 8) || 0;
     const typeFlag = readTarString(header, 156, 157);
@@ -84,9 +100,22 @@ function extractBinaryFilesFromTarGz(
 export function extractFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
+  maxOutputBytes?: number,
+  options?: TarExtractionOptions,
 ): readonly ExtractedTarFile[] {
-  return extractBinaryFilesFromTarGz(gzBuffer, targetPaths).map((file) => {
-    return { path: file.path, content: file.content.toString("utf8") };
+  const strictUtf8 = options?.strictUtf8 === true;
+  return extractBinaryFilesFromTarGz(
+    gzBuffer,
+    targetPaths,
+    maxOutputBytes,
+    options,
+  ).map((file) => {
+    return {
+      path: file.path,
+      content: strictUtf8
+        ? new TextDecoder("utf-8", { fatal: true }).decode(file.content)
+        : file.content.toString("utf8"),
+    };
   });
 }
 

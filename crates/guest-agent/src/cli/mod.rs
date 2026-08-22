@@ -531,6 +531,30 @@ fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), Ag
     Ok(())
 }
 
+fn pi_sandbox_event_sequence_start(runtime: &CliRuntimeConfig<'_>) -> Result<u32, AgentError> {
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|error| AgentError::Execution(format!("parse Pi launch config: {error}")))?;
+    let sequence = launch_config
+        .pointer("/apiFirstTurn/sandboxEventSequenceStart")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            AgentError::Execution(
+                "Pi launch config requires apiFirstTurn.sandboxEventSequenceStart".to_string(),
+            )
+        })?;
+    let sequence = u32::try_from(sequence).map_err(|_| {
+        AgentError::Execution(
+            "Pi launch config apiFirstTurn.sandboxEventSequenceStart exceeds u32".to_string(),
+        )
+    })?;
+    if sequence != 1 {
+        return Err(AgentError::Execution(
+            "Pi Sandbox event sequence must start at 1".to_string(),
+        ));
+    }
+    Ok(sequence)
+}
+
 fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
     [
         (
@@ -634,6 +658,7 @@ struct CliEventIngestor<'a> {
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
+    first_event_seen: bool,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
     codex_startup: Option<&'a CodexStartupTiming>,
@@ -644,12 +669,14 @@ impl<'a> CliEventIngestor<'a> {
         runtime: &CliRuntimeConfig<'_>,
         codex_startup: Option<&'a CodexStartupTiming>,
         session_metadata: SessionMetadataStore,
+        initial_sequence: u32,
     ) -> Self {
         Self {
             framework: runtime.framework,
-            seq: 0,
+            seq: initial_sequence,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
+            first_event_seen: false,
             session_metadata_capture: events::SessionMetadataCapture::new(
                 runtime.session_history_launch_source.clone(),
                 session_metadata,
@@ -687,8 +714,9 @@ impl<'a> CliEventIngestor<'a> {
             return ParsedEventAction::Skip;
         }
         self.last_read_event_at = Some(Instant::now());
-        if self.seq == 0 {
+        if !self.first_event_seen {
             timing::record_e2e_from_api_start("api_to_cli_init", &self.api_start_time);
+            self.first_event_seen = true;
         }
         self.session_metadata_capture.capture_event(event);
 
@@ -894,6 +922,12 @@ async fn execute_cli_inner(
         )
         .await;
     }
+
+    let initial_event_sequence = if matches!(runtime.framework, env::Framework::Pi) {
+        pi_sandbox_event_sequence_start(runtime)?
+    } else {
+        0
+    };
 
     let CliExecutionControls {
         active_input,
@@ -1111,7 +1145,8 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
+    let event_delivery =
+        EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_event_sequence)?;
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
@@ -1119,8 +1154,12 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor =
-        CliEventIngestor::new_with_session_metadata(runtime, None, session_metadata);
+    let mut event_ingestor = CliEventIngestor::new_with_session_metadata(
+        runtime,
+        None,
+        session_metadata,
+        initial_event_sequence,
+    );
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1960,8 +1999,9 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, command, exec_boundary,
-        pi_child_env_values, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason, write_pi_launch_payload_file,
+        pi_child_env_values, pi_sandbox_event_sequence_start, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
@@ -2204,6 +2244,30 @@ mod tests {
         let raw = std::fs::read(paths.pi_launch_payload_file()).unwrap();
         let payload: serde_json::Value = serde_json::from_slice(&raw).unwrap();
         assert!(payload["appendSystemPrompt"].is_null());
+    }
+
+    #[test]
+    fn pi_event_sequence_continues_after_the_api_first_turn() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config =
+            Cow::Borrowed(r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#);
+
+        assert_eq!(pi_sandbox_event_sequence_start(&runtime).unwrap(), 1);
+    }
+
+    #[test]
+    fn pi_event_sequence_rejects_a_missing_handoff_boundary() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+
+        assert_eq!(
+            pi_sandbox_event_sequence_start(&runtime)
+                .unwrap_err()
+                .to_string(),
+            "execution: Pi launch config requires apiFirstTurn.sandboxEventSequenceStart"
+        );
     }
 
     #[test]

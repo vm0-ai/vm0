@@ -56,6 +56,24 @@ fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> Co
     }
 }
 
+fn pi_launch_config_for_test(session_id: &str) -> serde_json::Value {
+    json!({
+        "schemaVersion": 2,
+        "apiFirstTurn": {
+            "schemaVersion": 1,
+            "resourceSnapshotDigest": "a".repeat(64),
+            "manifestUrl": "https://storage.example/manifest.json",
+            "sessionUrl": "https://storage.example/session.jsonl",
+            "deadlineAt": 2_000_000_000_000_u64,
+            "baseSession": {
+                "sessionId": session_id,
+                "sha256": null
+            },
+            "sandboxEventSequenceStart": 1
+        }
+    })
+}
+
 #[test]
 fn effective_cli_framework_matches_guest_agent_fallback_semantics() {
     assert_eq!(normalized_cli_agent_type(""), "claude-code");
@@ -1283,14 +1301,15 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "pi".to_string();
     ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
-    ctx.pi_launch_config = Some(serde_json::json!({
-        "schemaVersion": 2
-    }));
+    ctx.pi_launch_config = Some(pi_launch_config_for_test(
+        "22222222-2222-4222-8222-222222222222",
+    ));
     ctx.pi_model_config = Some(PiModelConfig {
         provider: "deepseek".to_string(),
         base_url: "https://api.deepseek.com/".to_string(),
         model: "deepseek-v4-flash".to_string(),
         api_key_env: "OPENAI_API_KEY".to_string(),
+        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
     });
     let payload = build_run_payload_for_run(&ctx).unwrap();
 
@@ -1303,6 +1322,47 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
+    assert_eq!(model["credentialSecretName"], "DEEPSEEK_API_KEY");
+}
+
+#[test]
+fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "pi".to_string();
+    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    ctx.pi_launch_config = Some(json!({ "schemaVersion": 2 }));
+    ctx.pi_model_config = Some(PiModelConfig {
+        provider: "deepseek".to_string(),
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: "OPENAI_API_KEY".to_string(),
+        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
+    });
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("apiFirstTurn"));
+}
+
+#[test]
+fn pi_execution_context_rejects_mismatched_h0_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "pi".to_string();
+    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    ctx.pi_launch_config = Some(pi_launch_config_for_test(
+        "33333333-3333-4333-8333-333333333333",
+    ));
+    ctx.pi_model_config = Some(PiModelConfig {
+        provider: "deepseek".to_string(),
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: "OPENAI_API_KEY".to_string(),
+        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
+    });
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("H0 session id"));
 }
 
 #[test]

@@ -3260,6 +3260,43 @@ async function getModelProviderRuntimeSecretValue(args: {
   });
 }
 
+export async function resolveModelProviderRuntimeSecretForApi(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly key: string;
+  readonly providerKey: string;
+  readonly metadata: SecretConnectorMetadata;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<string | null> {
+  const metadata = resolveRefreshMetadata(args.providerKey, args.metadata);
+  if (metadata.sourceType !== "model-provider") {
+    return null;
+  }
+  const providerType = modelProviderTypeForMetadata(args.providerKey, metadata);
+  const secretName = modelProviderRuntimeSecretName({
+    key: args.key,
+    providerKey: args.providerKey,
+    metadata,
+  });
+  if (!providerType || !secretName) {
+    return null;
+  }
+  return await getModelProviderRuntimeSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: resolveSecretUserId(
+      "model-provider",
+      args.userId,
+      metadata.sourceUserId,
+    ),
+    providerType,
+    secretName,
+    sourceId: metadata.sourceId,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+}
+
 async function syncModelProviderRuntimeSecrets(args: {
   readonly db: Db;
   readonly orgId: string;

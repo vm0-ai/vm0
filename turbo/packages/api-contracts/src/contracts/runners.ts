@@ -722,11 +722,90 @@ export const secretConnectorMetadataMapSchema = z.record(
 
 export const PI_MEMORY_ROOT = `${PI_AGENT_DIR}/memory`;
 export const PI_SKILLS_ROOT = `${PI_AGENT_DIR}/skills`;
+export const PI_API_FIRST_TURN_SESSION_MAX_BYTES = 16 * 1024 * 1024;
+
+const piSessionCheckpointSchema = z
+  .object({
+    sessionId: z.uuid(),
+    sha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .nullable(),
+  })
+  .strict()
+  .readonly();
+
+export const piResourceSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    agentsFiles: z
+      .array(
+        z
+          .object({
+            path: z.string().startsWith("/"),
+            content: z.string(),
+          })
+          .strict()
+          .readonly(),
+      )
+      .readonly(),
+    skills: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1),
+            description: z.string().min(1),
+            filePath: z.string().startsWith("/"),
+            baseDir: z.string().startsWith("/"),
+            scope: z.enum(["user", "project", "temporary"]),
+            disableModelInvocation: z.boolean(),
+          })
+          .strict()
+          .readonly(),
+      )
+      .readonly(),
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    outcome: z.literal("handoff"),
+    baseSession: piSessionCheckpointSchema,
+    session: z
+      .object({
+        sessionId: z.uuid(),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        rawSize: z
+          .number()
+          .int()
+          .positive()
+          .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+      })
+      .strict()
+      .readonly(),
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnConfigSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    resourceSnapshotDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    manifestUrl: z.url(),
+    sessionUrl: z.url(),
+    deadlineAt: z.number().int().positive(),
+    baseSession: piSessionCheckpointSchema,
+    sandboxEventSequenceStart: z.literal(1),
+  })
+  .strict()
+  .readonly();
 
 /**
- * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
- * in the existing model-provider environment; `apiKeyEnv` names the exact
- * environment entry the Sandbox runtime must read.
+ * Non-secret Pi model metadata forwarded to the Sandbox. `apiKeyEnv` names the
+ * runtime environment entry used by the Sandbox, while `credentialSecretName`
+ * names the API-owned encrypted secret that backs that entry.
  */
 export const piModelConfigSchema = z
   .object({
@@ -745,7 +824,9 @@ export const piModelConfigSchema = z
       "OPENAI_API_KEY",
       "CHATGPT_ACCESS_TOKEN",
     ]),
+    credentialSecretName: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
   })
+  .strict()
   .readonly();
 
 /**
@@ -755,7 +836,9 @@ export const piModelConfigSchema = z
 export const piLaunchConfigSchema = z
   .object({
     schemaVersion: z.literal(2),
+    apiFirstTurn: piApiFirstTurnConfigSchema,
   })
+  .strict()
   .readonly();
 
 /**
@@ -771,34 +854,36 @@ export const piLaunchPayloadSchema = z
     appendSystemPrompt: z.string().nullable(),
     launchConfig: piLaunchConfigSchema,
   })
+  .strict()
   .readonly();
 
 function requireCompletePiFields(
   context: {
+    readonly cliAgentType?: unknown;
     readonly piSessionId?: unknown;
     readonly piLaunchConfig?: unknown;
     readonly piModelConfig?: unknown;
   },
   refinement: z.RefinementCtx,
 ): void {
-  const piEnabled = context.piSessionId !== undefined;
+  const expectsPi = context.cliAgentType === "pi";
   for (const field of [
     "piSessionId",
     "piLaunchConfig",
     "piModelConfig",
   ] as const) {
     const fieldPresent = context[field] !== undefined;
-    if (!piEnabled && fieldPresent) {
+    if (!expectsPi && fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} requires piSessionId`,
+        message: `${field} requires cliAgentType pi`,
       });
-    } else if (piEnabled && !fieldPresent) {
+    } else if (expectsPi && !fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} is required for a Pi session`,
+        message: `${field} is required for cliAgentType pi`,
       });
     }
   }
@@ -877,8 +962,8 @@ const storedExecutionContextObjectSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
-  // Pi runs execute only in the Sandbox. The API stores filesystem references
-  // that the Pi runtime resolves after the runner has mounted Storage.
+  // Pi runs use the API first-turn slot and can continue through an explicit
+  // Sandbox tool handoff. This state is a single hard-cut protocol bundle.
   piSessionId: z.uuid().optional(),
   piLaunchConfig: piLaunchConfigSchema.optional(),
   piModelConfig: piModelConfigSchema.optional(),
@@ -1274,6 +1359,11 @@ export type StoredExecutionContext = z.infer<
 >;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
+export type PiApiFirstTurnConfig = z.infer<typeof piApiFirstTurnConfigSchema>;
+export type PiApiFirstTurnManifest = z.infer<
+  typeof piApiFirstTurnManifestSchema
+>;
+export type PiResourceSnapshot = z.infer<typeof piResourceSnapshotSchema>;
 export type PiLaunchPayload = z.infer<typeof piLaunchPayloadSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema

@@ -158,6 +158,7 @@ pub struct PiModelConfig {
     pub base_url: String,
     pub model: String,
     pub api_key_env: String,
+    pub credential_secret_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1832,13 +1833,26 @@ mod tests {
             "cliAgentType": "pi",
             "piSessionId": "22222222-2222-4222-8222-222222222222",
             "piLaunchConfig": {
-                "schemaVersion": 2
+                "schemaVersion": 2,
+                "apiFirstTurn": {
+                    "schemaVersion": 1,
+                    "resourceSnapshotDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "manifestUrl": "https://storage.example/manifest.json",
+                    "sessionUrl": "https://storage.example/session.jsonl",
+                    "deadlineAt": 2000000000000_u64,
+                    "baseSession": {
+                        "sessionId": "22222222-2222-4222-8222-222222222222",
+                        "sha256": null
+                    },
+                    "sandboxEventSequenceStart": 1
+                }
             },
             "piModelConfig": {
                 "provider": "deepseek",
                 "baseUrl": "https://api.deepseek.com/",
                 "model": "deepseek-v4-flash",
-                "apiKeyEnv": "OPENAI_API_KEY"
+                "apiKeyEnv": "OPENAI_API_KEY",
+                "credentialSecretName": "DEEPSEEK_API_KEY"
             },
             "connectorRuntimeTargets": []
         });

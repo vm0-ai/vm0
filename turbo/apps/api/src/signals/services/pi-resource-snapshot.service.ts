@@ -1,0 +1,568 @@
+import { createHash } from "node:crypto";
+import { posix } from "node:path";
+
+import {
+  CANONICAL_WORKING_DIR,
+  PI_AGENT_DIR,
+  PI_SKILLS_ROOT,
+  piResourceSnapshotSchema,
+  type StoredStorageMountEntry,
+} from "@okouai/api-contracts/contracts/runners";
+import { parseSkillFrontmatter } from "@okouai/core";
+import type { PiResourceSnapshot } from "@okouai/db/jsonb-contracts/pi-resource-snapshot";
+import { piResourceSnapshots } from "@okouai/db/schema/pi-resource-snapshot";
+import { computed, type Computed } from "ccstate";
+import { eq } from "drizzle-orm";
+import ignore, { type Ignore } from "ignore";
+
+import { extractFilesFromTarGz } from "../../lib/tar";
+import type { Db } from "../external/db";
+import { startUntrackedBestEffortCleanup } from "../utils";
+
+const RESOURCE_ARCHIVE_MAX_BYTES = 32 * 1024 * 1024;
+const RESOURCE_ARCHIVE_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+const RESOURCE_SNAPSHOT_MAX_BYTES = 2 * 1024 * 1024;
+const CONTEXT_FILE_NAMES = [
+  "AGENTS.override.md",
+  "AGENTS.md",
+  "AGENTS.MD",
+  "CLAUDE.md",
+  "CLAUDE.MD",
+] as const;
+const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"] as const;
+
+interface VirtualFile {
+  readonly path: string;
+  readonly content: string;
+}
+
+export class UnsupportedPiResourceError extends Error {}
+
+function snapshotIdentity(mounts: readonly StoredStorageMountEntry[]): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    mounts: mounts.map((mount) => {
+      return {
+        versionId: mount.versionId,
+        mountPath: mount.mountPath,
+        instructionsTargetFilename: mount.instructionsTargetFilename ?? null,
+        writeback: mount.writeback ?? false,
+        empty: mount.empty ?? false,
+      };
+    }),
+  });
+}
+
+function pathsOverlap(first: string, second: string): boolean {
+  return (
+    first === second ||
+    first.startsWith(`${second}/`) ||
+    second.startsWith(`${first}/`)
+  );
+}
+
+export function piResourceDiscoveryMounts(
+  mounts: readonly StoredStorageMountEntry[],
+): readonly StoredStorageMountEntry[] {
+  const contextDirectoriesForDiscovery = [
+    PI_AGENT_DIR,
+    ...contextDirectories(CANONICAL_WORKING_DIR),
+  ];
+  const resourceRoots = [
+    PI_SKILLS_ROOT,
+    `${PI_AGENT_DIR}/extensions`,
+    `${PI_AGENT_DIR}/prompts`,
+    `${PI_AGENT_DIR}/settings.json`,
+    `${PI_AGENT_DIR}/SYSTEM.md`,
+    `${PI_AGENT_DIR}/APPEND_SYSTEM.md`,
+    `${CANONICAL_WORKING_DIR}/.pi/skills`,
+    `${CANONICAL_WORKING_DIR}/.pi/extensions`,
+    `${CANONICAL_WORKING_DIR}/.pi/prompts`,
+    `${CANONICAL_WORKING_DIR}/.pi/settings.json`,
+    `${CANONICAL_WORKING_DIR}/.pi/SYSTEM.md`,
+    `${CANONICAL_WORKING_DIR}/.pi/APPEND_SYSTEM.md`,
+  ];
+  return mounts.filter((mount) => {
+    const mountPath = posix.resolve("/", mount.mountPath);
+    return (
+      contextDirectoriesForDiscovery.some((directory) => {
+        return mountPath === directory || directory.startsWith(`${mountPath}/`);
+      }) ||
+      resourceRoots.some((root) => {
+        return pathsOverlap(mountPath, root);
+      })
+    );
+  });
+}
+
+export function piResourceSnapshotDigest(
+  mounts: readonly StoredStorageMountEntry[],
+): string {
+  return createHash("sha256").update(snapshotIdentity(mounts)).digest("hex");
+}
+
+async function downloadArchive(
+  mount: StoredStorageMountEntry,
+  signal?: AbortSignal,
+): Promise<Buffer | null> {
+  if (!mount.archiveUrl) {
+    return null;
+  }
+  const expectedSize = expectedArchiveSize(mount);
+  const response = await fetch(mount.archiveUrl, {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Pi resource snapshot archive returned ${response.status}`);
+  }
+  validateArchiveContentLength(response, expectedSize);
+  return await readArchiveBody(response, expectedSize);
+}
+
+function expectedArchiveSize(mount: StoredStorageMountEntry): number {
+  if (
+    mount.archiveSize === undefined ||
+    mount.archiveSize > RESOURCE_ARCHIVE_MAX_BYTES
+  ) {
+    throw new Error("Pi resource snapshot archive exceeds its size limit");
+  }
+  return mount.archiveSize;
+}
+
+function cancelResponseBody(response: Response): void {
+  startUntrackedBestEffortCleanup(response.body?.cancel() ?? Promise.resolve());
+}
+
+function validateArchiveContentLength(
+  response: Response,
+  expectedSize: number,
+): void {
+  const declaredLengthHeader = response.headers.get("content-length");
+  const declaredLength =
+    declaredLengthHeader === null ? undefined : Number(declaredLengthHeader);
+  if (
+    declaredLength !== undefined &&
+    (!Number.isSafeInteger(declaredLength) || declaredLength < 0)
+  ) {
+    cancelResponseBody(response);
+    throw new Error("Pi resource snapshot Content-Length is invalid");
+  }
+  if (
+    declaredLength !== undefined &&
+    declaredLength > RESOURCE_ARCHIVE_MAX_BYTES
+  ) {
+    cancelResponseBody(response);
+    throw new Error("Pi resource snapshot archive exceeds its size limit");
+  }
+  if (declaredLength !== undefined && declaredLength !== expectedSize) {
+    cancelResponseBody(response);
+    throw new Error(
+      `Pi resource snapshot Content-Length ${declaredLength} does not match Storage ${expectedSize}`,
+    );
+  }
+}
+
+async function readArchiveBody(
+  response: Response,
+  expectedSize: number,
+): Promise<Buffer> {
+  if (!response.body) {
+    return Buffer.alloc(0);
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      if (size !== expectedSize) {
+        throw new Error(
+          `Pi resource snapshot archive size ${size} does not match Storage ${expectedSize}`,
+        );
+      }
+      return Buffer.concat(chunks, size);
+    }
+    size += value.byteLength;
+    if (size > RESOURCE_ARCHIVE_MAX_BYTES) {
+      startUntrackedBestEffortCleanup(reader.cancel());
+      throw new Error("Pi resource snapshot archive exceeds its size limit");
+    }
+    chunks.push(Buffer.from(value));
+  }
+}
+
+function mountedPath(mountPath: string, archivePath: string): string | null {
+  const normalizedMount = posix.resolve("/", mountPath);
+  const result = posix.resolve(normalizedMount, archivePath);
+  return result === normalizedMount || result.startsWith(`${normalizedMount}/`)
+    ? result
+    : null;
+}
+
+function applyMount(
+  files: Map<string, string>,
+  mount: StoredStorageMountEntry,
+  archive: Buffer | null,
+): void {
+  const mountPath = posix.resolve("/", mount.mountPath);
+  for (const path of files.keys()) {
+    if (path === mountPath || path.startsWith(`${mountPath}/`)) {
+      files.delete(path);
+    }
+  }
+  if (!archive) {
+    return;
+  }
+  const extracted = extractFilesFromTarGz(
+    archive,
+    undefined,
+    RESOURCE_ARCHIVE_MAX_OUTPUT_BYTES,
+    { strictUtf8: true },
+  );
+  if (mount.instructionsTargetFilename) {
+    const target = mount.instructionsTargetFilename;
+    const source =
+      extracted.find((file) => {
+        return file.path === target;
+      }) ??
+      extracted.find((file) => {
+        return (
+          file.path === (target === "AGENTS.md" ? "CLAUDE.md" : "AGENTS.md")
+        );
+      });
+    if (source) {
+      files.set(posix.join(mountPath, target), source.content);
+    }
+    return;
+  }
+  for (const file of extracted) {
+    const path = mountedPath(mountPath, file.path);
+    if (path) {
+      files.set(path, file.content);
+    }
+  }
+}
+
+function contextFileInDirectory(
+  files: ReadonlyMap<string, string>,
+  directory: string,
+): VirtualFile | null {
+  for (const name of CONTEXT_FILE_NAMES) {
+    const path = posix.join(directory, name);
+    const content = files.get(path);
+    if (content !== undefined) {
+      return { path, content };
+    }
+  }
+  return null;
+}
+
+function contextDirectories(cwd: string): string[] {
+  const directories: string[] = [];
+  let current = posix.resolve("/", cwd);
+  while (true) {
+    directories.unshift(current);
+    const parent = posix.dirname(current);
+    if (parent === current) {
+      return directories;
+    }
+    current = parent;
+  }
+}
+
+function discoverAgentsFiles(
+  files: ReadonlyMap<string, string>,
+): PiResourceSnapshot["agentsFiles"] {
+  const selected: VirtualFile[] = [];
+  const global = contextFileInDirectory(files, PI_AGENT_DIR);
+  if (global) {
+    selected.push(global);
+  }
+  for (const directory of contextDirectories(CANONICAL_WORKING_DIR)) {
+    const file = contextFileInDirectory(files, directory);
+    if (file && file.path !== global?.path) {
+      selected.push(file);
+    }
+  }
+  return selected;
+}
+
+function directChildren(
+  files: ReadonlyMap<string, string>,
+  directory: string,
+): { readonly files: string[]; readonly directories: string[] } {
+  const fileNames = new Set<string>();
+  const directoryNames = new Set<string>();
+  const prefix = directory.endsWith("/") ? directory : `${directory}/`;
+  for (const path of files.keys()) {
+    if (!path.startsWith(prefix)) {
+      continue;
+    }
+    const relative = path.slice(prefix.length);
+    const separator = relative.indexOf("/");
+    if (separator === -1) {
+      fileNames.add(relative);
+    } else {
+      directoryNames.add(relative.slice(0, separator));
+    }
+  }
+  return {
+    files: [...fileNames].sort(),
+    directories: [...directoryNames].sort(),
+  };
+}
+
+function prefixedIgnorePattern(line: string, prefix: string): string | null {
+  const trimmed = line.trim();
+  if (
+    !trimmed ||
+    (trimmed.startsWith("#") && !trimmed.startsWith(String.raw`\#`))
+  ) {
+    return null;
+  }
+  let pattern = line;
+  let negated = false;
+  if (pattern.startsWith("!")) {
+    negated = true;
+    pattern = pattern.slice(1);
+  } else if (pattern.startsWith(String.raw`\!`)) {
+    pattern = pattern.slice(1);
+  }
+  if (pattern.startsWith("/")) {
+    pattern = pattern.slice(1);
+  }
+  const prefixed = prefix ? `${prefix}${pattern}` : pattern;
+  return negated ? `!${prefixed}` : prefixed;
+}
+
+function addIgnoreRules(args: {
+  readonly files: ReadonlyMap<string, string>;
+  readonly directory: string;
+  readonly rootDirectory: string;
+  readonly matcher: Ignore;
+}): void {
+  const relativeDirectory = posix.relative(args.rootDirectory, args.directory);
+  const prefix = relativeDirectory ? `${relativeDirectory}/` : "";
+  for (const filename of IGNORE_FILE_NAMES) {
+    const content = args.files.get(posix.join(args.directory, filename));
+    if (content === undefined) {
+      continue;
+    }
+    const patterns = content
+      .split(/\r?\n/)
+      .map((line) => {
+        return prefixedIgnorePattern(line, prefix);
+      })
+      .filter((line): line is string => {
+        return line !== null;
+      });
+    if (patterns.length > 0) {
+      args.matcher.add(patterns);
+    }
+  }
+}
+
+function skillFromFile(args: {
+  readonly files: ReadonlyMap<string, string>;
+  readonly filePath: string;
+  readonly scope: "user" | "project";
+}): PiResourceSnapshot["skills"][number] | null {
+  const content = args.files.get(args.filePath);
+  if (content === undefined) {
+    return null;
+  }
+  const frontmatter = parseSkillFrontmatter(content);
+  if (!frontmatter.description?.trim()) {
+    return null;
+  }
+  const baseDir = posix.dirname(args.filePath);
+  return {
+    name: frontmatter.name ?? posix.basename(baseDir),
+    description: frontmatter.description,
+    filePath: args.filePath,
+    baseDir,
+    scope: args.scope,
+    disableModelInvocation: frontmatter.disableModelInvocation === true,
+  };
+}
+
+function discoverSkillsInDirectory(args: {
+  readonly files: ReadonlyMap<string, string>;
+  readonly directory: string;
+  readonly includeRootFiles: boolean;
+  readonly scope: "user" | "project";
+  readonly ignoreMatcher?: Ignore;
+  readonly rootDirectory?: string;
+}): PiResourceSnapshot["skills"] {
+  const matcher = args.ignoreMatcher ?? ignore();
+  const rootDirectory = args.rootDirectory ?? args.directory;
+  addIgnoreRules({
+    files: args.files,
+    directory: args.directory,
+    rootDirectory,
+    matcher,
+  });
+  const children = directChildren(args.files, args.directory);
+  const relativePath = (name: string): string => {
+    return posix.relative(rootDirectory, posix.join(args.directory, name));
+  };
+  if (
+    children.files.includes("SKILL.md") &&
+    !matcher.ignores(relativePath("SKILL.md"))
+  ) {
+    const skill = skillFromFile({
+      files: args.files,
+      filePath: posix.join(args.directory, "SKILL.md"),
+      scope: args.scope,
+    });
+    return skill ? [skill] : [];
+  }
+  const rootSkills = args.includeRootFiles
+    ? children.files.flatMap((name) => {
+        if (!name.endsWith(".md") || matcher.ignores(relativePath(name))) {
+          return [];
+        }
+        const skill = skillFromFile({
+          files: args.files,
+          filePath: posix.join(args.directory, name),
+          scope: args.scope,
+        });
+        return skill ? [skill] : [];
+      })
+    : [];
+  const nestedSkills = children.directories.flatMap((name) => {
+    if (
+      name.startsWith(".") ||
+      name === "node_modules" ||
+      matcher.ignores(`${relativePath(name)}/`)
+    ) {
+      return [];
+    }
+    return discoverSkillsInDirectory({
+      ...args,
+      directory: posix.join(args.directory, name),
+      includeRootFiles: false,
+      ignoreMatcher: matcher,
+      rootDirectory,
+    });
+  });
+  return [...rootSkills, ...nestedSkills];
+}
+
+function discoverSkills(
+  files: ReadonlyMap<string, string>,
+): PiResourceSnapshot["skills"] {
+  const byName = new Map<string, PiResourceSnapshot["skills"][number]>();
+  for (const input of [
+    { directory: PI_SKILLS_ROOT, scope: "user" as const },
+    {
+      directory: posix.join(CANONICAL_WORKING_DIR, ".pi", "skills"),
+      scope: "project" as const,
+    },
+  ]) {
+    for (const skill of discoverSkillsInDirectory({
+      files,
+      ...input,
+      includeRootFiles: true,
+    })) {
+      if (!byName.has(skill.name)) {
+        byName.set(skill.name, skill);
+      }
+    }
+  }
+  return [...byName.values()];
+}
+
+function hasUnsupportedPiResources(
+  files: ReadonlyMap<string, string>,
+): boolean {
+  const prefixes = [
+    `${PI_AGENT_DIR}/extensions/`,
+    `${PI_AGENT_DIR}/prompts/`,
+    `${CANONICAL_WORKING_DIR}/.pi/extensions/`,
+    `${CANONICAL_WORKING_DIR}/.pi/prompts/`,
+  ];
+  return [...files.keys()].some((path) => {
+    return (
+      path === `${PI_AGENT_DIR}/settings.json` ||
+      path === `${PI_AGENT_DIR}/SYSTEM.md` ||
+      path === `${PI_AGENT_DIR}/APPEND_SYSTEM.md` ||
+      path === `${CANONICAL_WORKING_DIR}/.pi/settings.json` ||
+      path === `${CANONICAL_WORKING_DIR}/.pi/SYSTEM.md` ||
+      path === `${CANONICAL_WORKING_DIR}/.pi/APPEND_SYSTEM.md` ||
+      prefixes.some((prefix) => {
+        return path.startsWith(prefix);
+      })
+    );
+  });
+}
+
+export function buildPiResourceSnapshot(
+  mounts: readonly StoredStorageMountEntry[],
+  archives: readonly (Buffer | null)[],
+): PiResourceSnapshot {
+  const files = new Map<string, string>();
+  for (const [index, mount] of mounts.entries()) {
+    applyMount(files, mount, archives[index] ?? null);
+  }
+  if (hasUnsupportedPiResources(files)) {
+    throw new UnsupportedPiResourceError(
+      "Pi resource snapshot does not support settings, extensions, or prompts",
+    );
+  }
+  const snapshot: PiResourceSnapshot = {
+    schemaVersion: 1,
+    agentsFiles: discoverAgentsFiles(files),
+    skills: discoverSkills(files),
+  };
+  if (
+    Buffer.byteLength(JSON.stringify(snapshot), "utf8") >
+    RESOURCE_SNAPSHOT_MAX_BYTES
+  ) {
+    throw new Error("Pi resource snapshot exceeds its size limit");
+  }
+  return piResourceSnapshotSchema.parse(snapshot);
+}
+
+export function preparePiResourceSnapshot(
+  args: {
+    readonly db: Db;
+    readonly mounts: readonly StoredStorageMountEntry[];
+  },
+  signal?: AbortSignal,
+): Computed<
+  Promise<{ readonly digest: string; readonly snapshot: PiResourceSnapshot }>
+> {
+  return computed(
+    async (): Promise<{
+      readonly digest: string;
+      readonly snapshot: PiResourceSnapshot;
+    }> => {
+      const mounts = piResourceDiscoveryMounts(args.mounts);
+      const digest = piResourceSnapshotDigest(mounts);
+      const [existing] = await args.db
+        .select({ snapshot: piResourceSnapshots.snapshot })
+        .from(piResourceSnapshots)
+        .where(eq(piResourceSnapshots.digest, digest))
+        .limit(1);
+      if (existing) {
+        return {
+          digest,
+          snapshot: piResourceSnapshotSchema.parse(existing.snapshot),
+        };
+      }
+      const archives = await Promise.all(
+        mounts.map(async (mount) => {
+          return await downloadArchive(mount, signal);
+        }),
+      );
+      const snapshot = buildPiResourceSnapshot(mounts, archives);
+      await args.db
+        .insert(piResourceSnapshots)
+        .values({ digest, snapshot })
+        .onConflictDoNothing();
+      return { digest, snapshot };
+    },
+  );
+}

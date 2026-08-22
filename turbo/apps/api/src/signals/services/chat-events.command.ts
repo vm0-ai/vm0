@@ -126,6 +126,7 @@ import {
   canonicalChatEventError,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
+import { shouldUsePiExecution } from "./pi-sandbox-config";
 import {
   buildWebChatAppendSystemPrompt,
   type WebChatSessionPromptContext,
@@ -263,6 +264,7 @@ interface PreparedNormalSend {
     | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly piExecution: boolean;
 }
 
 function normalSendTriggerSource(
@@ -2502,6 +2504,20 @@ function resolveTimedNormalSendAgentRunSource(
   );
 }
 
+function usesPi(
+  args: NormalSendArgs,
+  thread: PreparedNormalSend["thread"],
+  runConfiguration: PreparedNormalSend["runConfiguration"],
+  featureSwitches: NormalSendFeatureSwitches,
+): boolean {
+  return shouldUsePiExecution({
+    chatThreadId: thread.threadId,
+    selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
+    triggerSource: normalSendTriggerSource(args.auth),
+    featureSwitchContext: featureSwitches.featureSwitchContext,
+  });
+}
+
 const prepareNormalSend$ = command(
   async (
     { set },
@@ -2515,7 +2531,6 @@ const prepareNormalSend$ = command(
     if ("status" in agent) {
       return agent;
     }
-
     const {
       prechecked: clientEventPrechecked,
       response: preflightClientEventResponse,
@@ -2524,7 +2539,6 @@ const prepareNormalSend$ = command(
     if (preflightClientEventResponse?.status === 201) {
       return preflightClientEventResponse;
     }
-
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
@@ -2539,7 +2553,6 @@ const prepareNormalSend$ = command(
       return agentRunSourceResult.response;
     }
     const agentRunSource = agentRunSourceResult.source;
-
     const runtimeBody = resolveRuntimeNormalSendBody(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
     );
@@ -2553,7 +2566,6 @@ const prepareNormalSend$ = command(
     if ("status" in authorizedTemplates) {
       return authorizedTemplates;
     }
-
     const explicitRunConfiguration = await resolveTimedExplicitRunConfiguration(
       args,
       db,
@@ -2615,6 +2627,7 @@ const prepareNormalSend$ = command(
       },
       signal,
     );
+    const piExecution = usesPi(args, thread, runConfiguration, featureSwitches);
 
     return {
       db,
@@ -2635,6 +2648,7 @@ const prepareNormalSend$ = command(
       preflightClientEventConflict: preflightClientEventResponse,
       triggerSource: normalSendTriggerSource(args.auth),
       agentRunSource,
+      piExecution,
     };
   },
 );
@@ -3115,6 +3129,12 @@ function codexServiceTierForRun(params: {
     : undefined;
 }
 
+function cliAgentTypeForRun(prepared: PreparedNormalSend) {
+  return prepared.piExecution
+    ? ("pi" as const)
+    : prepared.runConfiguration.providerAdmission.cliAgentType;
+}
+
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -3158,7 +3178,7 @@ function buildCreateZeroRunArgs(params: {
       modelProviderId: modelPin.modelProviderId,
       modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
       modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
-      cliAgentType: providerAdmission.cliAgentType,
+      cliAgentType: cliAgentTypeForRun(prepared),
     },
     codexServiceTier,
     callbacks: [
