@@ -540,20 +540,20 @@ def test_shutdown_cancels_queued_reports(
 
 
 @pytest.mark.parametrize(
-    ("status", "retry_after", "expected_kind"),
+    ("status", "retry_after", "expected_kind", "expected_seconds"),
     [
-        (429, "301", "rate_limit"),
-        (429, "Fri, 21 Aug 2026 12:00:00 GMT", "rate_limit"),
-        (401, "120", "authentication"),
+        (429, "0", "rate_limit", 1),
+        (503, "301", "provider_unavailable", 300),
     ],
 )
-def test_untrusted_retry_after_is_omitted(
+def test_numeric_retry_after_is_clamped(
     tmp_path,
     real_flow,
     mitm_ctx,
     status: int,
     retry_after: str,
     expected_kind: str,
+    expected_seconds: int,
     model_provider_failure_api,
 ):
     flow = _make_flow(
@@ -561,6 +561,40 @@ def test_untrusted_retry_after_is_omitted(
         tmp_path / "proxy.jsonl",
         response_status=status,
         response_headers=header_map({"retry-after": retry_after}),
+    )
+
+    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": expected_kind, "retryAfterSeconds": expected_seconds}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "retry_after_values", "expected_kind"),
+    [
+        (429, ("invalid",), "rate_limit"),
+        (429, ("Fri, 21 Aug 2026 12:00:00 GMT",), "rate_limit"),
+        (429, ("120", "121"), "rate_limit"),
+        (401, ("120",), "authentication"),
+    ],
+)
+def test_unusable_retry_after_is_omitted(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    status: int,
+    retry_after_values: tuple[str, ...],
+    expected_kind: str,
+    model_provider_failure_api,
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=status,
+        response_headers=http.Headers(
+            [(b"retry-after", value.encode()) for value in retry_after_values]
+        ),
     )
 
     _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
