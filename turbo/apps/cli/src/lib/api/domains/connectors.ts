@@ -175,7 +175,11 @@ export async function connectConnectorManualGrant(
 
   const result = await client.connect({
     params: { connectorSlug },
-    body: { authMethod, values },
+    body: {
+      account: { intent: "single-account" },
+      authMethod,
+      values,
+    },
   });
 
   if (result.status === 200) {
