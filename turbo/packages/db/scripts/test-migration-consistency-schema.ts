@@ -56,7 +56,7 @@ import {
   validateCheckpointAgentComposeSnapshotNullableMigration,
   validateCheckpointAgentComposeSnapshotNullableSchema,
 } from "./test-checkpoint-agent-compose-snapshot-nullable";
-import { validateBuiltInModelKeysCompatibilityRelation } from "./test-built-in-model-keys-compatibility-relation";
+import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import { validateCanonicalAgentDataPlaneMigration } from "./test-canonical-agent-data-plane";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
@@ -11886,7 +11886,6 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
     await validateCheckpointAgentComposeSnapshotNullableMigration();
-    await validateBuiltInModelKeysCompatibilityRelation();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateFeishuMemberConnectorReconciliation();
@@ -11915,6 +11914,7 @@ async function main(): Promise<void> {
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
+    await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
@@ -11935,6 +11935,7 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl2);
 
