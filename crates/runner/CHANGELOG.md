@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.170.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.0...runner-rs-v0.170.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **python:** share model response classification ([#28633](https://github.com/vm0-ai/vm0/issues/28633)) ([e129ab0](https://github.com/vm0-ai/vm0/commit/e129ab06050e0c71da083fe3afdeb0c294a75c81))
+
+
+### Refactoring
+
+* **runner:** centralize idle sandbox activation ([#28630](https://github.com/vm0-ai/vm0/issues/28630)) ([f1ac1d9](https://github.com/vm0-ai/vm0/commit/f1ac1d991d29248de4f55cdfad38962d0e711a78))
+
+
+### Performance Improvements
+
+* **mitm-addon:** reuse chat completions extractor across sse events ([#28629](https://github.com/vm0-ai/vm0/issues/28629)) ([3ca0aea](https://github.com/vm0-ai/vm0/commit/3ca0aea8b5ff3ed249064c7422f18bd16e5fa290))
+
 ## [0.170.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.22...runner-rs-v0.170.0) (2026-08-22)
 
 

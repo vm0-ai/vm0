@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.475.0](https://github.com/vm0-ai/vm0/compare/api-v1.474.0...api-v1.475.0) (2026-08-22)
+
+
+### Features
+
+* **api:** add safe single-account connector disconnect ([#28598](https://github.com/vm0-ai/vm0/issues/28598)) ([a231b7b](https://github.com/vm0-ai/vm0/commit/a231b7b09db3abe563358dafac2ccaa2b2cb26d0))
+
+
+### Performance Improvements
+
+* **api:** attribute connector projection row latency ([#28635](https://github.com/vm0-ai/vm0/issues/28635)) ([d7440ff](https://github.com/vm0-ai/vm0/commit/d7440ff8031ddd144d35ea735410b02db5c5cb0b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.351.0
+    * @okouai/core bumped to 8.580.4
+    * @okouai/db bumped to 1.215.4
+
 ## [1.474.0](https://github.com/vm0-ai/vm0/compare/api-v1.473.2...api-v1.474.0) (2026-08-22)
 
 
