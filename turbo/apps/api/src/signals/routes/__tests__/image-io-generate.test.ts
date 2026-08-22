@@ -76,13 +76,6 @@ const FAL_IDEOGRAM_4_URL = "https://queue.fal.run/ideogram/v4";
 const FAL_IDEOGRAM_4_EDIT_URL =
   "https://queue.fal.run/ideogram/v4/image-to-image";
 const FAL_IDEOGRAM_4_MEDIA_URL = "https://fal.media/files/test/ideogram-4.png";
-const FAL_RECRAFT_VECTOR_URL =
-  "https://queue.fal.run/fal-ai/recraft/v4.1/text-to-vector";
-const FAL_RECRAFT_VECTOR_MEDIA_URL =
-  "https://fal.media/files/test/recraft-v4.1-vector.svg";
-const SAFE_SVG_BYTES = Buffer.from(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#ed4e01" d="M8 8h48v48H8z"/></svg>',
-);
 const FAL_NANO_BANANA_2_URL = "https://queue.fal.run/fal-ai/nano-banana-2";
 const FAL_NANO_BANANA_2_LITE_URL =
   "https://queue.fal.run/google/nano-banana-2-lite";
@@ -127,7 +120,6 @@ const FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_TURBO_MEGAPIXEL_CREDITS = 9;
 const FAL_IDEOGRAM_4_BALANCED_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_QUALITY_MEGAPIXEL_CREDITS = 30;
-const FAL_RECRAFT_VECTOR_CREDITS_PER_IMAGE = 96;
 const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
@@ -437,16 +429,6 @@ const IDEOGRAM_4_IMAGE_PRICING = [
     provider: "ideogram/v4",
     category: "output_megapixel.quality",
     unitPrice: FAL_IDEOGRAM_4_QUALITY_MEGAPIXEL_CREDITS,
-    unitSize: 1,
-  },
-] satisfies readonly UsagePricingRow[];
-
-const RECRAFT_VECTOR_IMAGE_PRICING = [
-  {
-    kind: "image",
-    provider: "fal-ai/recraft/v4.1/text-to-vector",
-    category: "output_image",
-    unitPrice: FAL_RECRAFT_VECTOR_CREDITS_PER_IMAGE,
     unitSize: 1,
   },
 ] satisfies readonly UsagePricingRow[];
@@ -2015,22 +1997,6 @@ describe("POST /api/image-io/generate", () => {
     );
 
     const app = createImageIoTestApp(pricingFixture.resolution);
-    const rejectedSvg = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "a vector request sent to a raster model",
-        model: "flux-2-pro",
-        outputFormat: "svg",
-      }),
-    });
-    expect(rejectedSvg.status).toBe(400);
-    await expect(rejectedSvg.json()).resolves.toMatchObject({
-      error: {
-        message: "Unsupported image output format for flux-2-pro: svg",
-      },
-    });
-
     const response = await app.request("/api/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -2352,184 +2318,6 @@ describe("POST /api/image-io/generate", () => {
       image_url: MOCKUP_IMAGE_URL,
     });
     expect(falCalls).toBe(1);
-  });
-
-  it("stores Recraft V4.1 Vector as a safe SVG with a direct embed URL", async () => {
-    const fixture = await seedImageFixture({ credits: 1000 });
-    const pricingFixture = await createScopedImagePricing({
-      configured: RECRAFT_VECTOR_IMAGE_PRICING,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let falCalls = 0;
-    let observedBody: Record<string, unknown> | null = null;
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(FAL_RECRAFT_VECTOR_URL, async ({ request }) => {
-        falCalls += 1;
-        observedRequestUrl = request.url;
-        observedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(falQueueHandle("recraft-vector-request"));
-      }),
-      http.get(FAL_RECRAFT_VECTOR_MEDIA_URL, () => {
-        return new HttpResponse(SAFE_SVG_BYTES, {
-          headers: { "Content-Type": "image/svg+xml" },
-        });
-      }),
-    );
-
-    const app = createImageIoTestApp(pricingFixture.resolution);
-    const rejected = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "edit this logo",
-        model: "recraft-v4.1-vector",
-        imageUrl: MOCKUP_IMAGE_URL,
-      }),
-    });
-    expect(rejected.status).toBe(400);
-    await expect(rejected.json()).resolves.toMatchObject({
-      error: {
-        message: "recraft-v4.1-vector does not support source images",
-      },
-    });
-    expect(falCalls).toBe(0);
-
-    const response = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "a geometric fox mark with clean editable paths",
-        model: "recraft-4.1-vector",
-        size: "1024x1024",
-      }),
-    });
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "image",
-      fixture.userId,
-    );
-    await postFalWebhook(app, observedRequestUrl, {
-      images: [
-        {
-          url: FAL_RECRAFT_VECTOR_MEDIA_URL,
-          content_type: "image/svg+xml",
-        },
-      ],
-    });
-    await flushWaitUntilForTest();
-
-    const statusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(statusResponse.status).toBe(200);
-    const body = readGenerationResult(await statusResponse.json());
-    expect(body).toMatchObject({
-      contentType: "image/svg+xml",
-      size: SAFE_SVG_BYTES.byteLength,
-      creditsCharged: FAL_RECRAFT_VECTOR_CREDITS_PER_IMAGE,
-      model: "fal-ai/recraft/v4.1/text-to-vector",
-      provider: "fal",
-      imageSize: "1024x1024",
-      outputFormat: "svg",
-      billingCategory: "output_image",
-      billingQuantity: 1,
-      sourceUrl: FAL_RECRAFT_VECTOR_MEDIA_URL,
-    });
-    if (
-      typeof body !== "object" ||
-      body === null ||
-      !("url" in body) ||
-      !("embedUrl" in body)
-    ) {
-      throw new Error("Expected SVG result URLs");
-    }
-    expect(body.embedUrl).toBe(body.url);
-    expect(observedBody).toStrictEqual({
-      prompt: "a geometric fox mark with clean editable paths",
-      image_size: { width: 1024, height: 1024 },
-    });
-    expect(falCalls).toBe(1);
-    const putInput = putObjectInput();
-    expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.svg$/u);
-    expect(putInput.ContentType).toBe("image/svg+xml");
-    const putBody = putInput.Body;
-    expect(Buffer.isBuffer(putBody)).toBeTruthy();
-    if (!Buffer.isBuffer(putBody)) {
-      throw new Error("Expected S3 put body to be a Buffer");
-    }
-    expect(putBody).toStrictEqual(SAFE_SVG_BYTES);
-    await expect(orgCredits(fixture)).resolves.toBe(
-      1000 - FAL_RECRAFT_VECTOR_CREDITS_PER_IMAGE,
-    );
-  });
-
-  it("rejects active content in a generated Recraft SVG before storage", async () => {
-    const fixture = await seedImageFixture({ credits: 1000 });
-    const pricingFixture = await createScopedImagePricing({
-      configured: RECRAFT_VECTOR_IMAGE_PRICING,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(FAL_RECRAFT_VECTOR_URL, ({ request }) => {
-        observedRequestUrl = request.url;
-        return HttpResponse.json(falQueueHandle("unsafe-recraft-vector"));
-      }),
-      http.get(FAL_RECRAFT_VECTOR_MEDIA_URL, () => {
-        return new HttpResponse(
-          Buffer.from(
-            '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
-          ),
-          { headers: { "Content-Type": "image/svg+xml" } },
-        );
-      }),
-    );
-
-    const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "an unsafe vector fixture",
-        model: "recraft-v4.1-vector",
-      }),
-    });
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "image",
-      fixture.userId,
-    );
-    await postFalWebhook(app, observedRequestUrl, {
-      images: [
-        {
-          url: FAL_RECRAFT_VECTOR_MEDIA_URL,
-          content_type: "image/svg+xml",
-        },
-      ],
-    });
-    await flushWaitUntilForTest();
-
-    const statusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    await expect(statusResponse.json()).resolves.toMatchObject({
-      generationId,
-      type: "image",
-      status: "failed",
-      error: {
-        message: "Model returned an unsafe SVG",
-        code: "UNSAFE_SVG_RETURNED",
-      },
-    });
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-    await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
   it("generates Qwen Image 3 images through fal and bills the standard resolution tier", async () => {

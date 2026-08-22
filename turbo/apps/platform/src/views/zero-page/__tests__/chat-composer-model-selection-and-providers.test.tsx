@@ -4069,9 +4069,6 @@ describe("chat composer image model", () => {
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     expect(within(listbox).getByText("FLUX.2 Pro")).toBeInTheDocument();
     expect(within(listbox).getByText("Ideogram 4")).toBeInTheDocument();
-    expect(
-      within(listbox).getByText("Recraft V4.1 Vector"),
-    ).toBeInTheDocument();
     const fluxIcon = imageModelBrandIcon("FLUX.2 Pro").outerHTML;
     const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
     expect(nanoBananaIcon).toContain("#f94543");

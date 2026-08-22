@@ -864,8 +864,7 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
     case "google/nano-banana-2-lite": {
       return <GeminiImageModelIcon />;
     }
-    case "ideogram/v4":
-    case "fal-ai/recraft/v4.1/text-to-vector": {
+    case "ideogram/v4": {
       return <ImageIcon size={16} aria-hidden="true" />;
     }
   }

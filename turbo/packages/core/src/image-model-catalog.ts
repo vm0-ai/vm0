@@ -50,10 +50,6 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "ideogram-4",
     label: "Ideogram 4",
   },
-  "fal-ai/recraft/v4.1/text-to-vector": {
-    alias: "recraft-v4.1-vector",
-    label: "Recraft V4.1 Vector",
-  },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
     label: "Seedream 4",
@@ -98,7 +94,6 @@ export const PUBLIC_IMAGE_MODELS = [
   "fal-ai/nano-banana-2",
   "fal-ai/flux-2-pro",
   "ideogram/v4",
-  "fal-ai/recraft/v4.1/text-to-vector",
   "dola-seedream-5-0-pro-260628",
   "alibaba/qwen-image-3/text-to-image",
 ] as const satisfies readonly ImageModel[];
@@ -114,8 +109,6 @@ export const IMAGE_MODEL_ALIASES = {
   "qwen-image-3": "alibaba/qwen-image-3/text-to-image",
   "ideogram-4": "ideogram/v4",
   "ideogram-v4": "ideogram/v4",
-  "recraft-v4.1-vector": "fal-ai/recraft/v4.1/text-to-vector",
-  "recraft-4.1-vector": "fal-ai/recraft/v4.1/text-to-vector",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
   "seedream5-pro": "dola-seedream-5-0-pro-260628",
   "seedream5-lite": "seedream-5-0-lite-260128",

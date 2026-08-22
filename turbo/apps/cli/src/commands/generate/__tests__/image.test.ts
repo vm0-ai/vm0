@@ -136,44 +136,6 @@ describe("okou generate image command", () => {
   });
 
   it.each([
-    "recraft-v4.1-vector",
-    "recraft-4.1-vector",
-    "fal-ai/recraft/v4.1/text-to-vector",
-  ])("defaults Recraft Vector model %s to SVG", async (model) => {
-    let capturedBody: unknown;
-    server.use(
-      http.post(IMAGE_URL, async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
-          ...IMAGE_RESULT,
-          filename: "image-vector.svg",
-          contentType: "image/svg+xml",
-          outputFormat: "svg",
-          model: "fal-ai/recraft/v4.1/text-to-vector",
-        });
-      }),
-    );
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--raw-prompt",
-      "A geometric fox mark",
-      "--model",
-      model,
-    ]);
-
-    expect(capturedBody).toMatchObject({
-      model,
-      outputFormat: "svg",
-    });
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "Format: svg",
-    );
-  });
-
-  it.each([
     {
       name: "outside a run with an implicit model",
       insideRun: false,
@@ -860,7 +822,6 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("nano-banana-2-lite");
     expect(helpOutput).toContain("flux-2-pro");
     expect(helpOutput).toContain("ideogram-4");
-    expect(helpOutput).toContain("recraft-v4.1-vector");
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");

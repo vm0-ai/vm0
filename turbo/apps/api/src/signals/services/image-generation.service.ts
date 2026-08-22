@@ -50,7 +50,6 @@ const FLUX_2_PRO_MAX_EDGE = 2560;
 const QWEN_IMAGE_3_MODEL = "alibaba/qwen-image-3/text-to-image";
 const QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS = 3;
 const IDEOGRAM_4_MODEL = "ideogram/v4";
-const RECRAFT_V4_1_VECTOR_MODEL = "fal-ai/recraft/v4.1/text-to-vector";
 /**
  * fal prices Qwen Image 3 per generated image in two resolution tiers, split at
  * 2,250,000 output pixels: $0.04 at or below it, $0.075 above it.
@@ -108,8 +107,7 @@ const IMAGE_PRICING_CATEGORIES = [
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
 const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
-const RASTER_IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
-const IMAGE_OUTPUT_FORMATS = [...RASTER_IMAGE_OUTPUT_FORMATS, "svg"] as const;
+const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
 const IMAGE_MODERATIONS = ["auto", "low"] as const;
 const IMAGE_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
 const IMAGE_INPUT_FIDELITIES = ["low", "high"] as const;
@@ -152,7 +150,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
-    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
+    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: false,
@@ -177,7 +175,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
-    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
+    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: true,
@@ -302,7 +300,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
-    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
+    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
     billingMode: "pixel_tier_image",
     supportsTransparentBackground: false,
@@ -337,31 +335,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsBackground: false,
     usesOpenAiByok: false,
     supportsSeed: true,
-    supportsSafetyTolerance: false,
-    supportsEnhancePrompt: false,
-    supportsMaskImage: false,
-    supportsInputFidelity: false,
-    supportsImagePromptStrength: false,
-  },
-  [RECRAFT_V4_1_VECTOR_MODEL]: {
-    alias: "recraft-v4.1-vector",
-    promptless: false,
-    endpointId: RECRAFT_V4_1_VECTOR_MODEL,
-    imageToImageEndpointId: undefined,
-    sourceImageInput: "image_url",
-    provider: "fal",
-    sizeMode: "flexible",
-    sizeParameter: "image_size",
-    outputFormats: ["svg"],
-    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
-    billingMode: "image",
-    supportsTransparentBackground: false,
-    supportsOutputCompression: false,
-    supportsModeration: false,
-    supportsQuality: false,
-    supportsBackground: false,
-    usesOpenAiByok: false,
-    supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
     supportsMaskImage: false,
@@ -452,7 +425,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
+    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -477,7 +450,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
+    outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -1082,11 +1055,7 @@ function parseImageOutputOptions(
   modelConfig: ImageModelConfig,
   background: ImageBackground,
 ): ImageOutputOptions | ErrorResponse {
-  const outputFormat = readString(
-    body,
-    "outputFormat",
-    modelConfig.outputFormats[0],
-  );
+  const outputFormat = readString(body, "outputFormat", "png");
   if (!includesString(IMAGE_OUTPUT_FORMATS, outputFormat)) {
     return badRequest(`Unsupported image output format: ${outputFormat}`);
   }
@@ -1236,9 +1205,6 @@ function parseSourceImageUrls(
       return badRequest(`${modelConfig.alias} requires imageUrl`);
     }
     return sourceImageUrls;
-  }
-  if (modelConfig.imageToImageEndpointId === undefined) {
-    return badRequest(`${modelConfig.alias} does not support source images`);
   }
   const maxSourceImageUrls =
     modelConfig.alias === "nano-banana-2" ||
@@ -1537,9 +1503,6 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function contentTypeForFormat(format: ImageOutputFormat): string {
-  if (format === "svg") {
-    return "image/svg+xml";
-  }
   if (format === "webp") {
     return "image/webp";
   }
@@ -1554,34 +1517,14 @@ function normalizeImageContentType(value: string | null | undefined) {
   if (
     contentType === "image/png" ||
     contentType === "image/webp" ||
-    contentType === "image/jpeg" ||
-    contentType === "image/svg+xml"
+    contentType === "image/jpeg"
   ) {
     return contentType;
   }
   return null;
 }
 
-const SVG_ROOT_PATTERN =
-  /^\uFEFF?\s*(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/iu;
-const UNSAFE_SVG_ELEMENT_PATTERN =
-  /<\s*(?:script|foreignObject|iframe|object|embed|audio|video|image|link|meta|base)\b/iu;
-const UNSAFE_SVG_REFERENCE_PATTERN =
-  /\s+on[a-z]+\s*=|(?:href|xlink:href)\s*=\s*["'](?!\s*#)|@import|javascript:|data:text\/html|url\(\s*(?!["']?\s*#)/iu;
-
-function isSafeGeneratedSvg(imageBytes: Buffer): boolean {
-  const svg = imageBytes.toString("utf8");
-  return (
-    SVG_ROOT_PATTERN.test(svg) &&
-    !UNSAFE_SVG_ELEMENT_PATTERN.test(svg) &&
-    !UNSAFE_SVG_REFERENCE_PATTERN.test(svg)
-  );
-}
-
 function formatForContentType(contentType: string): ImageOutputFormat {
-  if (contentType === "image/svg+xml") {
-    return "svg";
-  }
   if (contentType === "image/webp") {
     return "webp";
   }
@@ -1732,22 +1675,8 @@ function ideogramRenderingSpeed(
 function falImageCountInput(options: ImageOptions): Record<string, unknown> {
   const providerSelectsCount =
     options.model === FLUX_2_PRO_MODEL ||
-    options.model === RECRAFT_V4_1_VECTOR_MODEL ||
     (options.model === IDEOGRAM_4_MODEL && options.sourceImageUrls.length > 0);
   return providerSelectsCount ? {} : { num_images: 1 };
-}
-
-function falOutputFormatInput(
-  options: ImageOptions,
-  modelConfig: ImageModelConfig,
-): Record<string, unknown> {
-  const providerSelectsFormat =
-    modelConfig.alias === "seedream4" ||
-    options.model === RECRAFT_V4_1_VECTOR_MODEL;
-  return !providerSelectsFormat &&
-    hasString(modelConfig.outputFormats, options.outputFormat)
-    ? { output_format: options.outputFormat }
-    : {};
 }
 
 function falQualityInput(
@@ -1776,7 +1705,10 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
       ? { aspect_ratio: falAspectRatio(options) }
       : { image_size: falImageSize(options) }),
     ...falImageCountInput(options),
-    ...falOutputFormatInput(options, modelConfig),
+    ...(hasString(modelConfig.outputFormats, options.outputFormat) &&
+    modelConfig.alias !== "seedream4"
+      ? { output_format: options.outputFormat }
+      : {}),
     ...(options.model === NANO_BANANA_2_MODEL ? { resolution: "1K" } : {}),
     ...falQualityInput(options, modelConfig),
     ...(modelConfig.supportsBackground
@@ -1812,13 +1744,9 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
 
 function falImageEndpointId(options: ImageOptions): string {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
-  if (options.sourceImageUrls.length === 0) {
-    return modelConfig.endpointId;
-  }
-  if (modelConfig.imageToImageEndpointId === undefined) {
-    throw new Error(`${modelConfig.alias} has no image-to-image endpoint`);
-  }
-  return modelConfig.imageToImageEndpointId;
+  return options.sourceImageUrls.length > 0
+    ? modelConfig.imageToImageEndpointId
+    : modelConfig.endpointId;
 }
 
 async function readImageProviderErrorBody(
@@ -1893,7 +1821,7 @@ function parseBytePlusImageFile(value: unknown): BytePlusImageFile | null {
   const parsedSize = size ? parseSize(size) : null;
   const outputFormat =
     typeof value.output_format === "string" &&
-    includesString(BYTEPLUS_IMAGE_OUTPUT_FORMATS, value.output_format)
+    includesString(IMAGE_OUTPUT_FORMATS, value.output_format)
       ? value.output_format
       : undefined;
   return {
@@ -2208,21 +2136,12 @@ export async function downloadFalImage(
     normalizeImageContentType(result.image.contentType) ??
     normalizeImageContentType(response.headers.get("content-type")) ??
     contentTypeForFormat(options.outputFormat);
-  if (contentType === "image/svg+xml" && !isSafeGeneratedSvg(imageBytes)) {
-    return badGateway("Model returned an unsafe SVG", "UNSAFE_SVG_RETURNED");
-  }
   const outputFormat = formatForContentType(contentType);
-  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
-  if (!hasString(modelConfig.outputFormats, outputFormat)) {
-    return badGateway(
-      "Model returned an unsupported image format",
-      "UNSUPPORTED_IMAGE_FORMAT_RETURNED",
-    );
-  }
   const imageSize =
     result.image.width && result.image.height
       ? `${result.image.width}x${result.image.height}`
       : options.size;
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
 
   return {
     model: options.model,
@@ -2296,10 +2215,6 @@ async function downloadBytePlusImage(
     inputFidelity: options.inputFidelity,
     imagePromptStrength: options.imagePromptStrength,
   };
-}
-
-function imageEmbedUrl(url: string, outputFormat: ImageOutputFormat): string {
-  return outputFormat === "svg" ? url : r2ImageTransformUrl(url, {});
 }
 
 export const recordGeneratedImage$ = command(
@@ -2411,7 +2326,7 @@ export const recordGeneratedImage$ = command(
       // Models such as seedream4 only emit PNG. Serving the stored object
       // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
       // pages embedding this image download a fraction of the PNG bytes.
-      embedUrl: imageEmbedUrl(url, params.generation.outputFormat),
+      embedUrl: r2ImageTransformUrl(url, {}),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,

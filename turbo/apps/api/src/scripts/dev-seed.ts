@@ -607,9 +607,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_megapixel.balanced", usd(0.015), 1],
     ["output_megapixel.quality", usd(0.025), 1],
   ]),
-  ...usageGroup("image", "fal-ai/recraft/v4.1/text-to-vector", [
-    ["output_image", usd(0.08), 1],
-  ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],
   ]),
