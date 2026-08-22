@@ -1114,6 +1114,13 @@
       "when": 1787359224921,
       "tag": "0966_canonical_agents_data_plane",
       "breakpoints": true
+    },
+    {
+      "idx": 967,
+      "version": "7",
+      "when": 1787396374142,
+      "tag": "0967_add_flux_2_ideogram_4_recraft_vector_pricing",
+      "breakpoints": true
     }
   ]
 }

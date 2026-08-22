@@ -43,8 +43,14 @@ const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
 const NANO_BANANA_2_LITE_MODEL = "google/nano-banana-2-lite";
 const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
+const FLUX_2_PRO_MODEL = "fal-ai/flux-2-pro";
+const FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS = 9;
+const FLUX_2_PRO_MAX_PIXELS = 4_194_304;
+const FLUX_2_PRO_MAX_EDGE = 2560;
 const QWEN_IMAGE_3_MODEL = "alibaba/qwen-image-3/text-to-image";
 const QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS = 3;
+const IDEOGRAM_4_MODEL = "ideogram/v4";
+const RECRAFT_V4_1_VECTOR_MODEL = "fal-ai/recraft/v4.1/text-to-vector";
 /**
  * fal prices Qwen Image 3 per generated image in two resolution tiers, split at
  * 2,250,000 output pixels: $0.04 at or below it, $0.075 above it.
@@ -81,17 +87,29 @@ const FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES = [
   "output_image.1k",
   "output_image.2k",
 ] as const;
+const FLUX_2_PRO_PRICING_CATEGORIES = [
+  "processed_megapixel.first",
+  "processed_megapixel.additional",
+] as const;
+const IDEOGRAM_4_PRICING_CATEGORIES = [
+  "output_megapixel.turbo",
+  "output_megapixel.balanced",
+  "output_megapixel.quality",
+] as const;
 const IMAGE_PRICING_CATEGORIES = [
   FAL_OUTPUT_IMAGE_CATEGORY,
   FAL_OUTPUT_MEGAPIXEL_CATEGORY,
   PROVIDER_COST_USD_MICROS_CATEGORY,
   ...FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
   ...FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
+  ...FLUX_2_PRO_PRICING_CATEGORIES,
+  ...IDEOGRAM_4_PRICING_CATEGORIES,
 ] as const;
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
 const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
-const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
+const RASTER_IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
+const IMAGE_OUTPUT_FORMATS = [...RASTER_IMAGE_OUTPUT_FORMATS, "svg"] as const;
 const IMAGE_MODERATIONS = ["auto", "low"] as const;
 const IMAGE_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
 const IMAGE_INPUT_FIDELITIES = ["low", "high"] as const;
@@ -134,7 +152,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
+    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: false,
@@ -159,7 +177,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
+    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
     billingMode: "quality_size_image",
     supportsTransparentBackground: true,
@@ -225,6 +243,31 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: true,
   },
+  [FLUX_2_PRO_MODEL]: {
+    alias: "flux-2-pro",
+    promptless: false,
+    endpointId: FLUX_2_PRO_MODEL,
+    imageToImageEndpointId: `${FLUX_2_PRO_MODEL}/edit`,
+    sourceImageInput: "image_urls",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
+    pricingCategories: FLUX_2_PRO_PRICING_CATEGORIES,
+    billingMode: "flux_2_processed_megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
     promptless: false,
@@ -259,7 +302,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
-    outputFormats: IMAGE_OUTPUT_FORMATS,
+    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
     billingMode: "pixel_tier_image",
     supportsTransparentBackground: false,
@@ -269,6 +312,56 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsBackground: false,
     usesOpenAiByok: false,
     supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [IDEOGRAM_4_MODEL]: {
+    alias: "ideogram-4",
+    promptless: false,
+    endpointId: IDEOGRAM_4_MODEL,
+    imageToImageEndpointId: `${IDEOGRAM_4_MODEL}/image-to-image`,
+    sourceImageInput: "image_url",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
+    pricingCategories: IDEOGRAM_4_PRICING_CATEGORIES,
+    billingMode: "ideogram_rendering_speed_megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: true,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [RECRAFT_V4_1_VECTOR_MODEL]: {
+    alias: "recraft-v4.1-vector",
+    promptless: false,
+    endpointId: RECRAFT_V4_1_VECTOR_MODEL,
+    imageToImageEndpointId: undefined,
+    sourceImageInput: "image_url",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: ["svg"],
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
     supportsMaskImage: false,
@@ -359,7 +452,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: IMAGE_OUTPUT_FORMATS,
+    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -384,7 +477,7 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
-    outputFormats: IMAGE_OUTPUT_FORMATS,
+    outputFormats: RASTER_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
     billingMode: "image",
     supportsTransparentBackground: false,
@@ -861,6 +954,14 @@ function validateImageSize(
     );
   }
   if (
+    model === FLUX_2_PRO_MODEL &&
+    (longEdge > FLUX_2_PRO_MAX_EDGE || pixels > FLUX_2_PRO_MAX_PIXELS)
+  ) {
+    return badRequest(
+      `Unsupported image size for ${modelConfig.alias}: ${size}; max edge is ${FLUX_2_PRO_MAX_EDGE}px and total pixels must be at most ${FLUX_2_PRO_MAX_PIXELS}`,
+    );
+  }
+  if (
     width % IMAGE_IO_EDGE_MULTIPLE !== 0 ||
     height % IMAGE_IO_EDGE_MULTIPLE !== 0
   ) {
@@ -981,7 +1082,11 @@ function parseImageOutputOptions(
   modelConfig: ImageModelConfig,
   background: ImageBackground,
 ): ImageOutputOptions | ErrorResponse {
-  const outputFormat = readString(body, "outputFormat", "png");
+  const outputFormat = readString(
+    body,
+    "outputFormat",
+    modelConfig.outputFormats[0],
+  );
   if (!includesString(IMAGE_OUTPUT_FORMATS, outputFormat)) {
     return badRequest(`Unsupported image output format: ${outputFormat}`);
   }
@@ -1059,6 +1164,9 @@ function parseSafetyTolerance(
   if (!includesString(IMAGE_SAFETY_TOLERANCES, safetyTolerance)) {
     return badRequest(`Unsupported safety tolerance: ${safetyTolerance}`);
   }
+  if (modelConfig.alias === "flux-2-pro" && safetyTolerance === "6") {
+    return badRequest("flux-2-pro supports safetyTolerance from 1 to 5");
+  }
   if (safetyTolerance !== "4" && !modelConfig.supportsSafetyTolerance) {
     return badRequest(
       `safetyTolerance is not supported for ${modelConfig.alias}`,
@@ -1129,15 +1237,20 @@ function parseSourceImageUrls(
     }
     return sourceImageUrls;
   }
+  if (modelConfig.imageToImageEndpointId === undefined) {
+    return badRequest(`${modelConfig.alias} does not support source images`);
+  }
   const maxSourceImageUrls =
     modelConfig.alias === "nano-banana-2" ||
     modelConfig.alias === "nano-banana-2-lite"
       ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
-      : modelConfig.alias === "seedream5-lite"
-        ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
-        : modelConfig.alias === "qwen-image-3"
-          ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
-          : MAX_SOURCE_IMAGE_URLS;
+      : modelConfig.alias === "flux-2-pro"
+        ? FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS
+        : modelConfig.alias === "seedream5-lite"
+          ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
+          : modelConfig.alias === "qwen-image-3"
+            ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
+            : MAX_SOURCE_IMAGE_URLS;
   if (sourceImageUrls.length > maxSourceImageUrls) {
     return badRequest(
       `imageUrls supports at most ${maxSourceImageUrls} images`,
@@ -1424,6 +1537,9 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function contentTypeForFormat(format: ImageOutputFormat): string {
+  if (format === "svg") {
+    return "image/svg+xml";
+  }
   if (format === "webp") {
     return "image/webp";
   }
@@ -1438,14 +1554,34 @@ function normalizeImageContentType(value: string | null | undefined) {
   if (
     contentType === "image/png" ||
     contentType === "image/webp" ||
-    contentType === "image/jpeg"
+    contentType === "image/jpeg" ||
+    contentType === "image/svg+xml"
   ) {
     return contentType;
   }
   return null;
 }
 
+const SVG_ROOT_PATTERN =
+  /^\uFEFF?\s*(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/iu;
+const UNSAFE_SVG_ELEMENT_PATTERN =
+  /<\s*(?:script|foreignObject|iframe|object|embed|audio|video|image|link|meta|base)\b/iu;
+const UNSAFE_SVG_REFERENCE_PATTERN =
+  /\s+on[a-z]+\s*=|(?:href|xlink:href)\s*=\s*["'](?!\s*#)|@import|javascript:|data:text\/html|url\(\s*(?!["']?\s*#)/iu;
+
+function isSafeGeneratedSvg(imageBytes: Buffer): boolean {
+  const svg = imageBytes.toString("utf8");
+  return (
+    SVG_ROOT_PATTERN.test(svg) &&
+    !UNSAFE_SVG_ELEMENT_PATTERN.test(svg) &&
+    !UNSAFE_SVG_REFERENCE_PATTERN.test(svg)
+  );
+}
+
 function formatForContentType(contentType: string): ImageOutputFormat {
+  if (contentType === "image/svg+xml") {
+    return "svg";
+  }
   if (contentType === "image/webp") {
     return "webp";
   }
@@ -1534,6 +1670,12 @@ function nearestFalAspectRatio(width: number, height: number): string {
 function falImageSize(options: ImageOptions) {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (options.size === "auto") {
+    if (
+      options.sourceImageUrls.length > 0 &&
+      (options.model === FLUX_2_PRO_MODEL || options.model === IDEOGRAM_4_MODEL)
+    ) {
+      return "auto";
+    }
     if (modelConfig.sizeMode === "standard") {
       return "1024x1024";
     }
@@ -1575,6 +1717,54 @@ function falSourceImageInput(
     : { image_urls: sourceImageUrls };
 }
 
+function ideogramRenderingSpeed(
+  quality: ImageQuality,
+): "TURBO" | "BALANCED" | "QUALITY" {
+  if (quality === "low") {
+    return "TURBO";
+  }
+  if (quality === "high") {
+    return "QUALITY";
+  }
+  return "BALANCED";
+}
+
+function falImageCountInput(options: ImageOptions): Record<string, unknown> {
+  const providerSelectsCount =
+    options.model === FLUX_2_PRO_MODEL ||
+    options.model === RECRAFT_V4_1_VECTOR_MODEL ||
+    (options.model === IDEOGRAM_4_MODEL && options.sourceImageUrls.length > 0);
+  return providerSelectsCount ? {} : { num_images: 1 };
+}
+
+function falOutputFormatInput(
+  options: ImageOptions,
+  modelConfig: ImageModelConfig,
+): Record<string, unknown> {
+  const providerSelectsFormat =
+    modelConfig.alias === "seedream4" ||
+    options.model === RECRAFT_V4_1_VECTOR_MODEL;
+  return !providerSelectsFormat &&
+    hasString(modelConfig.outputFormats, options.outputFormat)
+    ? { output_format: options.outputFormat }
+    : {};
+}
+
+function falQualityInput(
+  options: ImageOptions,
+  modelConfig: ImageModelConfig,
+): Record<string, unknown> {
+  if (options.model === IDEOGRAM_4_MODEL) {
+    return {
+      rendering_speed: ideogramRenderingSpeed(options.quality),
+      // Prompt compilation already happens in Okou. Disabling Ideogram's
+      // expansion avoids changing the prompt and its separate $0.03 fee.
+      expansion_model: "None",
+    };
+  }
+  return modelConfig.supportsQuality ? { quality: options.quality } : {};
+}
+
 function falImageInput(options: ImageOptions): Record<string, unknown> {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (modelConfig.promptless) {
@@ -1585,13 +1775,10 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
     ...(modelConfig.sizeParameter === "aspect_ratio"
       ? { aspect_ratio: falAspectRatio(options) }
       : { image_size: falImageSize(options) }),
-    num_images: 1,
-    ...(hasString(modelConfig.outputFormats, options.outputFormat) &&
-    modelConfig.alias !== "seedream4"
-      ? { output_format: options.outputFormat }
-      : {}),
+    ...falImageCountInput(options),
+    ...falOutputFormatInput(options, modelConfig),
     ...(options.model === NANO_BANANA_2_MODEL ? { resolution: "1K" } : {}),
-    ...(modelConfig.supportsQuality ? { quality: options.quality } : {}),
+    ...falQualityInput(options, modelConfig),
     ...(modelConfig.supportsBackground
       ? { background: options.background }
       : {}),
@@ -1625,9 +1812,13 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
 
 function falImageEndpointId(options: ImageOptions): string {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
-  return options.sourceImageUrls.length > 0
-    ? modelConfig.imageToImageEndpointId
-    : modelConfig.endpointId;
+  if (options.sourceImageUrls.length === 0) {
+    return modelConfig.endpointId;
+  }
+  if (modelConfig.imageToImageEndpointId === undefined) {
+    throw new Error(`${modelConfig.alias} has no image-to-image endpoint`);
+  }
+  return modelConfig.imageToImageEndpointId;
 }
 
 async function readImageProviderErrorBody(
@@ -1702,7 +1893,7 @@ function parseBytePlusImageFile(value: unknown): BytePlusImageFile | null {
   const parsedSize = size ? parseSize(size) : null;
   const outputFormat =
     typeof value.output_format === "string" &&
-    includesString(IMAGE_OUTPUT_FORMATS, value.output_format)
+    includesString(BYTEPLUS_IMAGE_OUTPUT_FORMATS, value.output_format)
       ? value.output_format
       : undefined;
   return {
@@ -1824,6 +2015,21 @@ function megapixelsForImage(
   return Math.max(1, Math.ceil((parsed.width * parsed.height) / 1_000_000));
 }
 
+function providerMegapixelsForImage(
+  image: FalImageFile,
+  options: ImageOptions,
+): number {
+  const pixels =
+    image.width && image.height
+      ? image.width * image.height
+      : (() => {
+          const parsed = parseSize(options.size);
+          return parsed ? parsed.width * parsed.height : 1024 * 1024;
+        })();
+  // fal's pricing examples treat 1024x1024 as one MP and 2048x2048 as four.
+  return Math.max(1, Math.ceil(pixels / (1024 * 1024)));
+}
+
 /**
  * fal returns Qwen Image 3 files without dimensions, so the tier falls back to
  * the requested size. An unparsed size means the request carried `auto` and
@@ -1847,11 +2053,47 @@ function falPixelTierImageCategory(
     : "output_image.1k";
 }
 
+function ideogramMegapixelCategory(
+  options: ImageOptions,
+): ImagePricingCategory {
+  return `output_megapixel.${ideogramRenderingSpeed(options.quality).toLowerCase()}` as ImagePricingCategory;
+}
+
+function flux2ProcessedMegapixels(
+  image: FalImageFile,
+  options: ImageOptions,
+): number {
+  const outputMegapixels = providerMegapixelsForImage(image, options);
+  // fal caps the edit endpoint at nine references and nine total input MP but
+  // does not return normalized input dimensions. Each accepted reference is
+  // therefore billed as one processed input MP, matching the common 1 MP
+  // reference path without fetching arbitrary user URLs from the API server.
+  return outputMegapixels + options.sourceImageUrls.length;
+}
+
 function falBillingEntries(
   image: FalImageFile,
   options: ImageOptions,
 ): readonly ImageBillingEntry[] {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode === "flux_2_processed_megapixel") {
+    const processedMegapixels = flux2ProcessedMegapixels(image, options);
+    return [
+      { category: "processed_megapixel.first", quantity: 1 },
+      {
+        category: "processed_megapixel.additional",
+        quantity: Math.max(0, processedMegapixels - 1),
+      },
+    ];
+  }
+  if (modelConfig.billingMode === "ideogram_rendering_speed_megapixel") {
+    return [
+      {
+        category: ideogramMegapixelCategory(options),
+        quantity: providerMegapixelsForImage(image, options),
+      },
+    ];
+  }
   if (modelConfig.billingMode === "pixel_tier_image") {
     return [
       { category: falPixelTierImageCategory(image, options), quantity: 1 },
@@ -1966,12 +2208,21 @@ export async function downloadFalImage(
     normalizeImageContentType(result.image.contentType) ??
     normalizeImageContentType(response.headers.get("content-type")) ??
     contentTypeForFormat(options.outputFormat);
+  if (contentType === "image/svg+xml" && !isSafeGeneratedSvg(imageBytes)) {
+    return badGateway("Model returned an unsafe SVG", "UNSAFE_SVG_RETURNED");
+  }
   const outputFormat = formatForContentType(contentType);
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (!hasString(modelConfig.outputFormats, outputFormat)) {
+    return badGateway(
+      "Model returned an unsupported image format",
+      "UNSUPPORTED_IMAGE_FORMAT_RETURNED",
+    );
+  }
   const imageSize =
     result.image.width && result.image.height
       ? `${result.image.width}x${result.image.height}`
       : options.size;
-  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
 
   return {
     model: options.model,
@@ -2045,6 +2296,10 @@ async function downloadBytePlusImage(
     inputFidelity: options.inputFidelity,
     imagePromptStrength: options.imagePromptStrength,
   };
+}
+
+function imageEmbedUrl(url: string, outputFormat: ImageOutputFormat): string {
+  return outputFormat === "svg" ? url : r2ImageTransformUrl(url, {});
 }
 
 export const recordGeneratedImage$ = command(
@@ -2156,7 +2411,7 @@ export const recordGeneratedImage$ = command(
       // Models such as seedream4 only emit PNG. Serving the stored object
       // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
       // pages embedding this image download a fraction of the PNG bytes.
-      embedUrl: r2ImageTransformUrl(url, {}),
+      embedUrl: imageEmbedUrl(url, params.generation.outputFormat),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,

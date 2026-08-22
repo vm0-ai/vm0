@@ -585,6 +585,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/flux-pro/v1.1-ultra", [
     ["output_image", usd(0.06), 1],
   ]),
+  // FLUX.2 Pro charges $0.03 for the first processed megapixel and $0.015
+  // for each additional input/output megapixel.
+  ...usageGroup("image", "fal-ai/flux-2-pro", [
+    ["processed_megapixel.first", usd(0.03), 1],
+    ["processed_megapixel.additional", usd(0.015), 1],
+  ]),
   ...usageGroup("image", "fal-ai/qwen-image", [
     ["output_megapixel", usd(0.02), 1],
   ]),
@@ -593,6 +599,16 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "alibaba/qwen-image-3/text-to-image", [
     ["output_image.1k", usd(0.04), 1],
     ["output_image.2k", usd(0.075), 1],
+  ]),
+  // Ideogram 4 bills output megapixels by rendering speed. The fractional
+  // Turbo price is stored as 75 credits per 10 MP to preserve $0.0075/MP.
+  ...usageGroup("image", "ideogram/v4", [
+    ["output_megapixel.turbo", 75, 10],
+    ["output_megapixel.balanced", usd(0.015), 1],
+    ["output_megapixel.quality", usd(0.025), 1],
+  ]),
+  ...usageGroup("image", "fal-ai/recraft/v4.1/text-to-vector", [
+    ["output_image", usd(0.08), 1],
   ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],

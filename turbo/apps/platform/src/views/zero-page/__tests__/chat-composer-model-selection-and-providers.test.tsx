@@ -4058,15 +4058,21 @@ describe("chat composer image model", () => {
       expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
     const listbox = screen.getByRole("listbox");
-    // One row per family: the secondary variants and Qwen stay generatable by
-    // alias but are no longer offered as a choice here.
+    // One row per family: superseded and secondary variants stay generatable
+    // by alias but are no longer offered as a choice here.
+    expect(within(listbox).queryByText("Flux Pro v1.1")).toBeNull();
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
     expect(within(listbox).queryByText("Qwen Image")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
-    const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
+    expect(within(listbox).getByText("FLUX.2 Pro")).toBeInTheDocument();
+    expect(within(listbox).getByText("Ideogram 4")).toBeInTheDocument();
+    expect(
+      within(listbox).getByText("Recraft V4.1 Vector"),
+    ).toBeInTheDocument();
+    const fluxIcon = imageModelBrandIcon("FLUX.2 Pro").outerHTML;
     const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
     expect(nanoBananaIcon).toContain("#f94543");
     expect(
@@ -4151,17 +4157,17 @@ describe("chat composer image model", () => {
       expect(selectedImageModelLabel()).toBe("Seedream 5 Pro");
     });
 
-    await user.click(await findMediaPanelButton("Flux Pro v1.1"));
+    await user.click(await findMediaPanelButton("FLUX.2 Pro"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         { threadId: THREAD_ID, model: "dola-seedream-5-0-pro-260628" },
-        { threadId: THREAD_ID, model: "fal-ai/flux-pro/v1.1" },
+        { threadId: THREAD_ID, model: "fal-ai/flux-2-pro" },
       ]);
     });
     await openImageModels(user);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Flux Pro v1.1");
+      expect(selectedImageModelLabel()).toBe("FLUX.2 Pro");
     });
     expect(mediaPanelButton("Seedream 5 Pro")).toHaveAttribute(
       "aria-pressed",

@@ -11,6 +11,7 @@ import {
 } from "@okouai/core/resource-registry";
 import {
   DEFAULT_IMAGE_MODEL,
+  IMAGE_MODEL_ALIASES,
   IMAGE_MODEL_CONFIGS,
 } from "@okouai/core/image-model-catalog";
 import { formatRegistryListing } from "./resource-listing";
@@ -172,6 +173,26 @@ function resolveImageRequestSize(
     : options.size;
 }
 
+function resolveImageRequestFormat(
+  command: Command,
+  options: ImageOptions,
+): string {
+  if (command.getOptionValueSource("format") !== "default") {
+    return options.format;
+  }
+  const selectedModel =
+    command.getOptionValueSource("model") === "default"
+      ? (runDefaultImageModelFromEnvironment() ?? options.model)
+      : options.model;
+  const recraftModel = "fal-ai/recraft/v4.1/text-to-vector";
+  const selectsRecraft =
+    selectedModel === recraftModel ||
+    Object.entries(IMAGE_MODEL_ALIASES).some(([alias, model]) => {
+      return selectedModel === alias && model === recraftModel;
+    });
+  return selectsRecraft ? "svg" : options.format;
+}
+
 function imageModelPreferenceDetail(command: Command, model: string): string {
   const runDefaultModel = runDefaultImageModelFromEnvironment();
   if (runDefaultModel === undefined) {
@@ -260,7 +281,7 @@ export function createImageGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, seedream5-pro, seedream5-lite, nano-banana-2, or nano-banana-2-lite",
+      "Model: gpt-image-1 (default), gpt-image-2, flux-2-pro, ideogram-4, recraft-v4.1-vector, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, seedream5-pro, seedream5-lite, nano-banana-2, or nano-banana-2-lite",
       IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
@@ -278,7 +299,11 @@ export function createImageGenerateCommand(
       "Background: auto, opaque, or transparent when supported",
       "auto",
     )
-    .option("--format <format>", "Output format: png, webp, or jpeg", "png")
+    .option(
+      "--format <format>",
+      "Output format: png, webp, jpeg, or svg",
+      "png",
+    )
     .option("--compression <0-100>", "Output compression for jpeg/webp only")
     .option(
       "--moderation <moderation>",
@@ -338,13 +363,17 @@ Notes:
   - Uses fal.ai and BytePlus for built-in image model execution
 
 Models:
-  - fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1,
-    flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, nano-banana-2,
-    nano-banana-2-lite.
+  - fal.ai: gpt-image-1 (default), gpt-image-2, flux-2-pro, ideogram-4,
+    recraft-v4.1-vector, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image,
+    qwen-image-3, seedream4, nano-banana-2, nano-banana-2-lite.
     GPT Image models bill by fal output image quality and size.
     Other fal generations bill by output image or rounded-up output
     megapixel, depending on the model. qwen-image-3 bills per output image
-    in two resolution tiers, split at 2,250,000 output pixels.
+    in two resolution tiers, split at 2,250,000 output pixels. FLUX.2 Pro
+    bills the first processed megapixel separately from additional input and
+    output megapixels. Ideogram 4 maps low/medium/high quality to
+    Turbo/Balanced/Quality output-megapixel pricing. Recraft V4.1 Vector bills
+    per generated SVG.
   - BytePlus: seedream5-pro and seedream5-lite.
     BytePlus generations bill the documented provider cost plus 25%, rounded
     up to whole credits after the request's output and reference costs are
@@ -364,19 +393,22 @@ Options:
     1536x1024, or 1024x1536.
     seedream5-pro accepts 1K, 1.5K, 2K, auto, or supported custom sizes;
     seedream5-lite accepts 2K, 3K, 4K, auto, or supported custom sizes.
-    qwen-image-3 accepts at most 4,194,304 total pixels.
+    qwen-image-3 and flux-2-pro accept at most 4,194,304 total pixels.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.
   - Format: png, jpeg, or webp for GPT Image, Nano Banana 2, and qwen-image-3
-    models; png or jpeg for the other fal and BytePlus models.
+    models; png or jpeg for other raster fal and BytePlus models. Recraft
+    V4.1 Vector returns svg; it becomes the default format when that model is
+    selected unless --format is explicit.
   - fal-only controls: --seed and --safety-tolerance for supported fal models;
     --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
-    not supported on the fal-backed image path.
+    not supported on the fal-backed image path. Ideogram prompt expansion is
+    disabled because Okou supplies the final prompt and expansion costs extra.
   - Image-to-image: pass --image-url to use the model's edit/reference path.
     Nano Banana 2 models and Seedream 5 Lite accept up to 14 source images;
-    Seedream 5 Pro accepts up to 10; qwen-image-3 accepts up to 3. Flux Redux
-    accepts
+    Seedream 5 Pro accepts up to 10; flux-2-pro accepts up to 9;
+    qwen-image-3 accepts up to 3. Recraft Vector is generate-only. Flux Redux accepts
     --image-prompt-strength to override the provider default; GPT edit models
     accept --input-fidelity and supported models accept --mask-image-url.
 
@@ -425,7 +457,7 @@ ${formatRegistryListing(styles, "image styles")}`;
               `Requested size: ${options.size}`,
               `Requested quality: ${options.quality}`,
               `Requested background: ${options.background}`,
-              `Requested format: ${options.format}`,
+              `Requested format: ${resolveImageRequestFormat(command, options)}`,
               `Source image URLs: ${
                 options.imageUrl.length > 0
                   ? options.imageUrl.join(", ")
@@ -450,7 +482,7 @@ ${formatRegistryListing(styles, "image styles")}`;
           size: resolveImageRequestSize(command, options),
           quality: options.quality,
           background: options.background,
-          outputFormat: options.format,
+          outputFormat: resolveImageRequestFormat(command, options),
           outputCompression: compression,
           moderation: options.moderation,
           seed: options.seed,
