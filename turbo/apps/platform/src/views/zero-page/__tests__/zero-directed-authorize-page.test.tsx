@@ -120,6 +120,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
     zeroConnectorOauthStartContract.start,
     ({ body, params, respond }) => {
       expect(body).toStrictEqual({
+        account: { intent: "single-account" },
         authMethod: "oauth",
         agentId: AGENT_ID,
         authorizeAgent: true,
@@ -148,6 +149,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
     zeroConnectorOpenIdStartContract.start,
     ({ body, params, respond }) => {
       expect(body).toStrictEqual({
+        account: { intent: "single-account" },
         authMethod: "openid",
         agentId: AGENT_ID,
         authorizeAgent: true,
@@ -526,6 +528,7 @@ describe("directed connector authorize page", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,

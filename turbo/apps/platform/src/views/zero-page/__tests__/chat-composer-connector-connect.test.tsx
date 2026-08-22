@@ -476,6 +476,7 @@ describe("chat composer connector connection", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
         });
         connected = true;
@@ -643,6 +644,7 @@ describe("chat composer connector connection", () => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,

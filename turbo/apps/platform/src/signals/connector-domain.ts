@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
@@ -19,3 +20,7 @@ export type PlatformWorkflowConnectorReadinessEntry =
   WorkflowConnectorReadinessEntry;
 export type PlatformWorkflowConnectorReadinessResponse =
   WorkflowConnectorReadinessResponse;
+
+export const singleAccountConnectorMutation = {
+  intent: "single-account",
+} satisfies ConnectorAccountMutationIntent;

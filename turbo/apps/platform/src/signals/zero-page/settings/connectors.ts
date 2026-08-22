@@ -58,9 +58,10 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
-import type {
-  PlatformConnector,
-  PlatformConnectorCatalogStatusItem,
+import {
+  singleAccountConnectorMutation,
+  type PlatformConnector,
+  type PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
@@ -905,6 +906,7 @@ export const submitManualGrant$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
+              account: singleAccountConnectorMutation,
               authMethod,
               authorizeAgent: true,
               ...(options.agentId ? { agentId: options.agentId } : {}),
@@ -978,6 +980,7 @@ export const connectConnectorNoAuth$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
+              account: singleAccountConnectorMutation,
               authMethod,
               authorizeAgent: true,
               ...(options.agentId ? { agentId: options.agentId } : {}),
@@ -1166,6 +1169,7 @@ function connectorOAuthDeviceAuthStartBody(
 ) {
   const optionEntries = Object.entries(args.startOptions ?? {});
   return {
+    account: singleAccountConnectorMutation,
     authMethod: args.authMethod,
     authorizeAgent: true as const,
     ...(args.options.agentId ? { agentId: args.options.agentId } : {}),
@@ -1787,6 +1791,7 @@ export const connectConnectorExternalCode$ = command(
             client.create({
               params: { connectorSlug },
               body: {
+                account: singleAccountConnectorMutation,
                 authMethod,
                 authorizeAgent: true,
                 ...(args.agentId ? { agentId: args.agentId } : {}),
@@ -2163,6 +2168,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 }).start({
                   params: { connectorSlug: args.connectorSlug },
                   body: {
+                    account: singleAccountConnectorMutation,
                     authMethod: args.method.id,
                     authorizeAgent: true,
                     ...(args.agentId ? { agentId: args.agentId } : {}),
@@ -2177,6 +2183,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 }).start({
                   params: { connectorSlug: args.connectorSlug },
                   body: {
+                    account: singleAccountConnectorMutation,
                     authMethod: args.method.id,
                     authorizeAgent: true,
                     ...(isConnectorAppOauthCallbackEnabled(args.connectorSlug)

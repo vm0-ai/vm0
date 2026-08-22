@@ -734,6 +734,7 @@ describe("directed connector connect page", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
