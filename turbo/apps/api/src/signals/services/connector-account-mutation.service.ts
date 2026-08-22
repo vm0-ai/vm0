@@ -17,7 +17,7 @@ const storedConnectorAccountMutationDecoder = zodDriverValueDecoder(
 );
 
 export type ConnectorAccountMutation =
-  | { readonly intent: "legacy-singleton" }
+  | { readonly intent: "target-only-client-singleton" }
   | ConnectorAccountMutationIntent;
 
 export function connectorAccountSiblingWritesEnabled(
@@ -29,7 +29,7 @@ export function connectorAccountSiblingWritesEnabled(
 export function normalizeConnectorAccountMutation(
   intent: ConnectorAccountMutationIntent | undefined,
 ): ConnectorAccountMutation {
-  return intent ?? { intent: "legacy-singleton" };
+  return intent ?? { intent: "target-only-client-singleton" };
 }
 
 export function parseStoredConnectorAccountMutationIntent(
@@ -37,15 +37,16 @@ export function parseStoredConnectorAccountMutationIntent(
 ): ConnectorAccountMutationIntent | undefined {
   const mutation: ConnectorAccountMutation =
     value === null
-      ? { intent: "legacy-singleton" }
+      ? { intent: "target-only-client-singleton" }
       : connectorAccountMutationIntentSchema.parse(value);
-  return mutation.intent === "legacy-singleton" ? undefined : mutation;
+  return mutation.intent === "target-only-client-singleton"
+    ? undefined
+    : mutation;
 }
 
 export function storedConnectorAccountMutationSelection(relation: SQLWrapper) {
-  // Keep legacy flows readable during the DB/API rollout, whose observed
-  // exposure can reach 102 minutes. Remove this JSON projection in #27695
-  // after migration 0951's rollback window closes, then select the column.
+  // Keep old authorization state readable until #28589 proves its browser,
+  // state-lifetime, and API rollback gates have drained.
   return sql`
     to_jsonb(${relation}) -> 'account_mutation'
   `.mapWith(storedConnectorAccountMutationDecoder);
@@ -54,8 +55,8 @@ export function storedConnectorAccountMutationSelection(relation: SQLWrapper) {
 export function storedConnectorAccountMutationWrite(
   intent: ConnectorAccountMutationIntent | null | undefined,
 ): { readonly accountMutation?: StoredConnectorAccountMutation } {
-  // Omitting the column keeps old-client inserts legal before migration 0951.
-  // Explicit account callers are released only after that migration is live.
+  // Omitted client intent remains a supported compatibility boundary until
+  // #28589 contracts each applicable route and persisted state authority.
   return intent === null || intent === undefined
     ? {}
     : { accountMutation: intent };
