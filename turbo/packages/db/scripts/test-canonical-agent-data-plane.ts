@@ -661,6 +661,11 @@ async function assertChatThreadEventBackfillGuard(args: {
   );
   await assertChatThreadEventUpdateRejected(
     args.runner,
+    `UPDATE "chat_thread_events" SET "agent_id" = "agent_compose_id", "title" = 'forbidden' WHERE "id" = $1`,
+    [fixedChatThreadEventId],
+  );
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
     `UPDATE "chat_thread_events" SET "agent_id" = "agent_compose_id" WHERE "id" = $1`,
     [composeOnlyChatThreadEventId],
   );
