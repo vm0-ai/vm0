@@ -1,8 +1,10 @@
 """Integration tests for trusted model-provider failure reduction."""
 
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +16,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_provider_failure
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
 from tests.model_provider_websocket_helpers import (
     capture_deferred_websocket_trims,
@@ -67,6 +70,18 @@ def model_provider_failure_api(usage_webhook_server, mitm_ctx, monkeypatch):
 def _reported_payloads(model_provider_failure_api) -> list[dict[str, object]]:
     model_provider_failure.drain_reports_for_tests()
     return [request.json_body() for request in model_provider_failure_api.requests]
+
+
+def _suppressed_failure_entries(flow: http.HTTPFlow) -> list[dict[str, object]]:
+    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    if not jsonl_exists_after_flush(proxy_log):
+        return []
+    return [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("type") == "model_provider_failure"
+        and entry.get("disposition") == "suppressed"
+    ]
 
 
 def _finish_http_flow(flow, *, body: bytes | None, mitm_ctx) -> None:
@@ -741,7 +756,320 @@ def test_websocket_top_level_error_is_reported(
     ]
 
 
-def test_websocket_prewarm_is_not_reported(
+@pytest.mark.parametrize(
+    ("client_body", "active"),
+    [
+        pytest.param(b'{"type":"response.create"}', False, id="normal-pending"),
+        pytest.param(b'{"type":"response.create"}', True, id="normal-active"),
+        pytest.param(
+            b'{"type":"response.create","generate":false}',
+            False,
+            id="prewarm-pending",
+        ),
+        pytest.param(
+            b'{"type":"response.create","generate":false}',
+            True,
+            id="prewarm-active",
+        ),
+    ],
+)
+def test_websocket_shutdown_does_not_report_unfinished_request(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+    client_body: bytes,
+    active: bool,
+    model_provider_failure_api,
+):
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    capture_deferred_websocket_trims(monkeypatch)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        feed_websocket_client_message(flow, client_body)
+        if active:
+            feed_websocket_server_message(
+                flow,
+                b'{"type":"response.created","response":{"id":"unfinished"}}',
+            )
+        mitm_addon.websocket_end(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+    assert _suppressed_failure_entries(flow) == []
+
+
+@pytest.mark.parametrize(
+    ("events", "reason"),
+    [
+        pytest.param(
+            (
+                (
+                    "client",
+                    b'{"type":"future.request","input":"failure-sensitive-marker"}',
+                ),
+            ),
+            "unknown_client_event",
+            id="unknown-client-event",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
+            ),
+            "overlapping_websocket_requests",
+            id="overlapping-pending-requests",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"active"}}',
+                ),
+                ("client", b'{"type":"response.create"}'),
+            ),
+            "overlapping_websocket_requests",
+            id="overlapping-active-request",
+        ),
+        pytest.param(
+            (("server", b"not-json-failure-sensitive-marker"),),
+            "invalid_server_event",
+            id="invalid-server-json",
+        ),
+        pytest.param(
+            (
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"orphan"}}',
+                ),
+            ),
+            "invalid_websocket_lifecycle",
+            id="created-without-pending-request",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                ("server", b'{"type":"response.created","response":{}}'),
+            ),
+            "invalid_websocket_lifecycle",
+            id="created-without-response-id",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"first"}}',
+                ),
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"duplicate"}}',
+                ),
+            ),
+            "invalid_websocket_lifecycle",
+            id="duplicate-created-event",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
+                    b'{"type":"response.failed","response":{"id":"before-created"}}',
+                ),
+            ),
+            "invalid_websocket_lifecycle",
+            id="terminal-before-created",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"expected"}}',
+                ),
+                (
+                    "server",
+                    b'{"type":"response.failed","response":{"id":"mismatched"}}',
+                ),
+            ),
+            "invalid_websocket_lifecycle",
+            id="mismatched-terminal-response-id",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
+                    b'{"type":"response.created","response":{"id":"expected"}}',
+                ),
+                ("server", b'{"type":"response.failed","response":{}}'),
+            ),
+            "invalid_websocket_lifecycle",
+            id="terminal-without-response-id",
+        ),
+    ],
+)
+def test_websocket_ambiguous_lifecycle_is_suppressed_once(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+    events: tuple[tuple[Literal["client", "server"], bytes], ...],
+    reason: str,
+    model_provider_failure_api,
+):
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    capture_deferred_websocket_trims(monkeypatch)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        for sender, body in events:
+            if sender == "client":
+                feed_websocket_client_message(flow, body)
+            else:
+                feed_websocket_server_message(flow, body)
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.created","response":{"id":"later"}}',
+        )
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.failed","response":{"id":"later",'
+            b'"error":{"code":"service_unavailable"}}}',
+        )
+        mitm_addon.websocket_end(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+    [entry] = _suppressed_failure_entries(flow)
+    assert set(entry) == {
+        "timestamp",
+        "level",
+        "message",
+        "type",
+        "disposition",
+        "reason",
+        "run_id",
+        "flow_id",
+        "firewall_name",
+    }
+    assert entry["level"] == "warn"
+    assert entry["message"] == "Model provider failure evidence suppressed"
+    assert entry["type"] == "model_provider_failure"
+    assert entry["disposition"] == "suppressed"
+    assert entry["reason"] == reason
+    assert entry["run_id"] == "run-abc-123"
+    assert entry["flow_id"] == flow.id
+    assert entry["firewall_name"] == "model-provider:openai-api-key"
+    assert "failure-sensitive-marker" not in json.dumps(entry)
+
+
+@pytest.mark.parametrize(
+    "unmatched_event",
+    [
+        pytest.param(
+            b'{"type":"response.failed","response":{"id":"orphan",'
+            b'"error":{"code":"service_unavailable"}}}',
+            id="terminal",
+        ),
+        pytest.param(
+            b'{"type":"error","code":"server_error"}',
+            id="error",
+        ),
+    ],
+)
+def test_websocket_unmatched_event_does_not_poison_later_request(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+    unmatched_event: bytes,
+    model_provider_failure_api,
+):
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    capture_deferred_websocket_trims(monkeypatch)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        feed_websocket_server_message(flow, unmatched_event)
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.created","response":{"id":"matched"}}',
+        )
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.failed","response":{"id":"matched",'
+            b'"error":{"code":"service_unavailable"}}}',
+        )
+        mitm_addon.websocket_end(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+    assert _suppressed_failure_entries(flow) == []
+
+
+@pytest.mark.parametrize(
+    "initial_client_body",
+    [
+        pytest.param(b'{"type":"response.create"}', id="normal"),
+        pytest.param(
+            b'{"type":"response.create","generate":false}',
+            id="prewarm",
+        ),
+    ],
+)
+def test_websocket_matching_terminal_clears_state_for_later_request(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_client_body: bytes,
+    model_provider_failure_api,
+):
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    capture_deferred_websocket_trims(monkeypatch)
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+        feed_websocket_client_message(flow, initial_client_body)
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.created","response":{"id":"completed"}}',
+        )
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.completed","response":{"id":"completed"}}',
+        )
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.created","response":{"id":"later"}}',
+        )
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.failed","response":{"id":"later",'
+            b'"error":{"code":"service_unavailable"}}}',
+        )
+        mitm_addon.websocket_end(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+    assert _suppressed_failure_entries(flow) == []
+
+
+def test_websocket_error_clears_state_for_later_request(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -759,6 +1087,20 @@ def test_websocket_prewarm_is_not_reported(
             flow,
             b'{"type":"response.create","generate":false}',
         )
+        feed_websocket_server_message(flow, b'{"type":"error","code":"server_error"}')
+        feed_websocket_client_message(flow, b'{"type":"response.create"}')
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.created","response":{"id":"later"}}',
+        )
+        feed_websocket_server_message(
+            flow,
+            b'{"type":"response.failed","response":{"id":"later",'
+            b'"error":{"code":"service_unavailable"}}}',
+        )
         mitm_addon.websocket_end(flow)
 
-    assert _reported_payloads(model_provider_failure_api) == []
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+    assert _suppressed_failure_entries(flow) == []
