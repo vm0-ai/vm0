@@ -2079,9 +2079,7 @@
       "openNamedChat": "채팅 {{title}} 열기",
       "pickEmoji": "이모지 선택",
       "scrollToBottom": "맨 아래로 스크롤",
-      "searchEmoji": "이모지 검색",
-      "steerAcknowledgement_one": "실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다",
-      "steerAcknowledgement_other": "{{count}}개 메시지를 모두 실행 중에 반영했습니다. 이전 작업은 그대로 유지됩니다"
+      "searchEmoji": "이모지 검색"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"

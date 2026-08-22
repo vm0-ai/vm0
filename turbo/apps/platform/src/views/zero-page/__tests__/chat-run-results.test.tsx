@@ -948,7 +948,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000024",
       sequence: ["U1", "A2", "U2"],
       visibleOrder: ["U1", "A2", "U2"],
-      usageAssistant: null,
+      usageAssistant: "A2",
       folds: [],
     },
     {
@@ -957,7 +957,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000025",
       sequence: ["U1", "A2", "A3", "U2"],
       visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
-      usageAssistant: null,
+      usageAssistant: "A3",
       folds: [
         {
           label: "Worked for 20s",
@@ -1037,9 +1037,6 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
-        },
       });
 
       await screen.findByText(visibleOrder[0]!);
@@ -1082,10 +1079,6 @@ describe("chat lifecycle", () => {
       }
 
       const usageButtons = screen.queryAllByLabelText("Credit usage 12");
-      if (usageAssistant === null) {
-        expect(usageButtons).toHaveLength(0);
-        return;
-      }
       expect(usageButtons).toHaveLength(1);
       const usageAssistantGroup = usageButtons[0]!.closest(
         '[data-role="assistant"]',

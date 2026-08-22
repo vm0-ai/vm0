@@ -2080,9 +2080,7 @@
       "openNamedChat": "Chat {{title}} öffnen",
       "pickEmoji": "Ein Emoji auswählen",
       "scrollToBottom": "Nach unten scrollen",
-      "searchEmoji": "Emoji suchen",
-      "steerAcknowledgement_one": "Mitten im Lauf übernommen – bisherige Arbeit bleibt erhalten",
-      "steerAcknowledgement_other": "Alle {{count}} Nachrichten mitten im Lauf übernommen – bisherige Arbeit bleibt erhalten"
+      "searchEmoji": "Emoji suchen"
     },
     "threadSidebar": {
       "resize": "Größe der Seitenleiste ändern"
