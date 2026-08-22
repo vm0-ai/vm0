@@ -84,6 +84,29 @@ async function validateCanonicalColumnOrder(client: Client): Promise<void> {
   ]);
 }
 
+async function validateCanonicalVendorType(client: Client): Promise<void> {
+  const vendorType = await client.query<{ formattedType: string }>(`
+    SELECT pg_catalog.format_type(
+      "attribute"."atttypid",
+      "attribute"."atttypmod"
+    ) AS "formattedType"
+    FROM "pg_catalog"."pg_attribute" AS "attribute"
+    INNER JOIN "pg_catalog"."pg_class" AS "relation"
+      ON "relation"."oid" = "attribute"."attrelid"
+    INNER JOIN "pg_catalog"."pg_namespace" AS "namespace"
+      ON "namespace"."oid" = "relation"."relnamespace"
+    WHERE "namespace"."nspname" = 'public'
+      AND "relation"."relname" = 'built_in_model_keys'
+      AND "relation"."relkind" = 'r'
+      AND "attribute"."attname" = 'vendor'
+      AND "attribute"."attnum" > 0
+      AND NOT "attribute"."attisdropped"
+  `);
+  assert.deepEqual(vendorType.rows, [
+    { formattedType: "character varying(50)" },
+  ]);
+}
+
 async function validateCanonicalRowLock(
   client: Client,
   databaseUrl: string,
@@ -278,9 +301,11 @@ export async function validatePermanentBuiltInModelKeyState(
   await client.connect();
   try {
     await validateCanonicalColumnOrder(client);
+    await validateCanonicalVendorType(client);
     await validateCanonicalStatements(client, databaseUrl);
 
     console.log("   ✅ canonical current-schema column order is enforced");
+    console.log("   ✅ canonical vendor type is character varying(50)");
     console.log(
       "   ✅ canonical statements preserve unrelated rows and support conflict handling, returning, and row locks\n",
     );
