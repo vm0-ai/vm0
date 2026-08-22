@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.476.1](https://github.com/vm0-ai/vm0/compare/api-v1.476.0...api-v1.476.1) (2026-08-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.580.6
+    * @okouai/db bumped to 1.216.1
+
 ## [1.476.0](https://github.com/vm0-ai/vm0/compare/api-v1.475.0...api-v1.476.0) (2026-08-22)
 
 

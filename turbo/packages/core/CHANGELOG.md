@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.580.6](https://github.com/vm0-ai/vm0/compare/core-v8.580.5...core-v8.580.6) (2026-08-22)
+
+
+### Refactoring
+
+* remove chat run continuation presentation ([#28641](https://github.com/vm0-ai/vm0/issues/28641)) ([4b46f97](https://github.com/vm0-ai/vm0/commit/4b46f9713160c1a2679ac87aa0c38ff5c86f5602))
+
 ## [8.580.5](https://github.com/vm0-ai/vm0/compare/core-v8.580.4...core-v8.580.5) (2026-08-22)
 
 
