@@ -83,6 +83,7 @@ describe("okou connector connect command", () => {
     ]);
 
     expect(receivedBody).toStrictEqual({
+      account: { intent: "single-account" },
       authMethod: "api-token",
       values: {
         apiToken: "secret-token",
@@ -121,6 +122,7 @@ describe("okou connector connect command", () => {
     ]);
 
     expect(receivedBody).toStrictEqual({
+      account: { intent: "single-account" },
       authMethod: "api-token",
       values: {
         apiKey: "sk-test",
@@ -163,6 +165,7 @@ describe("okou connector connect command", () => {
 
     expect(receivedType).toBe(connectorSlug);
     expect(receivedBody).toStrictEqual({
+      account: { intent: "single-account" },
       authMethod,
       values: { apiKey: "secret-token" },
     });
@@ -357,6 +360,44 @@ describe("okou connector connect command", () => {
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Connector is not available");
+    expect(errorOutput).not.toContain("secret-token");
+  });
+
+  it("surfaces ambiguous account conflicts without retrying or printing secret values", async () => {
+    let requestCount = 0;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCount += 1;
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Multiple connector accounts require an exact choice",
+                code: "CONFLICT",
+              },
+            },
+            { status: 409 },
+          );
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "zendesk",
+        "--value",
+        "apiToken=secret-token",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCount).toBe(1);
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain(
+      "409: Multiple connector accounts require an exact choice",
+    );
     expect(errorOutput).not.toContain("secret-token");
   });
 });
