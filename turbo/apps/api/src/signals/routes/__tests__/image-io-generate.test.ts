@@ -789,23 +789,59 @@ describe("POST /api/image-io/generate", () => {
     expect(gptCalls).toBe(1);
     expect(qwenCalls).toBe(0);
 
-    const invalidResponse = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "invalid explicit model must not fall back",
-        model: "not-a-real-image-model",
+    const unsupportedModels = [
+      "not-a-real-image-model",
+      "flux2-pro",
+      "ideogram-v4",
+    ] as const;
+    const invalidResponses = await Promise.all(
+      unsupportedModels.map((model) => {
+        return app.request("/api/image-io/generate", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            prompt: "invalid explicit model must not fall back",
+            model,
+          }),
+        });
       }),
-    });
-    expect(invalidResponse.status).toBe(400);
-    await expect(invalidResponse.json()).resolves.toMatchObject({
-      error: {
-        message: expect.stringContaining(
-          "Unsupported image model: not-a-real-image-model",
-        ),
-        code: "BAD_REQUEST",
+    );
+    expect(
+      invalidResponses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([400, 400, 400]);
+    const invalidBodies = await Promise.all(
+      invalidResponses.map((response) => {
+        return response.json();
+      }),
+    );
+    expect(invalidBodies).toMatchObject([
+      {
+        error: {
+          message: expect.stringContaining(
+            "Unsupported image model: not-a-real-image-model",
+          ),
+          code: "BAD_REQUEST",
+        },
       },
-    });
+      {
+        error: {
+          message: expect.stringContaining(
+            "Unsupported image model: flux2-pro",
+          ),
+          code: "BAD_REQUEST",
+        },
+      },
+      {
+        error: {
+          message: expect.stringContaining(
+            "Unsupported image model: ideogram-v4",
+          ),
+          code: "BAD_REQUEST",
+        },
+      },
+    ]);
     expect(gptCalls).toBe(1);
     expect(qwenCalls).toBe(0);
   });
@@ -2109,7 +2145,7 @@ describe("POST /api/image-io/generate", () => {
       headers: authHeaders(),
       body: JSON.stringify({
         prompt: "combine the product and lighting references",
-        model: "flux2-pro",
+        model: "fal-ai/flux-2-pro",
         imageUrls: sourceImageUrls,
         outputFormat: "png",
       }),
@@ -2261,7 +2297,7 @@ describe("POST /api/image-io/generate", () => {
       headers: authHeaders(),
       body: JSON.stringify({
         prompt: "edit two images",
-        model: "ideogram-v4",
+        model: "ideogram/v4",
         imageUrls: [MOCKUP_IMAGE_URL, SECOND_MOCKUP_IMAGE_URL],
       }),
     });
@@ -2276,7 +2312,7 @@ describe("POST /api/image-io/generate", () => {
       headers: authHeaders(),
       body: JSON.stringify({
         prompt: "restyle this poster with warmer typography",
-        model: "ideogram-v4",
+        model: "ideogram/v4",
         imageUrl: MOCKUP_IMAGE_URL,
         quality: "low",
         outputFormat: "png",
