@@ -325,7 +325,8 @@ def test_openrouter_edge_timeout_reports_normalized_failure(
     flow = _make_flow(
         real_flow,
         tmp_path / "proxy.jsonl",
-        firewall_name="model-provider:openrouter",
+        firewall_name="model-provider:openrouter-api-key",
+        request_path="/api/v1/messages",
         response_status=524,
     )
 
@@ -774,27 +775,49 @@ def test_ineligible_http_response_is_not_reported(
     assert _reported_payloads(model_provider_failure_api) == []
 
 
-def test_openrouter_schema_error_is_not_reported(
+@pytest.mark.parametrize(
+    ("firewall_name", "request_path"),
+    [
+        ("model-provider:openrouter-api-key", "/api/v1/messages"),
+        ("model-provider:openrouter-codex", "/api/v1/responses"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("body", "expected_payloads"),
+    [
+        (
+            b'{"error":{"code":400,"message":"Invalid tool definition: '
+            b'function is required","metadata":{"error_type":"invalid_request"}}}',
+            [],
+        ),
+        (
+            b'{"error":{"metadata":{"error_type":"provider_unavailable"}}}',
+            [{"failureKind": "provider_unavailable"}],
+        ),
+    ],
+)
+def test_openrouter_http_500_is_classified_from_body(
     tmp_path,
     real_flow,
     mitm_ctx,
+    firewall_name: str,
+    request_path: str,
+    body: bytes,
+    expected_payloads: list[dict[str, str]],
     model_provider_failure_api,
 ):
-    body = (
-        b'{"error":{"code":400,"message":"Invalid tool definition: '
-        b'function is required","metadata":{"error_type":"invalid_request"}}}'
-    )
     flow = _make_flow(
         real_flow,
         tmp_path / "proxy.jsonl",
-        firewall_name="model-provider:openrouter",
-        response_status=400,
+        firewall_name=firewall_name,
+        request_path=request_path,
+        response_status=500,
         response_body=body,
     )
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert _reported_payloads(model_provider_failure_api) == []
+    assert _reported_payloads(model_provider_failure_api) == expected_payloads
 
 
 def test_overlapping_inference_flows_report_independent_failures(
@@ -830,13 +853,13 @@ def test_overlapping_inference_flows_report_independent_failures(
             "provider_unavailable",
         ),
         (
-            "model-provider:openrouter",
+            "model-provider:openrouter-codex",
             "/api/v1/chat/completions",
             b'data: {"choices":[{"error":{"metadata":{"error_type":"provider_overloaded"}}}]}\n\n',
             "provider_unavailable",
         ),
         (
-            "model-provider:openrouter",
+            "model-provider:openrouter-codex",
             "/api/v1/responses",
             b"event: response.failed\n"
             b'data: {"type":"response.failed","response":{"status":"failed",'
@@ -1054,7 +1077,8 @@ def test_openrouter_stable_failure_survives_response_interruption(
     flow = _make_flow(
         real_flow,
         tmp_path / "proxy.jsonl",
-        firewall_name="model-provider:openrouter",
+        firewall_name="model-provider:openrouter-codex",
+        request_path="/api/v1/responses",
         response_status=500,
         response_body=body,
     )
