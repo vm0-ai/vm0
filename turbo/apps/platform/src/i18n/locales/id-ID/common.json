@@ -2079,9 +2079,7 @@
       "openNamedChat": "Buka chat {{title}}",
       "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji",
-      "steerAcknowledgement_one": "Diterima saat proses berjalan — pekerjaan sebelumnya tetap ada",
-      "steerAcknowledgement_other": "Semua {{count}} pesan diterima saat proses berjalan — pekerjaan sebelumnya tetap ada"
+      "searchEmoji": "Cari emoji"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"

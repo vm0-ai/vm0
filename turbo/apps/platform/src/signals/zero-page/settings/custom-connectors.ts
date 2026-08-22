@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
@@ -13,6 +12,7 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
@@ -26,6 +26,7 @@ import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
+import { singleAccountConnectorMutation } from "../../connector-domain.ts";
 
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
@@ -375,7 +376,10 @@ const setCustomConnectorValuesForTarget$ = command(
     const result = await accept(
       client.set({
         params: { id: args.id },
-        body: { values: [...args.values] },
+        body: {
+          account: singleAccountConnectorMutation,
+          values: [...args.values],
+        },
         fetchOptions: { signal },
       }),
       [200],
@@ -459,10 +463,12 @@ export const setCustomConnectorValuesForAgent$ = command(
 export const disconnectCustomConnector$ = command(
   async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorConnectionContract);
+    const client = createClient(connectorAccountsContract);
     await accept(
-      client.disconnect({
-        params: { id },
+      client.disconnectSingleAccount({
+        body: {
+          target: { kind: "custom", customConnectorId: id },
+        },
         fetchOptions: { signal },
       }),
       [204],
@@ -505,7 +511,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         const result = await accept(
           client.start({
             params: { id: args.id },
-            body: {},
+            body: { account: singleAccountConnectorMutation },
             fetchOptions: { signal },
           }),
           [200],

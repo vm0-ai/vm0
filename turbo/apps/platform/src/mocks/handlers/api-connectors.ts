@@ -21,10 +21,10 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsBySlugContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch-state.ts";
@@ -411,23 +411,32 @@ export const apiConnectorsHandlers = [
     return respond(200, { permissions });
   }),
 
-  mockApi(zeroConnectorsBySlugContract.delete, ({ params, respond }) => {
-    const connectorSlug = params.connectorSlug;
-    const existing = mockConnectors.find((c) => {
-      return c.slug === connectorSlug;
-    });
+  mockApi(
+    connectorAccountsContract.disconnectSingleAccount,
+    ({ body, respond }) => {
+      if (body.target.kind === "custom") {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      }
 
-    if (!existing) {
-      return respond(404, {
-        error: { message: "Connector not found", code: "NOT_FOUND" },
+      const connectorSlug = body.target.connectorSlug;
+      const existing = mockConnectors.find((c) => {
+        return c.slug === connectorSlug;
       });
-    }
 
-    mockConnectors = mockConnectors.filter((c) => {
-      return c.slug !== connectorSlug;
-    });
-    return respond(204);
-  }),
+      if (!existing) {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      }
+
+      mockConnectors = mockConnectors.filter((c) => {
+        return c.slug !== connectorSlug;
+      });
+      return respond(204);
+    },
+  ),
 
   mockApi(
     zeroConnectorManualGrantContract.connect,

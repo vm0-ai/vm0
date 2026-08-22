@@ -2079,9 +2079,7 @@
       "openNamedChat": "チャットを開く {{title}}",
       "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
-      "searchEmoji": "絵文字を検索",
-      "steerAcknowledgement_one": "実行中に受け取りました。これまでの作業はそのまま残ります",
-      "steerAcknowledgement_other": "{{count}} 件すべてを実行中に受け取りました。これまでの作業はそのまま残ります"
+      "searchEmoji": "絵文字を検索"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"

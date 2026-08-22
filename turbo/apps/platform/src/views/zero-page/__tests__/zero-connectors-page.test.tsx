@@ -1,7 +1,6 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
@@ -10,6 +9,7 @@ import {
   type CustomConnectorMcpResponse,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -24,6 +24,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
@@ -439,6 +440,7 @@ function mockCustomConnectorStory(): {
   context.mocks.api(
     zeroCustomConnectorValuesContract.set,
     ({ params, body, respond }) => {
+      expect(body.account).toStrictEqual({ intent: "single-account" });
       let updated: CustomConnectorHttpResponse | undefined;
       connectors = connectors.map((connector) => {
         if (connector.id !== params.id) {
@@ -461,10 +463,14 @@ function mockCustomConnectorStory(): {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorConnectionContract.disconnect,
-    ({ params, respond }) => {
+    connectorAccountsContract.disconnectSingleAccount,
+    ({ body, respond }) => {
+      if (body.target.kind !== "custom") {
+        throw new Error("Expected a custom connector disconnect target");
+      }
+      const customConnectorId = body.target.customConnectorId;
       connectors = connectors.map((connector) => {
-        return connector.id === params.id
+        return connector.id === customConnectorId
           ? {
               ...connector,
               connected: false,
@@ -1258,6 +1264,7 @@ describe("connectors page", () => {
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("meta-ads");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/meta-ads/authorize",
@@ -1303,10 +1310,25 @@ describe("connectors page", () => {
 
   it("disconnects a connected catalog connector from the options menu", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    const disconnectTargets: unknown[] = [];
+    let legacyDisconnectCount = 0;
+    context.mocks.api(
+      connectorAccountsContract.disconnectSingleAccount,
+      ({ body, respond }) => {
+        disconnectTargets.push(body.target);
+        context.mocks.data.connectors([]);
+        return respond(204);
+      },
+    );
+    context.mocks.api(zeroConnectorsBySlugContract.delete, ({ respond }) => {
+      legacyDisconnectCount += 1;
+      return respond(204);
+    });
 
     detachedSetupPage({
       context,
       path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: false },
     });
 
     await waitFor(() => {
@@ -1323,6 +1345,54 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
+    expect(disconnectTargets).toStrictEqual([
+      { kind: "builtin", connectorSlug: "github" },
+    ]);
+    expect(legacyDisconnectCount).toBe(0);
+  });
+
+  it("keeps a connector connected when compact disconnect is ambiguous", async () => {
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    let disconnectCount = 0;
+    let legacyDisconnectCount = 0;
+    context.mocks.api(
+      connectorAccountsContract.disconnectSingleAccount,
+      ({ body, respond }) => {
+        disconnectCount += 1;
+        expect(body.target).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "github",
+        });
+        return respond(409, {
+          error: {
+            code: "CONFLICT",
+            message: "Choose an account before disconnecting",
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroConnectorsBySlugContract.delete, ({ respond }) => {
+      legacyDisconnectCount += 1;
+      return respond(204);
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("GitHub");
+    });
+    click(within(card).getByLabelText("More options"));
+    click(menuItemByText("Disconnect"));
+
+    await expect(
+      screen.findByText("Choose an account before disconnecting"),
+    ).resolves.toBeInTheDocument();
+    expect(within(card).getByText("@octocat")).toBeInTheDocument();
+    expect(disconnectCount).toBe(1);
+    expect(legacyDisconnectCount).toBe(0);
+
+    click(within(card).getByLabelText("More options"));
+    expect(menuItemByText("Disconnect")).toBeInTheDocument();
   });
 
   it("moves scope review into the connector options menu", async () => {
@@ -2106,6 +2176,7 @@ describe("connectors page", () => {
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe(connectorSlug);
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         expect(body.authMethod).toBe(authMethod);
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
@@ -2475,6 +2546,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         expect(body.authMethod).toBe("api");
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
@@ -2697,6 +2769,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         startCount += 1;
         expect(params.connectorSlug).toBe("stripe");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         capturedOptions = body.options ?? null;
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
@@ -2825,6 +2898,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         submitCount += 1;
         expect(params.connectorSlug).toBe("axiom");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -3349,6 +3423,21 @@ describe("connectors page", () => {
   it("connects AWS without a post-connect permission dialog", async () => {
     mockConnectors([]);
     context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.api(
+      zeroConnectorExternalCodeSessionContract.create,
+      ({ body, params, respond }) => {
+        expect(params.connectorSlug).toBe("aws");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000002",
+          sessionToken: "mock-aws-external-code-session-token",
+          connectorSlug: "aws",
+          status: "pending",
+          authorizationUrl: "https://oauth.test/aws/external-code",
+          expiresIn: 600,
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -3914,6 +4003,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         submittedValues = body.values;
         connected = true;
         return respond(200, {
@@ -4222,6 +4312,7 @@ describe("connectors page", () => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
         }
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         savedValues = body.values;
         connector = {
           ...connector,
@@ -4233,11 +4324,15 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorConnectionContract.disconnect,
-      ({ respond }) => {
+      connectorAccountsContract.disconnectSingleAccount,
+      ({ body, respond }) => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
         }
+        expect(body.target).toStrictEqual({
+          kind: "custom",
+          customConnectorId: connector.id,
+        });
         disconnectCount += 1;
         connector = {
           ...connector,
@@ -4519,10 +4614,11 @@ describe("connectors page", () => {
     );
     context.mocks.api(
       zeroCustomConnectorOAuth2Contract.start,
-      ({ respond }) => {
+      ({ body, respond }) => {
         if (!connector) {
           throw new Error("Expected an OAuth MCP custom connector");
         }
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         oauthStartCount += 1;
         connector = {
           ...connector,
@@ -4683,8 +4779,12 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorConnectionContract.disconnect,
-      ({ respond }) => {
+      connectorAccountsContract.disconnectSingleAccount,
+      ({ body, respond }) => {
+        expect(body.target).toStrictEqual({
+          kind: "custom",
+          customConnectorId: connector.id,
+        });
         disconnectCount += 1;
         connector = {
           ...connector,
@@ -5018,7 +5118,9 @@ describe("connectors page", () => {
       zeroCustomConnectorOAuth2Contract.start,
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
-        expect(body).toStrictEqual({});
+        expect(body).toStrictEqual({
+          account: { intent: "single-account" },
+        });
         oauthStartCount += 1;
         if (!connector) {
           throw new Error("Expected custom connector to exist");

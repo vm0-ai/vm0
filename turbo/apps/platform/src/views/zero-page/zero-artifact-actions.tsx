@@ -51,7 +51,10 @@ import {
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
   type ConnectorCatalogBrowserAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import {
+  singleAccountConnectorMutation,
+  type PlatformConnectorCatalogStatusItem,
+} from "../../signals/connector-domain.ts";
 import {
   copyAttachmentLinkToClipboard,
   publicAttachmentUrl,
@@ -200,6 +203,7 @@ function startGoogleDriveConnectAndRun(
       const request = {
         params: { connectorSlug: params.connector.slug },
         body: {
+          account: singleAccountConnectorMutation,
           authMethod: params.authMethod.id,
           agentId,
           authorizeAgent: true as const,

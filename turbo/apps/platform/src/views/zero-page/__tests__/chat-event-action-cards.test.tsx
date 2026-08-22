@@ -1475,6 +1475,7 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("gmail");
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1596,6 +1597,7 @@ describe("chat event action cards", () => {
       zeroConnectorOauthStartContract.start,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1701,6 +1703,7 @@ describe("chat event action cards", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
+          account: { intent: "single-account" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -2653,6 +2656,7 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("future-connector");
         expect(body.agentId).toBe(AGENT_ID);
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         expect(body.authorizeAgent).toBeTruthy();
         connected = true;
         authorized = true;

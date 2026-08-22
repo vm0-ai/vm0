@@ -2121,10 +2121,7 @@
       "openNamedChat": "Abrir conversa {{title}}",
       "pickEmoji": "Escolha um emoji",
       "scrollToBottom": "Rolar até o final",
-      "searchEmoji": "Buscar emoji",
-      "steerAcknowledgement_one": "Recebido durante a execução — o trabalho anterior foi mantido",
-      "steerAcknowledgement_many": "Todas as {{count}} mensagens recebidas durante a execução — o trabalho anterior foi mantido",
-      "steerAcknowledgement_other": "Todas as {{count}} mensagens recebidas durante a execução — o trabalho anterior foi mantido"
+      "searchEmoji": "Buscar emoji"
     },
     "threadSidebar": {
       "resize": "Redimensionar barra lateral"
