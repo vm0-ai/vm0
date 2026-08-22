@@ -257,6 +257,7 @@ class TestOpenAIChatCompletionsUsage:
             + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
             + b"\n\n"
             + delta * 256
+            + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
         )
         final_payload = {
             "id": "chatcmpl_final",
@@ -288,6 +289,15 @@ class TestOpenAIChatCompletionsUsage:
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == (
             expected_quantities
         )
+        warnings = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            )
+            if entry.get("message") == "Model provider SSE usage extraction failed"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0]["error"] == "incomplete json"
 
     def test_malformed_sse_fails_closed_with_chat_protocol_diagnostic(
         self,
