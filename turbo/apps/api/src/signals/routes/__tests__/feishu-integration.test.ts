@@ -2266,6 +2266,22 @@ describe("Feishu integration", () => {
       "This connector is managed by its integration",
     );
 
+    const managedAccountDisconnect = await accept(
+      connectorAccountsClient().disconnectSingleAccount({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          target: {
+            kind: "custom",
+            customConnectorId: managedConnector.id,
+          },
+        },
+      }),
+      [403],
+    );
+    expect(managedAccountDisconnect.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
     const unchangedConnectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },

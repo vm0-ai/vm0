@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 
 import type {
   ConnectorAccountConnection,
-  ConnectorAccountDeleteResolution,
   ConnectorAccountSummary,
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -870,7 +869,6 @@ export async function connectorAccountDeletionImpact(
 
 type PreparedConnectorAccountDeletion =
   | { readonly kind: "missing" }
-  | { readonly kind: "invalid-replacement" }
   | {
       readonly kind: "ready";
       readonly resolvedSelectionCount: number;
@@ -878,13 +876,12 @@ type PreparedConnectorAccountDeletion =
     };
 
 export async function prepareConnectorAccountDeletion(
-  db: Db,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly target: ConnectorAccountTarget;
     readonly connectionId: string;
-    readonly selectionResolution: ConnectorAccountDeleteResolution;
   },
 ): Promise<PreparedConnectorAccountDeletion> {
   await lockConnectorAccountTarget(db, args);
@@ -909,39 +906,12 @@ export async function prepareConnectorAccountDeletion(
     ...args,
     excludedConnectionId: args.connectionId,
   });
-  if (args.selectionResolution.kind === "reassign") {
-    const [replacement] = await db
-      .select({ id: connectors.id })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.id, args.selectionResolution.connectionId),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          targetCondition(args.target),
-          ne(connectors.id, args.connectionId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!replacement) {
-      return { kind: "invalid-replacement" };
-    }
-  }
-
-  const resolvedSelections =
-    args.selectionResolution.kind === "reassign"
-      ? await db
-          .update(chatThreadConnectorSelections)
-          .set({ connectorId: args.selectionResolution.connectionId })
-          .where(
-            eq(chatThreadConnectorSelections.connectorId, args.connectionId),
-          )
-      : await db
-          .delete(chatThreadConnectorSelections)
-          .where(
-            eq(chatThreadConnectorSelections.connectorId, args.connectionId),
-          );
+  const resolvedSelectionCount =
+    (
+      await db
+        .delete(chatThreadConnectorSelections)
+        .where(eq(chatThreadConnectorSelections.connectorId, args.connectionId))
+    ).rowCount ?? 0;
 
   let promotedDefaultConnectionId: string | null = null;
   if (account.isDefault && sibling) {
@@ -958,7 +928,7 @@ export async function prepareConnectorAccountDeletion(
 
   return {
     kind: "ready",
-    resolvedSelectionCount: resolvedSelections.rowCount ?? 0,
+    resolvedSelectionCount,
     promotedDefaultConnectionId,
   };
 }

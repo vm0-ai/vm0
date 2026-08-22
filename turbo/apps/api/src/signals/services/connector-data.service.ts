@@ -8,10 +8,7 @@ import {
   type ScopeDiffResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type {
-  ConnectorAccountDeleteResolution,
-  ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodGrantMetadata,
@@ -857,10 +854,6 @@ async function loadConnectorAccountForDeletion(
   return connector ? { kind: "resolved", connector } : { kind: "missing" };
 }
 
-// Target-only disconnect callers omit the exact selection resolution and
-// expect the legacy string result. Default them to clear and preserve that
-// result until #27695, after the account UI ships and the ~2 day
-// old-web-client window closes.
 async function prepareBuiltinConnectorAccountDeletion(
   db: Tx,
   args: {
@@ -868,7 +861,6 @@ async function prepareBuiltinConnectorAccountDeletion(
     readonly userId: string;
     readonly connectorSlug: string;
     readonly connectionId: string;
-    readonly selectionResolution?: ConnectorAccountDeleteResolution;
   },
 ) {
   return await prepareConnectorAccountDeletion(db, {
@@ -876,21 +868,30 @@ async function prepareBuiltinConnectorAccountDeletion(
     userId: args.userId,
     target: { kind: "builtin", connectorSlug: args.connectorSlug },
     connectionId: args.connectionId,
-    selectionResolution: args.selectionResolution ?? { kind: "clear" },
   });
 }
 
 function completedConnectorDeletionResult(
-  selectionResolution: ConnectorAccountDeleteResolution | undefined,
+  exactAccount: boolean,
   deletion: {
     readonly resolvedSelectionCount: number;
     readonly promotedDefaultConnectionId: string | null;
   },
 ) {
-  return selectionResolution
+  return exactAccount
     ? { kind: "deleted" as const, ...deletion }
     : ("deleted" as const);
 }
+
+type DeleteConnectorLocalStateResult =
+  | "deleted"
+  | "missing"
+  | "ambiguous"
+  | {
+      readonly kind: "deleted";
+      readonly resolvedSelectionCount: number;
+      readonly promotedDefaultConnectionId: string | null;
+    };
 
 export const deleteConnectorLocalState$ = command(
   async (
@@ -901,20 +902,9 @@ export const deleteConnectorLocalState$ = command(
       readonly connectorSlug: string;
       readonly sourceId?: string;
       readonly snapshot?: ConnectorRuntimeSnapshot | null;
-      readonly selectionResolution?: ConnectorAccountDeleteResolution;
     },
     signal: AbortSignal,
-  ): Promise<
-    | "deleted"
-    | "missing"
-    | "ambiguous"
-    | "invalid-replacement"
-    | {
-        readonly kind: "deleted";
-        readonly resolvedSelectionCount: number;
-        readonly promotedDefaultConnectionId: string | null;
-      }
-  > => {
+  ): Promise<DeleteConnectorLocalStateResult> => {
     const writeDb = set(writeDb$);
     const snapshot =
       args.snapshot === undefined
@@ -1027,7 +1017,7 @@ export const deleteConnectorLocalState$ = command(
     signal.throwIfAborted();
 
     return completedConnectorDeletionResult(
-      args.selectionResolution,
+      args.sourceId !== undefined,
       deleteResult.deletion,
     );
   },

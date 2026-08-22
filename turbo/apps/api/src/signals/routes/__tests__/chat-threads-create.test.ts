@@ -265,21 +265,17 @@ describe("POST /api/zero/chat-threads", () => {
     );
     expect(impact.body.explicitSelectionCount).toBe(1);
 
-    const reassigned = await accept(
+    const deletedSelectedAccount = await accept(
       connectorAccountsClient().delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { connectionId: secondResponse.body.id },
         body: {
           target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: {
-            kind: "reassign",
-            connectionId: firstResponse.body.id,
-          },
         },
       }),
       [200],
     );
-    expect(reassigned.body.resolvedSelectionCount).toBe(1);
+    expect(deletedSelectedAccount.body.resolvedSelectionCount).toBe(1);
 
     const selected = await accept(
       connectorSelectionsClient().get({
@@ -288,12 +284,7 @@ describe("POST /api/zero/chat-threads", () => {
       }),
       [200],
     );
-    expect(selected.body.selections).toStrictEqual([
-      {
-        connectionId: firstResponse.body.id,
-        target: { kind: "builtin", connectorSlug: "openai" },
-      },
-    ]);
+    expect(selected.body.selections).toStrictEqual([]);
     const inherited = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -304,18 +295,17 @@ describe("POST /api/zero/chat-threads", () => {
     expect(inherited.body.selections).toStrictEqual([]);
 
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
-    const cleared = await accept(
+    const deletedRemainingAccount = await accept(
       connectorAccountsClient().delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { connectionId: firstResponse.body.id },
         body: {
           target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: { kind: "clear" },
         },
       }),
       [200],
     );
-    expect(cleared.body.resolvedSelectionCount).toBe(1);
+    expect(deletedRemainingAccount.body.resolvedSelectionCount).toBe(0);
     const afterClear = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -494,6 +484,42 @@ describe("POST /api/zero/chat-threads", () => {
       }),
       [400],
     );
+    await accept(
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      [200],
+    );
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    const [concurrentSelectionWrite, concurrentDisconnect] = await Promise.all([
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
+      connectorAccountsClient().disconnectSingleAccount({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+    ]);
+    expect([200, 400]).toContain(concurrentSelectionWrite.status);
+    expect(concurrentDisconnect.status).toBe(204);
+    const afterDisconnect = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
   it("rejects connector selections while connector accounts are disabled", async () => {
@@ -687,6 +713,27 @@ describe("POST /api/zero/chat-threads", () => {
     ).toStrictEqual(
       expect.arrayContaining([httpConnectionId, mcpConnectionId]),
     );
+
+    createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
+    for (const customConnectorId of [httpConnector.id, mcpConnector.id]) {
+      await accept(
+        connectorAccountsClient().disconnectSingleAccount({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            target: { kind: "custom", customConnectorId },
+          },
+        }),
+        [204],
+      );
+    }
+    const afterDisconnect = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {

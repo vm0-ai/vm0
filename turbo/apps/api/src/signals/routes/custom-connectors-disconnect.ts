@@ -1,10 +1,14 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorConnectionContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 
+import { conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { disconnectCustomConnector$ } from "../services/custom-connector.service";
+import {
+  disconnectCustomConnector$,
+  integrationManagedCustomConnectorMutationForbidden,
+} from "../services/custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -24,8 +28,17 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
-  if (result) {
-    return result;
+  if (result === "missing-definition") {
+    return notFound("Custom connector not found");
+  }
+  if (result === "ambiguous") {
+    return conflict("Multiple connector accounts require an exact choice");
+  }
+  if (result === "managed") {
+    return integrationManagedCustomConnectorMutationForbidden();
+  }
+  if (result === "missing-account") {
+    throw new Error("Legacy custom connector deletion returned a safe result");
   }
 
   return { status: 204 as const, body: undefined };
