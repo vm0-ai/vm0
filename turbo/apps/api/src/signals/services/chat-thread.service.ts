@@ -65,6 +65,7 @@ import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecy
 import { disableThreadBoundWorkflowAutomations } from "./workflow-user-automation-thread.service";
 import {
   insertInitialChatThreadConnectorSelections,
+  prepareChatThreadConnectorSelections,
   type PreparedChatThreadConnectorSelection,
 } from "./chat-thread-connector-selection.service";
 
@@ -629,7 +630,7 @@ export const createChatThread$ = command(
     { set },
     args: {
       readonly userId: string;
-      readonly orgId?: string | null;
+      readonly orgId: string;
       readonly agentComposeId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
@@ -644,9 +645,32 @@ export const createChatThread$ = command(
       readonly connectorSelections?: readonly PreparedChatThreadConnectorSelection[];
     },
     signal: AbortSignal,
-  ): Promise<{ id: string; createdAt: Date }> => {
+  ): Promise<
+    | {
+        readonly kind: "created";
+        readonly id: string;
+        readonly createdAt: Date;
+      }
+    | {
+        readonly kind: "invalid_connector_selection";
+        readonly message: string;
+      }
+  > => {
     const writeDb = set(writeDb$);
     const thread = await writeDb.transaction(async (tx) => {
+      const preparedConnectorSelections =
+        await prepareChatThreadConnectorSelections(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: args.agentComposeId,
+          selections: args.connectorSelections ?? [],
+        });
+      if (preparedConnectorSelections.kind === "invalid") {
+        return {
+          kind: "invalid_connector_selection" as const,
+          message: preparedConnectorSelections.message,
+        };
+      }
       const [createdThread] = await tx
         .insert(chatThreads)
         .values({
@@ -671,7 +695,7 @@ export const createChatThread$ = command(
       }
       await insertInitialChatThreadConnectorSelections(tx, {
         chatThreadId: createdThread.id,
-        selections: args.connectorSelections ?? [],
+        selections: preparedConnectorSelections.selections,
       });
       await appendChatThreadEvent(tx, {
         kind: "created",
@@ -689,7 +713,7 @@ export const createChatThread$ = command(
         selectedImageModel: args.selectedImageModel,
         createdAt: createdThread.createdAt,
       });
-      return createdThread;
+      return { kind: "created" as const, ...createdThread };
     });
     signal.throwIfAborted();
 

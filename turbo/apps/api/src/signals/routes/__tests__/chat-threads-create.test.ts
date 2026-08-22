@@ -496,13 +496,22 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
-    await accept(
+    const [concurrentSelectionWrite, concurrentDisconnect] = await Promise.all([
+      connectorSelectionsClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: {
+          connectionId: connection.id,
+          target: { kind: "builtin", connectorSlug: "openai" },
+        },
+      }),
       connectorAccountsClient().disconnectSingleAccount({
         headers: { authorization: "Bearer clerk-session" },
         body: { target: { kind: "builtin", connectorSlug: "openai" } },
       }),
-      [204],
-    );
+    ]);
+    expect([200, 400]).toContain(concurrentSelectionWrite.status);
+    expect(concurrentDisconnect.status).toBe(204);
     const afterDisconnect = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
