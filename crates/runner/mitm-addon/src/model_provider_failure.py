@@ -742,8 +742,13 @@ def _retry_after_seconds(status: int, headers: http.Headers) -> int | None:
     values = headers.get_all("Retry-After")
     if len(values) != 1 or not values[0].isascii() or not values[0].isdigit():
         return None
-    seconds = int(values[0])
-    return min(max(seconds, 1), _MAX_RETRY_AFTER_SECONDS)
+    digits = values[0].lstrip("0")
+    if not digits:
+        return 1
+    maximum = str(_MAX_RETRY_AFTER_SECONDS)
+    if len(digits) > len(maximum) or (len(digits) == len(maximum) and digits > maximum):
+        return _MAX_RETRY_AFTER_SECONDS
+    return int(digits)
 
 
 def _has_error_value(result: JsonExtractionResult) -> bool:

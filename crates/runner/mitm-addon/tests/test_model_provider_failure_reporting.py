@@ -544,6 +544,13 @@ def test_shutdown_cancels_queued_reports(
     [
         (429, "0", "rate_limit", 1),
         (503, "301", "provider_unavailable", 300),
+        pytest.param(
+            503,
+            "9" * 5_000,
+            "provider_unavailable",
+            300,
+            id="long-numeric-delay",
+        ),
     ],
 )
 def test_numeric_retry_after_is_clamped(
