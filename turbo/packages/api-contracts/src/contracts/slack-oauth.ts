@@ -50,7 +50,7 @@ export const slackOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/okou/slack/oauth/callback",
+    path: "/api/integrations/slack/oauth/callback",
     query: slackOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),

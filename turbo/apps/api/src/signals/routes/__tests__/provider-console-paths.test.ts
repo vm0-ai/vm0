@@ -33,13 +33,14 @@ interface ResponseSnapshot {
 // on the neutral path from #28278, so the assertion is that all three produce
 // the same response rather than merely that the neutral path is routed.
 //
-// Which table produces which registration is deliberately not asserted here,
-// and the split is no longer uniform. The Slack routes are still declared
-// branded and gain their neutral path from `FINAL_PROVIDER_CONSOLE_PATHS`,
-// while the Teams OAuth callback (#28545) and the Feishu OAuth callback
-// (#28544) moved the other way: they declare the neutral path and gain both
-// branded forms from `MIGRATED_BRANDED_PATHS`. What a caller can reach is the
-// same either way, and that is the property this file exists to pin.
+// Every endpoint here now declares its neutral path and gains both branded
+// forms from `MIGRATED_BRANDED_PATHS` — the Teams OAuth callback in #28545, the
+// Feishu OAuth callback in #28544, and the four Slack routes in #28600, which
+// emptied and deleted `FINAL_PROVIDER_CONSOLE_PATHS`. Which mechanism produces
+// which registration is deliberately not asserted; what a caller can reach is
+// the same either way, and that is the property this file exists to pin. A
+// dropped row on either side shows up here as one of the three forms answering
+// differently.
 function namespacePaths(
   brandedSuffix: string,
   finalPath: string,
@@ -118,7 +119,7 @@ function slackIngressRequest(args: {
   };
 }
 
-describe("final provider console paths", () => {
+describe("provider console paths", () => {
   beforeEach(() => {
     mockEnv("APP_URL", APP_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -174,10 +175,7 @@ describe("final provider console paths", () => {
 
   // Kept here after #28545 moved the contract onto the final path: what this
   // block asserts is that all three forms answer identically, which is the
-  // property the move has to preserve. The table behind them changed —
-  // `MIGRATED_BRANDED_PATHS` now owes the two branded forms rather than
-  // `FINAL_PROVIDER_CONSOLE_PATHS` owing the final one — and that swap is what
-  // this replay would catch if a row had been dropped on either side.
+  // property the move has to preserve.
   describe("GET /api/integrations/teams/oauth/callback", () => {
     const paths = namespacePaths(
       "/teams/oauth/callback",
@@ -222,10 +220,10 @@ describe("final provider console paths", () => {
   });
 
   // Like the Teams callback above, this one is no longer console-held: #28544
-  // moved the contract to the neutral path, so the two branded forms below are
-  // the ones that now depend on a `MIGRATED_BRANDED_PATHS` row rather than on a
-  // contract declaration. Kept here because the property being pinned — all
-  // three forms produce the same response — is unchanged.
+  // moved the contract to the neutral path, so the two branded forms below
+  // depend on a `MIGRATED_BRANDED_PATHS` row rather than on a contract
+  // declaration. Kept here because the property being pinned — all three forms
+  // produce the same response — is unchanged.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
     const paths = namespacePaths(
       "/feishu/oauth/callback",

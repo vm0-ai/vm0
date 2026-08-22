@@ -38,7 +38,6 @@ import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
-  withFinalProviderConsolePaths,
   withMigratedBrandedPaths,
 } from "../signals/route-entry";
 import { testContext } from "./test-context";
@@ -79,28 +78,6 @@ const migrationContract = c.router({
       200: z.object({ served: z.literal(true) }),
     },
   },
-  // A route `FINAL_PROVIDER_CONSOLE_PATHS` also acts on, before and after its
-  // move, so both tables can be run over one pipeline. Slack interactive is one
-  // of the paths that table still holds; the Feishu events route this stood in
-  // for left it in #28544, and the Teams bot endpoint in #28545. Repoint this
-  // pair at another still-branded console path whenever the Slack contracts
-  // move, since the first case below needs the console table to act on it.
-  consoleBranded: {
-    method: "POST",
-    path: "/api/okou/slack/interactive",
-    body: z.object({}),
-    responses: {
-      200: z.object({ served: z.literal(true) }),
-    },
-  },
-  consoleFinal: {
-    method: "POST",
-    path: "/api/webhooks/slack/interactive",
-    body: z.object({}),
-    responses: {
-      200: z.object({ served: z.literal(true) }),
-    },
-  },
 });
 
 function servedHandler() {
@@ -123,14 +100,6 @@ const UNNAMED_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.unnamed,
   handler: servedHandler(),
 };
-const CONSOLE_BRANDED_ROUTE: Readonly<RouteEntry> = {
-  route: migrationContract.consoleBranded,
-  handler: servedHandler(),
-};
-const CONSOLE_FINAL_ROUTE: Readonly<RouteEntry> = {
-  route: migrationContract.consoleFinal,
-  handler: servedHandler(),
-};
 
 // Input to the mechanism, never an expectation: every expected path below is
 // written out again inside the test that asserts it.
@@ -138,13 +107,6 @@ const MIGRATED_TABLE: Readonly<Record<string, readonly string[]>> = {
   "/api/synthetic/thing": [
     "/api/okou/synthetic/thing",
     "/api/zero/synthetic/thing",
-  ],
-};
-
-const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
-  "/api/webhooks/slack/interactive": [
-    "/api/okou/slack/interactive",
-    "/api/zero/slack/interactive",
   ],
 };
 
@@ -1302,6 +1264,28 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/social/request",
     "/api/zero/social/request",
   ],
+  // #28600: the Slack OAuth callback and the three inbound Slack webhooks, the
+  // last contracts to leave the brand namespace. The Slack app configuration
+  // holds one URL per endpoint and cannot be repointed from this repository, so
+  // these rows are what keeps whichever form it holds answering; the callback's
+  // `zero` form is additionally the `redirect_uri` `routes/slack-oauth.ts`
+  // still emits.
+  "/api/integrations/slack/oauth/callback": [
+    "/api/okou/slack/oauth/callback",
+    "/api/zero/slack/oauth/callback",
+  ],
+  "/api/webhooks/slack/events": [
+    "/api/okou/slack/events",
+    "/api/zero/slack/events",
+  ],
+  "/api/webhooks/slack/commands": [
+    "/api/okou/slack/commands",
+    "/api/zero/slack/commands",
+  ],
+  "/api/webhooks/slack/interactive": [
+    "/api/okou/slack/interactive",
+    "/api/zero/slack/interactive",
+  ],
 };
 
 function missingBrandedPaths(
@@ -1385,42 +1369,27 @@ describe("branded paths for migrated neutral routes", () => {
     );
   });
 
-  it("keeps the console table's paths for a route no row names", () => {
-    const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(
-        withFinalProviderConsolePaths([CONSOLE_BRANDED_ROUTE]),
-      ),
+  // Pins the order `createAppWithRoutes` composes the two stages in. A row
+  // names a finished registration, so producing the branded paths before the
+  // blanket expansion would feed `/api/okou/synthetic/thing` back into it and
+  // derive its sibling namespace a second time.
+  it("registers each branded path once only when applied after the expansion", () => {
+    const composed = withMigratedBrandedPaths(
+      withApiNamespaceAliases([NEUTRAL_ROUTE]),
       MIGRATED_TABLE,
     );
-
-    expect(registeredPaths(registered)).toStrictEqual([
-      "/api/okou/slack/interactive",
-      "/api/zero/slack/interactive",
-      "/api/webhooks/slack/interactive",
-    ]);
-  });
-
-  // The same route once it has moved to the final console path — the shape
-  // #28544 gave both Feishu routes. This also pins the order the two tables run
-  // in: producing the branded paths before the console table would feed
-  // `/api/okou/slack/interactive` back into it and register the console path a
-  // second time.
-  it("registers a migrated console route's branded paths exactly once", () => {
-    const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(
-        withFinalProviderConsolePaths([CONSOLE_FINAL_ROUTE]),
-      ),
-      MIGRATED_CONSOLE_TABLE,
+    const reversed = withApiNamespaceAliases(
+      withMigratedBrandedPaths([NEUTRAL_ROUTE], MIGRATED_TABLE),
     );
 
-    expect(registeredPaths(registered)).toStrictEqual([
-      "/api/webhooks/slack/interactive",
-      "/api/okou/slack/interactive",
-      "/api/zero/slack/interactive",
-    ]);
     expect(() => {
-      assertUniqueRouteRegistrations(registered);
+      assertUniqueRouteRegistrations(composed);
     }).not.toThrow();
+    expect(() => {
+      assertUniqueRouteRegistrations(reversed);
+    }).toThrow(
+      "Duplicate API route registration: POST /api/okou/synthetic/thing",
+    );
   });
 
   // The failure a migration slice would otherwise take to production: the
@@ -1447,7 +1416,7 @@ describe("branded paths for migrated neutral routes", () => {
   // fails this test instead of changing what it asserts.
   it("serves the migrated maps routes on neutral and branded paths", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+      withApiNamespaceAliases(ROUTES),
     );
 
     function requireRoute(path: string): RouteEntry {
@@ -1485,7 +1454,7 @@ describe("branded paths for migrated neutral routes", () => {
   // per family rather than derived from the table under test.
   it("serves the migrated weather routes on neutral and branded paths", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+      withApiNamespaceAliases(ROUTES),
     );
 
     function requireRoute(path: string): RouteEntry {
@@ -1523,7 +1492,7 @@ describe("branded paths for migrated neutral routes", () => {
   // that lost its rows fails here rather than 404ing a released caller.
   it("serves every migrated route at its neutral path and both branded paths", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+      withApiNamespaceAliases(ROUTES),
     );
 
     for (const [neutral, brandedPaths] of Object.entries(
@@ -1727,9 +1696,7 @@ describe("branded paths for migrated neutral routes", () => {
   it("keeps the production route table free of colliding registrations", () => {
     expect(() => {
       assertUniqueRouteRegistrations(
-        withMigratedBrandedPaths(
-          withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
-        ),
+        withMigratedBrandedPaths(withApiNamespaceAliases(ROUTES)),
       );
     }).not.toThrow();
   });
