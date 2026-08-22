@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.580.1](https://github.com/vm0-ai/vm0/compare/core-v8.580.0...core-v8.580.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **composer:** reconcile live dom before submission ([#28574](https://github.com/vm0-ai/vm0/issues/28574)) ([cf781f9](https://github.com/vm0-ai/vm0/commit/cf781f94c8bec7ac7521a02c8406eea866de793f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.0
+
 ## [8.580.0](https://github.com/vm0-ai/vm0/compare/core-v8.579.0...core-v8.580.0) (2026-08-21)
 
 

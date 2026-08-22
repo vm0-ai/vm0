@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.780.1](https://github.com/vm0-ai/vm0/compare/app-v0.780.0...app-v0.780.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **composer:** reconcile live dom before submission ([#28574](https://github.com/vm0-ai/vm0/issues/28574)) ([cf781f9](https://github.com/vm0-ai/vm0/commit/cf781f94c8bec7ac7521a02c8406eea866de793f))
+* **platform:** bind chat actions to current thread ([#28595](https://github.com/vm0-ai/vm0/issues/28595)) ([bcbcba2](https://github.com/vm0-ai/vm0/commit/bcbcba26b2e7ad9c18a6d86fef17a5f47c009fa1))
+* **platform:** keep the model picker checkmark in one column ([#28335](https://github.com/vm0-ai/vm0/issues/28335)) ([505d95b](https://github.com/vm0-ai/vm0/commit/505d95baf205ef262b0fafe715f204145d0506e1))
+* **platform:** paginate personal usage records ([#28557](https://github.com/vm0-ai/vm0/issues/28557)) ([da68dc3](https://github.com/vm0-ai/vm0/commit/da68dc3b56b131f662d66b5aab1b38f2921f85c9))
+* **platform:** put the growth entry back in the top-right corner ([#28563](https://github.com/vm0-ai/vm0/issues/28563)) ([2fc93d9](https://github.com/vm0-ai/vm0/commit/2fc93d965433d9766537e7f1b3e534b58785cb31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.0
+    * @okouai/core bumped to 8.580.1
+
 ## [0.780.0](https://github.com/vm0-ai/vm0/compare/app-v0.779.1...app-v0.780.0) (2026-08-21)
 
 
