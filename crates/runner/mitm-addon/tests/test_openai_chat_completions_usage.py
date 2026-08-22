@@ -235,7 +235,7 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
 
-    def test_long_sse_resets_between_all_event_outcomes(
+    def test_long_sse_reports_final_usage_after_discarded_and_malformed_events(
         self,
         tmp_path,
         real_flow,
