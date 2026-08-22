@@ -71,6 +71,8 @@ export const PREFLIGHT_PHASES = [
   "capabilities",
   "danglingStart",
   "identity",
+  "canonicalDataPlane",
+  "agentReferences",
   "agentExecutionPlans",
   "versions",
   "heads",
@@ -604,7 +606,64 @@ const PREFLIGHT_V7_OUTPUT_ALLOWLIST = [
   }),
 ];
 
-/** Every and only approved scalar/array path in a complete v7 result. */
+const CANONICAL_AGENT_DATA_PLANE_METRICS = [
+  "matched",
+  "target",
+  "missingTarget",
+  "targetOnly",
+  "composeOnlyTarget",
+  "fieldMismatch",
+] as const;
+
+export const AGENT_REFERENCE_COHORTS = [
+  "agentSessions",
+  "chatThreads",
+  "chatThreadEvents",
+  "chatEventSearchMessages",
+  "telegramInstallations",
+  "feishuOrgInstallations",
+  "githubInstallations",
+  "slackUserAgentPreferences",
+  "teamsUserAgentPreferences",
+  "agentphoneUserAgentPreferences",
+  "telegramUserAgentPreferences",
+  "feishuUserAgentPreferences",
+  "orgMetadataDefaultAgent",
+  "workflows",
+  "userConnectors",
+  "userCustomConnectors",
+  "userPermissionGrants",
+  "agentDrafts",
+  "bankingAgentEnablements",
+  "threadGoals",
+] as const;
+
+const AGENT_REFERENCE_METRICS = [
+  "population",
+  "valid",
+  "nullableNull",
+  "composeOnlyNull",
+  "invalid",
+  "partitionUnion",
+] as const;
+
+/** Additive #28601 canonical data-plane and reference output. */
+const PREFLIGHT_V8_OUTPUT_ALLOWLIST = [
+  ...CANONICAL_AGENT_DATA_PLANE_METRICS.flatMap((metric) => {
+    return setOutputPaths(`canonicalDataPlane.${metric}`);
+  }),
+  ...comparisonOutputPaths("canonicalDataPlane.matchedTargetClosure"),
+  ...AGENT_REFERENCE_COHORTS.flatMap((cohort) => {
+    return [
+      ...AGENT_REFERENCE_METRICS.flatMap((metric) => {
+        return setOutputPaths(`agentReferences.${cohort}.${metric}`);
+      }),
+      ...comparisonOutputPaths(`agentReferences.${cohort}.partitionClosure`),
+    ];
+  }),
+];
+
+/** Every and only approved scalar/array path in a complete v8 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
@@ -612,6 +671,7 @@ export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V5_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V6_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V7_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V8_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
@@ -623,6 +683,13 @@ export interface IdentityInventoryRow extends QueryResultRow {
   readonly nameMismatch: boolean;
   readonly createdRelation: "zeroEarlier" | "equal" | "zeroLater" | null;
   readonly updatedSource: "compose" | "equal" | "zero" | null;
+}
+
+export interface AggregateInventoryRow extends QueryResultRow {
+  readonly classification: string;
+  readonly cohort: string | null;
+  readonly count: string;
+  readonly digest: string;
 }
 
 export interface VersionInventoryRow extends QueryResultRow {
@@ -717,6 +784,8 @@ export interface AgentExecutionPlanInventoryRow extends QueryResultRow {
 
 export interface PreflightInventory {
   readonly identity: readonly IdentityInventoryRow[];
+  readonly canonicalDataPlane: readonly AggregateInventoryRow[];
+  readonly agentReferences: readonly AggregateInventoryRow[];
   readonly versions: readonly VersionInventoryRow[];
   readonly heads: readonly HeadInventoryRow[];
   readonly runs: readonly RunInventoryRow[];
@@ -2462,6 +2531,143 @@ function classifyDependencies(
   return { catalog, repository };
 }
 
+function aggregateMetric(args: {
+  readonly classification: string;
+  readonly cohort: string | null;
+  readonly domain: string;
+  readonly failureGate: string;
+  readonly failureGates: Set<string>;
+  readonly requireCompleteInventory: boolean;
+  readonly rows: readonly AggregateInventoryRow[];
+}): SetFingerprint {
+  const matches = args.rows.filter((row) => {
+    return (
+      row.classification === args.classification && row.cohort === args.cohort
+    );
+  });
+  if (matches.length === 0 && !args.requireCompleteInventory) {
+    return fingerprintSortedSet(args.domain, []);
+  }
+  const row = matches[0];
+  const count = row ? Number(row.count) : Number.NaN;
+  if (
+    matches.length !== 1 ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    !row ||
+    !SAFE_DIGEST_PATTERN.test(row.digest)
+  ) {
+    args.failureGates.add(args.failureGate);
+    return fingerprintSortedSet(args.domain, []);
+  }
+  return { count, digest: row.digest };
+}
+
+function aggregateComparison(
+  expected: SetFingerprint,
+  observed: SetFingerprint,
+) {
+  return {
+    expected,
+    observed,
+    classification:
+      expected.count === observed.count && expected.digest === observed.digest
+        ? ("exact" as const)
+        : ("drift" as const),
+  };
+}
+
+function classifyCanonicalDataPlane(
+  rows: readonly AggregateInventoryRow[],
+  failureGates: Set<string>,
+) {
+  const requireCompleteInventory = rows.length > 0;
+  const metrics = Object.fromEntries(
+    CANONICAL_AGENT_DATA_PLANE_METRICS.map((classification) => {
+      return [
+        classification,
+        aggregateMetric({
+          rows,
+          cohort: null,
+          classification,
+          domain:
+            classification === "matched" || classification === "target"
+              ? "canonical-agent-membership"
+              : `canonical-agent-data-plane:${classification}`,
+          failureGate: "canonicalDataPlane.inventory",
+          failureGates,
+          requireCompleteInventory,
+        }),
+      ];
+    }),
+  ) as Record<
+    (typeof CANONICAL_AGENT_DATA_PLANE_METRICS)[number],
+    SetFingerprint
+  >;
+  const matchedTargetClosure = aggregateComparison(
+    metrics.matched,
+    metrics.target,
+  );
+  if (matchedTargetClosure.classification === "drift") {
+    failureGates.add("canonicalDataPlane.membership");
+  }
+  if (metrics.missingTarget.count > 0) {
+    failureGates.add("canonicalDataPlane.missingTarget");
+  }
+  if (metrics.targetOnly.count > 0) {
+    failureGates.add("canonicalDataPlane.targetOnly");
+  }
+  if (metrics.composeOnlyTarget.count > 0) {
+    failureGates.add("canonicalDataPlane.composeOnlyTarget");
+  }
+  if (metrics.fieldMismatch.count > 0) {
+    failureGates.add("canonicalDataPlane.fieldMismatch");
+  }
+  return { ...metrics, matchedTargetClosure };
+}
+
+function classifyAgentReferences(
+  rows: readonly AggregateInventoryRow[],
+  failureGates: Set<string>,
+) {
+  const requireCompleteInventory = rows.length > 0;
+  return Object.fromEntries(
+    AGENT_REFERENCE_COHORTS.map((cohort) => {
+      const metrics = Object.fromEntries(
+        AGENT_REFERENCE_METRICS.map((classification) => {
+          return [
+            classification,
+            aggregateMetric({
+              rows,
+              cohort,
+              classification,
+              domain:
+                classification === "population" ||
+                classification === "partitionUnion"
+                  ? `agent-reference:${cohort}:partition-membership`
+                  : `agent-reference:${cohort}:${classification}`,
+              failureGate: "agentReferences.inventory",
+              failureGates,
+              requireCompleteInventory,
+            }),
+          ];
+        }),
+      ) as Record<(typeof AGENT_REFERENCE_METRICS)[number], SetFingerprint>;
+      const partitionClosure = aggregateComparison(
+        metrics.population,
+        metrics.partitionUnion,
+      );
+      if (partitionClosure.classification === "drift") {
+        failureGates.add(`agentReferences.${cohort}.partition`);
+      }
+      if (metrics.invalid.count > 0) {
+        failureGates.add(`agentReferences.${cohort}.invalid`);
+      }
+      return [cohort, { ...metrics, partitionClosure }];
+    }),
+  );
+}
+
 export function classifyPreflightInventory(
   capabilities: PreflightCapabilities,
   inventory: PreflightInventory,
@@ -2494,6 +2700,14 @@ export function classifyPreflightInventory(
         options.approvedArtifactSetDigest ?? APPROVED_ARTIFACT_SET_DIGEST,
       expectedApprovedCount,
     },
+    failureGates,
+  );
+  const canonicalDataPlane = classifyCanonicalDataPlane(
+    inventory.canonicalDataPlane,
+    failureGates,
+  );
+  const agentReferences = classifyAgentReferences(
+    inventory.agentReferences,
     failureGates,
   );
   const agentExecutionPlans = classifyAgentExecutionPlans(
@@ -2551,6 +2765,8 @@ export function classifyPreflightInventory(
     capabilities,
     agentExecutionPlans,
     identity,
+    canonicalDataPlane,
+    agentReferences,
     versions,
     heads: heads.output,
     runs: runs.output,
@@ -2563,6 +2779,310 @@ export function classifyPreflightInventory(
   assertPreflightOutputShape(result);
   return result;
 }
+
+export const CANONICAL_AGENT_DATA_PLANE_QUERY = `
+WITH "records" AS (
+  SELECT
+    coalesce("compose"."id", "zero_agent"."id", "agent"."id")::text AS "id",
+    "compose"."id" IS NOT NULL AS "compose_present",
+    "zero_agent"."id" IS NOT NULL AS "zero_present",
+    "agent"."id" IS NOT NULL AS "target_present",
+    (
+      "compose"."id" IS NOT NULL
+      AND "zero_agent"."id" IS NOT NULL
+      AND "agent"."id" IS NOT NULL
+      AND (
+        "compose"."org_id" IS DISTINCT FROM "zero_agent"."org_id"
+        OR "compose"."user_id" IS DISTINCT FROM "zero_agent"."owner"
+        OR "compose"."name" IS DISTINCT FROM "zero_agent"."name"
+        OR ROW(
+          "agent"."org_id",
+          "agent"."owner",
+          "agent"."name",
+          "agent"."visibility",
+          "agent"."display_name",
+          "agent"."description",
+          "agent"."sound",
+          "agent"."avatar_url",
+          "agent"."model_provider_id",
+          "agent"."selected_model",
+          "agent"."prefer_personal_provider",
+          "agent"."created_at",
+          "agent"."updated_at"
+        ) IS DISTINCT FROM ROW(
+          "zero_agent"."org_id",
+          "zero_agent"."owner",
+          "zero_agent"."name",
+          "zero_agent"."visibility",
+          "zero_agent"."display_name",
+          "zero_agent"."description",
+          "zero_agent"."sound",
+          "zero_agent"."avatar_url",
+          "zero_agent"."model_provider_id",
+          "zero_agent"."selected_model",
+          "zero_agent"."prefer_personal_provider",
+          "compose"."created_at",
+          greatest("compose"."updated_at", "zero_agent"."updated_at")
+        )
+      )
+    ) AS "field_mismatch"
+  FROM "agent_composes" AS "compose"
+  FULL OUTER JOIN "zero_agents" AS "zero_agent"
+    ON "zero_agent"."id" = "compose"."id"
+  FULL OUTER JOIN "agents" AS "agent"
+    ON "agent"."id" = coalesce("compose"."id", "zero_agent"."id")
+),
+"members" AS (
+  SELECT 'matched'::text AS "classification", "id"
+  FROM "records"
+  WHERE "compose_present" AND "zero_present"
+  UNION ALL
+  SELECT 'target', "id" FROM "records" WHERE "target_present"
+  UNION ALL
+  SELECT 'missingTarget', "id"
+  FROM "records"
+  WHERE "compose_present" AND "zero_present" AND NOT "target_present"
+  UNION ALL
+  SELECT 'targetOnly', "id"
+  FROM "records"
+  WHERE "target_present" AND (NOT "compose_present" OR NOT "zero_present")
+  UNION ALL
+  SELECT 'composeOnlyTarget', "id"
+  FROM "records"
+  WHERE "compose_present" AND NOT "zero_present" AND "target_present"
+  UNION ALL
+  SELECT 'fieldMismatch', "id" FROM "records" WHERE "field_mismatch"
+),
+"domains"("classification", "digest_domain") AS (
+  VALUES
+    ('matched', 'canonical-agent-membership'),
+    ('target', 'canonical-agent-membership'),
+    ('missingTarget', 'canonical-agent-data-plane:missingTarget'),
+    ('targetOnly', 'canonical-agent-data-plane:targetOnly'),
+    ('composeOnlyTarget', 'canonical-agent-data-plane:composeOnlyTarget'),
+    ('fieldMismatch', 'canonical-agent-data-plane:fieldMismatch')
+)
+SELECT
+  NULL::text AS "cohort",
+  "domain"."classification" AS "classification",
+  count("member"."id")::text AS "count",
+  encode(
+    sha256(
+      convert_to(
+        "domain"."digest_domain" || E'\\x1f' || coalesce(
+          string_agg(
+            octet_length("member"."id")::text || ':' || "member"."id",
+            E'\\x1e' ORDER BY "member"."id" COLLATE "C"
+          ),
+          ''
+        ),
+        'UTF8'
+      )
+    ),
+    'hex'
+  ) AS "digest"
+FROM "domains" AS "domain"
+LEFT JOIN "members" AS "member"
+  ON "member"."classification" = "domain"."classification"
+GROUP BY "domain"."classification", "domain"."digest_domain"
+ORDER BY "domain"."classification"
+`;
+
+export const AGENT_REFERENCE_INVENTORY_QUERY = `
+WITH "reference_rows" AS (
+  SELECT 'agentSessions'::text AS "cohort", "id"::text AS "member_key",
+    "agent_compose_id" AS "legacy_id", "agent_id" AS "target_id",
+    true AS "allows_compose_only", true AS "sibling"
+  FROM "agent_sessions"
+  UNION ALL
+  SELECT 'chatThreads', "id"::text, "agent_compose_id", "agent_id", true, true
+  FROM "chat_threads"
+  UNION ALL
+  SELECT 'chatThreadEvents', "id"::text, "agent_compose_id", "agent_id", true, true
+  FROM "chat_thread_events"
+  UNION ALL
+  SELECT 'chatEventSearchMessages',
+    "chat_thread_id"::text || ':' || "seq_id"::text,
+    "agent_compose_id", "agent_id", true, true
+  FROM "chat_event_search_messages"
+  UNION ALL
+  SELECT 'telegramInstallations', "telegram_bot_id"::text,
+    "default_compose_id", "default_agent_id", false, true
+  FROM "telegram_installations"
+  UNION ALL
+  SELECT 'feishuOrgInstallations', "id"::text,
+    "default_compose_id", "default_agent_id", false, true
+  FROM "feishu_org_installations"
+  UNION ALL
+  SELECT 'githubInstallations', "id"::text,
+    "default_compose_id", "default_agent_id", false, true
+  FROM "github_installations"
+  UNION ALL
+  SELECT 'slackUserAgentPreferences', "user_id" || ':' || "org_id",
+    "selected_compose_id", "selected_agent_id", false, true
+  FROM "slack_user_agent_preferences"
+  UNION ALL
+  SELECT 'teamsUserAgentPreferences', "user_id" || ':' || "org_id",
+    "selected_compose_id", "selected_agent_id", false, true
+  FROM "teams_user_agent_preferences"
+  UNION ALL
+  SELECT 'agentphoneUserAgentPreferences', "user_id" || ':' || "org_id",
+    "selected_compose_id", "selected_agent_id", false, true
+  FROM "agentphone_user_agent_preferences"
+  UNION ALL
+  SELECT 'telegramUserAgentPreferences', "user_id" || ':' || "org_id",
+    "selected_compose_id", "selected_agent_id", false, true
+  FROM "telegram_user_agent_preferences"
+  UNION ALL
+  SELECT 'feishuUserAgentPreferences', "user_id" || ':' || "org_id",
+    "selected_compose_id", "selected_agent_id", false, true
+  FROM "feishu_user_agent_preferences"
+  UNION ALL
+  SELECT 'orgMetadataDefaultAgent', "org_id", "default_agent_id",
+    "default_agent_id", false, false
+  FROM "org_metadata"
+  UNION ALL
+  SELECT 'workflows', "id"::text, "agent_id", "agent_id", false, false
+  FROM "zero_workflows"
+  UNION ALL
+  SELECT 'userConnectors', "id"::text, "agent_id", "agent_id", false, false
+  FROM "user_connectors"
+  UNION ALL
+  SELECT 'userCustomConnectors', "id"::text, "agent_id", "agent_id", false, false
+  FROM "user_custom_connectors"
+  UNION ALL
+  SELECT 'userPermissionGrants', "id"::text, "agent_id", "agent_id", false, false
+  FROM "user_permission_grants"
+  UNION ALL
+  SELECT 'agentDrafts', "user_id" || ':' || "org_id" || ':' || "agent_id"::text,
+    "agent_id", "agent_id", false, false
+  FROM "zero_agent_drafts"
+  UNION ALL
+  SELECT 'bankingAgentEnablements', "id"::text, "agent_id", "agent_id", false, false
+  FROM "banking_agent_enablements"
+  UNION ALL
+  SELECT 'threadGoals', "id"::text, "agent_id", "agent_id", false, false
+  FROM "thread_goals"
+),
+"classified" AS (
+  SELECT
+    "reference"."cohort",
+    "reference"."member_key",
+    CASE
+      WHEN "reference"."legacy_id" IS NULL
+        AND "reference"."target_id" IS NULL
+        THEN 'nullableNull'
+      WHEN "reference"."legacy_id" IS NOT NULL
+        AND "reference"."target_id" IS NOT DISTINCT FROM "reference"."legacy_id"
+        AND "agent"."id" IS NOT NULL
+        THEN 'valid'
+      WHEN "reference"."sibling"
+        AND "reference"."allows_compose_only"
+        AND "reference"."legacy_id" IS NOT NULL
+        AND "reference"."target_id" IS NULL
+        AND "agent"."id" IS NULL
+        AND "compose"."id" IS NOT NULL
+        AND "zero_agent"."id" IS NULL
+        THEN 'composeOnlyNull'
+      ELSE 'invalid'
+    END AS "classification"
+  FROM "reference_rows" AS "reference"
+  LEFT JOIN "agents" AS "agent"
+    ON "agent"."id" = "reference"."legacy_id"
+  LEFT JOIN "agent_composes" AS "compose"
+    ON "compose"."id" = "reference"."legacy_id"
+  LEFT JOIN "zero_agents" AS "zero_agent"
+    ON "zero_agent"."id" = "reference"."legacy_id"
+),
+"metric_members" AS (
+  SELECT "cohort", 'population'::text AS "classification", "member_key"
+  FROM "classified"
+  UNION ALL
+  SELECT "cohort", "classification", "member_key" FROM "classified"
+),
+"aggregates" AS (
+  SELECT
+    "cohort",
+    "classification",
+    count(*)::text AS "count",
+    encode(
+      sha256(
+        convert_to(
+          CASE
+            WHEN "classification" = 'population'
+              THEN 'agent-reference:' || "cohort" || ':partition-membership'
+            ELSE 'agent-reference:' || "cohort" || ':' || "classification"
+          END || E'\\x1f' || string_agg(
+            octet_length("member_key")::text || ':' || "member_key",
+            E'\\x1e' ORDER BY "member_key" COLLATE "C"
+          ),
+          'UTF8'
+        )
+      ),
+      'hex'
+    ) AS "digest"
+  FROM "metric_members"
+  GROUP BY "cohort", "classification"
+),
+"cohorts"("cohort") AS (
+  VALUES
+    ('agentSessions'),
+    ('chatThreads'),
+    ('chatThreadEvents'),
+    ('chatEventSearchMessages'),
+    ('telegramInstallations'),
+    ('feishuOrgInstallations'),
+    ('githubInstallations'),
+    ('slackUserAgentPreferences'),
+    ('teamsUserAgentPreferences'),
+    ('agentphoneUserAgentPreferences'),
+    ('telegramUserAgentPreferences'),
+    ('feishuUserAgentPreferences'),
+    ('orgMetadataDefaultAgent'),
+    ('workflows'),
+    ('userConnectors'),
+    ('userCustomConnectors'),
+    ('userPermissionGrants'),
+    ('agentDrafts'),
+    ('bankingAgentEnablements'),
+    ('threadGoals')
+),
+"domains"("classification", "source_classification") AS (
+  VALUES
+    ('population', 'population'),
+    ('valid', 'valid'),
+    ('nullableNull', 'nullableNull'),
+    ('composeOnlyNull', 'composeOnlyNull'),
+    ('invalid', 'invalid'),
+    ('partitionUnion', 'population')
+)
+SELECT
+  "cohort"."cohort" AS "cohort",
+  "domain"."classification" AS "classification",
+  coalesce("aggregate"."count", '0') AS "count",
+  coalesce(
+    "aggregate"."digest",
+    encode(
+      sha256(
+        convert_to(
+          CASE
+            WHEN "domain"."classification" IN ('population', 'partitionUnion')
+              THEN 'agent-reference:' || "cohort"."cohort" || ':partition-membership'
+            ELSE 'agent-reference:' || "cohort"."cohort" || ':' || "domain"."classification"
+          END || E'\\x1f',
+          'UTF8'
+        )
+      ),
+      'hex'
+    )
+  ) AS "digest"
+FROM "cohorts" AS "cohort"
+CROSS JOIN "domains" AS "domain"
+LEFT JOIN "aggregates" AS "aggregate"
+  ON "aggregate"."cohort" = "cohort"."cohort"
+  AND "aggregate"."classification" = "domain"."source_classification"
+ORDER BY "cohort"."cohort", "domain"."classification"
+`;
 
 const DANGLING_QUERY = `
 SELECT
@@ -2901,7 +3421,21 @@ async function collectDatabaseInventory(
      FROM "agent_composes" AS "compose"
      FULL OUTER JOIN "zero_agents" AS "agent"
        ON "agent"."id" = "compose"."id"
-     ORDER BY coalesce("compose"."id", "agent"."id")`,
+    ORDER BY coalesce("compose"."id", "agent"."id")`,
+  );
+  const canonicalDataPlane = await safeQuery<AggregateInventoryRow>(
+    client,
+    signal,
+    phaseRecorder,
+    "canonicalDataPlane",
+    CANONICAL_AGENT_DATA_PLANE_QUERY,
+  );
+  const agentReferences = await safeQuery<AggregateInventoryRow>(
+    client,
+    signal,
+    phaseRecorder,
+    "agentReferences",
+    AGENT_REFERENCE_INVENTORY_QUERY,
   );
   const agentExecutionPlans = await safeQuery<AgentExecutionPlanInventoryRow>(
     client,
@@ -3128,6 +3662,8 @@ async function collectDatabaseInventory(
   );
   return {
     identity,
+    canonicalDataPlane,
+    agentReferences,
     versions,
     heads,
     runs,

@@ -58,6 +58,7 @@ import {
 } from "./test-checkpoint-agent-compose-snapshot-nullable";
 import { validateBuiltInModelKeysCompatibilityRelation } from "./test-built-in-model-keys-compatibility-relation";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
+import { validateCanonicalAgentDataPlaneMigration } from "./test-canonical-agent-data-plane";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
@@ -2471,6 +2472,107 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "users",
     triggerName: "users_clerk_cleanup_transition_guard",
   },
+  // Additive #26938 Stage 5 bridges. Both identity triggers point from the
+  // legacy sources to agents; every reference trigger points from the legacy
+  // column to its nullable final sibling. No trigger is installed on agents.
+  {
+    definition:
+      "CREATE TRIGGER bridge_agent_composes_to_agents_0966 AFTER INSERT OR DELETE OR UPDATE OF id, user_id, name, org_id, created_at, updated_at ON public.agent_composes FOR EACH ROW EXECUTE FUNCTION bridge_legacy_agent_to_agents_0966()",
+    schemaName: "public",
+    tableName: "agent_composes",
+    triggerName: "bridge_agent_composes_to_agents_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_agent_sessions_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.agent_sessions FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "agent_sessions",
+    triggerName: "bridge_agent_sessions_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_agentphone_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.agentphone_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "agentphone_user_agent_preferences",
+    triggerName: "bridge_agentphone_preferences_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_chat_event_search_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_event_search_messages FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "chat_event_search_messages",
+    triggerName: "bridge_chat_event_search_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_chat_thread_events_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "chat_thread_events",
+    triggerName: "bridge_chat_thread_events_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_chat_threads_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "chat_threads",
+    triggerName: "bridge_chat_threads_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_feishu_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.feishu_org_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "feishu_org_installations",
+    triggerName: "bridge_feishu_installations_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_feishu_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.feishu_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "feishu_user_agent_preferences",
+    triggerName: "bridge_feishu_preferences_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_github_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.github_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "github_installations",
+    triggerName: "bridge_github_installations_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_slack_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.slack_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "slack_user_agent_preferences",
+    triggerName: "bridge_slack_preferences_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_teams_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.teams_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "teams_user_agent_preferences",
+    triggerName: "bridge_teams_preferences_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_telegram_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.telegram_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "telegram_installations",
+    triggerName: "bridge_telegram_installations_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_telegram_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.telegram_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
+    schemaName: "public",
+    tableName: "telegram_user_agent_preferences",
+    triggerName: "bridge_telegram_preferences_agent_reference_0966",
+  },
+  {
+    definition:
+      "CREATE TRIGGER bridge_zero_agents_to_agents_0966 AFTER INSERT OR DELETE OR UPDATE OF id, org_id, owner, name, visibility, display_name, description, sound, avatar_url, model_provider_id, selected_model, prefer_personal_provider, created_at, updated_at ON public.zero_agents FOR EACH ROW EXECUTE FUNCTION bridge_legacy_agent_to_agents_0966()",
+    schemaName: "public",
+    tableName: "zero_agents",
+    triggerName: "bridge_zero_agents_to_agents_0966",
+  },
   // DB/API rollout bridge for #28304. Remove in #28372 after all pre-0954
   // pending snapshots and Checkout Sessions have drained or reconciled.
   {
@@ -2504,6 +2606,34 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "3ce27bdd5486371fa933b2b9d91060d9",
+    functionName: "bridge_agent_compose_reference_0966",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "e742c12ea6a8f024e7e6718d184dcd66",
+    functionName: "bridge_default_compose_reference_0966",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "af660c6ea22a20e454e774f506d8d550",
+    functionName: "bridge_legacy_agent_to_agents_0966",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "92e89375e713584bb9fcb0dd487c1f47",
+    functionName: "bridge_selected_compose_reference_0966",
+    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -2627,6 +2757,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "cf88a4594612b925b2770563b653ed48",
+    functionName: "sync_agent_from_legacy_0966",
+    identityArguments: "p_agent_id uuid",
     kind: "f",
     schemaName: "public",
   },
@@ -11741,6 +11878,7 @@ async function main(): Promise<void> {
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
     await validateAgentComposeConsolidationPreflight();
+    await validateCanonicalAgentDataPlaneMigration();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

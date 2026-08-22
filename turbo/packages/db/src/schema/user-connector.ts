@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   pgTable,
   uuid,
   text,
@@ -8,6 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 
 /**
  * User Connectors table
@@ -34,6 +36,11 @@ export const userConnectors = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "user_connectors_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_user_connectors_unique_slug").on(
         table.orgId,
         table.userId,

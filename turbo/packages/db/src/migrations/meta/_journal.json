@@ -1107,6 +1107,13 @@
       "when": 1787353806709,
       "tag": "0965_contract_legacy_built_in_model_key_relation",
       "breakpoints": true
+    },
+    {
+      "idx": 966,
+      "version": "7",
+      "when": 1787359224921,
+      "tag": "0966_canonical_agents_data_plane",
+      "breakpoints": true
     }
   ]
 }

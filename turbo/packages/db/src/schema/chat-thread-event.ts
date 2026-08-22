@@ -55,6 +55,7 @@ export const chatThreadEvents = pgTable(
     chatThreadId: uuid("chat_thread_id").notNull(),
     kind: chatThreadEventKind("kind").notNull(),
     agentComposeId: uuid("agent_compose_id").notNull(),
+    agentId: uuid("agent_id"),
     title: text("title"),
     selectedModel: varchar("selected_model", { length: 255 }),
     serviceTier: varchar("service_tier", {
@@ -73,6 +74,10 @@ export const chatThreadEvents = pgTable(
       check(
         "chat_thread_events_computer_access_check",
         sql`NOT (${table.cloudBrowserEnabled} AND ${table.computerUseHostId} IS NOT NULL)`,
+      ),
+      check(
+        "chat_thread_events_agent_reference_match",
+        sql`${table.agentId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
       ),
       index("idx_chat_thread_events_user_org_created").on(
         table.userId,
