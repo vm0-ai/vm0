@@ -3666,7 +3666,7 @@ function builtinConnectorAccountRequestsForMetadata(args: {
       target: { kind: "builtin", connectorSlug },
       selection:
         metadata.sourceId === undefined
-          ? { kind: "legacy-singleton" }
+          ? { kind: "source-less-runtime-singleton" }
           : { kind: "exact", sourceId: metadata.sourceId },
     };
   });
@@ -3720,7 +3720,7 @@ function builtinConnectorAccountRequestsForFirewall(args: {
       target: { kind: "builtin", connectorSlug },
       selection:
         sourceId === undefined
-          ? { kind: "legacy-singleton" }
+          ? { kind: "source-less-runtime-singleton" }
           : { kind: "exact", sourceId },
     };
   });
@@ -4682,7 +4682,7 @@ async function resolveCurrentCustomConnectorMemberId(args: {
         target,
         selection:
           args.sourceId === undefined
-            ? { kind: "legacy-singleton" }
+            ? { kind: "source-less-runtime-singleton" }
             : { kind: "exact", sourceId: args.sourceId },
       },
     ],

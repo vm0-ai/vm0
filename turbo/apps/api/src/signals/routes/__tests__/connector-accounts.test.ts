@@ -466,6 +466,21 @@ describe("connector account lifecycle routes", () => {
       "Multiple connector accounts require an exact choice",
     );
 
+    const omittedIntent = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          values: { apiKey: "sk-omitted-ambiguous" },
+        },
+      }),
+      [409],
+    );
+    expect(omittedIntent.body.error.message).toBe(
+      "Multiple connector accounts require an exact choice",
+    );
+
     const accounts = await accept(
       accountClient().connections({
         headers: authHeaders(),

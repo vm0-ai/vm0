@@ -14,7 +14,7 @@ export interface StoredConnectorConnectionRow {
   readonly id: string;
   readonly authMethod: string;
   readonly displayName: string | null;
-  readonly isDefault: boolean | null;
+  readonly isDefault: boolean;
   readonly externalId: string | null;
   readonly externalUsername: string | null;
   readonly externalEmail: string | null;

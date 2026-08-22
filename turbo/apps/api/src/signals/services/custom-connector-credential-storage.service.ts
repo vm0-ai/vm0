@@ -105,7 +105,7 @@ export async function deleteCustomConnectorMemberConnection(
     userId: args.userId,
     request: {
       target: { kind: "custom", customConnectorId: args.connectorId },
-      selection: { kind: "legacy-singleton" },
+      selection: { kind: "target-only-client-singleton" },
     },
   });
   signal.throwIfAborted();
