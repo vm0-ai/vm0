@@ -859,7 +859,53 @@ CALL "backfill_agent_references_0966"('public.agent_sessions', ARRAY['id']::name
 --> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.chat_threads', ARRAY['id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');
 --> statement-breakpoint
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_trigger"
+    WHERE "tgrelid" = 'public.chat_thread_events'::regclass
+      AND "tgname" = 'chat_thread_events_reject_update'
+      AND "tgfoid" = 'public.reject_chat_event_source_update()'::regprocedure
+      AND "tgenabled" = 'O'
+      AND NOT "tgisinternal"
+  ) THEN
+    RAISE EXCEPTION 'chat_thread_events append-only trigger must be enabled';
+  END IF;
+END;
+$$;
+--> statement-breakpoint
+-- Keep the permanent append-only trigger installed while narrowly permitting
+-- only this deterministic reference transition. The target may move only from
+-- NULL to the legacy compose id when that id already owns a canonical Agent;
+-- every other column remains byte-identical and every other UPDATE still fails.
+CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
+BEGIN
+  IF TG_TABLE_SCHEMA = 'public'
+    AND TG_TABLE_NAME = 'chat_thread_events'
+    AND OLD."agent_id" IS NULL
+    AND NEW."agent_id" = OLD."agent_compose_id"
+    AND (to_jsonb(NEW) - 'agent_id') = (to_jsonb(OLD) - 'agent_id')
+    AND EXISTS (
+      SELECT 1
+      FROM "agents" AS "agent"
+      WHERE "agent"."id" = OLD."agent_compose_id"
+    )
+  THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION '% is append-only; UPDATE is not allowed', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.chat_thread_events', ARRAY['id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION '% is append-only; UPDATE is not allowed', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.chat_event_search_messages', ARRAY['chat_thread_id', 'seq_id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');
 --> statement-breakpoint

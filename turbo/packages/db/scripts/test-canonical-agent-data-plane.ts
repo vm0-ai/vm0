@@ -13,6 +13,8 @@ const migration = "0966_canonical_agents_data_plane";
 const testDatabase = "migration_canonical_agents_data_plane";
 const fixedAgentId = "00000000-0000-4000-8000-000000096600";
 const composeOnlyId = "00000000-0000-4000-8000-0000000966ff";
+const fixedChatThreadEventId = "00000000-0000-4000-8000-0000000966d1";
+const composeOnlyChatThreadEventId = "00000000-0000-4000-8000-0000000966df";
 
 const siblingColumns = [
   "agent_sessions.agent_id",
@@ -97,11 +99,62 @@ function assertDatabaseError(
   }
 }
 
+async function chatEventRejectFunctionDefinition(
+  client: Client,
+): Promise<string> {
+  const result = await client.query<{ definition: string }>(`
+    SELECT pg_get_functiondef(
+      'public.reject_chat_event_source_update()'::regprocedure
+    ) AS "definition"
+  `);
+  const definition = result.rows[0]?.definition;
+  assert.ok(definition);
+  return definition;
+}
+
+async function assertChatThreadEventAppendOnlyTriggerEnabled(
+  client: Client,
+): Promise<void> {
+  const trigger = await client.query<{
+    enabled: string;
+    expectedFunction: boolean;
+  }>(`
+    SELECT
+      "trigger"."tgenabled"::text AS "enabled",
+      "trigger"."tgfoid" =
+        'public.reject_chat_event_source_update()'::regprocedure
+        AS "expectedFunction"
+    FROM "pg_trigger" AS "trigger"
+    WHERE "trigger"."tgrelid" = 'public.chat_thread_events'::regclass
+      AND "trigger"."tgname" = 'chat_thread_events_reject_update'
+      AND NOT "trigger"."tgisinternal"
+  `);
+  assert.deepEqual(trigger.rows, [{ enabled: "O", expectedFunction: true }]);
+}
+
+async function assertChatThreadEventUpdateRejected(
+  client: Client,
+  query: string,
+  values: string[],
+): Promise<void> {
+  await assert.rejects(client.query(query, values), (error: unknown) => {
+    assertDatabaseError(error, {
+      code: "P0001",
+      messageIncludes:
+        "chat_thread_events is append-only; UPDATE is not allowed",
+    });
+    return true;
+  });
+}
+
 function validateMigrationSql(migrationSql: string): void {
   assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
   assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
+  assert.doesNotMatch(migrationSql, /\bDISABLE\s+TRIGGER\b/iu);
+  assert.doesNotMatch(migrationSql, /\bsession_replication_role\b/iu);
   assert.doesNotMatch(migrationSql, /\bDROP\s+(?:TABLE|COLUMN)\b/iu);
   assert.doesNotMatch(migrationSql, /\bRENAME\s+(?:TABLE|COLUMN)\b/iu);
+  assert.match(migrationSql, /"tgenabled" = 'O'/u);
   assert.doesNotMatch(
     migrationSql,
     /CREATE\s+TRIGGER[\s\S]{0,300}\sON\s+"agents"/iu,
@@ -135,6 +188,25 @@ function validateMigrationSql(migrationSql: string): void {
   assert.match(
     migrationSql,
     /created_at"[\s\S]*greatest\("compose"\."updated_at", "zero_agent"\."updated_at"\)/u,
+  );
+
+  const chatThreadEventCall = `CALL "backfill_agent_references_0966"('public.chat_thread_events', ARRAY['id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');`;
+  const chatThreadEventCallOffset = migrationSql.indexOf(chatThreadEventCall);
+  const narrowGuardOffset = migrationSql.indexOf(`AND OLD."agent_id" IS NULL`);
+  const strictRestoreOffset = migrationSql.indexOf(
+    `CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$`,
+    chatThreadEventCallOffset + chatThreadEventCall.length,
+  );
+  const nextReferenceCallOffset = migrationSql.indexOf(
+    `CALL "backfill_agent_references_0966"('public.chat_event_search_messages'`,
+  );
+  assert.ok(narrowGuardOffset > 0);
+  assert.ok(narrowGuardOffset < chatThreadEventCallOffset);
+  assert.ok(chatThreadEventCallOffset < strictRestoreOffset);
+  assert.ok(strictRestoreOffset < nextReferenceCallOffset);
+  assert.match(
+    migrationSql,
+    /TG_TABLE_SCHEMA = 'public'[\s\S]*TG_TABLE_NAME = 'chat_thread_events'[\s\S]*OLD\."agent_id" IS NULL[\s\S]*NEW\."agent_id" = OLD\."agent_compose_id"[\s\S]*\(to_jsonb\(NEW\) - 'agent_id'\) = \(to_jsonb\(OLD\) - 'agent_id'\)[\s\S]*FROM "agents" AS "agent"[\s\S]*"agent"\."id" = OLD\."agent_compose_id"/u,
   );
 }
 
@@ -329,6 +401,30 @@ async function seedPreviousSchema(client: Client): Promise<void> {
     `,
     [composeOnlyId],
   );
+  await client.query(
+    `
+      INSERT INTO "chat_thread_events" (
+        "id", "user_id", "org_id", "chat_thread_id", "kind",
+        "agent_compose_id", "title"
+      ) VALUES
+        (
+          $1, 'canonical-owner', 'canonical-org',
+          '00000000-0000-4000-8000-0000000966a1', 'created', $3,
+          'canonical Agent event'
+        ),
+        (
+          $2, 'compose-only-owner', 'compose-only-org',
+          '00000000-0000-4000-8000-0000000966aa', 'created', $4,
+          'compose-only event'
+        )
+    `,
+    [
+      fixedChatThreadEventId,
+      composeOnlyChatThreadEventId,
+      fixedAgentId,
+      composeOnlyId,
+    ],
+  );
 }
 
 async function assertCatalogLockRetryBoundary(args: {
@@ -494,6 +590,108 @@ async function assertReferenceBackfillContention(args: {
   assert.deepEqual(partial.rows, [{ count: 501 }]);
 }
 
+async function assertChatThreadEventReferenceState(
+  client: Client,
+): Promise<void> {
+  const references = await client.query<{
+    agentId: string | null;
+    id: string;
+  }>(
+    `
+      SELECT "id"::text AS "id", "agent_id"::text AS "agentId"
+      FROM "chat_thread_events"
+      WHERE "id" = ANY($1::uuid[])
+      ORDER BY "id"
+    `,
+    [[fixedChatThreadEventId, composeOnlyChatThreadEventId]],
+  );
+  assert.deepEqual(references.rows, [
+    { id: fixedChatThreadEventId, agentId: fixedAgentId },
+    { id: composeOnlyChatThreadEventId, agentId: null },
+  ]);
+}
+
+async function assertChatThreadEventBackfillGuard(args: {
+  readonly runner: Client;
+  readonly statements: readonly string[];
+  readonly strictRejectFunctionDefinition: string;
+}): Promise<void> {
+  const callIndex = args.statements.findIndex((statement) => {
+    return statement.startsWith(
+      `CALL "backfill_agent_references_0966"('public.chat_thread_events'`,
+    );
+  });
+  assert.ok(callIndex > 1);
+  const catalogGate = args.statements[callIndex - 2];
+  const narrowGuard = args.statements[callIndex - 1];
+  const strictRestore = args.statements[callIndex + 1];
+  assert.match(catalogGate!, /"tgenabled" = 'O'/u);
+  assert.match(
+    narrowGuard!,
+    /OLD\."agent_id" IS NULL[\s\S]*NEW\."agent_id" = OLD\."agent_compose_id"/u,
+  );
+  assert.doesNotMatch(strictRestore!, /OLD\."agent_id"/u);
+
+  await args.runner.query(
+    `ALTER TABLE "chat_thread_events" ENABLE REPLICA TRIGGER "chat_thread_events_reject_update"`,
+  );
+  await assert.rejects(args.runner.query(catalogGate!), (error: unknown) => {
+    assertDatabaseError(error, {
+      code: "P0001",
+      messageIncludes: "chat_thread_events append-only trigger must be enabled",
+    });
+    return true;
+  });
+  await args.runner.query(
+    `ALTER TABLE "chat_thread_events" ENABLE TRIGGER "chat_thread_events_reject_update"`,
+  );
+
+  // Stop immediately before the guarded call to model an interrupted run with
+  // the permanent trigger still enabled and the narrow transition installed.
+  await executeStatements({
+    client: args.runner,
+    statements: args.statements,
+    endExclusive: callIndex,
+  });
+  await assertChatThreadEventAppendOnlyTriggerEnabled(args.runner);
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
+    `UPDATE "chat_thread_events" SET "title" = 'forbidden' WHERE "id" = $1`,
+    [fixedChatThreadEventId],
+  );
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
+    `UPDATE "chat_thread_events" SET "agent_id" = "agent_compose_id", "title" = 'forbidden' WHERE "id" = $1`,
+    [fixedChatThreadEventId],
+  );
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
+    `UPDATE "chat_thread_events" SET "agent_id" = "agent_compose_id" WHERE "id" = $1`,
+    [composeOnlyChatThreadEventId],
+  );
+
+  await args.runner.query(args.statements[callIndex]!);
+  await args.runner.query(args.statements[callIndex]!);
+  await args.runner.query(strictRestore!);
+
+  await assertChatThreadEventReferenceState(args.runner);
+  await assertChatThreadEventAppendOnlyTriggerEnabled(args.runner);
+  assert.equal(
+    await chatEventRejectFunctionDefinition(args.runner),
+    args.strictRejectFunctionDefinition,
+  );
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
+    `UPDATE "chat_thread_events" SET "agent_id" = NULL WHERE "id" = $1`,
+    [fixedChatThreadEventId],
+  );
+  await assertChatThreadEventUpdateRejected(
+    args.runner,
+    `UPDATE "chat_thread_events" SET "title" = 'still forbidden' WHERE "id" = $1`,
+    [composeOnlyChatThreadEventId],
+  );
+}
+
 async function validateFinalCatalog(
   client: Client,
   baseline: CatalogBaseline,
@@ -628,6 +826,7 @@ async function validateBackfillAndComposeOnlyClosure(
     composeOnlyAgentCount: number;
     composeOnlySearchNullCount: number;
     composeOnlySessionNullCount: number;
+    composeOnlyThreadEventNullCount: number;
     composeOnlyThreadNullCount: number;
     fieldMismatchCount: number;
     matchedCount: number;
@@ -677,6 +876,10 @@ async function validateBackfillAndComposeOnlyClosure(
         WHERE "agent_compose_id" = $1 AND "agent_id" IS NULL
       ) AS "composeOnlyThreadNullCount",
       (
+        SELECT count(*)::integer FROM "chat_thread_events"
+        WHERE "agent_compose_id" = $1 AND "agent_id" IS NULL
+      ) AS "composeOnlyThreadEventNullCount",
+      (
         SELECT count(*)::integer FROM "chat_event_search_messages"
         WHERE "agent_compose_id" = $1 AND "agent_id" IS NULL
       ) AS "composeOnlySearchNullCount"
@@ -691,6 +894,7 @@ async function validateBackfillAndComposeOnlyClosure(
       composeOnlyAgentCount: 0,
       composeOnlySessionNullCount: 22,
       composeOnlyThreadNullCount: 1,
+      composeOnlyThreadEventNullCount: 1,
       composeOnlySearchNullCount: 2,
     },
   ]);
@@ -1011,20 +1215,40 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
       previousMigration,
     );
     await seedPreviousSchema(runner);
+    await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
+    const strictRejectFunctionDefinition =
+      await chatEventRejectFunctionDefinition(runner);
     const baseline = await collectCatalogBaseline(runner);
 
     await assertCatalogLockRetryBoundary({ blocker, runner, statements });
     await assertAgentBackfillContention({ blocker, runner, statements });
     await assertReferenceBackfillContention({ blocker, runner, statements });
+    await assertChatThreadEventBackfillGuard({
+      runner,
+      statements,
+      strictRejectFunctionDefinition,
+    });
 
     await executeStatements({ client: runner, statements });
     await validateFinalCatalog(runner, baseline);
     await validateBackfillAndComposeOnlyClosure(runner);
+    await assertChatThreadEventReferenceState(runner);
+    await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
+    assert.equal(
+      await chatEventRejectFunctionDefinition(runner),
+      strictRejectFunctionDefinition,
+    );
     await validateBridgeBehavior(runner);
     await validateConcurrentBridgeBehavior(runner, testUrl);
     await validateInvalidIndexRecovery({ client: runner, statements });
     await validateFinalCatalog(runner, baseline);
     await validateBackfillAndComposeOnlyClosure(runner);
+    await assertChatThreadEventReferenceState(runner);
+    await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
+    assert.equal(
+      await chatEventRejectFunctionDefinition(runner),
+      strictRejectFunctionDefinition,
+    );
   } finally {
     await blocker.query("ROLLBACK").catch(() => {});
     await runner.query("ROLLBACK").catch(() => {});
