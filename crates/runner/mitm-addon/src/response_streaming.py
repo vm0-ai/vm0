@@ -28,6 +28,7 @@ import http_header_syntax
 import http_response_classification
 import model_provider_failure
 import model_websocket_usage
+import openrouter_deepseek_apply_patch
 import runtime_url_parsing
 import stream_capture
 import usage
@@ -391,6 +392,9 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     metrics = {"total_bytes": 0}
     usage_parser, needs_buffered_fallback = _configure_response_usage_stream(flow)
     failure_parser = model_provider_failure.configure_response_parser(flow)
+    response_transformer = openrouter_deepseek_apply_patch.create_response_transformer(flow)
+    if response_transformer is not None:
+        flow.response.headers.pop("content-length", None)
     retain_body = flow_metadata.should_capture_body(flow.metadata) or needs_buffered_fallback
     buf = bytearray() if retain_body else None
     buffer_state = {"truncated": False} if retain_body else None
@@ -408,7 +412,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
             usage_parser(chunk)
         if failure_parser is not None:
             failure_parser(chunk)
-        return chunk
+        return response_transformer(chunk) if response_transformer is not None else chunk
 
     flow.response.stream = stream_and_observe
     flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] = metrics

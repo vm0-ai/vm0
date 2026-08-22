@@ -183,6 +183,9 @@ Model-provider usage
   info. Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
+- ``OPENROUTER_DEEPSEEK_APPLY_PATCH_ACTIVE``: ``bool`` written after the
+  managed request adapter changes the apply-patch declaration and read by the
+  matching response adapter on the same flow.
 
 Connector usage and parser state
 --------------------------------
@@ -246,6 +249,7 @@ MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_PROVIDER_USAGE_TIERS: Final = "model_provider_usage_tiers"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
+OPENROUTER_DEEPSEEK_APPLY_PATCH_ACTIVE: Final = "openrouter_deepseek_apply_patch_active"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
