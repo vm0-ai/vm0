@@ -120,6 +120,7 @@ import {
   readRunAutonomyBudgetFixture,
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
+  readThreadSessionConversation,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
@@ -5158,7 +5159,7 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
       Buffer.from(h2, "utf8"),
     );
-    await webhooks.requestAgentCheckpoint(
+    const committedH2 = await webhooks.requestAgentCheckpoint(
       {
         runId: run.runId,
         cliAgentType: "pi",
@@ -5168,6 +5169,12 @@ describe("CHAT-02: model-first provider policies", () => {
       claimed.sandboxHeaders,
       [200],
     );
+    const committedH2Body = committedH2.body;
+    if ("error" in committedH2Body) {
+      throw new Error(
+        `Expected H2 checkpoint success: ${committedH2Body.error.message}`,
+      );
+    }
     await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0 },
       claimed.sandboxHeaders,
@@ -5182,6 +5189,85 @@ describe("CHAT-02: model-first provider policies", () => {
         `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
       ),
     ).toBeFalsy();
+    const canonicalConversation = await readThreadSessionConversation(
+      context,
+      run.threadId,
+    );
+    expect(canonicalConversation).toMatchObject({
+      conversation_run_id: run.runId,
+    });
+
+    const idempotentH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(idempotentH2.body).toMatchObject({
+      checkpointId: committedH2Body.checkpointId,
+      conversationId: committedH2Body.conversationId,
+    });
+
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "late replacement H2" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+    const replacementH2 = h2Session.toJsonl();
+    expect(
+      MemoryPiSession.fromJsonl(replacementH2).isSettledCheckpoint(),
+    ).toBeTruthy();
+    const replacementH2Hash = createHash("sha256")
+      .update(replacementH2)
+      .digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: replacementH2Hash,
+        rawSize: Buffer.byteLength(replacementH2),
+        encodedSize: Buffer.byteLength(replacementH2),
+        encoding: "identity",
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${replacementH2Hash}.blob`,
+      Buffer.from(replacementH2, "utf8"),
+    );
+    const replacementCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: replacementH2Hash,
+      },
+      claimed.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(replacementCheckpoint.body)).toContain(
+      "[PI_H2_ALREADY_COMMITTED]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(1);
 
     const failedHandoff = await sendChatRun(actor, {
       agentId,
@@ -5238,6 +5324,145 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(2);
     expect(checkpointObjects.has(failedManifestKey)).toBeFalsy();
+    const lateFailedH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: failedHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateFailedH2.body)).toContain("[PI_H2_RUN_TERMINAL]");
+    const spoofedFailedH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: failedHandoff.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(spoofedFailedH2.body)).toContain(
+      "[PI_H2_TYPE_MISMATCH]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(2);
+
+    if (!canonicalConversation.agent_session_id) {
+      throw new Error("Expected the completed Pi run to own an AgentSession");
+    }
+    const explicitResume = await api.createRun(actor, {
+      agentId,
+      sessionId: canonicalConversation.agent_session_id,
+      prompt: "explicitly resume the last completed Pi checkpoint",
+    });
+    const explicitResumeClaim = await api.claimRunnerJob(explicitResume.runId);
+    expect(explicitResumeClaim.resumeSession).toMatchObject({
+      sessionId: run.threadId,
+      historyRef: {
+        kind: "blob",
+        hash: h2Hash,
+      },
+    });
+    expect(modelCalls).toBe(2);
+    await api.requestCancelRun(actor, explicitResume.runId, [200]);
+    await waitForRunStatus(actor, explicitResume.runId, "cancelled");
+
+    const cancelledHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "reject H2 after an explicit Pi handoff is cancelled",
+    });
+    const cancelledManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${cancelledHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(cancelledManifestKey);
+      })
+      .toBe(true);
+    const cancelledClaim = await claimChatRun(
+      runnerGroup,
+      cancelledHandoff.runId,
+    );
+    await cancelChatRun(
+      actor,
+      cancelledHandoff.runId,
+      cancelledClaim.sandboxHeaders,
+    );
+    const lateCancelledH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: cancelledHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      cancelledClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateCancelledH2.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(3);
+
+    const racedHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "serialize H2 against an early successful completion",
+    });
+    const racedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${racedHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(racedManifestKey);
+      })
+      .toBe(true);
+    const racedClaim = await claimChatRun(runnerGroup, racedHandoff.runId);
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+    const racedCompletion = webhooks.requestAgentComplete(
+      { runId: racedHandoff.runId, exitCode: 0 },
+      racedClaim.sandboxHeaders,
+      [200],
+    );
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    const racedCheckpoint = webhooks.requestAgentCheckpoint(
+      {
+        runId: racedHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      racedClaim.sandboxHeaders,
+      [400],
+    );
+    checkpointGate.release();
+    await checkpointGate.done;
+    await expect(racedCompletion).resolves.toMatchObject({
+      body: { success: true, status: "failed" },
+    });
+    const racedCheckpointResponse = await racedCheckpoint;
+    expect(JSON.stringify(racedCheckpointResponse.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    await waitForRunStatus(actor, racedHandoff.runId, "failed");
+    await flushWaitUntilForTest();
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(4);
 
     const retry = await sendChatRun(actor, {
       agentId,
@@ -5262,8 +5487,37 @@ describe("CHAT-02: model-first provider policies", () => {
       sessionId: run.threadId,
       sha256: h2Hash,
     });
-    expect(modelCalls).toBe(3);
-    await cancelChatRun(actor, retry.runId);
+    expect(modelCalls).toBe(5);
+    const timedOutClaim = await claimChatRun(runnerGroup, retry.runId);
+    await timeoutRunWithoutCallbacksFixture({ runId: retry.runId });
+    await waitForRunStatus(actor, retry.runId, "timeout");
+    const lateTimedOutH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: retry.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      timedOutClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateTimedOutH2.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    const timedOutCompletion = await webhooks.requestAgentComplete(
+      { runId: retry.runId, exitCode: 0 },
+      timedOutClaim.sandboxHeaders,
+      [200],
+    );
+    expect(timedOutCompletion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await waitForRunStatus(actor, retry.runId, "failed");
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(5);
   }, 90_000);
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {

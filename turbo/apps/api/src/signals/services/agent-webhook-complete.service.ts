@@ -37,6 +37,7 @@ import { lockChatQueueThread } from "./chat-event-queue.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
 import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
+import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -102,6 +103,7 @@ interface CompletionResponse {
 interface RunRecord {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly orgId: string;
+  readonly sessionId: string;
   readonly status: RunStatus;
   readonly userId: string;
   readonly chatThreadId: string | null;
@@ -180,6 +182,7 @@ async function loadCompletionRun(
   const [run] = await db
     .select({
       orgId: agentRuns.orgId,
+      sessionId: agentRuns.sessionId,
       status: agentRuns.status,
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
@@ -201,8 +204,9 @@ async function loadCompletionRun(
 }
 
 async function prepareCompletion(
-  db: Db,
+  db: Tx,
   input: CompleteAgentRunInput,
+  sessionId: string,
   signal: AbortSignal,
 ): Promise<PreparedCompletion> {
   if (input.body.exitCode !== 0) {
@@ -232,15 +236,9 @@ async function prepareCompletion(
       failureKind: "missing-checkpoint",
     };
   }
-  const [session] = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(eq(agentSessions.conversationId, checkpoint.conversationId))
-    .limit(1);
-  signal.throwIfAborted();
   return {
     status: "completed",
-    result: buildRunResult(checkpoint, session?.id),
+    result: buildRunResult(checkpoint, sessionId),
   };
 }
 
@@ -251,6 +249,7 @@ async function lockCompletionRun(
   const [run] = await tx
     .select({
       orgId: agentRuns.orgId,
+      sessionId: agentRuns.sessionId,
       status: agentRuns.status,
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
@@ -316,8 +315,27 @@ async function applyCancelledCompletionMetadata(
 async function applyTerminalCompletion(
   tx: Tx,
   input: CompleteAgentRunInput,
+  run: RunRecord,
   prepared: PreparedCompletion,
 ): Promise<void> {
+  if (
+    run.launchSnapshot?.framework === "pi" &&
+    prepared.status === "completed"
+  ) {
+    const conversationId = prepared.result?.conversationId;
+    if (!conversationId) {
+      throw new Error("Completed Pi run is missing its canonical conversation");
+    }
+    const [session] = await tx
+      .update(agentSessions)
+      .set({ conversationId, updatedAt: nowDate() })
+      .where(eq(agentSessions.id, run.sessionId))
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("Completed Pi run is missing its AgentSession");
+    }
+  }
+
   const [updated] = await tx
     .update(agentRuns)
     .set({
@@ -395,7 +413,7 @@ async function completeAgentRunTransition(
     if (!prepared) {
       throw new Error("Active agent run completion was not prepared");
     }
-    await applyTerminalCompletion(tx, input, prepared);
+    await applyTerminalCompletion(tx, input, run, prepared);
     return {
       kind: "committed",
       commit: {
@@ -651,15 +669,16 @@ export const completeAgentRun$ = command(
       initialRun.status === "pending" ||
       initialRun.status === "running" ||
       initialRun.status === "timeout";
-    const prepared = shouldPrepare
-      ? await prepareCompletion(db, input, signal)
-      : null;
-    signal.throwIfAborted();
-
     let expectedChatThreadId = initialRun.chatThreadId;
     let commit: CompletionCommit;
     while (true) {
       const result = await db.transaction(async (tx) => {
+        await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+        signal.throwIfAborted();
+        const prepared = shouldPrepare
+          ? await prepareCompletion(tx, input, initialRun.sessionId, signal)
+          : null;
+        signal.throwIfAborted();
         return await completeAgentRunTransition(
           tx,
           input,

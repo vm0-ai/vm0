@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type { z } from "zod";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@okouai/api-contracts/contracts/runs";
 import { PI_API_FIRST_TURN_SESSION_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   webhookCheckpointsContract,
@@ -23,6 +28,7 @@ import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -41,6 +47,7 @@ import {
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_ZSTD,
 } from "./session-history-blobs";
+import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
 import { safeSync, settle } from "../utils";
 
 type CheckpointCreateBody = z.infer<
@@ -56,7 +63,10 @@ interface CheckpointAuthInput<TBody> {
 }
 
 interface CheckpointRunContext {
+  readonly agentSessionConversationId: string | null;
   readonly chatThreadId: string | null;
+  readonly launchSnapshot: typeof agentRuns.$inferSelect.launchSnapshot;
+  readonly status: RunStatus;
   readonly storageMounts: typeof agentRuns.$inferSelect.storageMounts;
   readonly sessionId: string;
 }
@@ -133,7 +143,10 @@ async function loadCheckpointRunContext(
 ): Promise<CheckpointRunContext | undefined> {
   const [run] = await db
     .select({
+      agentSessionConversationId: agentSessions.conversationId,
       chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
+      status: agentRuns.status,
       storageMounts: agentRuns.storageMounts,
       sessionId: agentRuns.sessionId,
     })
@@ -147,7 +160,38 @@ async function loadCheckpointRunContext(
     )
     .limit(1);
 
-  return run;
+  return run
+    ? { ...run, status: runStatusSchema.parse(run.status) }
+    : undefined;
+}
+
+async function lockCheckpointRunContext(
+  tx: Tx,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+): Promise<CheckpointRunContext | undefined> {
+  const [run] = await tx
+    .select({
+      agentSessionConversationId: agentSessions.conversationId,
+      chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
+      status: agentRuns.status,
+      storageMounts: agentRuns.storageMounts,
+      sessionId: agentRuns.sessionId,
+    })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .for("update", { of: agentRuns })
+    .limit(1);
+
+  return run
+    ? { ...run, status: runStatusSchema.parse(run.status) }
+    : undefined;
 }
 
 async function decodePiCheckpointHistory(args: {
@@ -590,6 +634,328 @@ async function validatePiH2(
   return null;
 }
 
+interface CheckpointSuccessIdentity {
+  readonly agentSessionId: string;
+  readonly checkpointId: string;
+  readonly conversationId: string;
+}
+
+function checkpointSuccessResponse(
+  identity: CheckpointSuccessIdentity,
+  body: CheckpointCreateBody,
+) {
+  return {
+    status: 200 as const,
+    body: {
+      checkpointId: identity.checkpointId,
+      agentSessionId: identity.agentSessionId,
+      conversationId: identity.conversationId,
+      artifacts: responseArtifacts(body.artifactSnapshots),
+      volumes: body.volumeVersionsSnapshot?.versions,
+    },
+  };
+}
+
+function isActivePiCheckpointStatus(status: RunStatus): boolean {
+  return status === "pending" || status === "running";
+}
+
+function isPiCheckpointRun(run: CheckpointRunContext): boolean {
+  return run.launchSnapshot?.framework === "pi";
+}
+
+function piCheckpointTypeError(
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+): string | null {
+  if (isPiCheckpointRun(run) === (body.cliAgentType === "pi")) {
+    return null;
+  }
+  return "[PI_H2_TYPE_MISMATCH] Checkpoint type does not match the run launch framework";
+}
+
+function piCheckpointRunStateError(status: RunStatus): string {
+  const code =
+    status === "queued" ? "PI_H2_RUN_NOT_ACTIVE" : "PI_H2_RUN_TERMINAL";
+  return `[${code}] Pi H2 cannot become canonical while the run status is ${status}`;
+}
+
+interface ExistingPiCheckpoint {
+  readonly checkpointId: string;
+  readonly conversationId: string;
+  readonly historyHash: string | null;
+  readonly sessionId: string | null;
+  readonly storageMounts: typeof checkpoints.$inferSelect.storageMounts;
+  readonly type: string | null;
+}
+
+async function loadExistingPiCheckpoint(
+  tx: Tx,
+  runId: string,
+): Promise<ExistingPiCheckpoint | undefined> {
+  const [existing] = await tx
+    .select({
+      checkpointId: checkpoints.id,
+      conversationId: conversations.id,
+      historyHash: conversations.cliAgentSessionHistoryHash,
+      sessionId: conversations.cliAgentSessionId,
+      storageMounts: checkpoints.storageMounts,
+      type: conversations.cliAgentType,
+    })
+    .from(conversations)
+    .innerJoin(
+      checkpoints,
+      and(
+        eq(checkpoints.runId, runId),
+        eq(checkpoints.conversationId, conversations.id),
+      ),
+    )
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  return existing;
+}
+
+type PiCheckpointAdmission =
+  | { readonly kind: "write" }
+  | {
+      readonly kind: "response";
+      readonly response: ReturnType<typeof checkpointSuccessResponse>;
+    }
+  | { readonly kind: "error"; readonly message: string };
+
+async function admitPiCheckpoint(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+  storageMounts: readonly PersistedStorageMount[],
+): Promise<PiCheckpointAdmission> {
+  const active = isActivePiCheckpointStatus(run.status);
+  if (!active && run.status !== "completed") {
+    return { kind: "error", message: piCheckpointRunStateError(run.status) };
+  }
+
+  const existing = await loadExistingPiCheckpoint(tx, body.runId);
+  if (!existing) {
+    return active
+      ? { kind: "write" }
+      : { kind: "error", message: piCheckpointRunStateError(run.status) };
+  }
+
+  const exactRetry =
+    existing.type === "pi" &&
+    existing.sessionId === body.cliAgentSessionId &&
+    existing.historyHash === body.cliAgentSessionHistoryHash &&
+    isDeepStrictEqual(existing.storageMounts, storageMounts) &&
+    (active || run.agentSessionConversationId === existing.conversationId);
+  if (!exactRetry) {
+    return {
+      kind: "error",
+      message:
+        "[PI_H2_ALREADY_COMMITTED] Pi H2 does not exactly match the existing checkpoint",
+    };
+  }
+
+  return {
+    kind: "response",
+    response: checkpointSuccessResponse(
+      {
+        agentSessionId: run.sessionId,
+        checkpointId: existing.checkpointId,
+        conversationId: existing.conversationId,
+      },
+      body,
+    ),
+  };
+}
+
+async function persistAgentCheckpoint(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+  options: {
+    storageMounts: PersistedStorageMount[];
+    deferSessionPromotion: boolean;
+  },
+  signal: AbortSignal,
+) {
+  const { deferSessionPromotion, storageMounts } = options;
+  const historyHash = body.cliAgentSessionHistoryHash;
+  const [existingConversation] = await tx
+    .select({ historyHash: conversations.cliAgentSessionHistoryHash })
+    .from(conversations)
+    .where(eq(conversations.runId, body.runId))
+    .limit(1);
+  signal.throwIfAborted();
+  const previousHistoryHash = existingConversation?.historyHash ?? null;
+  const historyChanged = previousHistoryHash !== (historyHash ?? null);
+
+  if (historyHash !== undefined && historyChanged) {
+    await tx
+      .insert(blobs)
+      .values({
+        hash: historyHash,
+        rawSize: 0,
+        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+        encodedSize: 0,
+        refCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: blobs.hash,
+        set: { refCount: sql`${blobs.refCount} + 1` },
+      });
+    signal.throwIfAborted();
+  }
+
+  const historyFields =
+    historyHash === undefined
+      ? {
+          cliAgentSessionHistory: null,
+          cliAgentSessionHistoryHash: null,
+        }
+      : { cliAgentSessionHistoryHash: historyHash };
+
+  const [conversation] = await tx
+    .insert(conversations)
+    .values({
+      runId: body.runId,
+      cliAgentType: body.cliAgentType,
+      cliAgentSessionId: body.cliAgentSessionId,
+      ...historyFields,
+    })
+    .onConflictDoUpdate({
+      target: conversations.runId,
+      set: {
+        cliAgentType: body.cliAgentType,
+        cliAgentSessionId: body.cliAgentSessionId,
+        ...historyFields,
+      },
+    })
+    .returning({ id: conversations.id });
+  signal.throwIfAborted();
+
+  if (!conversation) {
+    throw new Error("Failed to upsert conversation record");
+  }
+
+  if (previousHistoryHash !== null && historyChanged) {
+    await tx
+      .update(blobs)
+      .set({ refCount: sql`greatest(${blobs.refCount} - 1, 0)` })
+      .where(eq(blobs.hash, previousHistoryHash));
+    signal.throwIfAborted();
+  }
+
+  const checkpointFields = {
+    conversationId: conversation.id,
+    storageMounts,
+  };
+  const [checkpoint] = await tx
+    .insert(checkpoints)
+    .values({
+      runId: body.runId,
+      ...checkpointFields,
+    })
+    .onConflictDoUpdate({
+      target: checkpoints.runId,
+      set: checkpointFields,
+    })
+    .returning({ id: checkpoints.id });
+  signal.throwIfAborted();
+
+  if (!checkpoint) {
+    throw new Error("Failed to upsert checkpoint record");
+  }
+
+  if (!deferSessionPromotion) {
+    const [agentSession] = await tx
+      .update(agentSessions)
+      .set({
+        conversationId: conversation.id,
+        updatedAt: nowDate(),
+      })
+      .where(eq(agentSessions.id, run.sessionId))
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+
+    if (!agentSession) {
+      return notFound("AgentSession not found");
+    }
+  }
+
+  L.debug("Checkpoint created", {
+    runId: body.runId,
+    checkpointId: checkpoint.id,
+    conversationId: conversation.id,
+  });
+
+  return checkpointSuccessResponse(
+    {
+      agentSessionId: run.sessionId,
+      checkpointId: checkpoint.id,
+      conversationId: conversation.id,
+    },
+    body,
+  );
+}
+
+async function commitAgentCheckpoint(
+  db: Db,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+  piValidated: boolean,
+  signal: AbortSignal,
+) {
+  return await db.transaction(async (tx) => {
+    await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+    signal.throwIfAborted();
+    const run = await lockCheckpointRunContext(tx, input);
+    signal.throwIfAborted();
+    if (!run) {
+      return notFound("Agent run not found");
+    }
+
+    const storageMounts = checkpointStorageMounts({
+      runStorageMounts: run.storageMounts,
+      artifactSnapshots: input.body.artifactSnapshots,
+    });
+    const typeError = piCheckpointTypeError(run, input.body);
+    if (typeError) {
+      return badRequestMessage(typeError);
+    }
+    const piRun = isPiCheckpointRun(run);
+    if (piRun) {
+      const admission = await admitPiCheckpoint(
+        tx,
+        run,
+        input.body,
+        storageMounts,
+      );
+      signal.throwIfAborted();
+      if (admission.kind === "error") {
+        return badRequestMessage(admission.message);
+      }
+      if (admission.kind === "response") {
+        return admission.response;
+      }
+      if (!piValidated) {
+        return badRequestMessage(
+          "[PI_H2_RUN_STATE_CHANGED] Pi H2 must be retried after the run became active",
+        );
+      }
+    }
+
+    return await persistAgentCheckpoint(
+      tx,
+      run,
+      input.body,
+      {
+        storageMounts,
+        deferSessionPromotion: piRun,
+      },
+      signal,
+    );
+  });
+}
+
 export const createAgentCheckpoint$ = command(
   async (
     { get, set },
@@ -604,131 +970,19 @@ export const createAgentCheckpoint$ = command(
       return notFound("Agent run not found");
     }
 
-    const piError = await validatePiH2(db, get, run, input.body, signal);
-    if (piError) {
-      return badRequestMessage(piError);
+    const typeError = piCheckpointTypeError(run, input.body);
+    if (typeError) {
+      return badRequestMessage(typeError);
+    }
+    const piRun = isPiCheckpointRun(run);
+    const piNeedsValidation = piRun && isActivePiCheckpointStatus(run.status);
+    if (piNeedsValidation) {
+      const piError = await validatePiH2(db, get, run, input.body, signal);
+      if (piError) {
+        return badRequestMessage(piError);
+      }
     }
 
-    const storageMounts = checkpointStorageMounts({
-      runStorageMounts: run.storageMounts,
-      artifactSnapshots: input.body.artifactSnapshots,
-    });
-    const historyHash = input.body.cliAgentSessionHistoryHash;
-    const [existingConversation] = await db
-      .select({ historyHash: conversations.cliAgentSessionHistoryHash })
-      .from(conversations)
-      .where(eq(conversations.runId, input.body.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    const previousHistoryHash = existingConversation?.historyHash ?? null;
-    const historyChanged = previousHistoryHash !== (historyHash ?? null);
-
-    if (historyHash !== undefined && historyChanged) {
-      await db
-        .insert(blobs)
-        .values({
-          hash: historyHash,
-          rawSize: 0,
-          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-          encodedSize: 0,
-          refCount: 1,
-        })
-        .onConflictDoUpdate({
-          target: blobs.hash,
-          set: { refCount: sql`${blobs.refCount} + 1` },
-        });
-      signal.throwIfAborted();
-    }
-
-    const historyFields =
-      historyHash === undefined
-        ? {
-            cliAgentSessionHistory: null,
-            cliAgentSessionHistoryHash: null,
-          }
-        : { cliAgentSessionHistoryHash: historyHash };
-
-    const [conversation] = await db
-      .insert(conversations)
-      .values({
-        runId: input.body.runId,
-        cliAgentType: input.body.cliAgentType,
-        cliAgentSessionId: input.body.cliAgentSessionId,
-        ...historyFields,
-      })
-      .onConflictDoUpdate({
-        target: conversations.runId,
-        set: {
-          cliAgentType: input.body.cliAgentType,
-          cliAgentSessionId: input.body.cliAgentSessionId,
-          ...historyFields,
-        },
-      })
-      .returning({ id: conversations.id });
-    signal.throwIfAborted();
-
-    if (!conversation) {
-      throw new Error("Failed to upsert conversation record");
-    }
-
-    if (previousHistoryHash !== null && historyChanged) {
-      await db
-        .update(blobs)
-        .set({ refCount: sql`greatest(${blobs.refCount} - 1, 0)` })
-        .where(eq(blobs.hash, previousHistoryHash));
-      signal.throwIfAborted();
-    }
-
-    const checkpointFields = {
-      conversationId: conversation.id,
-      storageMounts,
-    };
-    const [checkpoint] = await db
-      .insert(checkpoints)
-      .values({
-        runId: input.body.runId,
-        ...checkpointFields,
-      })
-      .onConflictDoUpdate({
-        target: checkpoints.runId,
-        set: checkpointFields,
-      })
-      .returning({ id: checkpoints.id });
-    signal.throwIfAborted();
-
-    if (!checkpoint) {
-      throw new Error("Failed to upsert checkpoint record");
-    }
-
-    const [agentSession] = await db
-      .update(agentSessions)
-      .set({
-        conversationId: conversation.id,
-        updatedAt: nowDate(),
-      })
-      .where(eq(agentSessions.id, run.sessionId))
-      .returning({ id: agentSessions.id });
-    signal.throwIfAborted();
-
-    if (!agentSession) {
-      return notFound("AgentSession not found");
-    }
-
-    L.debug("Checkpoint created", {
-      runId: input.body.runId,
-      checkpointId: checkpoint.id,
-      conversationId: conversation.id,
-    });
-
-    return {
-      status: 200 as const,
-      body: {
-        checkpointId: checkpoint.id,
-        agentSessionId: agentSession.id,
-        conversationId: conversation.id,
-        artifacts: responseArtifacts(input.body.artifactSnapshots),
-        volumes: input.body.volumeVersionsSnapshot?.versions,
-      },
-    };
+    return await commitAgentCheckpoint(db, input, piNeedsValidation, signal);
   },
 );
