@@ -235,7 +235,7 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
 
-    def test_long_sse_isolates_final_choice_usage_from_prior_frames(
+    def test_long_sse_resets_between_all_event_outcomes(
         self,
         tmp_path,
         real_flow,
@@ -257,6 +257,9 @@ class TestOpenAIChatCompletionsUsage:
             + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
             + b"\n\n"
             + delta * 2_560
+            + b'data: {"id":"chatcmpl_discarded"\n'
+            + b"x" * 4_097
+            + b"\n\n"
             + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
         )
         final_payload = {
