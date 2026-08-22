@@ -877,6 +877,17 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
                 ("client", b'{"type":"response.create"}'),
                 (
                     "server",
+                    b'{"type":"response.failed","response":{"id":"before-created"}}',
+                ),
+            ),
+            "invalid_websocket_lifecycle",
+            id="terminal-before-created",
+        ),
+        pytest.param(
+            (
+                ("client", b'{"type":"response.create"}'),
+                (
+                    "server",
                     b'{"type":"response.created","response":{"id":"expected"}}',
                 ),
                 (
