@@ -686,23 +686,6 @@ jobs:
             'turbo/packages/db/src/migrations/*.sql' \
             'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
-          # Migration 0966 failed before its first production application, so
-          # allow only the reviewed byte-for-byte correction recorded in #28601.
-          # The base and result hashes make this exception self-expiring: any
-          # later edit to 0966 remains blocked by the normal immutability gate.
-          APPROVED_REWRITE='turbo/packages/db/src/migrations/0966_canonical_agents_data_plane.sql'
-          APPROVED_BASE_SHA256='8bc63b3e7378d03876d82cf5f0b41029cca1fc318ce2de6ce3c9cec30040a436'
-          APPROVED_HEAD_SHA256='d57eddcecad29f159910b2ff6eb1c070bcfedd62b420ae173ca0a288721bd223'
-          if [ "$MODIFIED" = "$APPROVED_REWRITE" ]; then
-            BASE_SHA256=$(git show "${BASE_REF}:${APPROVED_REWRITE}" | sha256sum | awk '{ print $1 }')
-            HEAD_SHA256=$(sha256sum "$APPROVED_REWRITE" | awk '{ print $1 }')
-            if [ "$BASE_SHA256" = "$APPROVED_BASE_SHA256" ] && \
-              [ "$HEAD_SHA256" = "$APPROVED_HEAD_SHA256" ]; then
-              echo "::warning::Allowing the production-unapplied 0966 correction recorded in #28601."
-              MODIFIED=
-            fi
-          fi
-
           # _journal.json is modified on every new migration, so only flag deletion
           DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/packages/db/src/migrations/meta/_journal.json')
