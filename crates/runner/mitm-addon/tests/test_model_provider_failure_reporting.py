@@ -162,6 +162,27 @@ def _assert_single_report_omission(
     _assert_report_omission_entry(entry, flow_id=flow_id, reason=reason, **details)
 
 
+def _restart_reporter_after_callbacks(model_provider_failure_api) -> None:
+    """Reset reporting only after every executor callback has returned."""
+    original_shutdown = ThreadPoolExecutor.shutdown
+
+    def shutdown_and_wait(
+        executor: ThreadPoolExecutor,
+        wait: bool = True,
+        *,
+        cancel_futures: bool = False,
+    ) -> None:
+        original_shutdown(executor, wait=True, cancel_futures=cancel_futures)
+
+    with patch.object(ThreadPoolExecutor, "shutdown", shutdown_and_wait):
+        model_provider_failure.shutdown()
+    model_provider_failure.reset_for_tests()
+    model_provider_failure.configure_reporting(
+        api_url=model_provider_failure_api.api_url,
+        bearer_credential=str(id(model_provider_failure_api)),
+    )
+
+
 def _assert_full_report_capacity(
     real_flow,
     proxy_log_path: Path,
@@ -198,7 +219,10 @@ def _assert_full_report_capacity(
         )
     finally:
         release_delivery.set()
-        model_provider_failure.drain_reports_for_tests()
+        try:
+            model_provider_failure.drain_reports_for_tests()
+        finally:
+            _restart_reporter_after_callbacks(model_provider_failure_api)
 
     assert model_provider_failure_api.request_count == initial_request_count + _REPORT_CAPACITY
 
@@ -415,11 +439,7 @@ def test_shutdown_cancels_queued_reports(
         assert flow_id in flow_ids
         _assert_report_omission_entry(entry, flow_id=flow_id, reason="shutdown")
 
-    model_provider_failure.reset_for_tests()
-    model_provider_failure.configure_reporting(
-        api_url=model_provider_failure_api.api_url,
-        bearer_credential=str(id(model_provider_failure_api)),
-    )
+    _restart_reporter_after_callbacks(model_provider_failure_api)
     _assert_full_report_capacity(
         real_flow,
         tmp_path / "shutdown-recovery.jsonl",
