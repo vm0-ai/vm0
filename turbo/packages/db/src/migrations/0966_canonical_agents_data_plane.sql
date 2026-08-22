@@ -1591,7 +1591,8 @@ ALTER TABLE "feishu_user_agent_preferences" VALIDATE CONSTRAINT "feishu_user_age
 --> statement-breakpoint
 
 -- Aggregate-only postflight: exact canonical parity, exact legacy-reference
--- equality, and only current compose-only identities may retain a NULL sibling.
+-- equality, and only current compose-only identities or exact deleted-entity
+-- snapshot anchors in chat_thread_events may retain a NULL sibling.
 BEGIN;
 --> statement-breakpoint
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -1608,7 +1609,9 @@ DECLARE
   v_target_only bigint;
   v_unclassified_null bigint;
   v_compose_only_null bigint;
+  v_deleted_snapshot_anchor_null bigint;
   v_allowed_compose_only_null_total bigint := 0;
+  v_allowed_deleted_snapshot_anchor_null_total bigint := 0;
   v_existing_final_missing bigint;
   v_existing_final_missing_total bigint := 0;
   v_matched_count bigint;
@@ -1638,56 +1641,140 @@ BEGIN
       ('public.feishu_user_agent_preferences'::regclass, 'selected_compose_id'::name, 'selected_agent_id'::name, false)
     ) AS "spec"("table_oid", "legacy_column", "target_column", "allows_compose_only")
   LOOP
-    EXECUTE format(
-      $query$
+    IF v_spec.table_oid = 'public.chat_thread_events'::regclass THEN
       SELECT
         count(*) FILTER (
-          WHERE "source".%1$I IS NOT NULL
-            AND "source".%2$I IS NULL
+          WHERE "source"."agent_compose_id" IS NOT NULL
+            AND "source"."agent_id" IS NULL
             AND "agent"."id" IS NOT NULL
         ),
         count(*) FILTER (
-          WHERE "source".%2$I IS NOT NULL
-            AND "source".%2$I IS DISTINCT FROM "source".%1$I
+          WHERE "source"."agent_id" IS NOT NULL
+            AND "source"."agent_id" IS DISTINCT FROM "source"."agent_compose_id"
         ),
         count(*) FILTER (
-          WHERE "source".%2$I IS NOT NULL
-            AND "source".%1$I IS NULL
+          WHERE "source"."agent_id" IS NOT NULL
+            AND "source"."agent_compose_id" IS NULL
         ),
         count(*) FILTER (
-          WHERE "source".%1$I IS NOT NULL
-            AND "source".%2$I IS NULL
+          WHERE "source"."agent_compose_id" IS NOT NULL
+            AND "source"."agent_id" IS NULL
             AND "agent"."id" IS NULL
             AND NOT (
               "compose"."id" IS NOT NULL
               AND "zero_agent"."id" IS NULL
             )
+            AND NOT (
+              "compose"."id" IS NULL
+              AND "zero_agent"."id" IS NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "chat_threads" AS "live_thread"
+                WHERE "live_thread"."id" = "source"."chat_thread_id"
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM "chat_thread_snapshots" AS "snapshot"
+                WHERE "snapshot"."user_id" = "source"."user_id"
+                  AND "snapshot"."org_id" = "source"."org_id"
+                  AND "snapshot"."latest_event_id" = "source"."id"
+              )
+            )
         ),
         count(*) FILTER (
-          WHERE "source".%1$I IS NOT NULL
-            AND "source".%2$I IS NULL
+          WHERE "source"."agent_compose_id" IS NOT NULL
+            AND "source"."agent_id" IS NULL
             AND "agent"."id" IS NULL
             AND "compose"."id" IS NOT NULL
             AND "zero_agent"."id" IS NULL
+        ),
+        count(*) FILTER (
+          WHERE "source"."agent_compose_id" IS NOT NULL
+            AND "source"."agent_id" IS NULL
+            AND "agent"."id" IS NULL
+            AND "compose"."id" IS NULL
+            AND "zero_agent"."id" IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "chat_threads" AS "live_thread"
+              WHERE "live_thread"."id" = "source"."chat_thread_id"
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM "chat_thread_snapshots" AS "snapshot"
+              WHERE "snapshot"."user_id" = "source"."user_id"
+                AND "snapshot"."org_id" = "source"."org_id"
+                AND "snapshot"."latest_event_id" = "source"."id"
+            )
         )
-      FROM %3$s AS "source"
+      INTO
+        v_valid_missing,
+        v_mismatch,
+        v_target_only,
+        v_unclassified_null,
+        v_compose_only_null,
+        v_deleted_snapshot_anchor_null
+      FROM "chat_thread_events" AS "source"
       LEFT JOIN "agents" AS "agent"
-        ON "agent"."id" = "source".%1$I
+        ON "agent"."id" = "source"."agent_compose_id"
       LEFT JOIN "agent_composes" AS "compose"
-        ON "compose"."id" = "source".%1$I
+        ON "compose"."id" = "source"."agent_compose_id"
       LEFT JOIN "zero_agents" AS "zero_agent"
-        ON "zero_agent"."id" = "source".%1$I
-      $query$,
-      v_spec.legacy_column,
-      v_spec.target_column,
-      v_spec.table_oid
-    )
-    INTO
-      v_valid_missing,
-      v_mismatch,
-      v_target_only,
-      v_unclassified_null,
-      v_compose_only_null;
+        ON "zero_agent"."id" = "source"."agent_compose_id";
+    ELSE
+      v_deleted_snapshot_anchor_null := 0;
+
+      EXECUTE format(
+        $query$
+        SELECT
+          count(*) FILTER (
+            WHERE "source".%1$I IS NOT NULL
+              AND "source".%2$I IS NULL
+              AND "agent"."id" IS NOT NULL
+          ),
+          count(*) FILTER (
+            WHERE "source".%2$I IS NOT NULL
+              AND "source".%2$I IS DISTINCT FROM "source".%1$I
+          ),
+          count(*) FILTER (
+            WHERE "source".%2$I IS NOT NULL
+              AND "source".%1$I IS NULL
+          ),
+          count(*) FILTER (
+            WHERE "source".%1$I IS NOT NULL
+              AND "source".%2$I IS NULL
+              AND "agent"."id" IS NULL
+              AND NOT (
+                "compose"."id" IS NOT NULL
+                AND "zero_agent"."id" IS NULL
+              )
+          ),
+          count(*) FILTER (
+            WHERE "source".%1$I IS NOT NULL
+              AND "source".%2$I IS NULL
+              AND "agent"."id" IS NULL
+              AND "compose"."id" IS NOT NULL
+              AND "zero_agent"."id" IS NULL
+          )
+        FROM %3$s AS "source"
+        LEFT JOIN "agents" AS "agent"
+          ON "agent"."id" = "source".%1$I
+        LEFT JOIN "agent_composes" AS "compose"
+          ON "compose"."id" = "source".%1$I
+        LEFT JOIN "zero_agents" AS "zero_agent"
+          ON "zero_agent"."id" = "source".%1$I
+        $query$,
+        v_spec.legacy_column,
+        v_spec.target_column,
+        v_spec.table_oid
+      )
+      INTO
+        v_valid_missing,
+        v_mismatch,
+        v_target_only,
+        v_unclassified_null,
+        v_compose_only_null;
+    END IF;
 
     IF
       v_valid_missing <> 0
@@ -1696,17 +1783,21 @@ BEGIN
       OR v_unclassified_null <> 0
       OR (NOT v_spec.allows_compose_only AND v_compose_only_null <> 0)
     THEN
-      RAISE EXCEPTION 'Canonical Agent reference parity failed for %: valid_missing %, mismatch %, target_only %, unclassified_null %, compose_only_null %',
+      RAISE EXCEPTION 'Canonical Agent reference parity failed for %: valid_missing %, mismatch %, target_only %, unclassified_null %, compose_only_null %, deleted_snapshot_anchor_null %',
         v_spec.table_oid,
         v_valid_missing,
         v_mismatch,
         v_target_only,
         v_unclassified_null,
-        v_compose_only_null;
+        v_compose_only_null,
+        v_deleted_snapshot_anchor_null;
     END IF;
 
     v_allowed_compose_only_null_total :=
       v_allowed_compose_only_null_total + v_compose_only_null;
+    v_allowed_deleted_snapshot_anchor_null_total :=
+      v_allowed_deleted_snapshot_anchor_null_total +
+      v_deleted_snapshot_anchor_null;
   END LOOP;
 
   FOR v_spec IN
@@ -1895,10 +1986,11 @@ BEGIN
       v_temporary_procedure_count;
   END IF;
 
-  RAISE NOTICE 'Canonical Agent postflight: matched=%, target=%, allowed_compose_only_null_references=%, existing_final_missing=%, bridges=%, validated_fks=%, validated_checks=%',
+  RAISE NOTICE 'Canonical Agent postflight: matched=%, target=%, allowed_compose_only_null_references=%, allowed_deleted_snapshot_anchor_null_references=%, existing_final_missing=%, bridges=%, validated_fks=%, validated_checks=%',
     v_matched_count,
     v_target_count,
     v_allowed_compose_only_null_total,
+    v_allowed_deleted_snapshot_anchor_null_total,
     v_existing_final_missing_total,
     v_bridge_trigger_count,
     v_validated_fk_count,
