@@ -23,6 +23,7 @@ describe("chat event search projection schema", () => {
       "user_id",
       "org_id",
       "agent_compose_id",
+      "agent_id",
       "role",
       "created_at",
       "text",
@@ -43,6 +44,7 @@ describe("chat event search projection schema", () => {
     ).toStrictEqual([
       "chat_event_search_messages_user_org_created_idx",
       "chat_event_search_messages_user_org_agent_created_idx",
+      "chat_event_search_messages_user_org_agent_id_created_idx",
       "chat_event_search_messages_tsv_idx",
     ]);
     expect(config.foreignKeys[0]?.onDelete).toBe("cascade");

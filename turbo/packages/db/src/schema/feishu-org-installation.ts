@@ -1,4 +1,5 @@
 import {
+  check,
   foreignKey,
   index,
   pgTable,
@@ -8,8 +9,10 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import { orgCustomConnectors } from "./org-custom-connector";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
@@ -39,6 +42,12 @@ export const feishuOrgInstallations = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    defaultAgentId: uuid("default_agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     feishuTenantKey: varchar("feishu_tenant_key", { length: 255 }),
     feishuTenantName: varchar("feishu_tenant_name", { length: 255 }),
     encryptedTenantAccessToken: text("encrypted_tenant_access_token"),
@@ -57,6 +66,10 @@ export const feishuOrgInstallations = pgTable(
       ),
       uniqueIndex("idx_feishu_org_installations_app").on(table.appId),
       index("idx_feishu_org_installations_tenant").on(table.feishuTenantKey),
+      check(
+        "feishu_org_installations_agent_reference_match",
+        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
+      ),
       foreignKey({
         name: "fk_feishu_org_installations_custom_connector",
         columns: [table.customConnectorId, table.orgId],

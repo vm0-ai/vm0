@@ -1504,6 +1504,10 @@
       "stop": "Stop",
       "view": "View"
     },
+    "actionUnavailable": {
+      "description": "This action does not belong to this chat or is no longer valid.",
+      "title": "Action unavailable"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Add {{assistantName}} in Slack",

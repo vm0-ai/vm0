@@ -1504,6 +1504,10 @@
       "stop": "Stoppen",
       "view": "Anzeigen"
     },
+    "actionUnavailable": {
+      "description": "Diese Aktion gehört nicht zu diesem Chat oder ist nicht mehr gültig.",
+      "title": "Aktion nicht verfügbar"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "{{assistantName}} in Slack hinzufügen",

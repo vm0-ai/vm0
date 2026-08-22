@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/user-export";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { onRef, setLoop } from "../utils.ts";
 
 const POLL_INTERVAL_MS = 5000;
@@ -24,7 +24,7 @@ export const userExportStartError$ = computed((get) => {
 export const userExportStatus$ = computed(
   async (get): Promise<UserExportStatusResponse> => {
     get(statusReload$);
-    const client = get(zeroClient$)(userExportContract);
+    const client = get(apiClient$)(userExportContract);
     const result = await accept(client.get(), [200]);
     return result.body;
   },
@@ -55,7 +55,7 @@ export const startUserExport$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     set(exportStartError$, null);
 
-    const client = get(zeroClient$)(userExportContract);
+    const client = get(apiClient$)(userExportContract);
     const result = await accept(
       client.post({
         body: undefined,

@@ -8,9 +8,11 @@ import {
   uniqueIndex,
   index,
   check,
+  foreignKey,
   integer,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
 
 export type ThreadGoalStatus = "active" | "paused" | "blocked" | "complete";
@@ -48,6 +50,11 @@ export const threadGoals = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "thread_goals_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_thread_goals_chat_thread_unique").on(table.chatThreadId),
       index("idx_thread_goals_org_owner").on(table.orgId, table.ownerUserId),
       index("idx_thread_goals_org_status").on(table.orgId, table.status),

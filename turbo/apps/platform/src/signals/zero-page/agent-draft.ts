@@ -9,7 +9,7 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
 import { resetSignal } from "../utils.ts";
 import {
@@ -92,7 +92,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const patchDraft$ = command(
     async ({ get }, payload: DraftPersistencePayload, signal: AbortSignal) => {
-      const client = get(zeroClient$)(agentDraftContract);
+      const client = get(apiClient$)(agentDraftContract);
       await accept(
         client.patch({
           params: { id: agentId },
@@ -211,7 +211,7 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(agentDraftContract);
+    const client = get(apiClient$)(agentDraftContract);
     const result = await accept(
       client.get({
         params: { id: agentId },

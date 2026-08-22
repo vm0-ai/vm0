@@ -292,13 +292,15 @@ async function expectExactFeishuMemberConnector(args: {
     connectorId: memberConnectorId,
     externalId: null,
   });
-  const historicalExactLink = await accept(
+  const missingExternalIdentity = await accept(
     args.client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
   );
-  expect(historicalExactLink.body.installations?.[0]?.isConnected).toBeTruthy();
+  expect(
+    missingExternalIdentity.body.installations?.[0]?.isConnected,
+  ).toBeFalsy();
 
   await setConnectorExternalIdState(context, {
     orgId,
@@ -345,13 +347,26 @@ async function expectExactFeishuMemberConnector(args: {
     installationId: args.installationId,
     connectorId: null,
   });
-  const legacyUnlinked = await accept(
+  const unlinked = await accept(
     args.client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
     }),
     [200],
   );
-  expect(legacyUnlinked.body.installations?.[0]?.isConnected).toBeTruthy();
+  expect(unlinked.body.installations?.[0]?.isConnected).toBeFalsy();
+
+  await setFeishuMemberConnectorLink(context, {
+    userId: args.member.userId,
+    installationId: args.installationId,
+    connectorId: memberConnectorId,
+  });
+  const restored = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(restored.body.installations?.[0]?.isConnected).toBeTruthy();
 }
 
 function feishuConnectBody(connectUrl: string) {
@@ -2120,7 +2135,7 @@ describe("Feishu integration", () => {
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
-        body: {},
+        body: { account: { intent: "single-account" } },
       }),
       [403],
     );
@@ -2191,7 +2206,10 @@ describe("Feishu integration", () => {
       ).set({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
-        body: { values: [] },
+        body: {
+          values: [],
+          account: { intent: "single-account" },
+        },
       }),
       [403],
     );
@@ -2245,6 +2263,22 @@ describe("Feishu integration", () => {
       [403],
     );
     expect(managedDisconnect.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
+    const managedAccountDisconnect = await accept(
+      connectorAccountsClient().disconnectSingleAccount({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          target: {
+            kind: "custom",
+            customConnectorId: managedConnector.id,
+          },
+        },
+      }),
+      [403],
+    );
+    expect(managedAccountDisconnect.body.error.message).toBe(
       "This connector is managed by its integration",
     );
 

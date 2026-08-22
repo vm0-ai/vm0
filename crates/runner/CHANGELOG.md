@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.170.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.22...runner-rs-v0.170.0) (2026-08-22)
+
+
+### Features
+
+* **runner:** report trusted model provider failures ([#28532](https://github.com/vm0-ai/vm0/issues/28532)) ([95a6ecd](https://github.com/vm0-ai/vm0/commit/95a6ecd44582d3bedf35b97f6874a01f2d7c6a34))
+
+## [0.169.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.21...runner-rs-v0.169.22) (2026-08-22)
+
+
+### Bug Fixes
+
+* **runner:** recover evicted websocket usage pricing ([#28584](https://github.com/vm0-ai/vm0/issues/28584)) ([6d677e5](https://github.com/vm0-ai/vm0/commit/6d677e500ee8f952a1350db74336ae0e8de5581b))
+
+
+### Documentation
+
+* **rust:** document session history probe telemetry semantics ([#28581](https://github.com/vm0-ai/vm0/issues/28581)) ([79f3c94](https://github.com/vm0-ai/vm0/commit/79f3c94be735383764b6ce464326865cbb6d7e73))
+
+
+### Refactoring
+
+* **runner:** centralize procfs process generation ([#28576](https://github.com/vm0-ai/vm0/issues/28576)) ([e35d103](https://github.com/vm0-ai/vm0/commit/e35d1031e8ffcb860e317a4b101831a4d72cdade))
+
 ## [0.169.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.20...runner-rs-v0.169.21) (2026-08-21)
 
 ## [0.169.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.19...runner-rs-v0.169.20) (2026-08-21)

@@ -27,6 +27,7 @@ import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -226,7 +227,7 @@ export async function listChatThreadConnectorSelections(
 }
 
 export async function prepareChatThreadConnectorSelections(
-  db: ReadonlyDb,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
@@ -250,6 +251,17 @@ export async function prepareChatThreadConnectorSelections(
   }
 
   const selections = [...byTarget.values()];
+  for (const selection of [...selections].sort((left, right) => {
+    return connectorAccountTargetKey(left.target).localeCompare(
+      connectorAccountTargetKey(right.target),
+    );
+  })) {
+    await lockConnectorAccountTarget(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: selection.target,
+    });
+  }
   const scope = await loadAgentConnectorScope(db, args);
   const snapshot = await loadSnapshotForBuiltinTargets(db, selections);
   for (const selection of byTarget.values()) {

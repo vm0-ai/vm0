@@ -4,6 +4,7 @@ import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
 import { env } from "../../lib/env";
 import { normalizeBuildCommitSha } from "../../lib/build-info";
+import { singleton } from "../../lib/singleton";
 import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
@@ -13,6 +14,65 @@ export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
 export type ApiDispatchTimingDimensionsInput =
   | ApiDispatchTimingDimensions
   | (() => ApiDispatchTimingDimensions | undefined);
+
+type ApiProcessAgeBucket =
+  | "0_1s"
+  | "1_10s"
+  | "10_60s"
+  | "1_5m"
+  | "5_15m"
+  | "15m_plus";
+type ApiProcessDispatchOrdinalBucket =
+  | "first"
+  | "2_4"
+  | "5_16"
+  | "17_64"
+  | "65_plus";
+
+interface ApiProcessDispatchState {
+  ordinal: number;
+}
+
+const apiProcessDispatchState = singleton((): ApiProcessDispatchState => {
+  return { ordinal: 0 };
+});
+
+function apiProcessAgeBucket(processAgeMs: number): ApiProcessAgeBucket {
+  if (processAgeMs < 1000) {
+    return "0_1s";
+  }
+  if (processAgeMs < 10_000) {
+    return "1_10s";
+  }
+  if (processAgeMs < 60_000) {
+    return "10_60s";
+  }
+  if (processAgeMs < 300_000) {
+    return "1_5m";
+  }
+  if (processAgeMs < 900_000) {
+    return "5_15m";
+  }
+  return "15m_plus";
+}
+
+function claimApiProcessDispatchOrdinal(): ApiProcessDispatchOrdinalBucket {
+  const state = apiProcessDispatchState();
+  state.ordinal = Math.min(state.ordinal + 1, 65);
+  if (state.ordinal === 1) {
+    return "first";
+  }
+  if (state.ordinal <= 4) {
+    return "2_4";
+  }
+  if (state.ordinal <= 16) {
+    return "5_16";
+  }
+  if (state.ordinal <= 64) {
+    return "17_64";
+  }
+  return "65_plus";
+}
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -181,6 +241,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_connector_catalog_load_runtime_snapshot"
   | "api_dispatch_connector_catalog_query_projection_identity"
   | "api_dispatch_connector_catalog_query_projection_rows"
+  | "api_dispatch_connector_catalog_fetch_projection_rows"
+  | "api_dispatch_connector_catalog_validate_projection_rows"
   | "api_dispatch_connector_catalog_count_projection_rows"
   | "api_dispatch_connector_catalog_materialize_projection"
   | "api_dispatch_connector_catalog_query_identity"
@@ -255,6 +317,10 @@ interface ApiDispatchTimingRecord {
 
 export class ApiDispatchTimingCollector {
   private readonly records: ApiDispatchTimingRecord[] = [];
+  private readonly processAgeBucket = apiProcessAgeBucket(performance.now());
+  private processDispatchOrdinalBucket:
+    | ApiProcessDispatchOrdinalBucket
+    | undefined;
 
   private recordDuration(
     actionType: ApiDispatchTimingActionType,
@@ -338,6 +404,17 @@ export class ApiDispatchTimingCollector {
     readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
+    // Goal scheduling can construct a collector for an empty drain. Only a
+    // run-associated telemetry flush should advance the dispatch ordinal.
+    if (records.length === 0) {
+      recordSandboxOperations([]);
+      return;
+    }
+    this.processDispatchOrdinalBucket ??= claimApiProcessDispatchOrdinal();
+    const processDimensions = {
+      api_process_age_bucket: this.processAgeBucket,
+      api_process_dispatch_ordinal_bucket: this.processDispatchOrdinalBucket,
+    } satisfies ApiDispatchTimingDimensions;
     const apiCommitSha = normalizeBuildCommitSha(env("GIT_COMMIT_SHA"));
     recordSandboxOperations(
       records.map((record) => {
@@ -351,6 +428,7 @@ export class ApiDispatchTimingCollector {
           dimensions: {
             ...args.dimensions,
             ...record.dimensions,
+            ...processDimensions,
             runner_group: args.runnerGroup,
             profile: args.profile,
             dispatch_path: args.dispatchPath,

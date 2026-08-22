@@ -9,7 +9,7 @@ import {
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { now } from "../../../lib/time.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { bestEffort, resetSignal, tapError } from "../../utils.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
@@ -110,7 +110,7 @@ const startClaudeCodeDeviceAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
+    const client = get(apiClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -132,7 +132,7 @@ const completeClaudeCodeDeviceAuth$ = command(
     authorizationCode: string,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
+    const client = get(apiClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -152,7 +152,7 @@ const completeClaudeCodeDeviceAuth$ = command(
 
 const cancelClaudeCodeDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(claudeCodeDeviceAuthContract, {
+    const client = get(apiClient$)(claudeCodeDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(

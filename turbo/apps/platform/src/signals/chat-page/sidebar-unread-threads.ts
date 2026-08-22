@@ -4,7 +4,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import {
   reloadChatIndicators$,
@@ -25,7 +25,7 @@ const fetchedUnreads$ = computed(async (get): Promise<UnreadSnapshot> => {
   if (!agentId) {
     return [];
   }
-  const client = get(zeroClient$)(chatThreadsContract);
+  const client = get(apiClient$)(chatThreadsContract);
   const result = await accept(client.unreads({ query: { agentId } }), [200]);
   return result.body.unreads;
 });
@@ -47,7 +47,7 @@ export const sidebarUnreadThreadIds$ = computed(
 
 export const markAgentThreadsRead$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(chatThreadMarkAgentReadContract);
+    const client = get(apiClient$)(chatThreadMarkAgentReadContract);
     await accept(
       client.markAgentRead({
         body: { agentId },

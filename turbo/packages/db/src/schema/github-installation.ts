@@ -5,11 +5,13 @@ import {
   text,
   timestamp,
   jsonb,
+  check,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import type { GitHubInstallationRepoConfigs } from "@okouai/db/jsonb-contracts/github-installation";
 
 /**
@@ -38,6 +40,12 @@ export const githubInstallations = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    defaultAgentId: uuid("default_agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     repoConfigs: jsonb("repo_configs").$type<GitHubInstallationRepoConfigs>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -48,6 +56,10 @@ export const githubInstallations = pgTable(
         .on(table.installationId)
         .where(sql`installation_id IS NOT NULL`),
       index("idx_github_installations_org").on(table.orgId),
+      check(
+        "github_installations_agent_reference_match",
+        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
+      ),
     ];
   },
 );

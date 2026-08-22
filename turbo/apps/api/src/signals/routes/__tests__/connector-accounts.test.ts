@@ -16,7 +16,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 import { customConnectorsRoutes } from "../custom-connectors";
@@ -37,6 +37,10 @@ const routes = Object.freeze([
   ...customConnectorDisconnectRoutes,
   ...customConnectorsValuesSetRoutes,
   ...featureSwitchesRoutes,
+]);
+const legacyDisconnectRoutes = Object.freeze([
+  ...connectorsRoutes,
+  ...customConnectorDisconnectRoutes,
 ]);
 
 interface Fixture {
@@ -119,7 +123,6 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
           params: { connectionId: account.id },
           body: {
             target: { kind: "builtin", connectorSlug: "openai" },
-            selectionResolution: { kind: "clear" },
           },
         }),
         [200, 404],
@@ -153,7 +156,6 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
                 kind: "custom",
                 customConnectorId: definition.id,
               },
-              selectionResolution: { kind: "clear" },
             },
           }),
           [200, 404],
@@ -311,31 +313,12 @@ describe("connector account lifecycle routes", () => {
       hasSibling: true,
     });
 
-    const invalidReplacement = await accept(
-      accountClient().delete({
-        headers: authHeaders(),
-        params: { connectionId: second.body.id },
-        body: {
-          target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: {
-            kind: "reassign",
-            connectionId: randomUUID(),
-          },
-        },
-      }),
-      [409],
-    );
-    expect(invalidReplacement.body.error.message).toBe(
-      "Replacement connector account is not available",
-    );
-
     const deleted = await accept(
       accountClient().delete({
         headers: authHeaders(),
         params: { connectionId: second.body.id },
         body: {
           target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: { kind: "clear" },
         },
       }),
       [200],
@@ -396,11 +379,214 @@ describe("connector account lifecycle routes", () => {
       [200],
     );
     expect(accounts.body.connections).toHaveLength(2);
+
+    const disconnect = await accept(
+      accountClient().disconnectSingleAccount({
+        headers: authHeaders(),
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+      [409],
+    );
+    expect(disconnect.body.error.message).toBe(
+      "Multiple connector accounts require an exact choice",
+    );
+
+    const preserved = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(preserved.body.connections).toHaveLength(2);
     expect(
       accounts.body.connections.filter((account) => {
         return account.isDefault;
       }),
     ).toHaveLength(1);
+  });
+
+  it("reuses an explicit single account and rejects an ambiguous target", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+
+    const first = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-first" },
+        },
+      }),
+      [200],
+    );
+    const replaced = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-replaced" },
+        },
+      }),
+      [200],
+    );
+    expect(replaced.body.id).toBe(first.body.id);
+
+    const sibling = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Sibling" },
+          values: { apiKey: "sk-single-sibling" },
+        },
+      }),
+      [200],
+    );
+    expect(sibling.body.id).not.toBe(first.body.id);
+
+    const ambiguous = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-single-ambiguous" },
+        },
+      }),
+      [409],
+    );
+    expect(ambiguous.body.error.message).toBe(
+      "Multiple connector accounts require an exact choice",
+    );
+
+    const accounts = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(accounts.body.connections).toHaveLength(2);
+  });
+
+  it("serializes concurrent single-account writes and disconnects", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+
+    const responses = await Promise.all(
+      ["first", "second"].map((suffix) => {
+        return accept(
+          connectorClient().connect({
+            headers: authHeaders(),
+            params: { connectorSlug: "openai" },
+            body: {
+              authMethod: "api-token",
+              account: { intent: "single-account" },
+              values: { apiKey: `sk-single-concurrent-${suffix}` },
+            },
+          }),
+          [200],
+        );
+      }),
+    );
+    expect(
+      responses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    expect(responses[1]?.body.id).toBe(responses[0]?.body.id);
+
+    const accounts = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(accounts.body.connections).toHaveLength(1);
+    expect(accounts.body.connections[0]).toMatchObject({
+      id: responses[0]?.body.id,
+      displayName: null,
+      isDefault: true,
+    });
+
+    const disconnects = await Promise.all([
+      accountClient().disconnectSingleAccount({
+        headers: authHeaders(),
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+      accountClient().disconnectSingleAccount({
+        headers: authHeaders(),
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+    ]);
+    expect(
+      disconnects
+        .map((response) => {
+          return response.status;
+        })
+        .sort((left, right) => {
+          return left - right;
+        }),
+    ).toStrictEqual([204, 404]);
+
+    const disconnectedAccounts = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(disconnectedAccounts.body.connections).toStrictEqual([]);
+  });
+
+  it("keeps accounts intact when a new client reaches an old API", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+
+    const account = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "single-account" },
+          values: { apiKey: "sk-old-api" },
+        },
+      }),
+      [200],
+    );
+
+    const oldApiResponse = await setupRawAppRequest({
+      context,
+      routes: legacyDisconnectRoutes,
+    })("/api/connector-accounts/single-account", {
+      method: "DELETE",
+      headers: {
+        ...authHeaders(),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        target: { kind: "builtin", connectorSlug: "openai" },
+      }),
+    });
+    expect(oldApiResponse.status).toBe(404);
+
+    const preserved = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+      }),
+      [200],
+    );
+    expect(preserved.body.connections).toMatchObject([{ id: account.body.id }]);
   });
 
   it("paginates and searches more than one hundred accounts", async () => {
@@ -670,6 +856,22 @@ describe("connector account lifecycle routes", () => {
           .sort(),
       ).toStrictEqual(["Personal", "Work"]);
 
+      const safeDisconnect = await accept(
+        accountClient().disconnectSingleAccount({
+          headers: authHeaders(),
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+          },
+        }),
+        [409],
+      );
+      expect(safeDisconnect.body.error.message).toBe(
+        "Multiple connector accounts require an exact choice",
+      );
+
       const legacyDisconnect = await accept(
         customConnectorConnectionClient().disconnect({
           headers: authHeaders(),
@@ -746,7 +948,6 @@ describe("connector account lifecycle routes", () => {
               kind: "custom",
               customConnectorId: definition.body.id,
             },
-            selectionResolution: { kind: "clear" },
           },
         }),
         [200],
@@ -771,6 +972,48 @@ describe("connector account lifecycle routes", () => {
       expect(remaining.body.connections).toMatchObject([
         { id: work.id, displayName: "Work", isDefault: true },
       ]);
+
+      const disconnects = await Promise.all([
+        accountClient().disconnectSingleAccount({
+          headers: authHeaders(),
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+          },
+        }),
+        accountClient().disconnectSingleAccount({
+          headers: authHeaders(),
+          body: {
+            target: {
+              kind: "custom",
+              customConnectorId: definition.body.id,
+            },
+          },
+        }),
+      ]);
+      expect(
+        disconnects
+          .map((response) => {
+            return response.status;
+          })
+          .sort((left, right) => {
+            return left - right;
+          }),
+      ).toStrictEqual([204, 404]);
+      const disconnected = await accept(
+        accountClient().connections({
+          headers: authHeaders(),
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+            limit: 100,
+          },
+        }),
+        [200],
+      );
+      expect(disconnected.body.connections).toStrictEqual([]);
     },
   );
 });

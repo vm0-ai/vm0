@@ -2,18 +2,18 @@
  * ESLint rule: require-client-signal
  *
  * In src/signals/**, any async non-computed function that accepts an
- * AbortSignal and calls a contract client obtained from zeroClient$ must pass
+ * AbortSignal and calls a contract client obtained from apiClient$ must pass
  * that signal via `fetchOptions: { signal }`.
  *
  * Good:
  *   command(async ({ get }, signal: AbortSignal) => {
- *     const client = get(zeroClient$)(contract);
+ *     const client = get(apiClient$)(contract);
  *     await accept(client.get({ fetchOptions: { signal } }), [200]);
  *   });
  *
  * Bad:
  *   command(async ({ get }, signal: AbortSignal) => {
- *     const client = get(zeroClient$)(contract);
+ *     const client = get(apiClient$)(contract);
  *     await accept(client.get(), [200]);
  *   });
  */
@@ -35,17 +35,17 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Enforce that zeroClient$ calls inside async signal-bearing functions pass fetchOptions.signal",
+        "Enforce that apiClient$ calls inside async signal-bearing functions pass fetchOptions.signal",
       requiresTypeChecking: false,
     },
     schema: [],
     messages: {
       missingFetchOptions:
-        "zeroClient$ calls in async signal-bearing functions must pass `fetchOptions: { {{signalName}} }`.",
+        "apiClient$ calls in async signal-bearing functions must pass `fetchOptions: { {{signalName}} }`.",
       missingSignal:
-        "zeroClient$ calls in async signal-bearing functions must pass `fetchOptions.signal` using `{{signalName}}`.",
+        "apiClient$ calls in async signal-bearing functions must pass `fetchOptions.signal` using `{{signalName}}`.",
       wrongSignal:
-        "zeroClient$ calls in async signal-bearing functions must pass the current signal `{{signalName}}` as `fetchOptions.signal`.",
+        "apiClient$ calls in async signal-bearing functions must pass the current signal `{{signalName}}` as `fetchOptions.signal`.",
     },
   },
 
@@ -104,7 +104,7 @@ export default createRule({
       return functionStack[functionStack.length - 1];
     }
 
-    function isGetZeroClientCall(
+    function isGetApiClientCall(
       node: TSESTree.Node | null | undefined,
     ): boolean {
       return (
@@ -113,7 +113,7 @@ export default createRule({
         node.callee.name === "get" &&
         node.arguments.length === 1 &&
         node.arguments[0].type === AST_NODE_TYPES.Identifier &&
-        node.arguments[0].name === "zeroClient$"
+        node.arguments[0].name === "apiClient$"
       );
     }
 
@@ -134,7 +134,7 @@ export default createRule({
     ): boolean {
       return (
         node?.type === AST_NODE_TYPES.CallExpression &&
-        (isGetZeroClientCall(node.callee) ||
+        (isGetApiClientCall(node.callee) ||
           (node.callee.type === AST_NODE_TYPES.Identifier &&
             current.factoryVars.has(node.callee.name)))
       );
@@ -331,7 +331,7 @@ export default createRule({
           return;
         }
 
-        if (isGetZeroClientCall(node.init)) {
+        if (isGetApiClientCall(node.init)) {
           current.factoryVars.add(node.id.name);
           return;
         }

@@ -1504,6 +1504,10 @@
       "stop": "Hentikan",
       "view": "Lihat"
     },
+    "actionUnavailable": {
+      "description": "Tindakan ini bukan milik chat ini atau sudah tidak valid.",
+      "title": "Tindakan tidak tersedia"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Tambahkan {{assistantName}} di Slack",

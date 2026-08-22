@@ -134,7 +134,7 @@ def get_api_url() -> str:
     return ctx.options.vm0_api_url
 
 
-def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.request.Request:
+def make_api_request(url: str, data: bytes, bearer_credential: str) -> urllib.request.Request:
     """Build a Request with standard platform API headers.
 
     Centralises User-Agent, Authorization, Content-Type, and the optional
@@ -161,7 +161,7 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
             CLIENT_REQUEST_ID_HEADER: str(uuid.uuid4()),
         },
     )
-    req.add_unredirected_header("Authorization", f"Bearer {sandbox_token}")
+    req.add_unredirected_header("Authorization", f"Bearer {bearer_credential}")
     if VERCEL_BYPASS:
         req.add_unredirected_header(_VERCEL_BYPASS_HEADER, VERCEL_BYPASS)
     return req

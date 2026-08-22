@@ -29,7 +29,6 @@ import {
 } from "../services/model-selection.service";
 import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
 import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
-import { prepareChatThreadConnectorSelections } from "../services/chat-thread-connector-selection.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -121,17 +120,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return notFound("Resource not found");
     }
   }
-  const preparedConnectorSelections =
-    await prepareChatThreadConnectorSelections(writeDb, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      agentId: body.data.agentId,
-      selections: connectorSelections,
-    });
-  signal.throwIfAborted();
-  if (preparedConnectorSelections.kind === "invalid") {
-    return badRequestMessage(preparedConnectorSelections.message);
-  }
   const callerRunId =
     auth.tokenType === "sandbox" || auth.tokenType === "zero"
       ? auth.runId
@@ -200,11 +188,14 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       codexServiceTier,
       selectedVideoModel,
       selectedImageModel,
-      connectorSelections: preparedConnectorSelections.selections,
+      connectorSelections,
     },
     signal,
   );
   signal.throwIfAborted();
+  if (thread.kind === "invalid_connector_selection") {
+    return badRequestMessage(thread.message);
+  }
 
   await publishThreadListChanged(auth.userId);
   signal.throwIfAborted();

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.21...guest-agent-v0.74.22) (2026-08-22)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound reuse cleanup memory ([#28593](https://github.com/vm0-ai/vm0/issues/28593)) ([23ac7ce](https://github.com/vm0-ai/vm0/commit/23ac7ce52340901becc277fa521dd649b8d23d59))
+
 ## [0.74.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.20...guest-agent-v0.74.21) (2026-08-21)
 
 ## [0.74.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.19...guest-agent-v0.74.20) (2026-08-21)

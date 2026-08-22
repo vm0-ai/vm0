@@ -1528,6 +1528,10 @@
       "stop": "Arrêter",
       "view": "Afficher"
     },
+    "actionUnavailable": {
+      "description": "Cette action n’appartient pas à cette discussion ou n’est plus valide.",
+      "title": "Action indisponible"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Ajouter {{assistantName}} dans Slack",

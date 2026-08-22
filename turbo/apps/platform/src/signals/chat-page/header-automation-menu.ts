@@ -8,7 +8,7 @@ import {
   type WorkflowSchedule,
 } from "@okouai/api-contracts/contracts/workflows";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { listThreadWorkflowAutomations } from "../zero-page/workflow-automations-api.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -207,10 +207,9 @@ export function createHeaderAutomationSignals(
     async (get): Promise<readonly HeaderWorkflowAutomationEntry[]> => {
       get(reloadVersion$);
       get(locale$);
-      const automations = await listThreadWorkflowAutomations(
-        get(zeroClient$),
-        { threadId },
-      );
+      const automations = await listThreadWorkflowAutomations(get(apiClient$), {
+        threadId,
+      });
       const prefs = await get(userPreferences$);
       const displayTz =
         prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -240,7 +239,7 @@ export function createHeaderAutomationSignals(
       },
       signal: AbortSignal,
     ) => {
-      const client = get(zeroClient$)(workflowAutomationsContract);
+      const client = get(apiClient$)(workflowAutomationsContract);
       await accept(
         client.update({
           params: { id: params.automationId },
@@ -263,7 +262,7 @@ export function createHeaderAutomationSignals(
       },
       signal: AbortSignal,
     ) => {
-      const client = get(zeroClient$)(workflowAutomationsContract);
+      const client = get(apiClient$)(workflowAutomationsContract);
       await accept(
         client.update({
           params: { id: params.automationId },
@@ -286,7 +285,7 @@ export function createHeaderAutomationSignals(
       },
       signal: AbortSignal,
     ) => {
-      const client = get(zeroClient$)(workflowAutomationsContract);
+      const client = get(apiClient$)(workflowAutomationsContract);
       await accept(
         client.update({
           params: { id: params.automationId },
@@ -302,7 +301,7 @@ export function createHeaderAutomationSignals(
 
   const runNow$ = command(
     async ({ get, set }, automationId: string, signal: AbortSignal) => {
-      const client = get(zeroClient$)(workflowAutomationsContract);
+      const client = get(apiClient$)(workflowAutomationsContract);
       await accept(
         client.run({
           params: { id: automationId },

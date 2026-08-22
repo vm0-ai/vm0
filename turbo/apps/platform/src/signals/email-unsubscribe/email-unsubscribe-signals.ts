@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -30,7 +30,7 @@ export const confirmEmailUnsubscribe$ = command(
 
     set(internalStatus$, "submitting");
     const result = await accept(
-      get(zeroClient$)(emailUnsubscribeContract).unsubscribe({
+      get(apiClient$)(emailUnsubscribeContract).unsubscribe({
         query: { token },
         body: undefined,
         fetchOptions: { signal },

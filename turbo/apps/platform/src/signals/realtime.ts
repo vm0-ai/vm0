@@ -11,7 +11,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { now } from "../lib/time.ts";
-import { zeroClient$ } from "./api-client.ts";
+import { apiClient$ } from "./api-client.ts";
 import {
   requestForegroundCatchUp$,
   subscribeForegroundCatchUp$,
@@ -932,7 +932,7 @@ const connectRealtimeClient$ = command(
     { get, set },
     signal: AbortSignal,
   ): Promise<ConnectedRealtimeClient> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
     const ably = new Realtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why

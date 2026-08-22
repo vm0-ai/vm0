@@ -7,13 +7,14 @@ This addon runs on the runner HOST (not inside VMs) and:
 2. Looks up the source VM's runId from the proxy registry
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
-5. Reports model-provider and connector usage
+5. Reports model-provider failures plus model-provider and connector usage
 6. Participates in runner-triggered webhook delivery drain before proxy shutdown
 """
 
 import asyncio
 import base64
 import binascii
+import os
 import signal
 import tempfile
 from collections.abc import Awaitable
@@ -27,7 +28,8 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
-# http_header_syntax/matching/model_websocket_usage/registry/response_encoding_negotiation/
+# http_header_syntax/matching/model_provider_failure/model_websocket_usage/registry/
+# response_encoding_negotiation/
 # response_streaming/
 # runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_framing/
 # websocket_retention are imported
@@ -36,7 +38,8 @@ from mitmproxy.addonmanager import Loader
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
 #      ``content_length.X(...)`` /
-#      ``matching.X(...)`` / ``model_websocket_usage.X(...)`` / ``registry.X(...)`` /
+#      ``matching.X(...)`` / ``model_provider_failure.X(...)`` /
+#      ``model_websocket_usage.X(...)`` / ``registry.X(...)`` /
 #      ``response_streaming.X(...)`` / ``runner_flush_lifecycle.X(...)`` /
 #      ``terminal_usage.X(...)`` /
 #      ``upstream_admission.X(...)`` / ``usage.X(...)`` /
@@ -60,6 +63,7 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
+import model_provider_failure
 import model_websocket_usage
 import platform_api
 import registry
@@ -234,6 +238,10 @@ def configure(updated: set[str]) -> None:
     platform_api.configure_client_headers(
         client_session_id=ctx.options.vm0_client_session_id,
         client_version=ctx.options.vm0_client_version,
+    )
+    model_provider_failure.configure_reporting(
+        api_url=get_api_url(),
+        bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
@@ -1075,6 +1083,7 @@ async def _try_firewall_request_stream_from_headers(
             request_end_stream=request_end_stream is True,
         )
         if flow.response is None:
+            model_provider_failure.admit_flow(flow)
             request_streaming.configure_request_stream(flow, capture_body=capture_body)
     except (asyncio.CancelledError, Exception):
         _release_terminal_flow_state(flow, release_tracking=True)
@@ -1455,6 +1464,8 @@ async def request(flow: http.HTTPFlow) -> None:
                     require_connected=require_connected,
                     request_end_stream=True,
                 )
+                if flow.response is None:
+                    model_provider_failure.admit_flow(flow)
             return
 
         if classification.kind == "allow":
@@ -1571,15 +1582,23 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     websocket_retention.schedule_message_trim(flow)
     if not flow_metadata.run_id(flow.metadata):
         return
-    if not model_websocket_usage.is_enabled(flow):
-        return
     if getattr(message, "from_client", False):
         body = message.content.encode() if isinstance(message.content, str) else message.content
         event = usage.inspect_openai_responses_client_event_json(body)
+        model_provider_failure.observe_websocket_client_event(
+            flow,
+            request_kind=event.request_kind,
+            is_prewarm=event.is_prewarm,
+        )
+        if not model_websocket_usage.is_enabled(flow):
+            return
         codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
         model_websocket_usage.observe_client_event(flow, event)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
+    model_provider_failure.observe_websocket_server_event(flow, body)
+    if not model_websocket_usage.is_enabled(flow):
+        return
     event = usage.inspect_openai_responses_event_json(body)
     codex_output_timing.observe_server_event(flow, event.event_type)
     model_websocket_usage.feed_usage(flow, event)
@@ -1632,13 +1651,15 @@ def _release_terminal_flow_state(
     if release_aws_sigv4_body_admission:
         aws_sigv4_body_admission.release_from_flow(flow)
     if release_tracking:
+        model_provider_failure.release_flow(flow)
         terminal_usage.release_tracked_flow(flow)
         websocket_framing.release_flow_state(flow)
 
 
 def websocket_end(flow: http.HTTPFlow) -> None:
-    """Report model-provider usage extracted from a WebSocket-upgraded response."""
+    """Settle model-provider failure and usage for a WebSocket-upgraded response."""
     try:
+        model_provider_failure.finish_websocket(flow)
         run_id = flow_metadata.run_id(flow.metadata)
         if run_id:
             terminal_usage.report_model_provider_usage_once(flow, run_id)
@@ -1756,6 +1777,7 @@ def _finish_response_handling(
     request_size = _request_size(flow)
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
+    model_provider_failure.finish_http_response(flow)
 
     # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
     # Rust runner; api-contracts is the shared network-log schema boundary.
@@ -1867,6 +1889,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     firewall_action = flow_metadata.firewall_action(flow.metadata)
 
     connector_diagnostics.handle_error(flow)
+    model_provider_failure.finish_connection_error(flow)
 
     request_size = _request_size(flow)
     error_msg = flow.error.msg if flow.error else "unknown error"
@@ -1914,7 +1937,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 
 
 def done():
-    """Flush pending usage reports and forwarding workers before mitmproxy exits.
+    """Flush pending reports and forwarding workers before mitmproxy exits.
 
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
@@ -1926,7 +1949,8 @@ def done():
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer
     shutdown is also bounded and best-effort; if it times out, process shutdown
-    continues with accepted log entries possibly still pending.
+    continues with accepted log entries possibly still pending. Model-provider
+    failure delivery stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
@@ -1938,6 +1962,7 @@ def done():
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)
         finally:
+            model_provider_failure.shutdown()
             shutdown_log_writer()
 
 

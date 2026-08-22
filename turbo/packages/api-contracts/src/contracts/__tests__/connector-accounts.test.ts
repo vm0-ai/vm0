@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  connectorAccountsContract,
   connectorAccountDisplayNameSchema,
-  connectorAccountDeleteResolutionSchema,
   connectorAccountListQuerySchema,
   connectorAccountMutationIntentSchema,
   connectorAccountSelectionSchema,
@@ -47,7 +47,18 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("distinguishes add from exact reconnect intent", () => {
+  it("distinguishes single-account, add, and exact reconnect intent", () => {
+    expect(
+      connectorAccountMutationIntentSchema.parse({
+        intent: "single-account",
+      }),
+    ).toStrictEqual({ intent: "single-account" });
+    expect(
+      connectorAccountMutationIntentSchema.safeParse({
+        intent: "single-account",
+        connectionId,
+      }).success,
+    ).toBe(false);
     expect(
       connectorAccountMutationIntentSchema.parse({
         intent: "add",
@@ -109,19 +120,40 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("requires an explicit sparse-selection deletion resolution", () => {
+  it("accepts only an exact target for account deletion", () => {
     expect(
-      connectorAccountDeleteResolutionSchema.parse({ kind: "clear" }),
-    ).toStrictEqual({ kind: "clear" });
-    expect(
-      connectorAccountDeleteResolutionSchema.parse({
-        kind: "reassign",
-        connectionId,
+      connectorAccountsContract.delete.body.parse({
+        target: { kind: "builtin", connectorSlug: "github" },
       }),
-    ).toStrictEqual({ kind: "reassign", connectionId });
+    ).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "github" },
+    });
     expect(
-      connectorAccountDeleteResolutionSchema.safeParse({ kind: "reassign" })
-        .success,
+      connectorAccountsContract.delete.body.safeParse({
+        target: { kind: "builtin", connectorSlug: "github" },
+        selectionResolution: { kind: "clear" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only a target for safe single-account disconnect", () => {
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "builtin", connectorSlug: "github" },
+      }),
+    ).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "github" },
+    });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "custom", customConnectorId },
+      }),
+    ).toStrictEqual({ target: { kind: "custom", customConnectorId } });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.safeParse({
+        target: { kind: "builtin", connectorSlug: "github" },
+        connectionId,
+      }).success,
     ).toBe(false);
   });
 });

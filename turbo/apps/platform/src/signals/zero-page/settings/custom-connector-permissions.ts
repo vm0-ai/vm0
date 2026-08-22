@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { withCleanup } from "../../utils.ts";
 import { reloadCustomConnectorAuthorizedAgents$ } from "./custom-connectors.ts";
@@ -125,7 +125,7 @@ export const customConnectorPermissionBundle$ = computed(
     if (!target) {
       return null;
     }
-    const client = get(zeroClient$)(zeroCustomConnectorByIdContract);
+    const client = get(apiClient$)(zeroCustomConnectorByIdContract);
     const result = await accept(
       client.permissions({ params: { id: target.connectorId } }),
       [200, 404],
@@ -144,7 +144,7 @@ export const saveCustomConnectorPermissions$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       accept(
         client.update({

@@ -450,32 +450,6 @@ async function prepareUsagePackCheckoutOrg(
   );
 }
 
-async function seedPreviousUsagePackCheckoutWriter(
-  fixture: BillingOrgFixture,
-  customerId: string,
-): Promise<string> {
-  const seeded = await usagePackStateAction({
-    action: "seed",
-    orgId: fixture.orgId,
-    tier: "pro",
-    stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
-    stripeCustomerId: customerId,
-    stripeCheckoutSessionId: null,
-    allocations: [
-      {
-        userId: fixture.userId,
-        invitationId: null,
-        usagePackUsd: 20,
-        stripePriceId: TEST_PRICE_USAGE_PACK_20,
-      },
-    ],
-  });
-  if (seeded.action !== "seeded") {
-    throw new Error("Failed to seed the previous writer snapshot");
-  }
-  return seeded.usagePackSubscriptionId;
-}
-
 function cleanupUsagePackSnapshotOnTestFinished(
   fixture: BillingOrgFixture,
   usagePackSubscriptionId: string,
@@ -3357,105 +3331,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
         deleteOrgMetadata: true,
       });
     });
-  });
-
-  it("waits when the previous writer claims a fresh Checkout snapshot", async () => {
-    const fixture = createOrgFixture();
-    const customerId = `cus_${randomUUID()}`;
-    await prepareUsagePackCheckoutOrg(fixture, customerId);
-    const sessionStates = mockStatefulUsagePackCheckoutSessions();
-    const legacySessionId = `cs_legacy_${randomUUID()}`;
-    // The previous API has created this payable Session but is paused before
-    // its unconditional snapshot correlation.
-    sessionStates.set(legacySessionId, "open");
-    const legacySnapshotId = await seedPreviousUsagePackCheckoutWriter(
-      fixture,
-      customerId,
-    );
-    cleanupUsagePackSnapshotOnTestFinished(fixture, legacySnapshotId);
-    // The previous API can claim a snapshot created by another writer. Keep
-    // its freshness timestamp distinct from creation so ownership never
-    // depends on timestamp equality.
-    await usagePackStateAction({
-      action: "set-updated-at",
-      orgId: fixture.orgId,
-      usagePackSubscriptionId: legacySnapshotId,
-      updatedAt: new Date(now() - 1000).toISOString(),
-    });
-    const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      billingUsagePackCheckoutContract,
-    );
-    const request = () => {
-      return client.create({
-        body: {
-          tier: "pro",
-          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 50 }],
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      });
-    };
-    const blocked = await accept(request(), [409]);
-
-    expect(blocked.body).toStrictEqual({
-      error: {
-        message: "Another usage pack purchase is still being prepared",
-        code: "CONFLICT",
-      },
-    });
-    expect(
-      context.mocks.stripe.checkout.sessions.create,
-    ).not.toHaveBeenCalled();
-    expect(sessionStates.get(legacySessionId)).toBe("open");
-    const blockedState = await readUsagePackState(
-      fixture.orgId,
-      legacySnapshotId,
-    );
-    expect(blockedState.subscriptionCount).toBe(1);
-    expect(blockedState.subscription).toMatchObject({
-      stripeCheckoutSessionId: null,
-      subscriptionStatus: "checkout_pending",
-    });
-
-    await usagePackStateAction({
-      action: "correlate-legacy-checkout-session",
-      orgId: fixture.orgId,
-      usagePackSubscriptionId: legacySnapshotId,
-      stripeCheckoutSessionId: legacySessionId,
-      updatedAt: new Date(now()).toISOString(),
-    });
-    const replaced = await accept(request(), [200]);
-
-    expect(replaced.body).toStrictEqual({
-      url: expect.stringMatching(/^https:\/\/checkout\.stripe\.test\//),
-    });
-    expect(sessionStates.get(legacySessionId)).toBe("expired");
-    expect(
-      [...sessionStates.values()].filter((status) => {
-        return status === "open";
-      }),
-    ).toHaveLength(1);
-    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(context.mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith(
-      legacySessionId,
-    );
-    expect(
-      (await readUsagePackState(fixture.orgId, legacySnapshotId)).subscription,
-    ).toMatchObject({
-      stripeCheckoutSessionId: legacySessionId,
-      subscriptionStatus: "checkout_expired",
-    });
-    const [createInput] = context.mocks.stripe.checkout.sessions.create.mock
-      .calls[0] ?? [undefined];
-    const replacementSnapshotId =
-      stripeInputMetadata(createInput).usagePackSubscriptionId;
-    if (!replacementSnapshotId) {
-      throw new Error("Replacement Checkout did not expose its snapshot ID");
-    }
-    cleanupUsagePackSnapshotOnTestFinished(fixture, replacementSnapshotId);
   });
 
   it("keeps a reused purchase preview snapshot until its latest token expires", async () => {

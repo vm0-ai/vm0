@@ -1079,6 +1079,123 @@ describe("chat event action cards", () => {
     expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
   });
 
+  it("keeps connector and permission actions for another agent inert", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000023";
+    const otherAgentId = "c0000000-0000-4000-a000-000000000002";
+    const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${otherAgentId}`;
+    const permissionUrl = `https://app.vm0.ai/agents/${otherAgentId}/permissions?connectorSlug=slack&permission=channels.read&action=allow`;
+
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Public agent",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+        visibility: "public",
+      });
+    });
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({ slug: "slack", label: "Slack" }),
+    ]);
+    context.mocks.api(connectorCatalogContract.permissions, ({ respond }) => {
+      return respond(200, {
+        permissions: catalogPermissionDetail({
+          connectorSlug: "slack",
+          label: "Slack",
+          permissions: [
+            { name: "channels.read", description: "Read channels" },
+          ],
+        }),
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Mismatched action agent",
+      chatEvents: [
+        {
+          id: "msg-assistant-mismatched-action-agent",
+          role: "assistant",
+          content: `${connectorUrl}\n\n${permissionUrl}`,
+          runId: "run-mismatched-action-agent",
+          createdAt: "2026-08-21T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const unavailableCards = await screen.findAllByTestId(
+      "unavailable-action-card",
+    );
+    expect(unavailableCards).toHaveLength(2);
+    for (const card of unavailableCards) {
+      expect(queryAllByRoleFast("link", card)).toHaveLength(0);
+      expect(queryAllByRoleFast("button", card)).toHaveLength(0);
+    }
+    expect(screen.queryByTestId("connector-action-card")).toBeNull();
+    expect(screen.queryByTestId("permission-action-card")).toBeNull();
+    const actionLinks = queryAllByRoleFast("link").filter((link) => {
+      const href = link.getAttribute("href");
+      return href === connectorUrl || href === permissionUrl;
+    });
+    expect(actionLinks).toHaveLength(0);
+  });
+
+  it("keeps mismatched and incomplete action callbacks inert", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000024";
+    const otherThreadId = "e4000000-0000-4000-a000-000000000025";
+    const callbackPrompt = encodeURIComponent("Continue after authorization");
+    const wrongThreadUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${otherThreadId}&callbackPrompt=${callbackPrompt}`;
+    const promptOnlyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=channels.read&action=allow&callbackPrompt=${callbackPrompt}`;
+    const threadOnlyUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}&threadId=${threadId}`;
+    const missingAgentUrl = `${window.location.origin}/connectors/gmail/connect`;
+    const invalidUrls = [
+      wrongThreadUrl,
+      promptOnlyUrl,
+      threadOnlyUrl,
+      missingAgentUrl,
+    ];
+    const invalidActionLines = [
+      `Please use ${wrongThreadUrl} to continue.`,
+      promptOnlyUrl,
+      threadOnlyUrl,
+      missingAgentUrl,
+    ];
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Invalid action callbacks",
+      chatEvents: [
+        {
+          id: "msg-assistant-invalid-action-callbacks",
+          role: "assistant",
+          content: invalidActionLines.join("\n\n"),
+          runId: "run-invalid-action-callbacks",
+          createdAt: "2026-08-21T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const unavailableCards = await screen.findAllByTestId(
+      "unavailable-action-card",
+    );
+    expect(unavailableCards).toHaveLength(invalidUrls.length);
+    for (const card of unavailableCards) {
+      expect(queryAllByRoleFast("link", card)).toHaveLength(0);
+      expect(queryAllByRoleFast("button", card)).toHaveLength(0);
+    }
+    const exposedActionLinks = queryAllByRoleFast("link").filter((link) => {
+      return invalidUrls.includes(link.getAttribute("href") ?? "");
+    });
+    expect(exposedActionLinks).toHaveLength(0);
+  });
+
   it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
     const user = userEvent.setup({ delay: null });
     const leftThreadId = "c0000000-0000-4000-a000-000000000031";
@@ -3496,9 +3613,9 @@ describe("chat event action cards", () => {
     const releaseRequest = context.mocks.deferred<void>();
     const requestFinished = context.mocks.deferred<void>();
     const threadId = "b0000000-0000-4000-a000-000000000951";
-    const reloadedAgentId = "c0000000-0000-4000-a000-000000000002";
     const gmailPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow`;
-    const youtubePermissionUrl = `https://app.vm0.ai/agents/${reloadedAgentId}/permissions?connectorSlug=youtube&permission=videos.write&action=allow`;
+    const youtubePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow`;
+    let initialListRequests = 0;
     let pendingRequest = true;
     let staleRequestSignal: AbortSignal | undefined;
 
@@ -3518,11 +3635,12 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(
       zeroUserPermissionGrantsContract.list,
-      async ({ query, signal, respond }) => {
-        if (query.agentId !== reloadedAgentId) {
+      async ({ signal, respond }) => {
+        if (!pendingRequest) {
           return respond(200, []);
         }
-        if (!pendingRequest) {
+        initialListRequests += 1;
+        if (initialListRequests === 1) {
           return respond(200, []);
         }
         pendingRequest = false;

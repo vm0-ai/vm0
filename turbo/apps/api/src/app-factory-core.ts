@@ -41,7 +41,6 @@ import {
 import {
   type RouteEntry,
   withApiNamespaceAliases,
-  withFinalProviderConsolePaths,
   withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
@@ -646,14 +645,14 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // Console paths first, then the namespace expansion, then the branded paths
-  // migrated routes owe: each stage consumes the declared path, so the last one
-  // produces finished registrations rather than input to another derivation.
-  // Uniqueness over this composition is asserted against the production route
-  // table in `__tests__/migrated-branded-paths.test.ts`, not here — test apps
+  // The namespace expansion first, then the branded paths migrated routes owe:
+  // the expansion consumes the declared path, so the second stage produces
+  // finished registrations rather than input to another derivation. Uniqueness
+  // over this composition is asserted against the production route table in
+  // `__tests__/migrated-branded-paths.test.ts`, not here — test apps
   // deliberately compose overlapping route slices.
   const registeredRoutes = withMigratedBrandedPaths(
-    withApiNamespaceAliases(withFinalProviderConsolePaths(routes)),
+    withApiNamespaceAliases(routes),
   );
 
   const reportNamespaceAliasFallback = createNamespaceAliasFallbackReporter();

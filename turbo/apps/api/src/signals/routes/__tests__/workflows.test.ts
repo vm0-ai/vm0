@@ -648,8 +648,8 @@ describe("workflows", () => {
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorSlug: "box",
-        reason: "The workflow reads Box files.",
+        connectorSlug: "missing-connector",
+        reason: "The workflow reads an unavailable connector.",
       },
     ]);
 

@@ -26,8 +26,8 @@ import { i18n } from "../../i18n/index.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import {
   OAUTH_API_BASE,
-  zeroClient$,
-  type ZeroClientFactory,
+  apiClient$,
+  type ApiClientFactory,
 } from "../../signals/api-client.ts";
 import {
   connectorCatalogStatusBySlug$,
@@ -166,7 +166,7 @@ function startGoogleDriveConnectAndRun(
     agentId: string | null | undefined;
     authMethod: ConnectorCatalogBrowserAuthMethodDetail;
     connector: PlatformConnectorCatalogStatusItem;
-    createClient: ZeroClientFactory;
+    createClient: ApiClientFactory;
     run: GoogleDriveReadyRun;
     waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
     operation: string;
@@ -422,7 +422,7 @@ function GoogleDriveMenuItem({
     googleDriveConnector,
     googleDriveReady,
   } = useGoogleDriveAvailability(syncTarget);
-  const createClient = useGet(zeroClient$);
+  const createClient = useGet(apiClient$);
   const pageSignal = useGet(pageSignal$);
   const waitForGoogleDriveAuthorization = useSet(
     waitForGoogleDriveAuthorization$,

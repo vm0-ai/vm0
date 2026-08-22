@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import { buildInfoContract } from "@okouai/api-contracts/contracts/build-info";
 
 import { accept } from "../../../lib/accept.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 
 interface BackendBuildInfo {
   readonly backendCommitSha: string | null;
@@ -11,7 +11,7 @@ interface BackendBuildInfo {
 
 export const backendBuildInfo$ = computed(
   async (get): Promise<BackendBuildInfo> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(buildInfoContract);
     const result = await accept(client.get(), [200]);
 

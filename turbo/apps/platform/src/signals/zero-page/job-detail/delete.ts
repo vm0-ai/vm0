@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../../agent.ts";
@@ -19,7 +19,7 @@ export const deleteAgent$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const client = get(zeroClient$)(agentsByIdContract);
+    const client = get(apiClient$)(agentsByIdContract);
     await accept(client.delete({ params: { id: detail.agentId } }), [204]);
     signal.throwIfAborted();
 

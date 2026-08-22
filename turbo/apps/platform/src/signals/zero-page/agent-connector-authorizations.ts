@@ -2,7 +2,7 @@ import { command, computed, state, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { withCleanup } from "../utils.ts";
 
 interface AgentConnectorAuthorizations {
@@ -38,7 +38,7 @@ function pendingRequestKey(params: {
 
 interface AgentConnectorAuthorizationRequestBroker {
   load(params: {
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
     readonly agentId: string;
     readonly missing: MissingPolicy;
     readonly reloadGeneration: number;
@@ -52,12 +52,12 @@ interface ResolvedAgentConnectorAuthorizationRequest {
 
 function createAgentConnectorAuthorizationRequestBroker(): AgentConnectorAuthorizationRequestBroker {
   const pendingRequestsByClient = new WeakMap<
-    ZeroClientFactory,
+    ApiClientFactory,
     Map<string, Promise<AgentConnectorAuthorizations | null>>
   >();
-  const latestRequestedKeyByClient = new WeakMap<ZeroClientFactory, string>();
+  const latestRequestedKeyByClient = new WeakMap<ApiClientFactory, string>();
   const latestResolvedByClient = new WeakMap<
-    ZeroClientFactory,
+    ApiClientFactory,
     ResolvedAgentConnectorAuthorizationRequest
   >();
 
@@ -134,7 +134,7 @@ function createAuthorizationsAtom(
   return computed(async (get): Promise<AgentConnectorAuthorizations | null> => {
     const reloadGeneration = get(agentConnectorAuthorizationsReload$);
     return await get(agentConnectorAuthorizationRequestBroker$).load({
-      createClient: get(zeroClient$),
+      createClient: get(apiClient$),
       agentId,
       missing: options.missing,
       reloadGeneration,

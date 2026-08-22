@@ -47,62 +47,6 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * Final paths that the Slack console holds after #28278 Stage 0, keyed by the
- * branded path that serves them today. OAuth callbacks join
- * `/api/integrations/**` beside the IM connect routes, and inbound webhooks
- * join `/api/webhooks/**` beside the other providers.
- *
- * Step 1 only makes these paths routable: each one adds a second way to reach
- * the handler that already serves its branded path. Producers switch one at a
- * time in #28278 step 3, once the provider console holds the final URL; the
- * Teams OAuth callback switched in #28300 and the Feishu events URL we display
- * to operators in #28338. Every branded path here stays registered: removal is
- * gated on #26701.
- *
- * A row leaves this table when #28278 moves its contract onto the final path,
- * because from then on the contract declares that path and this table has
- * nothing left to add. The two Microsoft rows left in #28545, and the two
- * Feishu rows in #28544 once it established that no Feishu console holds
- * either path: the console registers the frontend-forwarding OAuth target from
- * `feishuOAuthAppCallbackUrl()` rather than the API callback, and #28338
- * already moved the events URL shown to operators. `MIGRATED_BRANDED_PATHS`
- * below owes all four branded forms instead.
- *
- * That deletion is required, though not because the two tables would collide.
- * This table is keyed by the branded path a contract declares, and it runs on
- * `ROUTES` before the namespace expansion, so once a contract declares its
- * neutral path its old row stops matching and produces nothing —
- * `assertUniqueRouteRegistrations` never sees a duplicate. A row left behind is
- * dead configuration that reads as a live console commitment, which is why the
- * restated list in `provider-console-paths.test.ts` is the record of which
- * paths a console still holds.
- */
-const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
-  "GET /api/okou/slack/oauth/callback":
-    "/api/integrations/slack/oauth/callback",
-  "POST /api/okou/slack/events": "/api/webhooks/slack/events",
-  "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
-  "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
-};
-
-/**
- * Adds the final provider console paths still served from a branded contract.
- * Unlike the namespace aliases below, this expands an explicit list and never
- * derives a path, so no other route gains a second registration.
- */
-export function withFinalProviderConsolePaths(
-  routes: readonly RouteEntry[],
-): readonly RouteEntry[] {
-  return routes.flatMap((entry) => {
-    const finalPath = FINAL_PROVIDER_CONSOLE_PATHS[routeRegistrationKey(entry)];
-    if (finalPath === undefined) {
-      return [entry];
-    }
-    return [entry, routeEntryWithPath(entry, finalPath)];
-  });
-}
-
-/**
  * The legacy `/api/zero/**` paths this service owes callers, keyed by the
  * canonical `/api/okou/**` path of the contract that serves them. This table
  * is the source of truth for Phase A compatibility from #26487: an entry here
@@ -115,11 +59,10 @@ export function withFinalProviderConsolePaths(
  * #26701 removes the fallback; that is the slice where a deleted row also
  * retires the path.
  *
- * Keyed by path alone rather than by `METHOD path` like
- * `FINAL_PROVIDER_CONSOLE_PATHS`: the evidence below is a path template with
- * no method attached, so restricting an entry to the single method that
- * happened to appear inside a three-day window would 404 a caller's other
- * methods on the same path.
+ * Keyed by path alone rather than by `METHOD path`: the evidence below is a
+ * path template with no method attached, so restricting an entry to the single
+ * method that happened to appear inside a three-day window would 404 a
+ * caller's other methods on the same path.
  *
  * The first group is every `/api/zero/**` path template that received a
  * request in `vm0-request-log-prod`, re-derived on 2026-08-20 over the whole
@@ -167,15 +110,13 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
 
   // Seeded rather than measured, because a provider console — not a client we
-  // control — held the URL when the row was written. Every branded path in
-  // `FINAL_PROVIDER_CONSOLE_PATHS` is listed, plus four rows whose contracts
-  // have since moved: the Teams OAuth callback below and the
-  // `/api/okou/teams/bot` row above (#28545), and the Feishu OAuth callback
-  // below and the `/api/okou/feishu/events/:installationId` row above (#28544,
-  // which established that no Feishu console holds either path). Those four are
-  // served by `MIGRATED_BRANDED_PATHS` rather than by the expansion. They stay
-  // listed, because a row records that a path is owed rather than which table
-  // serves it — see the ordering constraint recorded on #26701.
+  // control — held the URL when the row was written. Every one of these rows
+  // now belongs to a contract that has moved to its neutral path, so
+  // `MIGRATED_BRANDED_PATHS` serves both branded forms rather than the
+  // expansion deriving the `zero` one: the Teams routes in #28545, the Feishu
+  // routes in #28544, and the four Slack routes in #28600. They stay listed,
+  // because a row records that a path is owed rather than which table serves it
+  // — see the ordering constraint recorded on #26701.
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
   "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
@@ -1228,8 +1169,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/user-permission-grants/apply",
   ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
-  // paths a provider console holds stay branded and are not moved here — they
-  // are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  // paths a provider console holds were not in this slice; they moved later,
+  // and their rows are at the end of this table.
   //
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
@@ -1479,12 +1420,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/workflows/:workflowId/run",
     "/api/zero/workflows/:workflowId/run",
   ],
-  // #28545: the two Microsoft console routes, which arrive here from
-  // `FINAL_PROVIDER_CONSOLE_PATHS` rather than from the branded namespace like
-  // the rows above. The Azure Bot messaging endpoint and the Microsoft identity
-  // platform redirect URIs now hold the final paths, so the contracts declare
-  // them and that table's rows were deleted in the same commit — keeping them
-  // would have made both tables produce the same registration.
+  // #28545: the two Microsoft console routes, the first rows whose branded
+  // forms a provider console holds rather than a released client. The Azure Bot
+  // messaging endpoint and the Microsoft identity platform redirect URIs now
+  // hold the final paths, so the contracts declare them and both branded forms
+  // are owed from here.
   //
   // What holds the branded forms open is not a released client but the two
   // Microsoft consoles themselves, which have no drain window: they keep
@@ -1624,13 +1564,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/web/download-file",
   ],
   "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
-  // #28544: the two Feishu routes `FINAL_PROVIDER_CONSOLE_PATHS` carried
-  // without a console actually holding them, arriving here from that table like
-  // the Microsoft rows above rather than from the branded namespace. Their rows
-  // were deleted there in the same commit, for the reason recorded on that
-  // table: a row whose contract has moved stops matching rather than colliding,
-  // so what it leaves behind is dead configuration reading as a live console
-  // commitment.
+  // #28544: the two Feishu routes that were classified as console-held without
+  // a Feishu console actually holding them — the console registers the
+  // frontend-forwarding OAuth target from `feishuOAuthAppCallbackUrl()` rather
+  // than the API callback, and #28338 already moved the events URL shown to
+  // operators.
   //
   // The events row is the load-bearing one. Each Feishu installation registered
   // its event subscription URL in its own Feishu app console, which we cannot
@@ -1699,6 +1637,42 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/social/request": [
     "/api/okou/social/request",
     "/api/zero/social/request",
+  ],
+  // #28600, the last branded contract paths: the Slack OAuth callback and the
+  // three inbound Slack webhooks. They were the final entries of the console
+  // table #28283 added, which this slice deletes — the set of registered paths
+  // is unchanged by the move, because the contract now declares the path that
+  // table used to add and these rows name the two branded forms it used to
+  // declare and derive.
+  //
+  // The Slack app configuration holds one URL per endpoint and no drain window:
+  // it keeps posting to whatever is registered until an operator edits it, so
+  // all three forms stay served until #26701's evidence rules retire a row.
+  // Nothing in this repository produces the three webhook URLs — they exist
+  // only in that configuration — so the move needed no producer change.
+  "/api/integrations/slack/oauth/callback": [
+    "/api/okou/slack/oauth/callback",
+    // Not drain-window compatibility. `callbackRedirectUri` in
+    // `routes/slack-oauth.ts` emits this exact path as the `redirect_uri` sent
+    // to Slack, and Slack rejects a token exchange whose redirect URI is not
+    // registered in the app configuration. So this row is an active producer
+    // target: it can only be retired together with the emitted value, once the
+    // Slack app configuration is confirmed to hold the final path. Do not prune
+    // it for looking like a stale `/api/zero/` alias, or every authorization
+    // breaks the moment it lands.
+    "/api/zero/slack/oauth/callback",
+  ],
+  "/api/webhooks/slack/events": [
+    "/api/okou/slack/events",
+    "/api/zero/slack/events",
+  ],
+  "/api/webhooks/slack/commands": [
+    "/api/okou/slack/commands",
+    "/api/zero/slack/commands",
+  ],
+  "/api/webhooks/slack/interactive": [
+    "/api/okou/slack/interactive",
+    "/api/zero/slack/interactive",
   ],
 };
 

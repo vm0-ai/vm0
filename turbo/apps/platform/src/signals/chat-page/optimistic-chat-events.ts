@@ -1,12 +1,10 @@
 import { command, computed, state } from "ccstate";
 import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
-import { parseChatEventBodyBlocks } from "./chat-event-body-blocks.ts";
 import type {
   OptimisticChatEvent,
   OptimisticUserMessageAssociation,
 } from "./chat-event-types.ts";
-import type { ParsedBodyBlock } from "./parse-body-blocks.ts";
 import {
   chatEventDebugSummaries,
   chatEventTraceTime,
@@ -18,17 +16,12 @@ export interface OptimisticChatEventInput {
   optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
 }
 
-export interface OptimisticChatEventEntry extends OptimisticChatEventInput {
-  parsedBodyBlocks: ParsedBodyBlock[];
-}
+export type OptimisticChatEventEntry = OptimisticChatEventInput;
 
 export function createOptimisticChatEventEntry(
   input: OptimisticChatEventInput,
 ): OptimisticChatEventEntry {
-  return {
-    ...input,
-    parsedBodyBlocks: parseChatEventBodyBlocks(input.event, input.threadId),
-  };
+  return { ...input };
 }
 
 const L = logger("OptimisticChatEvents");

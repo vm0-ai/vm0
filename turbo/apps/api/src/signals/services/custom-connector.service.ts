@@ -23,10 +23,7 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type {
-  ConnectorAccountDeleteResolution,
-  ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
@@ -2973,6 +2970,13 @@ export const setCustomConnectorValues$ = command(
   },
 );
 
+type DisconnectCustomConnectorResult =
+  | "deleted"
+  | "missing-definition"
+  | "missing-account"
+  | "ambiguous"
+  | "managed";
+
 export const disconnectCustomConnector$ = command(
   async (
     { set },
@@ -2980,76 +2984,86 @@ export const disconnectCustomConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorId: string;
+      readonly requireAccount?: true;
     },
     signal: AbortSignal,
-  ): Promise<
-    NotFoundResponse | ConflictResponse | ForbiddenResponse | undefined
-  > => {
+  ): Promise<DisconnectCustomConnectorResult> => {
     const writeDb = set(writeDb$);
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const disconnected = await writeDb.transaction(async (tx) => {
-      const [connector] = await tx
-        .select({
-          id: orgCustomConnectors.id,
-          oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
-        })
-        .from(orgCustomConnectors)
-        .leftJoin(
-          orgCustomConnectorOauthConfigs,
-          and(
-            eq(
-              orgCustomConnectorOauthConfigs.connectorId,
-              orgCustomConnectors.id,
+    const disconnected = await commitConnectorRuntimeMutation(
+      writeDb.transaction(async (tx) => {
+        const [connector] = await tx
+          .select({
+            id: orgCustomConnectors.id,
+            oauthProviderAdapter:
+              orgCustomConnectorOauthConfigs.providerAdapter,
+          })
+          .from(orgCustomConnectors)
+          .leftJoin(
+            orgCustomConnectorOauthConfigs,
+            and(
+              eq(
+                orgCustomConnectorOauthConfigs.connectorId,
+                orgCustomConnectors.id,
+              ),
+              eq(
+                orgCustomConnectorOauthConfigs.orgId,
+                orgCustomConnectors.orgId,
+              ),
             ),
-            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
-          ),
-        )
-        .where(
-          and(
-            eq(orgCustomConnectors.id, args.connectorId),
-            eq(orgCustomConnectors.orgId, args.orgId),
-          ),
-        )
-        .for("update", { of: orgCustomConnectors })
-        .limit(1);
-      signal.throwIfAborted();
-      if (!connector) {
-        return false;
-      }
-      if (
-        isIntegrationManagedCustomConnectorProviderAdapter(
-          connector.oauthProviderAdapter,
-        )
-      ) {
-        return integrationManagedCustomConnectorMutationForbidden();
-      }
-      const result = await deleteCustomConnectorMemberConnection(
-        tx,
-        args,
-        signal,
-      );
-      if (result === "ambiguous") {
-        return conflict("Multiple connector accounts require an exact choice");
-      }
-      return true;
-    });
+          )
+          .where(
+            and(
+              eq(orgCustomConnectors.id, args.connectorId),
+              eq(orgCustomConnectors.orgId, args.orgId),
+            ),
+          )
+          .for("update", { of: orgCustomConnectors })
+          .limit(1);
+        signal.throwIfAborted();
+        if (!connector) {
+          return "missing-definition" as const;
+        }
+        if (
+          isIntegrationManagedCustomConnectorProviderAdapter(
+            connector.oauthProviderAdapter,
+          )
+        ) {
+          return "managed" as const;
+        }
+        return await deleteCustomConnectorMemberConnection(tx, args, signal);
+      }),
+      (result) => {
+        return result === "deleted"
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId, userId: args.userId },
+              targets: [
+                { kind: "custom", customConnectorId: args.connectorId },
+              ],
+            }
+          : undefined;
+      },
+    );
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (disconnected === false) {
+    const outcome =
+      disconnected === "missing"
+        ? args.requireAccount
+          ? ("missing-account" as const)
+          : ("deleted" as const)
+        : disconnected;
+    if (outcome !== "deleted") {
       signal.throwIfAborted();
-      return notFound("Custom connector not found");
-    }
-    if (disconnected !== true) {
-      signal.throwIfAborted();
-      return disconnected;
+      return outcome;
     }
     await publishCustomConnectorUserInvalidationAfterCommit(
       args.userId,
       signal,
       postCommitAbort,
     );
-    return undefined;
+    return "deleted";
   },
 );
 
@@ -3061,7 +3075,6 @@ export const deleteCustomConnectorAccount$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly memberConnectorId: string;
-      readonly selectionResolution: ConnectorAccountDeleteResolution;
     },
     signal: AbortSignal,
   ) => {

@@ -1528,6 +1528,10 @@
       "stop": "Interrompi",
       "view": "Visualizza"
     },
+    "actionUnavailable": {
+      "description": "Questa azione non appartiene a questa chat o non è più valida.",
+      "title": "Azione non disponibile"
+    },
     "agentPage": {
       "growth": {
         "addInSlack": "Aggiungi {{assistantName}} su Slack",

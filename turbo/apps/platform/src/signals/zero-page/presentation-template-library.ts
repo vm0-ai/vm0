@@ -7,7 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/presentation-templates";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -29,7 +29,7 @@ export const presentationTemplates$ = computed(
       return [];
     }
     get(presentationTemplatesVersion$);
-    const client = get(zeroClient$)(presentationTemplatesContract);
+    const client = get(apiClient$)(presentationTemplatesContract);
     const result = await accept(client.list(), [200]);
     return result.body;
   },
@@ -66,7 +66,7 @@ export function createImportedPresentationTemplateSignals() {
       if (templateId === null) {
         return null;
       }
-      const client = get(zeroClient$)(presentationTemplatesContract);
+      const client = get(apiClient$)(presentationTemplatesContract);
       const result = await accept(
         client.get({ params: { templateId } }),
         [200],
@@ -124,7 +124,7 @@ export function createImportedPresentationTemplateSignals() {
       body: UpdatePresentationTemplateBody,
       signal: AbortSignal,
     ): Promise<void> => {
-      const client = get(zeroClient$)(presentationTemplatesContract);
+      const client = get(apiClient$)(presentationTemplatesContract);
       await accept(
         client.update({
           params: { templateId },
@@ -147,7 +147,7 @@ export function createImportedPresentationTemplateSignals() {
       templateId: string,
       signal: AbortSignal,
     ): Promise<void> => {
-      const client = get(zeroClient$)(presentationTemplatesContract);
+      const client = get(apiClient$)(presentationTemplatesContract);
       await accept(
         client.delete({
           params: { templateId },

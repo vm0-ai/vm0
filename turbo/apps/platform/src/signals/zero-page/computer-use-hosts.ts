@@ -6,7 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/computer-use";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { onRef, tapError } from "../utils.ts";
 
@@ -165,7 +165,7 @@ export const computerUseHosts$ = computed(
   async (get): Promise<ListedComputerUseHost[]> => {
     get(computerUseHostsReload$);
 
-    const client = get(zeroClient$)(computerUseHostsContract);
+    const client = get(apiClient$)(computerUseHostsContract);
     const result = await accept(client.list({}), [200, 403]);
     if (result.status !== 200) {
       return [];

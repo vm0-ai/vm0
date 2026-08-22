@@ -285,6 +285,9 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
     case "permission-action": {
       return <PermissionActionCard signals={card.signals} />;
     }
+    case "unavailable-action": {
+      return <UnavailableActionCard />;
+    }
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={card.signals} />;
     }
@@ -388,6 +391,32 @@ function ArtifactCardView({
 }
 
 const CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS = "h-[136px] sm:h-[88px]";
+
+function UnavailableActionCard() {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-testid="unavailable-action-card"
+      className="flex min-h-[88px] w-full items-center gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
+        <AlertCircle size={22} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[0.9375rem] font-medium text-foreground">
+          {t(($) => {
+            return $.chat.actionUnavailable.title;
+          })}
+        </div>
+        <div className="mt-0.5 text-sm leading-5 text-muted-foreground">
+          {t(($) => {
+            return $.chat.actionUnavailable.description;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ConnectorActionCardSkeleton() {
   return (

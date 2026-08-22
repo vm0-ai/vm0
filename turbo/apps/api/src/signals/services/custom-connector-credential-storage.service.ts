@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import type { ConnectorAccountDeleteResolution } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
 
 import type { Db } from "../external/db";
@@ -12,6 +11,7 @@ import {
 } from "./connector-credential-storage-write.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -90,10 +90,16 @@ export async function upsertCustomConnectorStoredValues(
 }
 
 export async function deleteCustomConnectorMemberConnection(
-  db: Db,
+  db: Tx,
   args: CustomConnectorMemberConnection,
   signal: AbortSignal,
 ): Promise<"deleted" | "missing" | "ambiguous"> {
+  await lockConnectorAccountTarget(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "custom", customConnectorId: args.connectorId },
+  });
+  signal.throwIfAborted();
   const resolution = await resolveConnectorAccount(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -158,12 +164,10 @@ export async function deleteCustomConnectorMemberConnectionExact(
   db: Tx,
   args: CustomConnectorMemberConnection & {
     readonly memberConnectorId: string;
-    readonly selectionResolution: ConnectorAccountDeleteResolution;
   },
   signal: AbortSignal,
 ): Promise<
   | { readonly kind: "missing" }
-  | { readonly kind: "invalid-replacement" }
   | {
       readonly kind: "deleted";
       readonly resolvedSelectionCount: number;
@@ -175,7 +179,6 @@ export async function deleteCustomConnectorMemberConnectionExact(
     userId: args.userId,
     target: { kind: "custom", customConnectorId: args.connectorId },
     connectionId: args.memberConnectorId,
-    selectionResolution: args.selectionResolution,
   });
   signal.throwIfAborted();
   if (deletion.kind !== "ready") {

@@ -15,7 +15,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { fetch$ } from "../fetch.ts";
 import {
   forceUpgradeDialogOpen$,
@@ -82,7 +82,7 @@ describe("api client headers", () => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
 
-    const client = context.store.get(zeroClient$)(userConnectorsContract);
+    const client = context.store.get(apiClient$)(userConnectorsContract);
 
     await accept(
       client.get({
@@ -421,7 +421,7 @@ describe("api client headers", () => {
       return new Response(null, { status: 204 });
     });
 
-    const client = context.store.get(zeroClient$)(userConnectorsContract);
+    const client = context.store.get(apiClient$)(userConnectorsContract);
     await accept(client.get({ params: { id: agentId } }), [200]);
     await getFetchForTest()("/api/okou/preview-bypass-test");
 
@@ -457,7 +457,7 @@ describe("api client headers", () => {
       });
     });
 
-    const client = context.store.get(zeroClient$)(userConnectorsContract);
+    const client = context.store.get(apiClient$)(userConnectorsContract);
 
     await expect(
       accept(client.get({ params: { id: agentId } }), [200]),
@@ -475,7 +475,7 @@ describe("api client headers", () => {
       );
     });
 
-    const client = context.store.get(zeroClient$)(userConnectorsContract);
+    const client = context.store.get(apiClient$)(userConnectorsContract);
     const response = await client.get({ params: { id: agentId } });
 
     expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
