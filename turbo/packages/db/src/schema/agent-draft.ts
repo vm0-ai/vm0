@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   jsonb,
   pgTable,
   text,
@@ -9,6 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import type {
   AgentDraftAttachments,
   AgentDraftUserMessage,
@@ -36,6 +38,11 @@ export const agentDrafts = pgTable(
   },
   (table) => {
     return {
+      canonicalAgentFk: foreignKey({
+        name: "zero_agent_drafts_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       userOrgAgentIdx: uniqueIndex("idx_zero_agent_drafts_user_org_agent").on(
         table.userId,
         table.orgId,

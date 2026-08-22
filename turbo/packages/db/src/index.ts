@@ -3,6 +3,7 @@ import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
 import * as agentComposeSchema from "./schema/agent-compose";
+import * as agentSchema from "./schema/agent";
 import * as agentRunSchema from "./schema/agent-run";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
@@ -134,6 +135,7 @@ export const schema = {
   ...cliTokensSchema,
   ...desktopAuthHandoffCodeSchema,
   ...agentComposeSchema,
+  ...agentSchema,
   ...agentRunSchema,
   ...conversationSchema,
   ...checkpointSchema,

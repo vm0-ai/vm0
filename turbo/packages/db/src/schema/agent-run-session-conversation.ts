@@ -15,6 +15,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
+import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 import { chatThreads } from "./chat-thread";
 import { threadGoals } from "./thread-goal";
@@ -258,6 +259,12 @@ export const agentSessions = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
+    agentId: uuid("agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     conversationId: uuid("conversation_id").references(
       (): AnyPgColumn => {
         return conversations.id;
@@ -277,7 +284,12 @@ export const agentSessions = pgTable(
         table.userId,
         table.agentComposeId,
       ),
+      index("idx_agent_sessions_user_agent").on(table.userId, table.agentId),
       index("idx_agent_sessions_org").on(table.orgId),
+      check(
+        "agent_sessions_agent_reference_match",
+        sql`${table.agentId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
+      ),
     ];
   },
 );

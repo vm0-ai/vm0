@@ -190,6 +190,7 @@ async function seedGoalAgent(
   args: {
     readonly composeId: string;
     readonly fixtureKind: FixtureKind;
+    readonly name: string;
     readonly orgId: string;
     readonly userId: string;
   },
@@ -205,7 +206,7 @@ async function seedGoalAgent(
     id: args.composeId,
     orgId: args.orgId,
     owner: args.userId,
-    name: `orphan-monitor-${randomUUID()}`,
+    name: args.name,
   });
   signal.throwIfAborted();
 }
@@ -248,12 +249,13 @@ async function seedFixture(
 ) {
   const userId = `orphan-monitor-user-${randomUUID()}`;
   const orgId = `orphan-monitor-org-${randomUUID()}`;
+  const name = `orphan-monitor-${randomUUID()}`;
   const [compose] = await db
     .insert(agentComposes)
     .values({
       userId,
       orgId,
-      name: `orphan-monitor-${randomUUID()}`,
+      name,
     })
     .returning({ id: agentComposes.id });
   signal.throwIfAborted();
@@ -263,7 +265,7 @@ async function seedFixture(
 
   await seedGoalAgent(
     db,
-    { composeId: compose.id, fixtureKind, orgId, userId },
+    { composeId: compose.id, fixtureKind, name, orgId, userId },
     signal,
   );
 

@@ -51,6 +51,7 @@ import {
 } from "./test-agent-run-launch-snapshot-backfill";
 import { validateCheckpointAgentComposeSnapshotNullableStatic } from "./test-checkpoint-agent-compose-snapshot-nullable";
 import {
+  AGENT_REFERENCE_COHORTS,
   CHECKPOINT_STORAGE_REFERENCE_QUERY,
   PREFLIGHT_OUTPUT_ALLOWLIST,
   PREFLIGHT_PHASES,
@@ -64,6 +65,7 @@ import {
   validateCheckpointStorageReferences,
   withReadOnlySnapshot,
   type AgentExecutionPlanInventoryRow,
+  type AggregateInventoryRow,
   type DanglingInventoryRow,
   type HeadInventoryRow,
   type IdentityInventoryRow,
@@ -298,6 +300,8 @@ function emptyInventory(
 ): PreflightInventory {
   return {
     identity: [],
+    canonicalDataPlane: [],
+    agentReferences: [],
     versions: [],
     heads: [],
     runs: [],
@@ -453,6 +457,100 @@ function gatePresent(
   gate: string,
 ): void {
   assert.ok(result.failureGates.includes(gate), `missing gate ${gate}`);
+}
+
+function aggregateInventoryRow(args: {
+  readonly classification: string;
+  readonly cohort: string | null;
+  readonly domain: string;
+  readonly members: readonly string[];
+}): AggregateInventoryRow {
+  const fingerprint = fingerprintSortedSet(args.domain, args.members);
+  return {
+    classification: args.classification,
+    cohort: args.cohort,
+    count: fingerprint.count.toString(),
+    digest: fingerprint.digest,
+  };
+}
+
+function canonicalDataPlaneRows(
+  args: {
+    readonly matched?: readonly string[];
+    readonly target?: readonly string[];
+    readonly missingTarget?: readonly string[];
+    readonly targetOnly?: readonly string[];
+    readonly composeOnlyTarget?: readonly string[];
+    readonly fieldMismatch?: readonly string[];
+  } = {},
+): readonly AggregateInventoryRow[] {
+  const members = {
+    matched: args.matched ?? [],
+    target: args.target ?? [],
+    missingTarget: args.missingTarget ?? [],
+    targetOnly: args.targetOnly ?? [],
+    composeOnlyTarget: args.composeOnlyTarget ?? [],
+    fieldMismatch: args.fieldMismatch ?? [],
+  };
+  return Object.entries(members).map(([classification, metricMembers]) => {
+    return aggregateInventoryRow({
+      classification,
+      cohort: null,
+      domain:
+        classification === "matched" || classification === "target"
+          ? "canonical-agent-membership"
+          : `canonical-agent-data-plane:${classification}`,
+      members: metricMembers,
+    });
+  });
+}
+
+interface AgentReferenceTestPartition {
+  readonly valid?: readonly string[];
+  readonly nullableNull?: readonly string[];
+  readonly composeOnlyNull?: readonly string[];
+  readonly invalid?: readonly string[];
+}
+
+function agentReferenceRows(
+  overrides: Partial<
+    Record<
+      (typeof AGENT_REFERENCE_COHORTS)[number],
+      AgentReferenceTestPartition
+    >
+  > = {},
+): readonly AggregateInventoryRow[] {
+  return AGENT_REFERENCE_COHORTS.flatMap((cohort) => {
+    const override = overrides[cohort] ?? {};
+    const partition = {
+      valid: override.valid ?? [],
+      nullableNull: override.nullableNull ?? [],
+      composeOnlyNull: override.composeOnlyNull ?? [],
+      invalid: override.invalid ?? [],
+    };
+    const population = [
+      ...partition.valid,
+      ...partition.nullableNull,
+      ...partition.composeOnlyNull,
+      ...partition.invalid,
+    ];
+    const metrics = {
+      population,
+      ...partition,
+      partitionUnion: population,
+    };
+    return Object.entries(metrics).map(([classification, metricMembers]) => {
+      return aggregateInventoryRow({
+        classification,
+        cohort,
+        domain:
+          classification === "population" || classification === "partitionUnion"
+            ? `agent-reference:${cohort}:partition-membership`
+            : `agent-reference:${cohort}:${classification}`,
+        members: metricMembers,
+      });
+    });
+  });
 }
 
 function testApplicationOwnedPlanAndCanonicalCompatibility(): void {
@@ -638,6 +736,104 @@ function testIdentityAndApprovedArtifacts(): void {
   gatePresent(digestDrift, "identity.approved_artifact_drift");
 }
 
+function testCanonicalDataPlaneAndReferenceClassifications(): void {
+  const member = "00000000-0000-4000-8000-000000000101";
+  const exact = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      canonicalDataPlane: canonicalDataPlaneRows({
+        matched: [member],
+        target: [member],
+      }),
+      agentReferences: agentReferenceRows({
+        agentSessions: { valid: [member] },
+        chatThreads: { composeOnlyNull: [`${member}:compose-only`] },
+        workflows: { nullableNull: [`${member}:nullable`] },
+      }),
+    }),
+    classificationOptions(),
+  );
+  assert.equal(exact.status, "passed");
+  assert.equal(
+    exact.canonicalDataPlane.matchedTargetClosure.classification,
+    "exact",
+  );
+  assert.equal(
+    exact.agentReferences.agentSessions!.partitionClosure.classification,
+    "exact",
+  );
+
+  const canonicalFailureCases = [
+    ["canonicalDataPlane.missingTarget", { missingTarget: [member] }],
+    ["canonicalDataPlane.targetOnly", { targetOnly: [member] }],
+    ["canonicalDataPlane.composeOnlyTarget", { composeOnlyTarget: [member] }],
+    ["canonicalDataPlane.fieldMismatch", { fieldMismatch: [member] }],
+  ] as const;
+  for (const [gate, override] of canonicalFailureCases) {
+    const result = classifyPreflightInventory(
+      capabilities,
+      emptyInventory({
+        canonicalDataPlane: canonicalDataPlaneRows(override),
+      }),
+      classificationOptions(),
+    );
+    gatePresent(result, gate);
+  }
+
+  const membershipDrift = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      canonicalDataPlane: canonicalDataPlaneRows({
+        matched: [member],
+        missingTarget: [member],
+      }),
+    }),
+    classificationOptions(),
+  );
+  gatePresent(membershipDrift, "canonicalDataPlane.membership");
+  gatePresent(membershipDrift, "canonicalDataPlane.missingTarget");
+
+  const invalidReference = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      agentReferences: agentReferenceRows({
+        agentSessions: { invalid: [member] },
+      }),
+    }),
+    classificationOptions(),
+  );
+  gatePresent(invalidReference, "agentReferences.agentSessions.invalid");
+
+  const partitionDriftRows = agentReferenceRows().map((row) => {
+    return row.cohort === "agentSessions" &&
+      row.classification === "partitionUnion"
+      ? { ...row, digest: "f".repeat(64) }
+      : row;
+  });
+  const partitionDrift = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({ agentReferences: partitionDriftRows }),
+    classificationOptions(),
+  );
+  gatePresent(partitionDrift, "agentReferences.agentSessions.partition");
+
+  const incompleteCanonicalInventory = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      canonicalDataPlane: canonicalDataPlaneRows().slice(1),
+    }),
+    classificationOptions(),
+  );
+  gatePresent(incompleteCanonicalInventory, "canonicalDataPlane.inventory");
+
+  const incompleteReferenceInventory = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({ agentReferences: agentReferenceRows().slice(1) }),
+    classificationOptions(),
+  );
+  gatePresent(incompleteReferenceInventory, "agentReferences.inventory");
+}
+
 function canonicalVersion(
   name: string,
   composeId: string | null,
@@ -758,10 +954,18 @@ function testSchemaV3DomainsRemainByteStable(): void {
   );
 }
 
+function isV8OutputPath(outputPath: string): boolean {
+  return (
+    outputPath.startsWith("canonicalDataPlane.") ||
+    outputPath.startsWith("agentReferences.")
+  );
+}
+
 /** Transition-only #28056 contract test; removed by #26938 Stage 8. */
 function testSchemaV4OutputContractRemainsByteStable(): void {
   const acceptedV4Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
+      !isV8OutputPath(outputPath) &&
       !outputPath.startsWith("checkpoints.transition.") &&
       !outputPath.startsWith("probe.") &&
       !outputPath.includes(".historicalProductBuilderOrigin.") &&
@@ -794,6 +998,7 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
   ];
   const acceptedV5Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
+      !isV8OutputPath(outputPath) &&
       !outputPath.startsWith("checkpoints.transition.") &&
       !outputPath.startsWith("probe.") &&
       !v6Markers.some((marker) => {
@@ -818,6 +1023,7 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
 function testSchemaV6OutputContractRemainsByteStable(): void {
   const acceptedV6Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
+      !isV8OutputPath(outputPath) &&
       !outputPath.startsWith("checkpoints.transition.") &&
       !outputPath.startsWith("probe.")
     );
@@ -3289,6 +3495,8 @@ function testOutputRedaction(): void {
     "capabilities",
     "agentExecutionPlans",
     "identity",
+    "canonicalDataPlane",
+    "agentReferences",
     "versions",
     "heads",
     "runs",
@@ -3317,7 +3525,7 @@ function testOutputRedaction(): void {
       const sanitized = sanitizedFailureResult(error);
       assert.equal(
         sanitized.schemaVersion,
-        "vm0.agent-compose-consolidation-preflight.v7",
+        "vm0.agent-compose-consolidation-preflight.v8",
       );
       assert.equal(sanitized.status, "failed");
       assert.deepEqual(sanitized.failureGates, ["probe.output_shape"]);
@@ -3373,7 +3581,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v7",
+    "vm0.agent-compose-consolidation-preflight.v8",
     "passed",
     "failed",
     "exact",
@@ -3812,7 +4020,9 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.ok(inventoryStart >= 0 && inventoryEnd > inventoryStart);
   const inventorySource = preflightSource.slice(inventoryStart, inventoryEnd);
-  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 10);
+  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 12);
+  assert.match(inventorySource, /"canonicalDataPlane"/u);
+  assert.match(inventorySource, /"agentReferences"/u);
   assert.match(inventorySource, /"checkpointStorageReferences"/u);
   assert.match(inventorySource, /validateCheckpointStorageReferences/u);
   const storageReferenceQueryStart = preflightSource.indexOf(
@@ -5936,6 +6146,7 @@ export async function validateAgentComposeConsolidationPreflightStatic(): Promis
   testSchemaV6OutputContractRemainsByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
+  testCanonicalDataPlaneAndReferenceClassifications();
   testVersionHeadRunAndCheckpointClassifications();
   testCheckpointTransitionPartitionAndClosures();
   testDanglingClassifications();

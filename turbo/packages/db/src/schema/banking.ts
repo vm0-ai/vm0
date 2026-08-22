@@ -1,5 +1,6 @@
 import {
   boolean,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -11,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import type {
   BankingAccessAuditMetadata,
   BankingAccountMetadata,
@@ -149,6 +151,11 @@ export const bankingAgentEnablements = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "banking_agent_enablements_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_banking_agent_enablements_unique").on(
         table.orgId,
         table.userId,

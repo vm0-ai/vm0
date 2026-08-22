@@ -14,6 +14,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
@@ -43,6 +44,12 @@ export const chatThreads = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
+    agentId: uuid("agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     title: text("title"),
     /**
      * ID of the scheduled agent run this thread was started from, if any.
@@ -176,6 +183,11 @@ export const chatThreads = pgTable(
         table.agentComposeId,
         table.updatedAt.desc(),
       ),
+      index("idx_chat_threads_user_agent_updated").on(
+        table.userId,
+        table.agentId,
+        table.updatedAt.desc(),
+      ),
       index("idx_chat_threads_user_last_read").on(
         table.userId,
         table.lastReadAt,
@@ -183,10 +195,22 @@ export const chatThreads = pgTable(
       index("idx_chat_threads_user_compose_pinned")
         .on(table.userId, table.agentComposeId)
         .where(sql`${table.pinnedAt} IS NOT NULL`),
+      index("idx_chat_threads_user_agent_pinned")
+        .on(table.userId, table.agentId)
+        .where(sql`${table.pinnedAt} IS NOT NULL`),
       index("idx_chat_threads_user_compose_last_message").on(
         table.userId,
         table.agentComposeId,
         table.lastMessageAt.desc(),
+      ),
+      index("idx_chat_threads_user_agent_last_message").on(
+        table.userId,
+        table.agentId,
+        table.lastMessageAt.desc(),
+      ),
+      check(
+        "chat_threads_agent_reference_match",
+        sql`${table.agentId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
       ),
     ];
   },

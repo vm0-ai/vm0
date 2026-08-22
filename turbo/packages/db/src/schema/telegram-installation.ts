@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   uuid,
   varchar,
@@ -6,7 +7,9 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
@@ -36,6 +39,12 @@ export const telegramInstallations = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    defaultAgentId: uuid("default_agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     // Owner: the VM0 user who registered the bot (Clerk user ID).
     ownerUserId: text("owner_user_id").notNull(),
     // Org anchor: snapshot of the owner's current org at registration time.
@@ -51,6 +60,10 @@ export const telegramInstallations = pgTable(
     return [
       index("idx_telegram_installations_owner").on(table.ownerUserId),
       index("idx_telegram_installations_org").on(table.orgId),
+      check(
+        "telegram_installations_agent_reference_match",
+        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
+      ),
     ];
   },
 );

@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
@@ -45,6 +46,11 @@ export const userCustomConnectors = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "user_custom_connectors_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_user_custom_connectors_unique").on(
         table.orgId,
         table.userId,

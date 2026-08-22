@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  foreignKey,
   index,
   pgTable,
   text,
@@ -10,6 +11,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 
 /**
  * org_metadata — stores per-org data that is owned by the platform (not Clerk).
@@ -78,6 +80,11 @@ export const orgMetadata = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "org_metadata_default_agent_id_agents_id_fk",
+        columns: [table.defaultAgentId],
+        foreignColumns: [agents.id],
+      }).onDelete("set null"),
       uniqueIndex("uq_org_stripe_customer").on(table.stripeCustomerId),
       index("idx_org_metadata_acquisition_campaign_id").on(
         table.acquisitionCampaignId,
