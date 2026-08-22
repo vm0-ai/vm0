@@ -154,6 +154,7 @@ function validateMigrationSql(migrationSql: string): void {
   assert.doesNotMatch(migrationSql, /\bsession_replication_role\b/iu);
   assert.doesNotMatch(migrationSql, /\bDROP\s+(?:TABLE|COLUMN)\b/iu);
   assert.doesNotMatch(migrationSql, /\bRENAME\s+(?:TABLE|COLUMN)\b/iu);
+  assert.match(migrationSql, /"tgenabled" = 'O'/u);
   assert.doesNotMatch(
     migrationSql,
     /CREATE\s+TRIGGER[\s\S]{0,300}\sON\s+"agents"/iu,
@@ -621,13 +622,29 @@ async function assertChatThreadEventBackfillGuard(args: {
     );
   });
   assert.ok(callIndex > 1);
+  const catalogGate = args.statements[callIndex - 2];
   const narrowGuard = args.statements[callIndex - 1];
   const strictRestore = args.statements[callIndex + 1];
+  assert.match(catalogGate!, /"tgenabled" = 'O'/u);
   assert.match(
     narrowGuard!,
     /OLD\."agent_id" IS NULL[\s\S]*NEW\."agent_id" = OLD\."agent_compose_id"/u,
   );
   assert.doesNotMatch(strictRestore!, /OLD\."agent_id"/u);
+
+  await args.runner.query(
+    `ALTER TABLE "chat_thread_events" ENABLE REPLICA TRIGGER "chat_thread_events_reject_update"`,
+  );
+  await assert.rejects(args.runner.query(catalogGate!), (error: unknown) => {
+    assertDatabaseError(error, {
+      code: "P0001",
+      messageIncludes: "chat_thread_events append-only trigger must be enabled",
+    });
+    return true;
+  });
+  await args.runner.query(
+    `ALTER TABLE "chat_thread_events" ENABLE TRIGGER "chat_thread_events_reject_update"`,
+  );
 
   // Stop immediately before the guarded call to model an interrupted run with
   // the permanent trigger still enabled and the narrow transition installed.

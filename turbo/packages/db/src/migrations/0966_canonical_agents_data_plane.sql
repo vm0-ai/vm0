@@ -867,7 +867,7 @@ BEGIN
     WHERE "tgrelid" = 'public.chat_thread_events'::regclass
       AND "tgname" = 'chat_thread_events_reject_update'
       AND "tgfoid" = 'public.reject_chat_event_source_update()'::regprocedure
-      AND "tgenabled" <> 'D'
+      AND "tgenabled" = 'O'
       AND NOT "tgisinternal"
   ) THEN
     RAISE EXCEPTION 'chat_thread_events append-only trigger must be enabled';
