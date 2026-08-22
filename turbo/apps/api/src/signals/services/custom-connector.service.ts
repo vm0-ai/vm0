@@ -2997,58 +2997,75 @@ export const disconnectCustomConnector$ = command(
   ): Promise<DisconnectCustomConnectorResult> => {
     const writeDb = set(writeDb$);
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const disconnected = await writeDb.transaction(async (tx) => {
-      const [connector] = await tx
-        .select({
-          id: orgCustomConnectors.id,
-          oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
-        })
-        .from(orgCustomConnectors)
-        .leftJoin(
-          orgCustomConnectorOauthConfigs,
-          and(
-            eq(
-              orgCustomConnectorOauthConfigs.connectorId,
-              orgCustomConnectors.id,
+    const disconnected = await commitConnectorRuntimeMutation(
+      writeDb.transaction(async (tx) => {
+        const [connector] = await tx
+          .select({
+            id: orgCustomConnectors.id,
+            oauthProviderAdapter:
+              orgCustomConnectorOauthConfigs.providerAdapter,
+          })
+          .from(orgCustomConnectors)
+          .leftJoin(
+            orgCustomConnectorOauthConfigs,
+            and(
+              eq(
+                orgCustomConnectorOauthConfigs.connectorId,
+                orgCustomConnectors.id,
+              ),
+              eq(
+                orgCustomConnectorOauthConfigs.orgId,
+                orgCustomConnectors.orgId,
+              ),
             ),
-            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
-          ),
-        )
-        .where(
-          and(
-            eq(orgCustomConnectors.id, args.connectorId),
-            eq(orgCustomConnectors.orgId, args.orgId),
-          ),
-        )
-        .for("update", { of: orgCustomConnectors })
-        .limit(1);
-      signal.throwIfAborted();
-      if (!connector) {
-        return "missing-definition" as const;
-      }
-      if (
-        isIntegrationManagedCustomConnectorProviderAdapter(
-          connector.oauthProviderAdapter,
-        )
-      ) {
-        return "managed" as const;
-      }
-      const result = await deleteCustomConnectorMemberConnection(
-        tx,
-        args,
-        signal,
-      );
-      if (result === "invalid-replacement") {
-        throw new Error(
-          "Single-account custom connector deletion resolved a replacement",
+          )
+          .where(
+            and(
+              eq(orgCustomConnectors.id, args.connectorId),
+              eq(orgCustomConnectors.orgId, args.orgId),
+            ),
+          )
+          .for("update", { of: orgCustomConnectors })
+          .limit(1);
+        signal.throwIfAborted();
+        if (!connector) {
+          return "missing-definition" as const;
+        }
+        if (
+          isIntegrationManagedCustomConnectorProviderAdapter(
+            connector.oauthProviderAdapter,
+          )
+        ) {
+          return "managed" as const;
+        }
+        const result = await deleteCustomConnectorMemberConnection(
+          tx,
+          args,
+          signal,
         );
-      }
-      return result === "missing" && !args.selectionResolution
-        ? ("deleted" as const)
-        : result === "missing"
-          ? ("missing-account" as const)
-          : result;
-    });
+        if (result === "invalid-replacement") {
+          throw new Error(
+            "Single-account custom connector deletion resolved a replacement",
+          );
+        }
+        return result === "missing" && !args.selectionResolution
+          ? ("deleted" as const)
+          : result === "missing"
+            ? ("missing-account" as const)
+            : result;
+      }),
+      (result) => {
+        return result === "deleted" && args.selectionResolution
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId, userId: args.userId },
+              targets: [
+                { kind: "custom", customConnectorId: args.connectorId },
+              ],
+            }
+          : undefined;
+      },
+    );
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
