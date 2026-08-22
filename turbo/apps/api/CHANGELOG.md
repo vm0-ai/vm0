@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.477.0](https://github.com/vm0-ai/vm0/compare/api-v1.476.1...api-v1.477.0) (2026-08-22)
+
+
+### Features
+
+* add flux.2 pro and ideogram 4 ([#28640](https://github.com/vm0-ai/vm0/issues/28640)) ([7022170](https://github.com/vm0-ai/vm0/commit/7022170536a28805f6cbcb7e625e84755552b898))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.353.0
+    * @okouai/core bumped to 8.581.0
+    * @okouai/db bumped to 1.217.0
+
 ## [1.476.1](https://github.com/vm0-ai/vm0/compare/api-v1.476.0...api-v1.476.1) (2026-08-22)
 
 

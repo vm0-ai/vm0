@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.170.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.1...runner-rs-v0.170.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **python:** clamp managed provider retry-after delays ([#28652](https://github.com/vm0-ai/vm0/issues/28652)) ([525dd58](https://github.com/vm0-ai/vm0/commit/525dd588b1cef082c5ced8e419e07e73c469b1de))
+* **python:** classify openrouter 500 responses by body ([#28644](https://github.com/vm0-ai/vm0/issues/28644)) ([16bd0b2](https://github.com/vm0-ai/vm0/commit/16bd0b2bca552eee731b7d53cfedf5475b9b5bf3))
+
 ## [0.170.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.0...runner-rs-v0.170.1) (2026-08-22)
 
 
