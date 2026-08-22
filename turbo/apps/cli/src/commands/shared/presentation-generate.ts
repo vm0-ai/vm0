@@ -9,6 +9,7 @@ import {
   resolvePresentationRunbookColorToken,
 } from "@okouai/core/resource-registry";
 import { canonicalizeRegistryId } from "./resource-listing";
+import { presentationRunbookArchiveVersionFromEnvironment } from "./presentation-runbook-archive-version";
 
 type PresentationRunbookPackage = ReturnType<
   typeof listPresentationRunbookPackages
@@ -41,7 +42,9 @@ function parseSlideCount(value: string): number {
 }
 
 function listPresentationTemplates(): readonly PresentationRunbookPackage[] {
-  return listPresentationRunbookPackages();
+  return listPresentationRunbookPackages(
+    presentationRunbookArchiveVersionFromEnvironment(),
+  );
 }
 
 function unknownTemplateError(id: string, usageCommand: string): Error {
@@ -120,7 +123,12 @@ ${formatPresentationTemplateListing(templates)}`;
             "template",
             options.template,
           );
-          const template = findPresentationRunbookPackage(canonical);
+          const archiveVersion =
+            presentationRunbookArchiveVersionFromEnvironment();
+          const template = findPresentationRunbookPackage(
+            canonical,
+            archiveVersion,
+          );
           if (!template) {
             throw unknownTemplateError(options.template, config.usageCommand);
           }
@@ -137,6 +145,7 @@ ${formatPresentationTemplateListing(templates)}`;
               ...buildPresentationRunbookInstructionLines({
                 runbookPackage: template,
                 colorSystemToken,
+                archiveVersion,
               }),
               "",
               `User request: ${prompt}`,

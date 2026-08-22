@@ -192,6 +192,32 @@ describe("okou generate presentation command", () => {
     expect(stdout).not.toContain("design-system:");
   });
 
+  it("resolves --template to direct-HTML instructions when the run carries the latest archives", async () => {
+    vi.stubEnv("OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION", "latest");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "presentation",
+      "--prompt",
+      "create a 15-slide launch deck",
+      "--template",
+      "html-ppt-playful-launch",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
+    expect(stdout).toContain("./generated/resources/playful-launch/SKILL.md");
+    expect(stdout).toContain(
+      "./generated/resources/playful-launch/color-systems/carnival.css",
+    );
+    expect(stdout).toContain("--model seedream4");
+    expect(stdout).not.toContain("AGENT_RUNBOOK.md");
+    expect(stdout).not.toContain('"colorSystem"');
+  });
+
   it("rejects an unknown presentation template id with available templates", async () => {
     const mockConsoleError = vi
       .spyOn(console, "error")

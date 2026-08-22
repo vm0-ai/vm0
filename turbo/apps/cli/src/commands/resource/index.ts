@@ -15,6 +15,7 @@ import {
   findTemplate,
   findVideoTemplate,
   findWebsiteTemplateResource,
+  type PresentationRunbookArchiveVersion,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
   type WebsiteTemplateArchiveVersion,
@@ -22,6 +23,7 @@ import {
 
 import { getRegistryResourceDownload } from "../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { presentationRunbookArchiveVersionFromEnvironment } from "../shared/presentation-runbook-archive-version";
 import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
@@ -47,6 +49,7 @@ function candidateIds(id: string): readonly string[] {
 export function findRegistryResourceForPull(
   id: string,
   websiteTemplateArchiveVersion: WebsiteTemplateArchiveVersion = "latest",
+  presentationRunbookArchiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PullableRegistryEntry | undefined {
   for (const candidate of candidateIds(id)) {
     const entry =
@@ -56,7 +59,10 @@ export function findRegistryResourceForPull(
       findTool(candidate) ??
       findImageStyle(candidate) ??
       findVideoTemplate(candidate) ??
-      findPresentationRunbookResource(candidate) ??
+      findPresentationRunbookResource(
+        candidate,
+        presentationRunbookArchiveVersion,
+      ) ??
       findWebsiteTemplateResource(candidate, websiteTemplateArchiveVersion);
     if (entry) {
       return entry;
@@ -113,6 +119,7 @@ export const resourceCommand = new Command()
           const entry = findRegistryResourceForPull(
             id,
             websiteTemplateArchiveVersionFromEnvironment(),
+            presentationRunbookArchiveVersionFromEnvironment(),
           );
           if (!entry) {
             throw new Error(`Unknown registry resource: ${id}`);

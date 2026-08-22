@@ -220,7 +220,9 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
   WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
+  type PresentationRunbookArchiveVersion,
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
@@ -6417,6 +6419,17 @@ function websiteTemplateArchiveVersionForRun(
     : "previous";
 }
 
+function presentationRunbookArchiveVersionForRun(
+  featureSwitchContext: FeatureSwitchContext,
+): PresentationRunbookArchiveVersion {
+  return isFeatureEnabled(
+    FeatureSwitchKey.LatestPresentationTemplates,
+    featureSwitchContext,
+  )
+    ? "latest"
+    : "previous";
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6471,6 +6484,8 @@ async function buildStoredExecutionContextDraft(args: {
     [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
     ),
+    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
+      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
   };
   const environment = args.includeZeroTokenSecret
     ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})

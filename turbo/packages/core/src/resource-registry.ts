@@ -3349,9 +3349,61 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
+export type PresentationRunbookArchiveVersion = "latest" | "previous";
+
+export const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV =
+  "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION";
+
 // Archive digests for uploaded private R2 presentation runbook packages. Keep
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
+  bloom: "db1cad7968de508939aacb1d1863c1edc65d212c030f15ba07017be23a7f4b76",
+  "blueprint-academy":
+    "5ef9dd33430d3c45ce35340894d20eec65ac0953197f60149c7927133b7a8554",
+  "botane-organic":
+    "09cce166d735be6444c1ba2bffb67b8a869a6dc911cb58332f8969a3486dd262",
+  "business-data":
+    "aafe5ccb07d14a48ffb6f5a870a88b96bc494f00c5ca39599bddcda23da26b14",
+  crayon: "a3bc98e3a22d5a36df60cb597dbcda408c25d1878d787f68e96020cad5c8d43a",
+  "creative-agency":
+    "b57ca925022b39c56b14521593ef3780a2f9f9dee2396778f9ae31b05c0698cd",
+  "data-report":
+    "f1ac2126154139f5b9d433c7bec5b239d0173fa1049a86821b4eb4bf3ab4628b",
+  "editorial-magazine":
+    "31d28b4ca15818583ead5cb30c393e912b8625bd0f86aec2d74be44ed4b1947d",
+  "landing-consulting":
+    "a1206787ac402bd92903257a88cac8b0a5542aac9762159591f2c9d0b0732237",
+  lumina: "479811a0e8705d05bae893067936155e0a6bb1f297d5d3b63aa17c5b1b227696",
+  meridian: "556c31e9a88c532d975fbe3b060ecd5a9216c0e1deb0c0a981dd14112417b405",
+  "mosaic-geometric":
+    "846afc579bd21355482ecd91adb299a42aba81bf84aae6101a5f6dc16bc5082f",
+  "neo-brutalism":
+    "7a516aaa4a9a7c19bc3ce0f524d0c33b878a6213c5dfea32a8d27b1adbfabfaa",
+  nocturne: "793b1317af6b8f5770a47bff99d5e811d733b13733644f8de06aeee91eddf933",
+  "pixel-glitch":
+    "62355fd6c42d3414609be44ebd35b742db9d2a3f593977a974734d34215b0d79",
+  "playful-launch":
+    "4a9e29fb00a5bc9cfc323940b155fd041f4fa2a27d316bafb918198a2a50fd40",
+  "playful-pop":
+    "784f04cafee53a00d6e170bfc53cea9297796b238f8b28d19302ef2d077ffba7",
+  prospectus:
+    "92353d7918b0ee09679785308ac0254961688a24f65cf08b45a2661a3b0f8da5",
+  schoolhouse:
+    "d61844dc5030cd14a94b047b5cf4193dfcf470f5e389614eaacbf31f3943993e",
+  "sticker-scrapbook":
+    "82dee1479d9b778529674faf096a74eeba19f19bf750a5c4911e4de66b86500f",
+  strata: "8d62c3275d01acbc251ebd95a197e6f00ef501531ebbc157e09c0f9ecdb62547",
+  "taped-consulting":
+    "da2be65f75283b5d161178b303f9c1d2cea44a07f161388176bd4fed8db5aa97",
+  vantage: "73b46709be8278e76e26e6146c0cc1a2292acec75cfc0591ec9aafc82d60b22f",
+};
+
+// The disabled side of LatestPresentationTemplates deliberately keeps the
+// runbook package ids on their pre-cutover immutable R2 versions, whose
+// archives carry a deck-JSON renderer instead of the direct-HTML guidance.
+// Remove this map with the switch; historical R2 objects stay immutable and
+// must not be deleted.
+const PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
   bloom: "7f05f31603d2ad3055b23147cc2b41e047c5969b6640502489b34bd33a837d62",
@@ -3393,10 +3445,18 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   vantage: "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed",
 };
 
-function presentationRunbookArchiveSha256(slug: string): string {
-  const sha256 = PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
+function presentationRunbookArchiveSha256(
+  slug: string,
+  archiveVersion: PresentationRunbookArchiveVersion,
+): string {
+  const sha256 =
+    archiveVersion === "latest"
+      ? PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug]
+      : PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
   if (!sha256) {
-    throw new Error(`Missing presentation runbook archive sha256 for ${slug}`);
+    throw new Error(
+      `Missing ${archiveVersion} presentation runbook archive sha256 for ${slug}`,
+    );
   }
   return sha256;
 }
@@ -3596,8 +3656,10 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
   },
 ];
 
-const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
-  PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
+function presentationRunbookPackages(
+  archiveVersion: PresentationRunbookArchiveVersion,
+): readonly PresentationRunbookPackage[] {
+  return PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
     return {
       templateId: def.templateId,
       resourceId: `${def.templateId}-runbook`,
@@ -3607,20 +3669,38 @@ const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
       description: def.description,
       source: privateR2ArchiveSource(
         def.slug,
-        presentationRunbookArchiveSha256(def.slug),
+        presentationRunbookArchiveSha256(def.slug, archiveVersion),
       ),
     };
   });
+}
 
-export function listPresentationRunbookPackages(): readonly PresentationRunbookPackage[] {
-  return PRESENTATION_RUNBOOK_PACKAGES;
+const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
+  presentationRunbookPackages("latest");
+
+const PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
+  presentationRunbookPackages("previous");
+
+function presentationRunbookPackagesFor(
+  archiveVersion: PresentationRunbookArchiveVersion,
+): readonly PresentationRunbookPackage[] {
+  return archiveVersion === "latest"
+    ? PRESENTATION_RUNBOOK_PACKAGES
+    : PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES;
+}
+
+export function listPresentationRunbookPackages(
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
+): readonly PresentationRunbookPackage[] {
+  return presentationRunbookPackagesFor(archiveVersion);
 }
 
 /** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
   templateId: string,
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PresentationRunbookPackage | undefined {
-  return PRESENTATION_RUNBOOK_PACKAGES.find((pkg) => {
+  return presentationRunbookPackagesFor(archiveVersion).find((pkg) => {
     return pkg.templateId === templateId;
   });
 }
@@ -3632,8 +3712,9 @@ export function findPresentationRunbookPackage(
  */
 export function findPresentationRunbookResource(
   resourceId: string,
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): RegistryEntry | undefined {
-  const pkg = PRESENTATION_RUNBOOK_PACKAGES.find((entry) => {
+  const pkg = presentationRunbookPackagesFor(archiveVersion).find((entry) => {
     return entry.resourceId === resourceId;
   });
   if (!pkg) {
@@ -3943,15 +4024,34 @@ export function resolvePresentationRunbookColorToken(
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
   readonly colorSystemToken: string;
+  readonly archiveVersion?: PresentationRunbookArchiveVersion;
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
+  const packageDir = `./generated/resources/${pkg.slug}`;
+  // The two archive versions are authored against different workflows: the
+  // previous one drives a bundled deck-JSON renderer, the current one has no
+  // renderer at all and the agent writes the HTML itself. Naming the wrong
+  // entrypoint costs a whole run, so the instructions switch with the archive.
+  const packageLines =
+    args.archiveVersion === "previous"
+      ? [
+          `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+        ]
+      : [
+          `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it. It is the entrypoint; there is no runbook, deck JSON schema, or build script in this package.`,
+          `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.`,
+          `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
+          "- Generate every deck image with `okou generate image --provider built-in`, defaulting to `--model seedream4` unless the user names another image model. This package ships no image resolver; do not call a stock-photo resolve API.",
+          "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
+          "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
+        ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
     `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
-    `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+    ...packageLines,
     "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
     "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
     "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",

@@ -202,6 +202,10 @@ export async function materializePendingActiveInputPrompts(
           FeatureSwitchKey.LatestWebsiteTemplates,
           featureSwitchContext,
         ),
+        latestPresentationTemplatesEnabled: isFeatureEnabled(
+          FeatureSwitchKey.LatestPresentationTemplates,
+          featureSwitchContext,
+        ),
         presentationTemplatesEnabled: isFeatureEnabled(
           FeatureSwitchKey.PresentationTemplates,
           featureSwitchContext,
@@ -274,6 +278,7 @@ async function materializeActiveInputPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly latestWebsiteTemplatesEnabled: boolean;
+    readonly latestPresentationTemplatesEnabled: boolean;
     readonly presentationTemplatesEnabled: boolean;
   },
 ): Promise<string> {
@@ -295,6 +300,7 @@ async function materializeActiveInputPrompt(
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     // Steered into a run that is already executing, whose volumes were fixed
     // when it was created. There is no package to point the agent at, so a
