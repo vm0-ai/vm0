@@ -15,6 +15,13 @@ const fixedAgentId = "00000000-0000-4000-8000-000000096600";
 const composeOnlyId = "00000000-0000-4000-8000-0000000966ff";
 const fixedChatThreadEventId = "00000000-0000-4000-8000-0000000966d1";
 const composeOnlyChatThreadEventId = "00000000-0000-4000-8000-0000000966df";
+const deletedSnapshotAgentId = "00000000-0000-4000-8000-0000000966c0";
+const deletedSnapshotThreadId = "00000000-0000-4000-8000-0000000966c1";
+const deletedSnapshotOlderEventId = "00000000-0000-4000-8000-0000000966c2";
+const deletedSnapshotAnchorEventId = "00000000-0000-4000-8000-0000000966c3";
+const ordinaryOrphanAgentId = "00000000-0000-4000-8000-0000000966c4";
+const ordinaryOrphanThreadId = "00000000-0000-4000-8000-0000000966c5";
+const ordinaryOrphanEventId = "00000000-0000-4000-8000-0000000966c6";
 const matchedSearchRowCount = 1001;
 const matchedSearchThreadIds = [
   "00000000-0000-4000-8000-0000000966b1",
@@ -293,6 +300,40 @@ function validateMigrationSql(migrationSql: string): void {
     statements[searchCallIndex + 1],
     "SET statement_timeout = '30min';",
   );
+
+  const snapshotAnchorClassificationOffset = migrationSql.indexOf(
+    `IF v_spec.table_oid = 'public.chat_thread_events'::regclass THEN`,
+  );
+  const genericClassificationOffset = migrationSql.indexOf(
+    "    ELSE",
+    snapshotAnchorClassificationOffset,
+  );
+  assert.ok(snapshotAnchorClassificationOffset > 0);
+  assert.ok(genericClassificationOffset > snapshotAnchorClassificationOffset);
+  const snapshotAnchorClassificationSql = migrationSql.slice(
+    snapshotAnchorClassificationOffset,
+    genericClassificationOffset,
+  );
+  assert.match(
+    snapshotAnchorClassificationSql,
+    /LEFT JOIN "agents" AS "agent"[\s\S]*LEFT JOIN "agent_composes" AS "compose"[\s\S]*LEFT JOIN "zero_agents" AS "zero_agent"/u,
+  );
+  assert.match(
+    snapshotAnchorClassificationSql,
+    /NOT EXISTS \([\s\S]*FROM "chat_threads" AS "live_thread"[\s\S]*"live_thread"\."id" = "source"\."chat_thread_id"/u,
+  );
+  assert.match(
+    snapshotAnchorClassificationSql,
+    /EXISTS \([\s\S]*FROM "chat_thread_snapshots" AS "snapshot"[\s\S]*"snapshot"\."user_id" = "source"\."user_id"[\s\S]*"snapshot"\."org_id" = "source"\."org_id"[\s\S]*"snapshot"\."latest_event_id" = "source"\."id"/u,
+  );
+  assert.match(
+    snapshotAnchorClassificationSql,
+    /"agent"\."id" IS NULL[\s\S]*"compose"\."id" IS NULL[\s\S]*"zero_agent"\."id" IS NULL[\s\S]*NOT EXISTS \([\s\S]*"chat_threads"[\s\S]*EXISTS \([\s\S]*"chat_thread_snapshots"/u,
+  );
+  assert.match(
+    migrationSql,
+    /deleted_snapshot_anchor_null %[\s\S]*v_deleted_snapshot_anchor_null/u,
+  );
 }
 
 async function collectCatalogBaseline(
@@ -361,6 +402,161 @@ function assertBaselineRetained(
       assert.ok(observedEntries.has(entry), `missing legacy ${kind}: ${entry}`);
     }
   }
+}
+
+async function seedDeletedSnapshotAnchor(client: Client): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "agent_composes" (
+        "id", "user_id", "name", "org_id", "created_at", "updated_at"
+      ) VALUES (
+        $1, 'deleted-anchor-owner', 'deleted-anchor-agent',
+        'deleted-anchor-org', timestamp '2026-01-01 00:00:00',
+        timestamp '2026-01-02 00:00:00'
+      )
+    `,
+    [deletedSnapshotAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_agents" (
+        "id", "org_id", "owner", "name", "created_at", "updated_at"
+      ) VALUES (
+        $1, 'deleted-anchor-org', 'deleted-anchor-owner',
+        'deleted-anchor-agent', timestamp '2026-01-01 00:00:00',
+        timestamp '2026-01-02 00:00:00'
+      )
+    `,
+    [deletedSnapshotAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" (
+        "id", "user_id", "agent_compose_id", "title", "created_at",
+        "updated_at"
+      ) VALUES (
+        $1, 'deleted-anchor-owner', $2, 'Deleted anchor thread',
+        timestamp '2026-01-01 00:00:00', timestamp '2026-01-02 00:00:00'
+      )
+    `,
+    [deletedSnapshotThreadId, deletedSnapshotAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_thread_events" (
+        "id", "user_id", "org_id", "chat_thread_id", "kind",
+        "agent_compose_id", "title", "created_at"
+      ) VALUES
+        (
+          $1, 'deleted-anchor-owner', 'deleted-anchor-org', $3, 'created',
+          $4, 'Deleted anchor thread', timestamp '2026-01-01 00:00:00'
+        ),
+        (
+          $2, 'deleted-anchor-owner', 'deleted-anchor-org', $3, 'deleted',
+          $4, NULL, timestamp '2026-01-02 00:00:00'
+        )
+    `,
+    [
+      deletedSnapshotOlderEventId,
+      deletedSnapshotAnchorEventId,
+      deletedSnapshotThreadId,
+      deletedSnapshotAgentId,
+    ],
+  );
+
+  await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+    deletedSnapshotAgentId,
+  ]);
+  const cascaded = await client.query<{
+    composeCount: number;
+    eventCount: number;
+    threadCount: number;
+    zeroAgentCount: number;
+  }>(
+    `
+      SELECT
+        (SELECT count(*)::integer FROM "agent_composes" WHERE "id" = $1)
+          AS "composeCount",
+        (SELECT count(*)::integer FROM "zero_agents" WHERE "id" = $1)
+          AS "zeroAgentCount",
+        (SELECT count(*)::integer FROM "chat_threads" WHERE "id" = $2)
+          AS "threadCount",
+        (
+          SELECT count(*)::integer FROM "chat_thread_events"
+          WHERE "id" = ANY($3::uuid[])
+        ) AS "eventCount"
+    `,
+    [
+      deletedSnapshotAgentId,
+      deletedSnapshotThreadId,
+      [deletedSnapshotOlderEventId, deletedSnapshotAnchorEventId],
+    ],
+  );
+  assert.deepEqual(cascaded.rows, [
+    { composeCount: 0, zeroAgentCount: 0, threadCount: 0, eventCount: 2 },
+  ]);
+
+  await client.query(
+    `
+      INSERT INTO "chat_thread_snapshots" (
+        "user_id", "org_id", "latest_event_id", "latest_event_seq_id",
+        "chat_threads", "created_at", "updated_at"
+      )
+      SELECT
+        "event"."user_id", "event"."org_id", "event"."id",
+        "event"."seq_id", '[]'::jsonb, timestamp '2026-02-01 00:00:00',
+        timestamp '2026-02-01 00:00:00'
+      FROM "chat_thread_events" AS "event"
+      WHERE "event"."id" = $1
+    `,
+    [deletedSnapshotAnchorEventId],
+  );
+  const compacted = await client.query<{ prunedCount: number }>(`
+    WITH "pruned" AS (
+      DELETE FROM "chat_thread_events" AS "event"
+      USING "chat_thread_snapshots" AS "snapshot"
+      INNER JOIN "chat_thread_events" AS "marker"
+        ON "marker"."id" = "snapshot"."latest_event_id"
+        AND "marker"."seq_id" = "snapshot"."latest_event_seq_id"
+        AND "marker"."user_id" = "snapshot"."user_id"
+        AND "marker"."org_id" = "snapshot"."org_id"
+      WHERE "event"."user_id" = "snapshot"."user_id"
+        AND "event"."org_id" = "snapshot"."org_id"
+        AND "event"."created_at" < timestamp '2026-02-01 00:00:00'
+        AND "event"."seq_id" < "marker"."seq_id"
+      RETURNING 1
+    )
+    SELECT count(*)::integer AS "prunedCount" FROM "pruned"
+  `);
+  assert.deepEqual(compacted.rows, [{ prunedCount: 1 }]);
+
+  const retained = await client.query<{
+    anchorCount: number;
+    olderCount: number;
+    snapshotCount: number;
+  }>(
+    `
+      SELECT
+        (
+          SELECT count(*)::integer FROM "chat_thread_events"
+          WHERE "id" = $1
+        ) AS "anchorCount",
+        (
+          SELECT count(*)::integer FROM "chat_thread_events"
+          WHERE "id" = $2
+        ) AS "olderCount",
+        (
+          SELECT count(*)::integer FROM "chat_thread_snapshots"
+          WHERE "user_id" = 'deleted-anchor-owner'
+            AND "org_id" = 'deleted-anchor-org'
+            AND "latest_event_id" = $1
+        ) AS "snapshotCount"
+    `,
+    [deletedSnapshotAnchorEventId, deletedSnapshotOlderEventId],
+  );
+  assert.deepEqual(retained.rows, [
+    { anchorCount: 1, olderCount: 0, snapshotCount: 1 },
+  ]);
 }
 
 async function seedPreviousSchema(client: Client): Promise<void> {
@@ -536,6 +732,7 @@ async function seedPreviousSchema(client: Client): Promise<void> {
       composeOnlyId,
     ],
   );
+  await seedDeletedSnapshotAnchor(client);
 }
 
 async function assertCatalogLockRetryBoundary(args: {
@@ -895,6 +1092,110 @@ async function assertChatThreadEventReferenceState(
     { id: fixedChatThreadEventId, agentId: fixedAgentId },
     { id: composeOnlyChatThreadEventId, agentId: null },
   ]);
+}
+
+async function assertDeletedSnapshotAnchorState(client: Client): Promise<void> {
+  const state = await client.query<{
+    agentCount: number;
+    agentId: string | null;
+    composeCount: number;
+    eventCount: number;
+    snapshotCount: number;
+    threadCount: number;
+    zeroAgentCount: number;
+  }>(
+    `
+      SELECT
+        (
+          SELECT count(*)::integer FROM "chat_thread_events"
+          WHERE "id" = $1
+        ) AS "eventCount",
+        (
+          SELECT "agent_id"::text FROM "chat_thread_events"
+          WHERE "id" = $1
+        ) AS "agentId",
+        (
+          SELECT count(*)::integer FROM "agents" WHERE "id" = $2
+        ) AS "agentCount",
+        (
+          SELECT count(*)::integer FROM "agent_composes" WHERE "id" = $2
+        ) AS "composeCount",
+        (
+          SELECT count(*)::integer FROM "zero_agents" WHERE "id" = $2
+        ) AS "zeroAgentCount",
+        (
+          SELECT count(*)::integer FROM "chat_threads" WHERE "id" = $3
+        ) AS "threadCount",
+        (
+          SELECT count(*)::integer FROM "chat_thread_snapshots"
+          WHERE "user_id" = 'deleted-anchor-owner'
+            AND "org_id" = 'deleted-anchor-org'
+            AND "latest_event_id" = $1
+        ) AS "snapshotCount"
+    `,
+    [
+      deletedSnapshotAnchorEventId,
+      deletedSnapshotAgentId,
+      deletedSnapshotThreadId,
+    ],
+  );
+  assert.deepEqual(state.rows, [
+    {
+      eventCount: 1,
+      agentId: null,
+      agentCount: 0,
+      composeCount: 0,
+      zeroAgentCount: 0,
+      threadCount: 0,
+      snapshotCount: 1,
+    },
+  ]);
+}
+
+async function assertOrdinaryOrphanFailsPostflight(args: {
+  readonly runner: Client;
+  readonly statements: readonly string[];
+}): Promise<void> {
+  const postflight = args.statements.find((statement) => {
+    return statement.includes(
+      "Canonical Agent reference parity failed for %: valid_missing %",
+    );
+  });
+  assert.ok(postflight);
+
+  await args.runner.query(
+    `
+      INSERT INTO "chat_thread_events" (
+        "id", "user_id", "org_id", "chat_thread_id", "kind",
+        "agent_compose_id", "title", "created_at"
+      ) VALUES (
+        $1, 'ordinary-orphan-owner', 'ordinary-orphan-org', $2, 'created',
+        $3, 'Ordinary orphan', timestamp '2026-01-03 00:00:00'
+      )
+    `,
+    [ordinaryOrphanEventId, ordinaryOrphanThreadId, ordinaryOrphanAgentId],
+  );
+  const orphan = await args.runner.query<{ agentId: string | null }>(
+    `
+      SELECT "agent_id"::text AS "agentId"
+      FROM "chat_thread_events" WHERE "id" = $1
+    `,
+    [ordinaryOrphanEventId],
+  );
+  assert.deepEqual(orphan.rows, [{ agentId: null }]);
+
+  await assert.rejects(args.runner.query(postflight), (error: unknown) => {
+    assertDatabaseError(error, {
+      code: "P0001",
+      messageIncludes: "unclassified_null 1",
+    });
+    return true;
+  });
+
+  await args.runner.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
+    ordinaryOrphanEventId,
+  ]);
+  await args.runner.query(postflight);
 }
 
 async function assertChatThreadEventBackfillGuard(args: {
@@ -1586,6 +1887,8 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
     await validateBackfillAndComposeOnlyClosure(runner);
     await validateChatSearchStorageAndIndex(runner);
     await assertChatThreadEventReferenceState(runner);
+    await assertDeletedSnapshotAnchorState(runner);
+    await assertOrdinaryOrphanFailsPostflight({ runner, statements });
     await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
     assert.equal(
       await chatEventRejectFunctionDefinition(runner),
@@ -1598,6 +1901,7 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
     await validateBackfillAndComposeOnlyClosure(runner);
     await validateChatSearchStorageAndIndex(runner);
     await assertChatThreadEventReferenceState(runner);
+    await assertDeletedSnapshotAnchorState(runner);
     await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
     assert.equal(
       await chatEventRejectFunctionDefinition(runner),
