@@ -2379,6 +2379,77 @@ describe("POST /api/image-io/generate", () => {
     expect(falCalls).toBe(1);
   });
 
+  it("fails Ideogram 4 auto edits when Fal omits billable dimensions", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: IDEOGRAM_4_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let mediaCalls = 0;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_IDEOGRAM_4_EDIT_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json(
+          falQueueHandle("ideogram-4-missing-dimensions-request"),
+        );
+      }),
+      http.get(FAL_IDEOGRAM_4_MEDIA_URL, () => {
+        mediaCalls += 1;
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle this poster with warmer typography",
+        model: "ideogram-4",
+        imageUrl: MOCKUP_IMAGE_URL,
+        quality: "low",
+        outputFormat: "png",
+      }),
+    });
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_IDEOGRAM_4_MEDIA_URL,
+          content_type: "image/png",
+        },
+      ],
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "image",
+      status: "failed",
+      error: {
+        message: "Fal returned no billing details",
+        code: "NO_BILLING_UNITS",
+      },
+    });
+    expect(mediaCalls).toBe(0);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
   it("generates Qwen Image 3 images through fal and bills the standard resolution tier", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({

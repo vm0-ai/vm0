@@ -2005,17 +2005,12 @@ function megapixelsForImage(
 
 function providerMegapixelsForImage(
   image: FalImageFile,
-  options: ImageOptions,
-): number {
-  const pixels =
-    image.width && image.height
-      ? image.width * image.height
-      : (() => {
-          const parsed = parseSize(options.size);
-          return parsed ? parsed.width * parsed.height : 1024 * 1024;
-        })();
+): number | ErrorResponse {
+  if (!image.width || !image.height) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
   // fal's pricing examples treat 1024x1024 as one MP and 2048x2048 as four.
-  return Math.max(1, Math.ceil(pixels / (1024 * 1024)));
+  return Math.max(1, Math.ceil((image.width * image.height) / (1024 * 1024)));
 }
 
 /**
@@ -2057,7 +2052,7 @@ function falBillingEntries(
   image: FalImageFile,
   options: ImageOptions,
   falBillableUnits: number | undefined,
-): readonly ImageBillingEntry[] {
+): readonly ImageBillingEntry[] | ErrorResponse {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (modelConfig.billingMode === "flux_2_processed_megapixel") {
     if (falBillableUnits === undefined) {
@@ -2072,10 +2067,14 @@ function falBillingEntries(
     ];
   }
   if (modelConfig.billingMode === "ideogram_rendering_speed_megapixel") {
+    const outputMegapixels = providerMegapixelsForImage(image);
+    if (typeof outputMegapixels !== "number") {
+      return outputMegapixels;
+    }
     return [
       {
         category: ideogramMegapixelCategory(options),
-        quantity: providerMegapixelsForImage(image, options),
+        quantity: outputMegapixels,
       },
     ];
   }
@@ -2177,6 +2176,11 @@ export async function downloadFalImage(
   falBillableUnits: number | undefined,
   signal: AbortSignal,
 ): Promise<ParsedImageGeneration | ErrorResponse> {
+  const billing = falBillingEntries(result.image, options, falBillableUnits);
+  if ("status" in billing) {
+    return billing;
+  }
+
   const response = await fetch(result.image.url, { method: "GET", signal });
   if (!response.ok) {
     return badGateway(
@@ -2215,7 +2219,7 @@ export async function downloadFalImage(
     safetyTolerance: modelConfig.supportsSafetyTolerance
       ? options.safetyTolerance
       : undefined,
-    billing: falBillingEntries(result.image, options, falBillableUnits),
+    billing,
     sourceUrl: result.image.url,
     seed: result.seed ?? options.seed,
     sourceImageUrls: options.sourceImageUrls,
