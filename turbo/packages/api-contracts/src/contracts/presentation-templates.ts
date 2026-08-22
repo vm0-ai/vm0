@@ -35,12 +35,8 @@ const presentationTemplateSummarySchema = z.object({
   sourceFilename: z.string(),
   coverUrl: z.string().url().nullable(),
   pageCount: z.number().int().nonnegative(),
-  /**
-   * Optional during the app/API rollout window. The API always returns these
-   * fields once workspace sharing is available; an older API does not.
-   */
-  visibility: presentationTemplateVisibilitySchema.optional(),
-  canManage: z.boolean().optional(),
+  visibility: presentationTemplateVisibilitySchema,
+  canManage: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
