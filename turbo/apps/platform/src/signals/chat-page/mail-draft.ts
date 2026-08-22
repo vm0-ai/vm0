@@ -14,7 +14,7 @@ import {
 } from "@okouai/api-contracts/contracts/mail";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import {
   createCardSignalsRegistry,
@@ -120,7 +120,7 @@ function createAttachmentPreviews(
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
       const signal = get(pageSignal$);
-      const client = get(zeroClient$)(mailContract);
+      const client = get(apiClient$)(mailContract);
       signal.throwIfAborted();
       if (cleanupSignal !== signal) {
         cleanupSignal?.removeEventListener(
@@ -241,7 +241,7 @@ function createMailDraftResourceSignals(
       return override;
     }
     const response = await accept(
-      get(zeroClient$)(mailContract).getDraft({
+      get(apiClient$)(mailContract).getDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal: get(pageSignal$) },
       }),
@@ -271,7 +271,7 @@ function createMailDraftMutationSignals(
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
-        get(zeroClient$)(mailContract).deleteDraft({
+        get(apiClient$)(mailContract).deleteDraft({
           params: { mailDraftId: descriptor.mailDraftId },
           fetchOptions: { signal },
         }),
@@ -283,7 +283,7 @@ function createMailDraftMutationSignals(
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
     const response = await accept(
-      get(zeroClient$)(mailContract).sendDraft({
+      get(apiClient$)(mailContract).sendDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal },
       }),

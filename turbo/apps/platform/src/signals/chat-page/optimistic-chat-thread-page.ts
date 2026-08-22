@@ -16,7 +16,7 @@ import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contract
 import { accept } from "../../lib/accept.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import { nowDate } from "../../lib/time.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
@@ -382,7 +382,7 @@ const mintOptimisticThreadWithEvent$ = command(
 
 async function createChatThread(
   args: {
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
     readonly agentId: string;
     readonly title: string | undefined;
     readonly clientThreadId: string;
@@ -477,7 +477,7 @@ const startNewChatThreadCreate$ = command(
       signal,
     );
 
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     L.debug("startNewChatThreadCreate$ POST chat-threads start", { threadId });
     const createResult = (async (): Promise<void> => {
       await createChatThread(
@@ -615,7 +615,7 @@ const sendNewThreadMessage$ = command(
     const clearDraftResult = request.forward
       ? Promise.resolve()
       : set(clearAgentDraftById$, agentId, signal);
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
     const createResult = createNewThreadRecord(
       {

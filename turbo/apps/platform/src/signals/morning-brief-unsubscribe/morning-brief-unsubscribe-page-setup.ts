@@ -7,7 +7,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setMorningBriefUnsubscribeStatus$ } from "./morning-brief-unsubscribe-signals.ts";
 
@@ -39,7 +39,7 @@ export const setupMorningBriefUnsubscribePage$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(emailMorningBriefUnsubscribeContract);
+    const client = get(apiClient$)(emailMorningBriefUnsubscribeContract);
     const result = await accept(
       client.unsubscribe({ query: { token }, body: undefined }),
       [200, 400],

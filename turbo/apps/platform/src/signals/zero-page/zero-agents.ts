@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { reloadAgents$ } from "../agent.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 
 /**
@@ -15,7 +15,7 @@ export const createSubagent$ = command(
     visibility: "public" | "private",
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
 
     await createZeroAgent(
       createClient,

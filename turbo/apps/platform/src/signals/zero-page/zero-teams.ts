@@ -4,7 +4,7 @@ import {
   teamsConnectContract,
   type TeamsConnectStatus,
 } from "@okouai/api-contracts/contracts/teams-connect";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -14,7 +14,7 @@ const internalTeamsStatus$ = state<TeamsConnectStatus | null>(null);
 
 export const teamsOrgData$ = computed(async (get) => {
   get(internalReload$);
-  const client = get(zeroClient$)(teamsConnectContract);
+  const client = get(apiClient$)(teamsConnectContract);
   const result = await accept(client.getStatus(), [200]);
   return result.body;
 });
@@ -93,7 +93,7 @@ export const setShowTeamsUninstallDialog$ = command(
 
 export const disconnectTeamsOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(teamsConnectContract);
+    const client = get(apiClient$)(teamsConnectContract);
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
     set(reloadTeamsOrg$);
@@ -102,7 +102,7 @@ export const disconnectTeamsOrg$ = command(
 
 export const uninstallTeamsOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(teamsConnectContract);
+    const client = get(apiClient$)(teamsConnectContract);
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
     set(reloadTeamsOrg$);

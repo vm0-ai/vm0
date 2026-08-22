@@ -186,7 +186,7 @@ export default [
   },
   // Allow direct fetch$ in the abstraction layers and tests.
   // View files below use fetch$ for multipart file uploads that lack typed
-  // contracts — migrate them to zeroClient$ when contracts are added.
+  // contracts — migrate them to apiClient$ when contracts are added.
   {
     files: [
       "src/signals/fetch.ts",

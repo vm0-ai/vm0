@@ -4,7 +4,7 @@ import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/cha
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { isConnectorChangedPayloadFor } from "../connector-change.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
@@ -88,7 +88,7 @@ function isArtifactGoogleDriveSyncFailure(
 
 async function syncArtifactFilesToGoogleDrive(
   params: ArtifactGoogleDriveSyncFilesParams & {
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
   },
   signal?: AbortSignal,
 ): Promise<boolean> {
@@ -174,7 +174,7 @@ async function syncArtifactFilesToGoogleDrive(
 
 export async function syncArtifactFileToGoogleDrive(
   params: ArtifactGoogleDriveSyncParams & {
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
   },
   signal?: AbortSignal,
 ): Promise<boolean> {
@@ -197,7 +197,7 @@ export async function syncArtifactFileToGoogleDrive(
 async function authorizeGoogleDriveForAgent(
   params: {
     readonly agentId: string;
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -229,7 +229,7 @@ export const waitForGoogleDriveAuthorization$ = command(
       await authorizeGoogleDriveForAgent(
         {
           agentId: params.agentId,
-          createClient: get(zeroClient$),
+          createClient: get(apiClient$),
         },
         signal,
       );

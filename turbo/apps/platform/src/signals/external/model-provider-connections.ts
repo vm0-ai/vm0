@@ -7,14 +7,14 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { refreshOrgModelPolicies$ } from "./org-model-policies.ts";
 
 const reloadModelProviderConnections$ = state(0);
 
 export const modelProviderConnections$ = computed(async (get) => {
   get(reloadModelProviderConnections$);
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(modelProviderConnectionsMainContract);
   const result = await accept(client.list(), [200]);
   return result.body.connections;
@@ -26,7 +26,7 @@ export const createModelProviderConnection$ = command(
     input: CreateModelProviderConnectionRequest,
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(modelProviderConnectionsMainContract);
     const result = await accept(
       client.create({ body: input, fetchOptions: { signal } }),
@@ -49,7 +49,7 @@ export const updateModelProviderConnection$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(modelProviderConnectionsByIdContract);
     const result = await accept(
       client.update({
@@ -71,7 +71,7 @@ export const updateModelProviderConnection$ = command(
 
 export const deleteModelProviderConnection$ = command(
   async ({ get, set }, id: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(modelProviderConnectionsByIdContract);
     await accept(
       client.delete({ params: { id }, fetchOptions: { signal } }),

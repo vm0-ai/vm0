@@ -6,7 +6,7 @@ import {
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { userPermissionGrantsByAgent } from "../permission-allow/permission-allow-signals.ts";
 import { withCleanup } from "../utils.ts";
@@ -97,7 +97,7 @@ const composerRelatedCatalogItems$ = computed(async (get) => {
 
 interface AgentCustomConnectorAuthorizationRequestBroker {
   load(params: {
-    readonly createClient: ZeroClientFactory;
+    readonly createClient: ApiClientFactory;
     readonly agentId: string;
     readonly reloadGeneration: number;
   }): Promise<readonly AgentCustomConnectorGrant[]>;
@@ -117,12 +117,12 @@ function agentCustomConnectorAuthorizationRequestKey(params: {
 
 function createAgentCustomConnectorAuthorizationRequestBroker(): AgentCustomConnectorAuthorizationRequestBroker {
   const pendingRequestsByClient = new WeakMap<
-    ZeroClientFactory,
+    ApiClientFactory,
     Map<string, Promise<readonly AgentCustomConnectorGrant[]>>
   >();
-  const latestRequestedKeyByClient = new WeakMap<ZeroClientFactory, string>();
+  const latestRequestedKeyByClient = new WeakMap<ApiClientFactory, string>();
   const latestResolvedByClient = new WeakMap<
-    ZeroClientFactory,
+    ApiClientFactory,
     ResolvedAgentCustomConnectorAuthorizationRequest
   >();
 
@@ -194,7 +194,7 @@ function createConnectorAuthorizationSignal(
   const customAuthorizations$ = computed(async (get) => {
     const reloadGeneration = get(customConnectorAuthorizationReloadVersion$);
     return await get(agentCustomConnectorAuthorizationRequestBroker$).load({
-      createClient: get(zeroClient$),
+      createClient: get(apiClient$),
       agentId,
       reloadGeneration,
     });
@@ -224,7 +224,7 @@ function createBuiltinConnectorAuthorizationCommand(
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
-      const client = get(zeroClient$)(userConnectorsContract);
+      const client = get(apiClient$)(userConnectorsContract);
       await withCleanup(
         accept(
           client.update({
@@ -259,7 +259,7 @@ function createCustomConnectorAuthorizationCommand(
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
-      const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+      const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
       await withCleanup(
         accept(
           client.update({

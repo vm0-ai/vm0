@@ -2,7 +2,7 @@ import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-th
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import type { ChatThreadScrollSignals } from "./chat-thread-scroll.ts";
 
 const SHARED_THREAD_SELECTION_TEXT_LIMIT_BYTES = 1.5 * 1024 * 1024;
@@ -103,7 +103,7 @@ export function createChatThreadSharingSignals(
   const create$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const eventIds = [...get(internalSelectedBytes$).keys()];
-      const client = get(zeroClient$)(sharedThreadsContract);
+      const client = get(apiClient$)(sharedThreadsContract);
       const result = await accept(
         client.create({
           params: { threadId },

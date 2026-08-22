@@ -14,7 +14,7 @@ import {
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { onRejection } from "../utils.ts";
 import {
   createImageLoadSignals,
@@ -80,7 +80,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
   const firstPage$ = computed(async (get): Promise<ArtifactCatalogPage> => {
     get(paging.reloadVersion$);
     const kind = get(paging.kind$);
-    const client = get(zeroClient$)(artifactCatalogContract);
+    const client = get(apiClient$)(artifactCatalogContract);
     const result = await accept(
       client.list({
         query: {
@@ -130,7 +130,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         return new Set([...cursors, cursor]);
       });
 
-      const client = get(zeroClient$)(artifactCatalogContract);
+      const client = get(apiClient$)(artifactCatalogContract);
       const result = await onRejection(
         accept(
           client.list({
@@ -237,7 +237,7 @@ export function createArtifactCatalogSignals(
       if (!artifactId) {
         return null;
       }
-      const client = get(zeroClient$)(artifactCatalogContract);
+      const client = get(apiClient$)(artifactCatalogContract);
       const result = await accept(
         client.get({
           params: { artifactId },

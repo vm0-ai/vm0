@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
@@ -59,7 +59,7 @@ export const runChatActionCallback$ = command(
       throw new Error("Failed to serialize callback user message");
     }
     await sendChatEvent(
-      get(zeroClient$),
+      get(apiClient$),
       {
         agentId: args.agentId,
         threadId: args.threadId,

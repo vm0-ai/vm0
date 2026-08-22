@@ -6,7 +6,7 @@ import {
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { chatListQuery$ } from "./zero-sidebar-state.ts";
 
@@ -161,7 +161,7 @@ export const agentListDialogChatMessages$ = computed(
     if (!query) {
       return { query, chatMessages: [] };
     }
-    const client = get(zeroClient$)(chatSearchContract);
+    const client = get(apiClient$)(chatSearchContract);
     const result = await accept(
       client.search({
         query: {

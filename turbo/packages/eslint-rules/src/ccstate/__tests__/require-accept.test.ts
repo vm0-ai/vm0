@@ -18,7 +18,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(someContract);
         const result = await accept(client.get(), [200]);
       `,
@@ -27,14 +27,14 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const result = await accept(get(zeroClient$)(someContract).list(), [200]);
+        const result = await accept(get(apiClient$)(someContract).list(), [200]);
       `,
     },
     // Accept with options
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(someContract);
         const result = await accept(client.create({ body }), [201]);
       `,
@@ -43,7 +43,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: TEST_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(someContract);
         const result = await client.get();
       `,
@@ -55,7 +55,7 @@ ruleTester.run("require-accept", rule, {
         const result = await someClient.get();
       `,
     },
-    // Non-zeroClient$ method call — not tracked
+    // Non-apiClient$ method call — not tracked
     {
       filename: SIGNALS_FILE,
       code: `
@@ -71,12 +71,15 @@ ruleTester.run("require-accept", rule, {
       `,
     },
   ],
+  // The rule recognises the client factory by its identifier text, so a rename
+  // of the factory that misses the literal makes it stop matching — and stop
+  // reporting — without failing anything. These cases pin the current name.
   invalid: [
     // Variable client, no accept
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(someContract);
         const result = await client.get();
       `,
@@ -86,7 +89,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(someContract);
         await client.create({ body: { name: "test" } });
       `,
@@ -96,7 +99,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const result = await get(zeroClient$)(someContract).list();
+        const result = await get(apiClient$)(someContract).list();
       `,
       errors: [{ messageId: "requireAccept" }],
     },
@@ -104,7 +107,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(deleteContract);
         await client.delete({ params: { id: "123" } });
       `,
@@ -114,7 +117,7 @@ ruleTester.run("require-accept", rule, {
     {
       filename: SIGNALS_FILE,
       code: `
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client1 = createClient(contractA);
         const client2 = createClient(contractB);
         const r1 = await accept(client1.get(), [200]);

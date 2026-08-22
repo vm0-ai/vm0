@@ -7,7 +7,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   setRedeemResponse$,
@@ -64,7 +64,7 @@ export const setupRedeemCampaignPage$ = command(
       origin,
     );
 
-    const client = get(zeroClient$)(billingRedeemContract);
+    const client = get(apiClient$)(billingRedeemContract);
     const result = await accept(
       client.create({
         params: { campaign },

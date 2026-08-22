@@ -10,7 +10,7 @@ import {
   type SharedDisplayThread,
 } from "../../views/shared-thread-page/shared-thread-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import {
   createMermaidDiagramRegistry,
@@ -29,7 +29,7 @@ export const setupSharedThreadPage$ = command(
     set(setPageSignal$, signal);
     const params = get(pathParams$);
     const id = String(params?.id ?? "");
-    const client = get(zeroClient$)(sharedThreadsContract);
+    const client = get(apiClient$)(sharedThreadsContract);
     const result = await accept(
       client.get({ params: { id }, fetchOptions: { signal } }),
       [200, 404],

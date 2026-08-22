@@ -9,7 +9,7 @@ import {
 
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { locale$ } from "../locale.ts";
 import { onRejection } from "../utils.ts";
 
@@ -367,7 +367,7 @@ function createAvatarTemplateCatalogSignals() {
   );
   const loadPage$ = computed(
     (get): LoadOffsetCatalogPage<AvatarVideoAvatar> => {
-      const client = get(zeroClient$)(avatarVideoContract, {
+      const client = get(apiClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const filters = get(internalFilters$);
@@ -423,7 +423,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
     emptyAvatarTemplateVoiceFilters(),
   );
   const loadPage$ = computed((get): LoadOffsetCatalogPage<AvatarVideoVoice> => {
-    const client = get(zeroClient$)(avatarVideoContract, {
+    const client = get(apiClient$)(avatarVideoContract, {
       apiBase: "api",
     });
     const filters = get(internalVoiceFilters$);
@@ -454,7 +454,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
   );
   const avatarTemplateVoiceFilterOptions$ = computed(
     async (get): Promise<AvatarTemplateVoiceFilterOptions> => {
-      const client = get(zeroClient$)(avatarVideoContract, {
+      const client = get(apiClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const result = await accept(
@@ -511,7 +511,7 @@ export function createAvatarTemplatePickerSignals() {
       const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
       const voiceFilters = get(voiceCatalog.avatarTemplateVoiceFilters$);
       const locale = get(locale$);
-      const client = get(zeroClient$)(avatarVideoContract, {
+      const client = get(apiClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const result = await accept(

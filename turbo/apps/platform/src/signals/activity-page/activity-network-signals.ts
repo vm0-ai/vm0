@@ -5,7 +5,7 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -106,7 +106,7 @@ const firstPage$ = computed(async (get) => {
   if (!runId) {
     return null;
   }
-  const client = get(zeroClient$)(runNetworkLogsContract);
+  const client = get(apiClient$)(runNetworkLogsContract);
   return {
     runId,
     ...(await fetchPage(client, runId)),
@@ -213,7 +213,7 @@ export const loadNetworkLogsNextPage$ = command(
       });
     };
 
-    const client = get(zeroClient$)(runNetworkLogsContract);
+    const client = get(apiClient$)(runNetworkLogsContract);
     const { logs, hasMore, nextCursor } = await fetchPage(
       client,
       runId,

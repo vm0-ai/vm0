@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
@@ -28,7 +28,7 @@ export const updateAgentSettings$ = command(
       throw new Error("No compose detail found");
     }
 
-    const client = get(zeroClient$)(agentsByIdContract);
+    const client = get(apiClient$)(agentsByIdContract);
     await accept(
       client.updateMetadata({
         params: { id: detail.agentId },

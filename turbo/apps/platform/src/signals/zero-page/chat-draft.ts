@@ -12,7 +12,7 @@ import {
   createImageLoadSignals,
   type ImageLoadSignals,
 } from "../image-load.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import type {
@@ -72,7 +72,7 @@ const abortMultipartUpload$ = command(
     upload: MultipartUploadReference,
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(uploadsContract);
+    const client = get(apiClient$)(uploadsContract);
     await tapError(
       accept(
         client.abortMultipart({
@@ -263,7 +263,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   });
 
   const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(uploadsContract);
     const signal = set(resetSignal$, parentSignal);
 

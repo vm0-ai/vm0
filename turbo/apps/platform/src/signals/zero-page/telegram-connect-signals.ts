@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/integrations-telegram";
 import { accept } from "../../lib/accept.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { oauthBaseForNavigation$ } from "../fetch.ts";
 import { searchParams$ } from "../route.ts";
 import { createDeferredPromise } from "../utils.ts";
@@ -26,7 +26,7 @@ export const telegramConnectLinkStatus$ = computed(
       return null;
     }
 
-    const client = get(zeroClient$)(integrationsTelegramContract);
+    const client = get(apiClient$)(integrationsTelegramContract);
     const result = await accept(
       client.getLinkStatus({
         headers: {},
@@ -82,7 +82,7 @@ export const connectTelegramAccount$ = command(
       return null;
     }
     const { params } = parsed;
-    const client = get(zeroClient$)(integrationsTelegramContract);
+    const client = get(apiClient$)(integrationsTelegramContract);
     const linkCredential = params.connectSignature
       ? { connectSignature: params.connectSignature }
       : await (async () => {

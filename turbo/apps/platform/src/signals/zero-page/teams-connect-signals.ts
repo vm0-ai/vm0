@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 export type TeamsConnectPageStatus = "idle" | "success";
@@ -26,7 +26,7 @@ export const teamsConnectStatus$ = computed(
       return "idle";
     }
 
-    const client = get(zeroClient$)(teamsConnectContract);
+    const client = get(apiClient$)(teamsConnectContract);
     const [result] = await Promise.allSettled([
       accept(client.getStatus(), [200]),
     ]);
@@ -72,7 +72,7 @@ export const connectTeamsAccount$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(teamsConnectContract);
+    const client = get(apiClient$)(teamsConnectContract);
     const displayName = teamsParam(
       params,
       "teamsUserDisplayName",

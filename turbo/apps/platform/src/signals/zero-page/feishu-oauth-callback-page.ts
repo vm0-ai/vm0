@@ -5,7 +5,7 @@ import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oaut
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { FeishuOAuthCallbackPage } from "../../views/zero-page/feishu-oauth-callback-page.tsx";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -30,7 +30,7 @@ export const setupFeishuOAuthCallbackPage$ = command(
     );
     await set(hideAppSkeleton$, signal);
 
-    const client = get(zeroClient$)(feishuOauthContract, {
+    const client = get(apiClient$)(feishuOauthContract, {
       apiBase: "api",
     });
     const result = await accept(

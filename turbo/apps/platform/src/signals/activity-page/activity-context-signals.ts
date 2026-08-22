@@ -3,7 +3,7 @@ import {
   runContextContract,
   type RunContextResponse,
 } from "@okouai/api-contracts/contracts/run-routes";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -22,7 +22,7 @@ export const zeroActivityContext$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(runContextContract);
+  const client = get(apiClient$)(runContextContract);
   const result = await accept(
     client.getContext({ params: { id: runId } }),
     [200, 404],

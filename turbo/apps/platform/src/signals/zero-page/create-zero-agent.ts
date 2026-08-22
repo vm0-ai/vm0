@@ -4,7 +4,7 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
-import type { ZeroClientFactory } from "../api-client.ts";
+import type { ApiClientFactory } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 interface CreateZeroAgentParams {
@@ -21,7 +21,7 @@ interface CreateZeroAgentParams {
  * to keep the two flows in sync.
  */
 export async function createZeroAgent(
-  createClient: ZeroClientFactory,
+  createClient: ApiClientFactory,
   params: CreateZeroAgentParams,
   signal: AbortSignal,
 ): Promise<AgentResponse> {

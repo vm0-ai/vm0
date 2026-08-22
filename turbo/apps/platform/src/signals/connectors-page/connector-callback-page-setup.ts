@@ -16,7 +16,7 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";
 import { ZeroConnectorCallbackPage } from "../../views/zero-page/zero-connector-callback-page.tsx";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -179,7 +179,7 @@ const completeConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(zeroClient$)(connectorsSlugCallbackContract, {
+    const client = get(apiClient$)(connectorsSlugCallbackContract, {
       apiBase: "api",
     });
     const response = await accept(
@@ -201,7 +201,7 @@ const completeCustomConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(zeroClient$)(zeroCustomConnectorOAuth2Contract, {
+    const client = get(apiClient$)(zeroCustomConnectorOAuth2Contract, {
       apiBase: "api",
     });
     const response = await accept(

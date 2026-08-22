@@ -6,7 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/usage-record";
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { accept } from "../../../lib/accept.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { onRejection } from "../../utils.ts";
 
 export type CreditBalanceTab = "mine" | "team";
@@ -112,7 +112,7 @@ export const setTeamUsageRange$ = command(
 
 const loadMyUsageRecordPage$ = computed((get): LoadUsageRecordPage => {
   const range = get(myUsageRangeState$);
-  const client = get(zeroClient$)(usageRecordContract);
+  const client = get(apiClient$)(usageRecordContract);
   return async (page, signal) => {
     const result = await accept(
       client.get({
@@ -205,7 +205,7 @@ export const reloadUsageRecords$ = command(({ set }) => {
 export const teamMemberUsageAsync$ = computed(async (get) => {
   get(usageRecordReload$);
   const range = get(teamUsageRangeState$);
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(usageMembersContract);
   const result = await accept(
     client.get({

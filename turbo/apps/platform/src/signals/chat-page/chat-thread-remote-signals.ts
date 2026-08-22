@@ -14,7 +14,7 @@ import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createDeferredPromise } from "../utils.ts";
@@ -90,7 +90,7 @@ export const patchChatThreadDraft$ = command(
     { threadId, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadByIdContract);
+    const client = get(apiClient$)(chatThreadByIdContract);
     await accept(
       client.patch({
         params: { id: threadId },
@@ -149,7 +149,7 @@ export const patchChatThreadModelSelection$ = command(
       } satisfies OptimisticChatThreadEvent);
     }
 
-    const client = get(zeroClient$)(chatThreadModelSelectionContract);
+    const client = get(apiClient$)(chatThreadModelSelectionContract);
     await accept(
       client.update({
         params: { id: threadId },
@@ -194,7 +194,7 @@ export const patchChatThreadComputerUseHost$ = command(
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
-    const client = get(zeroClient$)(chatThreadComputerUseHostContract);
+    const client = get(apiClient$)(chatThreadComputerUseHostContract);
     await accept(
       client.update({
         params: { id: threadId },
@@ -230,7 +230,7 @@ export const patchChatThreadVideoModel$ = command(
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
-    const client = get(zeroClient$)(chatThreadVideoModelContract);
+    const client = get(apiClient$)(chatThreadVideoModelContract);
     await accept(
       client.update({
         params: { id: threadId },
@@ -266,7 +266,7 @@ export const patchChatThreadImageModel$ = command(
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
-    const client = get(zeroClient$)(chatThreadImageModelContract);
+    const client = get(apiClient$)(chatThreadImageModelContract);
     await accept(
       client.update({
         params: { id: threadId },
@@ -346,7 +346,7 @@ export function createCancellationRecoverySignals(threadId: string) {
       return false;
     }
     get(threadDetailReloadCounter$);
-    const client = get(zeroClient$)(chatThreadByIdContract);
+    const client = get(apiClient$)(chatThreadByIdContract);
     const result = await accept(
       client.get({ params: { id: threadId } }),
       [200, 404],
@@ -373,7 +373,7 @@ export function createRemoteChatThreadDraft(threadId: string) {
     if (get(optimisticCreateUnsettled$)) {
       return null;
     }
-    const client = get(zeroClient$)(chatThreadDraftContract);
+    const client = get(apiClient$)(chatThreadDraftContract);
     const result = await accept(
       client.get({ params: { id: threadId } }),
       [200, 404],

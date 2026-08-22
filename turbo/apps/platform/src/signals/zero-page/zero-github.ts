@@ -6,7 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/integrations-github";
 
 import { now } from "../../lib/time.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -29,7 +29,7 @@ const internalReload$ = state(0);
 export const githubIntegrationData$ = computed(
   async (get): Promise<GithubIntegrationData> => {
     get(internalReload$);
-    const client = get(zeroClient$)(integrationsGithubContract, {
+    const client = get(apiClient$)(integrationsGithubContract, {
       apiBase: "api",
     });
     const result = await accept(

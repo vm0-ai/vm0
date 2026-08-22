@@ -4,7 +4,7 @@ import type {
   SandboxReuseResult,
   WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
 import type { LogStatus } from "../zero-page/log-types.ts";
@@ -25,7 +25,7 @@ export const zeroActivityRunner$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(runRunnerContract);
+  const client = get(apiClient$)(runRunnerContract);
   const result = await accept(
     client.getRunner({ params: { id: runId } }),
     [200],

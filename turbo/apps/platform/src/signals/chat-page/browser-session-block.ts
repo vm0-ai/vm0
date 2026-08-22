@@ -16,7 +16,7 @@ import {
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
@@ -230,7 +230,7 @@ function createBrowserFitDomSignals(): BrowserFitDomSignals {
 }
 
 async function fetchBrowserSession(
-  createClient: ZeroClientFactory,
+  createClient: ApiClientFactory,
   threadId: string,
   signal: AbortSignal,
 ): Promise<BrowserSession | null> {
@@ -263,7 +263,7 @@ function createFitWindowSignals(
       const fitted = await settle(
         withCleanup(
           accept(
-            get(zeroClient$)(browserContract).resizeByThread({
+            get(apiClient$)(browserContract).resizeByThread({
               params: { threadId: descriptor.threadId },
               body: { aspectRatio },
               fetchOptions: { signal },
@@ -327,7 +327,7 @@ function createStartBrowserSignals({
     }
     const started = await settle(
       accept(
-        get(zeroClient$)(browserContract).open({
+        get(apiClient$)(browserContract).open({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -371,7 +371,7 @@ function createCloseBrowserSignals({
     }
     await settle(
       accept(
-        get(zeroClient$)(browserContract).close({
+        get(apiClient$)(browserContract).close({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -446,7 +446,7 @@ export function createBrowserSessionSignals(
     const override = get(sessionOverride$);
     return override === undefined
       ? await fetchBrowserSession(
-          get(zeroClient$),
+          get(apiClient$),
           descriptor.threadId,
           get(pageSignal$),
         )
@@ -489,7 +489,7 @@ export function createBrowserSessionSignals(
               return false;
             }
             const response = await accept(
-              get(zeroClient$)(browserContract).leaseByThread({
+              get(apiClient$)(browserContract).leaseByThread({
                 params: { threadId: descriptor.threadId },
                 body: {},
                 fetchOptions: { signal },
