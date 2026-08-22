@@ -32,6 +32,7 @@ import {
 } from "./built-in-generation-usage-idempotency";
 
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
+const FAL_BILLABLE_UNITS_HEADER = "x-fal-billable-units";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
@@ -1793,6 +1794,65 @@ export async function submitFalImageQueueGeneration(
   return handle;
 }
 
+function falQueueResponseUrl(value: string | undefined): URL | null {
+  if (!value || !URL.canParse(value)) {
+    return null;
+  }
+  const url = new URL(value);
+  const queueOrigin = new URL(FAL_IMAGE_QUEUE_URL_PREFIX);
+  return url.origin === queueOrigin.origin ? url : null;
+}
+
+export async function getFalImageBillableUnits(
+  options: ImageOptions,
+  responseUrl: string | undefined,
+  falKey: string | undefined,
+  signal: AbortSignal,
+): Promise<number | ErrorResponse | undefined> {
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode !== "flux_2_processed_megapixel") {
+    return undefined;
+  }
+  const url = falQueueResponseUrl(responseUrl);
+  if (!url) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+  if (!falKey) {
+    return serviceUnavailable(
+      "Fal image generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: falHeaders(falKey),
+    signal,
+  });
+  if (!response.ok) {
+    const errorBody = await readImageProviderErrorBody(response, signal);
+    L.error("Fal image billing response failed", {
+      model: options.model,
+      status: response.status,
+      body: errorBody,
+    });
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+
+  const rawBillableUnits = response.headers.get(FAL_BILLABLE_UNITS_HEADER);
+  await response.arrayBuffer();
+  signal.throwIfAborted();
+  const billableUnits = Number(rawBillableUnits);
+  if (
+    !rawBillableUnits ||
+    !Number.isFinite(billableUnits) ||
+    billableUnits <= 0
+  ) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+  return billableUnits;
+}
+
 function bytePlusImageSize(options: ImageOptions): string {
   return options.size === "auto" ? "2K" : options.size;
 }
@@ -1987,30 +2047,27 @@ function ideogramMegapixelCategory(
   return `output_megapixel.${ideogramRenderingSpeed(options.quality).toLowerCase()}` as ImagePricingCategory;
 }
 
-function flux2ProcessedMegapixels(
-  image: FalImageFile,
-  options: ImageOptions,
-): number {
-  const outputMegapixels = providerMegapixelsForImage(image, options);
-  // fal caps the edit endpoint at nine references and nine total input MP but
-  // does not return normalized input dimensions. Each accepted reference is
-  // therefore billed as one processed input MP, matching the common 1 MP
-  // reference path without fetching arbitrary user URLs from the API server.
-  return outputMegapixels + options.sourceImageUrls.length;
+function flux2AdditionalProcessedMegapixels(falBillableUnits: number): number {
+  // Fal reports one billable unit for the first processed MP and half a unit
+  // for each additional processed MP, matching FLUX.2 Pro's tiered pricing.
+  return Math.max(0, Math.round((falBillableUnits - 1) * 2));
 }
 
 function falBillingEntries(
   image: FalImageFile,
   options: ImageOptions,
+  falBillableUnits: number | undefined,
 ): readonly ImageBillingEntry[] {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (modelConfig.billingMode === "flux_2_processed_megapixel") {
-    const processedMegapixels = flux2ProcessedMegapixels(image, options);
+    if (falBillableUnits === undefined) {
+      throw new Error("FLUX.2 Pro requires Fal billable units");
+    }
     return [
       { category: "processed_megapixel.first", quantity: 1 },
       {
         category: "processed_megapixel.additional",
-        quantity: Math.max(0, processedMegapixels - 1),
+        quantity: flux2AdditionalProcessedMegapixels(falBillableUnits),
       },
     ];
   }
@@ -2117,6 +2174,7 @@ function falQualitySizeImageCategory(
 export async function downloadFalImage(
   result: FalImageResult,
   options: ImageOptions,
+  falBillableUnits: number | undefined,
   signal: AbortSignal,
 ): Promise<ParsedImageGeneration | ErrorResponse> {
   const response = await fetch(result.image.url, { method: "GET", signal });
@@ -2157,7 +2215,7 @@ export async function downloadFalImage(
     safetyTolerance: modelConfig.supportsSafetyTolerance
       ? options.safetyTolerance
       : undefined,
-    billing: falBillingEntries(result.image, options),
+    billing: falBillingEntries(result.image, options, falBillableUnits),
     sourceUrl: result.image.url,
     seed: result.seed ?? options.seed,
     sourceImageUrls: options.sourceImageUrls,

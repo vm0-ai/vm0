@@ -13,6 +13,7 @@ import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
   downloadFalImage,
+  getFalImageBillableUnits,
   getMissingImagePricing,
   imagePricing$,
   parseFalImageResult,
@@ -401,7 +402,33 @@ const handleFalImageCompletion$ = command(
       signal.throwIfAborted();
       return;
     }
-    const generation = await downloadFalImage(falResult, options, signal);
+    const falBillableUnits = await getFalImageBillableUnits(
+      options,
+      readBuiltInGenerationRequestInternal(args.job.request)
+        .providerResponseUrl,
+      env("FAL_KEY"),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(falBillableUnits)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: falBillableUnits.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const generation = await downloadFalImage(
+      falResult,
+      options,
+      falBillableUnits,
+      signal,
+    );
     signal.throwIfAborted();
     if (isErrorResponse(generation)) {
       await set(

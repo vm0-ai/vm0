@@ -222,11 +222,15 @@ async function orgCredits(fixture: ImageFixture): Promise<number> {
   return body.credits;
 }
 
+function falResponseUrl(requestId: string): string {
+  return `https://queue.fal.run/test/requests/${requestId}/response`;
+}
+
 function falQueueHandle(requestId: string): Record<string, string> {
   return {
     request_id: requestId,
     status_url: `https://queue.fal.run/test/requests/${requestId}/status`,
-    response_url: `https://queue.fal.run/test/requests/${requestId}/response`,
+    response_url: falResponseUrl(requestId),
   };
 }
 
@@ -2025,6 +2029,13 @@ describe("POST /api/image-io/generate", () => {
         observedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(falQueueHandle("flux-2-pro-request"));
       }),
+      http.get(falResponseUrl("flux-2-pro-request"), ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Key test-fal-key");
+        return HttpResponse.json(
+          {},
+          { headers: { "X-Fal-Billable-Units": "1.5" } },
+        );
+      }),
       http.get(FAL_FLUX_2_PRO_MEDIA_URL, () => {
         return new HttpResponse(IMAGE_BYTES, {
           headers: { "Content-Type": "image/png" },
@@ -2097,7 +2108,7 @@ describe("POST /api/image-io/generate", () => {
     );
   });
 
-  it("edits up to nine references with FLUX.2 Pro and bills input processing", async () => {
+  it("edits up to nine references with FLUX.2 Pro and uses Fal billing units", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({
       configured: FLUX_2_PRO_IMAGE_PRICING,
@@ -2113,6 +2124,13 @@ describe("POST /api/image-io/generate", () => {
         observedRequestUrl = request.url;
         observedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(falQueueHandle("flux-2-pro-edit-request"));
+      }),
+      http.get(falResponseUrl("flux-2-pro-edit-request"), ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Key test-fal-key");
+        return HttpResponse.json(
+          {},
+          { headers: { "X-Fal-Billable-Units": "3" } },
+        );
       }),
       http.get(FAL_FLUX_2_PRO_MEDIA_URL, () => {
         return new HttpResponse(IMAGE_BYTES, {
@@ -2176,7 +2194,7 @@ describe("POST /api/image-io/generate", () => {
     expect(readGenerationResult(await statusResponse.json())).toMatchObject({
       creditsCharged:
         FAL_FLUX_2_PRO_FIRST_MEGAPIXEL_CREDITS +
-        2 * FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS,
+        4 * FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS,
       model: "fal-ai/flux-2-pro",
       sourceImageUrls,
     });
@@ -2188,6 +2206,11 @@ describe("POST /api/image-io/generate", () => {
       image_urls: sourceImageUrls,
     });
     expect(falCalls).toBe(1);
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 -
+        FAL_FLUX_2_PRO_FIRST_MEGAPIXEL_CREDITS -
+        4 * FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS,
+    );
   });
 
   it("maps Ideogram 4 quality to rendering speed without paid prompt expansion", async () => {
