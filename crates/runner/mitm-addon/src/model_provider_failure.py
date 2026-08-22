@@ -14,6 +14,7 @@ from mitmproxy import http
 import body_decoding
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_response_classification
 import openai_responses_events
 import platform_api
 import runtime_url_parsing
@@ -233,7 +234,7 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
             flow_state.protocol == "openai_responses_websocket"
             and response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
         )
-        or not _response_can_have_body(flow, response)
+        or not http_response_classification.can_have_body(flow, response)
     ):
         return None
 
@@ -253,7 +254,7 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
         return None
 
     parser: _JsonResponseParser | _SseResponseParser
-    if _has_event_stream_media_type(response):
+    if http_response_classification.has_event_stream_media_type(response):
         parser = _SseResponseParser(
             flow_state.protocol,
             lambda outcome: _settle_http_flow(flow, flow_state, outcome),
@@ -611,17 +612,6 @@ def _websocket_flow_state(flow: http.HTTPFlow) -> _FlowState | None:
     return flow_state
 
 
-def _response_can_have_body(flow: http.HTTPFlow, response: http.Response) -> bool:
-    if flow.request.method.upper() == "HEAD":
-        return False
-    return response.status_code not in (101, 204, 205, 304)
-
-
-def _has_event_stream_media_type(response: http.Response) -> bool:
-    content_type = response.headers.get("content-type", "")
-    return content_type.partition(";")[0].strip(" \t").lower() == "text/event-stream"
-
-
 def _upstream_connection_failed(flow: http.HTTPFlow) -> bool:
     return bool(flow.server_conn.error) or (
         not flow.server_conn.connected and flow.client_conn.connected
@@ -643,12 +633,14 @@ def _extract_json(body: bytes) -> JsonExtractionResult:
 
 
 def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
+    response = flow.response
+    if response is None or not http_response_classification.can_have_body(flow, response):
+        return _unknown_outcome()
     finish = flow.metadata.pop(_RESPONSE_FINISH, None)
     if callable(finish):
         parsed_outcome = finish()
         return parsed_outcome if isinstance(parsed_outcome, _Outcome) else _unknown_outcome()
-    response = flow.response
-    if response is not None and response.raw_content:
+    if response.raw_content:
         parser = _JsonResponseParser(protocol)
         parser.feed(response.raw_content)
         return parser.finish()
