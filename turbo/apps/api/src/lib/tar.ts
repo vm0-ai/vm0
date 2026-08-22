@@ -1,6 +1,9 @@
 import { gunzipSync } from "node:zlib";
 import { Parser } from "tar";
 
+const TAR_BLOCK_SIZE = 512;
+const TAR_END_BLOCK_COUNT = 2;
+
 interface ExtractedTarFile {
   readonly path: string;
   readonly content: string;
@@ -19,6 +22,16 @@ function normalizeTarPath(path: string): string {
   return path.replace(/^\.\//, "");
 }
 
+function isEmptyTarArchive(buffer: Buffer): boolean {
+  return (
+    buffer.length >= TAR_BLOCK_SIZE * TAR_END_BLOCK_COUNT &&
+    buffer.length % TAR_BLOCK_SIZE === 0 &&
+    buffer.every((byte) => {
+      return byte === 0;
+    })
+  );
+}
+
 export function extractBinaryFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
@@ -35,6 +48,12 @@ export function extractBinaryFilesFromTarGz(
         }),
       )
     : null;
+  // A canonical empty TAR consists only of the two zero-filled end blocks.
+  // node-tar's strict parser reports TAR_BAD_ARCHIVE when it sees no entries,
+  // so recognize this valid archive shape before handing non-empty input to it.
+  if (isEmptyTarArchive(tarBuffer)) {
+    return [];
+  }
   const files: ExtractedBinaryTarFile[] = [];
   let parseError: unknown;
   const parser = new Parser({
