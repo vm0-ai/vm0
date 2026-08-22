@@ -368,6 +368,8 @@ const API_DISPATCH_CONNECTOR_CATALOG_PROJECTION_ROW_ACTION_TYPES = [
   "api_dispatch_connector_catalog_query_projection_rows",
   "api_dispatch_connector_catalog_fetch_projection_rows",
   "api_dispatch_connector_catalog_validate_projection_rows",
+  "api_dispatch_connector_catalog_parse_projection_rows",
+  "api_dispatch_connector_catalog_verify_projection_row_digests",
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES = [
   "api_dispatch_connector_catalog_validate_schema",
@@ -997,8 +999,12 @@ function expectProjectionRowReadActionCounts(
     expect(matchingEvents).toHaveLength(expectedCount);
     for (const event of matchingEvents) {
       expect(event).toStrictEqual(
-        expect.objectContaining({ span_kind: "nested" }),
+        expect.objectContaining({
+          duration_ms: expect.any(Number),
+          span_kind: "nested",
+        }),
       );
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
     }
   }
 }
@@ -2784,9 +2790,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         allowedCustomConnectorIds: [],
       },
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectProjectionRowReadActionCounts(timingEvents, 1);
     expect(
       singleApiDispatchEvent(
-        apiDispatchTimingEventsForRun(run.runId),
+        timingEvents,
         "api_dispatch_connector_catalog_load_runtime_snapshot",
       ),
     ).toStrictEqual(

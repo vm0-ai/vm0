@@ -100,6 +100,11 @@ export type ConnectorCatalogRuntimeProjectionRowsRead =
       >;
     };
 
+export interface ConnectorCatalogRuntimeProjectionValidationTiming {
+  measureParse<T>(operation: () => T): T;
+  measureDigest<T>(operation: () => T): T;
+}
+
 interface ProjectionSchemaAvailabilityCache {
   available: boolean;
 }
@@ -431,6 +436,7 @@ export async function queryConnectorCatalogRuntimeProjectionRows(args: {
 export function validateConnectorCatalogRuntimeProjectionRows(args: {
   readonly rows: readonly ConnectorCatalogRuntimeProjectionRow[];
   readonly connectorSlugs: readonly ConnectorSlug[];
+  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
 }): ConnectorCatalogRuntimeProjectionRowsRead {
   const rowBySlug = new Map(
     args.rows.map((row) => {
@@ -445,19 +451,27 @@ export function validateConnectorCatalogRuntimeProjectionRows(args: {
       missingConnectorSlugs.push(connectorSlug);
       continue;
     }
-    const connector = connectorCatalogArtifactConnectorSchema.safeParse(
-      row.connector,
-    );
-    if (!connector.success || connector.data.slug !== row.connectorSlug) {
+    const connector = args.timing.measureParse(() => {
+      const parsed = connectorCatalogArtifactConnectorSchema.safeParse(
+        row.connector,
+      );
+      return parsed.success && parsed.data.slug === row.connectorSlug
+        ? parsed.data
+        : undefined;
+    });
+    if (connector === undefined) {
       return { kind: "fallback", reason: "malformed" };
     }
-    if (
-      connectorCatalogRuntimeProjectionDigest(connector.data) !==
-      row.connectorDigest
-    ) {
+    const digestMatches = args.timing.measureDigest(() => {
+      return (
+        connectorCatalogRuntimeProjectionDigest(connector) ===
+        row.connectorDigest
+      );
+    });
+    if (!digestMatches) {
       return { kind: "fallback", reason: "digest_mismatch" };
     }
-    connectors.push(connector.data);
+    connectors.push(connector);
   }
   return { kind: "ready", connectors, missingConnectorSlugs };
 }

@@ -923,15 +923,13 @@ async function readProjectedRuntimeRows(args: {
           });
         },
       );
-      return args.timing.measureSync(
-        "api_dispatch_connector_catalog_validate_projection_rows",
-        () => {
-          return validateConnectorCatalogRuntimeProjectionRows({
-            rows,
-            connectorSlugs,
-          });
-        },
-      );
+      return args.timing.measureProjectionRowValidation((timing) => {
+        return validateConnectorCatalogRuntimeProjectionRows({
+          rows,
+          connectorSlugs,
+          timing,
+        });
+      });
     },
   );
 }
