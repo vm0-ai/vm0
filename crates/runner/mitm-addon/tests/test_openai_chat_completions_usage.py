@@ -235,7 +235,7 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
 
-    def test_long_sse_keeps_final_usage_isolated_from_delta_frames(
+    def test_long_sse_isolates_final_choice_usage_from_prior_frames(
         self,
         tmp_path,
         real_flow,
@@ -252,10 +252,27 @@ class TestOpenAIChatCompletionsUsage:
 
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
-        callback(delta * 256)
         callback(
             b"data: "
-            + _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
+            + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
+            + b"\n\n"
+            + delta * 256
+        )
+        final_payload = {
+            "id": "chatcmpl_final",
+            "model": "gpt-5.5",
+            "choices": [
+                {
+                    "usage": {
+                        "prompt_tokens": 30,
+                        "completion_tokens": 5,
+                    }
+                }
+            ],
+        }
+        callback(
+            b"data: "
+            + json.dumps(final_payload, separators=(",", ":")).encode()
             + b"\n\ndata: [DONE]\n\n"
         )
 
