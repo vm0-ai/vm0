@@ -364,6 +364,11 @@ const API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES = [
   "api_dispatch_connector_catalog_materialize_runtime_snapshot",
   "api_dispatch_connector_catalog_materialize_server_firewalls",
 ] as const;
+const API_DISPATCH_CONNECTOR_CATALOG_PROJECTION_ROW_ACTION_TYPES = [
+  "api_dispatch_connector_catalog_query_projection_rows",
+  "api_dispatch_connector_catalog_fetch_projection_rows",
+  "api_dispatch_connector_catalog_validate_projection_rows",
+] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES = [
   "api_dispatch_connector_catalog_validate_schema",
   "api_dispatch_connector_catalog_validate_public_projection",
@@ -371,6 +376,7 @@ const API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES = [
   ...API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+  ...API_DISPATCH_CONNECTOR_CATALOG_PROJECTION_ROW_ACTION_TYPES,
   ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
 ] as const;
 const CONNECTOR_CATALOG_COUNT_BUCKETS = [
@@ -977,6 +983,23 @@ function expectNoApiDispatchActions(
   const observedActionTypes = apiDispatchActionTypes(events);
   for (const actionType of unexpectedActionTypes) {
     expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function expectProjectionRowReadActionCounts(
+  events: readonly Record<string, unknown>[],
+  expectedCount: number,
+): void {
+  for (const actionType of API_DISPATCH_CONNECTOR_CATALOG_PROJECTION_ROW_ACTION_TYPES) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(expectedCount);
+    for (const event of matchingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({ span_kind: "nested" }),
+      );
+    }
   }
 }
 
@@ -2435,9 +2458,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "omit a compatibility-filtered connector method",
       ["x"],
     );
+    const filteredEvents = apiDispatchTimingEventsForRun(filteredRun.runId);
+    expectProjectionRowReadActionCounts(filteredEvents, 1);
     expect(
       singleApiDispatchEvent(
-        apiDispatchTimingEventsForRun(filteredRun.runId),
+        filteredEvents,
         "api_dispatch_connector_catalog_load_runtime_snapshot",
       ),
     ).toStrictEqual(
@@ -2542,9 +2567,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "api_dispatch_connector_catalog_load_runtime_snapshot",
       "api_dispatch_connector_catalog_query_projection_identity",
       "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_fetch_projection_rows",
+      "api_dispatch_connector_catalog_validate_projection_rows",
       "api_dispatch_connector_catalog_count_projection_rows",
       "api_dispatch_connector_catalog_materialize_projection",
     ]);
+    expectProjectionRowReadActionCounts(missEvents, 2);
     for (const events of concurrentEvents) {
       expectNoApiDispatchActions(events, [
         "api_dispatch_connector_catalog_query_identity",
@@ -2567,6 +2595,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(missLoad).not.toHaveProperty(
       "connector_catalog_accepted_cache_outcome",
     );
+    expectApiDispatchTimingEventsNotToLeak(missEvents, [
+      "runtime-projection-unknown",
+      "x-projection-access",
+      "x-projection-refresh",
+    ]);
     const coldRun = concurrentRuns[missIndex];
     if (coldRun === undefined) {
       throw new Error("Expected the cold runtime projection run");
@@ -2593,11 +2626,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
     expectNoApiDispatchActions(repeatedEvents, [
       "api_dispatch_connector_catalog_query_projection_rows",
+      "api_dispatch_connector_catalog_fetch_projection_rows",
+      "api_dispatch_connector_catalog_validate_projection_rows",
       "api_dispatch_connector_catalog_count_projection_rows",
       "api_dispatch_connector_catalog_materialize_projection",
       "api_dispatch_connector_catalog_query_identity",
       ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
     ]);
+    expectProjectionRowReadActionCounts(repeatedEvents, 0);
     expect(
       singleApiDispatchEvent(
         repeatedEvents,
@@ -2638,9 +2674,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const fallbackRun = await createProjectedRun(
       "incomplete runtime projection",
     );
+    const fallbackEvents = apiDispatchTimingEventsForRun(fallbackRun.runId);
+    expectProjectionRowReadActionCounts(fallbackEvents, 1);
     expect(
       singleApiDispatchEvent(
-        apiDispatchTimingEventsForRun(fallbackRun.runId),
+        fallbackEvents,
         "api_dispatch_connector_catalog_load_runtime_snapshot",
       ),
     ).toStrictEqual(
@@ -2660,9 +2698,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const repairedRun = await createProjectedRun(
       "reconciled runtime projection",
     );
+    const repairedEvents = apiDispatchTimingEventsForRun(repairedRun.runId);
+    expectProjectionRowReadActionCounts(repairedEvents, 1);
     expect(
       singleApiDispatchEvent(
-        apiDispatchTimingEventsForRun(repairedRun.runId),
+        repairedEvents,
         "api_dispatch_connector_catalog_load_runtime_snapshot",
       ),
     ).toStrictEqual(
@@ -2704,9 +2744,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     });
     clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectProjectionRowReadActionCounts(timingEvents, 2);
     expect(
       singleApiDispatchEvent(
-        apiDispatchTimingEventsForRun(run.runId),
+        timingEvents,
         "api_dispatch_connector_catalog_load_runtime_snapshot",
       ),
     ).toStrictEqual(

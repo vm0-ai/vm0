@@ -80,7 +80,13 @@ type ConnectorCatalogRuntimeProjectionIdentityRead =
       >;
     };
 
-type ConnectorCatalogRuntimeProjectionRowsRead =
+interface ConnectorCatalogRuntimeProjectionRow {
+  readonly connectorSlug: ConnectorSlug;
+  readonly connectorDigest: string;
+  readonly connector: unknown;
+}
+
+export type ConnectorCatalogRuntimeProjectionRowsRead =
   | {
       readonly kind: "ready";
       readonly connectors: readonly ConnectorCatalogArtifactConnector[];
@@ -397,16 +403,15 @@ function projectionIdentityWhere(
   );
 }
 
-export async function readConnectorCatalogRuntimeProjectionRows(args: {
+export async function queryConnectorCatalogRuntimeProjectionRows(args: {
   readonly db: ReadonlyDb;
   readonly projection: ConnectorCatalogRuntimeProjectionReadyIdentity;
   readonly connectorSlugs: readonly ConnectorSlug[];
-}): Promise<ConnectorCatalogRuntimeProjectionRowsRead> {
+}): Promise<readonly ConnectorCatalogRuntimeProjectionRow[]> {
   if (args.connectorSlugs.length === 0) {
-    return { kind: "ready", connectors: [], missingConnectorSlugs: [] };
+    return [];
   }
-  const connectorSlugs = [...new Set(args.connectorSlugs)];
-  const rows = await args.db
+  return await args.db
     .select({
       connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
       connectorDigest: connectorCatalogRuntimeProjections.connectorDigest,
@@ -417,18 +422,24 @@ export async function readConnectorCatalogRuntimeProjectionRows(args: {
       and(
         projectionIdentityWhere(args.projection.identity),
         inArray(connectorCatalogRuntimeProjections.connectorSlug, [
-          ...connectorSlugs,
+          ...args.connectorSlugs,
         ]),
       ),
     );
+}
+
+export function validateConnectorCatalogRuntimeProjectionRows(args: {
+  readonly rows: readonly ConnectorCatalogRuntimeProjectionRow[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
+}): ConnectorCatalogRuntimeProjectionRowsRead {
   const rowBySlug = new Map(
-    rows.map((row) => {
+    args.rows.map((row) => {
       return [row.connectorSlug, row] as const;
     }),
   );
   const connectors: ConnectorCatalogArtifactConnector[] = [];
   const missingConnectorSlugs: ConnectorSlug[] = [];
-  for (const connectorSlug of connectorSlugs) {
+  for (const connectorSlug of args.connectorSlugs) {
     const row = rowBySlug.get(connectorSlug);
     if (row === undefined) {
       missingConnectorSlugs.push(connectorSlug);

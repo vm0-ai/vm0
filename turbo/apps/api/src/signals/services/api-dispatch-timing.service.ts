@@ -241,6 +241,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_connector_catalog_load_runtime_snapshot"
   | "api_dispatch_connector_catalog_query_projection_identity"
   | "api_dispatch_connector_catalog_query_projection_rows"
+  | "api_dispatch_connector_catalog_fetch_projection_rows"
+  | "api_dispatch_connector_catalog_validate_projection_rows"
   | "api_dispatch_connector_catalog_count_projection_rows"
   | "api_dispatch_connector_catalog_materialize_projection"
   | "api_dispatch_connector_catalog_query_identity"
