@@ -256,7 +256,7 @@ class TestOpenAIChatCompletionsUsage:
             b"data: "
             + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
             + b"\n\n"
-            + delta * 256
+            + delta * 2_560
             + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
         )
         final_payload = {
