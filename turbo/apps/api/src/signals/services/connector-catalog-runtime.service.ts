@@ -47,11 +47,13 @@ import type { ConnectorFeatureStates } from "./connector-catalog-feature-states"
 import { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import {
   countConnectorCatalogRuntimeProjectionRows,
+  queryConnectorCatalogRuntimeProjectionRows,
   readConnectorCatalogRuntimeProjectionIdentity,
-  readConnectorCatalogRuntimeProjectionRows,
+  validateConnectorCatalogRuntimeProjectionRows,
   type ConnectorCatalogRuntimeProjectionFallbackReason,
   type ConnectorCatalogRuntimeProjectionIdentity,
   type ConnectorCatalogRuntimeProjectionReadyIdentity,
+  type ConnectorCatalogRuntimeProjectionRowsRead,
 } from "./connector-catalog-runtime-projection.service";
 import {
   createAcceptedConnectorServerFirewallCatalog,
@@ -898,6 +900,42 @@ function materializeProjectedRuntimeSelection(args: {
   return selection;
 }
 
+async function readProjectedRuntimeRows(args: {
+  readonly db: ReadonlyDb;
+  readonly timing: ConnectorCatalogLoadTiming;
+  readonly projection: ConnectorCatalogRuntimeProjectionReadyIdentity;
+  readonly connectorSlugs: readonly ConnectorSlug[];
+}): Promise<ConnectorCatalogRuntimeProjectionRowsRead> {
+  if (args.connectorSlugs.length === 0) {
+    return { kind: "ready", connectors: [], missingConnectorSlugs: [] };
+  }
+  return await args.timing.measure(
+    "api_dispatch_connector_catalog_query_projection_rows",
+    async () => {
+      const connectorSlugs = [...new Set(args.connectorSlugs)];
+      const rows = await args.timing.measure(
+        "api_dispatch_connector_catalog_fetch_projection_rows",
+        async () => {
+          return await queryConnectorCatalogRuntimeProjectionRows({
+            db: args.db,
+            projection: args.projection,
+            connectorSlugs,
+          });
+        },
+      );
+      return args.timing.measureSync(
+        "api_dispatch_connector_catalog_validate_projection_rows",
+        () => {
+          return validateConnectorCatalogRuntimeProjectionRows({
+            rows,
+            connectorSlugs,
+          });
+        },
+      );
+    },
+  );
+}
+
 async function buildProjectedRuntimeSelection(args: {
   readonly db: ReadonlyDb;
   readonly timing: ConnectorCatalogLoadTiming;
@@ -913,16 +951,12 @@ async function buildProjectedRuntimeSelection(args: {
       runtimeConnectorSlugs: args.runtimeConnectorSlugs,
       metadataConnectorSlugs: args.metadataConnectorSlugs,
     });
-    const rows = await args.timing.measure(
-      "api_dispatch_connector_catalog_query_projection_rows",
-      async () => {
-        return await readConnectorCatalogRuntimeProjectionRows({
-          db: args.db,
-          projection,
-          connectorSlugs: selectedConnectorSlugs,
-        });
-      },
-    );
+    const rows = await readProjectedRuntimeRows({
+      db: args.db,
+      timing: args.timing,
+      projection,
+      connectorSlugs: selectedConnectorSlugs,
+    });
     if (rows.kind === "fallback") {
       return await completeRuntimeSelectionBuildFallback({
         ...args,
@@ -956,16 +990,12 @@ async function buildProjectedRuntimeSelection(args: {
     );
     const confirmedRows =
       actualConnectorCount === projection.identity.connectorCount
-        ? await args.timing.measure(
-            "api_dispatch_connector_catalog_query_projection_rows",
-            async () => {
-              return await readConnectorCatalogRuntimeProjectionRows({
-                db: args.db,
-                projection,
-                connectorSlugs: rows.missingConnectorSlugs,
-              });
-            },
-          )
+        ? await readProjectedRuntimeRows({
+            db: args.db,
+            timing: args.timing,
+            projection,
+            connectorSlugs: rows.missingConnectorSlugs,
+          })
         : undefined;
     const latest = await args.timing.measure(
       "api_dispatch_connector_catalog_query_projection_identity",
