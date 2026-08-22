@@ -4,6 +4,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -806,7 +807,7 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
         pytest.param(
             (
                 (
-                    True,
+                    "client",
                     b'{"type":"future.request","input":"failure-sensitive-marker"}',
                 ),
             ),
@@ -815,33 +816,33 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
             ),
             "overlapping_websocket_requests",
             id="overlapping-pending-requests",
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"active"}}',
                 ),
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
             ),
             "overlapping_websocket_requests",
             id="overlapping-active-request",
         ),
         pytest.param(
-            ((False, b"not-json-failure-sensitive-marker"),),
+            (("server", b"not-json-failure-sensitive-marker"),),
             "invalid_server_event",
             id="invalid-server-json",
         ),
         pytest.param(
             (
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"orphan"}}',
                 ),
             ),
@@ -850,21 +851,21 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
-                (False, b'{"type":"response.created","response":{}}'),
+                ("client", b'{"type":"response.create"}'),
+                ("server", b'{"type":"response.created","response":{}}'),
             ),
             "invalid_websocket_lifecycle",
             id="created-without-response-id",
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"first"}}',
                 ),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"duplicate"}}',
                 ),
             ),
@@ -873,13 +874,13 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"expected"}}',
                 ),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.failed","response":{"id":"mismatched"}}',
                 ),
             ),
@@ -888,12 +889,12 @@ def test_websocket_shutdown_does_not_report_unfinished_request(
         ),
         pytest.param(
             (
-                (True, b'{"type":"response.create"}'),
+                ("client", b'{"type":"response.create"}'),
                 (
-                    False,
+                    "server",
                     b'{"type":"response.created","response":{"id":"expected"}}',
                 ),
-                (False, b'{"type":"response.failed","response":{}}'),
+                ("server", b'{"type":"response.failed","response":{}}'),
             ),
             "invalid_websocket_lifecycle",
             id="terminal-without-response-id",
@@ -905,7 +906,7 @@ def test_websocket_ambiguous_lifecycle_is_suppressed_once(
     real_flow,
     mitm_ctx,
     monkeypatch: pytest.MonkeyPatch,
-    events: tuple[tuple[bool, bytes], ...],
+    events: tuple[tuple[Literal["client", "server"], bytes], ...],
     reason: str,
     model_provider_failure_api,
 ):
@@ -916,8 +917,8 @@ def test_websocket_ambiguous_lifecycle_is_suppressed_once(
 
     with mitm_ctx():
         mitm_addon.response(flow)
-        for from_client, body in events:
-            if from_client:
+        for sender, body in events:
+            if sender == "client":
                 feed_websocket_client_message(flow, body)
             else:
                 feed_websocket_server_message(flow, body)
