@@ -598,6 +598,8 @@
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
+      "deleteImportedTemplateDescription": "このテンプレートにアクセスできるすべてのユーザーから削除されます。この操作は元に戻せません。",
+      "deleteImportedTemplateTitle": "{{title}}を削除しますか？",
       "filters": {
         "age": "年齢",
         "all": "すべて",
@@ -632,6 +634,7 @@
       "previousHtmlPreview": "{{title}} 前の HTML プレビュー",
       "previousSlide": "前のスライドをプレビューする",
       "recommended": "おすすめ",
+      "renameImportedTemplate": "テンプレート名を変更",
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",

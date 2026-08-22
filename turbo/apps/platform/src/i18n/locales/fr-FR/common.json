@@ -615,6 +615,8 @@
       "categories": "Catégories de modèles",
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
+      "deleteImportedTemplateDescription": "Cela supprime le modèle pour toutes les personnes qui y ont accès. Cette action est irréversible.",
+      "deleteImportedTemplateTitle": "Supprimer {{title}} ?",
       "filters": {
         "age": "Âge",
         "all": "Tous",
@@ -650,6 +652,7 @@
       "previousHtmlPreview": "Aperçu HTML précédent de {{title}}",
       "previousSlide": "Aperçu de la diapositive précédente",
       "recommended": "Recommandé",
+      "renameImportedTemplate": "Renommer le modèle",
       "searchConnector": "Rechercher des modèles",
       "searchConnectors": "Rechercher des modèles",
       "selected": "Modèle : {{title}}",

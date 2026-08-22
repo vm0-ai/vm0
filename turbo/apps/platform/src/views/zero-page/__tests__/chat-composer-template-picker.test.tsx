@@ -3357,8 +3357,15 @@ describe("chat composer templates", () => {
       expect(composerInlineTemplates()).toHaveLength(0);
     });
   });
-  it("lists the decks this user already imported ahead of the built-in templates", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
+  it("lists uploaded decks ahead of built-ins and uses one in the next message", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedTemplate = sentInlineTemplate(body.userMessage);
+      },
+    });
     setMockPresentationTemplates([
       {
         id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
@@ -3366,6 +3373,12 @@ describe("chat composer templates", () => {
         sourceFilename: "brand-system.pptx",
         coverUrl: "https://example.com/imported-cover.png",
         pageCount: 18,
+        visibility: "public",
+        canManage: false,
+        pageUrls: [
+          "https://example.com/imported-cover.png",
+          "https://example.com/imported-page-2.png",
+        ],
         createdAt: "2026-08-21T02:41:59.522Z",
         updatedAt: "2026-08-21T02:41:59.522Z",
       },
@@ -3409,9 +3422,143 @@ describe("chat composer templates", () => {
     expect(tiles.indexOf(card)).toBe(1);
     expect(tiles[0]).toHaveAttribute("data-presentation-template-import");
 
-    // Selection stays with the built-in templates until the API can resolve a
-    // private template id for a run (#26238), so the card offers no `Use`.
-    expect(queryAllByRoleFast("button", card)).toHaveLength(0);
+    const useButton = queryAllByRoleFast("button", card).find((candidate) => {
+      return candidate.textContent?.trim() === "Use";
+    });
+    if (!useButton) {
+      throw new Error("Imported template Use button not found");
+    }
+    await user.click(useButton);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await expectInlineTemplateInComposer("Brand system");
+
+    await appendAndSend(user, "Use this brand system");
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "presentation",
+        selection: {
+          templateId: "user-template:8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
+          previewUrl: "https://example.com/imported-cover.png",
+        },
+      });
+    });
+  });
+
+  it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
+    setMockPresentationTemplates([
+      {
+        id: templateId,
+        title: "Brand system",
+        sourceFilename: "brand-system.pptx",
+        coverUrl: "https://example.com/imported-cover.png",
+        pageCount: 3,
+        visibility: "private",
+        canManage: true,
+        pageUrls: [
+          "https://example.com/imported-cover.png",
+          "https://example.com/imported-page-2.png",
+          "https://example.com/imported-page-3.png",
+        ],
+        createdAt: "2026-08-21T02:41:59.522Z",
+        updatedAt: "2026-08-21T02:41:59.522Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    const previewButton = await screen.findByLabelText(
+      "Preview Brand system at current slide",
+    );
+    const preview = previewButton.parentElement;
+    if (!preview) {
+      throw new Error("Imported template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+    fireEvent.mouseEnter(preview);
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+    await waitFor(() => {
+      expect(within(preview).getByRole("img")).toHaveAttribute(
+        "src",
+        "https://example.com/imported-page-2.png",
+      );
+    });
+
+    click(previewButton);
+    const detailImage = await screen.findByTestId(
+      "Brand system imported detail image preview",
+    );
+    expect(detailImage).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-2.png",
+    );
+    await user.click(screen.getByLabelText("Preview slide 3"));
+    expect(detailImage).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-3.png",
+    );
+    expect(screen.queryByText("Theme")).not.toBeInTheDocument();
+
+    const titleInput = screen.getByRole("textbox", {
+      name: "Rename template",
+    });
+    await fill(titleInput, "Brand refresh");
+    const renameButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.trim() === "Rename template";
+    });
+    if (!renameButton) {
+      throw new Error("Imported template Rename button not found");
+    }
+    await user.click(renameButton);
+    await expect(
+      screen.findByTestId("Brand refresh imported detail image preview"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
+    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Visibility" }),
+      ).toHaveTextContent("Workspace");
+    });
+
+    const initialDeleteButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return candidate.textContent?.trim() === "Delete";
+      },
+    );
+    if (!initialDeleteButton) {
+      throw new Error("Imported template Delete button not found");
+    }
+    await user.click(initialDeleteButton);
+    await expect(
+      screen.findByText("Delete Brand refresh?"),
+    ).resolves.toBeInTheDocument();
+    const deleteButtons = queryAllByRoleFast("button").filter((candidate) => {
+      return candidate.textContent?.trim() === "Delete";
+    });
+    await user.click(deleteButtons[deleteButtons.length - 1]!);
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          `[data-imported-presentation-template="${templateId}"]`,
+        ),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("imports an uploaded deck as an ordinary chat message", async () => {

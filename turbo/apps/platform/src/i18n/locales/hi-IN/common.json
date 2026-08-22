@@ -598,6 +598,8 @@
       "categories": "टेम्पलेट श्रेणियां",
       "category": "टेम्पलेट श्रेणी",
       "chooseVoice": "{{title}} के लिए आवाज़ चुनें",
+      "deleteImportedTemplateDescription": "यह टेम्पलेट उन सभी लोगों के लिए हटा दिया जाएगा जिनके पास इसकी पहुँच है। यह कार्रवाई पूर्ववत नहीं की जा सकती।",
+      "deleteImportedTemplateTitle": "{{title}} हटाएँ?",
       "filters": {
         "age": "आयु",
         "all": "सभी",
@@ -632,6 +634,7 @@
       "previousHtmlPreview": "{{title}} पिछला HTML पूर्वावलोकन",
       "previousSlide": "पिछली स्लाइड का पूर्वावलोकन करें",
       "recommended": "अनुशंसित",
+      "renameImportedTemplate": "टेम्पलेट का नाम बदलें",
       "searchConnector": "टेम्पलेट खोजें",
       "searchConnectors": "टेम्पलेट खोजें",
       "selected": "टेम्पलेट: {{title}}",

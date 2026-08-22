@@ -7,7 +7,7 @@ import {
 } from "@okouai/core/presentation-template-selection";
 import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -19,7 +19,7 @@ export interface PresentationTemplateVolume {
 }
 
 /**
- * Row ids for the private templates a message selected, in selection order.
+ * Row ids for the uploaded templates a message selected, in selection order.
  *
  * Deduplicated: one row is one package and one mount, so attaching the same
  * template twice must not ask the run to mount it at the same path twice.
@@ -47,18 +47,18 @@ export function selectedUserPresentationTemplateIds(
 }
 
 /**
- * The subset of those ids this caller owns, in selection order.
+ * The subset of those ids this caller may access, in selection order.
  *
- * The row is the authority for its own existence and ownership. An id that
- * does not come back is indistinguishable from someone else's template and
+ * The row is the authority for its own existence and visibility. An id that
+ * does not come back is indistinguishable from an inaccessible template and
  * from a deleted one on purpose, so a caller cannot use the answer to probe
- * which of the three it was.
+ * which case it was.
  */
 export async function authorizedUserPresentationTemplateIds(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
-    readonly ownerUserId: string;
+    readonly userId: string;
     readonly templateIds: readonly string[];
   },
 ): Promise<readonly string[]> {
@@ -72,16 +72,19 @@ export async function authorizedUserPresentationTemplateIds(
       and(
         inArray(presentationTemplates.id, [...args.templateIds]),
         eq(presentationTemplates.orgId, args.orgId),
-        eq(presentationTemplates.ownerUserId, args.ownerUserId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
       ),
     );
-  const owned = new Set(
+  const accessible = new Set(
     rows.map((row) => {
       return row.id;
     }),
   );
   return args.templateIds.filter((templateId) => {
-    return owned.has(templateId);
+    return accessible.has(templateId);
   });
 }
 
@@ -104,7 +107,7 @@ export function userPresentationTemplateVolumes(
 }
 
 /**
- * Shape the optional run-body field, so a run with no private template keeps
+ * Shape the optional run-body field, so a run with no uploaded template keeps
  * the compose-resolved volume list it would otherwise have had.
  */
 export function additionalVolumesForRun(
@@ -116,6 +119,7 @@ export function additionalVolumesForRun(
 export function presentationTemplateSummary(
   row: PresentationTemplateRow,
   coverUrl: string | null,
+  userId: string,
 ): PresentationTemplateSummary {
   return {
     id: row.id,
@@ -123,16 +127,18 @@ export function presentationTemplateSummary(
     sourceFilename: row.sourceFilename,
     coverUrl,
     pageCount: row.pageKeys.length,
+    visibility: row.visibility,
+    canManage: row.ownerUserId === userId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-export async function loadOwnedPresentationTemplate(
+export async function loadAccessiblePresentationTemplate(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
-    readonly ownerUserId: string;
+    readonly userId: string;
     readonly templateId: string;
   },
 ): Promise<PresentationTemplateRow | null> {
@@ -143,16 +149,19 @@ export async function loadOwnedPresentationTemplate(
       and(
         eq(presentationTemplates.id, args.templateId),
         eq(presentationTemplates.orgId, args.orgId),
-        eq(presentationTemplates.ownerUserId, args.ownerUserId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
       ),
     )
     .limit(1);
   return row ?? null;
 }
 
-export async function listOwnedPresentationTemplates(
+export async function listAccessiblePresentationTemplates(
   db: ReadonlyDb,
-  args: { readonly orgId: string; readonly ownerUserId: string },
+  args: { readonly orgId: string; readonly userId: string },
 ): Promise<readonly PresentationTemplateRow[]> {
   return await db
     .select()
@@ -160,8 +169,14 @@ export async function listOwnedPresentationTemplates(
     .where(
       and(
         eq(presentationTemplates.orgId, args.orgId),
-        eq(presentationTemplates.ownerUserId, args.ownerUserId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
       ),
     )
-    .orderBy(desc(presentationTemplates.createdAt));
+    .orderBy(
+      desc(eq(presentationTemplates.ownerUserId, args.userId)),
+      desc(presentationTemplates.createdAt),
+    );
 }

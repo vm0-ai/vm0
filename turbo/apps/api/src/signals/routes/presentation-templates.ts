@@ -15,8 +15,8 @@ import { db$, writeDb$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
-  listOwnedPresentationTemplates,
-  loadOwnedPresentationTemplate,
+  listAccessiblePresentationTemplates,
+  loadAccessiblePresentationTemplate,
   presentationTemplateSummary,
   type PresentationTemplateRow,
 } from "../services/presentation-template-data.service";
@@ -106,9 +106,9 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.kind === "rejected") {
     return result.response;
   }
-  const row = await loadOwnedPresentationTemplate(get(db$), {
+  const row = await loadAccessiblePresentationTemplate(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
     templateId: result.templateId,
   });
   signal.throwIfAborted();
@@ -129,7 +129,7 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : null;
   return {
     status: 200 as const,
-    body: presentationTemplateSummary(row, coverUrl),
+    body: presentationTemplateSummary(row, coverUrl, auth.userId),
   };
 });
 
@@ -138,9 +138,9 @@ const listInner$ = computed(async (get) => {
   if (!(await get(presentationTemplatesEnabled$))) {
     return presentationTemplatesDisabled;
   }
-  const rows = await listOwnedPresentationTemplates(get(db$), {
+  const rows = await listAccessiblePresentationTemplates(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
   });
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const summaries = await Promise.all(
@@ -157,7 +157,7 @@ const listInner$ = computed(async (get) => {
             ),
           )
         : null;
-      return presentationTemplateSummary(row, coverUrl);
+      return presentationTemplateSummary(row, coverUrl, auth.userId);
     }),
   );
   return { status: 200 as const, body: summaries };
@@ -170,9 +170,9 @@ const getInner$ = computed(async (get) => {
     return presentationTemplatesDisabled;
   }
   const params = get(getParams$);
-  const row = await loadOwnedPresentationTemplate(get(db$), {
+  const row = await loadAccessiblePresentationTemplate(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
     templateId: params.templateId,
   });
   if (!row) {
@@ -193,7 +193,7 @@ const getInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      ...presentationTemplateSummary(row, pageUrls[0] ?? null),
+      ...presentationTemplateSummary(row, pageUrls[0] ?? null, auth.userId),
       pageUrls,
     },
   };
@@ -216,6 +216,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .update(presentationTemplates)
     .set({
       title: bodyResult.data.title,
+      visibility: bodyResult.data.visibility,
       updatedAt: nowDate(),
       updatedBy: auth.userId,
     })
@@ -245,7 +246,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : null;
   return {
     status: 200 as const,
-    body: presentationTemplateSummary(row, coverUrl),
+    body: presentationTemplateSummary(row, coverUrl, auth.userId),
   };
 });
 
