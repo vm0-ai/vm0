@@ -227,6 +227,66 @@ def _assert_full_report_capacity(
     assert model_provider_failure_api.request_count == initial_request_count + _REPORT_CAPACITY
 
 
+def _assert_single_reclaimed_report_slot(
+    real_flow,
+    proxy_log_path: Path,
+    model_provider_failure_api,
+    release_target: threading.Event,
+    *,
+    initial_request_count: int,
+    target_outbound_count: int,
+) -> None:
+    release_delivery = threading.Event()
+    try:
+        _queue_blocked_reports(
+            real_flow,
+            proxy_log_path,
+            model_provider_failure_api,
+            release_delivery,
+            count=_REPORT_WORKERS - 1,
+        )
+        assert model_provider_failure_api.wait_for_request_count(
+            initial_request_count + target_outbound_count + _REPORT_WORKERS - 1
+        )
+        _queue_blocked_reports(
+            real_flow,
+            proxy_log_path,
+            model_provider_failure_api,
+            release_delivery,
+            count=_REPORT_CAPACITY - _REPORT_WORKERS,
+        )
+
+        release_target.set()
+        assert model_provider_failure_api.wait_for_request_count(
+            initial_request_count + target_outbound_count + _REPORT_WORKERS
+        )
+
+        _enqueue_provider_unavailable(real_flow, proxy_log_path)
+        overflow_flow = _enqueue_provider_unavailable(real_flow, proxy_log_path)
+
+        assert (
+            model_provider_failure_api.request_count
+            == initial_request_count + target_outbound_count + _REPORT_WORKERS
+        )
+        _assert_single_report_omission(
+            proxy_log_path,
+            flow_id=overflow_flow.id,
+            reason="delivery_saturated",
+        )
+    finally:
+        release_target.set()
+        release_delivery.set()
+        try:
+            model_provider_failure.drain_reports_for_tests()
+        finally:
+            _restart_reporter_after_callbacks(model_provider_failure_api)
+
+    assert (
+        model_provider_failure_api.request_count
+        == initial_request_count + target_outbound_count + _REPORT_CAPACITY
+    )
+
+
 def test_rate_limit_response_reports_normalized_failure(
     tmp_path,
     real_flow,
@@ -280,7 +340,9 @@ def test_report_http_failure_logs_omission_and_reclaims_capacity(
     model_provider_failure_api,
 ):
     proxy_log_path = tmp_path / "http-error.jsonl"
-    model_provider_failure_api.queue_response(404)
+    release_target = threading.Event()
+    initial_request_count = model_provider_failure_api.request_count
+    model_provider_failure_api.queue_response(404, release_event=release_target)
     flow = _make_flow(
         real_flow,
         proxy_log_path,
@@ -291,13 +353,17 @@ def test_report_http_failure_logs_omission_and_reclaims_capacity(
 
     assert flow.response is not None
     assert flow.response.status_code == 503
-    assert _reported_payloads(model_provider_failure_api) == [
-        {"failureKind": "provider_unavailable"}
-    ]
-    _assert_full_report_capacity(
+    assert model_provider_failure_api.wait_for_request_count(initial_request_count + 1)
+    assert model_provider_failure_api.requests[initial_request_count].json_body() == {
+        "failureKind": "provider_unavailable"
+    }
+    _assert_single_reclaimed_report_slot(
         real_flow,
         tmp_path / "http-error-recovery.jsonl",
         model_provider_failure_api,
+        release_target,
+        initial_request_count=initial_request_count,
+        target_outbound_count=1,
     )
     _assert_single_report_omission(
         proxy_log_path,
@@ -314,24 +380,48 @@ def test_report_transport_failure_logs_omission_and_reclaims_capacity(
     model_provider_failure_api,
 ):
     proxy_log_path = tmp_path / "delivery-failed.jsonl"
+    initial_request_count = model_provider_failure_api.request_count
+    target_delivery_started = threading.Event()
+    release_target = threading.Event()
+    original_build_api_opener = platform_api.build_api_opener
+    target_delivery = True
+
+    def build_target_then_real_opener():
+        nonlocal target_delivery
+        if target_delivery:
+            target_delivery = False
+            target_delivery_started.set()
+            release_target.wait()
+            raise ConnectionError("delivery unavailable")
+        return original_build_api_opener()
+
     flow = _make_flow(real_flow, proxy_log_path, response_status=503)
 
     with patch.object(
         platform_api,
         "build_api_opener",
-        side_effect=ConnectionError("delivery unavailable"),
+        side_effect=build_target_then_real_opener,
     ):
-        _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
-        model_provider_failure.drain_reports_for_tests()
+        try:
+            _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+            wait_for_event(
+                target_delivery_started,
+                timeout=1,
+                message="target failure report did not begin delivery",
+            )
+            _assert_single_reclaimed_report_slot(
+                real_flow,
+                tmp_path / "delivery-failed-recovery.jsonl",
+                model_provider_failure_api,
+                release_target,
+                initial_request_count=initial_request_count,
+                target_outbound_count=0,
+            )
+        finally:
+            release_target.set()
 
     assert flow.response is not None
     assert flow.response.status_code == 503
-    assert model_provider_failure_api.request_count == 0
-    _assert_full_report_capacity(
-        real_flow,
-        tmp_path / "delivery-failed-recovery.jsonl",
-        model_provider_failure_api,
-    )
     _assert_single_report_omission(
         proxy_log_path,
         flow_id=flow.id,
