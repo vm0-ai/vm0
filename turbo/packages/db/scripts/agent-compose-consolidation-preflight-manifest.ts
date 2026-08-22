@@ -143,7 +143,7 @@ export const EXPECTED_CATALOG_DEPENDENCIES = {
     "public.enforce_agent_compose_version_write_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=7acddca0ae85d270f257cb5518ff3bda",
     "public.guard_clerk_user_cleanup_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=c801cd71b6f37934943027f281cabc51",
     "public.set_agent_compose_delete_lock_timeout_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=b3f0552e3f7bbb14443665ea8e312427",
-    "public.sync_agent_from_legacy_0966(p_agent_id uuid)|kind=f|result=void|language=plpgsql|volatility=v|security_definer=false|body_md5=cf88a4594612b925b2770563b653ed48",
+    "public.sync_agent_from_legacy_0966(p_agent_id uuid)|kind=f|result=void|language=plpgsql|volatility=v|security_definer=false|body_md5=a7bac490adae541ce04a49c9dadec5dc",
     "public.veto_agent_compose_version_delete_transition()|kind=f|result=trigger|language=plpgsql|volatility=v|security_definer=false|body_md5=186bcd97e887d8c241cfba4c810a47d5",
   ],
   indexes: [

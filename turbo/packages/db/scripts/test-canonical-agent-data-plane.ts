@@ -10,6 +10,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(dirname, "../src/migrations");
 const previousMigration = "0965_contract_legacy_built_in_model_key_relation";
 const migration = "0966_canonical_agents_data_plane";
+const correctionMigration = "0968_repair_canonical_agent_bridge_race";
 const testDatabase = "migration_canonical_agents_data_plane";
 const fixedAgentId = "00000000-0000-4000-8000-000000096600";
 const composeOnlyId = "00000000-0000-4000-8000-0000000966ff";
@@ -333,6 +334,83 @@ function validateMigrationSql(migrationSql: string): void {
   assert.match(
     migrationSql,
     /deleted_snapshot_anchor_null %[\s\S]*v_deleted_snapshot_anchor_null/u,
+  );
+}
+
+function validateCorrectionMigrationSql(migrationSql: string): void {
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
+  assert.doesNotMatch(migrationSql, /\bDISABLE\s+TRIGGER\b/iu);
+  assert.doesNotMatch(migrationSql, /\bsession_replication_role\b/iu);
+  assert.doesNotMatch(migrationSql, /\bDROP\s+(?:TABLE|COLUMN)\b/iu);
+  assert.doesNotMatch(migrationSql, /\bRENAME\s+(?:TABLE|COLUMN)\b/iu);
+  assert.doesNotMatch(migrationSql, /\bCREATE\s+TRIGGER\b/iu);
+  assert.doesNotMatch(
+    migrationSql,
+    /\b(?:UPDATE|DELETE\s+FROM)\s+"(?:agent_composes|zero_agents|agent_sessions|chat_threads|chat_thread_events|chat_event_search_messages)"/iu,
+  );
+  assert.equal(
+    migrationSql.match(
+      /^CREATE OR REPLACE FUNCTION "sync_agent_from_legacy_0966"/gmu,
+    )?.length,
+    1,
+  );
+  const advisoryLockOffset = migrationSql.indexOf("pg_advisory_xact_lock");
+  const firstSourceReadOffset = migrationSql.indexOf(
+    'DELETE FROM "agents" AS "agent"',
+  );
+  assert.ok(advisoryLockOffset > 0);
+  assert.ok(advisoryLockOffset < firstSourceReadOffset);
+  assert.equal(migrationSql.match(/LIMIT 500/gu)?.length, 1);
+  assert.equal(
+    migrationSql.match(/FOR UPDATE OF "compose", "zero_agent" SKIP LOCKED/gu)
+      ?.length,
+    1,
+  );
+  assert.equal(
+    migrationSql.match(/PERFORM "sync_agent_from_legacy_0966"\(v_agent_id\)/gu)
+      ?.length,
+    1,
+  );
+  assert.equal(
+    migrationSql.match(
+      /^CALL "repair_canonical_agents_0968"\(interval '30 seconds'\);$/gmu,
+    )?.length,
+    1,
+  );
+  assert.equal(
+    migrationSql.match(
+      /^DROP PROCEDURE IF EXISTS "repair_canonical_agents_0968"\(interval\);$/gmu,
+    )?.length,
+    1,
+  );
+  assert.match(migrationSql, /SET lock_timeout = '1s'/u);
+  assert.match(migrationSql, /SET LOCAL lock_timeout = '1s'/u);
+  assert.match(migrationSql, /transaction_timeout = '5min'/u);
+  assert.match(migrationSql, /p_no_progress_timeout > interval '30 seconds'/u);
+  assert.match(migrationSql, /Canonical Agent repair made no progress/u);
+  assert.match(
+    migrationSql,
+    /v_compose_only_count_after <> v_compose_only_count_before/u,
+  );
+  assert.match(
+    migrationSql,
+    /v_compose_only_null_after <> v_compose_only_null_before/u,
+  );
+  assert.match(
+    migrationSql,
+    /v_deleted_snapshot_anchor_null_after <>[\s\S]*v_deleted_snapshot_anchor_null_before/u,
+  );
+  assert.match(migrationSql, /v_reference_unclassified_null <> 0/u);
+  assert.match(migrationSql, /v_existing_final_missing <> 0/u);
+  assert.match(
+    migrationSql,
+    /v_bridge_trigger_count <> 14 OR v_bridge_object_count <> 14/u,
+  );
+  assert.match(migrationSql, /v_target_trigger_count <> 0/u);
+  assert.match(
+    migrationSql,
+    /greatest\("compose"\."updated_at", "zero_agent"\."updated_at"\)/u,
   );
 }
 
@@ -1809,6 +1887,346 @@ async function validateConcurrentBridgeBehavior(
   ]);
 }
 
+async function waitForAbsentTargetWriterState(
+  client: Client,
+  backendPid: number,
+  queryIncludes: string,
+): Promise<"blocked" | "completed"> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const activity = await client.query<{
+      query: string;
+      state: string;
+      waitEvent: string | null;
+      waitEventType: string | null;
+    }>(
+      `
+        SELECT "query", "state", "wait_event" AS "waitEvent",
+          "wait_event_type" AS "waitEventType"
+        FROM "pg_stat_activity"
+        WHERE "pid" = $1
+      `,
+      [backendPid],
+    );
+    const state = activity.rows[0];
+    if (!state?.query.includes(queryIncludes)) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 10);
+      });
+      continue;
+    }
+    if (state?.waitEventType === "Lock" && state.waitEvent === "advisory") {
+      return "blocked";
+    }
+    if (state?.state === "idle in transaction") {
+      return "completed";
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+  assert.fail("absent-target writer reached no synchronized backend state");
+}
+
+const absentTargetAgentId = "00000000-0000-4000-8000-0000000966e3";
+
+async function seedAbsentTargetCompose(client: Client): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "agent_composes" (
+        "id", "user_id", "name", "org_id", "created_at", "updated_at"
+      ) VALUES (
+        $1, 'absent-target-owner', 'absent-target-agent',
+        'absent-target-org', timestamp '2026-05-01 00:00:00',
+        timestamp '2026-05-02 00:00:00'
+      )
+    `,
+    [absentTargetAgentId],
+  );
+}
+
+function insertAbsentTargetProduct(client: Client): Promise<unknown> {
+  return client.query(
+    `
+      INSERT INTO "zero_agents" (
+        "id", "org_id", "owner", "name", "visibility", "display_name",
+        "description", "sound", "avatar_url", "model_provider_id",
+        "selected_model", "prefer_personal_provider", "updated_at"
+      ) VALUES (
+        $1, 'absent-target-org', 'absent-target-owner',
+        'absent-target-agent', 'private', 'Absent Target Agent',
+        'absent-target description', 'absent-target-sound',
+        'https://example.test/absent-target.png', NULL,
+        'absent-target-model', true, timestamp '2026-05-01 12:00:00'
+      )
+    `,
+    [absentTargetAgentId],
+  );
+}
+
+async function runAbsentTargetProductFirstRace(
+  observer: Client,
+  testUrl: string,
+): Promise<"blocked" | "completed"> {
+  await seedAbsentTargetCompose(observer);
+
+  const productWriter = await connect(testUrl);
+  const composeWriter = await connect(testUrl);
+  let composeUpdate: Promise<unknown> | undefined;
+  let writerState: "blocked" | "completed" | undefined;
+  try {
+    const backend = await composeWriter.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const backendPid = backend.rows[0]!.pid;
+
+    await productWriter.query("BEGIN");
+    await insertAbsentTargetProduct(productWriter);
+    const published = await productWriter.query<{ updatedAt: string }>(
+      `
+        SELECT to_char("updated_at", 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+        FROM "agents" WHERE "id" = $1
+      `,
+      [absentTargetAgentId],
+    );
+    assert.deepEqual(published.rows, [{ updatedAt: "2026-05-02 00:00:00" }]);
+
+    await composeWriter.query("BEGIN");
+    composeUpdate = composeWriter.query(
+      `
+        UPDATE "agent_composes"
+        SET "updated_at" = timestamp '2026-05-03 00:00:00'
+        WHERE "id" = $1
+      `,
+      [absentTargetAgentId],
+    );
+    writerState = await waitForAbsentTargetWriterState(
+      observer,
+      backendPid,
+      'UPDATE "agent_composes"',
+    );
+
+    await productWriter.query("COMMIT");
+    await composeUpdate;
+    composeUpdate = undefined;
+    await composeWriter.query("COMMIT");
+  } finally {
+    await productWriter.query("ROLLBACK").catch(() => {});
+    await composeUpdate?.catch(() => {});
+    await composeWriter.query("ROLLBACK").catch(() => {});
+    await productWriter.end();
+    await composeWriter.end();
+  }
+
+  assert.ok(writerState);
+  return writerState;
+}
+
+async function runAbsentTargetComposeFirstRace(
+  observer: Client,
+  testUrl: string,
+): Promise<void> {
+  await seedAbsentTargetCompose(observer);
+
+  const composeWriter = await connect(testUrl);
+  const productWriter = await connect(testUrl);
+  let productInsert: Promise<unknown> | undefined;
+  try {
+    const backend = await productWriter.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const backendPid = backend.rows[0]!.pid;
+
+    await composeWriter.query("BEGIN");
+    await composeWriter.query(
+      `
+        UPDATE "agent_composes"
+        SET "updated_at" = timestamp '2026-05-03 00:00:00'
+        WHERE "id" = $1
+      `,
+      [absentTargetAgentId],
+    );
+
+    await productWriter.query("BEGIN");
+    productInsert = insertAbsentTargetProduct(productWriter);
+    const writerState = await waitForAbsentTargetWriterState(
+      observer,
+      backendPid,
+      'INSERT INTO "zero_agents"',
+    );
+    assert.equal(writerState, "blocked");
+
+    await composeWriter.query("COMMIT");
+    await productInsert;
+    productInsert = undefined;
+    await productWriter.query("COMMIT");
+  } finally {
+    await composeWriter.query("ROLLBACK").catch(() => {});
+    await productInsert?.catch(() => {});
+    await productWriter.query("ROLLBACK").catch(() => {});
+    await composeWriter.end();
+    await productWriter.end();
+  }
+}
+
+async function assertAbsentTargetCanonicalRow(
+  observer: Client,
+  updatedAt: string,
+): Promise<void> {
+  const canonical = await observer.query<{
+    avatarUrl: string | null;
+    createdAt: string;
+    description: string | null;
+    displayName: string | null;
+    id: string;
+    modelProviderId: string | null;
+    name: string;
+    orgId: string;
+    owner: string;
+    preferPersonalProvider: boolean;
+    selectedModel: string | null;
+    sound: string | null;
+    updatedAt: string;
+    visibility: string;
+  }>(
+    `
+      SELECT "id"::text AS "id", "org_id" AS "orgId", "owner", "name",
+        "visibility", "display_name" AS "displayName", "description", "sound",
+        "avatar_url" AS "avatarUrl",
+        "model_provider_id"::text AS "modelProviderId",
+        "selected_model" AS "selectedModel",
+        "prefer_personal_provider" AS "preferPersonalProvider",
+        to_char("created_at", 'YYYY-MM-DD HH24:MI:SS') AS "createdAt",
+        to_char("updated_at", 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+      FROM "agents" WHERE "id" = $1
+    `,
+    [absentTargetAgentId],
+  );
+  assert.deepEqual(canonical.rows, [
+    {
+      id: absentTargetAgentId,
+      orgId: "absent-target-org",
+      owner: "absent-target-owner",
+      name: "absent-target-agent",
+      visibility: "private",
+      displayName: "Absent Target Agent",
+      description: "absent-target description",
+      sound: "absent-target-sound",
+      avatarUrl: "https://example.test/absent-target.png",
+      modelProviderId: null,
+      selectedModel: "absent-target-model",
+      preferPersonalProvider: true,
+      createdAt: "2026-05-01 00:00:00",
+      updatedAt,
+    },
+  ]);
+}
+
+async function canonicalSourceTimestampDigest(client: Client): Promise<{
+  composeDigest: string;
+  productDigest: string;
+}> {
+  const result = await client.query<{
+    composeDigest: string;
+    productDigest: string;
+  }>(`
+    SELECT
+      (
+        SELECT md5(string_agg(
+          "id"::text || '|' || "created_at"::text || '|' || "updated_at"::text,
+          ',' ORDER BY "id"
+        ))
+        FROM "agent_composes"
+      ) AS "composeDigest",
+      (
+        SELECT md5(string_agg(
+          "id"::text || '|' || "created_at"::text || '|' || "updated_at"::text,
+          ',' ORDER BY "id"
+        ))
+        FROM "zero_agents"
+      ) AS "productDigest"
+  `);
+  assert.equal(result.rows.length, 1);
+  return result.rows[0]!;
+}
+
+async function canonicalTimestampMismatchCount(
+  client: Client,
+): Promise<number> {
+  const result = await client.query<{ count: number }>(`
+    SELECT count(*)::integer AS "count"
+    FROM "agent_composes" AS "compose"
+    INNER JOIN "zero_agents" AS "zero_agent"
+      ON "zero_agent"."id" = "compose"."id"
+    INNER JOIN "agents" AS "agent"
+      ON "agent"."id" = "compose"."id"
+    WHERE "agent"."updated_at" IS DISTINCT FROM
+      greatest("compose"."updated_at", "zero_agent"."updated_at")
+  `);
+  return result.rows[0]!.count;
+}
+
+async function assertCanonicalRepairContention(args: {
+  readonly blocker: Client;
+  readonly runner: Client;
+  readonly statements: readonly string[];
+}): Promise<void> {
+  const callIndex = args.statements.findIndex((statement) => {
+    return (
+      statement ===
+      `CALL "repair_canonical_agents_0968"(interval '30 seconds');`
+    );
+  });
+  assert.ok(callIndex > 0);
+
+  await executeStatements({
+    client: args.runner,
+    statements: args.statements,
+    endExclusive: callIndex,
+  });
+
+  const sourceDigest = await canonicalSourceTimestampDigest(args.runner);
+  await args.runner.query(
+    `
+      UPDATE "agents"
+      SET "updated_at" = timestamp '2000-01-01 00:00:00'
+      WHERE "id" <> $1
+    `,
+    [absentTargetAgentId],
+  );
+  const initialMismatchCount = await canonicalTimestampMismatchCount(
+    args.runner,
+  );
+  assert.ok(initialMismatchCount > 500);
+
+  await args.blocker.query("BEGIN");
+  await args.blocker.query(
+    `SELECT 1 FROM "zero_agents" WHERE "id" = $1 FOR UPDATE`,
+    [fixedAgentId],
+  );
+  try {
+    await assert.rejects(
+      args.runner.query(
+        `CALL "repair_canonical_agents_0968"(interval '100 milliseconds')`,
+      ),
+      (error: unknown) => {
+        assertDatabaseError(error, {
+          messageIncludes: "Canonical Agent repair made no progress",
+        });
+        return true;
+      },
+    );
+  } finally {
+    await args.blocker.query("ROLLBACK");
+  }
+
+  assert.equal(await canonicalTimestampMismatchCount(args.runner), 1);
+  assert.deepEqual(
+    await canonicalSourceTimestampDigest(args.runner),
+    sourceDigest,
+  );
+  await assertAbsentTargetCanonicalRow(args.runner, "2026-05-03 00:00:00");
+}
+
 async function validateInvalidIndexRecovery(args: {
   readonly client: Client;
   readonly statements: readonly string[];
@@ -1852,6 +2270,12 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
   );
   validateMigrationSql(migrationSql);
   const statements = splitMigrationStatements(migrationSql);
+  const correctionMigrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${correctionMigration}.sql`),
+    "utf8",
+  );
+  validateCorrectionMigrationSql(correctionMigrationSql);
+  const correctionStatements = splitMigrationStatements(correctionMigrationSql);
 
   const admin = await connect(adminUrl);
   await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
@@ -1897,6 +2321,59 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
     await validateBridgeBehavior(runner);
     await validateConcurrentBridgeBehavior(runner, testUrl);
     await validateInvalidIndexRecovery({ client: runner, statements });
+    await validateFinalCatalog(runner, baseline);
+    await validateBackfillAndComposeOnlyClosure(runner);
+    await validateChatSearchStorageAndIndex(runner);
+    await assertChatThreadEventReferenceState(runner);
+    await assertDeletedSnapshotAnchorState(runner);
+    await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
+    assert.equal(
+      await chatEventRejectFunctionDefinition(runner),
+      strictRejectFunctionDefinition,
+    );
+
+    const preCorrectionWriterState = await runAbsentTargetProductFirstRace(
+      runner,
+      testUrl,
+    );
+    assert.equal(preCorrectionWriterState, "completed");
+    await assertAbsentTargetCanonicalRow(runner, "2026-05-02 00:00:00");
+
+    await assertCanonicalRepairContention({
+      blocker,
+      runner,
+      statements: correctionStatements,
+    });
+    await executeStatements({
+      client: runner,
+      statements: correctionStatements,
+    });
+    await executeStatements({
+      client: runner,
+      statements: correctionStatements,
+    });
+
+    await validateBridgeBehavior(runner);
+    await validateConcurrentBridgeBehavior(runner, testUrl);
+    await runner.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      absentTargetAgentId,
+    ]);
+    const postCorrectionWriterState = await runAbsentTargetProductFirstRace(
+      runner,
+      testUrl,
+    );
+    assert.equal(postCorrectionWriterState, "blocked");
+    await assertAbsentTargetCanonicalRow(runner, "2026-05-03 00:00:00");
+
+    await runner.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      absentTargetAgentId,
+    ]);
+    await runAbsentTargetComposeFirstRace(runner, testUrl);
+    await assertAbsentTargetCanonicalRow(runner, "2026-05-03 00:00:00");
+    await runner.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      absentTargetAgentId,
+    ]);
+
     await validateFinalCatalog(runner, baseline);
     await validateBackfillAndComposeOnlyClosure(runner);
     await validateChatSearchStorageAndIndex(runner);

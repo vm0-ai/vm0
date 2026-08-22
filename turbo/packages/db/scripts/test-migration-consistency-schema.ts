@@ -2761,7 +2761,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "cf88a4594612b925b2770563b653ed48",
+    bodyHash: "a7bac490adae541ce04a49c9dadec5dc",
     functionName: "sync_agent_from_legacy_0966",
     identityArguments: "p_agent_id uuid",
     kind: "f",
