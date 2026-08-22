@@ -593,9 +593,13 @@ describe("model-first canonical catalog", () => {
       const catalog = getModelProviderCodexCatalogForModel(
         model,
         upstreamModel,
+        "openrouter-codex",
       );
       expect(catalog?.models).toEqual([
-        expect.objectContaining({ slug: upstreamModel }),
+        expect.objectContaining({
+          slug: upstreamModel,
+          apply_patch_tool_type: null,
+        }),
       ]);
     },
   );

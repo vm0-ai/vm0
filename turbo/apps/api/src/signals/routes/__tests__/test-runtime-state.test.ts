@@ -80,6 +80,100 @@ describe("POST /api/test/runtime-state/action", () => {
     await expect(second.release()).resolves.toBeUndefined();
   });
 
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
+    "disables Codex apply patch for the VM0 %s OpenRouter fallback",
+    async (selectedModel) => {
+      await seedVm0ManagedModelCandidateKeys(context, selectedModel);
+      const startedAt = Date.UTC(2026, 7, 23, 0, 0, 0);
+      const primaryCooldownUntil = new Date(startedAt + 60 * 1000);
+      const primary = await withMockNowForTest(startedAt, async () => {
+        return await resolveVm0ManagedModelRouteFixture(
+          context,
+          selectedModel,
+          true,
+        );
+      });
+      if (!primary) {
+        throw new Error(`Expected a primary route for ${selectedModel}`);
+      }
+      await setVm0ManagedCandidateCooldownFixture(
+        context,
+        selectedModel,
+        primary,
+        primaryCooldownUntil,
+      );
+      const fallback = await withMockNowForTest(startedAt, async () => {
+        return await resolveVm0ManagedModelRouteFixture(
+          context,
+          selectedModel,
+          true,
+        );
+      });
+      if (!fallback || fallback.provider_type !== "openrouter-codex") {
+        throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
+      }
+
+      const actor = bdd.user();
+      if (!actor.orgId) {
+        throw new Error("Expected managed fallback actor to have an org");
+      }
+      bdd.acceptAgentStorageWrites();
+      runs.acceptStorageDownloads();
+      runs.acceptTelemetryIngest();
+      const runnerGroup = runs.configureRunnerGroup();
+      await runs.grantProEntitlement(actor);
+      const agent = await bdd.createAgent(actor, {
+        displayName: `BDD ${selectedModel} fallback catalog agent`,
+      });
+      await runs.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        {
+          [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+        },
+      );
+
+      const sent = await withMockNowForTest(startedAt, async () => {
+        return await chat.requestSendEvent(
+          actor,
+          {
+            agentId: agent.agentId,
+            prompt: `use the ${selectedModel} OpenRouter fallback`,
+            model: selectedModel,
+          },
+          [201],
+        );
+      });
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error(`Expected a ${selectedModel} run`);
+      }
+      const runId = sent.body.runId;
+      await runs.heartbeatRunner(runnerGroup);
+      const claim = await runs.claimRunnerJob(runId);
+      onTestFinished(async () => {
+        await runs.requestCancelRun(actor, runId, [200, 400]);
+      });
+
+      expect(claim.environment?.OPENAI_MODEL).toBe(fallback.upstream_model);
+      expect(claim.codexRuntimeConfig?.providerId).toBe("openrouter-codex");
+      expect(claim.codexRuntimeConfig?.modelCatalog?.models).toStrictEqual([
+        expect.objectContaining({
+          slug: fallback.upstream_model,
+          apply_patch_tool_type: null,
+        }),
+      ]);
+    },
+  );
+
   it("isolates expiry-based cooldowns to exact managed routes", async () => {
     await seedVm0ManagedModelCandidateKeys(context, "claude-fable-5");
     await seedVm0ManagedModelCandidateKeys(context, "gpt-5.6-sol");

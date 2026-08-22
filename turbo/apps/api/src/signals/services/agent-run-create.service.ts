@@ -2289,6 +2289,7 @@ async function vm0ModelProviderEnvironment(
     const modelCatalog = getModelProviderCodexCatalogForModel(
       selectedModel,
       route.upstreamModel,
+      route.providerType,
     );
     if (modelCatalog) {
       const baseUrl = environment.OPENAI_BASE_URL;

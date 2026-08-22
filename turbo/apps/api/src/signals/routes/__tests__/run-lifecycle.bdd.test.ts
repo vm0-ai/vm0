@@ -7576,6 +7576,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       expect(catalogModels).toContainEqual(
         expect.objectContaining({
           slug: selectedModel,
+          apply_patch_tool_type: "freeform",
           default_reasoning_level: "high",
           input_modalities: ["text"],
           base_instructions: expect.stringContaining("You are Codex"),

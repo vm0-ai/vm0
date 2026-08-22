@@ -29,7 +29,6 @@ from mitmproxy.addonmanager import Loader
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
 # http_header_syntax/matching/model_provider_failure/model_websocket_usage/registry/
-# openrouter_deepseek_apply_patch/
 # response_encoding_negotiation/
 # response_streaming/
 # runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_framing/
@@ -66,7 +65,6 @@ import matching
 import mitmproxy_compat
 import model_provider_failure
 import model_websocket_usage
-import openrouter_deepseek_apply_patch
 import platform_api
 import registry
 import request_classification
@@ -925,11 +923,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     if (
         classification.kind == "firewall_allow"
         and request_classification.should_try_firewall_stream_capture_request(classification)
-        and not openrouter_deepseek_apply_patch.requires_buffered_request(
-            flow,
-            firewall_name=classification.firewall_allow.name,
-            vm_info=classification.vm_info,
-        )
     ):
         return _try_firewall_request_stream_from_headers(
             flow,
@@ -1463,7 +1456,6 @@ async def request(flow: http.HTTPFlow) -> None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
             elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
-                openrouter_deepseek_apply_patch.adapt_request(flow)
                 await _prepare_codex_catalog_request_with_upstream_revalidation(
                     flow,
                     allow,

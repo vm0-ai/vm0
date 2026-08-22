@@ -1204,14 +1204,19 @@ export function getModelProviderCodexRuntimeConfig(
 }
 
 /**
- * Project a provider-owned Codex catalog record onto the model ID used at
- * runtime. Returns undefined when no provider has authoritative metadata for
- * the logical model.
+ * Project a provider-owned Codex catalog record onto the model ID and provider
+ * used at runtime. Returns undefined when no provider has authoritative
+ * metadata for the logical model.
  */
 export function getModelProviderCodexCatalogForModel(
   logicalModel: string,
   runtimeModel: string,
+  runtimeProviderType: ModelProviderType,
 ): Record<string, unknown> | undefined {
+  const disableApplyPatch =
+    runtimeProviderType === "openrouter-codex" &&
+    (logicalModel === "deepseek-v4-flash" ||
+      logicalModel === "deepseek-v4-pro");
   for (const type of getProvidersForModel(logicalModel)) {
     const sourceCatalog =
       MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type]?.modelCatalog;
@@ -1232,7 +1237,13 @@ export function getModelProviderCodexCatalogForModel(
     if (sourceCatalog && sourceModel) {
       return {
         ...sourceCatalog,
-        models: [{ ...sourceModel, slug: runtimeModel }],
+        models: [
+          {
+            ...sourceModel,
+            ...(disableApplyPatch ? { apply_patch_tool_type: null } : {}),
+            slug: runtimeModel,
+          },
+        ],
       };
     }
   }
