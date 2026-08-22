@@ -21,7 +21,7 @@ import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
@@ -67,7 +67,7 @@ export const setConnectorsPageTab$ = command(({ get, set }, value: string) => {
 export const customConnectors$ = computed(
   async (get): Promise<CustomConnectorResponse[]> => {
     get(internalReload$);
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorsContract);
     const result = await accept(client.list(), [200]);
     return customConnectorListResponseSchema.parse(result.body).connectors;
@@ -88,7 +88,7 @@ export const customConnectorAgentAuthorizations$ = computed(
     }
 
     const allAgents = await get(agents$);
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     const rows = await Promise.all(
       allAgents.map(async (agent) => {
         const result = await accept(
@@ -140,7 +140,7 @@ export const setCustomConnectorAgentAuthorization$ = command(
     if (args.authorized && args.permissionBundleRef) {
       return false;
     }
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       accept(
         client.update({
@@ -212,7 +212,7 @@ const authorizeCustomConnectorForTarget$ = command(
             return agent.id;
           });
     signal.throwIfAborted();
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       Promise.all(
         agentIds.map(async (agentId) => {
@@ -254,7 +254,7 @@ const isCustomConnectorAuthorizedForTarget$ = command(
     if (args.target.kind === "visible-agents") {
       return false;
     }
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     const result = await accept(
       client.get({
         params: { id: args.target.agentId },
@@ -283,7 +283,7 @@ export const createCustomConnector$ = command(
     body: CreateCustomConnectorBody,
     _signal: AbortSignal,
   ): Promise<CustomConnectorResponse> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorsContract);
     const result = await accept(
       client.create({
@@ -315,7 +315,7 @@ export const updateCustomConnector$ = command(
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorResponse> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorByIdContract);
     const result = await accept(
       client.update({
@@ -342,7 +342,7 @@ export const updateCustomConnector$ = command(
 
 export const deleteCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorByIdContract);
     await accept(
       client.delete({
@@ -370,7 +370,7 @@ const setCustomConnectorValuesForTarget$ = command(
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorValuesContract);
     const result = await accept(
       client.set({
@@ -458,7 +458,7 @@ export const setCustomConnectorValuesForAgent$ = command(
 
 export const disconnectCustomConnector$ = command(
   async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(zeroCustomConnectorConnectionContract);
     await accept(
       client.disconnect({
@@ -498,7 +498,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     let navigated = false;
     await withCleanup(
       (async () => {
-        const createClient = get(zeroClient$);
+        const createClient = get(apiClient$);
         const client = createClient(zeroCustomConnectorOAuth2Contract, {
           apiBase: "api",
         });

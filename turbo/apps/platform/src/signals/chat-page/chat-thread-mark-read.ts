@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { chatThreadMarkReadContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
@@ -19,7 +19,7 @@ export const markChatThreadRead$ = command(
     signal: AbortSignal,
   ): Promise<string | null> => {
     set(recordOptimisticReadMark$, threadId);
-    const client = get(zeroClient$)(chatThreadMarkReadContract);
+    const client = get(apiClient$)(chatThreadMarkReadContract);
     const result = await accept(
       client.markRead({
         params: { id: threadId },

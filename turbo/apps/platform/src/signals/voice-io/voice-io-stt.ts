@@ -7,7 +7,7 @@ import {
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import {
   apiTierToBillingTier,
   billingStatusAsync$,
@@ -91,7 +91,7 @@ export const audioInputAvailable$ = computed(() => {
 export const audioInputQuota$ = computed(
   async (get): Promise<AudioInputQuotaResponse> => {
     get(audioInputQuotaReload$);
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(voiceIoQuotaContract);
     const result = await accept(client.get(), [200]);
     return result.body;

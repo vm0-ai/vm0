@@ -10,7 +10,7 @@ import {
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { now } from "../../../lib/time.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { brandName$, type BrandName } from "../../branding.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { bestEffort, resetSignal, setLoop, tapError } from "../../utils.ts";
@@ -184,7 +184,7 @@ const startCodexDeviceAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(codexDeviceAuthContract, {
+    const client = get(apiClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -201,7 +201,7 @@ const startCodexDeviceAuth$ = command(
 
 const completeCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(codexDeviceAuthContract, {
+    const client = get(apiClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -218,7 +218,7 @@ const completeCodexDeviceAuth$ = command(
 
 const cancelCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(codexDeviceAuthContract, {
+    const client = get(apiClient$)(codexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(

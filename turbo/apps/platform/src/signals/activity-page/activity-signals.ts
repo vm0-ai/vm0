@@ -8,7 +8,7 @@ import type {
 import { delay } from "signal-timers";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { pathParams$ } from "../route.ts";
 import { onRejection, setLoop } from "../utils.ts";
 import type {
@@ -239,7 +239,7 @@ export const setupActivityEvents$ = command(
     }
 
     set(internalActivityEventsState$, { phase: "loading", runId });
-    const client = get(zeroClient$)(runAgentEventsContract);
+    const client = get(apiClient$)(runAgentEventsContract);
     const initial = await onRejection(
       fetchAgentEventBatch(client, runId, {}, signal),
       () => {
@@ -325,7 +325,7 @@ export const zeroActivityDetail$ = computed(async (get) => {
   }
 
   const result = await accept(
-    get(zeroClient$)(logsByIdContract).getById({
+    get(apiClient$)(logsByIdContract).getById({
       params: { id: runId },
     }),
     [200],

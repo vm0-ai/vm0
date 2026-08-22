@@ -5,7 +5,7 @@ import type {
   OrgPendingInvitation,
   OrgMembershipRequest,
 } from "@okouai/api-contracts/contracts/org-members";
-import { zeroClient$ } from "../api-client";
+import { apiClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 
 export type { OrgMember, OrgPendingInvitation, OrgMembershipRequest };
@@ -14,7 +14,7 @@ const orgMembersVersion$ = state(0);
 
 const orgMembersResponse$ = computed(async (get) => {
   get(orgMembersVersion$);
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(orgMembersContract);
   const result = await accept(client.members(), [200]);
   return result.body;

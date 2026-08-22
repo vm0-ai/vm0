@@ -3,7 +3,7 @@ import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
-import { zeroClient$ } from "./api-client.ts";
+import { apiClient$ } from "./api-client.ts";
 
 const AUTHENTICATED_FILE_PATH = "/api/web/download-file";
 
@@ -37,7 +37,7 @@ function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
       throw new Error("Authenticated attachment URL is missing file_id");
     }
     const signal = get(pageSignal$);
-    const client = get(zeroClient$)(webFilesContract);
+    const client = get(apiClient$)(webFilesContract);
     const response = await accept(
       client.fileUrl({
         query: { file_id: fileId },

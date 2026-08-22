@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 
 interface FeishuConnectParams {
@@ -53,7 +53,7 @@ export const connectFeishuAccount$ = command(
       throw new Error("Invalid Feishu connect link");
     }
 
-    const client = get(zeroClient$)(feishuBrowserConnectContract);
+    const client = get(apiClient$)(feishuBrowserConnectContract);
     const result = await accept(
       client.connectFromApp({
         body: params,

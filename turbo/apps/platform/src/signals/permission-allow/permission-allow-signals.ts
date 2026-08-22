@@ -10,7 +10,7 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
 } from "@okouai/connectors/firewall-types";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, currentAgentId$ } from "../agent.ts";
@@ -141,7 +141,7 @@ export function userPermissionGrantsByAgent(
 ): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
-    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
@@ -160,7 +160,7 @@ export function userPermissionGrantsByAgentIfExists(
 ): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
-    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
@@ -216,7 +216,7 @@ export const applyUserPermissionGrants$ = command(
     if (!params.agentId) {
       throw new Error("Permission grant scope is required");
     }
-    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
     const result = await accept(
       client.apply({
         body: {

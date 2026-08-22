@@ -10,7 +10,7 @@ import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
 } from "../../shared-database/chat-event-schema-version.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatEventRowRemote");
@@ -29,7 +29,7 @@ export const listRowsAfter$ = command(
     }: { readonly threadId: string; readonly cursor: ChatEventCursor },
     signal: AbortSignal,
   ): Promise<ChatEventRowsPage> => {
-    const client = get(zeroClient$)(chatThreadEventsContract);
+    const client = get(apiClient$)(chatThreadEventsContract);
     const result = await accept(
       client.rows({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
@@ -83,7 +83,7 @@ export const fetchChatEventSnapshotRows$ = command(
     readonly lastEventId: string;
     readonly lastSeqId: number;
   } | null> => {
-    const client = get(zeroClient$)(chatThreadEventsContract);
+    const client = get(apiClient$)(chatThreadEventsContract);
     const download = await accept(
       client.snapshot({
         headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,

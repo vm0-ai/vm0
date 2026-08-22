@@ -7,7 +7,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import { now } from "../../lib/time.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 import { readStoredAdAttributionMetadata$ } from "./ad-attribution.ts";
@@ -75,7 +75,7 @@ export const recordSignupAttribution$ = command(
       get(signupAttributionRecordedStorage.get$) === attributionFingerprint;
 
     if (!recorded) {
-      const createClient = get(zeroClient$);
+      const createClient = get(apiClient$);
       const client = createClient(acquisitionAttributionContract);
       const result = await accept(
         client.recordSignup({

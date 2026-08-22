@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
-import { zeroClient$ } from "./api-client.ts";
+import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
@@ -99,7 +99,7 @@ const filteredThreadIds$ = computed(
       return new Set();
     }
 
-    const client = get(zeroClient$)(chatThreadsContract);
+    const client = get(apiClient$)(chatThreadsContract);
     const result = await accept(client.unreads({ query: { agentId } }), [200]);
     return new Set(
       result.body.unreads.map((unread) => {

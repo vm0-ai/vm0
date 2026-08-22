@@ -20,7 +20,7 @@ import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -432,7 +432,7 @@ const uploadOrgLogo$ = command(
   ): Promise<{ readonly logoUrl: string | null }> => {
     const formData = new FormData();
     formData.append("file", file);
-    const client = get(zeroClient$)(orgLogoContract);
+    const client = get(apiClient$)(orgLogoContract);
     const result = await accept(
       client.post({
         body: formData,
@@ -447,7 +447,7 @@ const uploadOrgLogo$ = command(
 
 export const loadOrgLogo$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(orgLogoContract);
+    const client = get(apiClient$)(orgLogoContract);
     const result = await accept(
       client.get({
         fetchOptions: { signal },
@@ -480,7 +480,7 @@ export const saveOrgProfile$ = command(
     }
 
     if (hasNameChange) {
-      const client = get(zeroClient$)(orgContract);
+      const client = get(apiClient$)(orgContract);
       await accept(
         client.update({
           body: { name: input.name },
@@ -507,7 +507,7 @@ export const saveOrgProfile$ = command(
 
 export const leaveOrg$ = command(
   async ({ get }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(orgLeaveContract);
+    const client = get(apiClient$)(orgLeaveContract);
     await accept(
       client.leave({
         body: {},
@@ -533,7 +533,7 @@ export const leaveOrg$ = command(
 
 export const deleteOrg$ = command(
   async ({ get }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(orgDeleteContract);
+    const client = get(apiClient$)(orgDeleteContract);
     await accept(
       client.delete({
         body: { confirm: WORKSPACE_DELETE_CONFIRMATION },
@@ -569,7 +569,7 @@ export const inviteMember$ = command(
     usagePackUsd: UsagePackUsd | null,
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgInviteContract);
     if (usagePackUsd !== null) {
       const supportsInAppPreview =
@@ -632,7 +632,7 @@ export const confirmInvitePurchase$ = command(
     if (!preview) {
       throw new Error("Invitation purchase preview is not open");
     }
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgInviteContract);
     const result = await accept(
       client.confirmPurchase({
@@ -678,7 +678,7 @@ export const confirmInvitePurchase$ = command(
 
 export const changeRole$ = command(
   async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgMembersContract);
     await accept(
       client.updateRole({
@@ -707,7 +707,7 @@ export const changeRole$ = command(
 
 export const selfDemote$ = command(
   async ({ get, set }, email: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgMembersContract);
     await accept(
       client.updateRole({
@@ -737,7 +737,7 @@ export const selfDemote$ = command(
 
 export const removeMember$ = command(
   async ({ get, set }, email: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgMembersContract);
     await accept(
       client.removeMember({
@@ -764,7 +764,7 @@ export const removeMember$ = command(
 
 export const revokeInvitation$ = command(
   async ({ get, set }, invitationId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgInviteContract);
     await accept(
       client.revoke({
@@ -786,7 +786,7 @@ export const revokeInvitation$ = command(
 
 export const acceptRequest$ = command(
   async ({ get, set }, requestId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgMembershipRequestsContract);
     await accept(
       client.accept({
@@ -807,7 +807,7 @@ export const acceptRequest$ = command(
 
 export const rejectRequest$ = command(
   async ({ get, set }, requestId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(orgMembershipRequestsContract);
     await accept(
       client.reject({

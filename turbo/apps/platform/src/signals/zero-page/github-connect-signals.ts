@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { parseGithubConnectParams } from "./github-connect-params.ts";
 import { reloadGithubIntegration$ } from "./zero-github.ts";
@@ -22,7 +22,7 @@ export const githubConnectLinkStatus$ = computed(
       return null;
     }
 
-    const client = get(zeroClient$)(integrationsGithubContract, {
+    const client = get(apiClient$)(integrationsGithubContract, {
       apiBase: "api",
     });
     const result = await accept(
@@ -69,7 +69,7 @@ export const connectGithubMentionAccount$ = command(
       return null;
     }
 
-    const client = get(zeroClient$)(integrationsGithubContract, {
+    const client = get(apiClient$)(integrationsGithubContract, {
       apiBase: "api",
     });
     await accept(

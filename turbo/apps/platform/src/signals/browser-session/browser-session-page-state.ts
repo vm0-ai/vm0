@@ -2,7 +2,7 @@ import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-thr
 import { command, computed, state, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import {
   createBrowserSessionSignals,
   type BrowserSessionSignals,
@@ -26,7 +26,7 @@ export function createBrowserSessionPageSignals(
       return true;
     }
     const response = await accept(
-      get(zeroClient$)(chatThreadByIdContract).get({
+      get(apiClient$)(chatThreadByIdContract).get({
         params: { id: threadId },
         fetchOptions: { signal },
       }),

@@ -13,7 +13,7 @@ import type {
 import { accept } from "../../lib/accept.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
@@ -369,7 +369,7 @@ const syncChatThreadEvents$ = command(
     }
     const store = get(chatThreadEventStores$);
     const state = get(chatThreadEventState$);
-    const client = get(zeroClient$)(chatThreadsContract);
+    const client = get(apiClient$)(chatThreadsContract);
     const update = await fetchChatThreadEventUpdate(
       state,
       get(lastEventCursor$),

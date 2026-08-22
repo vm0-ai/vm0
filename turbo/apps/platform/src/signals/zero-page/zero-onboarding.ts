@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { onboardingStatusContract } from "@okouai/api-contracts/contracts/onboarding";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 const internalReload$ = state(0);
@@ -14,7 +14,7 @@ export const reloadOnboardingStatus$ = command(({ set }) => {
 export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
 
-  const client = get(zeroClient$)(onboardingStatusContract);
+  const client = get(apiClient$)(onboardingStatusContract);
   const result = await accept(client.getStatus(), [200]);
   return result.body;
 });

@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/presentation-templates";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateSummary };
@@ -27,7 +27,7 @@ export const ownPresentationTemplates$ = computed(
       return [];
     }
     get(ownPresentationTemplatesVersion$);
-    const client = get(zeroClient$)(presentationTemplatesContract);
+    const client = get(apiClient$)(presentationTemplatesContract);
     const result = await accept(client.list(), [200]);
     return result.body;
   },

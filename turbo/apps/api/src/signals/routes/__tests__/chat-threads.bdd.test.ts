@@ -614,7 +614,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         },
       ],
     });
-    const zeroClient = setupApp({ context, routes: chatThreadRoutes })(
+    const apiClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
     const zeroHeaders = zeroCapabilityHeaders(
@@ -624,7 +624,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
 
     const snapshot = await accept(
-      zeroClient.snapshot({ headers: zeroHeaders }),
+      apiClient.snapshot({ headers: zeroHeaders }),
       [200],
     );
     expect(snapshot.body).toStrictEqual({
@@ -633,7 +633,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: null,
     });
     const events = await accept(
-      zeroClient.events({ headers: zeroHeaders, query: {} }),
+      apiClient.events({ headers: zeroHeaders, query: {} }),
       [200],
     );
     expect(events.body).toStrictEqual({
@@ -642,7 +642,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     const missingCapability = await accept(
-      zeroClient.snapshot({
+      apiClient.snapshot({
         headers: goalHeaders(actor, randomUUID()),
       }),
       [403],

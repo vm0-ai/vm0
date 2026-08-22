@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/computer-use";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$ } from "../route.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 
 const computerUseAuthorizationReload$ = state(0);
 
@@ -22,7 +22,7 @@ export const computerUseAuthorizationRequest$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(computerUseAuthorizationRequestsContract);
+  const client = get(apiClient$)(computerUseAuthorizationRequestsContract);
   const result = await accept(client.get({ params: { requestToken } }), [200]);
   return result.body;
 });
@@ -38,7 +38,7 @@ export const applyComputerUseAuthorizationRequest$ = command(
       throw new Error("Computer Use authorization request token is missing");
     }
 
-    const client = get(zeroClient$)(computerUseAuthorizationRequestsContract);
+    const client = get(apiClient$)(computerUseAuthorizationRequestsContract);
     const result = await accept(
       client.apply({
         params: { requestToken },

@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { agentInstructionsContract } from "@okouai/api-contracts/contracts/agents";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import type { AgentInstructions } from "../agent-types.ts";
 import { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
@@ -24,7 +24,7 @@ export const agentInstructions$ = computed(
     if (!detail) {
       return null;
     }
-    const client = get(zeroClient$)(agentInstructionsContract);
+    const client = get(apiClient$)(agentInstructionsContract);
     const result = await accept(
       client.get({ params: { id: detail.agentId } }),
       [200],
@@ -68,7 +68,7 @@ export const buildAgentInstructions$ = command(
     }
     const edited = raw.trim();
 
-    const client = get(zeroClient$)(agentInstructionsContract);
+    const client = get(apiClient$)(agentInstructionsContract);
     await accept(
       client.update({
         params: { id: detail.agentId },

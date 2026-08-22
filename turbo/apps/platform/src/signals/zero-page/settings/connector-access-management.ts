@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { accept } from "../../../lib/accept.ts";
 import { userPermissionGrantsByAgentIfExists } from "../../permission-allow/permission-allow-signals.ts";
@@ -184,7 +184,7 @@ export const setConnectorAgentAuthorization$ = command(
     params: SetConnectorAgentAuthorizationParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(userConnectorsContract);
+    const client = get(apiClient$)(userConnectorsContract);
     await withCleanup(
       accept(
         client.update({

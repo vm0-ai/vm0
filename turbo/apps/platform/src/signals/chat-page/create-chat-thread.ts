@@ -83,7 +83,7 @@ import {
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
@@ -1736,7 +1736,7 @@ function createArtifacts(threadId: string) {
   const internalArtifactsReload$ = state(0);
   const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
     get(internalArtifactsReload$);
-    const client = get(zeroClient$)(chatThreadArtifactsContract);
+    const client = get(apiClient$)(chatThreadArtifactsContract);
     const result = await accept(client.list({ params: { threadId } }), [200]);
     return result.body.runs;
   });

@@ -3,7 +3,7 @@ import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroClient$ } from "../../api-client.ts";
+import { apiClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
@@ -33,7 +33,7 @@ const seededCustomConnectorGrants$ = computed(
     if (!detail?.agentId) {
       return [];
     }
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     const result = await accept(
       client.get({ params: { id: detail.agentId } }),
       [200],
@@ -150,7 +150,7 @@ const saveAgentCustomConnectors$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       (async () => {
         await accept(

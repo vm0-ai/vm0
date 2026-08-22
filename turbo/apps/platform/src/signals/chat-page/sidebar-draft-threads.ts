@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 
 const internalReloadSidebarDrafts$ = state(0);
 
@@ -24,7 +24,7 @@ export const sidebarDraftThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string>> => {
     get(internalReloadSidebarDrafts$);
 
-    const client = get(zeroClient$)(chatThreadsContract);
+    const client = get(apiClient$)(chatThreadsContract);
     const result = await accept(
       client.drafts({
         query: {},

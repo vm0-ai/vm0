@@ -4,7 +4,7 @@ import {
   integrationsSlackContract,
   type SlackOrgStatus,
 } from "@okouai/api-contracts/contracts/integrations-slack";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -14,7 +14,7 @@ const internalSlackStatus$ = state<SlackOrgStatus | null>(null);
 
 export const slackOrgData$ = computed(async (get) => {
   get(internalReload$);
-  const client = get(zeroClient$)(integrationsSlackContract);
+  const client = get(apiClient$)(integrationsSlackContract);
   const result = await accept(client.getStatus(), [200]);
   return result.body;
 });
@@ -103,7 +103,7 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
 
 export const disconnectSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(integrationsSlackContract);
+    const client = get(apiClient$)(integrationsSlackContract);
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
     set(reloadSlackOrg$);
@@ -112,7 +112,7 @@ export const disconnectSlackOrg$ = command(
 
 export const uninstallSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(integrationsSlackContract);
+    const client = get(apiClient$)(integrationsSlackContract);
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
     set(reloadSlackOrg$);

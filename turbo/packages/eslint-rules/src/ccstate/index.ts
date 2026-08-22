@@ -22,12 +22,12 @@
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
  * - no-direct-session-storage: Disallow direct sessionStorage access — use sessionStorageSignals()
  * - no-detach-in-signals: Disallow detach() in signals/ — use await or signal chain
- * - no-direct-fetch: Disallow direct fetch$ usage — use zeroClient$ instead
+ * - no-direct-fetch: Disallow direct fetch$ usage — use apiClient$ instead
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - no-manual-mock-cleanup: Disallow manual vi.*AllMocks()/unstub cleanup — Vitest config owns it
  * - no-test-after-each: Disallow file-level afterEach cleanup in platform tests
- * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
+ * - require-accept: Enforce that apiClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
  * - no-react-class-component: Disallow React class components — use function components with hooks

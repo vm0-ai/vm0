@@ -2,12 +2,12 @@ import { computed } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { reloadChatIndicatorsCounter$ } from "../chat-thread-list-reload.ts";
 
 const chatThreadIndicators$ = computed(async (get) => {
   get(reloadChatIndicatorsCounter$);
-  const client = get(zeroClient$)(chatThreadsContract);
+  const client = get(apiClient$)(chatThreadsContract);
   const result = await accept(client.indicators(), [200]);
   return result.body;
 });

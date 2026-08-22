@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import type { UpsertModelProviderRequest } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 /**
@@ -15,7 +15,7 @@ const internalReloadOrgModelProviders$ = state(0);
  */
 export const orgModelProviders$ = computed(async (get) => {
   get(internalReloadOrgModelProviders$);
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(modelProvidersMainContract);
   const result = await accept(client.list(), [200]);
   return result.body;
@@ -30,7 +30,7 @@ export const createOrgModelProvider$ = command(
     request: UpsertModelProviderRequest,
     _signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(modelProvidersMainContract);
     const result = await accept(
       client.upsert({
