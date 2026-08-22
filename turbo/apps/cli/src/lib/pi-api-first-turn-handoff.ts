@@ -69,30 +69,70 @@ async function responseBufferWithMaxBytes(args: {
     | "PI_HANDOFF_MANIFEST_INVALID";
   readonly label: string;
 }): Promise<Buffer> {
-  const declaredLength = Number(args.response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > args.maxBytes) {
+  const declaredLengthHeader = args.response.headers.get("content-length");
+  const declaredLength =
+    declaredLengthHeader === null ? undefined : Number(declaredLengthHeader);
+  if (
+    declaredLength !== undefined &&
+    Number.isFinite(declaredLength) &&
+    declaredLength > args.maxBytes
+  ) {
+    startBodyCancellation(args.response.body);
     throw new PiApiFirstTurnHandoffError(
       args.code,
       `${args.label} exceeds its size limit`,
     );
   }
-  let buffer: Buffer;
+  if (!args.response.body) {
+    return Buffer.alloc(0);
+  }
+  const reader = args.response.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
   try {
-    buffer = Buffer.from(await args.response.arrayBuffer());
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return Buffer.concat(chunks, size);
+      }
+      size += value.byteLength;
+      if (size > args.maxBytes) {
+        startReaderCancellation(reader);
+        throw new PiApiFirstTurnHandoffError(
+          args.code,
+          `${args.label} exceeds its size limit`,
+        );
+      }
+      chunks.push(Buffer.from(value));
+    }
   } catch (error) {
+    if (error instanceof PiApiFirstTurnHandoffError) {
+      throw error;
+    }
     throw new PiApiFirstTurnHandoffError(
       args.readErrorCode,
       `${args.label} body could not be read`,
       { cause: error },
     );
   }
-  if (buffer.length > args.maxBytes) {
-    throw new PiApiFirstTurnHandoffError(
-      args.code,
-      `${args.label} exceeds its size limit`,
+}
+
+function startBodyCancellation(body: ReadableStream<Uint8Array> | null): void {
+  if (body) {
+    void body.cancel().then(
+      () => {},
+      () => {},
     );
   }
-  return buffer;
+}
+
+function startReaderCancellation(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): void {
+  void reader.cancel().then(
+    () => {},
+    () => {},
+  );
 }
 
 function manifestTimeout(cause?: unknown): PiApiFirstTurnHandoffError {

@@ -15,7 +15,7 @@ import { computed, type Computed } from "ccstate";
 import { eq } from "drizzle-orm";
 import ignore, { type Ignore } from "ignore";
 
-import { extractFilesFromTarGz } from "../../lib/tar";
+import { extractBinaryFilesFromTarGz } from "../../lib/tar";
 import type { Db } from "../external/db";
 import { startUntrackedBestEffortCleanup } from "../utils";
 
@@ -34,6 +34,12 @@ const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"] as const;
 interface VirtualFile {
   readonly path: string;
   readonly content: string;
+}
+
+type VirtualFiles = ReadonlyMap<string, Buffer>;
+
+function decodePiDiscoveryText(content: Buffer): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(content);
 }
 
 export class UnsupportedPiResourceError extends Error {}
@@ -201,7 +207,7 @@ function mountedPath(mountPath: string, archivePath: string): string | null {
 }
 
 function applyMount(
-  files: Map<string, string>,
+  files: Map<string, Buffer>,
   mount: StoredStorageMountEntry,
   archive: Buffer | null,
 ): void {
@@ -214,11 +220,10 @@ function applyMount(
   if (!archive) {
     return;
   }
-  const extracted = extractFilesFromTarGz(
+  const extracted = extractBinaryFilesFromTarGz(
     archive,
     undefined,
     RESOURCE_ARCHIVE_MAX_OUTPUT_BYTES,
-    { strictUtf8: true },
   );
   if (mount.instructionsTargetFilename) {
     const target = mount.instructionsTargetFilename;
@@ -245,14 +250,14 @@ function applyMount(
 }
 
 function contextFileInDirectory(
-  files: ReadonlyMap<string, string>,
+  files: VirtualFiles,
   directory: string,
 ): VirtualFile | null {
   for (const name of CONTEXT_FILE_NAMES) {
     const path = posix.join(directory, name);
     const content = files.get(path);
     if (content !== undefined) {
-      return { path, content };
+      return { path, content: decodePiDiscoveryText(content) };
     }
   }
   return null;
@@ -272,7 +277,7 @@ function contextDirectories(cwd: string): string[] {
 }
 
 function discoverAgentsFiles(
-  files: ReadonlyMap<string, string>,
+  files: VirtualFiles,
 ): PiResourceSnapshot["agentsFiles"] {
   const selected: VirtualFile[] = [];
   const global = contextFileInDirectory(files, PI_AGENT_DIR);
@@ -289,7 +294,7 @@ function discoverAgentsFiles(
 }
 
 function directChildren(
-  files: ReadonlyMap<string, string>,
+  files: VirtualFiles,
   directory: string,
 ): { readonly files: string[]; readonly directories: string[] } {
   const fileNames = new Set<string>();
@@ -337,7 +342,7 @@ function prefixedIgnorePattern(line: string, prefix: string): string | null {
 }
 
 function addIgnoreRules(args: {
-  readonly files: ReadonlyMap<string, string>;
+  readonly files: VirtualFiles;
   readonly directory: string;
   readonly rootDirectory: string;
   readonly matcher: Ignore;
@@ -349,7 +354,7 @@ function addIgnoreRules(args: {
     if (content === undefined) {
       continue;
     }
-    const patterns = content
+    const patterns = decodePiDiscoveryText(content)
       .split(/\r?\n/)
       .map((line) => {
         return prefixedIgnorePattern(line, prefix);
@@ -364,7 +369,7 @@ function addIgnoreRules(args: {
 }
 
 function skillFromFile(args: {
-  readonly files: ReadonlyMap<string, string>;
+  readonly files: VirtualFiles;
   readonly filePath: string;
   readonly scope: "user" | "project";
 }): PiResourceSnapshot["skills"][number] | null {
@@ -372,7 +377,7 @@ function skillFromFile(args: {
   if (content === undefined) {
     return null;
   }
-  const frontmatter = parseSkillFrontmatter(content);
+  const frontmatter = parseSkillFrontmatter(decodePiDiscoveryText(content));
   if (!frontmatter.description?.trim()) {
     return null;
   }
@@ -388,7 +393,7 @@ function skillFromFile(args: {
 }
 
 function discoverSkillsInDirectory(args: {
-  readonly files: ReadonlyMap<string, string>;
+  readonly files: VirtualFiles;
   readonly directory: string;
   readonly includeRootFiles: boolean;
   readonly scope: "user" | "project";
@@ -450,9 +455,7 @@ function discoverSkillsInDirectory(args: {
   return [...rootSkills, ...nestedSkills];
 }
 
-function discoverSkills(
-  files: ReadonlyMap<string, string>,
-): PiResourceSnapshot["skills"] {
+function discoverSkills(files: VirtualFiles): PiResourceSnapshot["skills"] {
   const byName = new Map<string, PiResourceSnapshot["skills"][number]>();
   for (const input of [
     { directory: PI_SKILLS_ROOT, scope: "user" as const },
@@ -474,9 +477,7 @@ function discoverSkills(
   return [...byName.values()];
 }
 
-function hasUnsupportedPiResources(
-  files: ReadonlyMap<string, string>,
-): boolean {
+function hasUnsupportedPiResources(files: VirtualFiles): boolean {
   const prefixes = [
     `${PI_AGENT_DIR}/extensions/`,
     `${PI_AGENT_DIR}/prompts/`,
@@ -502,7 +503,7 @@ export function buildPiResourceSnapshot(
   mounts: readonly StoredStorageMountEntry[],
   archives: readonly (Buffer | null)[],
 ): PiResourceSnapshot {
-  const files = new Map<string, string>();
+  const files = new Map<string, Buffer>();
   for (const [index, mount] of mounts.entries()) {
     applyMount(files, mount, archives[index] ?? null);
   }

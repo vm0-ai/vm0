@@ -1135,6 +1135,13 @@
       "when": 1787420410522,
       "tag": "0969_lonely_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 970,
+      "version": "7",
+      "when": 1787431661699,
+      "tag": "0970_wealthy_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

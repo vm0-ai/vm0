@@ -50,7 +50,7 @@ import {
 } from "./billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./billing-restore.service";
 import { publishBillingChangedForOrg } from "./billing-realtime.service";
-import { drainOrgQueueToCapacity$ } from "./run-queue.service";
+import { drainOrgQueueToCapacity$ } from "./agent-run-lifecycle.service";
 import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
   isConcurrencyPriceId,

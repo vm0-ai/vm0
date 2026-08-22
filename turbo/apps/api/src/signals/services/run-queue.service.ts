@@ -34,12 +34,8 @@ import {
   loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { tapError } from "../utils";
 import type { Tx } from "../../lib/db-types";
-import {
-  activatePendingRun$,
-  type PendingRunActivation,
-} from "./agent-run-activation.service";
+import type { PendingRunActivation } from "./agent-run-activation.types";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 import {
   refreshPiApiFirstTurnDeadline,
@@ -449,15 +445,16 @@ async function promoteQueuedCandidateWithSideEffects(
  * `pg_advisory_xact_lock(hashtext(orgId))` and revalidates concurrency and
  * queue ownership before changing state.
  *
- * Returns the number of runs transitioned (0 if queue empty or
- * concurrency full).
+ * Returns the post-commit activation for the one promoted run, or null when
+ * the queue is empty or concurrency is full. The activation owner must finish
+ * runner notification even if its originating request was cancelled.
  */
-export const drainOrgQueue$ = command(
+export const promoteNextQueuedRun$ = command(
   async (
     { set },
     args: { readonly orgId: string },
     signal: AbortSignal,
-  ): Promise<number> => {
+  ): Promise<PendingRunActivation | null> => {
     const writeDb = set(writeDb$);
 
     const queueRows = await loadDrainCandidates(writeDb, args.orgId);
@@ -483,53 +480,15 @@ export const drainOrgQueue$ = command(
         });
       }
       if (result.status === "full") {
-        return 0;
+        return null;
       }
       if (result.status === "skipped") {
         continue;
       }
-      const activationScheduledAt = now();
-      await tapError(
-        set(activatePendingRun$, {
-          activation: result.pendingActivation,
-          activationScheduledAt,
-        }),
-        (error) => {
-          L.error("Failed to activate promoted queued run", {
-            runId: row.runId,
-            orgId: args.orgId,
-            error,
-          });
-        },
-      );
-      if (signal.aborted) {
-        L.debug("Request remained aborted after queued run activation", {
-          runId: row.runId,
-          orgId: args.orgId,
-        });
-      }
-      return 1;
+      return result.pendingActivation;
     }
 
-    return 0;
-  },
-);
-
-export const drainOrgQueueToCapacity$ = command(
-  async (
-    { set },
-    args: { readonly orgId: string },
-    signal: AbortSignal,
-  ): Promise<number> => {
-    let drained = 0;
-    while (true) {
-      const promoted = await set(drainOrgQueue$, args, signal);
-      signal.throwIfAborted();
-      if (promoted === 0) {
-        return drained;
-      }
-      drained += promoted;
-    }
+    return null;
   },
 );
 
@@ -733,12 +692,12 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
   },
 );
 
-export const drainStaleQueues$ = command(
+export const staleQueueOrgIds$ = command(
   async (
     { set },
     orgIds: readonly string[] | null,
     signal: AbortSignal,
-  ): Promise<number> => {
+  ): Promise<readonly string[]> => {
     const writeDb = set(writeDb$);
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
 
@@ -750,7 +709,7 @@ export const drainStaleQueues$ = command(
       );
     signal.throwIfAborted();
 
-    let drained = 0;
+    const staleOrgIds: string[] = [];
     for (const { orgId } of orgsWithQueued) {
       const [activeRow] = await writeDb
         .select({ count: count() })
@@ -771,13 +730,10 @@ export const drainStaleQueues$ = command(
 
       const activeCount = Number(activeRow?.count ?? 0);
       if (activeCount === 0) {
-        L.debug("Draining stale queue", { orgId });
-        await set(drainOrgQueue$, { orgId }, signal);
-        signal.throwIfAborted();
-        drained++;
+        staleOrgIds.push(orgId);
       }
     }
 
-    return drained;
+    return staleOrgIds;
   },
 );

@@ -320,10 +320,8 @@ import {
   type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
 import type { Tx } from "../../lib/db-types";
-import {
-  activatePendingRun$,
-  type PendingRunActivation,
-} from "./agent-run-activation.service";
+import { activatePendingRun$ } from "./agent-run-activation.service";
+import type { PendingRunActivation } from "./agent-run-activation.types";
 import {
   normalizeRunMetadata,
   type RunMetadataValues,

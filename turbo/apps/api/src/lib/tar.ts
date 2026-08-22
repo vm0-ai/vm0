@@ -1,6 +1,5 @@
 import { gunzipSync } from "node:zlib";
-
-const BLOCK_SIZE = 512;
+import { Parser } from "tar";
 
 interface ExtractedTarFile {
   readonly path: string;
@@ -20,41 +19,15 @@ function normalizeTarPath(path: string): string {
   return path.replace(/^\.\//, "");
 }
 
-function readTarString(
-  buffer: Buffer,
-  start: number,
-  end: number,
-  strictUtf8 = false,
-): string {
-  const slice = buffer.subarray(start, end);
-  const nullIndex = slice.indexOf(0);
-  const value = slice.subarray(0, nullIndex !== -1 ? nullIndex : slice.length);
-  return strictUtf8
-    ? new TextDecoder("utf-8", { fatal: true }).decode(value)
-    : value.toString("utf8");
-}
-
-function readTarPath(header: Buffer, strictUtf8: boolean): string {
-  const name = readTarString(header, 0, 100, strictUtf8);
-  const prefix = readTarString(header, 345, 500, strictUtf8);
-  return normalizeTarPath(prefix ? `${prefix}/${name}` : name);
-}
-
-function isRegularFile(typeFlag: string): boolean {
-  return typeFlag === "" || typeFlag === "0";
-}
-
-function extractBinaryFilesFromTarGz(
+export function extractBinaryFilesFromTarGz(
   gzBuffer: Buffer,
   targetPaths?: readonly string[],
   maxOutputBytes?: number,
-  options?: TarExtractionOptions,
 ): readonly ExtractedBinaryTarFile[] {
-  const tarBuffer = gunzipSync(gzBuffer, {
-    ...(maxOutputBytes === undefined
-      ? {}
-      : { maxOutputLength: maxOutputBytes }),
-  });
+  const tarBuffer =
+    maxOutputBytes === undefined
+      ? gunzipSync(gzBuffer)
+      : gunzipSync(gzBuffer, { maxOutputLength: maxOutputBytes });
   const normalizedTargets = targetPaths
     ? new Set(
         targetPaths.map((path) => {
@@ -63,36 +36,33 @@ function extractBinaryFilesFromTarGz(
       )
     : null;
   const files: ExtractedBinaryTarFile[] = [];
-  let offset = 0;
-  while (offset + BLOCK_SIZE <= tarBuffer.length) {
-    const header = tarBuffer.subarray(offset, offset + BLOCK_SIZE);
-
-    if (
-      header.every((b) => {
-        return b === 0;
-      })
-    ) {
-      break;
-    }
-
-    const name = readTarPath(header, options?.strictUtf8 === true);
-    const sizeStr = header.subarray(124, 136).toString("utf8").trim();
-    const size = Number.parseInt(sizeStr, 8) || 0;
-    const typeFlag = readTarString(header, 156, 157);
-
-    offset += BLOCK_SIZE;
-
-    if (
-      isRegularFile(typeFlag) &&
-      (!normalizedTargets || normalizedTargets.has(name))
-    ) {
-      files.push({
-        path: name,
-        content: Buffer.from(tarBuffer.subarray(offset, offset + size)),
+  let parseError: unknown;
+  const parser = new Parser({
+    strict: true,
+    onReadEntry(entry) {
+      const path = normalizeTarPath(entry.path);
+      if (
+        !["File", "OldFile", "ContiguousFile"].includes(entry.type) ||
+        (normalizedTargets !== null && !normalizedTargets.has(path))
+      ) {
+        entry.resume();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      entry.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
       });
-    }
-
-    offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
+      entry.on("end", () => {
+        files.push({ path, content: Buffer.concat(chunks) });
+      });
+    },
+  });
+  parser.on("error", (error) => {
+    parseError = error;
+  });
+  parser.end(tarBuffer);
+  if (parseError !== undefined) {
+    throw parseError;
   }
   return files;
 }
@@ -104,19 +74,16 @@ export function extractFilesFromTarGz(
   options?: TarExtractionOptions,
 ): readonly ExtractedTarFile[] {
   const strictUtf8 = options?.strictUtf8 === true;
-  return extractBinaryFilesFromTarGz(
-    gzBuffer,
-    targetPaths,
-    maxOutputBytes,
-    options,
-  ).map((file) => {
-    return {
-      path: file.path,
-      content: strictUtf8
-        ? new TextDecoder("utf-8", { fatal: true }).decode(file.content)
-        : file.content.toString("utf8"),
-    };
-  });
+  return extractBinaryFilesFromTarGz(gzBuffer, targetPaths, maxOutputBytes).map(
+    (file) => {
+      return {
+        path: file.path,
+        content: strictUtf8
+          ? new TextDecoder("utf-8", { fatal: true }).decode(file.content)
+          : file.content.toString("utf8"),
+      };
+    },
+  );
 }
 
 export function extractFileFromTarGz(

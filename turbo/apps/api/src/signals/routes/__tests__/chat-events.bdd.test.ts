@@ -4309,48 +4309,97 @@ function piResponsesToolSse(args: {
     .join("");
 }
 
+interface PiCheckpointS3Command {
+  readonly constructor?: { readonly name?: string };
+  readonly input?: {
+    readonly Body?: unknown;
+    readonly Bucket?: unknown;
+    readonly Delete?: {
+      readonly Objects?: readonly { readonly Key?: unknown }[];
+    };
+    readonly Key?: unknown;
+  };
+}
+
+function piCheckpointObjectKey(
+  candidate: PiCheckpointS3Command,
+): string | undefined {
+  const bucket = candidate.input?.Bucket;
+  const key = candidate.input?.Key;
+  return typeof bucket === "string" && typeof key === "string"
+    ? `${bucket}/${key}`
+    : undefined;
+}
+
+function mockPiPutObject(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const objectKey = piCheckpointObjectKey(candidate);
+  if (candidate.constructor?.name !== "PutObjectCommand" || !objectKey) {
+    return undefined;
+  }
+  const body = candidate.input?.Body;
+  if (typeof body === "string") {
+    objects.set(objectKey, Buffer.from(body, "utf8"));
+  } else if (body instanceof Uint8Array) {
+    objects.set(objectKey, Buffer.from(body));
+  } else {
+    throw new Error("Expected Pi S3 writes to use string or byte bodies");
+  }
+  return Promise.resolve({});
+}
+
+function mockPiGetObject(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const objectKey = piCheckpointObjectKey(candidate);
+  if (candidate.constructor?.name !== "GetObjectCommand" || !objectKey) {
+    return undefined;
+  }
+  const bytes = objects.get(objectKey);
+  return bytes
+    ? Promise.resolve({
+        ContentLength: bytes.length,
+        Body: (async function* () {
+          yield bytes;
+        })(),
+      })
+    : undefined;
+}
+
+function mockPiDeleteObjects(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const bucket = candidate.input?.Bucket;
+  if (
+    candidate.constructor?.name !== "DeleteObjectsCommand" ||
+    typeof bucket !== "string"
+  ) {
+    return undefined;
+  }
+  for (const object of candidate.input?.Delete?.Objects ?? []) {
+    if (typeof object.Key === "string") {
+      objects.delete(`${bucket}/${object.Key}`);
+    }
+  }
+  return Promise.resolve({});
+}
+
 function mockPiCheckpointObjectStore(): Map<string, Buffer> {
   const objects = new Map<string, Buffer>();
   const fallback = context.mocks.s3.send.getMockImplementation();
   context.mocks.s3.send.mockImplementation((command: unknown) => {
-    const candidate = command as {
-      readonly constructor?: { readonly name?: string };
-      readonly input?: {
-        readonly Body?: unknown;
-        readonly Bucket?: unknown;
-        readonly Key?: unknown;
-      };
-    };
-    const name = candidate.constructor?.name;
-    const bucket = candidate.input?.Bucket;
-    const key = candidate.input?.Key;
-    const objectKey =
-      typeof bucket === "string" && typeof key === "string"
-        ? `${bucket}/${key}`
-        : undefined;
-    if (name === "PutObjectCommand" && objectKey) {
-      const body = candidate.input?.Body;
-      if (typeof body === "string") {
-        objects.set(objectKey, Buffer.from(body, "utf8"));
-      } else if (body instanceof Uint8Array) {
-        objects.set(objectKey, Buffer.from(body));
-      } else {
-        throw new Error("Expected Pi S3 writes to use string or byte bodies");
-      }
-      return Promise.resolve({});
-    }
-    if (name === "GetObjectCommand" && objectKey) {
-      const bytes = objects.get(objectKey);
-      if (bytes) {
-        return Promise.resolve({
-          ContentLength: bytes.length,
-          Body: (async function* () {
-            yield bytes;
-          })(),
-        });
-      }
-    }
-    return fallback?.(command) ?? Promise.resolve({});
+    const candidate = command as PiCheckpointS3Command;
+    return (
+      mockPiPutObject(objects, candidate) ??
+      mockPiGetObject(objects, candidate) ??
+      mockPiDeleteObjects(objects, candidate) ??
+      fallback?.(command) ??
+      Promise.resolve({})
+    );
   });
   return objects;
 }
@@ -4680,8 +4729,14 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(s3GetObjectCommandCalls()).toHaveLength(1);
       const firstManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/manifest.json`;
       const firstSessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/session.jsonl`;
-      const firstSessionBytes = checkpointObjects.get(firstSessionKey);
+      const firstSessionEntry = [...checkpointObjects.entries()].find(
+        ([key]) => {
+          return key.includes("/blobs/");
+        },
+      );
+      const firstSessionBytes = firstSessionEntry?.[1];
       expect(checkpointObjects.has(firstManifestKey)).toBeFalsy();
+      expect(checkpointObjects.has(firstSessionKey)).toBeFalsy();
       expect(firstSessionBytes).toBeDefined();
       const firstSessionHash = createHash("sha256")
         .update(firstSessionBytes ?? Buffer.alloc(0))
@@ -4891,7 +4946,9 @@ describe("CHAT-02: model-first provider policies", () => {
       first.threadId,
     );
     const firstSessionBytes = checkpointObjects.get(
-      `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/session.jsonl`,
+      [...checkpointObjects.keys()].find((key) => {
+        return key.includes("/blobs/");
+      }) ?? "missing-canonical-pi-blob",
     );
     if (!firstSessionBytes) {
       throw new Error("Expected the first Pi run to persist native H1");
@@ -5117,7 +5174,14 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
+    expect(checkpointObjects.has(manifestKey)).toBeFalsy();
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+      ),
+    ).toBeFalsy();
 
     const failedHandoff = await sendChatRun(actor, {
       agentId,
@@ -5171,7 +5235,9 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     await waitForRunStatus(actor, failedHandoff.runId, "failed");
+    await flushWaitUntilForTest();
     expect(modelCalls).toBe(2);
+    expect(checkpointObjects.has(failedManifestKey)).toBeFalsy();
 
     const retry = await sendChatRun(actor, {
       agentId,

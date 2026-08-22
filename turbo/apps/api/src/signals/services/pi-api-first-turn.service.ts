@@ -36,7 +36,8 @@ import {
 } from "../external/s3";
 import {
   completeAgentRun$,
-  dispatchCompleteSideEffects$,
+  type CompleteSideEffectsInput,
+  type DispatchCompleteSideEffectsInput,
 } from "./agent-webhook-complete.service";
 import { createAgentCheckpoint$ } from "./agent-webhook-checkpoints.service";
 import { resolveModelProviderRuntimeSecretForApi } from "./agent-webhook-firewall-auth.service";
@@ -928,7 +929,7 @@ async function finalizeCompleteTurn(
   args: ApiFirstTurnDependencies,
   prepared: PreparedApiFirstTurn,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<CompleteSideEffectsInput | undefined> {
   const completion = await args.set(
     completeAgentRun$,
     {
@@ -944,18 +945,7 @@ async function finalizeCompleteTurn(
   if (completion.status !== 200) {
     throw new Error("Pi API first-turn completion was rejected");
   }
-  if (completion.sideEffects) {
-    waitUntil(
-      args.set(
-        dispatchCompleteSideEffects$,
-        {
-          ...completion.sideEffects,
-          apiStartTime: prepared.apiStartTime,
-        },
-        signal,
-      ),
-    );
-  }
+  return completion.sideEffects;
 }
 
 function stopPreparedSandbox(
@@ -984,7 +974,7 @@ async function commitApiFirstTurn(
   args: ApiFirstTurnDependencies,
   prepared: PreparedApiFirstTurn,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<CompleteSideEffectsInput | undefined> {
   await args.get(
     putS3Object(
       env("R2_USER_STORAGES_BUCKET_NAME"),
@@ -1017,18 +1007,19 @@ async function commitApiFirstTurn(
       { get: args.get, runId: args.activation.runId, manifest },
       signal,
     );
-    return;
+    return undefined;
   }
 
   await persistCompleteTurnCheckpoint(args, prepared, signal);
-  await finalizeCompleteTurn(args, prepared, signal);
+  const sideEffects = await finalizeCompleteTurn(args, prepared, signal);
   stopPreparedSandbox(args.activation, "completed");
+  return sideEffects;
 }
 
 async function executeApiFirstTurn(
   args: ApiFirstTurnDependencies,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<CompleteSideEffectsInput | undefined> {
   const prepared = await prepareApiFirstTurn(args, signal);
   const committed = await settle(
     commitApiFirstTurn(args, prepared, signal),
@@ -1044,6 +1035,7 @@ async function executeApiFirstTurn(
       committed.error,
     );
   }
+  return committed.value;
 }
 
 function normalizedApiFirstTurnFailure(
@@ -1067,7 +1059,7 @@ function normalizedApiFirstTurnFailure(
 async function failApiFirstTurn(
   args: ApiFirstTurnDependencies,
   failure: PiApiFirstTurnError,
-): Promise<void> {
+): Promise<CompleteSideEffectsInput | undefined> {
   const failureSignal = AbortSignal.timeout(FAILURE_COMMIT_TIMEOUT_MS);
   const completion = await args.set(
     completeAgentRun$,
@@ -1089,18 +1081,39 @@ async function failApiFirstTurn(
   if (completion.status !== 200) {
     throw new Error("Pi API first-turn failure transition was rejected");
   }
-  if (completion.sideEffects) {
-    waitUntil(
-      args.set(
-        dispatchCompleteSideEffects$,
-        {
-          ...completion.sideEffects,
-          apiStartTime: args.activation.executionContext.apiStartTime,
-        },
-        failureSignal,
-      ),
-    );
+  return completion.sideEffects;
+}
+
+async function runPiApiFirstTurnLifecycle(
+  dependencies: ApiFirstTurnDependencies,
+  signal: AbortSignal,
+): Promise<DispatchCompleteSideEffectsInput | undefined> {
+  const executed = await settleIncludingAbort(
+    executeApiFirstTurn(dependencies, signal),
+  );
+  if (executed.ok) {
+    return executed.value
+      ? {
+          ...executed.value,
+          apiStartTime: dependencies.activation.executionContext.apiStartTime,
+        }
+      : undefined;
   }
+  const activation = dependencies.activation;
+  const failure = normalizedApiFirstTurnFailure(executed.error, signal);
+  L.warn("Pi API first-turn failed", {
+    runId: activation.runId,
+    code: failure.code,
+    error: failure,
+  });
+  const sideEffects = await failApiFirstTurn(dependencies, failure);
+  stopPreparedSandbox(activation, "failed");
+  return sideEffects
+    ? {
+        ...sideEffects,
+        apiStartTime: activation.executionContext.apiStartTime,
+      }
+    : undefined;
 }
 
 export const runPiApiFirstTurn$ = command(
@@ -1108,23 +1121,10 @@ export const runPiApiFirstTurn$ = command(
     { get, set },
     activation: PiApiFirstTurnActivation,
     signal: AbortSignal,
-  ) => {
-    const dependencies = { db: set(writeDb$), get, set, activation };
-    // eslint-disable-next-line api/signal-check-await -- API-slot cancellation is captured and persisted as the run's terminal failure below
-    const executed = await settleIncludingAbort(
-      executeApiFirstTurn(dependencies, signal),
+  ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
+    return await runPiApiFirstTurnLifecycle(
+      { db: set(writeDb$), get, set, activation },
+      signal,
     );
-    if (executed.ok) {
-      return;
-    }
-    const failure = normalizedApiFirstTurnFailure(executed.error, signal);
-    L.warn("Pi API first-turn failed", {
-      runId: activation.runId,
-      code: failure.code,
-      error: failure,
-    });
-    // eslint-disable-next-line api/signal-check-await -- failure commit uses its own bounded signal and must finish after the API-slot signal expires
-    await failApiFirstTurn(dependencies, failure);
-    stopPreparedSandbox(activation, "failed");
   },
 );

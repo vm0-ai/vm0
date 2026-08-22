@@ -37,7 +37,6 @@ import { lockChatQueueThread } from "./chat-event-queue.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
 import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
-import { drainOrgQueue$ } from "./run-queue.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -50,7 +49,7 @@ interface CompleteAgentRunInput {
   readonly allowCheckpointlessSuccess?: boolean;
 }
 
-interface TerminalSideEffectsInput {
+export interface TerminalSideEffectsInput {
   readonly kind: "terminal";
   readonly runId: string;
   readonly orgId: string;
@@ -58,7 +57,7 @@ interface TerminalSideEffectsInput {
   readonly error?: string;
 }
 
-interface CancellationRecoverySideEffectsInput {
+export interface CancellationRecoverySideEffectsInput {
   readonly kind: "cancellation-recovery";
   readonly runId: string;
   readonly userId: string;
@@ -66,7 +65,7 @@ interface CancellationRecoverySideEffectsInput {
   readonly chatEventsAppended: boolean;
 }
 
-interface DeliveryFinalizationSideEffectsInput {
+export interface DeliveryFinalizationSideEffectsInput {
   readonly kind: "delivery-finalization";
   readonly runId: string;
   readonly userId: string;
@@ -74,12 +73,13 @@ interface DeliveryFinalizationSideEffectsInput {
   readonly chatEventsAppended: boolean;
 }
 
-type CompleteSideEffectsInput =
+export type CompleteSideEffectsInput = (
   | TerminalSideEffectsInput
   | CancellationRecoverySideEffectsInput
-  | DeliveryFinalizationSideEffectsInput;
+  | DeliveryFinalizationSideEffectsInput
+) & { readonly cleanupPiApiFirstTurn?: true };
 
-type DispatchCompleteSideEffectsInput = CompleteSideEffectsInput & {
+export type DispatchCompleteSideEffectsInput = CompleteSideEffectsInput & {
   readonly apiStartTime?: number;
 };
 
@@ -105,6 +105,7 @@ interface RunRecord {
   readonly status: RunStatus;
   readonly userId: string;
   readonly chatThreadId: string | null;
+  readonly launchSnapshot: (typeof agentRuns.$inferSelect)["launchSnapshot"];
 }
 
 interface PreparedCompletion {
@@ -183,6 +184,7 @@ async function loadCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
     })
     .from(agentRuns)
     .where(
@@ -253,6 +255,7 @@ async function lockCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
     })
     .from(agentRuns)
     .where(
@@ -424,6 +427,10 @@ function completionResponse(
   commit: CompletionCommit,
 ): CompletionResponse {
   let sideEffects: CompleteSideEffectsInput | undefined;
+  const piCleanup =
+    commit.run.launchSnapshot?.framework === "pi"
+      ? ({ cleanupPiApiFirstTurn: true } as const)
+      : {};
   if (commit.transitioned) {
     sideEffects = {
       kind: "terminal",
@@ -433,6 +440,7 @@ function completionResponse(
       ...(commit.transitionError !== undefined
         ? { error: commit.transitionError }
         : {}),
+      ...piCleanup,
     };
   } else if (
     commit.run.status === "cancelled" &&
@@ -445,6 +453,7 @@ function completionResponse(
       userId: commit.run.userId,
       chatThreadId: commit.run.chatThreadId,
       chatEventsAppended: commit.finalization.chatEventsAppended,
+      ...piCleanup,
     };
   } else if (
     commit.finalization.finalized &&
@@ -456,6 +465,7 @@ function completionResponse(
       userId: commit.run.userId,
       chatThreadId: commit.run.chatThreadId,
       chatEventsAppended: commit.finalization.chatEventsAppended,
+      ...piCleanup,
     };
   }
   return {
@@ -530,18 +540,6 @@ const dispatchTerminalCompleteSideEffects$ = command(
       signal.throwIfAborted();
     }
 
-    await tapError(
-      set(drainOrgQueue$, { orgId: input.orgId }, signal),
-      (error) => {
-        L.error("Failed to drain org queue", {
-          runId: input.runId,
-          orgId: input.orgId,
-          error,
-        });
-      },
-    );
-    signal.throwIfAborted();
-
     await set(processOrgUsageEvents$, input.orgId, signal);
     signal.throwIfAborted();
 
@@ -559,7 +557,7 @@ const dispatchTerminalCompleteSideEffects$ = command(
   },
 );
 
-export const dispatchCompleteSideEffects$ = command(
+export const dispatchCompleteSideEffectsCore$ = command(
   async (
     { set },
     input: DispatchCompleteSideEffectsInput,

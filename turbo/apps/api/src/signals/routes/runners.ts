@@ -81,7 +81,7 @@ import {
 } from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
-import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { extendManagedModelCandidateCooldown } from "../services/built-in-model-runtime-route.service";
 import {

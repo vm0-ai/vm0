@@ -44,6 +44,7 @@ import {
   withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
+import { configurePiApiFirstTurnDispatcher } from "./signals/services/pi-api-first-turn-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
@@ -603,6 +604,7 @@ export function createAppWithRoutes({
   usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
+  configurePiApiFirstTurnDispatcher();
   const app = new Hono();
   app.onError(handleError);
 

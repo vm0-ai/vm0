@@ -24,9 +24,11 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { failPendingInlineOnlyDeliveryCallbacksForDeletedThread } from "./agent-run-callback.service";
-import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
+import {
+  dispatchCompleteSideEffects$,
+  drainOrgQueue$,
+} from "./agent-run-lifecycle.service";
 import { cancelRun$, dispatchCancelSideEffects$ } from "./run-cancel.service";
-import { drainOrgQueue$ } from "./run-queue.service";
 
 const L = logger("ThreadlessRunCleanup");
 

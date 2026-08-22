@@ -2,39 +2,29 @@ import { command } from "ccstate";
 
 import { now } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import {
-  notifyRunnerJob,
-  type RunnerJobPreActivationTiming,
-  type RunnerJobNotification,
-} from "./runner-dispatch.service";
+import { notifyRunnerJob } from "./runner-dispatch.service";
 import { recordSameThreadRunnerJobPersisted } from "./runner-job-queue-lifecycle.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { waitUntil } from "../context/wait-until";
-import type { PiApiFirstTurnActivation } from "./pi-api-first-turn-config";
-
-export interface PendingRunActivation {
-  readonly apiStartTime: number;
-  readonly chatThreadId: string | undefined;
-  readonly runnerNotification: RunnerJobNotification;
-  readonly timing: RunnerJobPreActivationTiming;
-  readonly piApiFirstTurn?: PiApiFirstTurnActivation;
-}
+import type { PendingRunActivation } from "./agent-run-activation.types";
+import { dispatchConfiguredPiApiFirstTurn$ } from "./pi-api-first-turn-dispatch.service";
 
 interface PendingRunActivationRequest {
   readonly activation: PendingRunActivation;
   readonly activationScheduledAt: number;
 }
 
-async function startPiApiFirstTurn(
+function startPiApiFirstTurn(
   set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  activation: PiApiFirstTurnActivation,
+  activation: NonNullable<PendingRunActivation["piApiFirstTurn"]>,
   deadlineAt: number,
-): Promise<void> {
-  const { runPiApiFirstTurn$ } = await import("./pi-api-first-turn.service");
-  await set(
-    runPiApiFirstTurn$,
-    activation,
-    AbortSignal.timeout(Math.max(1, deadlineAt - now())),
+): void {
+  waitUntil(
+    set(
+      dispatchConfiguredPiApiFirstTurn$,
+      activation,
+      AbortSignal.timeout(Math.max(1, deadlineAt - now())),
+    ),
   );
 }
 
@@ -61,7 +51,7 @@ export const activatePendingRun$ = command(
     if (apiFirstTurn) {
       const deadlineAt =
         apiFirstTurn.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
-      waitUntil(startPiApiFirstTurn(set, apiFirstTurn, deadlineAt));
+      startPiApiFirstTurn(set, apiFirstTurn, deadlineAt);
     }
 
     const db = set(writeDb$);

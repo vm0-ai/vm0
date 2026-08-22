@@ -3,9 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type {
-  PiApiFirstTurnConfig,
-  PiApiFirstTurnManifest,
+import {
+  PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+  type PiApiFirstTurnConfig,
+  type PiApiFirstTurnManifest,
 } from "@okouai/api-contracts/contracts/runners";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -278,14 +279,16 @@ describe("Pi API first-turn handoff loader", () => {
   it("fails when the manifest body finishes at the shared deadline", async () => {
     const jsonl = HANDOFF_SESSION_JSONL;
     let now = 1_000;
-    const pointer = Response.json(manifest(jsonl));
-    vi.spyOn(pointer, "arrayBuffer").mockImplementation(async () => {
-      now = 2_000;
-      const encoded = new TextEncoder().encode(JSON.stringify(manifest(jsonl)));
-      const body = new ArrayBuffer(encoded.byteLength);
-      new Uint8Array(body).set(encoded);
-      return body;
-    });
+    const encoded = new TextEncoder().encode(JSON.stringify(manifest(jsonl)));
+    const pointer = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          now = 2_000;
+          controller.enqueue(encoded);
+          controller.close();
+        },
+      }),
+    );
     const fetchMock = vi.fn(async () => {
       return pointer;
     });
@@ -325,8 +328,12 @@ describe("Pi API first-turn handoff loader", () => {
         ? Response.json(manifest(jsonl))
         : new Response(jsonl);
       if (isManifest === fixture.failManifest) {
-        vi.spyOn(response, "arrayBuffer").mockRejectedValue(
-          new Error("body stream failed"),
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.error(new Error("body stream failed"));
+            },
+          }),
         );
       }
       return response;
@@ -340,5 +347,63 @@ describe("Pi API first-turn handoff loader", () => {
         runtime: fixedRuntime(fetchMock as typeof fetch),
       }),
     ).rejects.toMatchObject({ code: fixture.expectedCode });
+  });
+
+  it("stops an oversized manifest stream without Content-Length", async () => {
+    const cancel = vi.fn();
+    let chunk = 0;
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array(chunk++ === 0 ? 16 * 1024 : 1));
+          },
+          cancel,
+        }),
+      );
+    });
+
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000),
+        sessionDir: "/unused",
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetchMock as typeof fetch),
+      }),
+    ).rejects.toMatchObject({ code: "PI_HANDOFF_MANIFEST_INVALID" });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("stops an oversized H1 stream with under-declared Content-Length", async () => {
+    const cancel = vi.fn();
+    let h1Chunk = 0;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (String(input).endsWith("manifest.json")) {
+        return Response.json(manifest(HANDOFF_SESSION_JSONL));
+      }
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(
+              new Uint8Array(
+                h1Chunk++ === 0 ? PI_API_FIRST_TURN_SESSION_MAX_BYTES : 1,
+              ),
+            );
+          },
+          cancel,
+        }),
+        { headers: { "content-length": "1" } },
+      );
+    });
+
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000),
+        sessionDir: "/unused",
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetchMock as typeof fetch),
+      }),
+    ).rejects.toMatchObject({ code: "PI_HANDOFF_H1_TOO_LARGE" });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
