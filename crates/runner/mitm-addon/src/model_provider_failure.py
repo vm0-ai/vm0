@@ -729,9 +729,8 @@ def _failure_kind_from_http_status(status: int, firewall_name: str) -> FailureKi
         _HTTP_STATUS_SITE_OVERLOADED,
     ):
         return "provider_unavailable"
-    if (
-        status == _HTTP_STATUS_INTERNAL_SERVER_ERROR
-        and firewall_name != "model-provider:openrouter"
+    if status == _HTTP_STATUS_INTERNAL_SERVER_ERROR and not firewall_name.startswith(
+        "model-provider:openrouter-"
     ):
         return "provider_unavailable"
     return None
