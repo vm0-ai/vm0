@@ -142,10 +142,12 @@ impl ConnectDeviceOutcome {
             }),
         }
     }
-}
 
-impl Drop for ConnectDeviceOutcome {
-    fn drop(&mut self) {
+    fn cleanup_unobserved_with(
+        &mut self,
+        ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
+        disconnect: impl FnOnce(u32) -> Result<()>,
+    ) {
         let Some(result) = self.result.take() else {
             return;
         };
@@ -165,10 +167,20 @@ impl Drop for ConnectDeviceOutcome {
             device_index = self.device_index,
             "NBD connect result dropped before observation; disconnecting owned device"
         );
-        disconnect_connected_if_owned(ConnectedDevice {
-            index: self.device_index,
-            connection_id,
-        });
+        disconnect_connected_if_owned_with(
+            ConnectedDevice {
+                index: self.device_index,
+                connection_id,
+            },
+            ownership,
+            disconnect,
+        );
+    }
+}
+
+impl Drop for ConnectDeviceOutcome {
+    fn drop(&mut self) {
+        self.cleanup_unobserved_with(device_ownership, netlink::disconnect);
     }
 }
 
@@ -421,6 +433,10 @@ mod tests {
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     const TEST_DEVICE_INDEX: u32 = 0;
+    const MISSING_DEVICE_INDEX: u32 = u32::MAX;
+
+    const CONNECT_RESULT_DROPPED_MESSAGE: &str =
+        "NBD connect result dropped before observation; disconnecting owned device";
 
     fn test_connection_id() -> Uuid {
         Uuid::from_u128(42)
@@ -452,10 +468,10 @@ mod tests {
         let mut matching = entries
             .iter()
             .filter(|event| event.fields.get("message").map(String::as_str) == Some(message));
-        let event = matching.next().expect("expected detached disconnect event");
+        let event = matching.next().expect("expected tracing event");
         assert!(
             matching.next().is_none(),
-            "duplicate detached disconnect events: {entries:#?}"
+            "duplicate tracing events: {entries:#?}"
         );
         event.clone()
     }
@@ -473,11 +489,166 @@ mod tests {
         );
     }
 
+    fn assert_no_event_with_message(captured: &CapturedEvents, message: &str) {
+        let entries = captured.entries();
+        assert!(
+            entries
+                .iter()
+                .all(|event| event.fields.get("message").map(String::as_str) != Some(message)),
+            "unexpected tracing event: {entries:#?}"
+        );
+    }
+
     async fn assert_single_lease_returned(pool: &pool::DevicePoolHandle) {
         let snapshot = pool.snapshot().await;
         assert!(snapshot.in_flight.is_empty());
         assert_eq!(snapshot.cooldown, vec![TEST_DEVICE_INDEX]);
         pool.cleanup().await;
+    }
+
+    async fn assert_connect_cleanup(
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+        expected_connection_id: Uuid,
+    ) {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let mut outcome = ConnectDeviceOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            result,
+        );
+        let ownership_calls = std::cell::Cell::new(0);
+        let disconnect_calls = std::cell::Cell::new(0);
+
+        let ((), captured) = capture_events(|| {
+            outcome.cleanup_unobserved_with(
+                |index, connection_id| {
+                    ownership_calls.set(ownership_calls.get() + 1);
+                    assert_eq!(index, TEST_DEVICE_INDEX);
+                    assert_eq!(connection_id, expected_connection_id);
+                    DeviceOwnership::Ours
+                },
+                |index| {
+                    disconnect_calls.set(disconnect_calls.get() + 1);
+                    assert_eq!(index, TEST_DEVICE_INDEX);
+                    Ok(())
+                },
+            );
+            drop(outcome);
+        });
+
+        assert_eq!(ownership_calls.get(), 1);
+        assert_eq!(disconnect_calls.get(), 1);
+        let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some("0")
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    async fn assert_connect_cleanup_skipped(
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+    ) {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let mut outcome = ConnectDeviceOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            result,
+        );
+
+        let ((), captured) = capture_events(|| {
+            outcome.cleanup_unobserved_with(
+                |_, _| panic!("non-committed connect must not check ownership"),
+                |_| panic!("non-committed connect must not disconnect"),
+            );
+            drop(outcome);
+        });
+
+        assert_no_event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_successful_and_ambiguous_connects_cleanup_exact_owner() {
+        let successful_connection_id = Uuid::from_u128(43);
+        assert_connect_cleanup(
+            Ok(netlink::ConnectDeviceSuccess {
+                connection_id: successful_connection_id,
+            }),
+            successful_connection_id,
+        )
+        .await;
+
+        let ambiguous_connection_id = Uuid::from_u128(44);
+        assert_connect_cleanup(
+            Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
+                connection_id: ambiguous_connection_id,
+                source: error::NbdCowError::Io(std::io::Error::other(
+                    "connect completion unavailable",
+                )),
+            }),
+            ambiguous_connection_id,
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_not_sent_and_definite_connect_failures_skip_cleanup() {
+        assert_connect_cleanup_skipped(Err(netlink::ConnectDeviceError::NotSent {
+            source: error::NbdCowError::Io(std::io::Error::other("connect was not sent")),
+        }))
+        .await;
+
+        assert_connect_cleanup_skipped(Err(netlink::ConnectDeviceError::DefiniteAfterSend {
+            source: error::NbdCowError::NetlinkErrno {
+                errno: libc::EINVAL,
+                message: "test connect rejected".to_string(),
+            },
+        }))
+        .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_connect_outcome_delegates_cleanup_and_retires_lease() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let outcome = ConnectDeviceOutcome::new(
+            MISSING_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Ok(netlink::ConnectDeviceSuccess {
+                connection_id: test_connection_id(),
+            }),
+        );
+
+        let ((), captured) = capture_events(|| drop(outcome));
+
+        let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some("4294967295")
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn consumed_connect_outcome_returns_lease_without_drop_cleanup() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let connection_id = test_connection_id();
+        let outcome = ConnectDeviceOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Ok(netlink::ConnectDeviceSuccess { connection_id }),
+        );
+
+        let (parts, captured) = capture_events(|| outcome.into_parts().unwrap());
+
+        assert_no_event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        let (lease, result) = parts;
+        assert_eq!(lease.index(), TEST_DEVICE_INDEX);
+        assert_eq!(result.unwrap().connection_id, connection_id);
+        pool.release_clean(lease).await;
+        assert_single_lease_returned(&pool).await;
     }
 
     #[tokio::test(flavor = "current_thread")]
