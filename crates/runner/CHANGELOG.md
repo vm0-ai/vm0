@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.170.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.22...runner-rs-v0.170.0) (2026-08-22)
+
+
+### Features
+
+* **runner:** report trusted model provider failures ([#28532](https://github.com/vm0-ai/vm0/issues/28532)) ([95a6ecd](https://github.com/vm0-ai/vm0/commit/95a6ecd44582d3bedf35b97f6874a01f2d7c6a34))
+
 ## [0.169.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.21...runner-rs-v0.169.22) (2026-08-22)
 
 
