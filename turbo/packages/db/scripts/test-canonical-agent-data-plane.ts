@@ -15,6 +15,12 @@ const fixedAgentId = "00000000-0000-4000-8000-000000096600";
 const composeOnlyId = "00000000-0000-4000-8000-0000000966ff";
 const fixedChatThreadEventId = "00000000-0000-4000-8000-0000000966d1";
 const composeOnlyChatThreadEventId = "00000000-0000-4000-8000-0000000966df";
+const matchedSearchRowCount = 1001;
+const matchedSearchThreadIds = [
+  "00000000-0000-4000-8000-0000000966b1",
+  "00000000-0000-4000-8000-0000000966b2",
+  "00000000-0000-4000-8000-0000000966b3",
+] as const;
 
 const siblingColumns = [
   "agent_sessions.agent_id",
@@ -159,15 +165,21 @@ function validateMigrationSql(migrationSql: string): void {
     migrationSql,
     /CREATE\s+TRIGGER[\s\S]{0,300}\sON\s+"agents"/iu,
   );
-  assert.equal(migrationSql.match(/LIMIT 500/gu)?.length, 2);
-  assert.equal(migrationSql.match(/FOR UPDATE[^\n]*SKIP LOCKED/gu)?.length, 2);
+  assert.equal(migrationSql.match(/LIMIT 500/gu)?.length, 3);
+  assert.equal(migrationSql.match(/FOR UPDATE[^\n]*SKIP LOCKED/gu)?.length, 3);
   assert.equal(
     migrationSql.match(/^CREATE INDEX CONCURRENTLY IF NOT EXISTS /gmu)?.length,
     replacementIndexes.length,
   );
   assert.equal(
     migrationSql.match(/^CALL "backfill_agent_references_0966"/gmu)?.length,
-    siblingColumns.length,
+    siblingColumns.length - 1,
+  );
+  assert.equal(
+    migrationSql.match(
+      /^CALL "backfill_chat_event_search_agent_references_0966"/gmu,
+    )?.length,
+    1,
   );
   assert.equal(
     migrationSql.match(/^CALL "ensure_agent_foreign_key_0966"/gmu)?.length,
@@ -185,6 +197,18 @@ function validateMigrationSql(migrationSql: string): void {
   assert.match(migrationSql, /SET LOCAL lock_timeout = '1s'/u);
   assert.match(migrationSql, /transaction_timeout = '5min'/u);
   assert.match(migrationSql, /p_no_progress_timeout > interval '30 seconds'/u);
+  assert.equal(
+    migrationSql.match(/^SET statement_timeout = '2h';$/gmu)?.length,
+    1,
+  );
+  assert.doesNotMatch(
+    migrationSql,
+    /CALL "backfill_agent_references_0966"\('public\.chat_event_search_messages'/u,
+  );
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|REINDEX)[^;]*chat_event_search_messages_tsv_idx/iu,
+  );
   assert.match(
     migrationSql,
     /created_at"[\s\S]*greatest\("compose"\."updated_at", "zero_agent"\."updated_at"\)/u,
@@ -198,7 +222,7 @@ function validateMigrationSql(migrationSql: string): void {
     chatThreadEventCallOffset + chatThreadEventCall.length,
   );
   const nextReferenceCallOffset = migrationSql.indexOf(
-    `CALL "backfill_agent_references_0966"('public.chat_event_search_messages'`,
+    `CALL "backfill_chat_event_search_agent_references_0966"`,
   );
   assert.ok(narrowGuardOffset > 0);
   assert.ok(narrowGuardOffset < chatThreadEventCallOffset);
@@ -207,6 +231,67 @@ function validateMigrationSql(migrationSql: string): void {
   assert.match(
     migrationSql,
     /TG_TABLE_SCHEMA = 'public'[\s\S]*TG_TABLE_NAME = 'chat_thread_events'[\s\S]*OLD\."agent_id" IS NULL[\s\S]*NEW\."agent_id" = OLD\."agent_compose_id"[\s\S]*\(to_jsonb\(NEW\) - 'agent_id'\) = \(to_jsonb\(OLD\) - 'agent_id'\)[\s\S]*FROM "agents" AS "agent"[\s\S]*"agent"\."id" = OLD\."agent_compose_id"/u,
+  );
+
+  const genericProcedureOffset = migrationSql.indexOf(
+    `CREATE OR REPLACE PROCEDURE "backfill_agent_references_0966"`,
+  );
+  const searchProcedureOffset = migrationSql.indexOf(
+    `CREATE OR REPLACE PROCEDURE "backfill_chat_event_search_agent_references_0966"`,
+  );
+  const firstReferenceCallOffset = migrationSql.indexOf(
+    `CALL "backfill_agent_references_0966"`,
+    searchProcedureOffset,
+  );
+  assert.ok(genericProcedureOffset > 0);
+  assert.ok(genericProcedureOffset < searchProcedureOffset);
+  assert.ok(searchProcedureOffset < firstReferenceCallOffset);
+  const genericProcedureSql = migrationSql.slice(
+    genericProcedureOffset,
+    searchProcedureOffset,
+  );
+  const searchProcedureSql = migrationSql.slice(
+    searchProcedureOffset,
+    firstReferenceCallOffset,
+  );
+  assert.match(genericProcedureSql, /jsonb_build_array/u);
+  assert.doesNotMatch(genericProcedureSql, /chat_event_search_messages/u);
+  assert.doesNotMatch(searchProcedureSql, /jsonb_build_array|::text/u);
+  assert.match(
+    searchProcedureSql,
+    /v_scan_after_chat_thread_id uuid := NULL;[\s\S]*v_scan_after_seq_id bigint := NULL;/u,
+  );
+  assert.match(
+    searchProcedureSql,
+    /\("source"\."chat_thread_id", "source"\."seq_id"\) >[\s\S]*\(v_scan_after_chat_thread_id, v_scan_after_seq_id\)/u,
+  );
+  assert.match(
+    searchProcedureSql,
+    /ORDER BY "source"\."chat_thread_id", "source"\."seq_id"[\s\S]*LIMIT 500[\s\S]*FOR UPDATE OF "source" SKIP LOCKED/u,
+  );
+  assert.match(
+    searchProcedureSql,
+    /INNER JOIN "agents" AS "agent"[\s\S]*"agent"\."id" = "scan"\."agent_compose_id"/u,
+  );
+  assert.match(
+    searchProcedureSql,
+    /SET "agent_id" = "target"\."agent_compose_id"/u,
+  );
+
+  const statements = splitMigrationStatements(migrationSql);
+  const searchCallIndex = statements.findIndex((statement) => {
+    return statement.startsWith(
+      `CALL "backfill_chat_event_search_agent_references_0966"`,
+    );
+  });
+  assert.ok(searchCallIndex > 0);
+  assert.equal(
+    statements[searchCallIndex - 1],
+    "SET statement_timeout = '2h';",
+  );
+  assert.equal(
+    statements[searchCallIndex + 1],
+    "SET statement_timeout = '30min';",
   );
 }
 
@@ -369,6 +454,32 @@ async function seedPreviousSchema(client: Client): Promise<void> {
       FROM generate_series(1, 22) AS "fixture"("position")
     `,
     [composeOnlyId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" ("id", "user_id", "agent_compose_id")
+      SELECT "thread_id", 'canonical-owner', $2
+      FROM unnest($1::uuid[]) AS "fixture"("thread_id")
+    `,
+    [[...matchedSearchThreadIds], fixedAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id",
+        "agent_compose_id", "role", "created_at", "text", "text_bigram"
+      )
+      SELECT
+        ($1::uuid[])[1 + (("position" - 1) / 334)],
+        1 + (("position" - 1) % 334),
+        'canonical-owner', 'canonical-org', $2,
+        CASE WHEN "position" % 2 = 0 THEN 'assistant' ELSE 'user' END,
+        timestamp '2026-08-21 00:00:00' + "position" * interval '1 second',
+        'production search message ' || "position",
+        'productionsearchtoken ' || "position"
+      FROM generate_series(1, $3::integer) AS "fixture"("position")
+    `,
+    [[...matchedSearchThreadIds], fixedAgentId, matchedSearchRowCount],
   );
   await client.query(
     `
@@ -590,6 +701,181 @@ async function assertReferenceBackfillContention(args: {
   assert.deepEqual(partial.rows, [{ count: 501 }]);
 }
 
+async function explainWithSequentialScansDisabled(
+  client: Client,
+  query: string,
+  values: string[],
+  disableBitmapScans = false,
+): Promise<string> {
+  await client.query("BEGIN");
+  await client.query("SET LOCAL enable_seqscan = off");
+  if (disableBitmapScans) {
+    await client.query("SET LOCAL enable_bitmapscan = off");
+  }
+  const result = await client.query<{
+    readonly "QUERY PLAN": unknown;
+  }>(query, values);
+  await client.query("COMMIT");
+  const plan = result.rows[0]?.["QUERY PLAN"];
+  assert.ok(plan);
+  return JSON.stringify(plan);
+}
+
+async function assertChatSearchNativePrimaryKeyPlan(
+  client: Client,
+): Promise<void> {
+  const plan = await explainWithSequentialScansDisabled(
+    client,
+    `
+      EXPLAIN (FORMAT JSON, COSTS OFF)
+      SELECT "source"."chat_thread_id", "source"."seq_id"
+      FROM "chat_event_search_messages" AS "source"
+      WHERE ("source"."chat_thread_id", "source"."seq_id") >
+          ($1::uuid, $2::bigint)
+        AND "source"."agent_id" IS DISTINCT FROM
+          "source"."agent_compose_id"
+      ORDER BY "source"."chat_thread_id", "source"."seq_id"
+      LIMIT 500
+      FOR UPDATE OF "source" SKIP LOCKED
+    `,
+    [matchedSearchThreadIds[0], "0"],
+    true,
+  );
+  assert.ok(
+    plan.includes(
+      '"Index Name":"chat_event_search_messages_chat_thread_id_seq_id_pk"',
+    ),
+    plan,
+  );
+  assert.ok(!plan.includes('"Node Type":"Sort"'), plan);
+}
+
+async function assertChatSearchBackfillContention(args: {
+  readonly blocker: Client;
+  readonly runner: Client;
+  readonly statements: readonly string[];
+}): Promise<void> {
+  const callIndex = args.statements.findIndex((statement) => {
+    return statement.startsWith(
+      `CALL "backfill_chat_event_search_agent_references_0966"`,
+    );
+  });
+  assert.ok(callIndex > 0);
+
+  await executeStatements({
+    client: args.runner,
+    statements: args.statements,
+    endExclusive: callIndex,
+  });
+  await assertChatSearchNativePrimaryKeyPlan(args.runner);
+
+  const locked = await args.runner.query<{
+    chatThreadId: string;
+    seqId: string;
+  }>(
+    `
+      SELECT "chat_thread_id"::text AS "chatThreadId",
+        "seq_id"::text AS "seqId"
+      FROM "chat_event_search_messages"
+      WHERE "agent_compose_id" = $1
+      ORDER BY "chat_thread_id", "seq_id"
+      LIMIT 1
+    `,
+    [fixedAgentId],
+  );
+  assert.equal(locked.rows.length, 1);
+  await args.blocker.query("BEGIN");
+  await args.blocker.query(
+    `
+      SELECT 1
+      FROM "chat_event_search_messages"
+      WHERE "chat_thread_id" = $1 AND "seq_id" = $2::bigint
+      FOR UPDATE
+    `,
+    [locked.rows[0]!.chatThreadId, locked.rows[0]!.seqId],
+  );
+  try {
+    await assert.rejects(
+      args.runner.query(
+        `CALL "backfill_chat_event_search_agent_references_0966"(interval '100 milliseconds')`,
+      ),
+      (error: unknown) => {
+        assertDatabaseError(error, {
+          code: "P0001",
+          messageIncludes:
+            "Canonical Agent search reference backfill made no progress",
+        });
+        return true;
+      },
+    );
+  } finally {
+    await args.blocker.query("ROLLBACK");
+  }
+
+  const interrupted = await args.runner.query<{
+    composeOnlyNullCount: number;
+    matchedNullCount: number;
+    matchedTargetCount: number;
+  }>(
+    `
+      SELECT
+        count(*) FILTER (
+          WHERE "agent_compose_id" = $1 AND "agent_id" = $1
+        )::integer AS "matchedTargetCount",
+        count(*) FILTER (
+          WHERE "agent_compose_id" = $1 AND "agent_id" IS NULL
+        )::integer AS "matchedNullCount",
+        count(*) FILTER (
+          WHERE "agent_compose_id" = $2 AND "agent_id" IS NULL
+        )::integer AS "composeOnlyNullCount"
+      FROM "chat_event_search_messages"
+    `,
+    [fixedAgentId, composeOnlyId],
+  );
+  assert.deepEqual(interrupted.rows, [
+    {
+      matchedTargetCount: matchedSearchRowCount - 1,
+      matchedNullCount: 1,
+      composeOnlyNullCount: 2,
+    },
+  ]);
+
+  await args.runner.query(
+    `CALL "backfill_chat_event_search_agent_references_0966"(interval '30 seconds')`,
+  );
+  await args.runner.query(
+    `CALL "backfill_chat_event_search_agent_references_0966"(interval '30 seconds')`,
+  );
+  await args.runner.query(args.statements[callIndex + 1]!);
+
+  const committedBatches = await args.runner.query<{
+    largestBatch: number;
+    matchedTargetCount: number;
+    transactionCount: number;
+  }>(
+    `
+      SELECT
+        sum("batch_count")::integer AS "matchedTargetCount",
+        count(*)::integer AS "transactionCount",
+        max("batch_count")::integer AS "largestBatch"
+      FROM (
+        SELECT "xmin"::text, count(*)::integer AS "batch_count"
+        FROM "chat_event_search_messages"
+        WHERE "agent_compose_id" = $1 AND "agent_id" = $1
+        GROUP BY "xmin"::text
+      ) AS "committed_batch"
+    `,
+    [fixedAgentId],
+  );
+  assert.deepEqual(committedBatches.rows, [
+    {
+      matchedTargetCount: matchedSearchRowCount,
+      transactionCount: 4,
+      largestBatch: 500,
+    },
+  ]);
+}
+
 async function assertChatThreadEventReferenceState(
   client: Client,
 ): Promise<void> {
@@ -692,6 +978,64 @@ async function assertChatThreadEventBackfillGuard(args: {
   );
 }
 
+async function validateChatSearchStorageAndIndex(
+  client: Client,
+): Promise<void> {
+  const storage = await client.query<{
+    generatedKind: string;
+    indexedCount: number;
+    indexDefinition: string;
+    ready: boolean;
+    valid: boolean;
+  }>(
+    `
+      SELECT
+        "attribute"."attgenerated"::text AS "generatedKind",
+        "index"."indisready" AS "ready",
+        "index"."indisvalid" AS "valid",
+        pg_get_indexdef("index"."indexrelid") AS "indexDefinition",
+        (
+          SELECT count(*)::integer
+          FROM "chat_event_search_messages"
+          WHERE "agent_compose_id" = $1
+            AND "tsv" @@ to_tsquery('simple', 'productionsearchtoken')
+        ) AS "indexedCount"
+      FROM "pg_attribute" AS "attribute"
+      INNER JOIN "pg_index" AS "index"
+        ON "index"."indrelid" = "attribute"."attrelid"
+      INNER JOIN "pg_class" AS "index_relation"
+        ON "index_relation"."oid" = "index"."indexrelid"
+      WHERE "attribute"."attrelid" =
+          'public.chat_event_search_messages'::regclass
+        AND "attribute"."attname" = 'tsv'
+        AND "index_relation"."relname" =
+          'chat_event_search_messages_tsv_idx'
+    `,
+    [fixedAgentId],
+  );
+  assert.equal(storage.rows.length, 1);
+  assert.equal(storage.rows[0]!.generatedKind, "s");
+  assert.equal(storage.rows[0]!.ready, true);
+  assert.equal(storage.rows[0]!.valid, true);
+  assert.equal(storage.rows[0]!.indexedCount, matchedSearchRowCount);
+  assert.match(storage.rows[0]!.indexDefinition, /USING gin \(tsv\)$/u);
+
+  const plan = await explainWithSequentialScansDisabled(
+    client,
+    `
+      EXPLAIN (FORMAT JSON, COSTS OFF)
+      SELECT "chat_thread_id", "seq_id"
+      FROM "chat_event_search_messages"
+      WHERE "tsv" @@ to_tsquery('simple', 'productionsearchtoken')
+    `,
+    [],
+  );
+  assert.ok(
+    plan.includes('"Index Name":"chat_event_search_messages_tsv_idx"'),
+    plan,
+  );
+}
+
 async function validateFinalCatalog(
   client: Client,
   baseline: CatalogBaseline,
@@ -786,6 +1130,7 @@ async function validateFinalCatalog(
     WHERE "namespace"."nspname" = 'public'
       AND "procedure"."proname" = ANY(ARRAY[
         'backfill_agents_0966', 'backfill_agent_references_0966',
+        'backfill_chat_event_search_agent_references_0966',
         'ensure_agent_foreign_key_0966',
         'ensure_agent_reference_check_0966'
       ])
@@ -829,6 +1174,7 @@ async function validateBackfillAndComposeOnlyClosure(
     composeOnlyThreadEventNullCount: number;
     composeOnlyThreadNullCount: number;
     fieldMismatchCount: number;
+    matchedSearchCount: number;
     matchedCount: number;
     targetCount: number;
   }>(
@@ -882,9 +1228,13 @@ async function validateBackfillAndComposeOnlyClosure(
       (
         SELECT count(*)::integer FROM "chat_event_search_messages"
         WHERE "agent_compose_id" = $1 AND "agent_id" IS NULL
-      ) AS "composeOnlySearchNullCount"
+      ) AS "composeOnlySearchNullCount",
+      (
+        SELECT count(*)::integer FROM "chat_event_search_messages"
+        WHERE "agent_compose_id" = $2 AND "agent_id" = $2
+      ) AS "matchedSearchCount"
   `,
-    [composeOnlyId],
+    [composeOnlyId, fixedAgentId],
   );
   assert.deepEqual(parity.rows, [
     {
@@ -896,6 +1246,7 @@ async function validateBackfillAndComposeOnlyClosure(
       composeOnlyThreadNullCount: 1,
       composeOnlyThreadEventNullCount: 1,
       composeOnlySearchNullCount: 2,
+      matchedSearchCount: matchedSearchRowCount,
     },
   ]);
 }
@@ -1228,10 +1579,12 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
       statements,
       strictRejectFunctionDefinition,
     });
+    await assertChatSearchBackfillContention({ blocker, runner, statements });
 
     await executeStatements({ client: runner, statements });
     await validateFinalCatalog(runner, baseline);
     await validateBackfillAndComposeOnlyClosure(runner);
+    await validateChatSearchStorageAndIndex(runner);
     await assertChatThreadEventReferenceState(runner);
     await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
     assert.equal(
@@ -1243,6 +1596,7 @@ export async function validateCanonicalAgentDataPlaneMigration(): Promise<void> 
     await validateInvalidIndexRecovery({ client: runner, statements });
     await validateFinalCatalog(runner, baseline);
     await validateBackfillAndComposeOnlyClosure(runner);
+    await validateChatSearchStorageAndIndex(runner);
     await assertChatThreadEventReferenceState(runner);
     await assertChatThreadEventAppendOnlyTriggerEnabled(runner);
     assert.equal(

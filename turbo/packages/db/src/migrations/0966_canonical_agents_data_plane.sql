@@ -705,7 +705,7 @@ $$;
 COMMIT;
 --> statement-breakpoint
 
--- One procedure owns all 12 explicit reference cohorts. Each cohort supplies
+-- One procedure owns the 11 small explicit reference cohorts. Each supplies
 -- its immutable primary-key columns; the JSONB key is only a stable scan
 -- cursor and is never persisted or emitted.
 CREATE OR REPLACE PROCEDURE "backfill_agent_references_0966"(
@@ -737,7 +737,6 @@ BEGIN
     (p_table = 'public.agent_sessions'::regclass AND p_key_columns = ARRAY['id']::name[] AND p_legacy_column = 'agent_compose_id' AND p_target_column = 'agent_id')
     OR (p_table = 'public.chat_threads'::regclass AND p_key_columns = ARRAY['id']::name[] AND p_legacy_column = 'agent_compose_id' AND p_target_column = 'agent_id')
     OR (p_table = 'public.chat_thread_events'::regclass AND p_key_columns = ARRAY['id']::name[] AND p_legacy_column = 'agent_compose_id' AND p_target_column = 'agent_id')
-    OR (p_table = 'public.chat_event_search_messages'::regclass AND p_key_columns = ARRAY['chat_thread_id', 'seq_id']::name[] AND p_legacy_column = 'agent_compose_id' AND p_target_column = 'agent_id')
     OR (p_table = 'public.telegram_installations'::regclass AND p_key_columns = ARRAY['telegram_bot_id']::name[] AND p_legacy_column = 'default_compose_id' AND p_target_column = 'default_agent_id')
     OR (p_table = 'public.feishu_org_installations'::regclass AND p_key_columns = ARRAY['id']::name[] AND p_legacy_column = 'default_compose_id' AND p_target_column = 'default_agent_id')
     OR (p_table = 'public.github_installations'::regclass AND p_key_columns = ARRAY['id']::name[] AND p_legacy_column = 'default_compose_id' AND p_target_column = 'default_agent_id')
@@ -853,6 +852,146 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+
+-- The large search projection uses its native (uuid, bigint) primary key as
+-- the scan cursor. This keeps both the keyset predicate and ordering directly
+-- usable by the existing composite primary-key index while preserving the
+-- same restartable, short-transaction ownership contract as the small cohorts.
+CREATE OR REPLACE PROCEDURE "backfill_chat_event_search_agent_references_0966"(
+  p_no_progress_timeout interval
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_scan_after_chat_thread_id uuid := NULL;
+  v_scan_after_seq_id bigint := NULL;
+  v_scan_count integer;
+  v_matched_count integer;
+  v_updated_count integer;
+  v_next_chat_thread_id uuid;
+  v_next_seq_id bigint;
+  v_remaining boolean;
+  v_no_progress_started_at timestamp with time zone := clock_timestamp();
+BEGIN
+  IF
+    p_no_progress_timeout IS NULL
+    OR p_no_progress_timeout <= interval '0 seconds'
+    OR p_no_progress_timeout > interval '30 seconds'
+  THEN
+    RAISE EXCEPTION 'Canonical Agent search reference backfill no-progress timeout must be between 0 and 30 seconds';
+  END IF;
+
+  SET LOCAL lock_timeout = '1s';
+  SET LOCAL transaction_timeout = '5min';
+
+  LOOP
+    WITH "scan" AS MATERIALIZED (
+      SELECT
+        "source"."ctid" AS "row_ctid",
+        "source"."chat_thread_id",
+        "source"."seq_id",
+        "source"."agent_compose_id"
+      FROM "chat_event_search_messages" AS "source"
+      WHERE (
+          v_scan_after_chat_thread_id IS NULL
+          OR ("source"."chat_thread_id", "source"."seq_id") >
+            (v_scan_after_chat_thread_id, v_scan_after_seq_id)
+        )
+        AND "source"."agent_id" IS DISTINCT FROM
+          "source"."agent_compose_id"
+      ORDER BY "source"."chat_thread_id", "source"."seq_id"
+      LIMIT 500
+      FOR UPDATE OF "source" SKIP LOCKED
+    ),
+    "batch" AS MATERIALIZED (
+      SELECT "scan"."row_ctid", "scan"."chat_thread_id", "scan"."seq_id"
+      FROM "scan"
+      INNER JOIN "agents" AS "agent"
+        ON "agent"."id" = "scan"."agent_compose_id"
+    ),
+    "updated" AS (
+      UPDATE "chat_event_search_messages" AS "target"
+      SET "agent_id" = "target"."agent_compose_id"
+      FROM "batch"
+      WHERE "target"."ctid" = "batch"."row_ctid"
+      RETURNING "batch"."chat_thread_id", "batch"."seq_id"
+    )
+    SELECT
+      coalesce(
+        (
+          SELECT "chat_thread_id"
+          FROM "scan"
+          ORDER BY "chat_thread_id" DESC, "seq_id" DESC
+          LIMIT 1
+        ),
+        v_scan_after_chat_thread_id
+      ),
+      coalesce(
+        (
+          SELECT "seq_id"
+          FROM "scan"
+          ORDER BY "chat_thread_id" DESC, "seq_id" DESC
+          LIMIT 1
+        ),
+        v_scan_after_seq_id
+      ),
+      (SELECT count(*) FROM "scan"),
+      (SELECT count(*) FROM "batch"),
+      (SELECT count(*) FROM "updated")
+    INTO
+      v_next_chat_thread_id,
+      v_next_seq_id,
+      v_scan_count,
+      v_matched_count,
+      v_updated_count;
+
+    IF v_updated_count <> v_matched_count THEN
+      RAISE EXCEPTION 'Canonical Agent search reference backfill lost batch ownership';
+    END IF;
+
+    IF v_scan_count > 0 THEN
+      v_scan_after_chat_thread_id := v_next_chat_thread_id;
+      v_scan_after_seq_id := v_next_seq_id;
+    END IF;
+
+    IF v_updated_count > 0 THEN
+      v_no_progress_started_at := clock_timestamp();
+    END IF;
+
+    COMMIT;
+    SET LOCAL lock_timeout = '1s';
+    SET LOCAL transaction_timeout = '5min';
+
+    IF v_scan_count > 0 THEN
+      PERFORM pg_sleep(0.01);
+      CONTINUE;
+    END IF;
+
+    SELECT EXISTS (
+      SELECT 1
+      FROM "chat_event_search_messages" AS "source"
+      INNER JOIN "agents" AS "agent"
+        ON "agent"."id" = "source"."agent_compose_id"
+      WHERE "source"."agent_id" IS DISTINCT FROM
+        "source"."agent_compose_id"
+    )
+    INTO v_remaining;
+
+    IF NOT v_remaining THEN
+      EXIT;
+    END IF;
+
+    IF clock_timestamp() - v_no_progress_started_at >= p_no_progress_timeout THEN
+      RAISE EXCEPTION 'Canonical Agent search reference backfill made no progress for % while eligible rows remained',
+        p_no_progress_timeout;
+    END IF;
+
+    v_scan_after_chat_thread_id := NULL;
+    v_scan_after_seq_id := NULL;
+    PERFORM pg_sleep(0.01);
+  END LOOP;
+END;
+$$;
+--> statement-breakpoint
 SET statement_timeout = '30min';
 --> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.agent_sessions', ARRAY['id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');
@@ -907,7 +1046,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CALL "backfill_agent_references_0966"('public.chat_event_search_messages', ARRAY['chat_thread_id', 'seq_id']::name[], 'agent_compose_id', 'agent_id', interval '30 seconds');
+SET statement_timeout = '2h';
+--> statement-breakpoint
+CALL "backfill_chat_event_search_agent_references_0966"(interval '30 seconds');
+--> statement-breakpoint
+SET statement_timeout = '30min';
 --> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.telegram_installations', ARRAY['telegram_bot_id']::name[], 'default_compose_id', 'default_agent_id', interval '30 seconds');
 --> statement-breakpoint
@@ -924,6 +1067,8 @@ CALL "backfill_agent_references_0966"('public.agentphone_user_agent_preferences'
 CALL "backfill_agent_references_0966"('public.telegram_user_agent_preferences', ARRAY['user_id', 'org_id']::name[], 'selected_compose_id', 'selected_agent_id', interval '30 seconds');
 --> statement-breakpoint
 CALL "backfill_agent_references_0966"('public.feishu_user_agent_preferences', ARRAY['user_id', 'org_id']::name[], 'selected_compose_id', 'selected_agent_id', interval '30 seconds');
+--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "backfill_chat_event_search_agent_references_0966"(interval);
 --> statement-breakpoint
 DROP PROCEDURE IF EXISTS "backfill_agent_references_0966"(regclass, name[], name, name, interval);
 --> statement-breakpoint
@@ -1740,6 +1885,7 @@ BEGIN
     AND "pg_proc"."proname" = ANY(ARRAY[
       'backfill_agents_0966',
       'backfill_agent_references_0966',
+      'backfill_chat_event_search_agent_references_0966',
       'ensure_agent_foreign_key_0966',
       'ensure_agent_reference_check_0966'
     ]);
