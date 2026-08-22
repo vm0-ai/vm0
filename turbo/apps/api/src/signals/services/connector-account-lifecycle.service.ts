@@ -876,7 +876,7 @@ type PreparedConnectorAccountDeletion =
     };
 
 export async function prepareConnectorAccountDeletion(
-  db: Db,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
