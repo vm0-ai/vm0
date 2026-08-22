@@ -339,6 +339,25 @@ class JsonSelectiveExtractor:
         self._slow_work_bytes_remaining = 0
         self._discarded_ascii_work_bytes_remaining = 0
 
+    def reset(self) -> None:
+        """Reset document state while retaining the fixed observation configuration."""
+        self.values.clear()
+        self.array_counts.clear()
+        self.wildcard_array_counts.clear()
+        self.object_present.clear()
+        self.value_present.clear()
+        self._scalar_consistency.clear()
+
+        self._stack.clear()
+        self._root_done = False
+        self._error = None
+        self._string = None
+        self._number = None
+        self._literal = None
+        self._work_units_used = 0
+        self._slow_work_bytes_remaining = 0
+        self._discarded_ascii_work_bytes_remaining = 0
+
     def accepts_more_input(self) -> bool:
         """Return whether later bytes can still affect this document parser.
 

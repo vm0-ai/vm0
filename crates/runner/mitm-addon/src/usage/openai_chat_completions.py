@@ -147,7 +147,7 @@ class _OpenAIChatCompletionsSseUsageHandler:
     ) -> None:
         self._usage = usage
         self._on_parse_error = on_parse_error
-        self._extractor: JsonSelectiveExtractor | None = None
+        self._extractor = _new_extractor()
         self._data_prefix = bytearray()
         self._data_prefix_complete = True
 
@@ -156,15 +156,11 @@ class _OpenAIChatCompletionsSseUsageHandler:
         return True
 
     def on_event_start(self, event_name: str | None) -> None:
-        self._extractor = _new_extractor()
         self._data_prefix.clear()
         self._data_prefix_complete = True
 
     def on_data(self, chunk: bytes) -> None:
-        extractor = self._extractor
-        if extractor is None:
-            return
-        extractor.feed(chunk)
+        self._extractor.feed(chunk)
 
         remaining = max(_DONE_PREFIX_MAX_BYTES - len(self._data_prefix), 0)
         self._data_prefix.extend(chunk[:remaining])
@@ -175,16 +171,13 @@ class _OpenAIChatCompletionsSseUsageHandler:
         self.on_data(b"\n")
 
     def on_event_end(self, event_name: str | None) -> None:
-        extractor = self._extractor
         data_prefix = bytes(self._data_prefix)
         data_prefix_complete = self._data_prefix_complete
-        self._extractor = None
         self._data_prefix.clear()
         self._data_prefix_complete = True
-        if extractor is None:
-            return
 
-        result = extractor.finish()
+        result = self._extractor.finish()
+        self._extractor.reset()
         if not result.complete:
             if data_prefix_complete and data_prefix.strip() == _DONE_SENTINEL:
                 return
@@ -200,7 +193,7 @@ class _OpenAIChatCompletionsSseUsageHandler:
         self._usage.update(snapshot)
 
     def on_event_discard(self, event_name: str | None) -> None:
-        self._extractor = None
+        self._extractor.reset()
         self._data_prefix.clear()
         self._data_prefix_complete = True
 

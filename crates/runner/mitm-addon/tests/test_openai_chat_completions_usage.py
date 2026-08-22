@@ -235,6 +235,43 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
 
+    def test_long_sse_keeps_final_usage_isolated_from_delta_frames(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="text/event-stream",
+        )
+        delta = (
+            b'data: {"id":"chatcmpl_delta","model":"gpt-5.5",'
+            b'"choices":[{"delta":{"content":"x"}}]}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(delta * 256)
+        callback(
+            b"data: "
+            + _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
+            + b"\n\ndata: [DONE]\n\n"
+        )
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        expected_quantities = {
+            "tokens.input": 30,
+            "tokens.output": 5,
+        }
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == (
+            expected_quantities
+        )
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == (
+            expected_quantities
+        )
+
     def test_malformed_sse_fails_closed_with_chat_protocol_diagnostic(
         self,
         tmp_path,
