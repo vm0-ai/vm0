@@ -37,6 +37,7 @@ import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
+import { piSessionHandoffSpikeRoutes } from "./routes/pi-session-handoff-spike";
 import { piSessionPreparationSpikeRoutes } from "./routes/pi-session-preparation-spike";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
@@ -197,6 +198,7 @@ import { webFileUrlRoutes } from "./routes/web-file-url";
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
+  ...piSessionHandoffSpikeRoutes,
   ...piSessionPreparationSpikeRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,

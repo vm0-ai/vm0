@@ -4,7 +4,8 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
-import type { SessionManager } from "@earendil-works/pi-coding-agent";
+
+import type { PiSessionTranscript } from "./session-memory";
 
 export interface PiSandboxToolResult {
   readonly content: (TextContent | ImageContent)[];
@@ -21,11 +22,16 @@ export interface PiSandboxToolExecutor {
 }
 
 export interface ResumePendingPiToolCallsOptions {
-  readonly session: SessionManager;
+  readonly session: Pick<
+    PiSessionTranscript,
+    "appendMessage" | "buildSessionContext"
+  >;
   readonly tools: readonly PiSandboxToolExecutor[];
 }
 
-function pendingToolCalls(session: SessionManager): ToolCall[] {
+function pendingToolCalls(
+  session: ResumePendingPiToolCallsOptions["session"],
+): ToolCall[] {
   const messages = session.buildSessionContext().messages;
   let assistantIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
