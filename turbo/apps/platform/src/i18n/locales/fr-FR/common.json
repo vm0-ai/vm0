@@ -2121,10 +2121,7 @@
       "openNamedChat": "Ouvrir le chat {{title}}",
       "pickEmoji": "Choisissez un emoji",
       "scrollToBottom": "Faire défiler vers le bas",
-      "searchEmoji": "Rechercher un emoji",
-      "steerAcknowledgement_one": "Pris en compte pendant l'exécution — le travail précédent est conservé",
-      "steerAcknowledgement_many": "Les {{count}} messages pris en compte pendant l'exécution — le travail précédent est conservé",
-      "steerAcknowledgement_other": "Les {{count}} messages pris en compte pendant l'exécution — le travail précédent est conservé"
+      "searchEmoji": "Rechercher un emoji"
     },
     "threadSidebar": {
       "resize": "Redimensionner la barre latérale"

@@ -100,7 +100,6 @@ import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
-  isChatRunTerminalEventType,
   terminatedChatRunIds,
 } from "@okouai/api-contracts/contracts/chat-events";
 import {
@@ -108,7 +107,6 @@ import {
   messageDocumentToPrompt,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import { avatarTemplateSelection } from "../../signals/zero-page/avatar-template-selection.ts";
-import { steerAcknowledgementRef$ } from "../../signals/zero-page/steer-acknowledgement.ts";
 import type {
   ChatThreadWorkflowAutomation,
   WorkflowSchedule,
@@ -3193,8 +3191,6 @@ function ChatThreadNextRunModelNotice({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const continuationPresentationEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
   const selectedSelection = useLastResolved(
     thread.composer.model.modelSelection$,
   );
@@ -3237,127 +3233,7 @@ function ChatThreadNextRunModelNotice({
   } else {
     return null;
   }
-  // Only inside the steer feature does this notice collide with anything: there
-  // it sits two rows under the acknowledgement wearing the same serif-italic
-  // rule while meaning the opposite thing, so it drops the rule and reads as
-  // the live status it is. Everywhere else the divider is unchanged.
-  if (!continuationPresentationEnabled) {
-    return <RunSectionDividerRow label={label} announce />;
-  }
-  return (
-    <div role="status" aria-live="polite" className={RUN_SECTION_ROW_CLASS}>
-      <div className="hidden @[900px]:block" />
-      <p className="min-w-0 break-words text-right text-[13px] text-muted-foreground">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-interface ChatRunPresentation {
-  readonly actionOwnerEventIds: ReadonlySet<string>;
-  readonly steerEventIds: ReadonlySet<string>;
-}
-
-const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
-
-function isSteerPromptEvent(
-  event: EnrichedChatEvent,
-  seenUserRunIds: ReadonlySet<string>,
-  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
-  lastAssociatedRunId: string | undefined,
-): boolean {
-  if (event.eventType !== "input.prompt") {
-    return false;
-  }
-  if (event.runId !== undefined) {
-    return (
-      seenUserRunIds.has(event.runId) ||
-      actionOwnerEventIdByRunId.has(event.runId)
-    );
-  }
-  return (
-    event.optimisticUserMessageAssociation !== "run" &&
-    lastAssociatedRunId !== undefined
-  );
-}
-
-function chatRunPresentationForGroups(
-  groups: readonly ChatEventGroup[],
-): ChatRunPresentation {
-  const actionOwnerEventIdByRunId = new Map<string, string>();
-  const runlessAssistantOwnerEventIds = new Set<string>();
-  const seenUserRunIds = new Set<string>();
-  const steerEventIds = new Set<string>();
-  // The run each steer was picked up by, so the acknowledgement can retire
-  // with it. The terminal event arrives after the steer, so the two are
-  // reconciled once the whole transcript has been walked.
-  const runIdBySteerEventId = new Map<string, string>();
-  const finishedRunIds = new Set<string>();
-  let lastAssociatedRunId: string | undefined;
-
-  for (const group of groups) {
-    for (const event of group.events) {
-      const role = chatEventCompatibilityRole(event.eventType);
-      const runId = event.runId;
-      if (isChatRunTerminalEventType(event.eventType) && runId !== undefined) {
-        finishedRunIds.add(runId);
-      }
-      if (role === "user") {
-        const isSteer = isSteerPromptEvent(
-          event,
-          seenUserRunIds,
-          actionOwnerEventIdByRunId,
-          lastAssociatedRunId,
-        );
-        if (isSteer) {
-          steerEventIds.add(event.id);
-        }
-        const steerRunId = isSteer ? (runId ?? lastAssociatedRunId) : undefined;
-        if (steerRunId !== undefined) {
-          runIdBySteerEventId.set(event.id, steerRunId);
-        }
-        if (runId !== undefined) {
-          actionOwnerEventIdByRunId.delete(runId);
-          seenUserRunIds.add(runId);
-          lastAssociatedRunId = runId;
-        } else if (isSteer && lastAssociatedRunId !== undefined) {
-          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
-        }
-        continue;
-      }
-
-      if (runId !== undefined) {
-        lastAssociatedRunId = runId;
-      }
-      if (!isRenderableAssistantEvent(event)) {
-        continue;
-      }
-      if (runId === undefined) {
-        runlessAssistantOwnerEventIds.add(event.id);
-      } else {
-        actionOwnerEventIdByRunId.set(runId, event.id);
-      }
-    }
-  }
-
-  // The acknowledgement answers "did my correction land in the work that is
-  // running" — a condition, true until that run ends, not a permanent
-  // transcript landmark. Once the run finishes, its answer is the work itself,
-  // so the line retires and stops accumulating down the thread.
-  for (const [steerEventId, steerRunId] of runIdBySteerEventId) {
-    if (finishedRunIds.has(steerRunId)) {
-      steerEventIds.delete(steerEventId);
-    }
-  }
-
-  return {
-    actionOwnerEventIds: new Set([
-      ...actionOwnerEventIdByRunId.values(),
-      ...runlessAssistantOwnerEventIds,
-    ]),
-    steerEventIds,
-  };
+  return <RunSectionDividerRow label={label} announce />;
 }
 
 // An assistant group whose events are all bookkeeping — a run's terminal event,
@@ -3408,12 +3284,6 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
-  const continuationPresentationEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
-  const runPresentation = continuationPresentationEnabled
-    ? chatRunPresentationForGroups(groups)
-    : null;
-
   // A run that ends re-forms the groups around it, so the messages the user
   // sent back to back can land in separate groups with nothing rendered in
   // between. Tracking the last group that actually put something on screen
@@ -3456,15 +3326,6 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
-              showActions={
-                runPresentation === null ||
-                group.events.some((event) => {
-                  return runPresentation.actionOwnerEventIds.has(event.id);
-                })
-              }
-              steerEventIds={
-                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
-              }
               stackFirstOnPrevious={stackFirstOnPrevious}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
@@ -4026,20 +3887,17 @@ const RUN_SECTION_LABEL_CLASS =
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
-// A steer burst reads as one thing the user said, which means an even rhythm:
-// the copy button sits the same distance from the text above it as from
-// whatever follows — the next message, or the burst's acknowledgement. The
-// button already sits `mt-1` under its own message, so this pull cancels the
-// thread's 24px gap down to that same 4px on the other side of it. It is the
-// same pull a run-section row uses, which is why the acknowledgement can go on
-// carrying `RUN_SECTION_ROW_CLASS`.
+// Consecutive user messages read as one burst, which means an even rhythm: the
+// copy button sits the same distance from the text above it as from the next
+// message. The button already sits `mt-1` under its own message, so this pull
+// cancels the thread's 24px gap down to that same 4px on the other side of it.
 const MESSAGE_STACK_PULL_CLASS = "-mt-5";
 
 function RunSectionDivider({
   label,
   labelPosition = "left",
 }: {
-  label: ReactNode;
+  label: string;
   labelPosition?: "left" | "right";
 }) {
   return (
@@ -4066,7 +3924,7 @@ function RunSectionDividerRow({
   label,
   announce = false,
 }: {
-  label: ReactNode;
+  label: string;
   announce?: boolean;
 }) {
   return (
@@ -4078,61 +3936,6 @@ function RunSectionDividerRow({
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
         <RunSectionDivider label={label} labelPosition="right" />
-      </div>
-    </div>
-  );
-}
-
-// One acknowledgement per burst of consecutive steers, not one per message.
-// What the user is actually asking after firing off three corrections is
-// whether all three landed, so the label counts them; repeating "this one
-// arrived" under each message answers a question nobody asked and chops the
-// burst into unrelated pieces.
-//
-// The row carries no rule. A hairline is how the transcript marks a boundary
-// between two stretches of work, and drawing one under the burst cut the
-// acknowledgement away from the very messages it is about — the label ended up
-// reading as the start of something else rather than the closing line of what
-// the user just sent. It sits one stack gap under the burst for the same
-// reason: the burst and its acknowledgement are one block.
-function SteerAcknowledgementRow({ count }: { count: number }) {
-  const { t } = useTranslation();
-  const sweepRef = useSet(steerAcknowledgementRef$);
-  const label = t(
-    ($) => {
-      return $.chat.thread.steerAcknowledgement;
-    },
-    { count },
-  );
-  return (
-    <div className={RUN_SECTION_ROW_CLASS}>
-      <div className="hidden @[900px]:block" />
-      {/* The label keeps its own width rather than filling the column: the
-          sweep masks are sized from this box, so a full-width one would drag
-          the boundary across empty space beside the text. No min-height: the
-          row is the text, so the gap above it is the gap that was measured. */}
-      <div className="flex justify-end">
-        <p className={cn(RUN_SECTION_LABEL_CLASS, "text-right")}>
-          {/* Remounting on every change is what tells the sweep to run. The
-              outgoing layer stays empty here: the wording it erases is whatever
-              this row said last, which only the row itself still knows. */}
-          <span
-            key={label}
-            ref={sweepRef}
-            data-testid="chat-steer-acknowledgement"
-            data-steer-acknowledgement-label={label}
-            className="zero-steer-ack"
-          >
-            <span
-              aria-hidden="true"
-              data-steer-acknowledgement-outgoing=""
-              className="zero-steer-ack-layer zero-steer-ack-outgoing"
-            />
-            <span className="zero-steer-ack-layer zero-steer-ack-incoming">
-              {label}
-            </span>
-          </span>
-        </p>
       </div>
     </div>
   );
@@ -6078,8 +5881,6 @@ function PagedGroupRow({
   group,
   thread,
   modelChanges,
-  showActions,
-  steerEventIds,
   stackFirstOnPrevious = false,
   runGroupFolds,
   completedWorkFold,
@@ -6087,8 +5888,6 @@ function PagedGroupRow({
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
-  showActions: boolean;
-  steerEventIds: ReadonlySet<string>;
   stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
@@ -6104,7 +5903,6 @@ function PagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
-        steerEventIds={steerEventIds}
         stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
       />
@@ -6114,7 +5912,6 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
-      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
@@ -6166,8 +5963,6 @@ function SelectablePagedGroupRow({
   group,
   thread,
   modelChanges,
-  showActions,
-  steerEventIds,
   stackFirstOnPrevious,
   runGroupFolds,
   completedWorkFold,
@@ -6186,8 +5981,6 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
-        showActions={showActions}
-        steerEventIds={steerEventIds}
         stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
@@ -6232,8 +6025,6 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
-        showActions={showActions}
-        steerEventIds={steerEventIds}
         stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
@@ -6260,23 +6051,15 @@ function PagedUserGroup({
   group,
   thread,
   modelChanges,
-  steerEventIds,
   stackFirstOnPrevious = false,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
-  steerEventIds: ReadonlySet<string>;
   stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
-  // Consecutive user events already arrive as one group, so the burst boundary
-  // is the group boundary — a run of steers separated by assistant output lands
-  // in a group of its own and gets its own acknowledgement.
-  const steerCount = group.events.filter((event) => {
-    return steerEventIds.has(event.id);
-  }).length;
   return (
     <>
       {group.events.map((event, index) => {
@@ -6285,11 +6068,9 @@ function PagedUserGroup({
         // Anything the user sent back to back is one thing they said, so the
         // whole run closes up — including the message the run started from and
         // the first correction after it, which is the seam this rule used to
-        // leave wide. Adjacency is the whole condition on purpose: a burst that
-        // carries no acknowledgement is still a burst, so the spacing does not
-        // wait on the acknowledgement's feature switch. Anything that belongs
-        // between two messages — a model change, a message that renders as its
-        // own card rather than a bubble — ends the stack.
+        // leave wide. Adjacency is the whole condition on purpose. Anything
+        // that belongs between two messages — a model change, or a message that
+        // renders as its own card rather than a bubble — ends the stack.
         const stackedOnPrevious =
           modelChange === undefined &&
           rendersUserBubble(event) &&
@@ -6309,7 +6090,6 @@ function PagedUserGroup({
           </div>
         );
       })}
-      {steerCount > 0 ? <SteerAcknowledgementRow count={steerCount} /> : null}
       {runGroupFolds?.map((fold) => {
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
@@ -7605,13 +7385,11 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
-  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
-  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -7693,13 +7471,7 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      {showActions ? (
-        <PagedGroupActions
-          group={group}
-          content={fullContent}
-          thread={thread}
-        />
-      ) : null}
+      <PagedGroupActions group={group} content={fullContent} thread={thread} />
     </div>
   );
 }
