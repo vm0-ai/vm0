@@ -12,6 +12,7 @@ import mitm_addon
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.requestheaders_helpers import await_requestheaders_result
 
 _FIREWALL_NAME = "model-provider:openrouter-codex"
 _HOST = "openrouter.ai"
@@ -191,7 +192,7 @@ async def _run_request(
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
         if requestheaders_result is not None:
-            await requestheaders_result
+            await await_requestheaders_result(requestheaders_result)
         await mitm_addon.request(flow)
 
     return flow, original_body
