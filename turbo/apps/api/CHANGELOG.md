@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.473.1](https://github.com/vm0-ai/vm0/compare/api-v1.473.0...api-v1.473.1) (2026-08-22)
+
+
+### Refactoring
+
+* **api:** move the last branded contract paths off the brand namespace ([#28604](https://github.com/vm0-ai/vm0/issues/28604)) ([81f42fe](https://github.com/vm0-ai/vm0/commit/81f42fee5695da5f2546606aba9fce5f84b9ca26)), closes [#28600](https://github.com/vm0-ai/vm0/issues/28600)
+* **db:** add canonical agents data plane ([#28603](https://github.com/vm0-ai/vm0/issues/28603)) ([e682443](https://github.com/vm0-ai/vm0/commit/e68244397f7ba6850468ebd9dc48cc1188138f0e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.1
+    * @okouai/core bumped to 8.580.2
+    * @okouai/db bumped to 1.215.1
+
 ## [1.473.0](https://github.com/vm0-ai/vm0/compare/api-v1.472.0...api-v1.473.0) (2026-08-22)
 
 
