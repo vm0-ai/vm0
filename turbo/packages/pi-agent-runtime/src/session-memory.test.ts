@@ -186,6 +186,69 @@ describe("Pi API first-turn memory spike", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("emits a native checkpoint when the API turn completes without tools", async () => {
+    const directory = await temporaryDirectory();
+    const nativeSession = SessionManager.create(
+      "/home/user/workspace",
+      directory,
+      { id: SESSION_ID },
+    );
+    nativeSession.appendMessage({
+      role: "user",
+      content: "historical question",
+      timestamp: 1,
+    });
+    nativeSession.appendMessage(
+      fauxAssistantMessage("historical answer", { timestamp: 2 }),
+    );
+    const nativeSessionFile = nativeSession.getSessionFile();
+    if (!nativeSessionFile) {
+      throw new Error("Expected the native Pi session to have a file");
+    }
+    const nativeJsonl = await readFile(nativeSessionFile, "utf8");
+    const memorySession = MemoryPiSession.fromJsonl(nativeJsonl);
+    const faux = createFauxCore({
+      api: "pi-memory-spike",
+      provider: "pi-memory-spike",
+    });
+    faux.setResponses([
+      fauxAssistantMessage("completed entirely in the API slot", {
+        timestamp: 4,
+      }),
+    ]);
+
+    const firstTurn = await runPiFirstModelTurn({
+      model: faux.getModel(),
+      prompt: "answer without using a tool",
+      session: memorySession,
+      stream: faux.streamSimple,
+      systemPrompt: "preheated Pi system prompt",
+      timestamp: 3,
+    });
+
+    expect(firstTurn.handoffRequired).toBe(false);
+    expect(memorySession.toJsonl().startsWith(nativeJsonl)).toBe(true);
+    expect(
+      memorySession.buildSessionContext().messages.filter((message) => {
+        return (
+          message.role === "user" &&
+          message.content === "answer without using a tool"
+        );
+      }),
+    ).toHaveLength(1);
+
+    const checkpointFile = join(directory, "api-complete.jsonl");
+    await writeFile(checkpointFile, memorySession.toJsonl());
+    const reopenedSession = SessionManager.open(checkpointFile);
+    expect(reopenedSession.getSessionId()).toBe(SESSION_ID);
+    expect(reopenedSession.buildSessionContext().messages.at(-1)).toMatchObject(
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "completed entirely in the API slot" }],
+      },
+    );
+  });
+
   it("uses Pi's own migration before emitting sandbox-compatible JSONL", async () => {
     const legacyJsonl = [
       {

@@ -3,10 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  createAgentSession,
   createSyntheticSourceInfo,
+  DefaultResourceLoader,
   formatSkillsForPrompt,
+  SessionManager,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
+import { createFauxCore } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { formatPiSkillCatalogForPrompt } from "./resources";
@@ -76,5 +80,85 @@ describe("preheated Pi resource discovery", () => {
     ];
     expect(prompt).toBe(formatSkillsForPrompt(officialSkills));
     await expect(access(missingSkillFile)).rejects.toThrow();
+  });
+
+  it("lets Pi build its system prompt from preheated metadata and context", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-resource-loader-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "workspace");
+    const agentDir = join(root, "agent");
+    const agentsPath = join(cwd, "AGENTS.md");
+    const skillPath = join(agentDir, "skills", "release-check", "SKILL.md");
+    await expect(access(agentsPath)).rejects.toThrow();
+    await expect(access(skillPath)).rejects.toThrow();
+
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      systemPrompt: "preheated Pi base prompt",
+      appendSystemPrompt: [],
+      agentsFilesOverride() {
+        return {
+          agentsFiles: [
+            {
+              path: agentsPath,
+              content: "Use the repository-native validation workflow.",
+            },
+          ],
+        };
+      },
+      skillsOverride() {
+        return {
+          skills: [
+            {
+              name: "release-check",
+              description: "Inspect a release before deployment.",
+              filePath: skillPath,
+              baseDir: join(agentDir, "skills", "release-check"),
+              sourceInfo: createSyntheticSourceInfo(skillPath, {
+                source: "preheated",
+              }),
+              disableModelInvocation: false,
+            },
+          ],
+          diagnostics: [],
+        };
+      },
+    });
+    await loader.reload();
+    const faux = createFauxCore({
+      api: "pi-resource-spike",
+      provider: "pi-resource-spike",
+    });
+    const { session } = await createAgentSession({
+      cwd,
+      agentDir,
+      model: faux.getModel(),
+      tools: ["read"],
+      resourceLoader: loader,
+      sessionManager: SessionManager.inMemory(cwd),
+    });
+
+    expect(session.systemPrompt).toContain("preheated Pi base prompt");
+    expect(session.systemPrompt).toContain(
+      `<project_instructions path="${agentsPath}">\nUse the repository-native validation workflow.`,
+    );
+    expect(session.systemPrompt).toContain("<name>release-check</name>");
+    expect(session.systemPrompt).toContain(
+      "<description>Inspect a release before deployment.</description>",
+    );
+    expect(session.systemPrompt).toContain(`<location>${skillPath}</location>`);
+    expect(session.systemPrompt).toContain(`Current working directory: ${cwd}`);
+    expect(session.getActiveToolNames()).toStrictEqual(["read"]);
+    expect(session.sessionManager.getSessionFile()).toBeUndefined();
+    session.dispose();
+
+    await expect(access(agentsPath)).rejects.toThrow();
+    await expect(access(skillPath)).rejects.toThrow();
   });
 });
