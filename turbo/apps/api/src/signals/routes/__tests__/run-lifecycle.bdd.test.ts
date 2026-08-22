@@ -403,6 +403,21 @@ const CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS = [
   "76_99_percent",
   "all",
 ] as const;
+const API_PROCESS_AGE_BUCKETS = [
+  "0_1s",
+  "1_10s",
+  "10_60s",
+  "1_5m",
+  "5_15m",
+  "15m_plus",
+] as const;
+const API_PROCESS_DISPATCH_ORDINAL_BUCKETS = [
+  "first",
+  "2_4",
+  "5_16",
+  "17_64",
+  "65_plus",
+] as const;
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -1101,6 +1116,40 @@ function expectApiDispatchTimingEventsNotToLeak(
   }
 }
 
+function expectApiProcessSnapshot(
+  events: readonly Record<string, unknown>[],
+): unknown {
+  const [firstEvent] = events;
+  if (!firstEvent) {
+    throw new Error("Expected API dispatch timing events");
+  }
+  const ageBucket = firstEvent.api_process_age_bucket;
+  const ordinalBucket = firstEvent.api_process_dispatch_ordinal_bucket;
+  expect(API_PROCESS_AGE_BUCKETS).toContain(ageBucket);
+  expect(API_PROCESS_DISPATCH_ORDINAL_BUCKETS).toContain(ordinalBucket);
+  for (const event of events) {
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        api_process_age_bucket: ageBucket,
+        api_process_dispatch_ordinal_bucket: ordinalBucket,
+      }),
+    );
+  }
+  return ordinalBucket;
+}
+
+function apiProcessDispatchOrdinalBucketRank(value: unknown): number {
+  const rank = API_PROCESS_DISPATCH_ORDINAL_BUCKETS.findIndex((bucket) => {
+    return bucket === value;
+  });
+  if (rank === -1) {
+    throw new Error(
+      `Unexpected API process dispatch ordinal: ${String(value)}`,
+    );
+  }
+  return rank;
+}
+
 function expectConnectorCatalogLoadTiming(args: {
   readonly events: readonly Record<string, unknown>[];
   readonly acceptedCacheOutcome: "hit" | "miss" | "in_flight";
@@ -1626,6 +1675,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual([]);
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const processOrdinalBucket = expectApiProcessSnapshot(timingEvents);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
     expectApiDispatchSpanKind(
       timingEvents,
@@ -1833,6 +1883,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     const warmTimingEvents = apiDispatchTimingEventsForRun(warmCreated.runId);
+    const warmProcessOrdinalBucket = expectApiProcessSnapshot(warmTimingEvents);
+    expect(
+      apiProcessDispatchOrdinalBucketRank(warmProcessOrdinalBucket),
+    ).toBeGreaterThanOrEqual(
+      apiProcessDispatchOrdinalBucketRank(processOrdinalBucket),
+    );
     expectNoApiDispatchActions(
       warmTimingEvents,
       API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
