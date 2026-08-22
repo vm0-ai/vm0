@@ -7,7 +7,7 @@ const c = initContract();
 export const slackInteractiveContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/slack/interactive",
+    path: "/api/webhooks/slack/interactive",
     body: c.type<string>(),
     responses: {
       200: z.unknown(),

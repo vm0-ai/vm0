@@ -251,24 +251,35 @@ describe("API namespace compatibility", () => {
     expect(missingCompatibilityPaths(ROUTES)).toStrictEqual([]);
   });
 
-  // The regression #28278 will hit ~354 times: a contract moves off
-  // `/api/okou/**` to a neutral path, both branded registrations disappear, and
-  // every mechanism assertion in this file still passes. This pins that the
-  // literal list is what fails, so such a migration cannot go green and then
-  // 404 in production. Removing the path from the list is the way out, and it
-  // has to be deliberate. The subject must be a path #28278 has not moved yet,
-  // so it is one a provider console holds: those stay branded under #26701.
+  // The regression #28278 hit ~354 times: a contract moves off `/api/okou/**`
+  // to a neutral path, both branded registrations disappear, and every
+  // mechanism assertion in this file still passes. This pins that the literal
+  // list is what fails, so such a migration cannot go green and then 404 in
+  // production. Removing the path from the list is the way out, and it has to
+  // be deliberate.
+  //
+  // #28600 moved the last branded contract, so the subject is now a route that
+  // has already migrated, moved a second time to a path no
+  // `MIGRATED_BRANDED_PATHS` row names. That is the same failure: a slice edits
+  // the contract and forgets the rows the branded paths depend on.
   it("reports the branded registrations a neutral contract migration would drop", () => {
     const canonical = "/api/okou/slack/events";
     const legacy = "/api/zero/slack/events";
+    const declared = "/api/webhooks/slack/events";
     const neutral = "/api/slack/events";
     expect(
       LEGACY_ZERO_PATHS[canonical],
       `${canonical} must stay in the compatibility list for this guard to mean anything`,
     ).toBe(legacy);
+    expect(
+      ROUTES.filter((entry) => {
+        return entry.route.path === declared;
+      }),
+      `Expected a contract declaring ${declared} for this guard to move something`,
+    ).not.toHaveLength(0);
 
     const migratedRoutes = ROUTES.map((entry): RouteEntry => {
-      if (entry.route.path !== canonical) {
+      if (entry.route.path !== declared) {
         return entry;
       }
       return {
