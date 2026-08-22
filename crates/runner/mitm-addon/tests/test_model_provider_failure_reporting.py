@@ -29,6 +29,7 @@ def _make_flow(
     *,
     firewall_name: str = "model-provider:openai-api-key",
     request_path: str = "/v1/chat/completions",
+    request_method: str = "POST",
     response_status: int = 200,
     response_body: bytes | None = None,
     response_headers: http.Headers | None = None,
@@ -36,7 +37,7 @@ def _make_flow(
     flow = real_flow(
         host="api.openai.com",
         path=request_path,
-        method="POST",
+        method=request_method,
         response_status=response_status,
         response_body=response_body,
         response_headers=response_headers,
@@ -237,6 +238,115 @@ def test_later_success_does_not_retract_report(
     success_body = b'{"choices":[]}'
     success_flow = _make_flow(real_flow, proxy_log_path, response_body=success_body)
     _finish_http_flow(success_flow, body=success_body, mitm_ctx=mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("request_method", "response_status"),
+    [
+        pytest.param("POST", 103, id="informational"),
+        pytest.param("POST", 204, id="no-content"),
+        pytest.param("POST", 205, id="reset-content"),
+        pytest.param("POST", 304, id="not-modified"),
+        pytest.param("HEAD", 200, id="head"),
+        pytest.param("CONNECT", 200, id="successful-connect"),
+    ],
+)
+def test_bodyless_response_skips_usage_and_failure_observers(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    request_method: str,
+    response_status: int,
+    model_provider_failure_api,
+):
+    body = b'{"status":"failed","error":{"code":"server_error"}}'
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        request_method=request_method,
+        response_status=response_status,
+        response_body=body,
+        response_headers=header_map({"content-type": "application/json"}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    assert "model_json_usage_finish" not in flow.metadata
+    assert "model_sse_usage_finish" not in flow.metadata
+    stream = response_stream(flow)
+    assert stream(body) == body
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
+@pytest.mark.parametrize(
+    ("content_type", "body", "usage_finish_key"),
+    [
+        pytest.param(
+            "Text/Event-Stream; Charset=UTF-8",
+            b"event: error\n"
+            b'data: {"type":"error","code":"server_error",'
+            b'"message":"provider failed","param":null}\n\n',
+            "model_sse_usage_finish",
+            id="parameterized-sse",
+        ),
+        pytest.param(
+            'application/json; profile="text/event-stream"',
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="sse-profile-lookalike",
+        ),
+        pytest.param(
+            "text/event-stream+json",
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="sse-suffix-lookalike",
+        ),
+    ],
+)
+def test_media_type_classification_is_shared_by_usage_and_failure_observers(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    content_type: str,
+    body: bytes,
+    usage_finish_key: str,
+    model_provider_failure_api,
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": content_type}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    assert usage_finish_key in flow.metadata
+    other_usage_finish_key = (
+        "model_json_usage_finish"
+        if usage_finish_key == "model_sse_usage_finish"
+        else "model_sse_usage_finish"
+    )
+    assert other_usage_finish_key not in flow.metadata
+    stream = response_stream(flow)
+    assert stream(body) == body
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
 
     assert _reported_payloads(model_provider_failure_api) == [
         {"failureKind": "provider_unavailable"}

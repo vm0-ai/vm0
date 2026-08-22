@@ -25,6 +25,7 @@ import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_header_syntax
+import http_response_classification
 import model_provider_failure
 import model_websocket_usage
 import runtime_url_parsing
@@ -36,17 +37,13 @@ from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK_MIN = 200
-_HTTP_STATUS_NO_CONTENT = 204
-_HTTP_STATUS_RESET_CONTENT = 205
 _HTTP_STATUS_REDIRECT_MIN = 300
-_HTTP_STATUS_NOT_MODIFIED = 304
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
-_HTTP_OWS_CHARS = " \t"
 
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
 _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"
@@ -91,22 +88,16 @@ def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
     return "anthropic_messages"
 
 
-def _response_has_event_stream_media_type(response: http.Response) -> bool:
-    content_type = response.headers.get("content-type", "")
-    media_type = content_type.partition(";")[0].strip(_HTTP_OWS_CHARS).lower()
-    return media_type == "text/event-stream"
-
-
 def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
     """Return whether terminal model usage may parse a buffered JSON body."""
     response = flow.response
     if (
         response is None
-        or not _response_can_have_body(flow, response)
+        or not http_response_classification.can_have_body(flow, response)
         or not usage.is_model_provider_usage_observable(flow)
     ):
         return False
-    if _response_has_event_stream_media_type(response):
+    if http_response_classification.has_event_stream_media_type(response):
         return False
     return not _is_confirmed_websocket_upgrade_response(flow)
 
@@ -161,26 +152,11 @@ def _anthropic_lifecycle_observer(
     return observe
 
 
-def _response_can_have_body(flow: http.HTTPFlow, response: http.Response) -> bool:
-    """Return whether HTTP semantics permit content on this response."""
-    status_code = response.status_code
-    if status_code < _HTTP_STATUS_OK_MIN or status_code in (
-        _HTTP_STATUS_NO_CONTENT,
-        _HTTP_STATUS_RESET_CONTENT,
-        _HTTP_STATUS_NOT_MODIFIED,
-    ):
-        return False
-    method = flow.request.method.upper()
-    if method == "HEAD":
-        return False
-    return method != "CONNECT" or status_code >= _HTTP_STATUS_REDIRECT_MIN
-
-
 def _maybe_log_response_encoding_inspection_risk(
     flow: http.HTTPFlow,
     response: http.Response,
 ) -> None:
-    if not _response_can_have_body(flow, response):
+    if not http_response_classification.can_have_body(flow, response):
         return
     skip_reason = body_decoding.stream_decode_skip_reason(response.headers)
     if skip_reason is None:
@@ -218,10 +194,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     ):
         model_websocket_usage.activate(flow)
         return _ResponseUsageStreamSetup(None, False)
-    if not _response_can_have_body(flow, response):
+    if not http_response_classification.can_have_body(flow, response):
         return _ResponseUsageStreamSetup(None, False)
     if model_protocol is not None:
-        if _response_has_event_stream_media_type(response):
+        if http_response_classification.has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
             openai_recoverable_usage: dict = {}
@@ -338,7 +314,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             _maybe_log_response_encoding_inspection_risk(flow, response)
         return _ResponseUsageStreamSetup(
             None,
-            _response_can_have_body(flow, response)
+            http_response_classification.can_have_body(flow, response)
             and body_decoding.can_decode_json_usage_body(response.headers)
             and usage.needs_connector_response_buffer_fallback(flow),
         )
