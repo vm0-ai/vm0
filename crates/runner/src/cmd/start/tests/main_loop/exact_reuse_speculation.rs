@@ -1184,6 +1184,18 @@ async fn speculative_unpark_failure_destroys_before_fresh_fallback() {
 }
 
 #[tokio::test]
+async fn speculative_unpark_panic_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.push_unpark_panic("simulated speculative unpark panic");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn speculative_guest_restore_failure_destroys_before_fresh_fallback() {
     assert_speculation_failure_falls_back_to_fresh(
         GuestTimezoneIntent::Default,
