@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.476.0](https://github.com/vm0-ai/vm0/compare/api-v1.475.0...api-v1.476.0) (2026-08-22)
+
+
+### Features
+
+* support workspace presentation templates ([#28596](https://github.com/vm0-ai/vm0/issues/28596)) ([f25dbbb](https://github.com/vm0-ai/vm0/commit/f25dbbbae2aae3546070a36eaeead062ec563ee7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.352.0
+    * @okouai/core bumped to 8.580.5
+    * @okouai/db bumped to 1.216.0
+
 ## [1.475.0](https://github.com/vm0-ai/vm0/compare/api-v1.474.0...api-v1.475.0) (2026-08-22)
 
 
