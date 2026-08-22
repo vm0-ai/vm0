@@ -98,7 +98,7 @@ async function loadCustomSnapshot(args: {
             },
             selection:
               registration.sourceId === undefined
-                ? { kind: "legacy-singleton" as const }
+                ? { kind: "source-less-runtime-singleton" as const }
                 : {
                     kind: "exact" as const,
                     sourceId: registration.sourceId,
@@ -300,7 +300,7 @@ export async function resolveConnectorRuntimeTargets(args: {
                   },
                   selection:
                     registration.sourceId === undefined
-                      ? { kind: "legacy-singleton" as const }
+                      ? { kind: "source-less-runtime-singleton" as const }
                       : {
                           kind: "exact" as const,
                           sourceId: registration.sourceId,

@@ -829,7 +829,7 @@ async function loadConnectorAccountForDeletion(
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
       selection: args.sourceId
         ? { kind: "exact", sourceId: args.sourceId }
-        : { kind: "legacy-singleton" },
+        : { kind: "target-only-client-singleton" },
     },
   });
   signal.throwIfAborted();

@@ -8923,6 +8923,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+
     const connected = await connectors.connectManualGrant(
       actor,
       "lark",
@@ -8985,10 +8989,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "available",
     });
-    const [legacyRuntime] = await api.syncConnectorRuntime(run.runId, {
+    const [sourceLessRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "builtin", connectorSlug: "lark" }],
     });
-    expect(legacyRuntime).toMatchObject({
+    expect(sourceLessRuntime).toMatchObject({
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "available",
     });
@@ -8999,6 +9003,37 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "unresolved",
       reason: "connector-unavailable",
+    });
+
+    await connectors.requestManualGrant(
+      actor,
+      "lark",
+      "api-token",
+      {
+        appId: "lark-sibling-app-id",
+        appSecret: "lark-sibling-app-secret",
+      },
+      {
+        statuses: [200],
+        account: { intent: "add", displayName: "Sibling" },
+      },
+    );
+    const [ambiguousSourceLessRuntime] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [{ kind: "builtin", connectorSlug: "lark" }] },
+    );
+    expect(ambiguousSourceLessRuntime).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "unresolved",
+      reason: "connector-unavailable",
+    });
+    const [exactRuntimeWithSibling] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [larkTarget] },
+    );
+    expect(exactRuntimeWithSibling).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
