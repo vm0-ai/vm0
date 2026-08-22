@@ -123,7 +123,6 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
           params: { connectionId: account.id },
           body: {
             target: { kind: "builtin", connectorSlug: "openai" },
-            selectionResolution: { kind: "clear" },
           },
         }),
         [200, 404],
@@ -157,7 +156,6 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
                 kind: "custom",
                 customConnectorId: definition.id,
               },
-              selectionResolution: { kind: "clear" },
             },
           }),
           [200, 404],
@@ -315,31 +313,12 @@ describe("connector account lifecycle routes", () => {
       hasSibling: true,
     });
 
-    const invalidReplacement = await accept(
-      accountClient().delete({
-        headers: authHeaders(),
-        params: { connectionId: second.body.id },
-        body: {
-          target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: {
-            kind: "reassign",
-            connectionId: randomUUID(),
-          },
-        },
-      }),
-      [409],
-    );
-    expect(invalidReplacement.body.error.message).toBe(
-      "Replacement connector account is not available",
-    );
-
     const deleted = await accept(
       accountClient().delete({
         headers: authHeaders(),
         params: { connectionId: second.body.id },
         body: {
           target: { kind: "builtin", connectorSlug: "openai" },
-          selectionResolution: { kind: "clear" },
         },
       }),
       [200],
@@ -969,7 +948,6 @@ describe("connector account lifecycle routes", () => {
               kind: "custom",
               customConnectorId: definition.body.id,
             },
-            selectionResolution: { kind: "clear" },
           },
         }),
         [200],

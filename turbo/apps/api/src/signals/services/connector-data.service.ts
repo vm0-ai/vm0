@@ -80,10 +80,7 @@ import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.servic
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
-import {
-  prepareConnectorAccountDeletion,
-  type ConnectorAccountDeletionSelectionPolicy,
-} from "./connector-account-lifecycle.service";
+import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
   replaceConnectorConnection,
@@ -857,10 +854,6 @@ async function loadConnectorAccountForDeletion(
   return connector ? { kind: "resolved", connector } : { kind: "missing" };
 }
 
-// Target-only disconnect callers omit the exact selection resolution and
-// expect the legacy string result. Default them to clear and preserve that
-// result until #27695, after the account UI ships and the ~2 day
-// old-web-client window closes.
 async function prepareBuiltinConnectorAccountDeletion(
   db: Tx,
   args: {
@@ -868,7 +861,6 @@ async function prepareBuiltinConnectorAccountDeletion(
     readonly userId: string;
     readonly connectorSlug: string;
     readonly connectionId: string;
-    readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
   },
 ) {
   return await prepareConnectorAccountDeletion(db, {
@@ -876,18 +868,17 @@ async function prepareBuiltinConnectorAccountDeletion(
     userId: args.userId,
     target: { kind: "builtin", connectorSlug: args.connectorSlug },
     connectionId: args.connectionId,
-    selectionResolution: args.selectionResolution ?? { kind: "clear" },
   });
 }
 
 function completedConnectorDeletionResult(
-  selectionResolution: ConnectorAccountDeletionSelectionPolicy | undefined,
+  exactAccount: boolean,
   deletion: {
     readonly resolvedSelectionCount: number;
     readonly promotedDefaultConnectionId: string | null;
   },
 ) {
-  return selectionResolution
+  return exactAccount
     ? { kind: "deleted" as const, ...deletion }
     : ("deleted" as const);
 }
@@ -896,8 +887,6 @@ type DeleteConnectorLocalStateResult =
   | "deleted"
   | "missing"
   | "ambiguous"
-  | "invalid-replacement"
-  | "referenced"
   | {
       readonly kind: "deleted";
       readonly resolvedSelectionCount: number;
@@ -913,7 +902,6 @@ export const deleteConnectorLocalState$ = command(
       readonly connectorSlug: string;
       readonly sourceId?: string;
       readonly snapshot?: ConnectorRuntimeSnapshot | null;
-      readonly selectionResolution?: ConnectorAccountDeletionSelectionPolicy;
     },
     signal: AbortSignal,
   ): Promise<DeleteConnectorLocalStateResult> => {
@@ -1029,7 +1017,7 @@ export const deleteConnectorLocalState$ = command(
     signal.throwIfAborted();
 
     return completedConnectorDeletionResult(
-      args.selectionResolution,
+      args.sourceId !== undefined,
       deleteResult.deletion,
     );
   },

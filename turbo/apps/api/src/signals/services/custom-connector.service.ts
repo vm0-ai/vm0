@@ -23,10 +23,7 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type {
-  ConnectorAccountDeleteResolution,
-  ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
@@ -98,7 +95,6 @@ import {
   connectorAccountSiblingWritesEnabled,
   normalizeConnectorAccountMutation,
 } from "./connector-account-mutation.service";
-import type { ConnectorAccountRejectDeletionPolicy } from "./connector-account-lifecycle.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2979,11 +2975,8 @@ type DisconnectCustomConnectorResult =
   | "missing-definition"
   | "missing-account"
   | "ambiguous"
-  | "referenced"
   | "managed";
 
-// The target-only custom route omits selectionResolution and retains its
-// legacy idempotent, selection-clearing behavior until #27695's drain gate.
 export const disconnectCustomConnector$ = command(
   async (
     { set },
@@ -2991,7 +2984,7 @@ export const disconnectCustomConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorId: string;
-      readonly selectionResolution?: ConnectorAccountRejectDeletionPolicy;
+      readonly requireAccount?: true;
     },
     signal: AbortSignal,
   ): Promise<DisconnectCustomConnectorResult> => {
@@ -3038,24 +3031,10 @@ export const disconnectCustomConnector$ = command(
         ) {
           return "managed" as const;
         }
-        const result = await deleteCustomConnectorMemberConnection(
-          tx,
-          args,
-          signal,
-        );
-        if (result === "invalid-replacement") {
-          throw new Error(
-            "Single-account custom connector deletion resolved a replacement",
-          );
-        }
-        return result === "missing" && !args.selectionResolution
-          ? ("deleted" as const)
-          : result === "missing"
-            ? ("missing-account" as const)
-            : result;
+        return await deleteCustomConnectorMemberConnection(tx, args, signal);
       }),
       (result) => {
-        return result === "deleted" && args.selectionResolution
+        return result === "deleted"
           ? {
               db: writeDb,
               scope: { orgId: args.orgId, userId: args.userId },
@@ -3069,9 +3048,15 @@ export const disconnectCustomConnector$ = command(
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (disconnected !== "deleted") {
+    const outcome =
+      disconnected === "missing"
+        ? args.requireAccount
+          ? ("missing-account" as const)
+          : ("deleted" as const)
+        : disconnected;
+    if (outcome !== "deleted") {
       signal.throwIfAborted();
-      return disconnected;
+      return outcome;
     }
     await publishCustomConnectorUserInvalidationAfterCommit(
       args.userId,
@@ -3090,7 +3075,6 @@ export const deleteCustomConnectorAccount$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly memberConnectorId: string;
-      readonly selectionResolution: ConnectorAccountDeleteResolution;
     },
     signal: AbortSignal,
   ) => {

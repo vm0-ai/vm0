@@ -207,7 +207,6 @@ const deletionImpactInner$ = computed(async (get) => {
 type SingleAccountDisconnectOutcome =
   | "missing"
   | "ambiguous"
-  | "referenced"
   | "managed"
   | "deleted";
 
@@ -243,12 +242,11 @@ const disconnectSingleAccountInner$ = command(
           orgId: auth.orgId,
           userId: auth.userId,
           connectorSlug: body.data.target.connectorSlug,
-          selectionResolution: { kind: "reject" },
         },
         signal,
       );
       signal.throwIfAborted();
-      if (typeof result !== "string") {
+      if (result === "deleted") {
         observeSingleAccountDisconnect({
           targetKind: "builtin",
           outcome: "deleted",
@@ -272,14 +270,6 @@ const disconnectSingleAccountInner$ = command(
         });
         return conflict("Multiple connector accounts require an exact choice");
       }
-      if (result === "referenced") {
-        observeSingleAccountDisconnect({
-          targetKind: "builtin",
-          outcome: "referenced",
-          accountCardinality: "one",
-        });
-        return conflict("Connector account is selected by chat threads");
-      }
       throw new Error(
         "Single-account built-in deletion returned an exact-account result",
       );
@@ -291,7 +281,7 @@ const disconnectSingleAccountInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         connectorId: body.data.target.customConnectorId,
-        selectionResolution: { kind: "reject" },
+        requireAccount: true,
       },
       signal,
     );
@@ -326,14 +316,6 @@ const disconnectSingleAccountInner$ = command(
         accountCardinality: "multiple",
       });
       return conflict("Multiple connector accounts require an exact choice");
-    }
-    if (result === "referenced") {
-      observeSingleAccountDisconnect({
-        targetKind: "custom",
-        outcome: "referenced",
-        accountCardinality: "one",
-      });
-      return conflict("Connector account is selected by chat threads");
     }
     observeSingleAccountDisconnect({
       targetKind: "custom",
@@ -373,7 +355,6 @@ const deleteInner$ = command(
               userId: auth.userId,
               connectorSlug: body.data.target.connectorSlug,
               sourceId: params.connectionId,
-              selectionResolution: body.data.selectionResolution,
             },
             signal,
           )
@@ -384,7 +365,6 @@ const deleteInner$ = command(
               userId: auth.userId,
               connectorId: body.data.target.customConnectorId,
               memberConnectorId: params.connectionId,
-              selectionResolution: body.data.selectionResolution,
             },
             signal,
           );
@@ -396,22 +376,10 @@ const deleteInner$ = command(
       if (result === "ambiguous") {
         return conflict("Multiple connector accounts require an exact choice");
       }
-      if (result === "invalid-replacement") {
-        return conflict("Replacement connector account is not available");
-      }
-      if (result === "referenced") {
-        return conflict("Connector account is selected by chat threads");
-      }
       throw new Error("Exact connector account deletion returned no result");
     }
     if (result.kind === "missing" || result.kind === "managed") {
       return notFound("Connector account not found");
-    }
-    if (result.kind === "invalid-replacement") {
-      return conflict("Replacement connector account is not available");
-    }
-    if (result.kind === "referenced") {
-      return conflict("Connector account is selected by chat threads");
     }
     return {
       status: 200 as const,

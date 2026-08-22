@@ -37,7 +37,7 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result === "managed") {
     return integrationManagedCustomConnectorMutationForbidden();
   }
-  if (result === "referenced" || result === "missing-account") {
+  if (result === "missing-account") {
     throw new Error("Legacy custom connector deletion returned a safe result");
   }
 

@@ -755,13 +755,11 @@ export {
   connectorAccountTargetQuerySchema,
   connectorAccountListQuerySchema,
   connectorAccountSummarySchema,
-  connectorAccountDeleteResolutionSchema,
   connectorAccountsContract,
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
   type ConnectorAccountSelection,
   type ConnectorAccountMutationIntent,
-  type ConnectorAccountDeleteResolution,
   type ConnectorAccountSummary,
 } from "./connector-accounts";
 

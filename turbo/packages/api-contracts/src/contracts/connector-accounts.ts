@@ -130,19 +130,6 @@ export const connectorAccountSummarySchema = z
   })
   .strict();
 
-export const connectorAccountDeleteResolutionSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({ kind: z.literal("clear") }).strict(),
-    z
-      .object({
-        kind: z.literal("reassign"),
-        connectionId: z.uuid(),
-      })
-      .strict(),
-  ],
-);
-
 const connectorAccountPathParamsSchema = z.object({
   connectionId: z.uuid(),
 });
@@ -255,12 +242,7 @@ export const connectorAccountsContract = c.router({
     path: "/api/connector-accounts/:connectionId",
     headers: authHeadersSchema,
     pathParams: connectorAccountPathParamsSchema,
-    body: z
-      .object({
-        target: connectorAccountTargetSchema,
-        selectionResolution: connectorAccountDeleteResolutionSchema,
-      })
-      .strict(),
+    body: connectorAccountExactTargetBodySchema,
     responses: {
       200: z.object({
         deletedConnectionId: z.uuid(),
@@ -271,7 +253,6 @@ export const connectorAccountsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
     },
     summary: "Delete an exact connector account",
   },
@@ -288,9 +269,6 @@ export type ConnectorAccountSelection = z.infer<
 >;
 export type ConnectorAccountMutationIntent = z.infer<
   typeof connectorAccountMutationIntentSchema
->;
-export type ConnectorAccountDeleteResolution = z.infer<
-  typeof connectorAccountDeleteResolutionSchema
 >;
 export type ConnectorAccountSummary = z.infer<
   typeof connectorAccountSummarySchema

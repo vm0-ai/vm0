@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 
 import type {
   ConnectorAccountConnection,
-  ConnectorAccountDeleteResolution,
   ConnectorAccountSummary,
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -870,21 +869,11 @@ export async function connectorAccountDeletionImpact(
 
 type PreparedConnectorAccountDeletion =
   | { readonly kind: "missing" }
-  | { readonly kind: "invalid-replacement" }
-  | { readonly kind: "referenced" }
   | {
       readonly kind: "ready";
       readonly resolvedSelectionCount: number;
       readonly promotedDefaultConnectionId: string | null;
     };
-
-export interface ConnectorAccountRejectDeletionPolicy {
-  readonly kind: "reject";
-}
-
-export type ConnectorAccountDeletionSelectionPolicy =
-  | ConnectorAccountDeleteResolution
-  | ConnectorAccountRejectDeletionPolicy;
 
 export async function prepareConnectorAccountDeletion(
   db: Db,
@@ -893,7 +882,6 @@ export async function prepareConnectorAccountDeletion(
     readonly userId: string;
     readonly target: ConnectorAccountTarget;
     readonly connectionId: string;
-    readonly selectionResolution: ConnectorAccountDeletionSelectionPolicy;
   },
 ): Promise<PreparedConnectorAccountDeletion> {
   await lockConnectorAccountTarget(db, args);
@@ -918,57 +906,12 @@ export async function prepareConnectorAccountDeletion(
     ...args,
     excludedConnectionId: args.connectionId,
   });
-  if (args.selectionResolution.kind === "reject") {
-    const [selection] = await db
-      .select({ connectorId: chatThreadConnectorSelections.connectorId })
-      .from(chatThreadConnectorSelections)
-      .where(eq(chatThreadConnectorSelections.connectorId, args.connectionId))
-      .limit(1);
-    if (selection) {
-      return { kind: "referenced" };
-    }
-  } else if (args.selectionResolution.kind === "reassign") {
-    const [replacement] = await db
-      .select({ id: connectors.id })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.id, args.selectionResolution.connectionId),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          targetCondition(args.target),
-          ne(connectors.id, args.connectionId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!replacement) {
-      return { kind: "invalid-replacement" };
-    }
-  }
-
   const resolvedSelectionCount =
-    args.selectionResolution.kind === "reject"
-      ? 0
-      : ((args.selectionResolution.kind === "reassign"
-          ? await db
-              .update(chatThreadConnectorSelections)
-              .set({ connectorId: args.selectionResolution.connectionId })
-              .where(
-                eq(
-                  chatThreadConnectorSelections.connectorId,
-                  args.connectionId,
-                ),
-              )
-          : await db
-              .delete(chatThreadConnectorSelections)
-              .where(
-                eq(
-                  chatThreadConnectorSelections.connectorId,
-                  args.connectionId,
-                ),
-              )
-        ).rowCount ?? 0);
+    (
+      await db
+        .delete(chatThreadConnectorSelections)
+        .where(eq(chatThreadConnectorSelections.connectorId, args.connectionId))
+    ).rowCount ?? 0;
 
   let promotedDefaultConnectionId: string | null = null;
   if (account.isDefault && sibling) {

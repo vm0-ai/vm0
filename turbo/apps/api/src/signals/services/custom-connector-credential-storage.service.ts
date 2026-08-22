@@ -10,11 +10,7 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
-import {
-  prepareConnectorAccountDeletion,
-  type ConnectorAccountDeletionSelectionPolicy,
-  type ConnectorAccountRejectDeletionPolicy,
-} from "./connector-account-lifecycle.service";
+import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export type PreparedCustomConnectorValue =
@@ -95,13 +91,9 @@ export async function upsertCustomConnectorStoredValues(
 
 export async function deleteCustomConnectorMemberConnection(
   db: Tx,
-  args: CustomConnectorMemberConnection & {
-    readonly selectionResolution?: ConnectorAccountRejectDeletionPolicy;
-  },
+  args: CustomConnectorMemberConnection,
   signal: AbortSignal,
-): Promise<
-  "deleted" | "missing" | "ambiguous" | "invalid-replacement" | "referenced"
-> {
+): Promise<"deleted" | "missing" | "ambiguous"> {
   await lockConnectorAccountTarget(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -122,20 +114,6 @@ export async function deleteCustomConnectorMemberConnection(
   }
   if (resolution.kind !== "resolved") {
     return "missing";
-  }
-  if (args.selectionResolution) {
-    const deletion = await deleteCustomConnectorMemberConnectionExact(
-      db,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: args.connectorId,
-        memberConnectorId: resolution.account.connectorId,
-        selectionResolution: args.selectionResolution,
-      },
-      signal,
-    );
-    return deletion.kind;
   }
   await deleteCustomConnectorMemberConnectionById(
     db,
@@ -186,13 +164,10 @@ export async function deleteCustomConnectorMemberConnectionExact(
   db: Tx,
   args: CustomConnectorMemberConnection & {
     readonly memberConnectorId: string;
-    readonly selectionResolution: ConnectorAccountDeletionSelectionPolicy;
   },
   signal: AbortSignal,
 ): Promise<
   | { readonly kind: "missing" }
-  | { readonly kind: "invalid-replacement" }
-  | { readonly kind: "referenced" }
   | {
       readonly kind: "deleted";
       readonly resolvedSelectionCount: number;
@@ -204,7 +179,6 @@ export async function deleteCustomConnectorMemberConnectionExact(
     userId: args.userId,
     target: { kind: "custom", customConnectorId: args.connectorId },
     connectionId: args.memberConnectorId,
-    selectionResolution: args.selectionResolution,
   });
   signal.throwIfAborted();
   if (deletion.kind !== "ready") {
