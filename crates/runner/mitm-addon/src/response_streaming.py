@@ -25,6 +25,7 @@ import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_header_syntax
+import model_provider_failure
 import model_websocket_usage
 import runtime_url_parsing
 import stream_capture
@@ -413,6 +414,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
 
     metrics = {"total_bytes": 0}
     usage_parser, needs_buffered_fallback = _configure_response_usage_stream(flow)
+    failure_parser = model_provider_failure.configure_response_parser(flow)
     retain_body = flow_metadata.should_capture_body(flow.metadata) or needs_buffered_fallback
     buf = bytearray() if retain_body else None
     buffer_state = {"truncated": False} if retain_body else None
@@ -428,6 +430,8 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
                 buffer_state["truncated"] = True
         if usage_parser is not None:
             usage_parser(chunk)
+        if failure_parser is not None:
+            failure_parser(chunk)
         return chunk
 
     flow.response.stream = stream_and_observe

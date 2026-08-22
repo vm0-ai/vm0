@@ -37,6 +37,7 @@ import codex_output_timing
 import firewall_auth_client
 import logging_utils
 import mitm_addon
+import model_provider_failure
 import platform_api
 import registry
 import runner_flush_lifecycle
@@ -76,6 +77,7 @@ def _reset_module_state() -> Iterator[None]:
     claude_output_timing.reset_for_tests()
     codex_model_catalog_cache.reset_for_tests()
     codex_output_timing.reset_for_tests()
+    model_provider_failure.reset_for_tests()
     usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
@@ -87,6 +89,7 @@ def _reset_module_state() -> Iterator[None]:
     claude_output_timing.reset_for_tests()
     codex_model_catalog_cache.reset_for_tests()
     codex_output_timing.reset_for_tests()
+    model_provider_failure.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     auth_base_transport.reset_transport_state_for_tests()
