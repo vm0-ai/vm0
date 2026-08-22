@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.473.0](https://github.com/vm0-ai/vm0/compare/api-v1.472.0...api-v1.473.0) (2026-08-22)
+
+
+### Features
+
+* **api:** add explicit single-account connector intent ([#28597](https://github.com/vm0-ai/vm0/issues/28597)) ([67b73e4](https://github.com/vm0-ai/vm0/commit/67b73e43e2b58ca976542aadd4ade39848df4055))
+
+
+### Bug Fixes
+
+* **billing:** harden usage pack reconciliation ([#28578](https://github.com/vm0-ai/vm0/issues/28578)) ([4cd666c](https://github.com/vm0-ai/vm0/commit/4cd666c384d6200e703bd6f247d85f791af07b28))
+* **rebranding:** neutralize built-in model copy ([#28552](https://github.com/vm0-ai/vm0/issues/28552)) ([73e0185](https://github.com/vm0-ai/vm0/commit/73e01850d99402125c4ea9f12eb4af6dc9d0f953))
+
+
+### Refactoring
+
+* **api:** migrate the late branded contracts and guard the namespace ([#28577](https://github.com/vm0-ai/vm0/issues/28577)) ([d568056](https://github.com/vm0-ai/vm0/commit/d5680566144451411311656dd5a3c6c0bb312f02))
+* **feishu:** move the console-independent feishu routes off the brand namespace ([#28554](https://github.com/vm0-ai/vm0/issues/28554)) ([f777da2](https://github.com/vm0-ai/vm0/commit/f777da2eef71f94707c3e284743427068295fb8d))
+* remove expired deployment compatibility ([#28599](https://github.com/vm0-ai/vm0/issues/28599)) ([b820443](https://github.com/vm0-ai/vm0/commit/b820443bb6ddfae7e5997bf677fb76c461320798))
+
+
+### Performance Improvements
+
+* **api:** serve scoped connector runtime from exact-identity projections ([#28513](https://github.com/vm0-ai/vm0/issues/28513)) ([dae3148](https://github.com/vm0-ai/vm0/commit/dae3148d93667fcf1ae828f0f2ef0150ee02a822))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.350.0
+    * @okouai/core bumped to 8.580.1
+    * @okouai/db bumped to 1.215.0
+
 ## [1.472.0](https://github.com/vm0-ai/vm0/compare/api-v1.471.0...api-v1.472.0) (2026-08-21)
 
 
