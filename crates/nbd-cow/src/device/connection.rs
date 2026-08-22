@@ -624,9 +624,22 @@ mod tests {
 
         let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
         assert_eq!(event.level, Level::WARN);
+        let expected_device_index = MISSING_DEVICE_INDEX.to_string();
         assert_eq!(
             event.fields.get("device_index").map(String::as_str),
-            Some("4294967295")
+            Some(expected_device_index.as_str())
+        );
+        let ownership_event = event_with_message(
+            &captured,
+            "skipping cancelled-create disconnect: cannot read device backend identity",
+        );
+        assert_eq!(ownership_event.level, Level::WARN);
+        assert_eq!(
+            ownership_event
+                .fields
+                .get("device_index")
+                .map(String::as_str),
+            Some(expected_device_index.as_str())
         );
         assert_single_lease_returned(&pool).await;
     }
