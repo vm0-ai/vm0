@@ -820,6 +820,8 @@ describe("okou generate image command", () => {
     );
     expect(helpOutput).toContain("qwen-image-3");
     expect(helpOutput).toContain("nano-banana-2-lite");
+    expect(helpOutput).toContain("flux-2-pro");
+    expect(helpOutput).toContain("ideogram-4");
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");

@@ -32,6 +32,7 @@ import {
 } from "./built-in-generation-usage-idempotency";
 
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
+const FAL_BILLABLE_UNITS_HEADER = "x-fal-billable-units";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
@@ -43,8 +44,13 @@ const IMAGE_IO_MAX_ASPECT_RATIO = 3;
 const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
 const NANO_BANANA_2_LITE_MODEL = "google/nano-banana-2-lite";
 const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
+const FLUX_2_PRO_MODEL = "fal-ai/flux-2-pro";
+const FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS = 9;
+const FLUX_2_PRO_MAX_PIXELS = 4_194_304;
+const FLUX_2_PRO_MAX_EDGE = 2560;
 const QWEN_IMAGE_3_MODEL = "alibaba/qwen-image-3/text-to-image";
 const QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS = 3;
+const IDEOGRAM_4_MODEL = "ideogram/v4";
 /**
  * fal prices Qwen Image 3 per generated image in two resolution tiers, split at
  * 2,250,000 output pixels: $0.04 at or below it, $0.075 above it.
@@ -81,12 +87,23 @@ const FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES = [
   "output_image.1k",
   "output_image.2k",
 ] as const;
+const FLUX_2_PRO_PRICING_CATEGORIES = [
+  "processed_megapixel.first",
+  "processed_megapixel.additional",
+] as const;
+const IDEOGRAM_4_PRICING_CATEGORIES = [
+  "output_megapixel.turbo",
+  "output_megapixel.balanced",
+  "output_megapixel.quality",
+] as const;
 const IMAGE_PRICING_CATEGORIES = [
   FAL_OUTPUT_IMAGE_CATEGORY,
   FAL_OUTPUT_MEGAPIXEL_CATEGORY,
   PROVIDER_COST_USD_MICROS_CATEGORY,
   ...FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
   ...FAL_PIXEL_TIER_IMAGE_PRICING_CATEGORIES,
+  ...FLUX_2_PRO_PRICING_CATEGORIES,
+  ...IDEOGRAM_4_PRICING_CATEGORIES,
 ] as const;
 
 const IMAGE_QUALITIES = ["low", "medium", "high", "auto"] as const;
@@ -225,6 +242,31 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: true,
   },
+  [FLUX_2_PRO_MODEL]: {
+    alias: "flux-2-pro",
+    promptless: false,
+    endpointId: FLUX_2_PRO_MODEL,
+    imageToImageEndpointId: `${FLUX_2_PRO_MODEL}/edit`,
+    sourceImageInput: "image_urls",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
+    pricingCategories: FLUX_2_PRO_PRICING_CATEGORIES,
+    billingMode: "flux_2_processed_megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
     promptless: false,
@@ -266,6 +308,31 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsOutputCompression: false,
     supportsModeration: false,
     supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [IDEOGRAM_4_MODEL]: {
+    alias: "ideogram-4",
+    promptless: false,
+    endpointId: IDEOGRAM_4_MODEL,
+    imageToImageEndpointId: `${IDEOGRAM_4_MODEL}/image-to-image`,
+    sourceImageInput: "image_url",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
+    pricingCategories: IDEOGRAM_4_PRICING_CATEGORIES,
+    billingMode: "ideogram_rendering_speed_megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: true,
     supportsBackground: false,
     usesOpenAiByok: false,
     supportsSeed: true,
@@ -861,6 +928,14 @@ function validateImageSize(
     );
   }
   if (
+    model === FLUX_2_PRO_MODEL &&
+    (longEdge > FLUX_2_PRO_MAX_EDGE || pixels > FLUX_2_PRO_MAX_PIXELS)
+  ) {
+    return badRequest(
+      `Unsupported image size for ${modelConfig.alias}: ${size}; max edge is ${FLUX_2_PRO_MAX_EDGE}px and total pixels must be at most ${FLUX_2_PRO_MAX_PIXELS}`,
+    );
+  }
+  if (
     width % IMAGE_IO_EDGE_MULTIPLE !== 0 ||
     height % IMAGE_IO_EDGE_MULTIPLE !== 0
   ) {
@@ -1059,6 +1134,9 @@ function parseSafetyTolerance(
   if (!includesString(IMAGE_SAFETY_TOLERANCES, safetyTolerance)) {
     return badRequest(`Unsupported safety tolerance: ${safetyTolerance}`);
   }
+  if (modelConfig.alias === "flux-2-pro" && safetyTolerance === "6") {
+    return badRequest("flux-2-pro supports safetyTolerance from 1 to 5");
+  }
   if (safetyTolerance !== "4" && !modelConfig.supportsSafetyTolerance) {
     return badRequest(
       `safetyTolerance is not supported for ${modelConfig.alias}`,
@@ -1133,11 +1211,13 @@ function parseSourceImageUrls(
     modelConfig.alias === "nano-banana-2" ||
     modelConfig.alias === "nano-banana-2-lite"
       ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
-      : modelConfig.alias === "seedream5-lite"
-        ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
-        : modelConfig.alias === "qwen-image-3"
-          ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
-          : MAX_SOURCE_IMAGE_URLS;
+      : modelConfig.alias === "flux-2-pro"
+        ? FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS
+        : modelConfig.alias === "seedream5-lite"
+          ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
+          : modelConfig.alias === "qwen-image-3"
+            ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
+            : MAX_SOURCE_IMAGE_URLS;
   if (sourceImageUrls.length > maxSourceImageUrls) {
     return badRequest(
       `imageUrls supports at most ${maxSourceImageUrls} images`,
@@ -1534,6 +1614,12 @@ function nearestFalAspectRatio(width: number, height: number): string {
 function falImageSize(options: ImageOptions) {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (options.size === "auto") {
+    if (
+      options.sourceImageUrls.length > 0 &&
+      (options.model === FLUX_2_PRO_MODEL || options.model === IDEOGRAM_4_MODEL)
+    ) {
+      return "auto";
+    }
     if (modelConfig.sizeMode === "standard") {
       return "1024x1024";
     }
@@ -1575,6 +1661,40 @@ function falSourceImageInput(
     : { image_urls: sourceImageUrls };
 }
 
+function ideogramRenderingSpeed(
+  quality: ImageQuality,
+): "TURBO" | "BALANCED" | "QUALITY" {
+  if (quality === "low") {
+    return "TURBO";
+  }
+  if (quality === "high") {
+    return "QUALITY";
+  }
+  return "BALANCED";
+}
+
+function falImageCountInput(options: ImageOptions): Record<string, unknown> {
+  const providerSelectsCount =
+    options.model === FLUX_2_PRO_MODEL ||
+    (options.model === IDEOGRAM_4_MODEL && options.sourceImageUrls.length > 0);
+  return providerSelectsCount ? {} : { num_images: 1 };
+}
+
+function falQualityInput(
+  options: ImageOptions,
+  modelConfig: ImageModelConfig,
+): Record<string, unknown> {
+  if (options.model === IDEOGRAM_4_MODEL) {
+    return {
+      rendering_speed: ideogramRenderingSpeed(options.quality),
+      // Prompt compilation already happens in Okou. Disabling Ideogram's
+      // expansion avoids changing the prompt and its separate $0.03 fee.
+      expansion_model: "None",
+    };
+  }
+  return modelConfig.supportsQuality ? { quality: options.quality } : {};
+}
+
 function falImageInput(options: ImageOptions): Record<string, unknown> {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (modelConfig.promptless) {
@@ -1585,13 +1705,13 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
     ...(modelConfig.sizeParameter === "aspect_ratio"
       ? { aspect_ratio: falAspectRatio(options) }
       : { image_size: falImageSize(options) }),
-    num_images: 1,
+    ...falImageCountInput(options),
     ...(hasString(modelConfig.outputFormats, options.outputFormat) &&
     modelConfig.alias !== "seedream4"
       ? { output_format: options.outputFormat }
       : {}),
     ...(options.model === NANO_BANANA_2_MODEL ? { resolution: "1K" } : {}),
-    ...(modelConfig.supportsQuality ? { quality: options.quality } : {}),
+    ...falQualityInput(options, modelConfig),
     ...(modelConfig.supportsBackground
       ? { background: options.background }
       : {}),
@@ -1672,6 +1792,65 @@ export async function submitFalImageQueueGeneration(
     return badGateway("Fal returned no queue handle", "NO_QUEUE_HANDLE");
   }
   return handle;
+}
+
+function falQueueResponseUrl(value: string | undefined): URL | null {
+  if (!value || !URL.canParse(value)) {
+    return null;
+  }
+  const url = new URL(value);
+  const queueOrigin = new URL(FAL_IMAGE_QUEUE_URL_PREFIX);
+  return url.origin === queueOrigin.origin ? url : null;
+}
+
+export async function getFalImageBillableUnits(
+  options: ImageOptions,
+  responseUrl: string | undefined,
+  falKey: string | undefined,
+  signal: AbortSignal,
+): Promise<number | ErrorResponse | undefined> {
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode !== "flux_2_processed_megapixel") {
+    return undefined;
+  }
+  const url = falQueueResponseUrl(responseUrl);
+  if (!url) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+  if (!falKey) {
+    return serviceUnavailable(
+      "Fal image generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: falHeaders(falKey),
+    signal,
+  });
+  if (!response.ok) {
+    const errorBody = await readImageProviderErrorBody(response, signal);
+    L.error("Fal image billing response failed", {
+      model: options.model,
+      status: response.status,
+      body: errorBody,
+    });
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+
+  const rawBillableUnits = response.headers.get(FAL_BILLABLE_UNITS_HEADER);
+  await response.arrayBuffer();
+  signal.throwIfAborted();
+  const billableUnits = Number(rawBillableUnits);
+  if (
+    !rawBillableUnits ||
+    !Number.isFinite(billableUnits) ||
+    billableUnits <= 0
+  ) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+  return billableUnits;
 }
 
 function bytePlusImageSize(options: ImageOptions): string {
@@ -1824,6 +2003,16 @@ function megapixelsForImage(
   return Math.max(1, Math.ceil((parsed.width * parsed.height) / 1_000_000));
 }
 
+function providerMegapixelsForImage(
+  image: FalImageFile,
+): number | ErrorResponse {
+  if (!image.width || !image.height) {
+    return badGateway("Fal returned no billing details", "NO_BILLING_UNITS");
+  }
+  // fal's pricing examples treat 1024x1024 as one MP and 2048x2048 as four.
+  return Math.max(1, Math.ceil((image.width * image.height) / (1024 * 1024)));
+}
+
 /**
  * fal returns Qwen Image 3 files without dimensions, so the tier falls back to
  * the requested size. An unparsed size means the request carried `auto` and
@@ -1847,11 +2036,48 @@ function falPixelTierImageCategory(
     : "output_image.1k";
 }
 
+function ideogramMegapixelCategory(
+  options: ImageOptions,
+): ImagePricingCategory {
+  return `output_megapixel.${ideogramRenderingSpeed(options.quality).toLowerCase()}` as ImagePricingCategory;
+}
+
+function flux2AdditionalProcessedMegapixels(falBillableUnits: number): number {
+  // Fal reports one billable unit for the first processed MP and half a unit
+  // for each additional processed MP, matching FLUX.2 Pro's tiered pricing.
+  return Math.max(0, Math.round((falBillableUnits - 1) * 2));
+}
+
 function falBillingEntries(
   image: FalImageFile,
   options: ImageOptions,
-): readonly ImageBillingEntry[] {
+  falBillableUnits: number | undefined,
+): readonly ImageBillingEntry[] | ErrorResponse {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode === "flux_2_processed_megapixel") {
+    if (falBillableUnits === undefined) {
+      throw new Error("FLUX.2 Pro requires Fal billable units");
+    }
+    return [
+      { category: "processed_megapixel.first", quantity: 1 },
+      {
+        category: "processed_megapixel.additional",
+        quantity: flux2AdditionalProcessedMegapixels(falBillableUnits),
+      },
+    ];
+  }
+  if (modelConfig.billingMode === "ideogram_rendering_speed_megapixel") {
+    const outputMegapixels = providerMegapixelsForImage(image);
+    if (typeof outputMegapixels !== "number") {
+      return outputMegapixels;
+    }
+    return [
+      {
+        category: ideogramMegapixelCategory(options),
+        quantity: outputMegapixels,
+      },
+    ];
+  }
   if (modelConfig.billingMode === "pixel_tier_image") {
     return [
       { category: falPixelTierImageCategory(image, options), quantity: 1 },
@@ -1947,8 +2173,14 @@ function falQualitySizeImageCategory(
 export async function downloadFalImage(
   result: FalImageResult,
   options: ImageOptions,
+  falBillableUnits: number | undefined,
   signal: AbortSignal,
 ): Promise<ParsedImageGeneration | ErrorResponse> {
+  const billing = falBillingEntries(result.image, options, falBillableUnits);
+  if ("status" in billing) {
+    return billing;
+  }
+
   const response = await fetch(result.image.url, { method: "GET", signal });
   if (!response.ok) {
     return badGateway(
@@ -1987,7 +2219,7 @@ export async function downloadFalImage(
     safetyTolerance: modelConfig.supportsSafetyTolerance
       ? options.safetyTolerance
       : undefined,
-    billing: falBillingEntries(result.image, options),
+    billing,
     sourceUrl: result.image.url,
     seed: result.seed ?? options.seed,
     sourceImageUrls: options.sourceImageUrls,

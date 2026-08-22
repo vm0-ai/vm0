@@ -845,7 +845,8 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
       return <ProviderIcon type="openai-api-key" size={16} />;
     }
     case "fal-ai/flux-pro/v1.1":
-    case "fal-ai/flux-pro/v1.1-ultra": {
+    case "fal-ai/flux-pro/v1.1-ultra":
+    case "fal-ai/flux-2-pro": {
       return <ImageModelBrandSvg path={FLUX_ICON_PATH} />;
     }
     case "fal-ai/qwen-image":
@@ -862,6 +863,9 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
     case "fal-ai/nano-banana-2":
     case "google/nano-banana-2-lite": {
       return <GeminiImageModelIcon />;
+    }
+    case "ideogram/v4": {
+      return <ImageIcon size={16} aria-hidden="true" />;
     }
   }
 }

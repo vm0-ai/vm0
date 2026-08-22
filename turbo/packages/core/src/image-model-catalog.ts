@@ -7,6 +7,7 @@
  */
 import {
   IMAGE_MODEL_IDS,
+  isImageModelId,
   type ImageModelId,
 } from "@okouai/api-contracts/contracts/image-models";
 
@@ -34,6 +35,10 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "flux-pro-1.1-ultra",
     label: "Flux Pro v1.1 Ultra",
   },
+  "fal-ai/flux-2-pro": {
+    alias: "flux-2-pro",
+    label: "FLUX.2 Pro",
+  },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
     label: "Qwen Image",
@@ -41,6 +46,10 @@ export const IMAGE_MODEL_CONFIGS = {
   "alibaba/qwen-image-3/text-to-image": {
     alias: "qwen-image-3",
     label: "Qwen Image 3",
+  },
+  "ideogram/v4": {
+    alias: "ideogram-4",
+    label: "Ideogram 4",
   },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
@@ -75,17 +84,17 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 /**
  * Catalog models offered by the user-facing picker, in display order. The
  * picker presents one model per family rather than every catalog entry:
- * Seedream 4, the Flux Ultra, Seedream Lite, and Nano Banana 2 Lite siblings,
- * and the superseded Qwen Image are all deliberately absent. Every one of them
- * stays generatable through its alias and through defaults that already point
- * at it. Qwen Image 3 is the family's one entry, so the picker offers Qwen
- * again without carrying the generation it replaces.
+ * Seedream 4, both Flux 1.1 variants, Seedream Lite, and Nano Banana 2 Lite
+ * siblings, and the superseded Qwen Image are all deliberately absent. Every
+ * one of them stays generatable through its alias and through defaults that
+ * already point at it. The picker offers the current entry for each family.
  */
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-2",
   "fal-ai/nano-banana-2",
-  "fal-ai/flux-pro/v1.1",
+  "fal-ai/flux-2-pro",
+  "ideogram/v4",
   "dola-seedream-5-0-pro-260628",
   "alibaba/qwen-image-3/text-to-image",
 ] as const satisfies readonly ImageModel[];
@@ -95,8 +104,10 @@ export const IMAGE_MODEL_ALIASES = {
   "gpt-image-1": "gpt-image-1",
   "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
+  "flux-2-pro": "fal-ai/flux-2-pro",
   "qwen-image": "fal-ai/qwen-image",
   "qwen-image-3": "alibaba/qwen-image-3/text-to-image",
+  "ideogram-4": "ideogram/v4",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
   "seedream5-pro": "dola-seedream-5-0-pro-260628",
   "seedream5-lite": "seedream-5-0-lite-260128",
@@ -105,6 +116,20 @@ export const IMAGE_MODEL_ALIASES = {
   "nano-banana-2-lite": "google/nano-banana-2-lite",
   "nano-banana2-lite": "google/nano-banana-2-lite",
 } as const satisfies Readonly<Record<string, ImageModel>>;
+
+type ImageModelAlias = keyof typeof IMAGE_MODEL_ALIASES;
+
+function isImageModelAlias(model: string): model is ImageModelAlias {
+  return Object.hasOwn(IMAGE_MODEL_ALIASES, model);
+}
+
+/** Resolves a canonical image model ID or supported alias. */
+export function resolveImageModel(model: string): ImageModel | undefined {
+  if (isImageModelId(model)) {
+    return model;
+  }
+  return isImageModelAlias(model) ? IMAGE_MODEL_ALIASES[model] : undefined;
+}
 
 /** Global fallback when no more specific image model default exists. */
 export const DEFAULT_IMAGE_MODEL = "gpt-image-1" satisfies ImageModel;
