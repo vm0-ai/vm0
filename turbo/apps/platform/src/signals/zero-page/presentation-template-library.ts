@@ -1,14 +1,18 @@
 import { command, computed, state, type Computed, type State } from "ccstate";
+import { delay } from "signal-timers";
 import {
   presentationTemplatesContract,
+  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
   type PresentationTemplateDetail,
   type PresentationTemplateSummary,
   type UpdatePresentationTemplateBody,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 
 import { accept } from "../../lib/accept.ts";
+import { now } from "../../lib/time.ts";
 import { apiClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { onRef } from "../utils.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -19,6 +23,13 @@ export interface ImportedPresentationTemplateResource {
 }
 
 const presentationTemplatesVersion$ = state(0);
+const PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS =
+  (PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000 * 2) / 3;
+
+interface ImportedPresentationTemplateCatalog {
+  readonly templates: readonly PresentationTemplateSummary[];
+  readonly loadedAtMs: number;
+}
 
 /**
  * The decks this workspace member can use. Their own decks come first, then
@@ -59,16 +70,24 @@ export const subscribePresentationTemplatesChanged$ = command(
   },
 );
 
-function createImportedPresentationTemplates$() {
+function createImportedPresentationTemplateCatalog$() {
+  return computed(async (get): Promise<ImportedPresentationTemplateCatalog> => {
+    if (!get(presentationTemplateImportEnabled$)) {
+      return { templates: [], loadedAtMs: now() };
+    }
+    get(presentationTemplatesVersion$);
+    const client = get(apiClient$)(presentationTemplatesContract);
+    const result = await accept(client.list(), [200]);
+    return { templates: result.body, loadedAtMs: now() };
+  });
+}
+
+function createImportedPresentationTemplates$(
+  catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
+) {
   return computed(
     async (get): Promise<readonly PresentationTemplateSummary[]> => {
-      if (!get(presentationTemplateImportEnabled$)) {
-        return [];
-      }
-      get(presentationTemplatesVersion$);
-      const client = get(apiClient$)(presentationTemplatesContract);
-      const result = await accept(client.list(), [200]);
-      return result.body;
+      return (await get(catalog$)).templates;
     },
   );
 }
@@ -126,16 +145,77 @@ function createImportedPresentationTemplateHoverSignals() {
   };
 }
 
-/** Dialog-scoped state and mutations for persisted uploaded templates. */
-export function createImportedPresentationTemplateSignals() {
-  const importedPresentationTemplates$ = createImportedPresentationTemplates$();
+function createImportedPresentationTemplateUrlRefreshSignals(
+  catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
+) {
+  const internalRequestedAtMs$ = state<number | null>(null);
+  const freshAtMs = (loadedAtMs: number, requestedAtMs: number | null) => {
+    return Math.max(loadedAtMs, requestedAtMs ?? Number.NEGATIVE_INFINITY);
+  };
+  const refreshImportedPresentationTemplateUrlsIfStale$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const catalog = await get(catalog$);
+      signal.throwIfAborted();
+      const requestedAt = now();
+      if (
+        requestedAt -
+          freshAtMs(catalog.loadedAtMs, get(internalRequestedAtMs$)) <
+        PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS
+      ) {
+        return;
+      }
+      set(internalRequestedAtMs$, requestedAt);
+      set(refreshPresentationTemplates$);
+    },
+  );
+  const refreshImportedPresentationTemplateUrlsAfterPickerOpen$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      // Let the picker mount the last resolved catalog before catch-up makes
+      // the catalog pending, so a suspended tab still opens without a blank
+      // first frame.
+      await delay(0, { signal });
+      await set(refreshImportedPresentationTemplateUrlsIfStale$, signal);
+    },
+  );
+  const importedPresentationTemplateUrlRefreshLifecycleRef$ = onRef(
+    command(
+      async (
+        { get, set },
+        _element: HTMLSpanElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        while (!signal.aborted) {
+          const catalog = await get(catalog$);
+          signal.throwIfAborted();
+          const loadedOrRequestedAtMs = freshAtMs(
+            catalog.loadedAtMs,
+            get(internalRequestedAtMs$),
+          );
+          await delay(
+            Math.max(
+              0,
+              PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
+                (now() - loadedOrRequestedAtMs),
+            ),
+            { signal },
+          );
+          await set(refreshImportedPresentationTemplateUrlsIfStale$, signal);
+        }
+      },
+    ),
+  );
+  return {
+    refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
+    importedPresentationTemplateUrlRefreshLifecycleRef$,
+  };
+}
+
+function createImportedPresentationTemplateDetailSignals(
+  resources$: Computed<
+    Promise<readonly ImportedPresentationTemplateResource[]>
+  >,
+) {
   const internalRequestedTemplateId$ = state<string | null>(null);
-  const internalDetailVersion$ = state(0);
-  const importedPresentationTemplateResources$ =
-    createImportedPresentationTemplateResources$(
-      importedPresentationTemplates$,
-      internalDetailVersion$,
-    );
   const importedPresentationTemplateRequestedId$ = computed((get) => {
     return get(internalRequestedTemplateId$);
   });
@@ -145,7 +225,7 @@ export function createImportedPresentationTemplateSignals() {
       if (templateId === null) {
         return null;
       }
-      const resources = await get(importedPresentationTemplateResources$);
+      const resources = await get(resources$);
       const resource = resources.find((candidate) => {
         return candidate.summary.id === templateId;
       });
@@ -157,6 +237,31 @@ export function createImportedPresentationTemplateSignals() {
       set(internalRequestedTemplateId$, templateId);
     },
   );
+  return {
+    internalRequestedTemplateId$,
+    importedPresentationTemplateRequestedId$,
+    importedPresentationTemplateDetail$,
+    requestImportedPresentationTemplateDetail$,
+  };
+}
+
+/** Dialog-scoped state and mutations for persisted uploaded templates. */
+export function createImportedPresentationTemplateSignals() {
+  const catalog$ = createImportedPresentationTemplateCatalog$();
+  const importedPresentationTemplates$ =
+    createImportedPresentationTemplates$(catalog$);
+  const internalDetailVersion$ = state(0);
+  const urlRefresh =
+    createImportedPresentationTemplateUrlRefreshSignals(catalog$);
+  const importedPresentationTemplateResources$ =
+    createImportedPresentationTemplateResources$(
+      importedPresentationTemplates$,
+      internalDetailVersion$,
+    );
+  const { internalRequestedTemplateId$, ...detailSignals } =
+    createImportedPresentationTemplateDetailSignals(
+      importedPresentationTemplateResources$,
+    );
 
   const internalPreviewTemplateId$ = state<string | null>(null);
   const importedPresentationTemplatePreviewId$ = computed((get) => {
@@ -246,9 +351,8 @@ export function createImportedPresentationTemplateSignals() {
   return {
     importedPresentationTemplates$,
     importedPresentationTemplateResources$,
-    importedPresentationTemplateRequestedId$,
-    importedPresentationTemplateDetail$,
-    requestImportedPresentationTemplateDetail$,
+    ...detailSignals,
+    ...urlRefresh,
     importedPresentationTemplatePreviewId$,
     importedPresentationTemplatePreviewSlideIndex$,
     openImportedPresentationTemplatePreview$,

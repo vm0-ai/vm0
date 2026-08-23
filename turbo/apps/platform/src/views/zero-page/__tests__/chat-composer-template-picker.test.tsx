@@ -28,6 +28,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -3450,6 +3451,8 @@ describe("chat composer templates", () => {
 
   it("bounds uploaded deck page prefetch without loading again on picker open", async () => {
     const user = userEvent.setup({ delay: null });
+    const loadedAtMs = new Date("2026-08-23T03:00:00.000Z").getTime();
+    mockNow(context.signal, loadedAtMs);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const primaryTemplateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
     const secondaryTemplateId = "9f374525-03cd-4b37-bfe7-71880c8bf84c";
@@ -3458,6 +3461,12 @@ describe("chat composer templates", () => {
     });
     const secondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
       return `https://example.com/prefetch-secondary-page-${index + 1}.png`;
+    });
+    const renewedPrimaryPageUrls = Array.from({ length: 100 }, (_, index) => {
+      return `https://example.com/renewed-primary-page-${index + 1}.png`;
+    });
+    const renewedSecondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
+      return `https://example.com/renewed-secondary-page-${index + 1}.png`;
     });
     const primaryTemplate = {
       id: primaryTemplateId,
@@ -3486,18 +3495,47 @@ describe("chat composer templates", () => {
     const { pageUrls: _primaryPageUrls, ...primarySummary } = primaryTemplate;
     const { pageUrls: _secondaryPageUrls, ...secondarySummary } =
       secondaryTemplate;
+    const renewedPrimaryTemplate = {
+      ...primaryTemplate,
+      coverUrl: renewedPrimaryPageUrls[0] ?? null,
+      pageUrls: renewedPrimaryPageUrls,
+    };
+    const renewedSecondaryTemplate = {
+      ...secondaryTemplate,
+      coverUrl: renewedSecondaryPageUrls[0] ?? null,
+      pageUrls: renewedSecondaryPageUrls,
+    };
+    const { pageUrls: _renewedPrimaryPageUrls, ...renewedPrimarySummary } =
+      renewedPrimaryTemplate;
+    const { pageUrls: _renewedSecondaryPageUrls, ...renewedSecondarySummary } =
+      renewedSecondaryTemplate;
+    const refreshCatalogRequested = context.mocks.deferred<void>();
+    const releaseRefreshCatalog = context.mocks.deferred<void>();
+    const refreshedPrimaryDetailRequested = context.mocks.deferred<void>();
     let catalogRequestCount = 0;
     let primaryDetailRequestCount = 0;
     let secondaryDetailRequestCount = 0;
-    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
-      catalogRequestCount += 1;
-      return respond(200, [primarySummary, secondarySummary]);
-    });
+    context.mocks.api(
+      presentationTemplatesContract.list,
+      async ({ respond }) => {
+        catalogRequestCount += 1;
+        if (catalogRequestCount > 1) {
+          refreshCatalogRequested.resolve();
+          await releaseRefreshCatalog.promise;
+          return respond(200, [renewedPrimarySummary, renewedSecondarySummary]);
+        }
+        return respond(200, [primarySummary, secondarySummary]);
+      },
+    );
     context.mocks.api(
       presentationTemplatesContract.get,
       ({ params, respond }) => {
         if (params.templateId === primaryTemplateId) {
           primaryDetailRequestCount += 1;
+          if (primaryDetailRequestCount > 1) {
+            refreshedPrimaryDetailRequested.resolve();
+            return respond(200, renewedPrimaryTemplate);
+          }
           return respond(200, primaryTemplate);
         }
         expect(params.templateId).toBe(secondaryTemplateId);
@@ -3576,6 +3614,60 @@ describe("chat composer templates", () => {
     });
     expect(catalogRequestCount).toBe(1);
     expect(primaryDetailRequestCount).toBe(1);
+    expect(secondaryDetailRequestCount).toBe(0);
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
+    // overlap with the API's 15-minute expiry. Opening is also a non-blocking
+    // catch-up point for a suspended tab whose timer did not run.
+    mockNow(context.signal, loadedAtMs + 10 * 60 * 1000 + 1);
+    await user.click(screen.getByLabelText("Template"));
+    await refreshCatalogRequested.promise;
+
+    const refreshingDialog = screen.getByRole("dialog");
+    const refreshingCard = await waitFor(() => {
+      const found = refreshingDialog.querySelector(
+        `[data-imported-presentation-template="${primaryTemplateId}"]`,
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Refreshing template card not found");
+      }
+      return found;
+    });
+    expect(within(refreshingCard).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-1.png",
+    );
+
+    releaseRefreshCatalog.resolve();
+    await refreshedPrimaryDetailRequested.promise;
+    const refreshedPreviewButton = within(refreshingCard).getByLabelText(
+      "Preview Primary draft deck at current slide",
+    );
+    const refreshedPreview = refreshedPreviewButton.parentElement;
+    if (!refreshedPreview) {
+      throw new Error("Refreshed imported template preview not found");
+    }
+    Object.defineProperty(refreshedPreview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+    fireEvent.mouseEnter(refreshedPreview);
+    fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
+
+    await waitFor(() => {
+      expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
+        "src",
+        "https://example.com/renewed-primary-page-100.png",
+      );
+    });
+    expect(catalogRequestCount).toBe(2);
+    expect(primaryDetailRequestCount).toBe(2);
     expect(secondaryDetailRequestCount).toBe(0);
   });
 

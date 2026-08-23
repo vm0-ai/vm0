@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
-import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
+import {
+  presentationTemplatesContract,
+  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+} from "@okouai/api-contracts/contracts/presentation-templates";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
@@ -24,8 +27,6 @@ import {
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
 import { publishPresentationTemplate$ } from "../services/presentation-template-publish.service";
 import type { RouteEntry } from "../route-entry";
-
-const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
 
 const templateReadAuth = {
   requireOrganization: true,
@@ -122,7 +123,7 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         generatePresignedGetUrl(
           env("R2_USER_ARTIFACTS_BUCKET_NAME"),
           coverKey,
-          PRESIGNED_URL_TTL_SECONDS,
+          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
           presentationTemplatePageFilename(0),
           true,
         ),
@@ -154,7 +155,7 @@ const listInner$ = computed(async (get) => {
             generatePresignedGetUrl(
               bucket,
               coverKey,
-              PRESIGNED_URL_TTL_SECONDS,
+              PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
               presentationTemplatePageFilename(0),
               true,
             ),
@@ -187,7 +188,7 @@ const getInner$ = computed(async (get) => {
       generatePresignedGetUrl(
         bucket,
         key,
-        PRESIGNED_URL_TTL_SECONDS,
+        PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
         presentationTemplatePageFilename(index),
         true,
       ),
@@ -241,7 +242,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         generatePresignedGetUrl(
           env("R2_USER_ARTIFACTS_BUCKET_NAME"),
           coverKey,
-          PRESIGNED_URL_TTL_SECONDS,
+          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
           presentationTemplatePageFilename(0),
           true,
         ),
