@@ -1072,11 +1072,25 @@ function normalizedApiFirstTurnFailure(
   );
 }
 
+async function settleApiFirstTurnExecution<T>(
+  execution: Promise<T>,
+  signal: AbortSignal,
+) {
+  const executed = await settleIncludingAbort(execution);
+  if (executed.ok || !signal.aborted) {
+    return executed;
+  }
+  return {
+    ok: false as const,
+    error: signal.reason ?? executed.error,
+  };
+}
+
 const failApiFirstTurn$ = command(async function failApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
   failure: PiApiFirstTurnError,
-): Promise<CompleteSideEffectsInput | undefined> {
+): Promise<DispatchCompleteSideEffectsInput | undefined> {
   const failureSignal = AbortSignal.timeout(FAILURE_COMMIT_TIMEOUT_MS);
   const completion = await set(
     completeAgentRun$,
@@ -1098,7 +1112,13 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
   if (completion.status !== 200) {
     throw new Error("Pi API first-turn failure transition was rejected");
   }
-  return completion.sideEffects;
+  stopPreparedSandbox(args.activation, "failed");
+  return completion.sideEffects
+    ? {
+        ...completion.sideEffects,
+        apiStartTime: args.activation.executionContext.apiStartTime,
+      }
+    : undefined;
 });
 
 export const runPiApiFirstTurn$ = command(
@@ -1108,9 +1128,9 @@ export const runPiApiFirstTurn$ = command(
     signal: AbortSignal,
   ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
     const context: ApiFirstTurnContext = { db: set(writeDb$), activation };
-    // eslint-disable-next-line api/signal-check-await -- abort is normalized and persisted as the run's terminal failure below
-    const executed = await settleIncludingAbort(
+    const executed = await settleApiFirstTurnExecution(
       set(executeApiFirstTurn$, context, signal),
+      signal,
     );
     if (executed.ok) {
       return executed.value
@@ -1126,14 +1146,6 @@ export const runPiApiFirstTurn$ = command(
       code: failure.code,
       error: failure,
     });
-    // eslint-disable-next-line api/signal-check-await -- failure persistence owns a private timeout and must survive caller cancellation
-    const sideEffects = await set(failApiFirstTurn$, context, failure);
-    stopPreparedSandbox(activation, "failed");
-    return sideEffects
-      ? {
-          ...sideEffects,
-          apiStartTime: activation.executionContext.apiStartTime,
-        }
-      : undefined;
+    return set(failApiFirstTurn$, context, failure);
   },
 );

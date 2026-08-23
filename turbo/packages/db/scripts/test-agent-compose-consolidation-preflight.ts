@@ -4084,7 +4084,7 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     "async function resolvePersistedStorageMounts(",
   );
   const persistedResolverEnd = runtimeStorageSource.indexOf(
-    "async function buildEntriesFromPersistedStorageMounts(",
+    "function buildEntriesFromPersistedStorageMounts(",
   );
   assert.ok(
     persistedResolverStart >= 0 &&
