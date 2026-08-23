@@ -5371,27 +5371,32 @@ export async function resolveFirewallAuth(
       "Matched connector source does not match secret metadata",
     );
   }
-  const preparation = customConnectorId
-    ? matchedFirewall.sourceId === undefined
-      ? { ok: false as const, response: connectorNotConfigured() }
-      : await prepareCurrentCustomConnectorFirewallAuth({
-          db,
-          auth,
-          body,
-          orgId,
-          referenced,
-          customConnectorId,
-          sourceId: matchedFirewall.sourceId,
-          routingVariables: matchedFirewall.routingVariables,
-        })
-    : await prepareNonCustomFirewallAuth({
-        db,
-        auth,
-        body,
-        orgId,
-        referenced,
-        forceRefreshStartedAtMicros,
-      });
+  let preparation;
+  if (customConnectorId) {
+    const sourceId = matchedFirewall.sourceId;
+    if (sourceId === undefined) {
+      return connectorNotConfigured();
+    }
+    preparation = await prepareCurrentCustomConnectorFirewallAuth({
+      db,
+      auth,
+      body,
+      orgId,
+      referenced,
+      customConnectorId,
+      sourceId,
+      routingVariables: matchedFirewall.routingVariables,
+    });
+  } else {
+    preparation = await prepareNonCustomFirewallAuth({
+      db,
+      auth,
+      body,
+      orgId,
+      referenced,
+      forceRefreshStartedAtMicros,
+    });
+  }
   if (!preparation.ok) {
     return preparation.response;
   }
