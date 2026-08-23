@@ -1160,8 +1160,15 @@
     {
       "idx": 973,
       "version": "7",
-      "when": 1787488678149,
-      "tag": "0973_canonical_agent_writes",
+      "when": 1787488401126,
+      "tag": "0973_backfill_agent_run_built_in_model_key_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 974,
+      "version": "7",
+      "when": 1787493681791,
+      "tag": "0974_canonical_agent_writes",
       "breakpoints": true
     }
   ]

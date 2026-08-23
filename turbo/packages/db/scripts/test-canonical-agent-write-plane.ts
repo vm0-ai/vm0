@@ -9,7 +9,7 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(dirname, "../src/migrations");
 const previousMigration = "0972_boring_morlun";
-const migration = "0973_canonical_agent_writes";
+const migration = "0974_canonical_agent_writes";
 const upgradeDatabase = "migration_canonical_agent_write_plane";
 const freshDatabase = "migration_canonical_agent_write_plane_fresh";
 const agentId = "00000000-0000-4000-8000-000000097201";

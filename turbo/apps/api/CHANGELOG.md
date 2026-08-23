@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.478.4](https://github.com/vm0-ai/vm0/compare/api-v1.478.3...api-v1.478.4) (2026-08-23)
+
+
+### Bug Fixes
+
+* **cli:** restore release-please version bookkeeping ([#28718](https://github.com/vm0-ai/vm0/issues/28718)) ([9385ba6](https://github.com/vm0-ai/vm0/commit/9385ba6a6d2e931dd1a078555cc3fed699db4aae))
+* prefetch uploaded template previews ([#28705](https://github.com/vm0-ai/vm0/issues/28705)) ([e17447c](https://github.com/vm0-ai/vm0/commit/e17447c69a398ee38598b00beeb791483482f841))
+
+
+### Refactoring
+
+* **api:** drop the branded compatibility rows with no traffic ([#28715](https://github.com/vm0-ai/vm0/issues/28715)) ([7a04e16](https://github.com/vm0-ai/vm0/commit/7a04e1681278369627f0b9521bbdaf13e64f84fb))
+* **api:** drop the drained branded compatibility rows ([#28716](https://github.com/vm0-ai/vm0/issues/28716)) ([46c9745](https://github.com/vm0-ai/vm0/commit/46c9745b079615add81fc3484bb950e876755552))
+* **api:** narrow the legacy zero paths to the six still in use ([#28704](https://github.com/vm0-ai/vm0/issues/28704)) ([40c3bbb](https://github.com/vm0-ai/vm0/commit/40c3bbbe575c8226113493454431d6c139a13f36)), closes [#28701](https://github.com/vm0-ai/vm0/issues/28701)
+* **api:** retire target-only connector mutations ([#28708](https://github.com/vm0-ai/vm0/issues/28708)) ([a600615](https://github.com/vm0-ai/vm0/commit/a6006156e747df605582c3aa2742806f58263658))
+* **auth:** retire the zero token scope and rename the token vocabulary ([#28706](https://github.com/vm0-ai/vm0/issues/28706)) ([5ad6301](https://github.com/vm0-ai/vm0/commit/5ad630103e0c047b49046f21301dd2732a42753e)), closes [#28695](https://github.com/vm0-ai/vm0/issues/28695)
+
+
+### Performance Improvements
+
+* **api:** read attested connector projection payloads ([#28699](https://github.com/vm0-ai/vm0/issues/28699)) ([f40d5ea](https://github.com/vm0-ai/vm0/commit/f40d5ea90b2fc4649cd336d083ce9d97573fb9ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.1
+    * @okouai/core bumped to 8.583.1
+    * @okouai/db bumped to 1.218.4
+
 ## [1.478.3](https://github.com/vm0-ai/vm0/compare/api-v1.478.2...api-v1.478.3) (2026-08-23)
 
 
