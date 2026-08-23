@@ -3694,18 +3694,22 @@ function builtinConnectorAccountRequestsForMetadata(args: {
   readonly connectorSlugs: readonly string[];
   readonly metadataByAccessSource: ReadonlyMap<string, SecretConnectorMetadata>;
 }): readonly ConnectorAccountResolutionRequest[] {
-  return args.connectorSlugs.map((connectorSlug) => {
+  return args.connectorSlugs.flatMap((connectorSlug) => {
     const metadata = resolveRefreshMetadata(
       connectorSlug,
       args.metadataByAccessSource.get(connectorSlug),
     );
-    return {
-      target: { kind: "builtin", connectorSlug },
-      selection:
-        metadata.sourceId === undefined
-          ? { kind: "source-less-runtime-singleton" }
-          : { kind: "exact", sourceId: metadata.sourceId },
-    };
+    return metadata.sourceId === undefined
+      ? []
+      : [
+          {
+            target: { kind: "builtin" as const, connectorSlug },
+            selection: {
+              kind: "exact" as const,
+              sourceId: metadata.sourceId,
+            },
+          },
+        ];
   });
 }
 
@@ -3748,18 +3752,20 @@ function builtinConnectorAccountRequestsForFirewall(args: {
   return firewallAuthReferencedConnectorSlugs({
     body: args.body,
     referencedSecretKeys: new Set(args.referencedSecretKeys),
-  }).map((connectorSlug) => {
-    const [sourceId] = builtinConnectorSourceIdsForFirewall({
+  }).flatMap((connectorSlug) => {
+    const sourceIds = builtinConnectorSourceIdsForFirewall({
       ...args,
       connectorSlug,
     });
-    return {
-      target: { kind: "builtin", connectorSlug },
-      selection:
-        sourceId === undefined
-          ? { kind: "source-less-runtime-singleton" }
-          : { kind: "exact", sourceId },
-    };
+    const [sourceId] = sourceIds;
+    return sourceIds.size === 1 && sourceId !== undefined
+      ? [
+          {
+            target: { kind: "builtin" as const, connectorSlug },
+            selection: { kind: "exact" as const, sourceId },
+          },
+        ]
+      : [];
   });
 }
 
@@ -4705,7 +4711,7 @@ async function resolveCurrentCustomConnectorMemberId(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly customConnectorId: string;
-  readonly sourceId?: string;
+  readonly sourceId: string;
 }): Promise<string | undefined> {
   const target = {
     kind: "custom" as const,
@@ -4717,10 +4723,7 @@ async function resolveCurrentCustomConnectorMemberId(args: {
     requests: [
       {
         target,
-        selection:
-          args.sourceId === undefined
-            ? { kind: "source-less-runtime-singleton" }
-            : { kind: "exact", sourceId: args.sourceId },
+        selection: { kind: "exact", sourceId: args.sourceId },
       },
     ],
   });
@@ -4737,7 +4740,7 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly customConnectorId: string;
-  readonly sourceId?: string;
+  readonly sourceId: string;
 }): Promise<CurrentCustomConnectorAuthRefsResolution> {
   const memberConnectorId = await resolveCurrentCustomConnectorMemberId(args);
   if (memberConnectorId === undefined) {
@@ -4879,7 +4882,7 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
   readonly orgId: string;
   readonly referenced: ReferencedAuthKeys;
   readonly customConnectorId: string;
-  readonly sourceId?: string;
+  readonly sourceId: string;
   readonly routingVariables: Record<string, string>;
 }): Promise<FirewallAuthPreparation<PreparedCustomFirewallAuth>> {
   // The trusted host already matched this request against its effective
@@ -4891,7 +4894,7 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
     orgId: args.orgId,
     userId: args.auth.userId,
     customConnectorId: args.customConnectorId,
-    ...(args.sourceId === undefined ? {} : { sourceId: args.sourceId }),
+    sourceId: args.sourceId,
   });
   if (authRefsResolution.kind === "unavailable") {
     return { ok: false, response: connectorNotConfigured() };
@@ -5368,27 +5371,32 @@ export async function resolveFirewallAuth(
       "Matched connector source does not match secret metadata",
     );
   }
-  const preparation = customConnectorId
-    ? await prepareCurrentCustomConnectorFirewallAuth({
-        db,
-        auth,
-        body,
-        orgId,
-        referenced,
-        customConnectorId,
-        ...(matchedFirewall.sourceId === undefined
-          ? {}
-          : { sourceId: matchedFirewall.sourceId }),
-        routingVariables: matchedFirewall.routingVariables,
-      })
-    : await prepareNonCustomFirewallAuth({
-        db,
-        auth,
-        body,
-        orgId,
-        referenced,
-        forceRefreshStartedAtMicros,
-      });
+  let preparation;
+  if (customConnectorId) {
+    const sourceId = matchedFirewall.sourceId;
+    if (sourceId === undefined) {
+      return connectorNotConfigured();
+    }
+    preparation = await prepareCurrentCustomConnectorFirewallAuth({
+      db,
+      auth,
+      body,
+      orgId,
+      referenced,
+      customConnectorId,
+      sourceId,
+      routingVariables: matchedFirewall.routingVariables,
+    });
+  } else {
+    preparation = await prepareNonCustomFirewallAuth({
+      db,
+      auth,
+      body,
+      orgId,
+      referenced,
+      forceRefreshStartedAtMicros,
+    });
+  }
   if (!preparation.ok) {
     return preparation.response;
   }

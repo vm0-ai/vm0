@@ -20,8 +20,7 @@ const L = logger("connector-account-resolution");
 export type ConnectorAccountSelectionMode =
   | { readonly kind: "exact"; readonly sourceId: string }
   | { readonly kind: "default" }
-  | { readonly kind: "target-only-client-singleton" }
-  | { readonly kind: "source-less-runtime-singleton" };
+  | { readonly kind: "target-only-client-singleton" };
 
 export interface ConnectorAccountResolutionRequest {
   readonly target: ConnectorAccountTarget;
@@ -194,7 +193,7 @@ async function loadDefaultRows(
     );
 }
 
-async function loadSingletonCompatibilityRows(
+async function loadTargetOnlyClientSingletonRows(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
@@ -203,15 +202,14 @@ async function loadSingletonCompatibilityRows(
   },
 ): Promise<readonly ConnectorAccountIdentityRow[]> {
   const targets = args.requests.flatMap((request) => {
-    return request.selection.kind === "target-only-client-singleton" ||
-      request.selection.kind === "source-less-runtime-singleton"
+    return request.selection.kind === "target-only-client-singleton"
       ? [request.target]
       : [];
   });
   if (targets.length === 0) {
     return [];
   }
-  const ranked = db.$with("singleton_connector_account_candidates").as(
+  const ranked = db.$with("target_only_connector_account_candidates").as(
     db
       .select({
         ...identitySelection(),
@@ -284,11 +282,11 @@ export async function resolveConnectorAccounts(
     return new Map();
   }
   const normalizedRequests = [...requests.values()];
-  const [exactRows, defaultRows, singletonCompatibilityRows] =
+  const [exactRows, defaultRows, targetOnlyClientSingletonRows] =
     await Promise.all([
       loadExactRows(db, { ...args, requests: normalizedRequests }),
       loadDefaultRows(db, { ...args, requests: normalizedRequests }),
-      loadSingletonCompatibilityRows(db, {
+      loadTargetOnlyClientSingletonRows(db, {
         ...args,
         requests: normalizedRequests,
       }),
@@ -299,8 +297,8 @@ export async function resolveConnectorAccounts(
     }),
   );
   const defaultByTarget = rowsByTarget(defaultRows);
-  const singletonCompatibilityByTarget = rowsByTarget(
-    singletonCompatibilityRows,
+  const targetOnlyClientSingletonByTarget = rowsByTarget(
+    targetOnlyClientSingletonRows,
   );
   const resolutions = new Map<string, ConnectorAccountResolution>();
   for (const [key, request] of requests) {
@@ -320,7 +318,7 @@ export async function resolveConnectorAccounts(
     const rows =
       request.selection.kind === "default"
         ? defaultByTarget.get(key)
-        : singletonCompatibilityByTarget.get(key);
+        : targetOnlyClientSingletonByTarget.get(key);
     if (!rows || rows.length === 0) {
       resolutions.set(
         key,
@@ -380,11 +378,6 @@ export async function resolveConnectorAccounts(
     targetOnlyClientSingletonRequestCount: normalizedRequests.filter(
       (request) => {
         return request.selection.kind === "target-only-client-singleton";
-      },
-    ).length,
-    sourceLessRuntimeSingletonRequestCount: normalizedRequests.filter(
-      (request) => {
-        return request.selection.kind === "source-less-runtime-singleton";
       },
     ).length,
     ...outcomeCounts,
