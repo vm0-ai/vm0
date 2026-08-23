@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { config, oxlint } from "@okouai/eslint-config/base";
 import { apiLintPlugin } from "@okouai/eslint-rules/api";
+import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -208,6 +209,7 @@ export default [
     files: ["src/**/*.ts"],
     plugins: {
       api: apiLintPlugin,
+      ccstate: ccstatePlugin,
     },
     rules: {
       "api/no-catch-abort": "error",
@@ -222,6 +224,7 @@ export default [
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
+      "ccstate/no-accessor-escape": "error",
     },
   },
   {

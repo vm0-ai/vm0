@@ -21,7 +21,7 @@ import { blobs } from "@okouai/db/schema/blob";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import type { PersistedStorageMount } from "@okouai/db/types";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -83,7 +83,6 @@ interface PreparedSessionHistoryBlob {
 }
 
 const L = logger("webhooks:agent:checkpoints");
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 class PiCheckpointValidationError extends Error {}
 
@@ -228,7 +227,6 @@ async function decodePiCheckpointHistory(args: {
 
 interface PiCheckpointValidationArgs {
   readonly db: Db;
-  readonly get: ComputedGetter;
   readonly run: CheckpointRunContext;
   readonly historyHash: string | undefined;
   readonly sessionId: string | undefined;
@@ -287,55 +285,57 @@ function validatePiCheckpointMetadata(
   return normalized.ok;
 }
 
-async function downloadAndDecodePiCheckpoint(
-  args: {
-    readonly get: ComputedGetter;
-    readonly historyHash: string;
-    readonly metadata: SessionHistoryBlobMetadata;
-  },
-  signal: AbortSignal,
-): Promise<Buffer> {
-  const encoding = validatePiCheckpointMetadata(args.metadata);
-  const key = resumeSessionHistoryBlobKey(args.historyHash, encoding);
-  const downloaded = await settle(
-    args.get(
-      downloadS3BufferWithMaxBytes(
-        env("R2_USER_STORAGES_BUCKET_NAME"),
-        key,
-        args.metadata.encodedSize,
-        signal,
+const downloadAndDecodePiCheckpoint$ = command(
+  async function downloadAndDecodePiCheckpoint(
+    { get },
+    args: {
+      readonly historyHash: string;
+      readonly metadata: SessionHistoryBlobMetadata;
+    },
+    signal: AbortSignal,
+  ): Promise<Buffer> {
+    const encoding = validatePiCheckpointMetadata(args.metadata);
+    const key = resumeSessionHistoryBlobKey(args.historyHash, encoding);
+    const downloaded = await settle(
+      get(
+        downloadS3BufferWithMaxBytes(
+          env("R2_USER_STORAGES_BUCKET_NAME"),
+          key,
+          args.metadata.encodedSize,
+          signal,
+        ),
       ),
-    ),
-    signal,
-  );
-  if (!downloaded.ok) {
-    return piCheckpointError(
-      "PI_H2_DOWNLOAD_FAILED",
-      "Pi H2 could not be downloaded",
+      signal,
     );
-  }
-  const encoded = downloaded.value;
-  if (encoded.length !== args.metadata.encodedSize) {
-    return piCheckpointError(
-      "PI_H2_HASH_MISMATCH",
-      "Pi H2 encoded size does not match its metadata",
-    );
-  }
-  const decoded = await settle(
-    decodePiCheckpointHistory({ encoded, encoding, key }),
-    signal,
-  );
-  if (!decoded.ok) {
-    if (decoded.error instanceof PiCheckpointValidationError) {
-      throw decoded.error;
+    if (!downloaded.ok) {
+      return piCheckpointError(
+        "PI_H2_DOWNLOAD_FAILED",
+        "Pi H2 could not be downloaded",
+      );
     }
-    return piCheckpointError(
-      "PI_H2_DECOMPRESSION_FAILED",
-      "Pi H2 could not be decompressed",
+    const encoded = downloaded.value;
+    if (encoded.length !== args.metadata.encodedSize) {
+      return piCheckpointError(
+        "PI_H2_HASH_MISMATCH",
+        "Pi H2 encoded size does not match its metadata",
+      );
+    }
+    const decoded = await settle(
+      decodePiCheckpointHistory({ encoded, encoding, key }),
+      signal,
     );
-  }
-  return decoded.value;
-}
+    if (!decoded.ok) {
+      if (decoded.error instanceof PiCheckpointValidationError) {
+        throw decoded.error;
+      }
+      return piCheckpointError(
+        "PI_H2_DECOMPRESSION_FAILED",
+        "Pi H2 could not be decompressed",
+      );
+    }
+    return decoded.value;
+  },
+);
 
 function validatePiCheckpointSession(
   raw: Buffer,
@@ -381,7 +381,8 @@ function validatePiCheckpointSession(
   }
 }
 
-async function validatePiCheckpoint(
+const validatePiCheckpoint$ = command(async function validatePiCheckpoint(
+  { set },
   args: PiCheckpointValidationArgs,
   signal: AbortSignal,
 ): Promise<void> {
@@ -397,9 +398,9 @@ async function validatePiCheckpoint(
       "Pi H2 blob metadata is unavailable or invalid",
     );
   }
-  const raw = await downloadAndDecodePiCheckpoint(
+  const raw = await set(
+    downloadAndDecodePiCheckpoint$,
     {
-      get: args.get,
       historyHash: identity.historyHash,
       metadata,
     },
@@ -411,7 +412,7 @@ async function validatePiCheckpoint(
     identity.sessionId,
     metadata,
   );
-}
+});
 
 async function loadSessionHistoryBlobMetadata(
   db: Db,
@@ -602,9 +603,9 @@ export const prepareCheckpointHistoryUpload$ = command(
   },
 );
 
-async function validatePiH2(
+const validatePiH2$ = command(async function validatePiH2(
+  { set },
   db: Db,
-  get: ComputedGetter,
   run: CheckpointRunContext,
   body: CheckpointCreateBody,
   signal: AbortSignal,
@@ -613,10 +614,10 @@ async function validatePiH2(
     return null;
   }
   const validated = await settle(
-    validatePiCheckpoint(
+    set(
+      validatePiCheckpoint$,
       {
         db,
-        get,
         run,
         historyHash: body.cliAgentSessionHistoryHash,
         sessionId: body.cliAgentSessionId,
@@ -632,7 +633,7 @@ async function validatePiH2(
     throw validated.error;
   }
   return null;
-}
+});
 
 interface CheckpointSuccessIdentity {
   readonly agentSessionId: string;
@@ -958,7 +959,7 @@ async function commitAgentCheckpoint(
 
 export const createAgentCheckpoint$ = command(
   async (
-    { get, set },
+    { set },
     input: CheckpointAuthInput<CheckpointCreateBody>,
     signal: AbortSignal,
   ) => {
@@ -977,7 +978,7 @@ export const createAgentCheckpoint$ = command(
     const piRun = isPiCheckpointRun(run);
     const piNeedsValidation = piRun && isActivePiCheckpointStatus(run.status);
     if (piNeedsValidation) {
-      const piError = await validatePiH2(db, get, run, input.body, signal);
+      const piError = await set(validatePiH2$, db, run, input.body, signal);
       if (piError) {
         return badRequestMessage(piError);
       }

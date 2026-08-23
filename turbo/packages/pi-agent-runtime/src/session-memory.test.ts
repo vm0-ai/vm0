@@ -281,6 +281,17 @@ describe("MemoryPiSession", () => {
     }).toThrow(UnsupportedPiSessionVersionError);
   });
 
+  it("rejects a malformed line after a valid native session header", () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+
+    expect(() => {
+      return MemoryPiSession.fromJsonl(`${memory.toJsonl()}{malformed\n`);
+    }).toThrow(SyntaxError);
+  });
+
   it("distinguishes a pending handoff from a settled native checkpoint", () => {
     const memory = MemoryPiSession.create({
       cwd: "/home/user/workspace",

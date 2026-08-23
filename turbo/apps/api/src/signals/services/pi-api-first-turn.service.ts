@@ -18,7 +18,7 @@ import {
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
 } from "@okouai/pi-agent-runtime/node";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -71,8 +71,6 @@ import { safeSync, settle, settleIncludingAbort, tapError } from "../utils";
 const MODEL_COMMIT_BUDGET_MS = 2000;
 const FAILURE_COMMIT_TIMEOUT_MS = 10_000;
 const L = logger("pi-api-first-turn");
-
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 type PiApiFirstTurnErrorCode =
   | "PI_API_COMMIT_FAILED"
@@ -177,10 +175,10 @@ function loadInlineResumeSession(sessionHistory: string): LoadedResumeSession {
   return { jsonl: sessionHistory, sha256: sha256(bytes) };
 }
 
-async function loadResumeSessionJsonl(
+const loadResumeSessionJsonl$ = command(async function loadResumeSessionJsonl(
+  { get },
   args: {
     readonly db: Db;
-    readonly get: ComputedGetter;
     readonly resumeSession: StoredExecutionContext["resumeSession"];
   },
   signal: AbortSignal,
@@ -203,6 +201,7 @@ async function loadResumeSessionJsonl(
     .from(blobs)
     .where(eq(blobs.hash, hash))
     .limit(1);
+  signal.throwIfAborted();
   if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
     throw piApiFirstTurnError(
       "PI_H0_METADATA_INVALID",
@@ -239,7 +238,7 @@ async function loadResumeSessionJsonl(
   }
   const key = resumeSessionHistoryBlobKey(hash, encoding);
   const downloaded = await settle(
-    args.get(
+    get(
       downloadS3BufferWithMaxBytes(
         env("R2_USER_STORAGES_BUCKET_NAME"),
         key,
@@ -295,7 +294,7 @@ async function loadResumeSessionJsonl(
     );
   }
   return { jsonl: decodedJsonl.ok, sha256: hash };
-}
+});
 
 function validateResumeSession(args: {
   readonly loaded: LoadedResumeSession;
@@ -445,15 +444,15 @@ function resultEvent(
   };
 }
 
-async function publishEvents(
+const publishEvents$ = command(async function publishEvents(
+  { set },
   args: {
-    readonly set: Parameters<Parameters<typeof command>[0]>[0]["set"];
     readonly auth: SandboxAuth;
     readonly events: readonly AgentEvent[];
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const result = await args.set(
+  const result = await set(
     receiveAgentEvents$,
     { auth: args.auth, body: { runId: args.auth.runId, events: args.events } },
     signal,
@@ -463,78 +462,79 @@ async function publishEvents(
   }
   if (result.acceptedEvents) {
     waitUntil(
-      args.set(
-        dispatchOptionalAgentEventConsumers$,
-        result.acceptedEvents,
+      set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
+    );
+  }
+});
+
+const persistIdentitySessionBlob$ = command(
+  async function persistIdentitySessionBlob(
+    { get },
+    args: {
+      readonly db: Db;
+      readonly hash: string;
+      readonly bytes: Buffer;
+    },
+    signal: AbortSignal,
+  ): Promise<void> {
+    await args.db
+      .insert(blobs)
+      .values({
+        hash: args.hash,
+        rawSize: args.bytes.length,
+        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+        encodedSize: args.bytes.length,
+        refCount: 0,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+    await args.db
+      .update(blobs)
+      .set({
+        rawSize: args.bytes.length,
+        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+        encodedSize: args.bytes.length,
+      })
+      .where(and(eq(blobs.hash, args.hash), eq(blobs.rawSize, 0)));
+    signal.throwIfAborted();
+    const [metadata] = await args.db
+      .select({
+        rawSize: blobs.rawSize,
+        encoding: blobs.encoding,
+        encodedSize: blobs.encodedSize,
+      })
+      .from(blobs)
+      .where(eq(blobs.hash, args.hash))
+      .limit(1);
+    signal.throwIfAborted();
+    if (
+      metadata?.rawSize !== args.bytes.length ||
+      metadata.encodedSize !== args.bytes.length ||
+      metadata.encoding !== SESSION_HISTORY_ENCODING_IDENTITY
+    ) {
+      throw new Error("Pi API first-turn blob metadata is incompatible");
+    }
+    await get(
+      putImmutableS3Object(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        resumeSessionHistoryRawBlobKey(args.hash),
+        args.bytes,
+        "application/octet-stream",
         signal,
       ),
     );
-  }
-}
-
-async function persistIdentitySessionBlob(
-  args: {
-    readonly db: Db;
-    readonly get: ComputedGetter;
-    readonly hash: string;
-    readonly bytes: Buffer;
   },
-  signal: AbortSignal,
-): Promise<void> {
-  await args.db
-    .insert(blobs)
-    .values({
-      hash: args.hash,
-      rawSize: args.bytes.length,
-      encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-      encodedSize: args.bytes.length,
-      refCount: 0,
-    })
-    .onConflictDoNothing();
-  await args.db
-    .update(blobs)
-    .set({
-      rawSize: args.bytes.length,
-      encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-      encodedSize: args.bytes.length,
-    })
-    .where(and(eq(blobs.hash, args.hash), eq(blobs.rawSize, 0)));
-  const [metadata] = await args.db
-    .select({
-      rawSize: blobs.rawSize,
-      encoding: blobs.encoding,
-      encodedSize: blobs.encodedSize,
-    })
-    .from(blobs)
-    .where(eq(blobs.hash, args.hash))
-    .limit(1);
-  if (
-    metadata?.rawSize !== args.bytes.length ||
-    metadata.encodedSize !== args.bytes.length ||
-    metadata.encoding !== SESSION_HISTORY_ENCODING_IDENTITY
-  ) {
-    throw new Error("Pi API first-turn blob metadata is incompatible");
-  }
-  await args.get(
-    putImmutableS3Object(
-      env("R2_USER_STORAGES_BUCKET_NAME"),
-      resumeSessionHistoryRawBlobKey(args.hash),
-      args.bytes,
-      "application/octet-stream",
-      signal,
-    ),
-  );
-}
+);
 
-async function writeManifest(
+const writeManifest$ = command(async function writeManifest(
+  { get },
   args: {
-    readonly get: ComputedGetter;
     readonly runId: string;
     readonly manifest: PiApiFirstTurnManifest;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await args.get(
+  await get(
     putS3Object(
       env("R2_USER_STORAGES_BUCKET_NAME"),
       piApiFirstTurnObjectKey(args.runId, "manifest"),
@@ -543,12 +543,10 @@ async function writeManifest(
       signal,
     ),
   );
-}
+});
 
-interface ApiFirstTurnDependencies {
+interface ApiFirstTurnContext {
   readonly db: Db;
-  readonly get: ComputedGetter;
-  readonly set: Parameters<Parameters<typeof command>[0]>[0]["set"];
   readonly activation: PiApiFirstTurnActivation;
 }
 
@@ -568,7 +566,7 @@ type ApiFirstTurnExecutionContext =
 type ApiFirstTurnLaunchConfig =
   ApiFirstTurnExecutionContext["piLaunchConfig"]["apiFirstTurn"];
 
-function validateApiFirstTurnLaunch(args: ApiFirstTurnDependencies): {
+function validateApiFirstTurnLaunch(args: ApiFirstTurnContext): {
   readonly executionContext: ApiFirstTurnExecutionContext;
   readonly launchConfig: ApiFirstTurnLaunchConfig;
   readonly sessionId: string;
@@ -598,7 +596,7 @@ function validateApiFirstTurnLaunch(args: ApiFirstTurnDependencies): {
 }
 
 async function assertApiTurnCommittable(
-  args: ApiFirstTurnDependencies,
+  args: ApiFirstTurnContext,
   deadlineAt: number,
   message: string,
 ): Promise<void> {
@@ -607,53 +605,56 @@ async function assertApiTurnCommittable(
   }
 }
 
-async function loadApiFirstTurnResource(
-  args: ApiFirstTurnDependencies,
-  executionContext: ApiFirstTurnExecutionContext,
-  expectedDigest: string,
-  signal: AbortSignal,
-): Promise<PiResourceSnapshot> {
-  const prepared = await settle(
-    args.get(
-      preparePiResourceSnapshot(
-        {
-          db: args.db,
-          mounts: executionContext.storageMounts,
-        },
-        signal,
+const loadApiFirstTurnResource$ = command(
+  async function loadApiFirstTurnResource(
+    { get },
+    args: ApiFirstTurnContext,
+    executionContext: ApiFirstTurnExecutionContext,
+    expectedDigest: string,
+    signal: AbortSignal,
+  ): Promise<PiResourceSnapshot> {
+    const prepared = await settle(
+      get(
+        preparePiResourceSnapshot(
+          {
+            db: args.db,
+            mounts: executionContext.storageMounts,
+          },
+          signal,
+        ),
       ),
-    ),
-    signal,
-  );
-  if (!prepared.ok) {
-    if (prepared.error instanceof UnsupportedPiResourceError) {
+      signal,
+    );
+    if (!prepared.ok) {
+      if (prepared.error instanceof UnsupportedPiResourceError) {
+        throw piApiFirstTurnError(
+          "PI_API_RESOURCE_UNSUPPORTED",
+          prepared.error.message,
+          prepared.error,
+        );
+      }
       throw piApiFirstTurnError(
-        "PI_API_RESOURCE_UNSUPPORTED",
-        prepared.error.message,
+        "PI_API_RESOURCE_INVALID",
+        "Pi resource snapshot could not be loaded strictly",
         prepared.error,
       );
     }
-    throw piApiFirstTurnError(
-      "PI_API_RESOURCE_INVALID",
-      "Pi resource snapshot could not be loaded strictly",
-      prepared.error,
-    );
-  }
-  const preparedResource: {
-    readonly digest: string;
-    readonly snapshot: PiResourceSnapshot;
-  } = prepared.value;
-  if (preparedResource.digest !== expectedDigest) {
-    throw piApiFirstTurnError(
-      "PI_API_RESOURCE_INVALID",
-      "Pi resource snapshot digest does not match the launch config",
-    );
-  }
-  return preparedResource.snapshot;
-}
+    const preparedResource: {
+      readonly digest: string;
+      readonly snapshot: PiResourceSnapshot;
+    } = prepared.value;
+    if (preparedResource.digest !== expectedDigest) {
+      throw piApiFirstTurnError(
+        "PI_API_RESOURCE_INVALID",
+        "Pi resource snapshot digest does not match the launch config",
+      );
+    }
+    return preparedResource.snapshot;
+  },
+);
 
 async function resolveApiFirstTurnKey(
-  args: ApiFirstTurnDependencies,
+  args: ApiFirstTurnContext,
   executionContext: ApiFirstTurnExecutionContext,
 ): Promise<string> {
   const modelConfig = executionContext.piModelConfig;
@@ -827,8 +828,9 @@ function validateApiFirstTurnH1(
   return { sessionBytes, sessionHash: sha256(sessionBytes) };
 }
 
-async function prepareApiFirstTurn(
-  args: ApiFirstTurnDependencies,
+const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
+  { set },
+  args: ApiFirstTurnContext,
   signal: AbortSignal,
 ): Promise<PreparedApiFirstTurn> {
   const { executionContext, launchConfig, sessionId } =
@@ -838,17 +840,21 @@ async function prepareApiFirstTurn(
     launchConfig.deadlineAt,
     "Pi API first turn is no longer eligible to commit",
   );
-  const resourceSnapshot = await loadApiFirstTurnResource(
+  signal.throwIfAborted();
+  const resourceSnapshot = await set(
+    loadApiFirstTurnResource$,
     args,
     executionContext,
     launchConfig.resourceSnapshotDigest,
     signal,
   );
+  signal.throwIfAborted();
   const apiKey = await resolveApiFirstTurnKey(args, executionContext);
-  const loadedSession = await loadResumeSessionJsonl(
+  signal.throwIfAborted();
+  const loadedSession = await set(
+    loadResumeSessionJsonl$,
     {
       db: args.db,
-      get: args.get,
       resumeSession: executionContext.resumeSession,
     },
     signal,
@@ -870,12 +876,14 @@ async function prepareApiFirstTurn(
     },
     signal,
   );
+  signal.throwIfAborted();
   const { sessionBytes, sessionHash } = validateApiFirstTurnH1(turn, sessionId);
   await assertApiTurnCommittable(
     args,
     launchConfig.deadlineAt,
     "Pi API first turn lost commit eligibility after the model request",
   );
+  signal.throwIfAborted();
   const auth: SandboxAuth = {
     userId: args.activation.userId,
     orgId: args.activation.orgId,
@@ -891,46 +899,50 @@ async function prepareApiFirstTurn(
     startedAt,
     turn,
   };
-}
+});
 
-async function persistCompleteTurnCheckpoint(
-  args: ApiFirstTurnDependencies,
-  prepared: PreparedApiFirstTurn,
-  signal: AbortSignal,
-): Promise<void> {
-  await persistIdentitySessionBlob(
-    {
-      db: args.db,
-      get: args.get,
-      hash: prepared.sessionHash,
-      bytes: prepared.sessionBytes,
-    },
-    signal,
-  );
-  const checkpoint = await args.set(
-    createAgentCheckpoint$,
-    {
-      auth: prepared.auth,
-      body: {
-        runId: args.activation.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: prepared.sessionId,
-        cliAgentSessionHistoryHash: prepared.sessionHash,
+const persistCompleteTurnCheckpoint$ = command(
+  async function persistCompleteTurnCheckpoint(
+    { set },
+    args: ApiFirstTurnContext,
+    prepared: PreparedApiFirstTurn,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await set(
+      persistIdentitySessionBlob$,
+      {
+        db: args.db,
+        hash: prepared.sessionHash,
+        bytes: prepared.sessionBytes,
       },
-    },
-    signal,
-  );
-  if (checkpoint.status !== 200) {
-    throw new Error("Pi API first-turn checkpoint was rejected");
-  }
-}
+      signal,
+    );
+    const checkpoint = await set(
+      createAgentCheckpoint$,
+      {
+        auth: prepared.auth,
+        body: {
+          runId: args.activation.runId,
+          cliAgentType: "pi",
+          cliAgentSessionId: prepared.sessionId,
+          cliAgentSessionHistoryHash: prepared.sessionHash,
+        },
+      },
+      signal,
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Pi API first-turn checkpoint was rejected");
+    }
+  },
+);
 
-async function finalizeCompleteTurn(
-  args: ApiFirstTurnDependencies,
+const finalizeCompleteTurn$ = command(async function finalizeCompleteTurn(
+  { set },
+  args: ApiFirstTurnContext,
   prepared: PreparedApiFirstTurn,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
-  const completion = await args.set(
+  const completion = await set(
     completeAgentRun$,
     {
       auth: prepared.auth,
@@ -946,7 +958,7 @@ async function finalizeCompleteTurn(
     throw new Error("Pi API first-turn completion was rejected");
   }
   return completion.sideEffects;
-}
+});
 
 function stopPreparedSandbox(
   activation: PiApiFirstTurnActivation,
@@ -970,12 +982,13 @@ function stopPreparedSandbox(
   );
 }
 
-async function commitApiFirstTurn(
-  args: ApiFirstTurnDependencies,
+const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
+  { get, set },
+  args: ApiFirstTurnContext,
   prepared: PreparedApiFirstTurn,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
-  await args.get(
+  await get(
     putS3Object(
       env("R2_USER_STORAGES_BUCKET_NAME"),
       piApiFirstTurnObjectKey(args.activation.runId, "session"),
@@ -984,6 +997,7 @@ async function commitApiFirstTurn(
       signal,
     ),
   );
+  signal.throwIfAborted();
 
   const events = prepared.turn.handoffRequired
     ? [assistantEvent(args.activation.runId, prepared.turn.assistantMessage)]
@@ -991,7 +1005,7 @@ async function commitApiFirstTurn(
         assistantEvent(args.activation.runId, prepared.turn.assistantMessage),
         resultEvent(prepared.turn.assistantMessage, prepared.startedAt),
       ];
-  await publishEvents({ set: args.set, auth: prepared.auth, events }, signal);
+  await set(publishEvents$, { auth: prepared.auth, events }, signal);
   if (prepared.turn.handoffRequired) {
     const manifest: PiApiFirstTurnManifest = {
       schemaVersion: 1,
@@ -1003,26 +1017,28 @@ async function commitApiFirstTurn(
         rawSize: prepared.sessionBytes.length,
       },
     };
-    await writeManifest(
-      { get: args.get, runId: args.activation.runId, manifest },
+    await set(
+      writeManifest$,
+      { runId: args.activation.runId, manifest },
       signal,
     );
     return undefined;
   }
 
-  await persistCompleteTurnCheckpoint(args, prepared, signal);
-  const sideEffects = await finalizeCompleteTurn(args, prepared, signal);
+  await set(persistCompleteTurnCheckpoint$, args, prepared, signal);
+  const sideEffects = await set(finalizeCompleteTurn$, args, prepared, signal);
   stopPreparedSandbox(args.activation, "completed");
   return sideEffects;
-}
+});
 
-async function executeApiFirstTurn(
-  args: ApiFirstTurnDependencies,
+const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
+  { set },
+  args: ApiFirstTurnContext,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
-  const prepared = await prepareApiFirstTurn(args, signal);
+  const prepared = await set(prepareApiFirstTurn$, args, signal);
   const committed = await settle(
-    commitApiFirstTurn(args, prepared, signal),
+    set(commitApiFirstTurn$, args, prepared, signal),
     signal,
   );
   if (!committed.ok) {
@@ -1036,7 +1052,7 @@ async function executeApiFirstTurn(
     );
   }
   return committed.value;
-}
+});
 
 function normalizedApiFirstTurnFailure(
   error: unknown,
@@ -1056,12 +1072,13 @@ function normalizedApiFirstTurnFailure(
   );
 }
 
-async function failApiFirstTurn(
-  args: ApiFirstTurnDependencies,
+const failApiFirstTurn$ = command(async function failApiFirstTurn(
+  { set },
+  args: ApiFirstTurnContext,
   failure: PiApiFirstTurnError,
 ): Promise<CompleteSideEffectsInput | undefined> {
   const failureSignal = AbortSignal.timeout(FAILURE_COMMIT_TIMEOUT_MS);
-  const completion = await args.set(
+  const completion = await set(
     completeAgentRun$,
     {
       auth: {
@@ -1082,49 +1099,41 @@ async function failApiFirstTurn(
     throw new Error("Pi API first-turn failure transition was rejected");
   }
   return completion.sideEffects;
-}
-
-async function runPiApiFirstTurnLifecycle(
-  dependencies: ApiFirstTurnDependencies,
-  signal: AbortSignal,
-): Promise<DispatchCompleteSideEffectsInput | undefined> {
-  const executed = await settleIncludingAbort(
-    executeApiFirstTurn(dependencies, signal),
-  );
-  if (executed.ok) {
-    return executed.value
-      ? {
-          ...executed.value,
-          apiStartTime: dependencies.activation.executionContext.apiStartTime,
-        }
-      : undefined;
-  }
-  const activation = dependencies.activation;
-  const failure = normalizedApiFirstTurnFailure(executed.error, signal);
-  L.warn("Pi API first-turn failed", {
-    runId: activation.runId,
-    code: failure.code,
-    error: failure,
-  });
-  const sideEffects = await failApiFirstTurn(dependencies, failure);
-  stopPreparedSandbox(activation, "failed");
-  return sideEffects
-    ? {
-        ...sideEffects,
-        apiStartTime: activation.executionContext.apiStartTime,
-      }
-    : undefined;
-}
+});
 
 export const runPiApiFirstTurn$ = command(
   async (
-    { get, set },
+    { set },
     activation: PiApiFirstTurnActivation,
     signal: AbortSignal,
   ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
-    return await runPiApiFirstTurnLifecycle(
-      { db: set(writeDb$), get, set, activation },
-      signal,
+    const context: ApiFirstTurnContext = { db: set(writeDb$), activation };
+    // eslint-disable-next-line api/signal-check-await -- abort is normalized and persisted as the run's terminal failure below
+    const executed = await settleIncludingAbort(
+      set(executeApiFirstTurn$, context, signal),
     );
+    if (executed.ok) {
+      return executed.value
+        ? {
+            ...executed.value,
+            apiStartTime: activation.executionContext.apiStartTime,
+          }
+        : undefined;
+    }
+    const failure = normalizedApiFirstTurnFailure(executed.error, signal);
+    L.warn("Pi API first-turn failed", {
+      runId: activation.runId,
+      code: failure.code,
+      error: failure,
+    });
+    // eslint-disable-next-line api/signal-check-await -- failure persistence owns a private timeout and must survive caller cancellation
+    const sideEffects = await set(failApiFirstTurn$, context, failure);
+    stopPreparedSandbox(activation, "failed");
+    return sideEffects
+      ? {
+          ...sideEffects,
+          apiStartTime: activation.executionContext.apiStartTime,
+        }
+      : undefined;
   },
 );

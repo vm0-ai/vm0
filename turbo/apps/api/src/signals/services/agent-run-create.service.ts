@@ -6937,8 +6937,6 @@ interface PreparedPiLaunchResources {
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
 }
 
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
 function piBaseSession(
   resumeSession: StoredExecutionContext["resumeSession"] | undefined,
   sessionId: string,
@@ -6982,8 +6980,7 @@ function storedExecutionContextWithPiResources(
   };
 }
 
-async function preparePiLaunchResources(args: {
-  readonly get: ComputedGetter;
+function preparePiLaunchResources(args: {
   readonly db: Db;
   readonly runId: string;
   readonly apiStartTime: number;
@@ -6991,69 +6988,71 @@ async function preparePiLaunchResources(args: {
   readonly piSandbox: PiModelConfig | undefined;
   readonly chatThreadId: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<PreparedPiLaunchResources | undefined> {
-  if (args.piSandbox === undefined) {
-    return undefined;
-  }
-  if (args.chatThreadId === undefined) {
-    throw new Error("Pi sandbox execution requires a chat thread");
-  }
-  const piSandbox = args.piSandbox;
-  const chatThreadId = args.chatThreadId;
-  return await measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_prepare_pi_launch_resources",
-    "nested",
-    async () => {
-      const resumeSession = await measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_pi_launch_resume_session",
-        "nested",
-        async () => {
-          return await resolveLatestPiResumeSession(args.db, chatThreadId);
-        },
-      );
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const [manifestUrl, sessionUrl] = await Promise.all([
-        args.get(
-          generatePresignedGetUrl(
-            bucket,
-            piApiFirstTurnObjectKey(args.runId, "manifest"),
-            PI_API_FIRST_TURN_URL_TTL_SECONDS,
-            undefined,
-            true,
-          ),
-        ),
-        args.get(
-          generatePresignedGetUrl(
-            bucket,
-            piApiFirstTurnObjectKey(args.runId, "session"),
-            PI_API_FIRST_TURN_URL_TTL_SECONDS,
-            undefined,
-            true,
-          ),
-        ),
-      ]);
-      return {
-        modelConfig: piSandbox,
-        launchConfig: {
-          schemaVersion: 2,
-          apiFirstTurn: {
-            schemaVersion: 1,
-            resourceSnapshotDigest: piResourceSnapshotDigest(
-              piResourceDiscoveryMounts(args.storageMounts),
-            ),
-            manifestUrl,
-            sessionUrl,
-            deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
-            baseSession: piBaseSession(resumeSession, chatThreadId),
-            sandboxEventSequenceStart: 1,
+}): Computed<Promise<PreparedPiLaunchResources | undefined>> {
+  return computed(async (get) => {
+    if (args.piSandbox === undefined) {
+      return undefined;
+    }
+    if (args.chatThreadId === undefined) {
+      throw new Error("Pi sandbox execution requires a chat thread");
+    }
+    const piSandbox = args.piSandbox;
+    const chatThreadId = args.chatThreadId;
+    return await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_prepare_pi_launch_resources",
+      "nested",
+      async () => {
+        const resumeSession = await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_prepare_pi_launch_resume_session",
+          "nested",
+          async () => {
+            return await resolveLatestPiResumeSession(args.db, chatThreadId);
           },
-        },
-        resumeSession,
-      };
-    },
-  );
+        );
+        const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+        const [manifestUrl, sessionUrl] = await Promise.all([
+          get(
+            generatePresignedGetUrl(
+              bucket,
+              piApiFirstTurnObjectKey(args.runId, "manifest"),
+              PI_API_FIRST_TURN_URL_TTL_SECONDS,
+              undefined,
+              true,
+            ),
+          ),
+          get(
+            generatePresignedGetUrl(
+              bucket,
+              piApiFirstTurnObjectKey(args.runId, "session"),
+              PI_API_FIRST_TURN_URL_TTL_SECONDS,
+              undefined,
+              true,
+            ),
+          ),
+        ]);
+        return {
+          modelConfig: piSandbox,
+          launchConfig: {
+            schemaVersion: 2,
+            apiFirstTurn: {
+              schemaVersion: 1,
+              resourceSnapshotDigest: piResourceSnapshotDigest(
+                piResourceDiscoveryMounts(args.storageMounts),
+              ),
+              manifestUrl,
+              sessionUrl,
+              deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
+              baseSession: piBaseSession(resumeSession, chatThreadId),
+              sandboxEventSequenceStart: 1,
+            },
+          },
+          resumeSession,
+        };
+      },
+    );
+  });
 }
 
 function preparedRunnerGroup(content: AgentComposeContent): string {
@@ -7155,16 +7154,17 @@ function buildRunnerJobPayload(
       preparedStoragePromise,
       builtContextDraftPromise,
     );
-    const piResources = await preparePiLaunchResources({
-      get,
-      db,
-      runId: args.run.id,
-      apiStartTime: args.apiStartTime,
-      storageMounts: builtContext.context.storageMounts,
-      piSandbox: args.piSandbox,
-      chatThreadId: args.chatThreadId,
-      timing: args.timing,
-    });
+    const piResources = await get(
+      preparePiLaunchResources({
+        db,
+        runId: args.run.id,
+        apiStartTime: args.apiStartTime,
+        storageMounts: builtContext.context.storageMounts,
+        piSandbox: args.piSandbox,
+        chatThreadId: args.chatThreadId,
+        timing: args.timing,
+      }),
+    );
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
       piResources,
@@ -8608,8 +8608,6 @@ function preparedRunAdditionalVolumes(args: {
   });
 }
 
-type PrepareRunContextGet = <T>(value: Computed<T>) => T;
-
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -8669,37 +8667,35 @@ function connectorScopeFromCreateArgs(
   };
 }
 
-async function loadPreparedRunFeatureSwitchContext(
+function loadPreparedRunFeatureSwitchContext(
   args: {
-    readonly get: PrepareRunContextGet;
     readonly createArgs: CreateAgentRunArgs;
     readonly preloaded: FeatureSwitchContext | undefined;
     readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
-): Promise<FeatureSwitchContext> {
-  return await args.timing.measure(
-    "api_dispatch_prepare_context_feature_switches",
-    "nested",
-    async () => {
-      if (args.preloaded !== undefined) {
-        signal.throwIfAborted();
-        return args.preloaded;
-      }
-      return await args.get(
-        loadRunFeatureSwitchContext(args.createArgs, signal),
-      );
-    },
-    {
-      feature_switch_context_source:
-        args.preloaded === undefined ? "database" : "preloaded",
-    },
-  );
+): Computed<Promise<FeatureSwitchContext>> {
+  return computed(async (get) => {
+    return await args.timing.measure(
+      "api_dispatch_prepare_context_feature_switches",
+      "nested",
+      async () => {
+        if (args.preloaded !== undefined) {
+          signal.throwIfAborted();
+          return args.preloaded;
+        }
+        return await get(loadRunFeatureSwitchContext(args.createArgs, signal));
+      },
+      {
+        feature_switch_context_source:
+          args.preloaded === undefined ? "database" : "preloaded",
+      },
+    );
+  });
 }
 
-async function prepareRunBodyContext(
+function prepareRunBodyContext(
   args: {
-    readonly get: PrepareRunContextGet;
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
@@ -8707,109 +8703,119 @@ async function prepareRunBodyContext(
     readonly initialBody: CreateRunBody;
   },
   signal: AbortSignal,
-): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
-  const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
-  const suppliedProductAgentExecutionPlan =
-    args.createArgs.productAgentExecutionPlan;
-  if (canonicalOkouRuntime && suppliedProductAgentExecutionPlan === undefined) {
-    throw new Error(
-      "Product Agent execution plan is required for canonical runtime",
-    );
-  }
-  const productAgentExecutionPlan = canonicalOkouRuntime
-    ? suppliedProductAgentExecutionPlan
-    : undefined;
-  const featureSwitchContext = await loadPreparedRunFeatureSwitchContext(
-    {
-      get: args.get,
-      createArgs: args.createArgs,
-      preloaded: args.preloadedFeatureSwitchContext,
-      timing: args.timing,
-    },
-    signal,
-  );
-  const persistedResolved = await args.timing.measure(
-    "api_dispatch_prepare_context_resolve_compose",
-    "nested",
-    async () => {
-      return await args.get(
-        resolveCompose(
-          args.db,
-          args.initialBody,
-          args.createArgs.userId,
-          args.createArgs.orgId,
-          {
-            productAgentExecutionPlan,
-            timing: args.timing,
-          },
-        ),
+): Computed<Promise<PreparedRunBodyContext | CreateRunErrorResult>> {
+  return computed(async (get) => {
+    const canonicalOkouRuntime =
+      args.createArgs.includeZeroTokenSecret === true;
+    const suppliedProductAgentExecutionPlan =
+      args.createArgs.productAgentExecutionPlan;
+    if (
+      canonicalOkouRuntime &&
+      suppliedProductAgentExecutionPlan === undefined
+    ) {
+      throw new Error(
+        "Product Agent execution plan is required for canonical runtime",
       );
-    },
-  );
-  signal.throwIfAborted();
-  if (isRouteError(persistedResolved)) {
-    return persistedResolved;
-  }
-  const resolved = persistedResolved;
-  if (resolved.orgId !== args.createArgs.orgId) {
-    return notFound("Resource not found");
-  }
-  const connectorScope = connectorScopeFromCreateArgs(args.createArgs);
-  const persistedEnvironment = await args.timing.measure(
-    "api_dispatch_prepare_context_load_persisted_environment",
-    "nested",
-    async () => {
-      return await loadPersistedRunEnvironmentSnapshot(args.db, {
-        orgId: args.createArgs.orgId,
-        userId: args.createArgs.userId,
-        content: resolved.content,
-      });
-    },
-  );
-  signal.throwIfAborted();
-  const body = await args.timing.measure(
-    "api_dispatch_prepare_context_build_resolved_body",
-    "nested",
-    async () => {
-      return await buildResolvedRunBody(
+    }
+    const productAgentExecutionPlan = canonicalOkouRuntime
+      ? suppliedProductAgentExecutionPlan
+      : undefined;
+    const featureSwitchContext = await get(
+      loadPreparedRunFeatureSwitchContext(
         {
-          initialBody: args.initialBody,
-          resolved,
-          persistedEnvironment,
-          featureSwitchContext,
-          canonicalOkouRuntime,
+          createArgs: args.createArgs,
+          preloaded: args.preloadedFeatureSwitchContext,
+          timing: args.timing,
         },
         signal,
-      );
-    },
-  );
-  const requestedFrameworkResult = await args.timing.measure(
-    "api_dispatch_prepare_context_resolve_framework",
-    "nested",
-    async () => {
-      const frameworkValidation = validateRunFramework(resolved.content, body);
-      if (isRouteError(frameworkValidation)) {
-        return frameworkValidation;
-      }
-      return await resolveRequestedRunFramework(
-        args.db,
-        args.createArgs,
-        frameworkValidation.framework,
-        featureSwitchContext,
-      );
-    },
-  );
-  signal.throwIfAborted();
-  if (isRouteError(requestedFrameworkResult)) {
-    return requestedFrameworkResult;
-  }
-  return {
-    body,
-    resolved,
-    connectorScope,
-    requestedFramework: requestedFrameworkResult,
-    featureSwitchContext,
-  };
+      ),
+    );
+    const persistedResolved = await args.timing.measure(
+      "api_dispatch_prepare_context_resolve_compose",
+      "nested",
+      async () => {
+        return await get(
+          resolveCompose(
+            args.db,
+            args.initialBody,
+            args.createArgs.userId,
+            args.createArgs.orgId,
+            {
+              productAgentExecutionPlan,
+              timing: args.timing,
+            },
+          ),
+        );
+      },
+    );
+    signal.throwIfAborted();
+    if (isRouteError(persistedResolved)) {
+      return persistedResolved;
+    }
+    const resolved = persistedResolved;
+    if (resolved.orgId !== args.createArgs.orgId) {
+      return notFound("Resource not found");
+    }
+    const connectorScope = connectorScopeFromCreateArgs(args.createArgs);
+    const persistedEnvironment = await args.timing.measure(
+      "api_dispatch_prepare_context_load_persisted_environment",
+      "nested",
+      async () => {
+        return await loadPersistedRunEnvironmentSnapshot(args.db, {
+          orgId: args.createArgs.orgId,
+          userId: args.createArgs.userId,
+          content: resolved.content,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    const body = await args.timing.measure(
+      "api_dispatch_prepare_context_build_resolved_body",
+      "nested",
+      async () => {
+        return await buildResolvedRunBody(
+          {
+            initialBody: args.initialBody,
+            resolved,
+            persistedEnvironment,
+            featureSwitchContext,
+            canonicalOkouRuntime,
+          },
+          signal,
+        );
+      },
+    );
+    const requestedFrameworkResult = await args.timing.measure(
+      "api_dispatch_prepare_context_resolve_framework",
+      "nested",
+      async () => {
+        const frameworkValidation = validateRunFramework(
+          resolved.content,
+          body,
+        );
+        if (isRouteError(frameworkValidation)) {
+          return frameworkValidation;
+        }
+        return await resolveRequestedRunFramework(
+          args.db,
+          args.createArgs,
+          frameworkValidation.framework,
+          featureSwitchContext,
+        );
+      },
+    );
+    signal.throwIfAborted();
+    if (isRouteError(requestedFrameworkResult)) {
+      return requestedFrameworkResult;
+    }
+    return {
+      body,
+      resolved,
+      connectorScope,
+      requestedFramework: requestedFrameworkResult,
+      featureSwitchContext,
+    };
+  });
 }
 
 async function prepareRunConnectorContexts(
@@ -9220,48 +9226,52 @@ interface PrepareRunContextInput {
     | undefined;
 }
 
-async function prepareRunContexts(
-  get: PrepareRunContextGet,
+function prepareRunContexts(
   input: PrepareRunContextInput,
   initialBody: CreateRunBody,
   signal: AbortSignal,
-): Promise<
-  | CreateRunErrorResult
-  | {
-      readonly bodyContext: PreparedRunBodyContext;
-      readonly runtimeContext: PreparedRuntimeContext;
-    }
+): Computed<
+  Promise<
+    | CreateRunErrorResult
+    | {
+        readonly bodyContext: PreparedRunBodyContext;
+        readonly runtimeContext: PreparedRuntimeContext;
+      }
+  >
 > {
-  const bodyContext = await prepareRunBodyContext(
-    {
-      get,
-      db: input.db,
-      createArgs: input.args,
-      preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
-      timing: input.timing,
-      initialBody,
-    },
-    signal,
-  );
-  if (isRouteError(bodyContext)) {
-    return bodyContext;
-  }
-  const runtimeContext = await prepareRunRuntimeContext(
-    {
-      db: input.db,
-      createArgs: input.args,
-      connectorScope: bodyContext.connectorScope,
-      preloadedConnectorCatalogSnapshot:
-        input.preloadedConnectorCatalogSnapshot,
-      timing: input.timing,
-      bodyContext,
-    },
-    signal,
-  );
-  if (isRouteError(runtimeContext)) {
-    return runtimeContext;
-  }
-  return { bodyContext, runtimeContext };
+  return computed(async (get) => {
+    const bodyContext = await get(
+      prepareRunBodyContext(
+        {
+          db: input.db,
+          createArgs: input.args,
+          preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
+          timing: input.timing,
+          initialBody,
+        },
+        signal,
+      ),
+    );
+    if (isRouteError(bodyContext)) {
+      return bodyContext;
+    }
+    const runtimeContext = await prepareRunRuntimeContext(
+      {
+        db: input.db,
+        createArgs: input.args,
+        connectorScope: bodyContext.connectorScope,
+        preloadedConnectorCatalogSnapshot:
+          input.preloadedConnectorCatalogSnapshot,
+        timing: input.timing,
+        bodyContext,
+      },
+      signal,
+    );
+    if (isRouteError(runtimeContext)) {
+      return runtimeContext;
+    }
+    return { bodyContext, runtimeContext };
+  });
 }
 
 function resolveCompatibleDirectResumeSession(args: {
@@ -9303,11 +9313,8 @@ function prepareRunContext(
         return captureGate;
       }
 
-      const contexts = await prepareRunContexts(
-        get,
-        input,
-        initialBody,
-        signal,
+      const contexts = await get(
+        prepareRunContexts(input, initialBody, signal),
       );
       if (isRouteError(contexts)) {
         return contexts;

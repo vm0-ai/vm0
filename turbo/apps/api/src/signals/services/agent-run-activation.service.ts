@@ -14,11 +14,12 @@ interface PendingRunActivationRequest {
   readonly activationScheduledAt: number;
 }
 
-function startPiApiFirstTurn(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+const startPiApiFirstTurn$ = command(function startPiApiFirstTurn(
+  { set },
   activation: NonNullable<PendingRunActivation["piApiFirstTurn"]>,
-  deadlineAt: number,
 ): void {
+  const deadlineAt =
+    activation.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
   waitUntil(
     set(
       dispatchConfiguredPiApiFirstTurn$,
@@ -26,7 +27,7 @@ function startPiApiFirstTurn(
       AbortSignal.timeout(Math.max(1, deadlineAt - now())),
     ),
   );
-}
+});
 
 /** Common post-commit activation for direct and promoted pending runs. */
 export const activatePendingRun$ = command(
@@ -49,9 +50,7 @@ export const activatePendingRun$ = command(
 
     const apiFirstTurn = activation.piApiFirstTurn;
     if (apiFirstTurn) {
-      const deadlineAt =
-        apiFirstTurn.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
-      startPiApiFirstTurn(set, apiFirstTurn, deadlineAt);
+      set(startPiApiFirstTurn$, apiFirstTurn);
     }
 
     const db = set(writeDb$);

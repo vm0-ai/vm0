@@ -214,10 +214,10 @@ describe("Pi API first-turn handoff loader", () => {
       session: HANDOFF_SESSION_JSONL,
     },
     {
-      name: "invalid H1 JSONL",
+      name: "valid-header H1 with a malformed later line",
       expectedCode: "PI_HANDOFF_H1_INVALID",
-      pointer: manifest("not-jsonl"),
-      session: "not-jsonl",
+      pointer: manifest(`${HANDOFF_SESSION_JSONL}{malformed\n`),
+      session: `${HANDOFF_SESSION_JSONL}{malformed\n`,
     },
     {
       name: "legacy complete manifest",

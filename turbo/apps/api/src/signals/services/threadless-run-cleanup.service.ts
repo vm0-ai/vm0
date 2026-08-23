@@ -264,55 +264,57 @@ async function deleteIfStillEligible(
   });
 }
 
-async function redriveTerminalLifecycle(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  db: Db,
-  candidate: ThreadlessRunCandidate,
-  signal: AbortSignal,
-): Promise<void> {
-  if (candidate.status === "cancelled") {
-    const cancelResult = await set(
-      cancelRun$,
+const redriveTerminalLifecycle$ = command(
+  async function redriveTerminalLifecycle(
+    { set },
+    args: { readonly db: Db; readonly candidate: ThreadlessRunCandidate },
+    signal: AbortSignal,
+  ): Promise<void> {
+    const { db, candidate } = args;
+    if (candidate.status === "cancelled") {
+      const cancelResult = await set(
+        cancelRun$,
+        {
+          runId: candidate.runId,
+          userId: candidate.userId,
+          orgId: candidate.orgId,
+          runnerCancellationMode: "hard",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if ("alreadyCancelled" in cancelResult) {
+        await set(dispatchCancelSideEffects$, cancelResult, signal);
+        signal.throwIfAborted();
+      }
+    }
+
+    const error = terminalError(candidate);
+    await set(
+      dispatchCompleteSideEffects$,
       {
+        kind: "terminal",
         runId: candidate.runId,
-        userId: candidate.userId,
         orgId: candidate.orgId,
-        runnerCancellationMode: "hard",
+        status: candidate.status === "completed" ? "completed" : "failed",
+        ...(error === undefined ? {} : { error }),
       },
       signal,
     );
     signal.throwIfAborted();
-    if ("alreadyCancelled" in cancelResult) {
-      await set(dispatchCancelSideEffects$, cancelResult, signal);
-      signal.throwIfAborted();
-    }
-  }
 
-  const error = terminalError(candidate);
-  await set(
-    dispatchCompleteSideEffects$,
-    {
-      kind: "terminal",
-      runId: candidate.runId,
-      orgId: candidate.orgId,
-      status: candidate.status === "completed" ? "completed" : "failed",
-      ...(error === undefined ? {} : { error }),
-    },
-    signal,
-  );
-  signal.throwIfAborted();
+    await failPendingInlineOnlyDeliveryCallbacksForDeletedThread(
+      db,
+      candidate.runId,
+    );
+    signal.throwIfAborted();
 
-  await failPendingInlineOnlyDeliveryCallbacksForDeletedThread(
-    db,
-    candidate.runId,
-  );
-  signal.throwIfAborted();
-
-  // dispatchCompleteSideEffects$ treats queue publication as best effort for
-  // normal webhooks. Deletion requires a strict durable reconciliation pass.
-  await set(drainOrgQueue$, { orgId: candidate.orgId }, signal);
-  signal.throwIfAborted();
-}
+    // dispatchCompleteSideEffects$ treats queue publication as best effort for
+    // normal webhooks. Deletion requires a strict durable reconciliation pass.
+    await set(drainOrgQueue$, { orgId: candidate.orgId }, signal);
+    signal.throwIfAborted();
+  },
+);
 
 export const cleanupThreadlessRuns$ = command(
   async (
@@ -362,7 +364,8 @@ export const cleanupThreadlessRuns$ = command(
             return;
           }
 
-          await redriveTerminalLifecycle(set, db, candidate, signal);
+          await set(redriveTerminalLifecycle$, { db, candidate }, signal);
+          signal.throwIfAborted();
           if (await deleteIfStillEligible(db, candidate, quietBefore)) {
             deleted++;
           } else {

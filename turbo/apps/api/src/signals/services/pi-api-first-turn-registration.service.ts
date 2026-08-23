@@ -7,28 +7,20 @@ import { configurePiApiFirstTurnCommand } from "./pi-api-first-turn-dispatch.ser
 
 const COMPLETE_SIDE_EFFECT_TIMEOUT_MS = 10_000;
 
-async function runConfiguredPiApiFirstTurn(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  activation: PiApiFirstTurnActivation,
-  signal: AbortSignal,
-): Promise<void> {
-  const sideEffects = await set(runPiApiFirstTurn$, activation, signal);
-  if (sideEffects) {
-    await set(
-      dispatchCompleteSideEffects$,
-      sideEffects,
-      AbortSignal.timeout(COMPLETE_SIDE_EFFECT_TIMEOUT_MS),
-    );
-  }
-}
-
 const configuredPiApiFirstTurn$ = command(
   async (
     { set },
     activation: PiApiFirstTurnActivation,
     signal: AbortSignal,
   ): Promise<void> => {
-    await runConfiguredPiApiFirstTurn(set, activation, signal);
+    const sideEffects = await set(runPiApiFirstTurn$, activation, signal);
+    if (sideEffects) {
+      await set(
+        dispatchCompleteSideEffects$,
+        sideEffects,
+        AbortSignal.timeout(COMPLETE_SIDE_EFFECT_TIMEOUT_MS),
+      );
+    }
   },
 );
 

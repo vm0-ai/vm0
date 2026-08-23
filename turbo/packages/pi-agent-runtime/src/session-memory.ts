@@ -81,6 +81,14 @@ function serializeFileEntries(entries: readonly FileEntry[]): string {
     .join("\n")}\n`;
 }
 
+function assertStrictJsonl(jsonl: string): void {
+  for (const line of jsonl.split("\n")) {
+    if (line.trim()) {
+      JSON.parse(line);
+    }
+  }
+}
+
 function generateEntryId(existingIds: ReadonlySet<string>): string {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const id = randomUUID().slice(0, 8);
@@ -122,6 +130,10 @@ export class MemoryPiSession {
   }
 
   static fromJsonl(jsonl: string): MemoryPiSession {
+    // Pi's exported parser intentionally skips malformed lines so an
+    // interactive local session can recover. Checkpoint boundaries cannot do
+    // that: silently dropping one line would change the canonical history.
+    assertStrictJsonl(jsonl);
     const entries = parseSessionEntries(jsonl);
     const header = assertSessionHeader(entries[0]);
     if (

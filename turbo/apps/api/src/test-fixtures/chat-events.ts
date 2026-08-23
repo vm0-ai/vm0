@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
@@ -12,6 +12,7 @@ import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
@@ -23,6 +24,7 @@ import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
@@ -1902,6 +1904,39 @@ export async function replaceThreadSessionBindingFixture(args: {
   if (updated.length !== 1) {
     throw new Error("Expected one chat thread session binding to be replaced");
   }
+}
+
+/** Replaces a completed run's native session blob with exact test-owned bytes. */
+export async function replacePiSessionHistoryJsonlFixture(args: {
+  readonly runId: string;
+  readonly jsonl: string;
+}): Promise<string> {
+  const bytes = Buffer.from(args.jsonl, "utf8");
+  const hash = createHash("sha256").update(bytes).digest("hex");
+  await db().transaction(async (tx) => {
+    await tx
+      .insert(blobs)
+      .values({
+        hash,
+        rawSize: bytes.length,
+        encoding: "identity",
+        encodedSize: bytes.length,
+        refCount: 1,
+      })
+      .onConflictDoNothing();
+    const [updated] = await tx
+      .update(conversations)
+      .set({
+        cliAgentSessionHistory: null,
+        cliAgentSessionHistoryHash: hash,
+      })
+      .where(eq(conversations.runId, args.runId))
+      .returning({ id: conversations.id });
+    if (!updated) {
+      throw new Error("Expected one Pi session history fixture to be replaced");
+    }
+  });
+  return hash;
 }
 
 /**

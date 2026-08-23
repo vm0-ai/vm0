@@ -155,6 +155,7 @@ import {
   releaseBddVm0ApiKey,
   removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
+  replacePiSessionHistoryJsonlFixture,
   replaceThreadSessionBindingFixture,
   setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
@@ -4954,10 +4955,14 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!firstSessionBytes) {
       throw new Error("Expected the first Pi run to persist native H1");
     }
-    const h0Hash = createHash("sha256").update(firstSessionBytes).digest("hex");
+    const malformedH0 = `${firstSessionBytes.toString("utf8")}{malformed\n`;
+    const h0Hash = await replacePiSessionHistoryJsonlFixture({
+      runId: first.runId,
+      jsonl: malformedH0,
+    });
     checkpointObjects.set(
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h0Hash}.blob`,
-      Buffer.from("corrupt H0", "utf8"),
+      Buffer.from(malformedH0, "utf8"),
     );
 
     const second = await sendChatRun(actor, {
@@ -4968,7 +4973,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await waitForRunStatus(actor, second.runId, "failed");
     await flushWaitUntilForTest();
     expect((await api.readRun(actor, second.runId)).error).toContain(
-      "[PI_H0_HASH_MISMATCH]",
+      "[PI_H0_JSONL_INVALID]",
     );
     expect(modelCalls).toBe(1);
     await expect(
@@ -5281,7 +5286,7 @@ describe("CHAT-02: model-first provider policies", () => {
       })
       .toBe(true);
     const failedClaim = await claimChatRun(runnerGroup, failedHandoff.runId);
-    const invalidH2 = Buffer.from("not native Pi JSONL\n", "utf8");
+    const invalidH2 = Buffer.from(`${h2}{malformed\n`, "utf8");
     const invalidH2Hash = createHash("sha256").update(invalidH2).digest("hex");
     await webhooks.requestAgentCheckpointPrepareHistory(
       {

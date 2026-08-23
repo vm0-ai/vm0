@@ -998,10 +998,12 @@ const copyWorkflowInner$ = command(
 
     // Clone the source volume: re-synthesize SKILL.md from the (cloned) DB
     // fields and carry over the supplementary files verbatim.
-    const sourceFiles = await loadWorkflowVolumeFiles(get, {
-      orgId: auth.orgId,
-      workflowId: source.workflow.id,
-    });
+    const sourceFiles = await get(
+      loadWorkflowVolumeFiles({
+        orgId: auth.orgId,
+        workflowId: source.workflow.id,
+      }),
+    );
     signal.throwIfAborted();
     const attachedFiles = (sourceFiles ?? [])
       .filter((file) => {

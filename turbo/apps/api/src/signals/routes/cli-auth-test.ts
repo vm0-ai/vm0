@@ -21,7 +21,7 @@ import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
@@ -210,13 +210,6 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-async function testOrgForUser(
-  get: <T>(value: Computed<T>) => T,
-  userId: string,
-): Promise<string | null> {
-  return await get(testUserOrgId(userId));
-}
-
 const createTestConnector$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!testEndpointAllowed(get(request$))) {
@@ -261,7 +254,7 @@ const createTestConnector$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const orgId = await testOrgForUser(get, userId);
+    const orgId = await get(testUserOrgId(userId));
     signal.throwIfAborted();
     if (!orgId) {
       return stringError(400, "Test user has no org — run test-token first");
@@ -397,7 +390,7 @@ const enableTestConnectors$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const orgId = await testOrgForUser(get, userId);
+    const orgId = await get(testUserOrgId(userId));
     signal.throwIfAborted();
     if (!orgId) {
       return stringError(400, "Test user has no org — run test-token first");
@@ -507,7 +500,7 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
-  const orgId = await testOrgForUser(get, userId);
+  const orgId = await get(testUserOrgId(userId));
   signal.throwIfAborted();
   if (!orgId) {
     return stringError(400, "Test user has no org — run test-token first");
