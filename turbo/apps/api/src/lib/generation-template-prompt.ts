@@ -25,7 +25,7 @@ import {
   type AvatarTemplateOptions,
 } from "@okouai/core/avatar-template";
 import {
-  PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 
@@ -298,7 +298,7 @@ function buildUserPresentationTemplatePrompt(
       "- Lay out live rows, columns, and text flow with CSS Grid or Flexbox. Absolute positioning is for backgrounds, fixed chrome, decoration, and intentional overlays.",
       "- Background images from the package are optional visual material. New text, charts, tables, labels, and diagrams stay live HTML or SVG so they reflow and stay legible.",
       "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-      ...PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+      PRESENTATION_IMAGE_BATCH_INSTRUCTION,
       PRESENTATION_STATIC_HTML_INSTRUCTION,
       "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
       "- Return only the generated HTML deck as the final deliverable.",

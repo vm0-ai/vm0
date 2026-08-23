@@ -9,7 +9,7 @@ import {
   resolvePresentationRunbookColorToken,
 } from "@okouai/core/resource-registry";
 import {
-  PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { canonicalizeRegistryId } from "./resource-listing";
@@ -178,7 +178,7 @@ ${formatPresentationTemplateListing(templates)}`;
             "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
             "- Use one section per slide and keep repeated elements in consistent positions.",
             PRESENTATION_STATIC_HTML_INSTRUCTION,
-            ...PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+            PRESENTATION_IMAGE_BATCH_INSTRUCTION,
             "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
             "- Keep slide text readable from across a room; avoid memo-like walls of text.",
             "- Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",

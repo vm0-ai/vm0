@@ -138,26 +138,24 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "follow its template, authoring, and verification instructions",
     );
-    expect(result.prompt).toContain(
-      "okou generate image-batch start <manifest.tsv> <state-dir>",
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow:");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
     );
-    expect(result.prompt).toContain(
-      "okou generate image-batch wait <state-dir>",
-    );
-    expect(result.prompt).toContain("manifest before HTML");
-    expect(result.prompt).toContain("No manifest: skip start and wait");
-    expect(result.prompt).toContain(
-      "The command owns generation settings, concurrency, and retry",
-    );
-    expect(result.prompt).toContain("<state-dir>/results.tsv");
     expect(
-      result.prompt.indexOf("okou generate image-batch start <manifest.tsv>"),
-    ).toBeLessThan(
-      result.prompt.indexOf("author the final semantic HTML/CSS/SVG"),
+      imageWorkflow.indexOf("okou generate image-batch start <manifest.tsv>"),
+    ).toBeLessThan(imageWorkflow.indexOf("author the deck while it runs"));
+    expect(imageWorkflow.indexOf("author the deck while it runs")).toBeLessThan(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
     );
-    expect(result.prompt).toContain(
-      "wait once before verification with `okou generate image-batch wait <state-dir>`",
-    );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.

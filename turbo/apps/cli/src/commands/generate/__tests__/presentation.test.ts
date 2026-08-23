@@ -217,21 +217,24 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain(
       "follow its template, authoring, and verification instructions",
     );
-    expect(stdout).toContain(
-      "okou generate image-batch start <manifest.tsv> <state-dir>",
-    );
-    expect(stdout).toContain("okou generate image-batch wait <state-dir>");
-    expect(stdout).toContain("manifest before HTML");
-    expect(stdout).toContain("No manifest: skip start and wait");
-    expect(stdout).toContain(
-      "The command owns generation settings, concurrency, and retry",
+    const imageWorkflowLines = stdout.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow:");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
     );
     expect(
-      stdout.indexOf("okou generate image-batch start <manifest.tsv>"),
-    ).toBeLessThan(stdout.indexOf("author the final semantic HTML/CSS/SVG"));
-    expect(stdout).toContain(
-      "wait once before verification with `okou generate image-batch wait <state-dir>`",
+      imageWorkflow.indexOf("okou generate image-batch start <manifest.tsv>"),
+    ).toBeLessThan(imageWorkflow.indexOf("author the deck while it runs"));
+    expect(imageWorkflow.indexOf("author the deck while it runs")).toBeLessThan(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
     );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
     expect(stdout).not.toContain("presentation-images.sh");

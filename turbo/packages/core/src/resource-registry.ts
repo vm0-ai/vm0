@@ -4,7 +4,7 @@ import {
   type WebsiteTemplateItem,
 } from "./website-template-items";
 import {
-  PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "./presentation-generation-instructions";
 
@@ -4042,7 +4042,7 @@ export function buildPresentationRunbookInstructionLines(args: {
         ]
       : [
           `- Read ${packageDir}/SKILL.md fully and follow its template, authoring, and verification instructions.`,
-          ...PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+          PRESENTATION_IMAGE_BATCH_INSTRUCTION,
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
