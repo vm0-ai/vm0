@@ -306,7 +306,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -338,7 +338,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -398,7 +398,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -575,7 +575,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,

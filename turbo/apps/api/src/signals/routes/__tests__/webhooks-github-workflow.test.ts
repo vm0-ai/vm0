@@ -9,7 +9,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { verifyZeroToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
@@ -909,7 +909,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!okouToken) {
       throw new Error("Expected the automation event run to expose OKOU_TOKEN");
     }
-    expect(verifyZeroToken(okouToken)?.capabilities).toContain(
+    expect(verifyOkouToken(okouToken)?.capabilities).toContain(
       "goal:user-control:write",
     );
     expect(claim.prompt).toContain(

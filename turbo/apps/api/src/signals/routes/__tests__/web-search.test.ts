@@ -215,7 +215,7 @@ describe("okou web-search route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_zero_web_search_missing_capability",
@@ -266,7 +266,7 @@ describe("okou web-search route", () => {
       agentId: compose.composeId,
       prompt: "Find current public information",
     });
-    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+    const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "web-search:read",
     ]);
     server.use(

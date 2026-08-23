@@ -173,7 +173,7 @@ import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
-import { generateZeroToken } from "../auth/tokens";
+import { generateOkouToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
@@ -447,7 +447,7 @@ function withOkouTokenSecret(
   };
 }
 
-function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
+function withPendingOkouTokenSecret(body: CreateRunBody): CreateRunBody {
   return withOkouTokenSecret(body, "__pending_okou_token__");
 }
 
@@ -981,7 +981,7 @@ export interface CreateAgentRunArgs {
   /** Exact connector that delivered this run's durable integration input. */
   readonly connectorSourceId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
-  readonly includeZeroTokenSecret?: boolean;
+  readonly includeOkouTokenSecret?: boolean;
   readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
   /**
    * Retired direct-run test support. Production callers must supply a canonical
@@ -989,9 +989,9 @@ export interface CreateAgentRunArgs {
    * preserves historical runner coverage without restoring a runtime dual-read.
    */
   readonly testOnlyResolveLegacyDirectRunCompose?: TestOnlyLegacyDirectRunComposeResolver;
-  readonly zeroTokenPublicBrand?: PublicBrand;
-  readonly zeroTokenComputerUseHostId?: string;
-  readonly zeroTokenCloudBrowserEnabled?: boolean;
+  readonly okouTokenPublicBrand?: PublicBrand;
+  readonly okouTokenComputerUseHostId?: string;
+  readonly okouTokenCloudBrowserEnabled?: boolean;
   readonly extraEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -6045,8 +6045,8 @@ function validateRunFramework(
 }
 
 function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
-  return args.includeZeroTokenSecret
-    ? withPendingZeroTokenSecret(args.body)
+  return args.includeOkouTokenSecret
+    ? withPendingOkouTokenSecret(args.body)
     : args.body;
 }
 
@@ -6345,8 +6345,8 @@ async function buildStoredExecutionContextDraft(args: {
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly includeZeroTokenSecret: boolean | undefined;
-  readonly zeroTokenPublicBrand: PublicBrand | undefined;
+  readonly includeOkouTokenSecret: boolean | undefined;
+  readonly okouTokenPublicBrand: PublicBrand | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
@@ -6376,14 +6376,14 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
     ...args.extraEnvironment,
-    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.zeroTokenPublicBrand),
+    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
     [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
     ),
     [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
       presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
   };
-  const environment = args.includeZeroTokenSecret
+  const environment = args.includeOkouTokenSecret
     ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
     : expandedEnvironment;
   const environmentKeyByValue = new Map<string, string>();
@@ -6816,10 +6816,10 @@ interface BuildRunnerJobPayloadInput {
   readonly apiStartTime: number;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
-  readonly includeZeroTokenSecret: boolean | undefined;
-  readonly zeroTokenPublicBrand: PublicBrand | undefined;
-  readonly zeroTokenComputerUseHostId: string | undefined;
-  readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
+  readonly includeOkouTokenSecret: boolean | undefined;
+  readonly okouTokenPublicBrand: PublicBrand | undefined;
+  readonly okouTokenComputerUseHostId: string | undefined;
+  readonly okouTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
   readonly chatThreadId: string | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
@@ -6966,28 +6966,27 @@ function preparedRunnerGroup(content: AgentComposeContent): string {
 function preparedRunnerJobBody(
   args: BuildRunnerJobPayloadInput,
 ): CreateRunBody {
-  if (!args.includeZeroTokenSecret) {
+  if (!args.includeOkouTokenSecret) {
     return args.body;
   }
-  const okouToken = generateZeroToken(
+  const okouToken = generateOkouToken(
     args.userId,
     args.run.id,
     args.orgId,
     args.featureSwitchContext.overrides,
     {
-      scope: "okou",
-      publicBrand: args.zeroTokenPublicBrand ?? "vm0",
-      ...(args.zeroTokenComputerUseHostId
-        ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+      publicBrand: args.okouTokenPublicBrand ?? "vm0",
+      ...(args.okouTokenComputerUseHostId
+        ? { computerUseHostId: args.okouTokenComputerUseHostId }
         : {}),
-      cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
+      cloudBrowserEnabled: args.okouTokenCloudBrowserEnabled === true,
       imageRecognitionAvailable: args.imageRecognitionAvailable,
     },
   );
   return withOkouTokenSecret(args.body, okouToken);
 }
 
-function zeroTokenEnvironment(body: CreateRunBody): Record<string, string> {
+function okouTokenEnvironment(body: CreateRunBody): Record<string, string> {
   const okouToken = body.secrets?.OKOU_TOKEN;
   if (!okouToken) {
     throw new Error("The Okou run token is missing from the run context");
@@ -7002,8 +7001,8 @@ function buildRunnerJobPayload(
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
     const body = preparedRunnerJobBody(args);
-    const extraEnvironment = args.includeZeroTokenSecret
-      ? { ...args.extraEnvironment, ...zeroTokenEnvironment(body) }
+    const extraEnvironment = args.includeOkouTokenSecret
+      ? { ...args.extraEnvironment, ...okouTokenEnvironment(body) }
       : args.extraEnvironment;
     const storageManifestStats = new StorageManifestBuildStats();
     const preparedStoragePromise = measureApiDispatchTiming(
@@ -8053,10 +8052,10 @@ function buildAtomicLaunchPayload(
     apiStartTime: args.createArgs.apiStartTime,
     additionalVolumes: args.context.additionalVolumes,
     additionalVolumeSources: args.context.additionalVolumeSources,
-    includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
-    zeroTokenPublicBrand: args.createArgs.zeroTokenPublicBrand,
-    zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
-    zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
+    includeOkouTokenSecret: args.createArgs.includeOkouTokenSecret,
+    okouTokenPublicBrand: args.createArgs.okouTokenPublicBrand,
+    okouTokenComputerUseHostId: args.createArgs.okouTokenComputerUseHostId,
+    okouTokenCloudBrowserEnabled: args.createArgs.okouTokenCloudBrowserEnabled,
     imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
     extraEnvironment: withDefaultImageModelEnvironment(
@@ -8634,7 +8633,7 @@ function prepareRunBodyContext(
 ): Computed<Promise<PreparedRunBodyContext | CreateRunErrorResult>> {
   return computed(async (get) => {
     const canonicalOkouRuntime =
-      args.createArgs.includeZeroTokenSecret === true;
+      args.createArgs.includeOkouTokenSecret === true;
     const resolutionOptions = agentRunResolutionOptions(args.createArgs);
     const featureSwitchContext = await get(
       loadPreparedRunFeatureSwitchContext(
@@ -9122,11 +9121,11 @@ function prepareRunOutputMetadata(args: {
 }
 
 function isImageRecognitionAvailableForRun(args: {
-  readonly includeZeroTokenSecret: boolean | undefined;
+  readonly includeOkouTokenSecret: boolean | undefined;
   readonly selectedModel: string | undefined;
 }): boolean {
   return (
-    args.includeZeroTokenSecret === true &&
+    args.includeOkouTokenSecret === true &&
     getModelImageInputSupport(args.selectedModel) === "unsupported"
   );
 }
@@ -9328,7 +9327,7 @@ function prepareRunContext(
         selectedVideoModel,
         selectedImageModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
-          includeZeroTokenSecret: args.includeZeroTokenSecret,
+          includeOkouTokenSecret: args.includeOkouTokenSecret,
           selectedModel:
             runtimeContext.modelProvider?.selectedModel ??
             args.selectedModelOverride,
@@ -9750,7 +9749,7 @@ function finalizePreparedRunContext(
       mcpConnectorSlugs:
         prepared.context.customConnectorContext.mcpConnectorSlugs,
       selectedImageModel: prepared.context.selectedImageModel,
-      zeroCliAvailable: prepared.args.includeZeroTokenSecret === true,
+      zeroCliAvailable: prepared.args.includeOkouTokenSecret === true,
     }),
   };
 }

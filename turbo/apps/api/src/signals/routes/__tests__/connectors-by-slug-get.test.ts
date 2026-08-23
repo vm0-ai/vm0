@@ -226,7 +226,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
 
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,

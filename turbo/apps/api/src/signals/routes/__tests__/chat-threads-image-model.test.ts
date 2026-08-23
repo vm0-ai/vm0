@@ -64,14 +64,14 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -128,7 +128,7 @@ async function readImageModelEvents(token: string) {
 describe("POST /api/okou/chat-threads/:id/image-model", () => {
   it("pins a canonical image model and records one event", async () => {
     const fixture = await seedChatThread("Product launch still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -153,7 +153,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
 
   it("clears the pin so resolution can fall through to defaults", async () => {
     const fixture = await seedChatThread("Product launch still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -184,7 +184,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
 
   it("reuses a caller event id so a retry appends once", async () => {
     const fixture = await seedChatThread("Product launch still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -207,7 +207,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
 
   it("rejects a model outside the shared image catalog", async () => {
     const fixture = await seedChatThread("Product launch still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -224,7 +224,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
   it("returns 404 for a thread the caller does not own", async () => {
     const fixture = await seedChatThread("Product launch still");
     const other = await seedChatThread("Someone else's still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -239,7 +239,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
       [404],
     );
 
-    const otherToken = zeroToken({
+    const otherToken = okouToken({
       userId: other.userId,
       orgId: other.orgId,
       capabilities: ["chat-thread:read"],
@@ -249,7 +249,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
 
   it("rejects a ZERO_TOKEN without chat-thread:write", async () => {
     const fixture = await seedChatThread("Product launch still");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read"],

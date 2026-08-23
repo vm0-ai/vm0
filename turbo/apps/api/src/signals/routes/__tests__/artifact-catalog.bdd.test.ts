@@ -364,7 +364,7 @@ async function publishHostedSite(args: {
       : await claimChatRun(args.owner.runnerGroup, run.runId);
   const bearer =
     claimed === null
-      ? `Bearer ${scopedZeroToken(args.owner, run.runId, ["host:write"])}`
+      ? `Bearer ${scopedOkouToken(args.owner, run.runId, ["host:write"])}`
       : `Bearer ${okouTokenFromClaim(claimed.claim)}`;
   const body = {
     site: args.site,
@@ -418,7 +418,7 @@ async function publishHostedSiteFromDirectRun(args: {
         secrets: { OKOU_TOKEN: "bdd-artifact-catalog-token" },
       })
     ).runId;
-  const bearer = `Bearer ${scopedZeroToken(args.owner, runId, ["host:write"])}`;
+  const bearer = `Bearer ${scopedOkouToken(args.owner, runId, ["host:write"])}`;
   const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
     site: args.site,
     artifactKind: args.artifactKind ?? "hosted-site",
@@ -434,7 +434,7 @@ async function publishHostedSiteFromDirectRun(args: {
   };
 }
 
-function scopedZeroToken(
+function scopedOkouToken(
   owner: CatalogActor,
   runId: string,
   capabilities: readonly ("file:write" | "host:read" | "host:write")[],
@@ -444,7 +444,7 @@ function scopedZeroToken(
   }
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: owner.actor.userId,
     orgId: owner.actor.orgId,
     runId,
@@ -651,11 +651,11 @@ describe("GET /api/artifacts/catalog", () => {
     expect(secondChat.threadId).not.toBe(first.threadId);
 
     const firstHistory = await chat.readHostedSiteDeploymentsWithBearer(
-      `Bearer ${scopedZeroToken(owner, firstRedeploy.runId, ["host:read"])}`,
+      `Bearer ${scopedOkouToken(owner, firstRedeploy.runId, ["host:read"])}`,
       site,
     );
     const secondHistory = await chat.readHostedSiteDeploymentsWithBearer(
-      `Bearer ${scopedZeroToken(owner, secondChat.runId, ["host:read"])}`,
+      `Bearer ${scopedOkouToken(owner, secondChat.runId, ["host:read"])}`,
       site,
     );
     expect(firstHistory).toMatchObject({
@@ -670,7 +670,7 @@ describe("GET /api/artifacts/catalog", () => {
     expect(secondHistory.deployments).toHaveLength(1);
 
     const crossChatComplete = await chat.requestCompleteHostedSiteWithBearer(
-      `Bearer ${scopedZeroToken(owner, secondChat.runId, ["host:write"])}`,
+      `Bearer ${scopedOkouToken(owner, secondChat.runId, ["host:write"])}`,
       firstRedeploy.deploymentId,
       [409],
     );
@@ -738,7 +738,7 @@ describe("GET /api/artifacts/catalog", () => {
       agentId: owner.agentId,
       prompt: `publish ${site} from a chat`,
     });
-    const chatBearer = `Bearer ${scopedZeroToken(owner, chatRun.runId, [
+    const chatBearer = `Bearer ${scopedOkouToken(owner, chatRun.runId, [
       "host:write",
     ])}`;
     const rejected = await chat.requestPrepareHostedSiteWithBearer(
@@ -803,7 +803,7 @@ describe("GET /api/artifacts/catalog", () => {
       files: [hostedTextFile("/index.html", `<main>${site}</main>`)],
     };
 
-    const firstBearer = `Bearer ${scopedZeroToken(owner, firstRun.runId, [
+    const firstBearer = `Bearer ${scopedOkouToken(owner, firstRun.runId, [
       "host:write",
     ])}`;
     const first = await chat.prepareHostedSiteWithBearer(firstBearer, body);
@@ -818,7 +818,7 @@ describe("GET /api/artifacts/catalog", () => {
       agentId: owner.agentId,
       prompt: `publish ${site} from another chat`,
     });
-    const secondBearer = `Bearer ${scopedZeroToken(owner, secondRun.runId, [
+    const secondBearer = `Bearer ${scopedOkouToken(owner, secondRun.runId, [
       "host:write",
     ])}`;
     await expect(
@@ -1027,7 +1027,7 @@ describe("GET /api/artifacts/catalog", () => {
       128,
     );
     await chat.completeUploadWithBearer(
-      `Bearer ${scopedZeroToken(owner, run.runId, ["file:write"])}`,
+      `Bearer ${scopedOkouToken(owner, run.runId, ["file:write"])}`,
       { id: fileId, contentType: "text/plain" },
       [200],
     );

@@ -172,7 +172,7 @@ describe("PUT /api/agents/:id", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,
@@ -349,7 +349,7 @@ describe("PATCH /api/agents/:id", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,
@@ -614,7 +614,7 @@ describe("PUT /api/agents/:id/instructions", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,

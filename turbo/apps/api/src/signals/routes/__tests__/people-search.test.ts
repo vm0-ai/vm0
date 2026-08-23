@@ -283,7 +283,7 @@ describe("okou people-search route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_missing_people_search_capability",
@@ -806,7 +806,7 @@ describe("okou people-search route", () => {
       agentId: compose.composeId,
       prompt: "Find a public professional profile",
     });
-    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+    const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "people-search:read",
       "web-search:read",
     ]);

@@ -191,7 +191,7 @@ function browserHeadersForRun(
   runId: string,
   publicBrand?: PublicBrand,
 ): { readonly authorization: string } {
-  const browserToken = runs.zeroTokenForRunWithCapabilities(
+  const browserToken = runs.okouTokenForRunWithCapabilities(
     actor,
     runId,
     ["browser:read", "browser:write"],
@@ -351,7 +351,7 @@ describe("okou browser route", () => {
     expect(claim.appendSystemPrompt ?? "").toContain(
       "Okou Browser is currently off for this chat thread",
     );
-    const browserToken = runs.zeroTokenForRunWithCapabilities(
+    const browserToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       ["browser:read", "browser:write"],
@@ -420,7 +420,7 @@ describe("okou browser route", () => {
       computerUseHostId: host.hostId,
     });
 
-    const browserToken = runs.zeroTokenForRunWithCapabilities(
+    const browserToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       ["browser:read", "browser:write"],
@@ -462,7 +462,7 @@ describe("okou browser route", () => {
     expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
       "https://app.vm0.ai",
     );
-    const vm0RunToken = runs.zeroTokenForRunWithCapabilities(
+    const vm0RunToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       [],
@@ -478,7 +478,7 @@ describe("okou browser route", () => {
     expect(new URL(vm0CreatedOnOkouApi.body.authorizationUrl).origin).toBe(
       "https://app.vm0.ai",
     );
-    const okouRunToken = runs.zeroTokenForRunWithCapabilities(
+    const okouRunToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       [],
@@ -1062,7 +1062,7 @@ describe("okou browser route", () => {
       return {
         threadId: sentCandidate.body.threadId,
         browserHeaders: {
-          authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
+          authorization: `Bearer ${runs.okouTokenForRunWithCapabilities(
             actor,
             sentCandidate.body.runId,
             ["browser:read", "browser:write"],

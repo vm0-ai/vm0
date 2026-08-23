@@ -336,7 +336,7 @@ describe("GET /api/connectors/search", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -370,7 +370,7 @@ describe("GET /api/connectors/search", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,

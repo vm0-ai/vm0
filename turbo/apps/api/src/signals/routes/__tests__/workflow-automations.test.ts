@@ -1296,7 +1296,7 @@ describe("okou workflow automations", () => {
     ];
 
     for (const brandCase of brandCases) {
-      const token = runs.zeroTokenForRunWithCapabilities(
+      const token = runs.okouTokenForRunWithCapabilities(
         actor,
         sourceRun.runId,
         ["agent:write"],
@@ -4294,7 +4294,7 @@ describe("okou workflow automations", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, rootRun.body.runId),
     ).resolves.toBe(10);
-    const rootToken = runs.zeroTokenForRunWithCapabilities(
+    const rootToken = runs.okouTokenForRunWithCapabilities(
       actor,
       rootRun.body.runId,
       ["agent:write"],
@@ -4347,7 +4347,7 @@ describe("okou workflow automations", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, exhaustedRun.body.runId),
     ).resolves.toBe(0);
-    const exhaustedToken = runs.zeroTokenForRunWithCapabilities(
+    const exhaustedToken = runs.okouTokenForRunWithCapabilities(
       actor,
       exhaustedRun.body.runId,
       ["agent:write"],
@@ -4445,7 +4445,7 @@ describe("okou workflow automations", () => {
     if (!sourceRun.body.runId) {
       throw new Error("Expected the source automation run to start");
     }
-    const sourceToken = runs.zeroTokenForRunWithCapabilities(
+    const sourceToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sourceRun.body.runId,
       ["agent:write"],

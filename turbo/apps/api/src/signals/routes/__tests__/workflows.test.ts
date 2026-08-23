@@ -1572,7 +1572,7 @@ describe("workflows", () => {
     if (!sourceRun.body.runId) {
       throw new Error("Expected the source workflow run to start");
     }
-    const sourceToken = api.zeroTokenForRunWithCapabilities(
+    const sourceToken = api.okouTokenForRunWithCapabilities(
       actor,
       sourceRun.body.runId,
       ["agent:write"],

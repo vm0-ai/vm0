@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { server } from "../../mocks/server";
 import { creditCommand } from "../credit";
 
-function buildZeroToken(capabilities: readonly string[]): string {
+function buildOkouToken(capabilities: readonly string[]): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -225,7 +225,7 @@ describe("okou credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:write"]));
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["billing:write"]));
 
     try {
       await creditCommand.parseAsync(["node", "cli"]);
@@ -248,7 +248,7 @@ describe("okou credit command", () => {
     const mockConsoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["billing:read"]));
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["billing:read"]));
 
     try {
       await creditCommand.parseAsync(["node", "cli", "20000"]);

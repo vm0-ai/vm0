@@ -219,7 +219,7 @@ function wavBytesWithTrailingChunk(
   return bytes;
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -227,7 +227,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -800,7 +800,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
     const fixture = await seedVoiceFixture({});
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
@@ -824,7 +824,7 @@ describe("POST /api/zero/voice-io/*", () => {
     const fixture = await seedVoiceFixture({});
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
@@ -1210,7 +1210,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1316,7 +1316,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,

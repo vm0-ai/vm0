@@ -30,7 +30,7 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const THREAD_METADATA_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/model-policies";
 
-function zeroToken(orgId: string): string {
+function okouToken(orgId: string): string {
   const payload = Buffer.from(
     JSON.stringify({
       userId: "user-123",
@@ -409,7 +409,7 @@ describe("okou workflow automation commands", () => {
   }
 
   async function runStripeEnabledAdd(...args: string[]): Promise<void> {
-    vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+    vi.stubEnv("OKOU_TOKEN", okouToken("org-stripe-enabled"));
     await createAutomationAddCommand({
       featureSwitchOverrides: {
         [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
@@ -726,7 +726,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a GitHub pull request automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const captured = captureCreateAutomation(githubPullRequestAutomation);
 
       await automationCommand.parseAsync([
@@ -767,7 +767,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should reject --merged for non-closed GitHub pull request actions", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       await expect(async () => {
         await automationCommand.parseAsync([
           "node",
@@ -872,7 +872,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a GitHub issue comment automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const response = {
         ...automationBase,
         kind: "event",
@@ -949,7 +949,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a Strapi entry-published automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const captured = captureCreateAutomation(strapiAutomation);
 
       await automationCommand.parseAsync([
@@ -1232,7 +1232,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should show Stripe creation in help when the feature is enabled", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+      vi.stubEnv("OKOU_TOKEN", okouToken("org-stripe-enabled"));
       const addCommand = createAutomationAddCommand({
         featureSwitchOverrides: {
           [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,

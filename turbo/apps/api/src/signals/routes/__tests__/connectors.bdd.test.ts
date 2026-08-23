@@ -28,7 +28,7 @@ import {
   installApiTestConnectorCatalog,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
 } from "../../../test-fixtures/connector-catalog";
-import { generateSandboxToken, generateZeroToken } from "../../auth/tokens";
+import { generateSandboxToken, generateOkouToken } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
@@ -3459,13 +3459,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     }
     mockClerkMembership(context, admin, "org:admin");
     const runId = randomUUID();
-    const writeToken = generateZeroToken(
-      admin.userId,
-      runId,
-      admin.orgId,
-      undefined,
-      { scope: "okou" },
-    );
+    const writeToken = generateOkouToken(admin.userId, runId, admin.orgId);
     const connectorsClient = setupApp({
       context,
       routes: customConnectorsRoutes,
@@ -4692,7 +4686,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const runId = randomUUID();
     for (const token of [
       generateSandboxToken(sandboxActor.userId, runId, sandboxActor.orgId),
-      generateZeroToken(sandboxActor.userId, runId, sandboxActor.orgId),
+      generateOkouToken(sandboxActor.userId, runId, sandboxActor.orgId),
     ]) {
       const disconnect =
         await connectorsApi.requestDisconnectCustomConnectorWithToken(

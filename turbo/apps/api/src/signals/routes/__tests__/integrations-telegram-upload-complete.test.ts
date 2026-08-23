@@ -37,14 +37,14 @@ function uniqueBotId(): string {
   return String(100_000_000 + Math.floor(Math.random() * 899_999_999));
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -209,7 +209,7 @@ describe("POST /api/integrations/telegram/upload-file/complete", () => {
           messageThreadId: 42,
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,
@@ -268,7 +268,7 @@ describe("POST /api/integrations/telegram/upload-file/complete", () => {
           chatId: "-1001234567890",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({ userId, orgId, runId })}`,
+          authorization: `Bearer ${okouToken({ userId, orgId, runId })}`,
         },
       }),
       [404],
@@ -296,7 +296,7 @@ describe("POST /api/integrations/telegram/upload-file/complete", () => {
           chatId: "-1001234567890",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({ userId, orgId, runId })}`,
+          authorization: `Bearer ${okouToken({ userId, orgId, runId })}`,
         },
       }),
       [403],
@@ -345,7 +345,7 @@ describe("POST /api/integrations/telegram/upload-file/complete", () => {
           contentType: "application/pdf",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,

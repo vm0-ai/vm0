@@ -64,14 +64,14 @@ function expectUnauthorized(body: unknown): void {
   });
 }
 
-function mintZeroToken(args: {
+function mintOkouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly "telegram:read"[];
 }): string {
   const nowSeconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero" as const,
+    scope: "okou" as const,
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -233,7 +233,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
 
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -335,7 +335,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     fixtures.push(freezeTelegramFixture(builderA));
     fixtures.push(freezeTelegramFixture(builderB));
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -394,7 +394,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
 
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -452,7 +452,7 @@ describe("GET /api/integrations/telegram", () => {
 
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -537,7 +537,7 @@ describe("GET /api/integrations/telegram", () => {
     );
     fixtures.push(freezeTelegramFixture(builder));
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -605,7 +605,7 @@ describe("GET /api/integrations/telegram", () => {
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -701,7 +701,7 @@ describe("GET /api/integrations/telegram", () => {
     fixtures.push(freezeTelegramFixture(builderA));
     fixtures.push(freezeTelegramFixture(builderB));
 
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -772,7 +772,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const userId = `user_${randomUUID()}`;
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     return {
-      token: mintZeroToken({
+      token: mintOkouToken({
         userId,
         orgId,
         capabilities: ["telegram:read"],
@@ -1843,7 +1843,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     return {
       orgId,
       userId,
-      token: mintZeroToken({
+      token: mintOkouToken({
         userId,
         orgId,
         capabilities: ["telegram:read"],
@@ -2077,7 +2077,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -2181,7 +2181,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
     fixtures.push(freezeTelegramFixture(builder));
 
     return {
-      token: mintZeroToken({
+      token: mintOkouToken({
         userId,
         orgId,
         capabilities: ["telegram:read"],
@@ -2194,7 +2194,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
-    return mintZeroToken({
+    return mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],
@@ -2222,7 +2222,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
 
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const token = mintZeroToken({
+    const token = mintOkouToken({
       userId,
       orgId,
       capabilities: ["telegram:read"],

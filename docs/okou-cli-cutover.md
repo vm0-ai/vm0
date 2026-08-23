@@ -55,12 +55,15 @@ contexts retain their immutable commit-addressed artifact and are not rewritten.
 ## Preserved protocol identities
 
 The executable cleanup does not rename internal protocol or product identities.
-Keep the `OKOU_TOKEN` preference with `ZERO_TOKEN` fallback, both token scopes,
-`OKOU_AGENT_ID` and `ZERO_AGENT_ID`, paired deployment environment injection,
-canonical `OKOU_*` names and `/api/okou/**`, `commands/zero`,
-`decodeZeroTokenPayload`, other `ZERO_*` names and `/api/zero/**`, database and
-backend identifiers, the Slack `/zero model` interaction, and the separate
-Desktop identity. These are not executable CLI producers.
+Keep the `OKOU_TOKEN` preference with `ZERO_TOKEN` fallback, `OKOU_AGENT_ID` and
+`ZERO_AGENT_ID`, paired deployment environment injection, canonical `OKOU_*`
+names and `/api/okou/**`, `commands/zero`, other `ZERO_*` names and
+`/api/zero/**`, database and backend identifiers, the Slack `/zero model`
+interaction, and the separate Desktop identity. These are not executable CLI
+producers.
+
+The run-token scope pair was the one exception, retired separately once the
+issuing side had drained; see `docs/okou-protocol-migration.md`.
 
 ## Exact residual classification
 

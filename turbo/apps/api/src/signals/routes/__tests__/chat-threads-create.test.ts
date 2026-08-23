@@ -107,7 +107,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
@@ -115,7 +115,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     // Run tokens always carry a real run id, and thread creation reads that
@@ -222,7 +222,7 @@ describe("POST /api/zero/chat-threads", () => {
     if (firstResponse.status !== 200 || secondResponse.status !== 200) {
       throw new Error("Expected connector account creation to succeed");
     }
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -328,7 +328,7 @@ describe("POST /api/zero/chat-threads", () => {
       { apiKey: "selected-openai-key" },
       fixture.agentId,
     );
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -363,7 +363,7 @@ describe("POST /api/zero/chat-threads", () => {
         target: { kind: "builtin", connectorSlug: "openai" },
       },
     ]);
-    const readToken = zeroToken({
+    const readToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read"],
@@ -398,7 +398,7 @@ describe("POST /api/zero/chat-threads", () => {
       { orgId: fixture.orgId, userId: foreignActor.userId },
       context.signal,
     );
-    const foreignToken = zeroToken({
+    const foreignToken = okouToken({
       userId: foreignActor.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -531,7 +531,7 @@ describe("POST /api/zero/chat-threads", () => {
       { apiKey: "disabled-openai-key" },
       fixture.agentId,
     );
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -666,7 +666,7 @@ describe("POST /api/zero/chat-threads", () => {
     if (!httpConnectionId || !mcpConnectionId) {
       throw new Error("Expected custom connector account fixtures");
     }
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -738,7 +738,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedAgent();
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -798,7 +798,7 @@ describe("POST /api/zero/chat-threads", () => {
       },
       context.signal,
     );
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -827,7 +827,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("inherits media models from the run's chat thread when omitted", async () => {
     const fixture = await seedAgent();
-    const sourceToken = zeroToken({
+    const sourceToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -857,7 +857,7 @@ describe("POST /api/zero/chat-threads", () => {
       },
       context.signal,
     );
-    const inheritedToken = zeroToken({
+    const inheritedToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -886,7 +886,7 @@ describe("POST /api/zero/chat-threads", () => {
   it("leaves media models unpinned while neither picker is enabled", async () => {
     const fixture = await seedAgent();
     await setMemberMediaDefaults(fixture);
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -921,7 +921,7 @@ describe("POST /api/zero/chat-threads", () => {
       [FeatureSwitchKey.VideoModelSelection]: true,
     });
     await setMemberMediaDefaults(fixture);
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -956,7 +956,7 @@ describe("POST /api/zero/chat-threads", () => {
       [FeatureSwitchKey.ImageModelSelection]: true,
     });
     await setMemberMediaDefaults(fixture);
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -987,7 +987,7 @@ describe("POST /api/zero/chat-threads", () => {
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.CodexFastMode]: true,
     });
-    const sourceToken = zeroToken({
+    const sourceToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -1018,7 +1018,7 @@ describe("POST /api/zero/chat-threads", () => {
       },
       context.signal,
     );
-    const inheritedToken = zeroToken({
+    const inheritedToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -1064,7 +1064,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("rejects an omitted model when the token has no run model to inherit", async () => {
     const fixture = await seedAgent();
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:write"],
@@ -1087,7 +1087,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
     const fixture = await seedAgent();
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read"],

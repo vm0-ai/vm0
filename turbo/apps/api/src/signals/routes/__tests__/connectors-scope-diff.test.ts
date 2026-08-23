@@ -79,7 +79,7 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
     const orgId = `org_${randomUUID()}`;
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,

@@ -705,14 +705,14 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ("slack:write" | "file:read")[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -803,7 +803,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
     }
 
     return {
-      token: zeroToken({ userId, orgId, capabilities: ["slack:write"] }),
+      token: okouToken({ userId, orgId, capabilities: ["slack:write"] }),
     };
   }
 
@@ -814,7 +814,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
   });
 
   it("rejects a zero token without slack:write capability", async () => {
-    const token = zeroToken({
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["file:read"],

@@ -135,7 +135,7 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { verifyZeroToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundAgentRunsServiceFixture,
@@ -578,7 +578,7 @@ async function expectRunPublicBrandTransport(args: {
   if (!token) {
     throw new Error("Expected the run context to contain an Okou token");
   }
-  expect(verifyZeroToken(token)).toMatchObject({
+  expect(verifyOkouToken(token)).toMatchObject({
     runId: args.runId,
     publicBrand: args.publicBrand,
   });
@@ -11108,7 +11108,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       agentId,
       prompt: "launch chat work from this run",
     });
-    const zeroToken = api.zeroTokenForRunWithCapabilities(actor, caller.runId, [
+    const okouToken = api.okouTokenForRunWithCapabilities(actor, caller.runId, [
       "chat-thread:read",
       "chat-thread:write",
       "chat-event:read",
@@ -11117,13 +11117,13 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
 
     const createdThread = await accept(
       chatThreadsClient().create({
-        headers: { authorization: `Bearer ${zeroToken}` },
+        headers: { authorization: `Bearer ${okouToken}` },
         body: { agentId, title: "Run-scoped handoff" },
       }),
       [201],
     );
     const immediate = await requestSendEventWithBearer(
-      zeroToken,
+      okouToken,
       {
         agentId,
         threadId: createdThread.body.id,
@@ -11173,7 +11173,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
 
     const queuedEventId = randomUUID();
     const queued = await requestSendEventWithBearer(
-      zeroToken,
+      okouToken,
       {
         agentId,
         clientEventId: queuedEventId,

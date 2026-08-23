@@ -202,7 +202,7 @@ export function createUserConfigBddApi(context: TestContext) {
       const seconds = Math.floor(now() / 1000);
       const runId = `run_${randomUUID()}`;
       const token = signSandboxJwtForTests({
-        scope: "zero",
+        scope: "okou",
         userId: actor.userId,
         orgId: requireOrgId(actor),
         runId,

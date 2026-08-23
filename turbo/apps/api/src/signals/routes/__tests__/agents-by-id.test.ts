@@ -127,7 +127,7 @@ async function apiKeyHeaders(
   return bearerHeaders(key.token);
 }
 
-function zeroTokenFor(
+function okouTokenFor(
   actor: ApiTestUser,
   capabilities: readonly Capability[],
 ): string {
@@ -136,7 +136,7 @@ function zeroTokenFor(
   }
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: actor.userId,
     orgId: actor.orgId,
     runId: randomUUID(),
@@ -165,7 +165,7 @@ describe("GET /api/agents/:id", () => {
 
     const capabilityBody = await expectNamespaceParity(
       agent.agentId,
-      bearerHeaders(zeroTokenFor(actor, ["agent:read"])),
+      bearerHeaders(okouTokenFor(actor, ["agent:read"])),
     );
 
     expect(patBody).toStrictEqual(sessionBody);
@@ -303,7 +303,7 @@ describe("GET /api/agents/:id", () => {
 
   it("returns 403 for a zero token without agent:read capability", async () => {
     const actor = bdd.user();
-    const token = zeroTokenFor(actor, ["file:read"]);
+    const token = okouTokenFor(actor, ["file:read"]);
 
     const response = await accept(
       agentsClient().get({
@@ -327,7 +327,7 @@ describe("GET /api/agents/:id", () => {
       displayName: "Zero Token Agent",
       description: "Read by zero token",
     });
-    const token = zeroTokenFor(actor, ["agent:read"]);
+    const token = okouTokenFor(actor, ["agent:read"]);
     mockClerkMembership(context, actor, "org:admin");
 
     const response = await accept(
@@ -357,7 +357,7 @@ describe("DELETE /api/agents/:id", () => {
 
   it("returns 403 for a zero token without agent:delete capability", async () => {
     const actor = bdd.user();
-    const token = zeroTokenFor(actor, ["file:read"]);
+    const token = okouTokenFor(actor, ["file:read"]);
 
     const response = await accept(
       agentsClient().delete({

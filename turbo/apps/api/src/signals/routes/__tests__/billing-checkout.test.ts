@@ -305,14 +305,14 @@ function mockStatefulUsagePackCheckoutSessions(): Map<
   return sessionStates;
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -18966,7 +18966,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
         ],
       },
     });
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["billing:write"],
@@ -20149,7 +20149,7 @@ describe("POST /api/billing/credit-checkout", () => {
   });
 
   it("returns 403 for zero tokens without billing write capability", async () => {
-    const token = zeroToken({
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["billing:read"],
@@ -21041,7 +21041,7 @@ describe("POST /api/billing/credit-checkout", () => {
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/zero-credit",
     });
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["billing:write"],

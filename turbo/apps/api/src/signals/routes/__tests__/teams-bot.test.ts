@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
+import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, withMockNowForTest } from "../../../lib/time";
@@ -554,7 +554,7 @@ function teamsToken(
   });
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId?: string;
@@ -562,7 +562,7 @@ function zeroToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId ?? `run_${randomUUID()}`,
@@ -1785,7 +1785,7 @@ describe("POST /api/zero/teams/bot", () => {
       }).toString()}`,
       {
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId,
@@ -1872,7 +1872,7 @@ describe("POST /api/zero/teams/bot", () => {
       }).toString()}`,
       {
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: run.id,
@@ -1899,7 +1899,7 @@ describe("POST /api/zero/teams/bot", () => {
       }).toString()}`,
       {
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
           })}`,
@@ -3252,7 +3252,7 @@ describe("POST /api/zero/teams/bot", () => {
     if (!secondOkouToken) {
       throw new Error("Claimed Teams runner job did not include OKOU_TOKEN");
     }
-    const okouAuth = verifyZeroToken(secondOkouToken);
+    const okouAuth = verifyOkouToken(secondOkouToken);
     expect(okouAuth).toMatchObject({ computerUseHostId: host.hostId });
     expect(okouAuth?.capabilities).toContain("computer-use:write");
 
@@ -3391,7 +3391,7 @@ describe("POST /api/zero/teams/bot", () => {
     });
     authOrgApi.mockClerkOrg(actor);
     await authOrgApi.requestReadOrgWithBearer(
-      zeroToken({ userId: fixture.userId, orgId: fixture.orgId }),
+      okouToken({ userId: fixture.userId, orgId: fixture.orgId }),
       [200],
     );
     context.mocks.ably.publish.mockClear();

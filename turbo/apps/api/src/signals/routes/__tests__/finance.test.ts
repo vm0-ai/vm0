@@ -68,7 +68,7 @@ describe("okou finance routes", () => {
     expect(completed.status).toBe(200);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_finance_missing_capability",

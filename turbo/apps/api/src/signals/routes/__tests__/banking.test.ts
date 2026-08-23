@@ -69,13 +69,13 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(
+function okouToken(
   fixture: BankingFixture,
   capabilities: readonly Capability[] = ["banking:read"],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: fixture.userId,
     orgId: fixture.orgId,
     runId: fixture.runId,
@@ -213,7 +213,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: {},
       }),
       [403],
@@ -266,7 +266,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: {},
       }),
       [200],
@@ -322,7 +322,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.balances({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: { accountId: fixture.disabledAccountId },
       }),
       [403],
@@ -370,7 +370,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.balances({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: { accountId: fixture.enabledAccountId },
       }),
       [200],
@@ -415,7 +415,7 @@ describe("POST /api/zero/banking/*", () => {
     const response = await accept(
       client.accounts({
         headers: {
-          authorization: `Bearer ${zeroToken(fixture, ["file:read"])}`,
+          authorization: `Bearer ${okouToken(fixture, ["file:read"])}`,
         },
         body: {},
       }),
@@ -448,7 +448,7 @@ describe("POST /api/zero/banking/*", () => {
       );
       const response = await accept(
         client.accounts({
-          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+          headers: { authorization: `Bearer ${okouToken(fixture)}` },
           body: {},
         }),
         [403],
@@ -490,7 +490,7 @@ describe("POST /api/zero/banking/*", () => {
       );
       const response = await accept(
         client.accounts({
-          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+          headers: { authorization: `Bearer ${okouToken(fixture)}` },
           body: {},
         }),
         [200],
@@ -526,7 +526,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: {},
       }),
       [403],
@@ -579,7 +579,7 @@ describe("POST /api/zero/banking/*", () => {
     );
     const response = await accept(
       client.transactions({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        headers: { authorization: `Bearer ${okouToken(fixture)}` },
         body: {
           accountId: fixture.enabledAccountId,
           from: "2026-01-01",

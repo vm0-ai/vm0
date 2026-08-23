@@ -344,7 +344,7 @@ function goalHeaders(
   const seconds = Math.floor(now() / 1000);
   return {
     authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId,

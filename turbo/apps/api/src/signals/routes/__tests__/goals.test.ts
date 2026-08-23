@@ -55,13 +55,13 @@ function goalsClient() {
   return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
-function zeroToken(
+function okouToken(
   fixture: GoalApiAuthFixture,
   capabilities: readonly Capability[],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: fixture.userId,
     orgId: fixture.orgId,
     runId: fixture.runId,
@@ -75,7 +75,7 @@ function headers(
   fixture: GoalApiAuthFixture,
   capabilities: readonly Capability[] = ALL_GOAL_CAPABILITIES,
 ) {
-  return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
+  return { authorization: `Bearer ${okouToken(fixture, capabilities)}` };
 }
 
 async function seedGoalApiFixture(): Promise<GoalApiFixture> {
