@@ -219,7 +219,7 @@ async function loadTeamsChatThread(args: {
   const [thread] = await args.db
     .select({
       id: chatThreads.id,
-      agentComposeId: chatThreads.agentComposeId,
+      agentComposeId: chatThreads.agentId,
       computerUseHostId: chatThreads.computerUseHostId,
     })
     .from(teamsChatThreadRoutes)
@@ -257,6 +257,7 @@ async function loadAuthorizedComputerUseHostId(args: {
         and(
           eq(chatThreads.id, requiredChatThreadId(args.request)),
           eq(chatThreads.userId, args.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .limit(1);
@@ -327,9 +328,9 @@ async function applyChatAuthorizationScope(args: {
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentComposeId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentComposeId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -391,13 +392,14 @@ async function applyTeamsAuthorizationScope(args: {
         and(
           eq(chatThreads.id, existing.id),
           eq(chatThreads.userId, args.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentComposeId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentComposeId) {
       return false;
     }
     await appendChatThreadEvent(tx, {

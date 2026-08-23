@@ -249,6 +249,10 @@ import {
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
 import {
+  IMAGE_MODEL_PRICE_TIER,
+  VIDEO_MODEL_PRICE_TIER,
+} from "@okouai/api-contracts/contracts/media-model-price-tiers";
+import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
@@ -8540,6 +8544,7 @@ function composerImageModelPanelCategory({
         key: candidate,
         label: IMAGE_MODEL_CONFIGS[candidate].label,
         icon: <ImageModelBrandIcon model={candidate} />,
+        priceTier: IMAGE_MODEL_PRICE_TIER[candidate],
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);
@@ -8569,6 +8574,7 @@ function composerVideoModelPanelCategory({
         key: candidate,
         label: VIDEO_MODEL_CONFIGS[candidate].label,
         icon: <VideoModelBrandIcon model={candidate} />,
+        priceTier: VIDEO_MODEL_PRICE_TIER[candidate],
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);

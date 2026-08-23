@@ -1,3 +1,4 @@
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
@@ -64,7 +65,7 @@ async function loadGitHubLaunchContext(
       triggerReactionId: chatGithubContext.triggerReactionId,
       triggerCommentBody: chatGithubContext.triggerCommentBody,
       installationId: githubChatThreadRoutes.installationId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(chatEvents)
     .innerJoin(
@@ -100,6 +101,7 @@ async function loadGitHubLaunchContext(
         eq(chatThreads.userId, args.userId),
       ),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(chatEvents.id, args.eventId),

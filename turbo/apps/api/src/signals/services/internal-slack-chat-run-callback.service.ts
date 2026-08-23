@@ -6,7 +6,7 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
@@ -102,10 +102,11 @@ async function loadSlackChatDeliveryContext(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -403,9 +404,9 @@ export async function deliverSlackChatAdmissionFailure(
         .where(eq(orgMetadata.orgId, args.orgId))
         .limit(1),
       args.db
-        .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, args.agentId))
+        .select({ displayName: agents.displayName, name: agents.name })
+        .from(agents)
+        .where(eq(agents.id, args.agentId))
         .limit(1),
     ]);
   signal.throwIfAborted();

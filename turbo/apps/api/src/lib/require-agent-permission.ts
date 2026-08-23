@@ -44,22 +44,3 @@ export function requireAgentPermission(
     },
   };
 }
-
-export function requireAdminPermission(
-  member: { readonly role: string },
-  action: string,
-): ForbiddenResponse | null {
-  if (member.role === "admin") {
-    return null;
-  }
-
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: `Only org admins can ${action}`,
-        code: "FORBIDDEN",
-      },
-    },
-  };
-}

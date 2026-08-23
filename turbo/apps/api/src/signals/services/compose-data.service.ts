@@ -3,6 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { storages } from "@okouai/db/schema/storage";
@@ -28,14 +29,9 @@ export function agentComposeExists(args: {
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const [row] = await get(db$)
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, args.orgId),
-          eq(agentComposes.id, args.composeId),
-        ),
-      )
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.composeId)))
       .limit(1);
 
     return Boolean(row);
@@ -84,7 +80,7 @@ async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteComposeArgs) {
   const sessions = await tx
     .select({ id: agentSessions.id, orgId: agentSessions.orgId })
     .from(agentSessions)
-    .where(eq(agentSessions.agentComposeId, args.composeId))
+    .where(eq(agentSessions.agentId, args.composeId))
     .orderBy(asc(agentSessions.id))
     .for("update", { noWait: true });
 

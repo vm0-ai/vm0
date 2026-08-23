@@ -13,7 +13,7 @@ import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,
@@ -133,16 +133,14 @@ async function loadAgentForConfiguration(
 ): Promise<ConfigurableAgent | null> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      owner: agents.owner,
+      visibility: agents.visibility,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
-    .where(
-      and(eq(zeroAgents.orgId, args.orgId), eq(zeroAgents.id, args.agentId)),
-    )
+    .from(agents)
+    .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.agentId)))
     .limit(1);
 
   return agent ?? null;
@@ -297,7 +295,7 @@ async function loadMatchingWorkflowCreationThreadId(
       and(
         eq(chatThreads.id, args.chatThreadId),
         eq(chatThreads.userId, args.userId),
-        eq(chatThreads.agentComposeId, args.agentId),
+        eq(chatThreads.agentId, args.agentId),
       ),
     )
     .limit(1)

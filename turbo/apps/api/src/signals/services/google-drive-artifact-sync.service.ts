@@ -113,7 +113,7 @@ async function threadAllowsGoogleDriveArtifactSync(
       and(
         eq(userConnectors.orgId, args.orgId),
         eq(userConnectors.userId, args.userId),
-        eq(userConnectors.agentId, chatThreads.agentComposeId),
+        eq(userConnectors.agentId, chatThreads.agentId),
         eq(userConnectors.connectorSlug, "google-drive"),
       ),
     )

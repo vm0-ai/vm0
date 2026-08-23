@@ -7,10 +7,9 @@ import {
   type LogsFilters,
   type TriggerSource,
 } from "@okouai/api-contracts/contracts/logs";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { conversations } from "@okouai/db/schema/conversation";
 import {
   and,
@@ -81,11 +80,11 @@ function buildAgentFilterConditions(params: {
   const conditions: SQL[] = [];
 
   if (params.agentId) {
-    conditions.push(eq(zeroAgents.id, params.agentId));
+    conditions.push(eq(agents.id, params.agentId));
   } else if (params.name) {
-    conditions.push(eq(agentComposes.name, params.name));
+    conditions.push(eq(agents.name, params.name));
   } else if (params.search) {
-    conditions.push(ilike(agentComposes.name, `%${params.search}%`));
+    conditions.push(ilike(agents.name, `%${params.search}%`));
   }
 
   return conditions;
@@ -145,19 +144,14 @@ export function logsList(
           startedAt: agentRuns.startedAt,
           completedAt: agentRuns.completedAt,
           triggerSource: agentRuns.triggerSource,
-          agentId: zeroAgents.id,
-          composeName: agentComposes.name,
+          agentId: agents.id,
           launchSnapshot: agentRuns.launchSnapshot,
-          displayName: zeroAgents.displayName,
+          displayName: agents.displayName,
           cliAgentSessionId: conversations.cliAgentSessionId,
         })
         .from(agentRuns)
         .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-        .leftJoin(
-          agentComposes,
-          eq(agentSessions.agentComposeId, agentComposes.id),
-        )
-        .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
+        .leftJoin(agents, eq(agentSessions.agentId, agents.id))
         .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
         .where(whereClause)
         .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
@@ -227,8 +221,7 @@ async function getLogsTotalCount(
     .select({ count: count() })
     .from(agentRuns)
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
-    .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
+    .leftJoin(agents, eq(agentSessions.agentId, agents.id))
     .where(and(...conditions));
 
   return result?.count ?? 0;
@@ -254,11 +247,11 @@ async function getAvailableFilters(
       .from(agentRuns)
       .where(and(...baseConditions, isNotNull(agentRuns.triggerSource))),
     db
-      .selectDistinct({ agentId: zeroAgents.id })
+      .selectDistinct({ agentId: agents.id })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
-      .where(and(...baseConditions, isNotNull(zeroAgents.id))),
+      .leftJoin(agents, eq(agentSessions.agentId, agents.id))
+      .where(and(...baseConditions, isNotNull(agents.id))),
   ]);
 
   const statuses = statusRows
@@ -285,7 +278,7 @@ async function getAvailableFilters(
       return triggerSourceSchema.safeParse(s).success;
     });
 
-  const agents = agentRows
+  const agentIds = agentRows
     .map((r) => {
       return r.agentId;
     })
@@ -293,7 +286,7 @@ async function getAvailableFilters(
       return agentId !== null;
     });
 
-  return { statuses, sources, agents };
+  return { statuses, sources, agents: agentIds };
 }
 
 interface LogDetailParams {
@@ -332,15 +325,15 @@ export function logDetail(
     const [result] = await db
       .select({
         run: logDetailRunSelection(),
-        agentId: zeroAgents.id,
-        agentDisplayName: zeroAgents.displayName,
+        agentId: agents.id,
+        agentDisplayName: agents.displayName,
         triggerSource: agentRuns.triggerSource,
         modelProvider: agentRuns.modelProvider,
         selectedModel: agentRuns.selectedModel,
       })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
+      .leftJoin(agents, eq(agentSessions.agentId, agents.id))
       .where(
         and(
           eq(agentRuns.id, params.runId),

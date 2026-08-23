@@ -29,7 +29,7 @@ import {
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import {
   and,
   asc,
@@ -2516,11 +2516,12 @@ async function chatThreadForRunFromDb(
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       title: chatThreads.title,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
 
@@ -2553,9 +2554,9 @@ async function loadAgentForAutoSend(
   agentId: string,
 ): Promise<AgentForAutoSend | null> {
   const [agent] = await db
-    .select({ id: zeroAgents.id, orgId: zeroAgents.orgId })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, agentId))
+    .select({ id: agents.id, orgId: agents.orgId })
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
   return agent ?? null;
 }
@@ -5482,9 +5483,10 @@ export const drainQueuedUserMessagesForThread$ = command(
         return db
           .select({
             userId: chatThreads.userId,
-            agentId: chatThreads.agentComposeId,
+            agentId: agents.id,
           })
           .from(chatThreads)
+          .innerJoin(agents, eq(agents.id, chatThreads.agentId))
           .where(eq(chatThreads.id, args.chatThreadId))
           .limit(1);
       },

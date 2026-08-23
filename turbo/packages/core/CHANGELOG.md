@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.583.0](https://github.com/vm0-ai/vm0/compare/core-v8.582.1...core-v8.583.0) (2026-08-23)
+
+
+### Features
+
+* **platform:** offer nano banana 2 lite and price tiers for media models ([#28674](https://github.com/vm0-ai/vm0/issues/28674)) ([dc7962c](https://github.com/vm0-ai/vm0/commit/dc7962c9c51e8e74cab94eb39af89ab31e68fd4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.0
+
+## [8.582.1](https://github.com/vm0-ai/vm0/compare/core-v8.582.0...core-v8.582.1) (2026-08-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.354.1
+
 ## [8.582.0](https://github.com/vm0-ai/vm0/compare/core-v8.581.0...core-v8.582.0) (2026-08-23)
 
 

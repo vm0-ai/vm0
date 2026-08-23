@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNotNull, ne } from "drizzle-orm";
 import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
@@ -364,6 +364,7 @@ async function loadInstallationForConnector(args: {
   const conditions = [
     eq(feishuOrgInstallations.orgId, args.orgId),
     eq(feishuOrgInstallations.appId, args.appId),
+    isNotNull(feishuOrgInstallations.defaultAgentId),
   ];
   if (args.installationId) {
     conditions.push(eq(feishuOrgInstallations.id, args.installationId));
@@ -375,12 +376,15 @@ async function loadInstallationForConnector(args: {
       tenantKey: feishuOrgInstallations.feishuTenantKey,
       setupCompletedAt: feishuOrgInstallations.setupCompletedAt,
       ownerUserId: feishuOrgInstallations.ownerUserId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
     })
     .from(feishuOrgInstallations)
     .where(and(...conditions))
     .limit(1);
-  return installation ?? null;
+  if (!installation?.defaultAgentId) {
+    return null;
+  }
+  return { ...installation, defaultAgentId: installation.defaultAgentId };
 }
 
 async function persistFeishuOAuthConnection(

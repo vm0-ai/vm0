@@ -13,9 +13,8 @@ import {
   normalizeRunModelId,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
 import { agentphoneMessages } from "@okouai/db/schema/agentphone-message";
 import { agentphoneUserAgentPreferences } from "@okouai/db/schema/agentphone-user-agent-preference";
@@ -550,7 +549,7 @@ async function getAgentPhoneUserAgentPreference(
 ): Promise<string | null> {
   const [row] = await db
     .select({
-      selectedComposeId: agentphoneUserAgentPreferences.selectedComposeId,
+      selectedAgentId: agentphoneUserAgentPreferences.selectedAgentId,
     })
     .from(agentphoneUserAgentPreferences)
     .where(
@@ -561,7 +560,7 @@ async function getAgentPhoneUserAgentPreference(
     )
     .limit(1);
 
-  return row?.selectedComposeId ?? null;
+  return row?.selectedAgentId ?? null;
 }
 
 async function resolveEffectiveAgentPhoneComposeId(
@@ -571,15 +570,13 @@ async function resolveEffectiveAgentPhoneComposeId(
 ): Promise<string | null> {
   const preference = await getAgentPhoneUserAgentPreference(db, userId, orgId);
   if (preference) {
-    const [compose] = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(
-        and(eq(agentComposes.id, preference), eq(agentComposes.orgId, orgId)),
-      )
+    const [agent] = await db
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, preference), eq(agents.orgId, orgId)))
       .limit(1);
 
-    if (compose?.id) {
+    if (agent?.id) {
       return preference;
     }
   }
@@ -593,13 +590,12 @@ async function getWorkspaceAgent(
 ): Promise<WorkspaceAgent | null> {
   const [row] = await db
     .select({
-      composeId: agentComposes.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      composeId: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(agentComposes)
-    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
 
   if (!row) {

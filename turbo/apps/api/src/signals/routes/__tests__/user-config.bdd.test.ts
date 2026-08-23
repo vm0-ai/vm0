@@ -268,7 +268,7 @@ describe("AUTH-03 agent user connectors", () => {
     expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
   });
 
-  it("recomposes a stale compose-target on user-connector updates", async () => {
+  it("rejects a stale compose-only connector target without recomposing", async () => {
     const admin = api.user();
     await onboardAdmin(admin, { slug: slug("bdd-uc-b1c") });
     if (!admin.orgId) {
@@ -287,21 +287,19 @@ describe("AUTH-03 agent user connectors", () => {
       signal: context.signal,
     });
 
-    // A compose without a zero-agent row only accepts the empty replace
-    // (user_connectors.agent_id FK references zero_agents); the empty set
-    // still walks the visible-joined lookup and the stale recompose arm.
-    const updated = await cfg.updateUserConnectors(
+    const update = await cfg.requestUpdateUserConnectors(
       admin,
       created.composeId,
       [],
+      [404],
     );
-    expect(updated.enabledConnectorSlugs).toStrictEqual([]);
+    expectApiError(update.body);
+    expect(update.body.error.code).toBe("NOT_FOUND");
 
     const compose = await readHistoricalAgentComposeHeadFixture(
       created.composeId,
     );
-    expect(compose.headVersionId).not.toBe(created.versionId);
-    expect(compose.headVersionId).toMatch(/^[a-f0-9]{64}$/);
+    expect(compose.headVersionId).toBe(created.versionId);
 
     const getOnCompose = await cfg.requestReadUserConnectors(
       admin,

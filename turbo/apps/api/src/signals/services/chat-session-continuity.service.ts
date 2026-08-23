@@ -167,7 +167,7 @@ async function latestHistoricalThreadSession(args: {
         isNotNull(agentRuns.triggerSource),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
-        eq(agentSessions.agentComposeId, args.agentComposeId),
+        eq(agentSessions.agentId, args.agentComposeId),
         eq(
           sql`${agentRuns.result}->>'agentSessionId'`,
           sql`${agentSessions.id}::text`,
@@ -401,7 +401,7 @@ export async function resolveChatThreadSession(args: {
         eq(agentSessions.id, chatThreads.agentSessionId),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
-        eq(agentSessions.agentComposeId, args.agentComposeId),
+        eq(agentSessions.agentId, args.agentComposeId),
       ),
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
@@ -410,7 +410,7 @@ export async function resolveChatThreadSession(args: {
       and(
         eq(chatThreads.id, args.threadId),
         eq(chatThreads.userId, args.userId),
-        eq(chatThreads.agentComposeId, args.agentComposeId),
+        eq(chatThreads.agentId, args.agentComposeId),
       ),
     )
     .limit(1);

@@ -5,6 +5,7 @@ import type {
 } from "@okouai/api-contracts/contracts/goals";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   threadGoals,
@@ -107,12 +108,13 @@ async function currentGoalContext(
   const [row] = await db
     .select({
       threadId: agentRuns.chatThreadId,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       runGoalId: agentRuns.goalId,
       autonomyBudget: agentRuns.autonomyBudget,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(
       and(
         eq(agentRuns.id, auth.runId),

@@ -11,7 +11,7 @@ import { z } from "zod";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, desc, eq, gt, gte, isNull, lte, ne, or } from "drizzle-orm";
@@ -588,10 +588,10 @@ async function collectUnreadChatThreads(args: {
       lastMessageAt: chatThreads.lastMessageAt,
     })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .innerJoin(agents, eq(chatThreads.agentId, agents.id))
     .where(
       and(
-        eq(agentComposes.orgId, args.orgId),
+        eq(agents.orgId, args.orgId),
         eq(chatThreads.userId, args.userId),
         gte(chatThreads.lastMessageAt, args.since),
         lte(chatThreads.lastMessageAt, args.until),

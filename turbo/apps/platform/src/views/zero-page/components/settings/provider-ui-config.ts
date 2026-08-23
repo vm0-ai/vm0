@@ -63,6 +63,36 @@ export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
   }
 }
 
+/**
+ * Media tiers compare one generation against the others in the same category,
+ * so they read as cost per artifact rather than as the run-model capability
+ * ladder the same badge carries for chat.
+ */
+export function getMediaModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
+  switch (tier) {
+    case "$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.generationPriceTiers.lowest;
+      });
+    }
+    case "$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.generationPriceTiers.typical;
+      });
+    }
+    case "$$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.generationPriceTiers.higher;
+      });
+    }
+    case "$$$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.generationPriceTiers.highest;
+      });
+    }
+  }
+}
+
 const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
   Object.freeze({
     "claude-fable-5": "anthropic-api-key",

@@ -4,7 +4,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
@@ -17,12 +17,12 @@ async function resolveAgentLabel(
 ): Promise<string | undefined> {
   const [row] = await db
     .select({
-      displayName: zeroAgents.displayName,
-      name: zeroAgents.name,
+      displayName: agents.displayName,
+      name: agents.name,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .innerJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
+    .innerJoin(agents, eq(agentSessions.agentId, agents.id))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   if (!row) {

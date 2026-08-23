@@ -15,8 +15,9 @@ export type AgentVisibility = "public" | "private";
 /**
  * Canonical product Agent identity and presentation state.
  *
- * Legacy application readers and writers remain on agent_composes and
- * zero_agents until the later cutover boundaries in #26938.
+ * Production/runtime readers use this table and its canonical reference
+ * fields. Stage 7 of #26938 retains the explicitly bounded legacy writers;
+ * the one-way bridge keeps this read plane synchronized until their cutover.
  */
 export const agents = pgTable(
   "agents",

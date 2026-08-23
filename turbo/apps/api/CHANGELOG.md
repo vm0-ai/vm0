@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.478.2](https://github.com/vm0-ai/vm0/compare/api-v1.478.1...api-v1.478.2) (2026-08-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.0
+    * @okouai/core bumped to 8.583.0
+    * @okouai/db bumped to 1.218.2
+
+## [1.478.1](https://github.com/vm0-ai/vm0/compare/api-v1.478.0...api-v1.478.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* polish uploaded presentation templates ([#28671](https://github.com/vm0-ai/vm0/issues/28671)) ([687ef27](https://github.com/vm0-ai/vm0/commit/687ef278ec5b6164e40d0e7ed48ba75e49a1b648))
+
+
+### Refactoring
+
+* **api:** cut agent reads to canonical data plane ([#28683](https://github.com/vm0-ai/vm0/issues/28683)) ([0e009c5](https://github.com/vm0-ai/vm0/commit/0e009c54ef67a38400dd464d5a0a3b551612826a))
+* **api:** remove source-less connector credential fallback ([#28682](https://github.com/vm0-ai/vm0/issues/28682)) ([46497bd](https://github.com/vm0-ai/vm0/commit/46497bd2c2628a5b56f1ad68e1c1b9edfe27caf9))
+* **api:** rename zero run vocabulary to agent run ([#28689](https://github.com/vm0-ai/vm0/issues/28689)) ([b8bed84](https://github.com/vm0-ai/vm0/commit/b8bed84d2ffb5210d63541c2f90b3cc75bd877ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.354.1
+    * @okouai/core bumped to 8.582.1
+    * @okouai/db bumped to 1.218.1
+
 ## [1.478.0](https://github.com/vm0-ai/vm0/compare/api-v1.477.1...api-v1.478.0) (2026-08-23)
 
 

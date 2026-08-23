@@ -4615,6 +4615,12 @@
         "chatModels": "채팅 모델",
         "fast": "빠름",
         "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
+        "generationPriceTiers": {
+          "higher": "생성당 비용 높음",
+          "highest": "생성당 비용 가장 높음",
+          "lowest": "생성당 비용 가장 낮음",
+          "typical": "생성당 일반적인 비용"
+        },
         "imageModels": "이미지 모델",
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",

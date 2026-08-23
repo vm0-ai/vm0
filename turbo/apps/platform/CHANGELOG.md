@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.783.0](https://github.com/vm0-ai/vm0/compare/app-v0.782.2...app-v0.783.0) (2026-08-23)
+
+
+### Features
+
+* **platform:** offer nano banana 2 lite and price tiers for media models ([#28674](https://github.com/vm0-ai/vm0/issues/28674)) ([dc7962c](https://github.com/vm0-ai/vm0/commit/dc7962c9c51e8e74cab94eb39af89ab31e68fd4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.0
+    * @okouai/core bumped to 8.583.0
+
+## [0.782.2](https://github.com/vm0-ai/vm0/compare/app-v0.782.1...app-v0.782.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* polish uploaded presentation templates ([#28671](https://github.com/vm0-ai/vm0/issues/28671)) ([687ef27](https://github.com/vm0-ai/vm0/commit/687ef278ec5b6164e40d0e7ed48ba75e49a1b648))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.354.1
+    * @okouai/core bumped to 8.582.1
+
 ## [0.782.1](https://github.com/vm0-ai/vm0/compare/app-v0.782.0...app-v0.782.1) (2026-08-23)
 
 

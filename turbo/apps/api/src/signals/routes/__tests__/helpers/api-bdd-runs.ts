@@ -768,6 +768,7 @@ export function createRunsApi(context: TestContext) {
     async createHistoricalCompose(
       actor: ApiTestUser,
       content: ComposeContent,
+      options?: { readonly composeOnly?: boolean },
     ): Promise<{
       readonly composeId: string;
       readonly name: string;
@@ -779,6 +780,14 @@ export function createRunsApi(context: TestContext) {
       return await createHistoricalAgentComposeFixture({
         actor: { userId: actor.userId, orgId: actor.orgId },
         content,
+        ...(options?.composeOnly === true
+          ? {}
+          : {
+              canonicalAgent: {
+                displayName: "Historical run fixture",
+                visibility: "private" as const,
+              },
+            }),
         signal: context.signal,
       });
     },

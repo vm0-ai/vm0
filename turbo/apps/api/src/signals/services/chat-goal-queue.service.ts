@@ -1,7 +1,7 @@
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -151,13 +151,13 @@ export async function loadNextGoalQueueEvent(
         id: chatEvents.id,
         chatThreadId: chatEvents.chatThreadId,
         userId: chatThreads.userId,
-        orgId: zeroAgents.orgId,
+        orgId: agents.orgId,
         goalId: canonicalChatEventGoalId(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {

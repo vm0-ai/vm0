@@ -11,24 +11,13 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
-use guest_contracts::codex_thread_id::CodexThreadId;
+use guest_contracts::{
+    codex_session_path::codex_rollout_relative_path, codex_thread_id::CodexThreadId,
+};
 
 const CODEX_SESSION_CLEANUP_SCRIPT: &str =
     include_str!("../../../scripts/codex-session-cleanup.sh");
 const INVALID_CODEX_CLEANUP_OUTPUT: &str = "invalid codex session cleanup output";
-
-fn codex_restore_logical_rollout_path(
-    session_id: &str,
-    timestamp: chrono::DateTime<chrono::Utc>,
-) -> String {
-    format!(
-        "{CANONICAL_CODEX_SESSIONS_DIR}/{}/{}/{}/rollout-{}-{session_id}.jsonl",
-        timestamp.format("%Y"),
-        timestamp.format("%m"),
-        timestamp.format("%d"),
-        timestamp.format("%Y-%m-%dT%H-%M-%S"),
-    )
-}
 
 fn codex_restore_rollout_timestamp(
     session: &MaterializedResumeSession,
@@ -60,7 +49,10 @@ pub(super) async fn restore_codex_session(
     } else {
         (session.history_bytes(), "")
     };
-    let fallback_logical_path = codex_restore_logical_rollout_path(session_id, timestamp);
+    let fallback_logical_path = format!(
+        "{CANONICAL_CODEX_HOME_DIR}/{}",
+        codex_rollout_relative_path(&thread_id, timestamp)
+    );
 
     let logical_path = cleanup_existing_codex_session_files(
         sandbox,

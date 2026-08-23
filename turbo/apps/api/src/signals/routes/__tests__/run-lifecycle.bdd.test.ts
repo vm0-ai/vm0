@@ -733,6 +733,22 @@ function customConnectorRuntimeRegistration(
   return registration;
 }
 
+function builtinConnectorRuntimeRegistration(
+  context: ExecutionContext,
+  connectorSlug: string,
+): Extract<
+  ExecutionContext["connectorRuntimeTargets"][number],
+  { readonly kind: "builtin" }
+> {
+  const registration = context.connectorRuntimeTargets.find((target) => {
+    return target.kind === "builtin" && target.connectorSlug === connectorSlug;
+  });
+  if (!registration || registration.kind !== "builtin") {
+    throw new Error("Expected a built-in connector runtime registration");
+  }
+  return registration;
+}
+
 function availableCustomConnectorRuntime(
   result: ConnectorRuntimeSyncResult | undefined,
 ): AvailableCustomConnectorRuntime {
@@ -8385,6 +8401,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
         secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
       },
       [200],
     );
@@ -8915,6 +8933,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
           "X-Figma-Token": figmaTokenTemplate,
         },
         secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
       },
       [200],
     );
@@ -8924,6 +8944,22 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(resolved.body.headers).toStrictEqual({
       "X-Figma-Token": "figd_bdd",
     });
+
+    const missingSource = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "X-Figma-Token": figmaTokenTemplate,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [424],
+    );
+    if (missingSource.status !== 424) {
+      throw new Error("Expected a missing built-in connector source");
+    }
+    expect(missingSource.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -9001,12 +9037,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "available",
     });
-    const [sourceLessRuntime] = await api.syncConnectorRuntime(run.runId, {
+    const [missingSourceRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "builtin", connectorSlug: "lark" }],
     });
-    expect(sourceLessRuntime).toMatchObject({
+    expect(missingSourceRuntime).toStrictEqual({
       target: { kind: "builtin", connectorSlug: "lark" },
-      state: "available",
+      state: "unresolved",
+      reason: "connector-unavailable",
     });
     const [missingExactRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ ...larkTarget, sourceId: wrongTargetConnection.id }],
@@ -9030,15 +9067,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         account: { intent: "add", displayName: "Sibling" },
       },
     );
-    const [ambiguousSourceLessRuntime] = await api.syncConnectorRuntime(
-      run.runId,
-      { targets: [{ kind: "builtin", connectorSlug: "lark" }] },
-    );
-    expect(ambiguousSourceLessRuntime).toStrictEqual({
-      target: { kind: "builtin", connectorSlug: "lark" },
-      state: "unresolved",
-      reason: "connector-unavailable",
-    });
     const [exactRuntimeWithSibling] = await api.syncConnectorRuntime(
       run.runId,
       { targets: [larkTarget] },
@@ -9773,6 +9801,38 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expiresAt: null,
     });
 
+    const [missingSourceRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: custom.id,
+          baseUrlVars: target.baseUrlVars,
+        },
+      ],
+    });
+    expect(missingSourceRuntime).toStrictEqual({
+      target: targetIdentity,
+      state: "absent",
+      reason: "connector-unavailable",
+    });
+    const missingSourceAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        ...currentAuthBody,
+        matchedFirewall: {
+          name: currentAuthBody.matchedFirewall.name,
+          apiId: currentAuthBody.matchedFirewall.apiId,
+          customConnectorId: currentAuthBody.matchedFirewall.customConnectorId,
+          routingVariables: currentAuthBody.matchedFirewall.routingVariables,
+        },
+      },
+      [424],
+    );
+    if (missingSourceAuth.status !== 424) {
+      throw new Error("Expected a missing custom connector source");
+    }
+    expect(missingSourceAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
     const [missingExactRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ ...target, sourceId: wrongTargetConnection.id }],
     });
@@ -10299,9 +10359,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         },
       ],
     });
-    expect(
-      availableCustomConnectorRuntime(legacySourceResult).firewall,
-    ).toStrictEqual(initialRuntime.firewall);
+    expect(legacySourceResult).toStrictEqual({
+      target: { kind: "custom", customConnectorId: mcp.id },
+      state: "absent",
+      reason: "connector-unavailable",
+    });
     const [missingExactResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ ...target, sourceId: randomUUID() }],
     });
@@ -10391,8 +10453,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         targets: [
           {
-            kind: "custom",
-            customConnectorId: mcp.id,
+            ...target,
             baseUrlVars: { unexpected: "value" },
           },
         ],
@@ -10648,14 +10709,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    const runtimeTarget = customConnectorRuntimeRegistration(
+      claim,
+      runtimeConnector.id,
+    );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [
-        {
-          kind: "custom",
-          customConnectorId: runtimeConnector.id,
-          baseUrlVars: {},
-        },
-      ],
+      targets: [runtimeTarget],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: authBody } = customConnectorRuntimeAuthBody(
@@ -11666,14 +11725,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       base: "https://mcp-oauth.example.test/oauth/mcp",
       permissions: [],
     });
+    const runtimeTarget = customConnectorRuntimeRegistration(claim, mcp.id);
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [
-        {
-          kind: "custom",
-          customConnectorId: mcp.id,
-          baseUrlVars: {},
-        },
-      ],
+      targets: [runtimeTarget],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { body: authBody } = customConnectorRuntimeAuthBody(
@@ -11789,21 +11843,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected the proposed custom connector firewall API");
     }
     expect(customApi.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
-    const pinnedTarget = claim.connectorRuntimeTargets.find((target) => {
-      return (
-        target.kind === "custom" &&
-        target.customConnectorId === saved.connector.id
-      );
-    });
+    const pinnedTarget = customConnectorRuntimeRegistration(
+      claim,
+      saved.connector.id,
+    );
     expect(pinnedTarget).toStrictEqual({
       kind: "custom",
       customConnectorId: saved.connector.id,
       baseUrlVars: { subdomain: "münich" },
       sourceId: expect.any(String),
     });
-    if (!pinnedTarget) {
-      throw new Error("Expected the proposed custom connector runtime target");
-    }
     expect(customApi.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
@@ -11864,6 +11913,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         name: internalName,
         apiId: `${internalName}:0`,
         customConnectorId: saved.connector.id,
+        sourceId: pinnedTarget.sourceId,
         routingVariables: { subdomain: "münich" },
       },
     };
@@ -13103,6 +13153,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
+    const snapshotSlackTarget = builtinConnectorRuntimeRegistration(
+      snapshotClaim,
+      "slack",
+    );
     expect(snapshotClaim.networkPolicies?.slack?.deny).toContain("chat:write");
     expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
@@ -13115,7 +13169,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         targets: [
           { kind: "builtin", connectorSlug: "missing-builtin" },
-          { kind: "builtin", connectorSlug: "slack" },
+          snapshotSlackTarget,
         ],
       },
       [200],
@@ -13160,7 +13214,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const [refreshedRuntime] = await api.syncConnectorRuntime(
       snapshotRun.runId,
-      { targets: [{ kind: "builtin", connectorSlug: "slack" }] },
+      { targets: [snapshotSlackTarget] },
     );
     if (refreshedRuntime?.state !== "available") {
       throw new Error("Expected refreshed connector runtime to be available");
@@ -13523,6 +13577,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(parent.runId);
+    const slackTarget = builtinConnectorRuntimeRegistration(claim, "slack");
     const claimedPolicy = claim.networkPolicies?.slack;
     if (!claimedPolicy) {
       throw new Error("Expected shared-version Slack policy");
@@ -13561,7 +13616,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     const [refreshed] = await api.syncConnectorRuntime(parent.runId, {
-      targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      targets: [slackTarget],
     });
     if (refreshed?.state !== "available") {
       throw new Error("Expected refreshed connector runtime to be available");

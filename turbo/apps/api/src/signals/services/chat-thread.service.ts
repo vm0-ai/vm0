@@ -30,7 +30,7 @@ import {
   CANONICAL_ASSET_VERSION,
   runUploadedFiles,
 } from "@okouai/db/schema/run-uploaded-file";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { unionAll } from "drizzle-orm/pg-core";
 import {
   and,
@@ -155,7 +155,7 @@ function ownedChatThread(
       .select({
         id: chatThreads.id,
         title: chatThreads.title,
-        agentComposeId: chatThreads.agentComposeId,
+        agentComposeId: agents.id,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -164,7 +164,7 @@ function ownedChatThread(
         modelProviderType: chatThreads.modelProviderType,
         modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
         codexServiceTier: chatThreads.codexServiceTier,
-        orgId: zeroAgents.orgId,
+        orgId: agents.orgId,
         lastReadAt: chatThreads.lastReadAt,
         lastMessageAt: chatThreads.lastMessageAt,
         pinnedAt: chatThreads.pinnedAt,
@@ -173,11 +173,11 @@ function ownedChatThread(
         updatedAt: chatThreads.updatedAt,
       })
       .from(chatThreads)
-      .leftJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
       .limit(1);
 
-    if (!thread) {
+    if (!thread?.agentComposeId) {
       return null;
     }
 
@@ -334,7 +334,7 @@ export function chatThreadUnreads(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          eq(chatThreads.agentComposeId, args.agentComposeId),
+          eq(chatThreads.agentId, args.agentComposeId),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -368,15 +368,15 @@ export function chatIndicators(args: {
       db
         .selectDistinct({
           threadId: chatThreads.id,
-          agentId: chatThreads.agentComposeId,
+          agentId: chatThreads.agentId,
         })
         .from(agentRuns)
         .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
-        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+        .innerJoin(agents, eq(agents.id, chatThreads.agentId))
         .where(
           and(
             eq(chatThreads.userId, args.userId),
-            eq(zeroAgents.orgId, args.orgId),
+            eq(agents.orgId, args.orgId),
             inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
             isNotNull(agentRuns.triggerSource),
           ),
@@ -387,16 +387,16 @@ export function chatIndicators(args: {
       db
         .select({
           threadId: chatThreads.id,
-          agentId: chatThreads.agentComposeId,
+          agentId: chatThreads.agentId,
         })
         .from(chatThreads)
-        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+        .innerJoin(agents, eq(agents.id, chatThreads.agentId))
         .leftJoin(activeThreads, eq(activeThreads.threadId, chatThreads.id))
         .crossJoinLateral(lastRunFinish)
         .where(
           and(
             eq(chatThreads.userId, args.userId),
-            eq(zeroAgents.orgId, args.orgId),
+            eq(agents.orgId, args.orgId),
             isNull(activeThreads.threadId),
             gte(chatThreads.lastMessageAt, unreadCutoff),
             or(
@@ -437,15 +437,19 @@ export function chatIndicators(args: {
       .select()
       .from(indicatorRows);
 
-    const agents: Record<string, ZeroIndicator> = {};
+    const agentIndicators: Record<string, ZeroIndicator> = {};
     const threads: Record<string, ZeroIndicator> = {};
     for (const row of rows) {
       threads[row.threadId] = row.indicator;
-      if (row.indicator === "unread" || agents[row.agentId] === undefined) {
-        agents[row.agentId] = row.indicator;
+      if (
+        row.agentId !== null &&
+        (row.indicator === "unread" ||
+          agentIndicators[row.agentId] === undefined)
+      ) {
+        agentIndicators[row.agentId] = row.indicator;
       }
     }
-    return { agents, threads };
+    return { agents: agentIndicators, threads };
   });
 }
 
@@ -788,7 +792,7 @@ export const deleteChatThread$ = command(
       const [ownedThread] = await tx
         .select({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentComposeId: chatThreads.agentId,
         })
         .from(chatThreads)
         .where(
@@ -798,7 +802,7 @@ export const deleteChatThread$ = command(
           ),
         )
         .for("update");
-      if (!ownedThread) {
+      if (!ownedThread?.agentComposeId) {
         return {
           deleted: false,
           activeRuns: [] as readonly ThreadRunToCancel[],

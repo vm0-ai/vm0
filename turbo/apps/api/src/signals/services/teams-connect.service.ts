@@ -1,22 +1,17 @@
 import { command, computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   apiUrlForPublicBrand,
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -31,6 +26,7 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../../lib/time";
+import { userConfiguredAgentEnvironmentRequirements } from "./agent-compose-content";
 import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
 
@@ -354,7 +350,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
-    .select({ selectedComposeId: teamsUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: teamsUserAgentPreferences.selectedAgentId })
     .from(teamsUserAgentPreferences)
     .where(
       and(
@@ -363,7 +359,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function resolveEffectiveComposeId(
@@ -374,9 +370,9 @@ async function resolveEffectiveComposeId(
   const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, override), eq(agents.orgId, orgId)))
       .limit(1);
     if (agent?.id) {
       return override;
@@ -390,10 +386,9 @@ async function getTeamsAgentName(
   composeId: string,
 ): Promise<string | undefined> {
   const [agent] = await db
-    .select({ name: zeroAgents.name, displayName: zeroAgents.displayName })
-    .from(agentComposes)
-    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.id, composeId))
+    .select({ name: agents.name, displayName: agents.displayName })
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return agent?.displayName ?? agent?.name;
 }
@@ -456,33 +451,20 @@ async function resolveTeamsEnvironment(args: {
     return emptyTeamsEnvironment();
   }
 
-  const [compose] = await args.db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, meta.defaultAgentId))
+  const [agent] = await args.db
+    .select({ name: agents.name })
+    .from(agents)
+    .where(
+      and(eq(agents.id, meta.defaultAgentId), eq(agents.orgId, args.orgId)),
+    )
     .limit(1);
 
-  if (!compose?.headVersionId) {
+  if (!agent) {
     return emptyTeamsEnvironment();
   }
 
-  const [version] = await args.db
-    .select({ content: agentComposeVersions.content })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, compose.headVersionId))
-    .limit(1);
-
-  if (!version) {
-    return emptyTeamsEnvironment();
-  }
-
-  const grouped = extractAndGroupVariables(version.content);
-  const requiredSecrets = grouped.secrets.map((secret) => {
-    return secret.name;
-  });
-  const requiredVars = grouped.vars.map((variable) => {
-    return variable.name;
-  });
+  const { secrets: requiredSecrets, vars: requiredVars } =
+    userConfiguredAgentEnvironmentRequirements(agent.name);
   const [userSecretNames, userVarNames, connectorBindings] = await Promise.all([
     args.loadUserSecretNames(),
     args.loadUserVarNames(),

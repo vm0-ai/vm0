@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
   chatEventSearchMessages,
@@ -153,17 +153,17 @@ export async function updateChatSearchSourceThreadFixture(args: {
   }
 }
 
-export async function renameChatSearchAgentComposeFixture(args: {
-  readonly agentComposeId: string;
+export async function renameChatSearchAgentFixture(args: {
+  readonly agentId: string;
   readonly name: string;
 }): Promise<void> {
   const updated = await db()
-    .update(agentComposes)
+    .update(agents)
     .set({ name: args.name })
-    .where(eq(agentComposes.id, args.agentComposeId))
-    .returning({ id: agentComposes.id });
+    .where(eq(agents.id, args.agentId))
+    .returning({ id: agents.id });
   if (updated.length !== 1) {
-    throw new Error("Expected one chat search agent compose to rename");
+    throw new Error("Expected one chat search agent to rename");
   }
 }
 

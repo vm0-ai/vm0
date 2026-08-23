@@ -3,11 +3,10 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { modelProviders } from "@okouai/db/schema/model-provider";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -36,13 +35,12 @@ async function resolveComposeLabel(
 ): Promise<string | undefined> {
   const [row] = await db
     .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
+      agentDisplayName: agents.displayName,
+      agentName: agents.name,
+      composeName: agents.name,
     })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return row ? displayLabel(row) : undefined;
 }
@@ -53,12 +51,12 @@ async function resolveGithubRespondedByLabel(args: {
   readonly composeId: string;
 }): Promise<string | undefined> {
   const [installation] = await args.db
-    .select({ defaultComposeId: githubInstallations.defaultComposeId })
+    .select({ defaultAgentId: githubInstallations.defaultAgentId })
     .from(githubInstallations)
     .where(eq(githubInstallations.id, args.installationId))
     .limit(1);
 
-  if (installation?.defaultComposeId === args.composeId) {
+  if (installation?.defaultAgentId === args.composeId) {
     return undefined;
   }
 

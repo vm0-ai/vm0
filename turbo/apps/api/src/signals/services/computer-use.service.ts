@@ -296,14 +296,18 @@ async function clearComputerUseHostThreadBindings(params: {
       and(
         eq(chatThreads.userId, params.userId),
         eq(chatThreads.computerUseHostId, params.hostId),
+        isNotNull(chatThreads.agentId),
       ),
     )
     .returning({
       id: chatThreads.id,
-      agentComposeId: chatThreads.agentComposeId,
+      agentComposeId: chatThreads.agentId,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     });
   for (const thread of threads) {
+    if (!thread.agentComposeId) {
+      continue;
+    }
     await appendChatThreadEvent(params.tx, {
       kind: "computer_use_host_updated",
       userId: params.userId,

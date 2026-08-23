@@ -1,7 +1,7 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
@@ -9,7 +9,6 @@ import {
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { userConnectors } from "@okouai/db/schema/user-connector";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import type { Db } from "../external/db";
 import {
@@ -94,28 +93,7 @@ type AddUserCustomConnectorResult =
     }
   | { readonly status: "mcpFeatureDisabled" };
 
-async function lockAgentComposeForConnectorReplace(
-  db: Pick<Db, "select">,
-  args: {
-    readonly orgId: string;
-    readonly agentId: string;
-  },
-): Promise<boolean> {
-  const [compose] = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, args.orgId),
-        eq(agentComposes.id, args.agentId),
-      ),
-    )
-    .for("update")
-    .limit(1);
-  return compose !== undefined;
-}
-
-async function lockZeroAgentForConnectorReplace(
+async function lockAgentForConnectorReplace(
   db: Pick<Db, "select">,
   args: {
     readonly orgId: string;
@@ -124,16 +102,13 @@ async function lockZeroAgentForConnectorReplace(
   },
 ): Promise<boolean> {
   const [agent] = await db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
+    .select({ id: agents.id })
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, args.orgId),
-        eq(zeroAgents.id, args.agentId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.orgId, args.orgId),
+        eq(agents.id, args.agentId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
     .for("update")
@@ -149,10 +124,7 @@ export async function lockUserCustomConnectorGrantScope(
     readonly agentId: string;
   },
 ): Promise<boolean> {
-  return (
-    (await lockAgentComposeForConnectorReplace(db, args)) &&
-    (await lockZeroAgentForConnectorReplace(db, args))
-  );
+  return await lockAgentForConnectorReplace(db, args);
 }
 
 interface LockedCustomConnectorRow {
@@ -273,24 +245,14 @@ export async function updateUserConnectors(
     readonly agentId: string;
     readonly enabledConnectorSlugs: readonly ConnectorSlug[];
     readonly operation?: UserConnectorUpdateOperation;
-    readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
 ): Promise<UpdateUserConnectorsResult> {
   const enabledConnectorSlugs = Array.from(new Set(args.enabledConnectorSlugs));
   const operation = args.operation ?? "replace";
 
   return await db.transaction(async (tx) => {
-    const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
-    if (!composeLocked) {
-      return { status: "agentNotFound" };
-    }
-
-    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
-    if (
-      !agentLocked &&
-      (enabledConnectorSlugs.length > 0 ||
-        !args.allowMissingZeroAgentForEmptyReplace)
-    ) {
+    const agentLocked = await lockAgentForConnectorReplace(tx, args);
+    if (!agentLocked) {
       return { status: "agentNotFound" };
     }
 

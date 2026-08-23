@@ -1,8 +1,10 @@
 use crate::session;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
-use std::io;
+use std::{env, io};
 use uuid::Uuid;
+
+pub(super) const MOCK_CODEX_SESSION_TIMESTAMP_ENV: &str = "MOCK_CODEX_SESSION_TIMESTAMP";
 
 pub(super) struct InputEventContext<'a> {
     pub(super) artifact_thread_id: &'a str,
@@ -12,6 +14,7 @@ pub(super) struct InputEventContext<'a> {
     pub(super) thread_request_has_runtime_workspace_roots: bool,
     pub(super) thread_request_model: Option<&'a str>,
     pub(super) thread_request_model_provider: Option<&'a str>,
+    pub(super) rollout_timestamp: &'a DateTime<Utc>,
     pub(super) turn_params: &'a Value,
 }
 
@@ -52,10 +55,25 @@ pub(super) fn persist_input_events(
     let home = session::codex_home();
     session::persist_resume_session(
         &home,
-        Utc::now().date_naive(),
+        context.rollout_timestamp.to_owned(),
         context.artifact_thread_id,
         &events,
     )
+}
+
+pub(super) fn session_rollout_timestamp() -> io::Result<DateTime<Utc>> {
+    let Some(value) = env::var_os(MOCK_CODEX_SESSION_TIMESTAMP_ENV) else {
+        return Ok(Utc::now());
+    };
+    let value = value.into_string().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{MOCK_CODEX_SESSION_TIMESTAMP_ENV} must be valid UTF-8"),
+        )
+    })?;
+    DateTime::parse_from_rfc3339(&value)
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
 }
 
 pub(super) fn session_artifact_thread_id(thread_id: &str) -> String {

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadImageModelContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -36,13 +36,14 @@ const updateImageModelInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentComposeId: chatThreads.agentId,
         });
-      if (!thread) {
+      if (!thread?.agentComposeId) {
         return false;
       }
       await appendChatThreadEvent(tx, {

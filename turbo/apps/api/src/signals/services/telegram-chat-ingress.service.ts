@@ -1,5 +1,6 @@
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { agents } from "@okouai/db/schema/agent";
 import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
 import { and, eq } from "drizzle-orm";
 
@@ -81,7 +82,7 @@ async function loadRoute(
     .select({
       id: telegramChatThreadRoutes.id,
       chatThreadId: telegramChatThreadRoutes.chatThreadId,
-      agentComposeId: chatThreads.agentComposeId,
+      agentComposeId: agents.id,
       selectedModel: chatThreads.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
       computerUseHostId: chatThreads.computerUseHostId,
@@ -91,6 +92,7 @@ async function loadRoute(
       chatThreads,
       eq(chatThreads.id, telegramChatThreadRoutes.chatThreadId),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(routeWhere(key))
     .limit(1)
     .for("update");
