@@ -8,6 +8,10 @@ type PackageJson = {
   dependencies?: Record<string, string>;
 };
 
+type VersionedPackageJson = {
+  version: string;
+};
+
 type ReleasePleaseConfig = {
   packages: Record<string, unknown>;
 };
@@ -68,6 +72,24 @@ describe("release-please API deployment graph", () => {
     for (const packagePath of Object.keys(releaseConfig.packages)) {
       expect(manifest).toHaveProperty(packagePath);
     }
+  });
+
+  it("keeps CLI build identity release-managed", () => {
+    const releaseConfig = readJson<ReleasePleaseConfig>(
+      "release-please-config.json",
+    );
+    const manifest = readJson<Record<string, string>>(
+      ".release-please-manifest.json",
+    );
+    const cliPackage = readJson<VersionedPackageJson>(
+      "turbo/apps/cli/package.json",
+    );
+
+    expect(releaseConfig.packages["turbo/apps/cli"]).toStrictEqual({
+      "release-type": "node",
+      component: "cli",
+    });
+    expect(manifest["turbo/apps/cli"]).toBe(cliPackage.version);
   });
 
   it("tracks every API runtime workspace dependency", () => {
