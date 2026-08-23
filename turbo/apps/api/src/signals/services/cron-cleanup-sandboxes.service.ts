@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { exportJobs } from "@okouai/db/schema/export-job";
@@ -528,14 +528,11 @@ export const cleanupSandboxes$ = command(
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
         createdAt: agentRuns.createdAt,
-        composeName: agentComposes.name,
+        composeName: agents.name,
       })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
+      .leftJoin(agents, eq(agentSessions.agentId, agents.id))
       .where(
         and(
           inArray(agentRuns.status, ["pending", "running"]),

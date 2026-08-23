@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
+import { agents } from "@okouai/db/schema/agent";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
@@ -77,14 +78,9 @@ async function existingDefaultAgentId(
   }
 
   const [existing] = await tx
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.id, orgRow.defaultAgentId),
-        eq(zeroAgents.orgId, orgId),
-      ),
-    )
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.id, orgRow.defaultAgentId), eq(agents.orgId, orgId)))
     .limit(1);
 
   return existing?.id ?? null;
@@ -214,17 +210,12 @@ async function finalizeBootstrap(
     });
 
   const [agentRow] = await tx
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, args.orgId),
-        eq(zeroAgents.name, args.agentName),
-      ),
-    )
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.orgId, args.orgId), eq(agents.name, args.agentName)))
     .limit(1);
   if (!agentRow) {
-    throw new Error("Expected zero agent after bootstrap upsert");
+    throw new Error("Expected canonical Agent after bootstrap upsert");
   }
 
   const [orgRow] = await tx

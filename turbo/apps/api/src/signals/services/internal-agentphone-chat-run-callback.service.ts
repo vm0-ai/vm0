@@ -1,5 +1,6 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -148,10 +149,11 @@ async function loadAgentPhoneChatDeliveryContext(
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),

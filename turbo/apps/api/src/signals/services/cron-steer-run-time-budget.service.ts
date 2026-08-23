@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { nowDate } from "../../lib/time";
@@ -81,10 +82,11 @@ async function persistRunTimeBudgetInput(
     const [run] = await tx
       .select({
         chatThreadId: agentRuns.chatThreadId,
-        agentId: chatThreads.agentComposeId,
+        agentId: agents.id,
       })
       .from(agentRuns)
       .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(
         and(
           eq(agentRuns.id, args.candidate.runId),

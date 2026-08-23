@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { chatThreadMarkAgentReadContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -37,13 +37,13 @@ const markAgentReadInner$ = command(
         latestRunFinishAt: latestRunFinish.createdAt,
       })
       .from(chatThreads)
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .crossJoinLateral(latestRunFinish)
       .where(
         and(
           eq(chatThreads.userId, auth.userId),
-          eq(zeroAgents.orgId, auth.orgId),
-          eq(chatThreads.agentComposeId, bodyResult.data.agentId),
+          eq(agents.orgId, auth.orgId),
+          eq(chatThreads.agentId, bodyResult.data.agentId),
           or(
             isNull(chatThreads.lastReadAt),
             gt(latestRunFinish.createdAt, chatThreads.lastReadAt),
@@ -59,7 +59,7 @@ const markAgentReadInner$ = command(
         and(
           eq(chatThreads.id, unreadThreads.threadId),
           eq(chatThreads.userId, auth.userId),
-          eq(chatThreads.agentComposeId, bodyResult.data.agentId),
+          eq(chatThreads.agentId, bodyResult.data.agentId),
           or(
             isNull(chatThreads.lastReadAt),
             gt(unreadThreads.latestRunFinishAt, chatThreads.lastReadAt),

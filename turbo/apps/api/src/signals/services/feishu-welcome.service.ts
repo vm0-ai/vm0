@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 
 import { buildFeishuWelcomeMessage } from "../../lib/feishu-message-card";
 import { sendFeishuMessage } from "../external/feishu-client";
@@ -25,15 +25,12 @@ export async function notifyFeishuConnect(
 ): Promise<void> {
   const [installation] = await args.db
     .select({
-      agentName: zeroAgents.name,
-      agentDisplayName: zeroAgents.displayName,
+      agentName: agents.name,
+      agentDisplayName: agents.displayName,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgInstallations)
-    .leftJoin(
-      zeroAgents,
-      eq(zeroAgents.id, feishuOrgInstallations.defaultComposeId),
-    )
+    .leftJoin(agents, eq(agents.id, feishuOrgInstallations.defaultAgentId))
     .where(eq(feishuOrgInstallations.id, args.installationId))
     .limit(1);
   signal.throwIfAborted();

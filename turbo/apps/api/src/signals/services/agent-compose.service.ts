@@ -10,7 +10,7 @@ import {
 } from "@okouai/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import {
   buildZeroAgentComposeContent,
@@ -49,8 +49,8 @@ type RecomposeAgentIfStaleResult =
  * branches that web's helper runs are dead code on this caller's path:
  *
  * 1. **Skip `extractAgentConfig` validation** (framework + agent-name regex).
- *    `agentName` comes from `agent_composes.name`, which was regex-validated
- *    at compose-creation time and stored normalized to lowercase. The
+ *    `agentName` comes from canonical `agents.name`, which was regex-validated
+ *    at Agent creation time and stored normalized to lowercase. The
  *    `framework: "claude-code"` field is a hard-coded constant inside
  *    `buildComposeContent`. Both checks would always pass — re-running them
  *    would be defensive duplication.
@@ -93,6 +93,7 @@ export const recomposeAgentIfStale$ = command(
       if (compose.headVersionId === versionId) {
         return { status: "unchanged" as const, versionId };
       }
+
       if (compose.headVersionId !== args.currentHeadVersionId) {
         return { status: "changed" as const, versionId };
       }
@@ -118,6 +119,19 @@ export const recomposeAgentIfStale$ = command(
     return result;
   },
 );
+
+/** Exact legacy writer state used only by the Stage 7 optimistic-write guard. */
+export async function readAgentComposeHeadForWriterGuard(
+  database: Pick<Db, "select">,
+  agentComposeId: string,
+): Promise<string | null | undefined> {
+  const [compose] = await database
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  return compose?.headVersionId;
+}
 
 export const createServerSideZeroAgentCompose$ = command(
   async (

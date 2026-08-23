@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   chatThreadModelSelectionContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -91,13 +91,14 @@ const updateModelSelectionInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentComposeId: chatThreads.agentId,
         });
-      if (!thread) {
+      if (!thread?.agentComposeId) {
         return false;
       }
       await appendChatThreadEvent(tx, {

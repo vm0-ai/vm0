@@ -7,24 +7,25 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
-import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
+import {
+  buildZeroAgentComposeContent,
+  computeComposeVersionId,
+} from "./agent-compose-content";
 
 export function agentResponse(
   row: {
     readonly agentId: string;
     readonly defaultAgentId: string | null;
-    readonly owner: string | null;
-    readonly composeUserId?: string;
+    readonly owner: string;
     readonly displayName: string | null;
     readonly description: string | null;
     readonly sound: string | null;
@@ -36,14 +37,9 @@ export function agentResponse(
   },
   publicBrand: PublicBrand,
 ): AgentResponse {
-  const ownerId = row.owner ?? row.composeUserId;
-  if (!ownerId) {
-    throw new Error(`Agent ${row.agentId} is missing an owner`);
-  }
-
   return {
     agentId: row.agentId,
-    ownerId,
+    ownerId: row.owner,
     displayName: agentDisplayNameForPublicBrand({
       agentId: row.agentId,
       defaultAgentId: row.defaultAgentId,
@@ -60,34 +56,12 @@ export function agentResponse(
   };
 }
 
-export function defaultAgentResponse(args: {
-  readonly agentId: string;
-  readonly ownerId: string;
-}): AgentResponse {
-  return {
-    agentId: args.agentId,
-    ownerId: args.ownerId,
-    displayName: null,
-    description: null,
-    sound: null,
-    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
-    visibility: "public",
-  };
-}
-
 function visibleAgentCondition(userId: string) {
-  return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
+  return or(eq(agents.visibility, "public"), eq(agents.owner, userId));
 }
 
 export function visibleJoinedAgentCondition(userId: string) {
-  return or(
-    isNull(zeroAgents.id),
-    eq(zeroAgents.visibility, "public"),
-    eq(zeroAgents.owner, userId),
-  );
+  return visibleAgentCondition(userId);
 }
 
 export function agentExists(args: {
@@ -97,12 +71,12 @@ export function agentExists(args: {
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const [agent] = await get(db$)
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
+      .select({ id: agents.id })
+      .from(agents)
       .where(
         and(
-          eq(zeroAgents.orgId, args.orgId),
-          eq(zeroAgents.id, args.agentId),
+          eq(agents.orgId, args.orgId),
+          eq(agents.id, args.agentId),
           visibleAgentCondition(args.userId),
         ),
       )
@@ -120,23 +94,22 @@ export function agentList(
   return computed(async (get): Promise<readonly AgentResponse[]> => {
     const rows = await get(db$)
       .select({
-        agentId: zeroAgents.id,
+        agentId: agents.id,
         defaultAgentId: orgMetadata.defaultAgentId,
-        owner: zeroAgents.owner,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        avatarUrl: zeroAgents.avatarUrl,
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-        preferPersonalProvider: zeroAgents.preferPersonalProvider,
-        visibility: zeroAgents.visibility,
+        owner: agents.owner,
+        displayName: agents.displayName,
+        description: agents.description,
+        sound: agents.sound,
+        avatarUrl: agents.avatarUrl,
+        modelProviderId: agents.modelProviderId,
+        selectedModel: agents.selectedModel,
+        preferPersonalProvider: agents.preferPersonalProvider,
+        visibility: agents.visibility,
       })
-      .from(zeroAgents)
-      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
-      .where(and(eq(zeroAgents.orgId, orgId), visibleAgentCondition(userId)))
-      .orderBy(desc(zeroAgents.updatedAt));
+      .from(agents)
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+      .where(and(eq(agents.orgId, orgId), visibleAgentCondition(userId)))
+      .orderBy(desc(agents.updatedAt));
 
     return rows.map((row) => {
       return agentResponse(row, publicBrand);
@@ -153,26 +126,24 @@ export function agentDetail(args: {
   return computed(async (get): Promise<AgentResponse | null> => {
     const [row] = await get(db$)
       .select({
-        agentId: zeroAgents.id,
+        agentId: agents.id,
         defaultAgentId: orgMetadata.defaultAgentId,
-        owner: zeroAgents.owner,
-        composeUserId: agentComposes.userId,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        avatarUrl: zeroAgents.avatarUrl,
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-        preferPersonalProvider: zeroAgents.preferPersonalProvider,
-        visibility: zeroAgents.visibility,
+        owner: agents.owner,
+        displayName: agents.displayName,
+        description: agents.description,
+        sound: agents.sound,
+        avatarUrl: agents.avatarUrl,
+        modelProviderId: agents.modelProviderId,
+        selectedModel: agents.selectedModel,
+        preferPersonalProvider: agents.preferPersonalProvider,
+        visibility: agents.visibility,
       })
-      .from(zeroAgents)
-      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
+      .from(agents)
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
       .where(
         and(
-          eq(zeroAgents.orgId, args.orgId),
-          eq(zeroAgents.id, args.agentId),
+          eq(agents.orgId, args.orgId),
+          eq(agents.id, args.agentId),
           visibleAgentCondition(args.userId),
         ),
       )
@@ -254,22 +225,21 @@ export function teamComposeList(
   return computed(async (get): Promise<readonly TeamComposeItem[]> => {
     const rows = await get(db$)
       .select({
-        id: agentComposes.id,
+        id: agents.id,
         defaultAgentId: orgMetadata.defaultAgentId,
-        headVersionId: agentComposes.headVersionId,
-        updatedAt: agentComposes.updatedAt,
-        owner: zeroAgents.owner,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        avatarUrl: zeroAgents.avatarUrl,
-        visibility: zeroAgents.visibility,
+        name: agents.name,
+        updatedAt: agents.updatedAt,
+        owner: agents.owner,
+        displayName: agents.displayName,
+        description: agents.description,
+        sound: agents.sound,
+        avatarUrl: agents.avatarUrl,
+        visibility: agents.visibility,
       })
-      .from(agentComposes)
-      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agentComposes.orgId))
-      .where(and(eq(agentComposes.orgId, orgId), visibleAgentCondition(userId)))
-      .orderBy(desc(agentComposes.updatedAt));
+      .from(agents)
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+      .where(and(eq(agents.orgId, orgId), visibleAgentCondition(userId)))
+      .orderBy(desc(agents.updatedAt));
 
     return rows.map((row) => {
       return {
@@ -285,7 +255,9 @@ export function teamComposeList(
         sound: row.sound,
         avatarUrl: row.avatarUrl,
         visibility: row.visibility,
-        headVersionId: row.headVersionId,
+        headVersionId: computeComposeVersionId(
+          buildZeroAgentComposeContent(row.name),
+        ),
         updatedAt: row.updatedAt.toISOString(),
       };
     });

@@ -24,9 +24,8 @@ import {
   appUrlForPublicBrand,
 } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -500,7 +499,7 @@ async function inferAgentIdFromSession(
   },
 ): Promise<string | null> {
   const [session] = await db
-    .select({ agentComposeId: agentSessions.agentComposeId })
+    .select({ agentId: agentSessions.agentId })
     .from(agentSessions)
     .where(
       and(
@@ -511,7 +510,7 @@ async function inferAgentIdFromSession(
     )
     .limit(1);
 
-  return session?.agentComposeId ?? null;
+  return session?.agentId ?? null;
 }
 
 async function loadZeroAgent(
@@ -520,22 +519,21 @@ async function loadZeroAgent(
 ): Promise<ZeroAgentRunRecord | null> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      orgId: zeroAgents.orgId,
+      id: agents.id,
+      name: agents.name,
+      orgId: agents.orgId,
       defaultAgentId: orgMetadata.defaultAgentId,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
+      owner: agents.owner,
+      visibility: agents.visibility,
+      displayName: agents.displayName,
+      description: agents.description,
+      sound: agents.sound,
+      modelProviderId: agents.modelProviderId,
+      selectedModel: agents.selectedModel,
     })
-    .from(zeroAgents)
-    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
-    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(zeroAgents.id, agentId))
+    .from(agents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+    .where(eq(agents.id, agentId))
     .limit(1);
 
   return agent ?? null;

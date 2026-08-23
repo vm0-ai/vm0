@@ -141,7 +141,7 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       orgId: feishuOrgInstallations.orgId,
       ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
@@ -511,6 +511,9 @@ async function loadFeishuIngressDispatchContext(
     throw new Error("Canonical Feishu ingress is unavailable");
   }
   const message = parseMatchingMessage(ingress);
+  if (ingress.defaultAgentId === null) {
+    return { ingress, message, installation: null, connection: null };
+  }
   const installation: FeishuDispatchInstallation = {
     orgId: ingress.orgId,
     ownerUserId: ingress.ownerUserId,
@@ -547,6 +550,18 @@ async function processClaimedIngress(
 ): Promise<PersistedCanonicalFeishuIngress | null> {
   const { ingress, message, installation, connection } =
     await loadFeishuIngressDispatchContext(args.db, args.ingressId, signal);
+  if (!installation) {
+    await finishUnavailableAgentFeishuIngress(
+      {
+        db: args.db,
+        ingressId: ingress.ingressId,
+        message,
+        status: "not_found",
+      },
+      signal,
+    );
+    return null;
+  }
   if (!connection) {
     await finishUnconnectedFeishuIngress(
       {

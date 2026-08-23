@@ -74,7 +74,7 @@ async function publishConnectorRuntimeSyncWakeupsInner(
     conditions.push(eq(agentRuns.userId, args.scope.userId));
   }
   if (args.scope.agentId !== undefined) {
-    conditions.push(eq(agentSessions.agentComposeId, args.scope.agentId));
+    conditions.push(eq(agentSessions.agentId, args.scope.agentId));
   }
   const rows = await args.db
     .select({

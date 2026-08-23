@@ -4,7 +4,7 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 
@@ -67,9 +67,9 @@ const updateOfficialBot$ = command(
 
     if (args.selectedAgentId) {
       const [compose] = await writeDb
-        .select({ id: agentComposes.id, orgId: agentComposes.orgId })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, args.selectedAgentId))
+        .select({ id: agents.id, orgId: agents.orgId })
+        .from(agents)
+        .where(eq(agents.id, args.selectedAgentId))
         .limit(1);
       signal.throwIfAborted();
 
@@ -153,9 +153,9 @@ const updateCustomBot$ = command(
     }
 
     const [compose] = await writeDb
-      .select({ id: agentComposes.id, orgId: agentComposes.orgId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, args.defaultAgentId))
+      .select({ id: agents.id, orgId: agents.orgId })
+      .from(agents)
+      .where(eq(agents.id, args.defaultAgentId))
       .limit(1);
     signal.throwIfAborted();
 

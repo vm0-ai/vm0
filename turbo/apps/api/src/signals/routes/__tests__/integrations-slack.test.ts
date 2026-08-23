@@ -297,7 +297,7 @@ describe("GET /api/zero/integrations/slack", () => {
       });
     }
 
-    it("includes environment when connected with head version and secrets/vars present", async () => {
+    it("ignores legacy environment when canonical runtime bindings are provided", async () => {
       await seedEnvironmentVersion();
       await seedUserSecret("SEC_A");
       await seedUserVariable("VAR_A", "us-east-1");
@@ -316,15 +316,13 @@ describe("GET /api/zero/integrations/slack", () => {
       );
 
       expect(response.body.environment).toBeDefined();
-      expect(response.body.environment!.requiredSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([]);
+      expect(response.body.environment!.requiredVars).toStrictEqual([]);
       expect(response.body.environment!.missingSecrets).toStrictEqual([]);
       expect(response.body.environment!.missingVars).toStrictEqual([]);
     });
 
-    it("reports missing secrets and vars in environment", async () => {
+    it("does not report application-provided bindings as missing", async () => {
       await seedEnvironmentVersion();
 
       mockAdminAuth();
@@ -341,14 +339,10 @@ describe("GET /api/zero/integrations/slack", () => {
       );
 
       expect(response.body.environment).toBeDefined();
-      expect(response.body.environment!.requiredSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
-      expect(response.body.environment!.missingSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.missingVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([]);
+      expect(response.body.environment!.requiredVars).toStrictEqual([]);
+      expect(response.body.environment!.missingSecrets).toStrictEqual([]);
+      expect(response.body.environment!.missingVars).toStrictEqual([]);
     });
 
     it("omits environment when isConnected is false", async () => {

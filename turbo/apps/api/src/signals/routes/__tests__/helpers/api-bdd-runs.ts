@@ -779,6 +779,10 @@ export function createRunsApi(context: TestContext) {
       return await createHistoricalAgentComposeFixture({
         actor: { userId: actor.userId, orgId: actor.orgId },
         content,
+        canonicalAgent: {
+          displayName: "Historical run fixture",
+          visibility: "private",
+        },
         signal: context.signal,
       });
     },

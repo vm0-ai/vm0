@@ -4,13 +4,12 @@ import {
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
@@ -111,7 +110,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
-    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: slackUserAgentPreferences.selectedAgentId })
     .from(slackUserAgentPreferences)
     .where(
       and(
@@ -120,7 +119,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function resolveEffectiveComposeId(
@@ -131,9 +130,9 @@ async function resolveEffectiveComposeId(
   const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, override), eq(agents.orgId, orgId)))
       .limit(1);
     if (agent?.id) {
       return override;
@@ -147,9 +146,9 @@ async function getWorkspaceAgentName(
   composeId: string,
 ): Promise<string | undefined> {
   const [agent] = await db
-    .select({ name: zeroAgents.name, displayName: zeroAgents.displayName })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, composeId))
+    .select({ name: agents.name, displayName: agents.displayName })
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return agent?.displayName ?? agent?.name;
 }
@@ -313,10 +312,9 @@ export function slackConnectStatus(args: {
 
     const [agent] = metadata?.defaultAgentId
       ? await db
-          .select({ name: zeroAgents.name })
-          .from(agentComposes)
-          .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-          .where(eq(agentComposes.id, metadata.defaultAgentId))
+          .select({ name: agents.name })
+          .from(agents)
+          .where(eq(agents.id, metadata.defaultAgentId))
           .limit(1)
       : [];
 

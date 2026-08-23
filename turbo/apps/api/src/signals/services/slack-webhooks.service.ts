@@ -15,7 +15,7 @@ import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
 import { userCache } from "@okouai/db/schema/user-cache";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, desc, eq, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -499,7 +499,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [row] = await db
-    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: slackUserAgentPreferences.selectedAgentId })
     .from(slackUserAgentPreferences)
     .where(
       and(
@@ -508,7 +508,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return row?.selectedComposeId ?? null;
+  return row?.selectedAgentId ?? null;
 }
 
 async function setUserAgentPreference(args: {
@@ -543,15 +543,15 @@ async function getWorkspaceAgent(
 ): Promise<WorkspaceAgentSummary | undefined> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       orgId
-        ? and(eq(zeroAgents.id, composeId), eq(zeroAgents.orgId, orgId))
-        : eq(zeroAgents.id, composeId),
+        ? and(eq(agents.id, composeId), eq(agents.orgId, orgId))
+        : eq(agents.id, composeId),
     )
     .limit(1);
   return agent;
@@ -565,16 +565,16 @@ async function getVisibleWorkspaceAgent(
 ): Promise<WorkspaceAgentSummary | undefined> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.id, composeId),
-        eq(zeroAgents.orgId, orgId),
-        or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId)),
+        eq(agents.id, composeId),
+        eq(agents.orgId, orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, userId)),
       ),
     )
     .limit(1);
@@ -595,21 +595,18 @@ async function getVisibleAgentPickerOptions(args: {
 > {
   const rows = await args.db
     .select({
-      composeId: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      composeId: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, args.orgId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.orgId, args.orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
-    .orderBy(desc(zeroAgents.updatedAt));
+    .orderBy(desc(agents.updatedAt));
 
   return rows
     .filter((agent) => {

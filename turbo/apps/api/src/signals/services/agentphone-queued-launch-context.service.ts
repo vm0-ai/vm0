@@ -1,4 +1,5 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { agents } from "@okouai/db/schema/agent";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -100,7 +101,7 @@ async function loadAgentPhoneLaunchContext(
       toNumber: chatAgentphoneContext.toNumber,
       userLinkId: chatAgentphoneContext.userLinkId,
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       publicBrand: agentphoneUserLinks.publicBrand,
     })
     .from(chatEvents)
@@ -118,6 +119,7 @@ async function loadAgentPhoneLaunchContext(
         eq(chatThreads.userId, args.userId),
       ),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .innerJoin(
       agentphoneUserLinks,
       and(

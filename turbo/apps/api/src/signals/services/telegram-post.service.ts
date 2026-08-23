@@ -17,7 +17,7 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -30,7 +30,6 @@ import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { escapeHtml } from "../../lib/telegram-format";
@@ -117,6 +116,9 @@ interface OrganizationAuth {
   readonly orgRole?: ApiOrgRole;
 }
 type TelegramInstallation = typeof telegramInstallations.$inferSelect;
+type CanonicalTelegramInstallation = TelegramInstallation & {
+  readonly defaultAgentId: string;
+};
 type TelegramUserLink = typeof telegramUserLinks.$inferSelect;
 type OfficialTelegramUserLink = typeof telegramOfficialUserLinks.$inferSelect;
 
@@ -353,13 +355,12 @@ async function getWorkspaceAgent(
 ): Promise<WorkspaceAgent | null> {
   const [row] = await db
     .select({
-      composeId: agentComposes.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      composeId: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(agentComposes)
-    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
 
   if (!row) {
@@ -385,7 +386,7 @@ async function getWorkspaceAgentDisplayLabel(
 async function resolveDefaultAgentId(args: {
   readonly db: Db;
   readonly requestedAgentId: string | undefined;
-  readonly fallbackAgentId: string | undefined;
+  readonly fallbackAgentId: string | null | undefined;
   readonly orgId: string;
 }): Promise<
   | { readonly ok: true; readonly agentId: string }
@@ -409,22 +410,22 @@ async function resolveDefaultAgentId(args: {
     );
   }
 
-  const [compose] = await args.db
-    .select({ id: agentComposes.id, orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, defaultAgentId))
+  const [agent] = await args.db
+    .select({ id: agents.id, orgId: agents.orgId })
+    .from(agents)
+    .where(eq(agents.id, defaultAgentId))
     .limit(1);
 
-  if (!compose) {
+  if (!agent) {
     return notFound("Agent not found");
   }
-  if (compose.orgId !== args.orgId) {
+  if (agent.orgId !== args.orgId) {
     return forbidden(
       "Telegram bots can only be connected to agents in the active organization.",
     );
   }
 
-  return { ok: true, agentId: compose.id };
+  return { ok: true, agentId: agent.id };
 }
 
 async function configureTelegramBot(args: {
@@ -537,7 +538,7 @@ const handleExistingInstallation$ = command(
     const resolvedAgent = await resolveDefaultAgentId({
       db: args.db,
       requestedAgentId: args.body.defaultAgentId,
-      fallbackAgentId: args.existing.defaultComposeId,
+      fallbackAgentId: args.existing.defaultAgentId,
       orgId: args.auth.orgId,
     });
     signal.throwIfAborted();
@@ -2236,7 +2237,7 @@ function formatTelegramModelOptionsMessage(
 
 interface CustomCommandArgs {
   readonly db: Db;
-  readonly installation: TelegramInstallation;
+  readonly installation: CanonicalTelegramInstallation;
   readonly botToken: string;
   readonly command: string;
   readonly message: TelegramMessage;
@@ -2269,7 +2270,7 @@ const handleCustomCommand$ = command(
     signal.throwIfAborted();
     const agentName = await getWorkspaceAgentDisplayLabel(
       args.db,
-      args.installation.defaultComposeId,
+      args.installation.defaultAgentId,
     );
     signal.throwIfAborted();
     const reply = async (text: string, sig: AbortSignal): Promise<void> => {
@@ -2375,7 +2376,7 @@ async function resolveOfficialComposeId(
 ): Promise<string | null> {
   const [preference] = await db
     .select({
-      selectedComposeId: telegramUserAgentPreferences.selectedComposeId,
+      selectedAgentId: telegramUserAgentPreferences.selectedAgentId,
     })
     .from(telegramUserAgentPreferences)
     .where(
@@ -2385,19 +2386,19 @@ async function resolveOfficialComposeId(
       ),
     )
     .limit(1);
-  if (preference?.selectedComposeId) {
-    const [compose] = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
+  if (preference?.selectedAgentId) {
+    const [agent] = await db
+      .select({ id: agents.id })
+      .from(agents)
       .where(
         and(
-          eq(agentComposes.id, preference.selectedComposeId),
-          eq(agentComposes.orgId, userLink.orgId),
+          eq(agents.id, preference.selectedAgentId),
+          eq(agents.orgId, userLink.orgId),
         ),
       )
       .limit(1);
-    if (compose) {
-      return compose.id;
+    if (agent) {
+      return agent.id;
     }
   }
   const [metadata] = await db
@@ -2542,7 +2543,7 @@ const handleOfficialCommand$ = command(
 
 interface CustomWebhookContext {
   readonly db: Db;
-  readonly installation: TelegramInstallation;
+  readonly installation: CanonicalTelegramInstallation;
   readonly botToken: string;
   readonly message: TelegramMessage;
   readonly apiStartTime: number;
@@ -2583,7 +2584,7 @@ const resolveCustomMessageUserLink$ = command(
 async function sendCustomConnectPrompt(args: {
   readonly db: Db;
   readonly botToken: string;
-  readonly installation: TelegramInstallation;
+  readonly installation: CanonicalTelegramInstallation;
   readonly message: TelegramMessage;
   readonly chatId: string;
   readonly displayName: string | null;
@@ -2595,7 +2596,7 @@ async function sendCustomConnectPrompt(args: {
     args.agentName ??
     (await getWorkspaceAgentDisplayLabel(
       args.db,
-      args.installation.defaultComposeId,
+      args.installation.defaultAgentId,
     ));
   await sendConnectPrompt({
     botToken: args.botToken,
@@ -2644,7 +2645,7 @@ const handleCustomPrivateWebhookMessage$ = command(
         userLink: resolved.userLink,
         userLinkKind: "custom",
         publicBrand: args.installation.publicBrand,
-        composeId: args.installation.defaultComposeId,
+        composeId: args.installation.defaultAgentId,
         message: args.message,
         isDM: true,
         apiStartTime: args.apiStartTime,
@@ -2701,7 +2702,7 @@ const handleCustomAddressedGroupWebhookMessage$ = command(
         userLink: resolved.userLink,
         userLinkKind: "custom",
         publicBrand: args.installation.publicBrand,
-        composeId: args.installation.defaultComposeId,
+        composeId: args.installation.defaultAgentId,
         message: args.message,
         isDM: false,
         apiStartTime: args.apiStartTime,
@@ -2722,15 +2723,29 @@ const processCustomWebhookMessage$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    const [installation] = await db
-      .select()
+    const [row] = await db
+      .select({
+        installation: telegramInstallations,
+        defaultAgentId: agents.id,
+      })
       .from(telegramInstallations)
+      .innerJoin(
+        agents,
+        and(
+          eq(agents.id, telegramInstallations.defaultAgentId),
+          eq(agents.orgId, telegramInstallations.orgId),
+        ),
+      )
       .where(eq(telegramInstallations.telegramBotId, args.telegramBotId))
       .limit(1);
     signal.throwIfAborted();
-    if (!installation) {
+    if (!row) {
       return;
     }
+    const installation: CanonicalTelegramInstallation = {
+      ...row.installation,
+      defaultAgentId: row.defaultAgentId,
+    };
 
     const botToken = await decryptPersistentSecretValue(
       installation.encryptedBotToken,

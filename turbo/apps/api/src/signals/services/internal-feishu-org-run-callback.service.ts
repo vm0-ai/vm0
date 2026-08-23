@@ -4,6 +4,7 @@ import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contract
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -69,11 +70,12 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return run;
@@ -191,7 +193,7 @@ async function handleFeishuCallback(
   const [installation] = await args.db
     .select({
       orgId: feishuOrgInstallations.orgId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgInstallations)
@@ -241,7 +243,7 @@ async function handleFeishuCallback(
       runId: args.callback.runId,
       agentId: payload.agentId ?? run.agentId,
       publicBrand: installation.publicBrand,
-      defaultAgentId: installation.defaultAgentId,
+      defaultAgentId: installation.defaultAgentId ?? undefined,
       getFeatureOverrides: args.getFeatureOverrides,
     },
     signal,

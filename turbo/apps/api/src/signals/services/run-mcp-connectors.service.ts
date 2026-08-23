@@ -41,7 +41,7 @@ export function runMcpConnectorList(args: {
       .innerJoin(
         userCustomConnectors,
         and(
-          eq(userCustomConnectors.agentId, agentSessions.agentComposeId),
+          eq(userCustomConnectors.agentId, agentSessions.agentId),
           eq(userCustomConnectors.orgId, args.orgId),
           eq(userCustomConnectors.userId, args.userId),
         ),

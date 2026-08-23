@@ -100,14 +100,14 @@ export async function touchChatThreadLastMessageAt(
     .set({
       lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, ${touchedAt})`,
     })
-    .where(eq(chatThreads.id, threadId))
+    .where(and(eq(chatThreads.id, threadId), isNotNull(chatThreads.agentId)))
     .returning({
       id: chatThreads.id,
       userId: chatThreads.userId,
-      agentComposeId: chatThreads.agentComposeId,
+      agentComposeId: chatThreads.agentId,
       lastMessageAt: chatThreads.lastMessageAt,
     });
-  if (!thread) {
+  if (!thread?.agentComposeId) {
     return;
   }
   await appendChatThreadEvent(tx, {

@@ -5,6 +5,7 @@ import { createStore } from "ccstate";
 import { now } from "../lib/time";
 import { createAgentRun$ } from "../signals/services/agent-run-create.service";
 import { createTestFixtureAgentRun$ } from "../signals/services/agent-runs-create.service";
+import { buildZeroAgentComposeContent } from "../signals/services/agent-compose-content";
 
 const USER_ID = "thread-run-invariant-user";
 const ORG_ID = "thread-run-invariant-org";
@@ -53,6 +54,9 @@ export async function createUnassociatedThreadBoundAgentRunFixture(
         triggerSource: "test",
       },
       apiStartTime: now(),
+      productAgentExecutionPlan: {
+        content: buildZeroAgentComposeContent("thread-run-invariant-agent"),
+      },
       chatThreadId,
       connectorScope: {
         allowedConnectorSlugs: [],

@@ -9,15 +9,11 @@ import {
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
-import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
@@ -31,6 +27,7 @@ import {
   slackOrgInstallation,
   slackOrgStatus,
 } from "../services/slack-data.service";
+import { userConfiguredAgentEnvironmentRequirements } from "../services/agent-compose-content";
 import { publishSlackAdminSignal$ } from "../services/slack-connect.service";
 import { getFileInfo, isSlackApiClientError } from "../../lib/slack-client";
 import {
@@ -93,8 +90,6 @@ const getSlackEnvironment$ = computed(
     const auth = get(organizationAuthContext$);
     const db = get(db$);
 
-    // Three sequential queries to resolve default-agent → compose → version
-    // (each depends on the prior result, so a single JOIN is not straightforward).
     const [meta] = await db
       .select({ defaultAgentId: orgMetadata.defaultAgentId })
       .from(orgMetadata)
@@ -105,33 +100,20 @@ const getSlackEnvironment$ = computed(
       return emptySlackEnvironment();
     }
 
-    const [compose] = await db
-      .select({ headVersionId: agentComposes.headVersionId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, meta.defaultAgentId))
+    const [agent] = await db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(
+        and(eq(agents.id, meta.defaultAgentId), eq(agents.orgId, auth.orgId)),
+      )
       .limit(1);
 
-    if (!compose?.headVersionId) {
+    if (!agent) {
       return emptySlackEnvironment();
     }
 
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
-
-    if (!version) {
-      return emptySlackEnvironment();
-    }
-
-    const grouped = extractAndGroupVariables(version.content);
-    const requiredSecrets = grouped.secrets.map((s) => {
-      return s.name;
-    });
-    const requiredVars = grouped.vars.map((v) => {
-      return v.name;
-    });
+    const { secrets: requiredSecrets, vars: requiredVars } =
+      userConfiguredAgentEnvironmentRequirements(agent.name);
 
     const [userSecretList, userVarList, userConnectors] = await Promise.all([
       get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),

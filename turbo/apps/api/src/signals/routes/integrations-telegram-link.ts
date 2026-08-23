@@ -4,7 +4,7 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
@@ -209,7 +209,7 @@ async function resolveOfficialConnectComposeId(
 ): Promise<string | null> {
   const [preference] = await db
     .select({
-      selectedComposeId: telegramUserAgentPreferences.selectedComposeId,
+      selectedAgentId: telegramUserAgentPreferences.selectedAgentId,
     })
     .from(telegramUserAgentPreferences)
     .where(
@@ -220,16 +220,13 @@ async function resolveOfficialConnectComposeId(
     )
     .limit(1);
 
-  const preferredComposeId = preference?.selectedComposeId ?? null;
+  const preferredComposeId = preference?.selectedAgentId ?? null;
   if (preferredComposeId) {
     const [compose] = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
+      .select({ id: agents.id })
+      .from(agents)
       .where(
-        and(
-          eq(agentComposes.id, preferredComposeId),
-          eq(agentComposes.orgId, auth.orgId),
-        ),
+        and(eq(agents.id, preferredComposeId), eq(agents.orgId, auth.orgId)),
       )
       .limit(1);
     if (compose) {
@@ -248,14 +245,9 @@ async function resolveOfficialConnectComposeId(
   }
 
   const [compose] = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.id, defaultAgentId),
-        eq(agentComposes.orgId, auth.orgId),
-      ),
-    )
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.id, defaultAgentId), eq(agents.orgId, auth.orgId)))
     .limit(1);
   return compose?.id ?? null;
 }

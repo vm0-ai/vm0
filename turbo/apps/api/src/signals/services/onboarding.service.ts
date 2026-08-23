@@ -2,9 +2,8 @@ import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
@@ -80,16 +79,13 @@ function defaultAgentInfo(
     const db = get(db$);
     const [row] = await db
       .select({
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        avatarUrl: zeroAgents.avatarUrl,
+        displayName: agents.displayName,
+        description: agents.description,
+        sound: agents.sound,
+        avatarUrl: agents.avatarUrl,
       })
-      .from(agentComposes)
-      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(
-        and(eq(agentComposes.id, composeId), eq(agentComposes.orgId, orgId)),
-      )
+      .from(agents)
+      .where(and(eq(agents.id, composeId), eq(agents.orgId, orgId)))
       .limit(1);
 
     if (!row) {
