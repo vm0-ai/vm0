@@ -24,6 +24,7 @@ import {
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/zero-page/presentation-template-import.ts";
 import type {
+  ImportedPresentationTemplateResource,
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/zero-page/presentation-template-library.ts";
@@ -6587,12 +6588,69 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
+interface ImportedPresentationTemplatePagePreload {
+  readonly resource: ImportedPresentationTemplateResource;
+  readonly startPageIndex: number;
+  readonly pageCount: number;
+}
+
+function selectImportedPresentationTemplatePagePreloads(
+  resources: readonly ImportedPresentationTemplateResource[],
+  imageCount: number,
+): readonly ImportedPresentationTemplatePagePreload[] {
+  const preloads: ImportedPresentationTemplatePagePreload[] = [];
+  let remainingImageCount = Math.max(0, imageCount);
+  for (const resource of resources) {
+    if (remainingImageCount === 0) {
+      break;
+    }
+    const startPageIndex = resource.summary.coverUrl === null ? 0 : 1;
+    const pageCount = Math.min(
+      remainingImageCount,
+      Math.max(0, resource.summary.pageCount - startPageIndex),
+    );
+    if (pageCount === 0) {
+      continue;
+    }
+    preloads.push({ resource, startPageIndex, pageCount });
+    remainingImageCount -= pageCount;
+  }
+  return preloads;
+}
+
+function ImportedPresentationTemplateResourcePreload({
+  resource,
+  startPageIndex,
+  pageCount,
+}: {
+  resource: ImportedPresentationTemplateResource;
+  startPageIndex: number;
+  pageCount: number;
+}) {
+  const detail = useLastResolved(resource.detail$);
+  return detail?.pageUrls
+    .slice(startPageIndex, startPageIndex + pageCount)
+    .map((pageUrl) => {
+      return (
+        <img
+          key={pageUrl}
+          alt=""
+          src={pageUrl}
+          loading="eager"
+          decoding="async"
+          fetchPriority="low"
+        />
+      );
+    });
+}
+
 function ComposerTemplateAttachmentSync({
   signals,
 }: {
   signals: ComposerSignals;
 }) {
   const picker = useComposerTemplatePicker(signals);
+  const rootSignal = useGet(rootSignal$);
   const onDraftChange = useComposerDraftChange(signals);
   const runtime = signals.template.templatePreview;
   const setLifecycleRef = useSet(
@@ -6606,9 +6664,18 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const refreshImportedTemplateUrls = useSet(
+    signals.template.refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
+  );
+  const importedTemplateUrlRefreshLifecycleRef = useSet(
+    signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
+  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates =
     useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplateResources =
+    useLastResolved(signals.template.importedPresentationTemplateResources$) ??
+    [];
   const attachment = selectedComposerTemplateAttachment(
     picker?.value,
     importedTemplates,
@@ -6618,6 +6685,11 @@ function ComposerTemplateAttachmentSync({
       return template.coverUrl === null ? [] : [template.coverUrl];
     }),
   ).slice(0, TEMPLATE_PREWARM_IMAGE_COUNT);
+  const importedTemplatePagePreloads =
+    selectImportedPresentationTemplatePagePreloads(
+      importedTemplateResources,
+      TEMPLATE_PREWARM_IMAGE_COUNT - importedTemplateCoverUrls.length,
+    );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6635,11 +6707,15 @@ function ComposerTemplateAttachmentSync({
     setReferenceValue(readSelectedTemplate() ?? null);
     setCategory(category);
     setOpen(true);
+    if (category === "slides") {
+      detach(refreshImportedTemplateUrls(rootSignal), Reason.DomCallback);
+    }
   };
 
   return (
     <>
       <span
+        ref={importedTemplateUrlRefreshLifecycleRef}
         aria-hidden="true"
         className="pointer-events-none absolute size-px overflow-hidden opacity-0"
       >
@@ -6652,6 +6728,16 @@ function ComposerTemplateAttachmentSync({
               loading="eager"
               decoding="async"
               fetchPriority="low"
+            />
+          );
+        })}
+        {importedTemplatePagePreloads.map((preload) => {
+          return (
+            <ImportedPresentationTemplateResourcePreload
+              key={preload.resource.summary.id}
+              resource={preload.resource}
+              startPageIndex={preload.startPageIndex}
+              pageCount={preload.pageCount}
             />
           );
         })}
@@ -6705,6 +6791,7 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const rootSignal = useGet(rootSignal$);
   const open = useGet(signals.template.templatePickerOpen$);
   const skipEnterAnimation = useGet(
     signals.template.templatePickerSkipEnterAnimation$,
@@ -6716,6 +6803,9 @@ function TemplatePickerButton({
   const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
+  );
+  const refreshImportedTemplateUrls = useSet(
+    signals.template.refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates =
@@ -6771,6 +6861,12 @@ function TemplatePickerButton({
                 setPreviewSlug(null);
                 setReferenceValue(null);
                 setOpen(true);
+                if (selectedCategory === "slides") {
+                  detach(
+                    refreshImportedTemplateUrls(rootSignal),
+                    Reason.DomCallback,
+                  );
+                }
               }}
             >
               <SwatchBook size={18} aria-hidden="true" />

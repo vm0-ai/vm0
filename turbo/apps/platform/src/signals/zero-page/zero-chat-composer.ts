@@ -11,10 +11,7 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import {
-  createImportedPresentationTemplateSignals,
-  refreshPresentationTemplates$,
-} from "./presentation-template-library.ts";
+import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
@@ -361,12 +358,6 @@ function createTemplatePickerDialogSignals() {
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
     set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalTemplatePickerOpen$, open);
-    if (open) {
-      // The always-mounted composer has already prefetched the catalog. This
-      // revalidates external mutations and expiring signed URLs while
-      // useLastResolved keeps that prefetched result on screen.
-      set(refreshPresentationTemplates$);
-    }
   });
 
   const internalTemplatePickerReferenceValue$ =
