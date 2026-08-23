@@ -14,7 +14,19 @@ import type { Tx } from "../../lib/db-types";
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
+import {
+  commitPreparedVolumeServerSide,
+  ensureVolumeStorage$,
+  prepareVolumeServerSideWithDb$,
+} from "./storage-volume-publication.service";
 import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
+
+interface WriteAgentInstructionsStorageArgs {
+  readonly orgId: string;
+  readonly agentName: string;
+  readonly instructions: string;
+  readonly framework?: string;
+}
 
 function instructionFilesForFramework(args: {
   readonly content: string;
@@ -34,30 +46,59 @@ function instructionFilesForFramework(args: {
   });
 }
 
+function instructionVolumeInput(args: WriteAgentInstructionsStorageArgs) {
+  return {
+    orgId: args.orgId,
+    storageName: getInstructionsStorageName(args.agentName.toLowerCase()),
+    files: instructionFilesForFramework({
+      content: args.instructions,
+      framework: args.framework,
+    }),
+  };
+}
+
+export const ensureAgentInstructionsStorage$ = command(
+  async (
+    { set },
+    args: Pick<WriteAgentInstructionsStorageArgs, "orgId" | "agentName">,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      ensureVolumeStorage$,
+      {
+        orgId: args.orgId,
+        storageName: getInstructionsStorageName(args.agentName.toLowerCase()),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+  },
+);
+
 /** Persist application-owned Agent instructions without composing a version. */
 export const writeAgentInstructionsStorage$ = command(
   async (
     { set },
-    args: {
-      readonly orgId: string;
-      readonly agentName: string;
-      readonly instructions: string;
-      readonly framework?: string;
-    },
+    args: WriteAgentInstructionsStorageArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    await set(
-      uploadVolumeServerSide$,
-      {
-        orgId: args.orgId,
-        storageName: getInstructionsStorageName(args.agentName.toLowerCase()),
-        files: instructionFilesForFramework({
-          content: args.instructions,
-          framework: args.framework,
-        }),
-      },
+    await set(uploadVolumeServerSide$, instructionVolumeInput(args), signal);
+    signal.throwIfAborted();
+  },
+);
+
+export const writeAgentInstructionsStorageInTransaction$ = command(
+  async (
+    { set },
+    args: WriteAgentInstructionsStorageArgs & { readonly tx: Tx },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const volume = await set(
+      prepareVolumeServerSideWithDb$,
+      { db: args.tx, input: instructionVolumeInput(args) },
       signal,
     );
+    await commitPreparedVolumeServerSide({ db: args.tx, volume }, signal);
     signal.throwIfAborted();
   },
 );

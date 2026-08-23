@@ -14,8 +14,9 @@ import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { nowDate } from "../../lib/time";
 import {
+  ensureAgentInstructionsStorage$,
   removeAgentInstructionsStorageInTransaction,
-  writeAgentInstructionsStorage$,
+  writeAgentInstructionsStorageInTransaction$,
 } from "./agent-instructions-storage.service";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import {
@@ -276,6 +277,13 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
     );
     signal.throwIfAborted();
 
+    await set(
+      ensureAgentInstructionsStorage$,
+      { orgId: args.orgId, agentName: DEFAULT_AGENT_NAME },
+      signal,
+    );
+    signal.throwIfAborted();
+
     const cleanupUnclaimedInstructions = async (): Promise<void> => {
       const s3Prefix = await writeDb.transaction(async (tx) => {
         await lockOrgBootstrap(tx, args.orgId);
@@ -303,10 +311,20 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
       );
     };
 
-    const bootstrap = (async () => {
+    const bootstrap = writeDb.transaction(async (tx) => {
+      // Keep the fixed-name storage write and canonical publication under the
+      // same org lock. A failed attempt's compensation then runs either before
+      // the next writer starts or after that writer has published its Agent.
+      await lockOrgBootstrap(tx, args.orgId);
+      const existingAgentId = await existingDefaultAgentId(tx, args.orgId);
+      if (existingAgentId) {
+        return { bootstrapped: false, agentId: existingAgentId };
+      }
+
       await set(
-        writeAgentInstructionsStorage$,
+        writeAgentInstructionsStorageInTransaction$,
         {
+          tx,
           orgId: args.orgId,
           agentName: DEFAULT_AGENT_NAME,
           instructions: SEED_INSTRUCTIONS,
@@ -315,20 +333,12 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
       );
       signal.throwIfAborted();
 
-      return await writeDb.transaction(async (tx) => {
-        await lockOrgBootstrap(tx, args.orgId);
-        const existingAgentId = await existingDefaultAgentId(tx, args.orgId);
-        if (existingAgentId) {
-          return { bootstrapped: false, agentId: existingAgentId };
-        }
-
-        return await finalizeBootstrap(tx, {
-          orgId: args.orgId,
-          ownerUserId: args.ownerUserId,
-          agentId: reservation.agentId,
-        });
+      return await finalizeBootstrap(tx, {
+        orgId: args.orgId,
+        ownerUserId: args.ownerUserId,
+        agentId: reservation.agentId,
       });
-    })();
+    });
     const result = await onRejection(bootstrap, cleanupUnclaimedInstructions);
     signal.throwIfAborted();
 
