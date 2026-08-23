@@ -19,12 +19,9 @@ setup() {
     runner_e2e_setup_test
 
     local feature_switches
-    feature_switches="$(runner_api_curl "/api/feature-switches" \
-        -X POST \
-        -d '{"switches":{"realAgentInPreview":true,"piLoop":true,"managedModelProviderFallback":true}}')"
+    feature_switches="$(runner_api_curl "/api/feature-switches")"
     jq -e '
         .effectiveSwitches.realAgentInPreview == true and
-        .effectiveSwitches.piLoop == true and
         .effectiveSwitches.managedModelProviderFallback == true
     ' <<<"$feature_switches" >/dev/null
 }

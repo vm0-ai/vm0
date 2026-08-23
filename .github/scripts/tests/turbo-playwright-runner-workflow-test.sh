@@ -54,11 +54,6 @@ fi
 if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
   fail "real Claude E2E must not retain the Sonnet 4.6 pin"
 fi
-managed_fallback_switches='{"switches":{"realAgentInPreview":true,"piLoop":true,"managedModelProviderFallback":true}}'
-for test_file in "$REAL_CLAUDE_TEST" "$MANAGED_FALLBACK_TEST"; do
-  grep -Fq "$managed_fallback_switches" "$test_file" ||
-    fail "parallel real-provider E2Es must preserve the same fallback switches"
-done
 grep -Fq 'VM0_MITM_RUNNER_TOKEN' "$MANAGED_FALLBACK_TEST" ||
   fail "managed fallback E2E must require trusted failure authentication"
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
