@@ -3448,39 +3448,61 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("prefetches uploaded deck pages without loading again on picker open", async () => {
+  it("bounds uploaded deck page prefetch without loading again on picker open", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
-    const templateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
-    const template = {
-      id: templateId,
-      title: "Draft deck",
-      sourceFilename: "brand-system.pptx",
-      coverUrl: "https://example.com/draft-cover.png",
-      pageCount: 3,
+    const primaryTemplateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
+    const secondaryTemplateId = "9f374525-03cd-4b37-bfe7-71880c8bf84c";
+    const primaryPageUrls = Array.from({ length: 100 }, (_, index) => {
+      return `https://example.com/prefetch-primary-page-${index + 1}.png`;
+    });
+    const secondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
+      return `https://example.com/prefetch-secondary-page-${index + 1}.png`;
+    });
+    const primaryTemplate = {
+      id: primaryTemplateId,
+      title: "Primary draft deck",
+      sourceFilename: "primary-brand-system.pptx",
+      coverUrl: primaryPageUrls[0] ?? null,
+      pageCount: primaryPageUrls.length,
       visibility: "public" as const,
       canManage: false,
-      pageUrls: [
-        "https://example.com/draft-cover.png",
-        "https://example.com/draft-page-2.png",
-        "https://example.com/draft-page-3.png",
-      ],
+      pageUrls: primaryPageUrls,
       createdAt: "2026-08-23T03:00:00.000Z",
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
-    const { pageUrls: _pageUrls, ...summary } = template;
+    const secondaryTemplate = {
+      id: secondaryTemplateId,
+      title: "Secondary draft deck",
+      sourceFilename: "secondary-brand-system.pptx",
+      coverUrl: secondaryPageUrls[0] ?? null,
+      pageCount: secondaryPageUrls.length,
+      visibility: "private" as const,
+      canManage: true,
+      pageUrls: secondaryPageUrls,
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    const { pageUrls: _primaryPageUrls, ...primarySummary } = primaryTemplate;
+    const { pageUrls: _secondaryPageUrls, ...secondarySummary } =
+      secondaryTemplate;
     let catalogRequestCount = 0;
-    let detailRequestCount = 0;
+    let primaryDetailRequestCount = 0;
+    let secondaryDetailRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
       catalogRequestCount += 1;
-      return respond(200, [summary]);
+      return respond(200, [primarySummary, secondarySummary]);
     });
     context.mocks.api(
       presentationTemplatesContract.get,
       ({ params, respond }) => {
-        expect(params.templateId).toBe(templateId);
-        detailRequestCount += 1;
-        return respond(200, template);
+        if (params.templateId === primaryTemplateId) {
+          primaryDetailRequestCount += 1;
+          return respond(200, primaryTemplate);
+        }
+        expect(params.templateId).toBe(secondaryTemplateId);
+        secondaryDetailRequestCount += 1;
+        return respond(200, secondaryTemplate);
       },
     );
 
@@ -3492,7 +3514,7 @@ describe("chat composer templates", () => {
 
     const preloadedPage = await waitFor(() => {
       const found = document.querySelector(
-        'img[src="https://example.com/draft-page-2.png"]',
+        'img[src="https://example.com/prefetch-primary-page-14.png"]',
       );
       if (!(found instanceof HTMLImageElement)) {
         throw new Error("Uploaded template page was not prefetched");
@@ -3502,14 +3524,28 @@ describe("chat composer templates", () => {
     expect(preloadedPage).toHaveAttribute("loading", "eager");
     expect(preloadedPage).toHaveAttribute("fetchpriority", "low");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      document.querySelectorAll('img[src^="https://example.com/prefetch-"]'),
+    ).toHaveLength(15);
+    expect(
+      document.querySelector(
+        'img[src="https://example.com/prefetch-primary-page-15.png"]',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'img[src="https://example.com/prefetch-secondary-page-2.png"]',
+      ),
+    ).not.toBeInTheDocument();
     expect(catalogRequestCount).toBe(1);
-    expect(detailRequestCount).toBe(1);
+    expect(primaryDetailRequestCount).toBe(1);
+    expect(secondaryDetailRequestCount).toBe(0);
 
     await user.click(screen.getByLabelText("Template"));
     const dialog = screen.getByRole("dialog");
     const card = await waitFor(() => {
       const found = dialog.querySelector(
-        `[data-imported-presentation-template="${templateId}"]`,
+        `[data-imported-presentation-template="${primaryTemplateId}"]`,
       );
       if (!(found instanceof HTMLElement)) {
         throw new Error("Prefetched template card not found");
@@ -3517,7 +3553,7 @@ describe("chat composer templates", () => {
       return found;
     });
     const previewButton = within(card).getByLabelText(
-      "Preview Draft deck at current slide",
+      "Preview Primary draft deck at current slide",
     );
     const preview = previewButton.parentElement;
     if (!preview) {
@@ -3530,16 +3566,17 @@ describe("chat composer templates", () => {
       },
     });
     fireEvent.mouseEnter(preview);
-    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
+    fireEvent.mouseMove(preview, { clientX: 4, clientY: 80 });
 
     await waitFor(() => {
       expect(within(preview).getByRole("img")).toHaveAttribute(
         "src",
-        "https://example.com/draft-page-2.png",
+        "https://example.com/prefetch-primary-page-2.png",
       );
     });
     expect(catalogRequestCount).toBe(1);
-    expect(detailRequestCount).toBe(1);
+    expect(primaryDetailRequestCount).toBe(1);
+    expect(secondaryDetailRequestCount).toBe(0);
   });
 
   it("makes a template published after navigating away usable in the other thread", async () => {

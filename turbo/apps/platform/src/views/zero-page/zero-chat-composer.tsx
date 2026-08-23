@@ -6588,24 +6588,60 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
+interface ImportedPresentationTemplatePagePreload {
+  readonly resource: ImportedPresentationTemplateResource;
+  readonly startPageIndex: number;
+  readonly pageCount: number;
+}
+
+function selectImportedPresentationTemplatePagePreloads(
+  resources: readonly ImportedPresentationTemplateResource[],
+  imageCount: number,
+): readonly ImportedPresentationTemplatePagePreload[] {
+  const preloads: ImportedPresentationTemplatePagePreload[] = [];
+  let remainingImageCount = Math.max(0, imageCount);
+  for (const resource of resources) {
+    if (remainingImageCount === 0) {
+      break;
+    }
+    const startPageIndex = resource.summary.coverUrl === null ? 0 : 1;
+    const pageCount = Math.min(
+      remainingImageCount,
+      Math.max(0, resource.summary.pageCount - startPageIndex),
+    );
+    if (pageCount === 0) {
+      continue;
+    }
+    preloads.push({ resource, startPageIndex, pageCount });
+    remainingImageCount -= pageCount;
+  }
+  return preloads;
+}
+
 function ImportedPresentationTemplateResourcePreload({
   resource,
+  startPageIndex,
+  pageCount,
 }: {
   resource: ImportedPresentationTemplateResource;
+  startPageIndex: number;
+  pageCount: number;
 }) {
   const detail = useLastResolved(resource.detail$);
-  return detail?.pageUrls.map((pageUrl) => {
-    return (
-      <img
-        key={pageUrl}
-        alt=""
-        src={pageUrl}
-        loading="eager"
-        decoding="async"
-        fetchPriority="low"
-      />
-    );
-  });
+  return detail?.pageUrls
+    .slice(startPageIndex, startPageIndex + pageCount)
+    .map((pageUrl) => {
+      return (
+        <img
+          key={pageUrl}
+          alt=""
+          src={pageUrl}
+          loading="eager"
+          decoding="async"
+          fetchPriority="low"
+        />
+      );
+    });
 }
 
 function ComposerTemplateAttachmentSync({
@@ -6642,6 +6678,11 @@ function ComposerTemplateAttachmentSync({
       return template.coverUrl === null ? [] : [template.coverUrl];
     }),
   ).slice(0, TEMPLATE_PREWARM_IMAGE_COUNT);
+  const importedTemplatePagePreloads =
+    selectImportedPresentationTemplatePagePreloads(
+      importedTemplateResources,
+      TEMPLATE_PREWARM_IMAGE_COUNT - importedTemplateCoverUrls.length,
+    );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6679,11 +6720,13 @@ function ComposerTemplateAttachmentSync({
             />
           );
         })}
-        {importedTemplateResources.map((resource) => {
+        {importedTemplatePagePreloads.map((preload) => {
           return (
             <ImportedPresentationTemplateResourcePreload
-              key={resource.summary.id}
-              resource={resource}
+              key={preload.resource.summary.id}
+              resource={preload.resource}
+              startPageIndex={preload.startPageIndex}
+              pageCount={preload.pageCount}
             />
           );
         })}
