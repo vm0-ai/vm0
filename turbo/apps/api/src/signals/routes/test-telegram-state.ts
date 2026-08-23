@@ -22,6 +22,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -113,6 +114,7 @@ async function loadInstallation(db: ReadonlyDb, botId: string) {
       botUsername: telegramInstallations.botUsername,
       orgId: telegramInstallations.orgId,
       ownerUserId: telegramInstallations.ownerUserId,
+      defaultAgentId: telegramInstallations.defaultAgentId,
       defaultComposeId: telegramInstallations.defaultComposeId,
       createdAt: telegramInstallations.createdAt,
     })
@@ -178,19 +180,19 @@ async function loadOrgMeta(db: ReadonlyDb, orgId: string | undefined) {
 
 async function loadDefaultAgent(
   db: ReadonlyDb,
-  defaultComposeId: string | undefined,
+  defaultAgentId: string | undefined,
 ) {
-  if (!defaultComposeId) {
+  if (!defaultAgentId) {
     return null;
   }
   const [row] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      orgId: zeroAgents.orgId,
+      id: agents.id,
+      name: agents.name,
+      orgId: agents.orgId,
     })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, defaultComposeId))
+    .from(agents)
+    .where(eq(agents.id, defaultAgentId))
     .limit(1);
   return row ?? null;
 }
@@ -1835,7 +1837,7 @@ const getTestTelegramState$ = computed(async (get) => {
     loadLinks(db, query.bot_id),
     loadRecentRuns(db, installation?.orgId),
     loadOrgMeta(db, installation?.orgId),
-    loadDefaultAgent(db, installation?.defaultComposeId ?? undefined),
+    loadDefaultAgent(db, installation?.defaultAgentId ?? undefined),
     loadCompose(db, installation?.defaultComposeId ?? undefined),
     countMessages(db, query.bot_id),
     loadMessages(db, query.bot_id),

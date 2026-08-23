@@ -157,45 +157,59 @@ delete_runner_agent() {
 # the production legacy-version deletion veto.
 delete_runner_agent_for_stage0_teardown() {
     local agent_id="$1"
-    local response http_status response_body
+    local response http_status response_body attempt
 
-    response="$(runner_api_curl \
-        "/api/agents/$agent_id" \
-        -X DELETE \
-        --no-fail-with-body \
-        --write-out $'\n%{http_code}')" || return
-    http_status="${response##*$'\n'}"
-    response_body="${response%$'\n'*}"
+    for ((attempt = 1; attempt <= 5; attempt += 1)); do
+        response="$(runner_api_curl \
+            "/api/agents/$agent_id" \
+            -X DELETE \
+            --no-fail-with-body \
+            --write-out $'\n%{http_code}')" || return
+        http_status="${response##*$'\n'}"
+        response_body="${response%$'\n'*}"
 
-    if [[ "$http_status" == "204" && -z "$response_body" ]]; then
-        return 0
-    fi
+        if [[ "$http_status" == "204" && -z "$response_body" ]]; then
+            return 0
+        fi
 
-    if [[ "$http_status" == "404" ]] && jq -e --arg agent_id "$agent_id" '
-        . == {
-            error: {
-                message: ("Agent not found: " + $agent_id),
-                code: "NOT_FOUND"
+        if [[ "$http_status" == "404" ]] && jq -e --arg agent_id "$agent_id" '
+            . == {
+                error: {
+                    message: ("Agent not found: " + $agent_id),
+                    code: "NOT_FOUND"
+                }
             }
-        }
-    ' <<<"$response_body" >/dev/null 2>&1; then
-        return 0
-    fi
+        ' <<<"$response_body" >/dev/null 2>&1; then
+            return 0
+        fi
 
-    if [[ "$http_status" == "409" ]] && jq -e '
-        . == {
-            error: {
-                message: "Cannot delete agent while its configuration is being migrated",
-                code: "CONFLICT"
+        if [[ "$http_status" == "409" ]] && jq -e '
+            . == {
+                error: {
+                    message: "Cannot delete agent while its configuration is being migrated",
+                    code: "CONFLICT"
+                }
             }
-        }
-    ' <<<"$response_body" >/dev/null 2>&1; then
-        return 0
-    fi
+        ' <<<"$response_body" >/dev/null 2>&1; then
+            return 0
+        fi
 
-    printf 'Stage 0 Runner E2E agent teardown failed with HTTP %s: %s\n' \
-        "$http_status" "$response_body" >&2
-    return 1
+        if [[ "$http_status" == "409" ]] && jq -e '
+            . == {
+                error: {
+                    message: "Cannot delete agent right now; retry shortly",
+                    code: "CONFLICT"
+                }
+            }
+        ' <<<"$response_body" >/dev/null 2>&1 && ((attempt < 5)); then
+            sleep 0.25
+            continue
+        fi
+
+        printf 'Stage 0 Runner E2E agent teardown failed with HTTP %s: %s\n' \
+            "$http_status" "$response_body" >&2
+        return 1
+    done
 }
 
 _runner_uuid() {
