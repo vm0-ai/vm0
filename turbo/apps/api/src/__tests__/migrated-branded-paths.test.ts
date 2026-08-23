@@ -4,28 +4,21 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
-import { avatarVideoRoutes } from "../signals/routes/avatar-video";
 import { billingStatusRoutes } from "../signals/routes/billing-status";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
-import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { orgReadRoutes } from "../signals/routes/org-read";
-import { peopleSearchRoutes } from "../signals/routes/people-search";
-import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
-import { socialRoutes } from "../signals/routes/social";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
 import { teamsBotRoutes } from "../signals/routes/teams-bot";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
-import { translationRoutes } from "../signals/routes/translation";
 import { uploadsPrepareRoutes } from "../signals/routes/uploads-prepare";
 import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
 import { weatherRoutes } from "../signals/routes/weather";
 import { webFileUrlRoutes } from "../signals/routes/web-file-url";
-import { webSearchRoutes } from "../signals/routes/web-search";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -170,17 +163,12 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/browsers/lease",
     "/api/zero/browsers/lease",
   ],
-  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
   "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
   "/api/finance/profile": [
     "/api/okou/finance/profile",
     "/api/zero/finance/profile",
   ],
   "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
-  "/api/mcp-connectors": [
-    "/api/okou/mcp-connectors",
-    "/api/zero/mcp-connectors",
-  ],
   "/api/seo/backlinks-summary": [
     "/api/okou/seo/backlinks-summary",
     "/api/zero/seo/backlinks-summary",
@@ -190,40 +178,8 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/seo/keyword-ideas",
   ],
   // #28415
-  "/api/built-in-generations/:generationId": [
-    "/api/okou/built-in-generations/:generationId",
-    "/api/zero/built-in-generations/:generationId",
-  ],
-  "/api/image-io/generate": [
-    "/api/okou/image-io/generate",
-    "/api/zero/image-io/generate",
-  ],
   // #28416
-  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
-  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
-  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
-  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
   // #28419
-  "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
-  "/api/goal/block": ["/api/okou/goal/block", "/api/zero/goal/block"],
-  "/api/goal/complete": ["/api/okou/goal/complete", "/api/zero/goal/complete"],
-  "/api/goal/resume": ["/api/okou/goal/resume", "/api/zero/goal/resume"],
-  "/api/host/deployments/:deploymentId/complete": [
-    "/api/okou/host/deployments/:deploymentId/complete",
-    "/api/zero/host/deployments/:deploymentId/complete",
-  ],
-  "/api/host/deployments/prepare": [
-    "/api/okou/host/deployments/prepare",
-    "/api/zero/host/deployments/prepare",
-  ],
-  "/api/host/sites/:publicSlug/files": [
-    "/api/okou/host/sites/:publicSlug/files",
-    "/api/zero/host/sites/:publicSlug/files",
-  ],
-  "/api/host/sites/:site/deployments": [
-    "/api/okou/host/sites/:site/deployments",
-    "/api/zero/host/sites/:site/deployments",
-  ],
   // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
   // attribution.
   "/api/attribution/signup": [
@@ -299,10 +255,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:id/mark-read",
     "/api/zero/chat-threads/:id/mark-read",
   ],
-  "/api/chat-threads/:id/metadata": [
-    "/api/okou/chat-threads/:id/metadata",
-    "/api/zero/chat-threads/:id/metadata",
-  ],
   "/api/chat-threads/:id/model-selection": [
     "/api/okou/chat-threads/:id/model-selection",
     "/api/zero/chat-threads/:id/model-selection",
@@ -310,10 +262,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/chat-threads/:id/pin": [
     "/api/okou/chat-threads/:id/pin",
     "/api/zero/chat-threads/:id/pin",
-  ],
-  "/api/chat-threads/:id/rename": [
-    "/api/okou/chat-threads/:id/rename",
-    "/api/zero/chat-threads/:id/rename",
   ],
   "/api/chat-threads/:id/unpin": [
     "/api/okou/chat-threads/:id/unpin",
@@ -368,7 +316,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/chat-threads/snapshot",
   ],
   "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
-  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
   // #28457: the billing surface.
   "/api/billing/checkout": [
     "/api/okou/billing/checkout",
@@ -443,18 +390,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/computer-use/audit-events",
     "/api/zero/computer-use/audit-events",
   ],
-  "/api/computer-use/commands": [
-    "/api/okou/computer-use/commands",
-    "/api/zero/computer-use/commands",
-  ],
-  "/api/computer-use/commands/:commandId": [
-    "/api/okou/computer-use/commands/:commandId",
-    "/api/zero/computer-use/commands/:commandId",
-  ],
-  "/api/computer-use/commands/:commandId/screenshot": [
-    "/api/okou/computer-use/commands/:commandId/screenshot",
-    "/api/zero/computer-use/commands/:commandId/screenshot",
-  ],
   "/api/computer-use/heartbeat": [
     "/api/okou/computer-use/heartbeat",
     "/api/zero/computer-use/heartbeat",
@@ -478,10 +413,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/computer-use/hosts/start": [
     "/api/okou/computer-use/hosts/start",
     "/api/zero/computer-use/hosts/start",
-  ],
-  "/api/computer-use/write-commands": [
-    "/api/okou/computer-use/write-commands",
-    "/api/zero/computer-use/write-commands",
   ],
   // #28423
   "/api/integrations/feishu": [
@@ -526,10 +457,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/connector-catalog/:connectorSlug",
     "/api/zero/connector-catalog/:connectorSlug",
   ],
-  "/api/connector-catalog/:connectorSlug/permissions": [
-    "/api/okou/connector-catalog/:connectorSlug/permissions",
-    "/api/zero/connector-catalog/:connectorSlug/permissions",
-  ],
   "/api/connector-catalog/diagnostics": [
     "/api/okou/connector-catalog/diagnostics",
     "/api/zero/connector-catalog/diagnostics",
@@ -542,11 +469,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/connector-catalog/status",
     "/api/zero/connector-catalog/status",
   ],
-  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
-  "/api/connectors/:connectorSlug": [
-    "/api/okou/connectors/:connectorSlug",
-    "/api/zero/connectors/:connectorSlug",
-  ],
   "/api/connectors/:connectorSlug/manual-grant": [
     "/api/okou/connectors/:connectorSlug/manual-grant",
     "/api/zero/connectors/:connectorSlug/manual-grant",
@@ -554,10 +476,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/connectors/:connectorSlug/oauth/start": [
     "/api/okou/connectors/:connectorSlug/oauth/start",
     "/api/zero/connectors/:connectorSlug/oauth/start",
-  ],
-  "/api/connectors/diagnostics/check": [
-    "/api/okou/connectors/diagnostics/check",
-    "/api/zero/connectors/diagnostics/check",
   ],
   "/api/custom-connectors": [
     "/api/okou/custom-connectors",
@@ -652,17 +570,9 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/agents/:id/draft",
     "/api/zero/agents/:id/draft",
   ],
-  "/api/agents/:id/instructions": [
-    "/api/okou/agents/:id/instructions",
-    "/api/zero/agents/:id/instructions",
-  ],
   "/api/agents/:id/user-connectors": [
     "/api/okou/agents/:id/user-connectors",
     "/api/zero/agents/:id/user-connectors",
-  ],
-  "/api/workflow-automations": [
-    "/api/okou/workflow-automations",
-    "/api/zero/workflow-automations",
   ],
   "/api/workflow-automations/:id": [
     "/api/okou/workflow-automations/:id",
@@ -677,18 +587,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/workflow-automations/:id/enable",
   ],
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  "/api/workflows/:workflowId": [
-    "/api/okou/workflows/:workflowId",
-    "/api/zero/workflows/:workflowId",
-  ],
-  "/api/workflows/:workflowId/automations": [
-    "/api/okou/workflows/:workflowId/automations",
-    "/api/zero/workflows/:workflowId/automations",
-  ],
-  "/api/workflows/:workflowId/run": [
-    "/api/okou/workflows/:workflowId/run",
-    "/api/zero/workflows/:workflowId/run",
-  ],
   // #28545: the Teams OAuth callback and the Teams bot ingress, moved off
   // `FINAL_PROVIDER_CONSOLE_PATHS` now that both Microsoft consoles hold the
   // final URL. `/api/zero/teams/oauth/callback` is still emitted on purpose by
@@ -703,18 +601,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // email, the GitHub user-connect start, mail drafts, people search,
   // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
   // the web file reads.
-  "/api/avatar-video/avatars": [
-    "/api/okou/avatar-video/avatars",
-    "/api/zero/avatar-video/avatars",
-  ],
-  "/api/avatar-video/voices": [
-    "/api/okou/avatar-video/voices",
-    "/api/zero/avatar-video/voices",
-  ],
-  "/api/browser/authorization-requests": [
-    "/api/okou/browser/authorization-requests",
-    "/api/zero/browser/authorization-requests",
-  ],
   "/api/browser/authorization-requests/:requestToken": [
     "/api/okou/browser/authorization-requests/:requestToken",
     "/api/zero/browser/authorization-requests/:requestToken",
@@ -731,22 +617,9 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/mail/drafts/:mailDraftId/send",
     "/api/zero/mail/drafts/:mailDraftId/send",
   ],
-  "/api/mail/drafts/link": [
-    "/api/okou/mail/drafts/link",
-    "/api/zero/mail/drafts/link",
-  ],
-  "/api/people-search": ["/api/okou/people-search", "/api/zero/people-search"],
-  "/api/presentation-templates": [
-    "/api/okou/presentation-templates",
-    "/api/zero/presentation-templates",
-  ],
   "/api/presentation-templates/:templateId": [
     "/api/okou/presentation-templates/:templateId",
     "/api/zero/presentation-templates/:templateId",
-  ],
-  "/api/uploads/complete": [
-    "/api/okou/uploads/complete",
-    "/api/zero/uploads/complete",
   ],
   "/api/uploads/multipart/abort": [
     "/api/okou/uploads/multipart/abort",
@@ -768,11 +641,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/voice-io/speech",
     "/api/zero/voice-io/speech",
   ],
-  "/api/voice-io/stt": ["/api/okou/voice-io/stt", "/api/zero/voice-io/stt"],
-  "/api/web/download-file": [
-    "/api/okou/web/download-file",
-    "/api/zero/web/download-file",
-  ],
   "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
   // Both branded forms used to be the declared paths, so these rows are the
@@ -786,10 +654,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28565: the connector-account reads and writes and the managed SocialKit
   // request, the two contracts that were added while #28278 was in flight and
   // so appeared in no slice's inventory.
-  "/api/social/request": [
-    "/api/okou/social/request",
-    "/api/zero/social/request",
-  ],
   // #28600: the Slack OAuth callback and the three inbound Slack webhooks, the
   // last contracts to leave the brand namespace. The Slack app configuration
   // holds one URL per endpoint and cannot be repointed from this repository, so
@@ -1042,47 +906,6 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
-  // The #28416 twin of the weather assertion below: the four managed
-  // web-content and model routes, driven through the same production app
-  // factory. Kept per family so a failure names what regressed.
-  it("serves the migrated web-content paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const families = [
-      { routes: imageRecognitionRoutes, suffix: "recognize" },
-      { routes: scrapeRoutes, suffix: "scrape" },
-      { routes: translationRoutes, suffix: "translate" },
-      { routes: webSearchRoutes, suffix: "web-search" },
-    ];
-
-    for (const { routes, suffix } of families) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}",
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, neutral, okou, zero }).toStrictEqual({
-        suffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
-
   // The #28423 twin: the integration control plane, driven through the same
   // production app factory. The registration assertion above rebuilds the
   // composition itself and so cannot see how `createAppWithRoutes` wires it —
@@ -1128,8 +951,7 @@ describe("branded paths for migrated neutral routes", () => {
 
   // The #28463 twin of the two assertions above, and the one that covers a GET
   // as well as a POST: the slice moved a mix of methods, and a row is matched on
-  // `entry.route.path` alone, so a family whose reads and writes share a prefix
-  // has to be exercised on both. Every branded path below exists only because of
+  // `entry.route.path` alone. Every branded path below exists only because of
   // a table row, and the request goes through the app factory production wires,
   // so a row that never reaches the registration chain fails here rather than
   // 404ing a released CLI or platform build.
@@ -1139,12 +961,6 @@ describe("branded paths for migrated neutral routes", () => {
     });
 
     const endpoints = [
-      {
-        routes: avatarVideoRoutes,
-        method: "GET",
-        suffix: "avatar-video/voices",
-      },
-      { routes: peopleSearchRoutes, method: "POST", suffix: "people-search" },
       {
         routes: uploadsPrepareRoutes,
         method: "POST",
@@ -1208,11 +1024,12 @@ describe("branded paths for migrated neutral routes", () => {
   // because nothing enumerated it.
   //
   // That is the guard #28709 left behind when it took the table from 314 rows
-  // to 184. It deliberately did not leave a case asserting the removed rows now
-  // 404: `docs/fallback.md` section 1 rules that class out, and the route table
-  // already proves the registration is gone. What needs a test is the opposite
-  // direction — a row disappearing without the request-log evidence #26701
-  // requires — which is what this count and the per-family cases catch.
+  // to 184, and #28711 kept when it took the 42 drained rows that left 142.
+  // Neither left a case asserting the removed rows now 404: `docs/fallback.md`
+  // section 1 rules that class out, and the route table already proves the
+  // registration is gone. What needs a test is the opposite direction — a row
+  // disappearing without the request-log evidence #26701 requires — which is
+  // what this count and the per-family cases catch.
   //
   // `MIGRATED_ROUTE_PATHS` carries every row but the two the maps and weather
   // cases own, which is why the total below is two higher than its size. Raise
@@ -1220,7 +1037,7 @@ describe("branded paths for migrated neutral routes", () => {
   // failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
     const MIGRATED_ROWS_WITH_OWN_CASE = 2;
-    const MIGRATED_BRANDED_ROW_COUNT = 184;
+    const MIGRATED_BRANDED_ROW_COUNT = 142;
 
     expect(
       Object.keys(MIGRATED_ROUTE_PATHS).length + MIGRATED_ROWS_WITH_OWN_CASE,
@@ -1437,47 +1254,6 @@ describe("branded paths for migrated neutral routes", () => {
 
       expect({ neutralSuffix, neutral, okou, zero }).toStrictEqual({
         neutralSuffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
-
-  // The #28565 twin, for the two contracts that arrived after their families
-  // had already migrated. One case carries a path parameter, because a row is
-  // matched on `entry.route.path` and a template that loses a parameter still
-  // looks plausible in the table while 404ing every real request. Requests are
-  // unauthenticated, so the status is whatever the auth layer returns — the
-  // point is that all three forms reach the same handler.
-  it("serves the migrated connector-account and social paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const endpoints = [
-      { routes: socialRoutes, method: "POST", suffix: "social/request" },
-    ] as const;
-
-    for (const { routes, method, suffix } of endpoints) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method,
-          headers: { "content-type": "application/json" },
-          ...(method === "POST" ? { body: "{}" } : {}),
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, neutral, okou, zero }).toStrictEqual({
-        suffix,
         neutral,
         okou: neutral,
         zero: neutral,

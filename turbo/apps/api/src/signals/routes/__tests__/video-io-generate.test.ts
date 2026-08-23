@@ -777,7 +777,7 @@ describe("POST /api/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -994,7 +994,7 @@ describe("POST /api/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1084,7 +1084,7 @@ describe("POST /api/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1373,7 +1373,7 @@ describe("POST /api/video-io/generate", () => {
     );
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1526,7 +1526,7 @@ describe("POST /api/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1637,7 +1637,7 @@ describe("POST /api/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1955,7 +1955,7 @@ describe("POST /api/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2112,7 +2112,7 @@ describe("POST /api/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2355,7 +2355,7 @@ describe("POST /api/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2454,7 +2454,7 @@ describe("POST /api/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2523,7 +2523,7 @@ describe("POST /api/video-io/generate", () => {
       }),
     );
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -2584,7 +2584,7 @@ describe("POST /api/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);

@@ -603,28 +603,6 @@ describe("POST /api/image-io/generate", () => {
     });
   });
 
-  // #28415 moved the contract to the neutral path, so both branded paths reach
-  // this handler only through `MIGRATED_BRANDED_PATHS`. A released CLI build
-  // still posts to the `okou` form; 401 rather than 404 is what proves it
-  // still arrives.
-  it("still serves the branded paths released callers hold", async () => {
-    const app = createImageIoTestApp();
-
-    const statuses: number[] = [];
-    for (const path of [
-      "/api/okou/image-io/generate",
-      "/api/zero/image-io/generate",
-    ]) {
-      const response = await app.request(path, {
-        method: "POST",
-        body: JSON.stringify({ prompt: "a cat" }),
-      });
-      statuses.push(response.status);
-    }
-
-    expect(statuses).toStrictEqual([401, 401]);
-  });
-
   it("returns 403 when a zero token lacks file write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,

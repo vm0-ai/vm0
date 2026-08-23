@@ -48,7 +48,7 @@ async function createSearchThread(
   return { agentId: agent.agentId, threadId: thread.id };
 }
 
-describe("GET /api/okou/chat/search durable reader", () => {
+describe("GET /api/chat/search durable reader", () => {
   it("serves message identities and context after source events are deleted", async () => {
     const owner = bdd.user();
     const source = await createSearchThread(

@@ -267,7 +267,7 @@ describe("JoggAI built-in avatar video routes", () => {
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatars = await app.request(
-      "/api/zero/avatar-video/avatars?page=2&pageSize=20&aspectRatio=portrait&style=professional",
+      "/api/avatar-video/avatars?page=2&pageSize=20&aspectRatio=portrait&style=professional",
       { headers: authHeaders() },
     );
     expect(avatars.status).toBe(200);
@@ -287,7 +287,7 @@ describe("JoggAI built-in avatar video routes", () => {
     });
 
     const voices = await app.request(
-      "/api/zero/avatar-video/voices?page=3&pageSize=25&language=english&gender=male",
+      "/api/avatar-video/voices?page=3&pageSize=25&language=english&gender=male",
       { headers: authHeaders() },
     );
     expect(voices.status).toBe(200);
@@ -349,7 +349,7 @@ describe("JoggAI built-in avatar video routes", () => {
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatarResponse = await app.request(
-      "/api/zero/avatar-video/avatars?page=2&pageSize=10",
+      "/api/avatar-video/avatars?page=2&pageSize=10",
       { headers: authHeaders() },
     );
     expect(avatarResponse.status).toBe(200);
@@ -363,7 +363,7 @@ describe("JoggAI built-in avatar video routes", () => {
     ).toStrictEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
 
     const voiceResponse = await app.request(
-      "/api/zero/avatar-video/voices?page=3&pageSize=10",
+      "/api/avatar-video/voices?page=3&pageSize=10",
       { headers: authHeaders() },
     );
     expect(voiceResponse.status).toBe(200);
@@ -540,7 +540,7 @@ describe("JoggAI built-in avatar video routes", () => {
     await flushWaitUntilForTest();
 
     const status = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(status.status).toBe(200);

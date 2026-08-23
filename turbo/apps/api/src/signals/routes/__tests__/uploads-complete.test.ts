@@ -146,7 +146,7 @@ function addUploadObject(
   });
 }
 
-describe("POST /api/zero/uploads/complete", () => {
+describe("POST /api/uploads/complete", () => {
   it("completes a run-scoped upload after the object exists", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();
