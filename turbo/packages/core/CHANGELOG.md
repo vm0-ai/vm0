@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.583.1](https://github.com/vm0-ai/vm0/compare/core-v8.583.0...core-v8.583.1) (2026-08-23)
+
+
+### Refactoring
+
+* **api:** retire target-only connector mutations ([#28708](https://github.com/vm0-ai/vm0/issues/28708)) ([a600615](https://github.com/vm0-ai/vm0/commit/a6006156e747df605582c3aa2742806f58263658))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.1
+
 ## [8.583.0](https://github.com/vm0-ai/vm0/compare/core-v8.582.1...core-v8.583.0) (2026-08-23)
 
 
