@@ -294,7 +294,10 @@ async function assertSchemaContract(client: Client): Promise<void> {
   for (const check of checks.rows) {
     assert.equal(check.valid, true, `${check.name} must be validated`);
     if (immutableReferenceCheckSet.has(check.name)) {
-      assert.match(check.definition, /IS NOT DISTINCT FROM/u);
+      assert.match(
+        check.definition,
+        /(?:IS NOT DISTINCT FROM|NOT \([^()]+ IS DISTINCT FROM [^()]+\))/u,
+      );
       assert.equal(check.definition.match(/IS NULL/gu)?.length, 2);
     } else {
       assert.doesNotMatch(check.definition, /IS NOT DISTINCT FROM/u);
