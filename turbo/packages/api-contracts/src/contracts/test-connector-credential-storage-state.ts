@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { connectorAccountMutationIntentSchema } from "./connector-accounts";
 
 const c = initContract();
 
@@ -51,6 +52,10 @@ export const testConnectorCredentialStorageStateActionBodySchema =
     }),
     z.object({
       action: z.literal("read-custom-oauth-state"),
+      state: z.string(),
+    }),
+    z.object({
+      action: z.literal("read-oauth-state-account-mutation"),
       state: z.string(),
     }),
     z.object({
@@ -197,6 +202,9 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
+    account_mutation: connectorAccountMutationIntentSchema
+      .nullable()
+      .optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     feishu_member_connection: feishuMemberConnectionStateSchema
       .nullable()

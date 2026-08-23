@@ -69,7 +69,6 @@ import {
 import {
   connectorAccountSiblingWritesEnabled,
   normalizeConnectorAccountMutation,
-  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
@@ -503,7 +502,7 @@ export const startCustomConnectorOAuth2$ = command(
       readonly redirectUri: string;
       readonly publicBrand: PublicBrand;
       readonly agentId?: string;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
       readonly feishuContext?: {
         readonly installationId?: string;
         readonly expectedOpenId?: string;
@@ -605,7 +604,7 @@ export const startCustomConnectorOAuth2$ = command(
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),
-        ...storedConnectorAccountMutationWrite(args.account),
+        accountMutation: args.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return resolution;

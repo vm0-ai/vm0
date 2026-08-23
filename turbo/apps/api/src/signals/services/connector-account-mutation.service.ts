@@ -51,13 +51,3 @@ export function storedConnectorAccountMutationSelection(relation: SQLWrapper) {
     to_jsonb(${relation}) -> 'account_mutation'
   `.mapWith(storedConnectorAccountMutationDecoder);
 }
-
-export function storedConnectorAccountMutationWrite(
-  intent: ConnectorAccountMutationIntent | null | undefined,
-): { readonly accountMutation?: StoredConnectorAccountMutation } {
-  // Omitted client intent remains a supported compatibility boundary until
-  // #28589 contracts each applicable route and persisted state authority.
-  return intent === null || intent === undefined
-    ? {}
-    : { accountMutation: intent };
-}
