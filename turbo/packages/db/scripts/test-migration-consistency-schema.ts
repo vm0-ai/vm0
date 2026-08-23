@@ -53,6 +53,13 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import {
+  AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH,
+  AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME,
+  AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION,
+  validateAgentRunBuiltInModelKeyBridgeSchema,
+  validateAgentRunBuiltInModelKeyExpansionMigration,
+} from "./test-agent-run-built-in-model-key-bridge";
+import {
   validateCheckpointAgentComposeSnapshotNullableMigration,
   validateCheckpointAgentComposeSnapshotNullableSchema,
 } from "./test-checkpoint-agent-compose-snapshot-nullable";
@@ -2582,6 +2589,15 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "usage_pack_subscriptions",
     triggerName: "sync_usage_pack_pending_snapshot_guard_0954",
   },
+  // Temporary #28679 DB/API rollout bridge; observed maximum version skew is
+  // ~102 minutes. Remove in #28368 only after the canonical reader/writer
+  // switch, legacy contract, and rollback drain close.
+  {
+    definition: AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION,
+    schemaName: "public",
+    tableName: "agent_runs",
+    triggerName: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME,
+  },
   // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
   // Previous API revisions explicitly insert NULL for omitted avatars. Remove
   // in #27356 after those writers and their rollback window drain.
@@ -2649,6 +2665,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "ced36d9b55fb6907880d545aa7f36dbe",
     functionName: "sync_usage_pack_pending_snapshot_guard_0954",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same #28679 expand/mirror bridge and #28368 removal gate as its trigger.
+  {
+    bodyHash: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH,
+    functionName: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME,
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -3280,6 +3304,7 @@ async function validatePermanentAgentRunMetadataState(
       "model_runtime_provider",
       "model_runtime_model",
       "vm0_model_key_id",
+      "built_in_model_key_id",
       "codex_service_tier",
       "selected_video_model",
       "selected_image_model",
@@ -11885,6 +11910,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateAgentRunBuiltInModelKeyExpansionMigration();
     await validateCheckpointAgentComposeSnapshotNullableMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
@@ -11909,6 +11935,9 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
+    await validateAgentRunBuiltInModelKeyBridgeSchema(dbUrl1, {
+      installMigrationOwnedBridge: false,
+    });
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validateFreshAgentComposeProvenanceSchema(dbUrl1);
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
@@ -11935,6 +11964,9 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await validateAgentRunBuiltInModelKeyBridgeSchema(dbUrl2, {
+      installMigrationOwnedBridge: true,
+    });
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl2);
@@ -11972,6 +12004,9 @@ async function main(): Promise<void> {
       );
       console.log(
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
+      );
+      console.log(
+        "   ✅ Agent-run built-in model key bridge is compatible in both rollout directions",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
