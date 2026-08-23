@@ -11,6 +11,12 @@ import { Client } from "pg";
 
 import { logDetailRunSelection } from "../../../apps/api/src/signals/services/log-detail-run-selection";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import {
+  agentRunModelKeyBackfillProcedureStatement as backfillProcedureStatement,
+  agentRunModelKeyBackfillProcedureCount as backfillProcedureCount,
+  validateAgentRunBuiltInModelKeyBackfillMigrationSql as validateBackfillMigrationSql,
+  validateAgentRunBuiltInModelKeyBackfillLockRetryAndTimeout,
+} from "./test-agent-run-built-in-model-key-backfill";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.join(scriptDirectory, "..");
@@ -18,10 +24,12 @@ const repositoryDirectory = path.resolve(packageDirectory, "../../..");
 const migrationsDirectory = path.join(packageDirectory, "src/migrations");
 const previousMigration = "0970_wealthy_squadron_sinister";
 const expansionMigration = "0971_daily_namor";
+const backfillMigration = "0973_backfill_agent_run_built_in_model_key_ids";
 const upgradeDatabase = "migration_agent_run_built_in_model_key_bridge";
 const metadataPresenceConstraint = "agent_runs_metadata_presence_check";
 const mirrorConflictConstraint = "agent_runs_model_key_id_mirror_check";
 let cachedMigrationOwnedBridgeStatements: readonly string[] | undefined;
+let cachedBackfillMigrationStatements: readonly string[] | undefined;
 
 export const AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME =
   "sync_agent_run_model_key_ids_0971";
@@ -33,6 +41,11 @@ export const AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH =
 interface ModelKeyRow {
   readonly builtInModelKeyId: string | null;
   readonly vm0ModelKeyId: string | null;
+}
+
+interface ModelKeyStorageRow extends ModelKeyRow {
+  readonly id: string;
+  readonly transactionId: string;
 }
 
 interface BridgeFixture {
@@ -50,6 +63,7 @@ interface BridgeFixture {
   readonly orgId: string;
   readonly runIds: {
     readonly canonicalInsert: string;
+    readonly canonicalOnlyPreflight: string;
     readonly conflictInsert: string;
     readonly dualUpdate: string;
     readonly equalInsert: string;
@@ -58,6 +72,7 @@ interface BridgeFixture {
     readonly legacyInsert: string;
     readonly lifecycleNull: string;
     readonly productNull: string;
+    readonly unequalPreflight: string;
   };
   readonly sessionId: string;
   readonly userId: string;
@@ -80,6 +95,7 @@ function createFixture(label: string): BridgeFixture {
     orgId: `agent-run-model-key-${label}-org-${identity}`,
     runIds: {
       canonicalInsert: randomUUID(),
+      canonicalOnlyPreflight: randomUUID(),
       conflictInsert: randomUUID(),
       dualUpdate: randomUUID(),
       equalInsert: randomUUID(),
@@ -88,6 +104,7 @@ function createFixture(label: string): BridgeFixture {
       legacyInsert: randomUUID(),
       lifecycleNull: randomUUID(),
       productNull: randomUUID(),
+      unequalPreflight: randomUUID(),
     },
     sessionId: randomUUID(),
     userId: `agent-run-model-key-${label}-user-${identity}`,
@@ -164,6 +181,18 @@ async function migrationOwnedBridgeStatements(): Promise<readonly string[]> {
   );
   cachedMigrationOwnedBridgeStatements = bridgeStatements(migrationSql);
   return cachedMigrationOwnedBridgeStatements;
+}
+
+async function backfillMigrationStatements(): Promise<readonly string[]> {
+  if (cachedBackfillMigrationStatements) {
+    return cachedBackfillMigrationStatements;
+  }
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${backfillMigration}.sql`),
+    "utf8",
+  );
+  cachedBackfillMigrationStatements = migrationStatements(migrationSql);
+  return cachedBackfillMigrationStatements;
 }
 
 async function executeStatements(
@@ -393,6 +422,65 @@ async function readModelKeyRow(
   );
   assert.equal(result.rows.length, 1);
   return result.rows[0]!;
+}
+
+async function readModelKeyStorageRows(
+  client: Client,
+  runIds: readonly string[],
+): Promise<ModelKeyStorageRow[]> {
+  const result = await client.query<ModelKeyStorageRow>(
+    `
+      SELECT
+        "id"::text AS "id",
+        "vm0_model_key_id"::text AS "vm0ModelKeyId",
+        "built_in_model_key_id"::text AS "builtInModelKeyId",
+        "xmin"::text AS "transactionId"
+      FROM "agent_runs"
+      WHERE "id" = ANY($1::uuid[])
+      ORDER BY "id"
+    `,
+    [runIds],
+  );
+  assert.equal(result.rows.length, runIds.length);
+  return result.rows;
+}
+
+async function insertBridgeBypassedModelKeyRow(
+  client: Client,
+  args: {
+    readonly builtInModelKeyId: string | null;
+    readonly fixture: BridgeFixture;
+    readonly prompt: string;
+    readonly runId: string;
+    readonly vm0ModelKeyId: string | null;
+  },
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    await client.query("SET LOCAL session_replication_role = replica");
+    await client.query(
+      `
+        INSERT INTO "agent_runs" (
+          "id", "user_id", "org_id", "session_id", "status", "prompt",
+          "trigger_source", "autonomy_budget", "vm0_model_key_id",
+          "built_in_model_key_id"
+        ) VALUES ($1, $2, $3, $4, 'pending', $5, 'chat', 0, $6, $7)
+      `,
+      [
+        args.runId,
+        args.fixture.userId,
+        args.fixture.orgId,
+        args.fixture.sessionId,
+        args.prompt,
+        args.vm0ModelKeyId,
+        args.builtInModelKeyId,
+      ],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
 }
 
 async function validatePreExpandApplicationStatement(
@@ -976,6 +1064,144 @@ async function bridgeObjectCount(client: Client): Promise<{
   return result.rows[0]!;
 }
 
+async function readResidualShape(client: Client): Promise<{
+  readonly canonicalOnly: number;
+  readonly legacyOnly: number;
+  readonly unequalDual: number;
+}> {
+  const result = await client.query<{
+    canonicalOnly: number;
+    legacyOnly: number;
+    unequalDual: number;
+  }>(`
+    SELECT
+      count(*) FILTER (
+        WHERE "vm0_model_key_id" IS NOT NULL
+          AND "built_in_model_key_id" IS NULL
+      )::integer AS "legacyOnly",
+      count(*) FILTER (
+        WHERE "vm0_model_key_id" IS NULL
+          AND "built_in_model_key_id" IS NOT NULL
+      )::integer AS "canonicalOnly",
+      count(*) FILTER (
+        WHERE "vm0_model_key_id" IS NOT NULL
+          AND "built_in_model_key_id" IS NOT NULL
+          AND "vm0_model_key_id" IS DISTINCT FROM "built_in_model_key_id"
+      )::integer AS "unequalDual"
+    FROM "agent_runs"
+  `);
+  assert.equal(result.rows.length, 1);
+  return result.rows[0]!;
+}
+
+async function expectBackfillFailureBeforeMutation(
+  client: Client,
+  args: {
+    readonly expectedError: RegExp;
+    readonly protectedRunId: string;
+    readonly statements: readonly string[];
+  },
+): Promise<void> {
+  const before = await readModelKeyStorageRows(client, [args.protectedRunId]);
+  await assert.rejects(
+    executeStatements(client, args.statements),
+    args.expectedError,
+  );
+  await client.query("ROLLBACK");
+  assert.deepEqual(
+    await readModelKeyStorageRows(client, [args.protectedRunId]),
+    before,
+  );
+  assert.equal(await backfillProcedureCount(client), 0);
+}
+
+async function validateBackfillPreflightFailures(
+  client: Client,
+  fixture: BridgeFixture,
+  statements: readonly string[],
+): Promise<void> {
+  await insertBridgeBypassedModelKeyRow(client, {
+    builtInModelKeyId: fixture.keys.canonicalInsert,
+    fixture,
+    prompt: "canonical-only preflight conflict",
+    runId: fixture.runIds.canonicalOnlyPreflight,
+    vm0ModelKeyId: null,
+  });
+  await expectBackfillFailureBeforeMutation(client, {
+    expectedError: /Agent Run model key backfill found canonical-only rows/u,
+    protectedRunId: fixture.runIds.historical,
+    statements,
+  });
+  await client.query(`DELETE FROM "agent_runs" WHERE "id" = $1`, [
+    fixture.runIds.canonicalOnlyPreflight,
+  ]);
+
+  await insertBridgeBypassedModelKeyRow(client, {
+    builtInModelKeyId: fixture.keys.conflictCanonical,
+    fixture,
+    prompt: "unequal dual preflight conflict",
+    runId: fixture.runIds.unequalPreflight,
+    vm0ModelKeyId: fixture.keys.conflictLegacy,
+  });
+  await expectBackfillFailureBeforeMutation(client, {
+    expectedError: /Agent Run model key backfill found unequal dual rows/u,
+    protectedRunId: fixture.runIds.historical,
+    statements,
+  });
+  await client.query(`DELETE FROM "agent_runs" WHERE "id" = $1`, [
+    fixture.runIds.unequalPreflight,
+  ]);
+
+  await client.query(
+    `ALTER TABLE "agent_runs" DISABLE TRIGGER "${AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME}"`,
+  );
+  try {
+    await expectBackfillFailureBeforeMutation(client, {
+      expectedError:
+        /Agent Run model key backfill requires the accepted enabled 0971 bridge/u,
+      protectedRunId: fixture.runIds.historical,
+      statements,
+    });
+  } finally {
+    await client.query(
+      `ALTER TABLE "agent_runs" ENABLE TRIGGER "${AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME}"`,
+    );
+  }
+  await validateBridgeCatalog(client);
+}
+
+function preservedBackfillRunIds(fixture: BridgeFixture): readonly string[] {
+  return [
+    fixture.runIds.canonicalInsert,
+    fixture.runIds.equalInsert,
+    fixture.runIds.legacyInsert,
+    fixture.runIds.lifecycleNull,
+    fixture.runIds.productNull,
+  ];
+}
+
+async function validateBackfillOutcome(
+  client: Client,
+  fixture: BridgeFixture,
+  preservedBefore: readonly ModelKeyStorageRow[],
+): Promise<void> {
+  assert.deepEqual(await readModelKeyRow(client, fixture.runIds.historical), {
+    builtInModelKeyId: fixture.keys.historical,
+    vm0ModelKeyId: fixture.keys.historical,
+  });
+  assert.deepEqual(
+    await readModelKeyStorageRows(client, preservedBackfillRunIds(fixture)),
+    preservedBefore,
+  );
+  assert.deepEqual(await readResidualShape(client), {
+    canonicalOnly: 0,
+    legacyOnly: 0,
+    unequalDual: 0,
+  });
+  assert.equal(await backfillProcedureCount(client), 0);
+  await validateBridgeCatalog(client);
+}
+
 export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promise<void> {
   console.log("=== Validate Agent Run built-in model key expansion ===\n");
   const databaseUrl = process.env.DATABASE_URL;
@@ -984,8 +1210,18 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     path.join(migrationsDirectory, `${expansionMigration}.sql`),
     "utf8",
   );
+  const backfillSql = await fs.readFile(
+    path.join(migrationsDirectory, `${backfillMigration}.sql`),
+    "utf8",
+  );
   validateMigrationSql(migrationSql);
+  const backfillStatements = migrationStatements(backfillSql);
+  validateBackfillMigrationSql(backfillSql, backfillStatements, {
+    functionBodyHash: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH,
+    triggerDefinition: AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION,
+  });
   cachedMigrationOwnedBridgeStatements = bridgeStatements(migrationSql);
+  cachedBackfillMigrationStatements = backfillStatements;
   await validateRuntimeCallerIsolation();
 
   const adminUrl = new URL(databaseUrl);
@@ -1022,13 +1258,55 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     await validateBridgeCatalog(client);
     await validateBridgeBehavior(client, fixture);
 
+    const backfillStatements = await backfillMigrationStatements();
+    await validateBackfillPreflightFailures(
+      client,
+      fixture,
+      backfillStatements,
+    );
+    const preservedBefore = await readModelKeyStorageRows(
+      client,
+      preservedBackfillRunIds(fixture),
+    );
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      backfillMigration,
+    );
+    await validateBackfillOutcome(client, fixture, preservedBefore);
+
+    const postBackfillRunIds = [
+      fixture.runIds.historical,
+      ...preservedBackfillRunIds(fixture),
+    ];
+    const stateAfterFirstBackfill = await readModelKeyStorageRows(
+      client,
+      postBackfillRunIds,
+    );
+    await executeStatements(client, backfillStatements);
+    assert.deepEqual(
+      await readModelKeyStorageRows(client, postBackfillRunIds),
+      stateAfterFirstBackfill,
+    );
+    await validateBackfillOutcome(client, fixture, preservedBefore);
+    await validateAgentRunBuiltInModelKeyBackfillLockRetryAndTimeout(
+      upgradeUrl.toString(),
+      fixture,
+      backfillProcedureStatement(backfillStatements),
+    );
+    await validateBridgeCatalog(client);
+
     console.log("   ✅ current logDetail statement runs on the 0970 schema");
     console.log("   ✅ nullable UUID expansion preserves historical storage");
     console.log("   ✅ historical old-only rows remain unbackfilled");
     console.log("   ✅ legacy and canonical inserts mirror bidirectionally");
     console.log("   ✅ OLD/NEW-aware updates honor the actually changed side");
     console.log("   ✅ unequal dual writes reject atomically with 23514");
-    console.log("   ✅ null and metadata-presence states remain legal\n");
+    console.log("   ✅ null and metadata-presence states remain legal");
+    console.log("   ✅ backfill preflight rejects conflicts before mutation");
+    console.log("   ✅ historical rows backfill in an independent stage");
+    console.log("   ✅ a second application performs no row updates");
+    console.log("   ✅ locked rows retry or fail at the bounded timeout\n");
   } finally {
     await cleanupFixture(client, fixture);
     await client.end();
@@ -1067,8 +1345,14 @@ export async function validateAgentRunBuiltInModelKeyBridgeSchema(
     await seedDependencies(client, fixture);
     await insertHistoricalOldOnlyWithBridge(client, fixture);
     await validateBridgeBehavior(client, fixture);
+    const preservedBefore = await readModelKeyStorageRows(
+      client,
+      preservedBackfillRunIds(fixture),
+    );
+    await executeStatements(client, await backfillMigrationStatements());
+    await validateBackfillOutcome(client, fixture, preservedBefore);
     console.log(
-      "   ✅ exact column, constraint, function, trigger, owner, and behavior match\n",
+      "   ✅ exact column, bridge, backfill behavior, and cleanup match\n",
     );
   } finally {
     await cleanupFixture(client, fixture);
