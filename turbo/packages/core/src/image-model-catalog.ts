@@ -83,16 +83,18 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 
 /**
  * Catalog models offered by the user-facing picker, in display order. The
- * picker presents one model per family rather than every catalog entry:
- * Seedream 4, both Flux 1.1 variants, Seedream Lite, and Nano Banana 2 Lite
- * siblings, and the superseded Qwen Image are all deliberately absent. Every
- * one of them stays generatable through its alias and through defaults that
- * already point at it. The picker offers the current entry for each family.
+ * picker presents the current entry for each family rather than every catalog
+ * entry: Seedream 4, both Flux 1.1 variants, Seedream 5 Lite, and the
+ * superseded Qwen Image are all deliberately absent. Every one of them stays
+ * generatable through its alias and through defaults that already point at it.
+ * Nano Banana 2 Lite is the exception: it is offered beside Nano Banana 2
+ * because it is the cheaper way to reach the same family.
  */
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-2",
   "fal-ai/nano-banana-2",
+  "google/nano-banana-2-lite",
   "fal-ai/flux-2-pro",
   "ideogram/v4",
   "dola-seedream-5-0-pro-260628",

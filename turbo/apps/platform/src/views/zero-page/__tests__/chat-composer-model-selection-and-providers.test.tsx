@@ -3545,10 +3545,20 @@ describe("chat composer image model", () => {
     return tab;
   }
 
+  // Matched on the row's own label rather than its text, which also carries
+  // the price tier badge.
   function mediaPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+      return candidate.getAttribute("aria-label") === label;
     });
+  }
+
+  /** The row's text is its label followed by the price tier badge. */
+  function mediaPanelPriceTier(label: string): string | undefined {
+    const text = mediaPanelButton(label)
+      ?.textContent?.replace(/\s+/g, " ")
+      .trim();
+    return text?.slice(label.length).trim();
   }
 
   function findMediaPanelButton(label: string): Promise<HTMLElement> {
@@ -4058,12 +4068,20 @@ describe("chat composer image model", () => {
       expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
     const listbox = screen.getByRole("listbox");
-    // One row per family: superseded and secondary variants stay generatable
-    // by alias but are no longer offered as a choice here.
+    // Superseded and secondary variants stay generatable by alias but are no
+    // longer offered as a choice here.
     expect(within(listbox).queryByText("Flux Pro v1.1")).toBeNull();
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
     expect(within(listbox).queryByText("Qwen Image")).toBeNull();
+    // Nano Banana 2 Lite is the exception: it is the cheaper way into the same
+    // family, so it gets its own row.
+    expect(mediaPanelButton("Nano Banana 2 Lite")).toBeInTheDocument();
+    // Every row states what one image costs relative to the others.
+    expect(mediaPanelPriceTier("Ideogram 4")).toBe("$");
+    expect(mediaPanelPriceTier("GPT Image 1")).toBe("$$");
+    expect(mediaPanelPriceTier("Nano Banana 2 Lite")).toBe("$$");
+    expect(mediaPanelPriceTier("Nano Banana 2")).toBe("$$$");
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
@@ -4347,10 +4365,20 @@ describe("chat composer video model", () => {
     return row?.getAttribute("aria-label") ?? undefined;
   }
 
+  // Matched on the row's own label rather than its text, which also carries
+  // the price tier badge.
   function videoPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+      return candidate.getAttribute("aria-label") === label;
     });
+  }
+
+  /** The row's text is its label followed by the price tier badge. */
+  function videoPanelPriceTier(label: string): string | undefined {
+    const text = videoPanelButton(label)
+      ?.textContent?.replace(/\s+/g, " ")
+      .trim();
+    return text?.slice(label.length).trim();
   }
 
   function findVideoPanelButton(label: string): Promise<HTMLElement> {
@@ -4589,6 +4617,11 @@ describe("chat composer video model", () => {
     // The system default is still Seedance 2.0 fast, which the picker no longer
     // offers, so no row claims the untouched thread.
     expect(selectedVideoModelLabel()).toBeUndefined();
+    // Every row states what one clip costs relative to the others.
+    expect(videoPanelPriceTier("Seedance 1.5 pro")).toBe("$");
+    expect(videoPanelPriceTier("MiniMax H3")).toBe("$$");
+    expect(videoPanelPriceTier("Seedance 2.5")).toBe("$$$");
+    expect(videoPanelPriceTier("Kling v3 4K")).toBe("$$$$");
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
