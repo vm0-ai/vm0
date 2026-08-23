@@ -1,11 +1,13 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, Utc};
+use guest_contracts::{
+    codex_session_path::codex_rollout_relative_path, codex_thread_id::CodexThreadId,
+};
 use serde_json::Value;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use uuid::Uuid;
 
 #[cfg(unix)]
 use std::ffi::CString;
@@ -32,50 +34,36 @@ pub fn codex_home() -> PathBuf {
     PathBuf::from(home).join(".codex")
 }
 
-/// Build the session file path, with `today` injected for testability.
-///
-/// Layout: `<codex_home>/sessions/YYYY/MM/DD/<thread_id>.jsonl`
-pub fn build_session_path(
+fn build_session_path(
     codex_home: &Path,
-    today: NaiveDate,
-    thread_id: &str,
-) -> io::Result<PathBuf> {
-    validate_thread_id(thread_id)?;
-    let yyyy = today.format("%Y").to_string();
-    let mm = today.format("%m").to_string();
-    let dd = today.format("%d").to_string();
-    Ok(codex_home
-        .join("sessions")
-        .join(yyyy)
-        .join(mm)
-        .join(dd)
-        .join(format!("{thread_id}.jsonl")))
+    timestamp: DateTime<Utc>,
+    thread_id: &CodexThreadId,
+) -> PathBuf {
+    codex_home.join(codex_rollout_relative_path(thread_id, timestamp))
 }
 
 pub(crate) fn persist_resume_session(
     codex_home: &Path,
-    today: NaiveDate,
+    timestamp: DateTime<Utc>,
     thread_id: &str,
     events: &[Value],
 ) -> io::Result<()> {
-    validate_thread_id(thread_id)?;
-    let _lock = lock_session(codex_home, thread_id)?;
-    let path = if let Some(path) = find_session_file_for_thread(codex_home, thread_id)? {
+    let thread_id = validate_thread_id(thread_id)?;
+    let _lock = lock_session(codex_home, thread_id.as_str())?;
+    let path = if let Some(path) = find_session_file_for_thread(codex_home, &thread_id)? {
         path
     } else {
-        build_session_path(codex_home, today, thread_id)?
+        build_session_path(codex_home, timestamp, &thread_id)
     };
     let mut existing = read_session_bytes_for_append_in_store(codex_home, &path)?;
     append_events_to_jsonl_bytes(&mut existing, events)?;
     write_session_bytes_in_store(codex_home, &path, existing)
 }
 
-fn validate_thread_id(thread_id: &str) -> io::Result<()> {
-    let parsed = Uuid::parse_str(thread_id).map_err(|_| invalid_thread_id_error(thread_id))?;
-    if parsed.to_string() != thread_id {
-        return Err(invalid_thread_id_error(thread_id));
-    }
-    Ok(())
+fn validate_thread_id(thread_id: &str) -> io::Result<CodexThreadId> {
+    CodexThreadId::parse(thread_id)
+        .filter(|parsed| parsed.as_str() == thread_id)
+        .ok_or_else(|| invalid_thread_id_error(thread_id))
 }
 
 fn invalid_thread_id_error(thread_id: &str) -> io::Error {
@@ -251,9 +239,11 @@ pub fn find_session_file(codex_home: &Path) -> io::Result<Option<PathBuf>> {
     Ok(session_files(codex_home)?.into_iter().next())
 }
 
-fn find_session_file_for_thread(codex_home: &Path, thread_id: &str) -> io::Result<Option<PathBuf>> {
-    validate_thread_id(thread_id)?;
-    let id_norm = thread_id.replace('-', "");
+fn find_session_file_for_thread(
+    codex_home: &Path,
+    thread_id: &CodexThreadId,
+) -> io::Result<Option<PathBuf>> {
+    let id_norm = thread_id.filename_key();
     let matches = session_artifacts_for_resume(codex_home)?
         .into_iter()
         .filter(|path| {
@@ -267,7 +257,7 @@ fn find_session_file_for_thread(codex_home: &Path, thread_id: &str) -> io::Resul
         })
         .collect::<io::Result<Vec<_>>>()?;
     if matches.len() > 1 {
-        return Err(ambiguous_session_files_error(thread_id, &matches));
+        return Err(ambiguous_session_files_error(thread_id.as_str(), &matches));
     }
     Ok(matches.into_iter().next())
 }
@@ -648,33 +638,4 @@ fn lock_session(codex_home: &Path, thread_id: &str) -> io::Result<SessionLock> {
 #[cfg(not(unix))]
 fn lock_session(_codex_home: &Path, _thread_id: &str) -> io::Result<SessionLock> {
     Ok(SessionLock)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn build_session_path_zero_pads() {
-        let home = Path::new("/tmp/.codex");
-        let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let thread_id = "00000000-0000-0000-0000-000000000001";
-        let p = build_session_path(home, day, thread_id).unwrap();
-        assert_eq!(
-            p,
-            PathBuf::from(format!("/tmp/.codex/sessions/2026/01/05/{thread_id}.jsonl"))
-        );
-    }
-
-    #[test]
-    fn build_session_path_typical() {
-        let home = Path::new("/var/codex");
-        let day = NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();
-        let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
-        let p = build_session_path(home, day, thread_id).unwrap();
-        assert_eq!(
-            p,
-            PathBuf::from(format!("/var/codex/sessions/2026/12/31/{thread_id}.jsonl"))
-        );
-    }
 }

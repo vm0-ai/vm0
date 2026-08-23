@@ -3,6 +3,7 @@ mod messages;
 mod persistence;
 mod scenario;
 
+use chrono::{DateTime, Utc};
 use messages::{write_json_line, write_success};
 use persistence::session_artifact_thread_id;
 use scenario::Scenario;
@@ -81,6 +82,7 @@ struct AppServerThread {
     thread_request_has_runtime_workspace_roots: bool,
     thread_request_model: Option<String>,
     thread_request_model_provider: Option<String>,
+    rollout_timestamp: DateTime<Utc>,
 }
 
 impl AppServerState {
@@ -234,6 +236,7 @@ impl AppServerState {
         thread_request_has_runtime_workspace_roots: bool,
         thread_request_model: Option<String>,
         thread_request_model_provider: Option<String>,
+        rollout_timestamp: DateTime<Utc>,
     ) {
         let artifact_thread_id = self
             .session_artifact_thread_ids
@@ -247,6 +250,7 @@ impl AppServerState {
             thread_request_has_runtime_workspace_roots,
             thread_request_model,
             thread_request_model_provider,
+            rollout_timestamp,
         });
     }
 

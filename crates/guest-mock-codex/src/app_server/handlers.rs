@@ -8,7 +8,7 @@ use super::messages::{
     write_split_json_line_prefix, write_success, write_turn_completion_notifications,
     write_turn_notifications, write_turn_start_notifications,
 };
-use super::persistence::{InputEventContext, persist_input_events};
+use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
 use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
@@ -114,11 +114,13 @@ impl AppServerState {
             }
         }
         let thread_id = Uuid::now_v7().to_string();
+        let rollout_timestamp = session_rollout_timestamp()?;
         self.set_current_thread(
             thread_id.clone(),
             params.get("runtimeWorkspaceRoots").is_some(),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
+            rollout_timestamp,
         );
         let response_thread_id = if self.scenario == Scenario::ThreadStartInvalidThreadId {
             "not-a-valid-codex-thread-id"
@@ -215,11 +217,13 @@ impl AppServerState {
             )?;
             return Ok(ServerAction::Continue);
         }
+        let rollout_timestamp = session_rollout_timestamp()?;
         self.set_current_thread(
             thread_id.to_string(),
             params.get("runtimeWorkspaceRoots").is_some(),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
+            rollout_timestamp,
         );
         let response_thread_id = if self.scenario == Scenario::ResumeDifferentThreadId {
             "0193abcd-ef01-7234-89ab-cdef01234568"
@@ -276,6 +280,7 @@ impl AppServerState {
             current_thread.thread_request_has_runtime_workspace_roots;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
+        let rollout_timestamp = current_thread.rollout_timestamp;
         let inputs = match text_inputs(params) {
             Ok(inputs) => inputs,
             Err(message) => {
@@ -302,6 +307,7 @@ impl AppServerState {
                 thread_request_has_runtime_workspace_roots,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
+                rollout_timestamp: &rollout_timestamp,
                 turn_params: params,
             },
             &inputs,
@@ -484,6 +490,7 @@ impl AppServerState {
             current_thread.thread_request_has_runtime_workspace_roots;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
+        let rollout_timestamp = current_thread.rollout_timestamp;
         let inputs = match text_inputs(params) {
             Ok(inputs) => inputs,
             Err(message) => {
@@ -501,6 +508,7 @@ impl AppServerState {
                 thread_request_has_runtime_workspace_roots,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
+                rollout_timestamp: &rollout_timestamp,
                 turn_params: params,
             },
             &inputs,
