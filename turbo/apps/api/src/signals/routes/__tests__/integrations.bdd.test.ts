@@ -30,6 +30,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { readConnectorOAuthAccountMutation } from "./helpers/connector-credential-storage-state";
 
 /*
 helper gap:
@@ -5747,9 +5748,16 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       "https://www.vm0.test/api/connectors/github/callback",
     );
-    expect(authorizationUrl.searchParams.get("state")).toMatch(
-      /^[0-9a-f]{64}$/u,
-    );
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/u);
+    if (!state) {
+      throw new Error("Expected GitHub authorization state");
+    }
+    await expect(
+      readConnectorOAuthAccountMutation(context, state),
+    ).resolves.toMatchObject({
+      account_mutation: { intent: "single-account" },
+    });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 

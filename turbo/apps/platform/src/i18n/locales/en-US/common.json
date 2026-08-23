@@ -4763,6 +4763,24 @@
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable"
         },
+        "managedModelCooldown": {
+          "description": "Inspect the managed model routes temporarily excluded from fallback selection.",
+          "disabled": "disabled",
+          "disabledExplanation": "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
+          "empty": "No managed model routes are currently in global cooldown.",
+          "enabled": "enabled",
+          "globalActive": "global active cooldowns",
+          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while managed model fallback is enabled here.",
+          "loading": "Loading managed model cooldown diagnostics...",
+          "providerType": "Provider type",
+          "refresh": "Refresh",
+          "selectedModel": "Selected model",
+          "title": "Managed model fallback",
+          "unavailable": "Managed model cooldown diagnostics are unavailable.",
+          "unavailableUntil": "Unavailable until",
+          "upstreamModel": "Upstream model",
+          "workspaceFallback": "workspace fallback"
+        },
         "tab": "Debug"
       },
       "documentTitle": "Preferences",

@@ -12,6 +12,22 @@ const c = initContract();
 const orgUpsertModelProviderRequestSchema =
   upsertModelProviderRequestSchema.omit({ selectedModel: true });
 
+export const managedModelCooldownDiagnosticsSchema = z.object({
+  fallbackEnabled: z.boolean(),
+  activeCooldowns: z.array(
+    z.object({
+      selectedModel: z.string(),
+      providerType: z.string(),
+      upstreamModel: z.string(),
+      unavailableUntil: z.iso.datetime(),
+    }),
+  ),
+});
+
+export type ManagedModelCooldownDiagnostics = z.infer<
+  typeof managedModelCooldownDiagnosticsSchema
+>;
+
 /**
  * Model providers main contract for /api/model-providers
  *
@@ -49,6 +65,25 @@ export const modelProvidersMainContract = c.router({
 });
 
 export type ModelProvidersMainContract = typeof modelProvidersMainContract;
+
+export const modelProviderCooldownDiagnosticsContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/model-providers/cooldown-diagnostics",
+    headers: authHeadersSchema,
+    responses: {
+      200: managedModelCooldownDiagnosticsSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get managed model cooldown diagnostics",
+  },
+});
+
+export type ModelProviderCooldownDiagnosticsContract =
+  typeof modelProviderCooldownDiagnosticsContract;
 
 /**
  * Model providers by type contract for /api/model-providers/:type

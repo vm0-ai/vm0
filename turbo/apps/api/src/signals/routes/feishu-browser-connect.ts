@@ -128,6 +128,7 @@ const startFeishuAccountOAuth$ = command(
         connectorId,
         redirectUri: feishuOAuthAppCallbackUrl(),
         publicBrand: args.publicBrand,
+        account: { intent: "single-account" },
         feishuContext: {
           installationId: args.installationId,
           expectedOpenId: args.openId,
