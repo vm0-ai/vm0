@@ -16,7 +16,6 @@ import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { generateWebImage } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
-const MAX_JOBS = 4;
 const MAX_CONCURRENCY = 3;
 const DEFAULT_SIZE = "1536x1024";
 const POLL_INTERVAL_MS = 500;
@@ -66,12 +65,6 @@ async function readManifest(manifestPath: string): Promise<ImageBatchJob[]> {
   if (lines.length === 0) {
     throw new Error("Image batch manifest must contain at least one job");
   }
-  if (lines.length > MAX_JOBS) {
-    throw new Error(
-      `Image batch manifest may contain at most ${MAX_JOBS} jobs`,
-    );
-  }
-
   const ids = new Set<string>();
   return lines.map((line, index) => {
     if (line.trim() === "") {
@@ -375,7 +368,7 @@ const runCommand = new Command("__run")
 
 export const imageBatchCommand = new Command("image-batch")
   .description(
-    "Run up to four presentation image jobs with bounded concurrency and one transient retry",
+    "Run presentation image jobs with at most three concurrent requests and one transient retry",
   )
   .addCommand(startCommand)
   .addCommand(waitCommand)

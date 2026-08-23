@@ -25,9 +25,6 @@ describe("okou generate image-batch command", () => {
     throw new Error("process.exit called");
   }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
   const temporaryDirectories: string[] = [];
 
   async function makeTemporaryDirectory(): Promise<string> {
@@ -44,7 +41,6 @@ describe("okou generate image-batch command", () => {
 
   afterEach(async () => {
     mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
     await Promise.all(
       temporaryDirectories.splice(0).map(async (path) => {
@@ -53,7 +49,7 @@ describe("okou generate image-batch command", () => {
     );
   });
 
-  it("runs three jobs concurrently, retries once, and preserves manifest order", async () => {
+  it("runs five jobs with at most three in flight, retries once, and preserves manifest order", async () => {
     const root = await makeTemporaryDirectory();
     const manifestPath = join(root, "images.tsv");
     const stateDirectory = join(root, "state");
@@ -64,6 +60,7 @@ describe("okou generate image-batch command", () => {
         "detail\tDog collar detail\t1024x1024",
         "retry\tDog running through grass\t1024x1536",
         "team\tFour dogs together",
+        "fifth\tDog asleep by a window\t1536x1024",
       ].join("\n"),
       "utf8",
     );
@@ -150,6 +147,7 @@ describe("okou generate image-batch command", () => {
         "detail\thttps://embed.example/dog-collar-detail.png",
         "retry\thttps://embed.example/dog-running-through-grass.png",
         "team\thttps://embed.example/four-dogs-together.png",
+        "fifth\thttps://embed.example/dog-asleep-by-a-window.png",
         "",
       ].join("\n"),
     );
@@ -210,35 +208,5 @@ await writeFile(join(stateDirectory, "done"), "0\\n", "utf8");
     expect(stdout).toContain(
       `Image batch joined: ${join(stateDirectory, "results.tsv")}`,
     );
-  });
-
-  it("rejects more than four jobs before creating the state directory", async () => {
-    const root = await makeTemporaryDirectory();
-    const manifestPath = join(root, "images.tsv");
-    const stateDirectory = join(root, "state");
-    await writeFile(
-      manifestPath,
-      Array.from({ length: 5 }, (_, index) => {
-        return `asset-${index}\tDog image ${index}`;
-      }).join("\n"),
-      "utf8",
-    );
-
-    await expect(
-      generateCommand.parseAsync([
-        "node",
-        "cli",
-        "image-batch",
-        "start",
-        manifestPath,
-        stateDirectory,
-      ]),
-    ).rejects.toThrow("process.exit called");
-    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
-      "Image batch manifest may contain at most 4 jobs",
-    );
-    await expect(readFile(stateDirectory, "utf8")).rejects.toMatchObject({
-      code: "ENOENT",
-    });
   });
 });
