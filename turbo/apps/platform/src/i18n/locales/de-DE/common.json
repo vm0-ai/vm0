@@ -598,8 +598,6 @@
       "categories": "Vorlagenkategorien",
       "category": "Vorlagenkategorie",
       "chooseVoice": "Stimme für {{title}} auswählen",
-      "deleteImportedTemplateDescription": "Dadurch wird die Vorlage für alle Personen entfernt, die darauf zugreifen können. Diese Aktion kann nicht rückgängig gemacht werden.",
-      "deleteImportedTemplateTitle": "{{title}} löschen?",
       "filters": {
         "age": "Alter",
         "all": "Alle",

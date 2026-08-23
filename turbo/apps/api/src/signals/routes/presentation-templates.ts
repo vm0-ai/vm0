@@ -12,6 +12,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
+import { publishPresentationTemplatesChangedSafely } from "../external/realtime";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
@@ -127,6 +128,8 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         ),
       )
     : null;
+  await publishPresentationTemplatesChangedSafely(auth.userId);
+  signal.throwIfAborted();
   return {
     status: 200 as const,
     body: presentationTemplateSummary(row, coverUrl, auth.userId),

@@ -8,6 +8,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -23,37 +24,81 @@ const presentationTemplatesVersion$ = state(0);
  * `accept` would surface that as an error toast on a dialog the user opened to
  * browse built-in templates.
  */
-export const presentationTemplates$ = computed(
-  async (get): Promise<readonly PresentationTemplateSummary[]> => {
-    if (!get(presentationTemplateImportEnabled$)) {
-      return [];
-    }
-    get(presentationTemplatesVersion$);
-    const client = get(apiClient$)(presentationTemplatesContract);
-    const result = await accept(client.list(), [200]);
-    return result.body;
-  },
-);
-
 /**
- * Refetch the catalog.
- *
- * The picker calls this as it opens rather than reading a session-long cache,
- * because both facts it renders go stale on their own: an import finishes
- * minutes after the deck was handed over, in a thread the user navigates away
- * from, and every cover URL is a short-lived signed URL.
+ * Refetch the catalog after a mutation or as the picker opens. Page-level
+ * consumers load it while the picker is hidden, and `useLastResolved` keeps
+ * that prefetched result visible during this authoritative revalidation.
  */
 export const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
+
+const refreshPresentationTemplatesFromRealtime$ = command(({ set }) => {
+  set(refreshPresentationTemplates$);
+  return false;
+});
+
+/**
+ * A template is published by the analysis runner, outside any composer or
+ * browser mutation. Subscribe once at the authenticated workspace boundary so
+ * navigation cannot strand a newly published deck in the thread that started
+ * the analysis.
+ */
+export const subscribePresentationTemplatesChanged$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "presentationTemplatesChanged",
+        loopCommand$: refreshPresentationTemplatesFromRealtime$,
+        options: { runOnSubscribe: true },
+      },
+      signal,
+    );
+  },
+);
+
+function createImportedPresentationTemplates$() {
+  return computed(
+    async (get): Promise<readonly PresentationTemplateSummary[]> => {
+      if (!get(presentationTemplateImportEnabled$)) {
+        return [];
+      }
+      get(presentationTemplatesVersion$);
+      const client = get(apiClient$)(presentationTemplatesContract);
+      const result = await accept(client.list(), [200]);
+      return result.body;
+    },
+  );
+}
 
 interface ImportedPresentationTemplateHover {
   readonly templateId: string;
   readonly index: number;
 }
 
+function createImportedPresentationTemplateHoverSignals() {
+  const internalCardHover$ = state<ImportedPresentationTemplateHover | null>(
+    null,
+  );
+  const importedPresentationTemplateCardHover$ = computed((get) => {
+    return get(internalCardHover$);
+  });
+  const setImportedPresentationTemplateCardHover$ = command(
+    ({ set }, hover: ImportedPresentationTemplateHover | null) => {
+      set(internalCardHover$, hover);
+    },
+  );
+  return {
+    internalCardHover$,
+    importedPresentationTemplateCardHover$,
+    setImportedPresentationTemplateCardHover$,
+  };
+}
+
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
 export function createImportedPresentationTemplateSignals() {
+  const importedPresentationTemplates$ = createImportedPresentationTemplates$();
   const internalRequestedTemplateId$ = state<string | null>(null);
   const internalDetailVersion$ = state(0);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -105,17 +150,11 @@ export function createImportedPresentationTemplateSignals() {
     },
   );
 
-  const internalCardHover$ = state<ImportedPresentationTemplateHover | null>(
-    null,
-  );
-  const importedPresentationTemplateCardHover$ = computed((get) => {
-    return get(internalCardHover$);
-  });
-  const setImportedPresentationTemplateCardHover$ = command(
-    ({ set }, hover: ImportedPresentationTemplateHover | null) => {
-      set(internalCardHover$, hover);
-    },
-  );
+  const {
+    internalCardHover$,
+    importedPresentationTemplateCardHover$,
+    setImportedPresentationTemplateCardHover$,
+  } = createImportedPresentationTemplateHoverSignals();
 
   const updateImportedPresentationTemplate$ = command(
     async (
@@ -172,6 +211,7 @@ export function createImportedPresentationTemplateSignals() {
   });
 
   return {
+    importedPresentationTemplates$,
     importedPresentationTemplateRequestedId$,
     importedPresentationTemplateDetail$,
     requestImportedPresentationTemplateDetail$,

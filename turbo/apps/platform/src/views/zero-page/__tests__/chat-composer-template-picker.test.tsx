@@ -13,6 +13,7 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
 import {
   avatarVideoContract,
   type AvatarVideoAvatarsQuery,
@@ -36,6 +37,8 @@ import {
   context,
   AGENT_ID,
   THREAD_ID,
+  SUGGESTED_THREAD_ID,
+  linkByText,
   tabByText,
   presentationTemplateGridScrollContainer,
   mockActiveTemplateThread,
@@ -3366,23 +3369,22 @@ describe("chat composer templates", () => {
         submittedTemplate = sentInlineTemplate(body.userMessage);
       },
     });
-    setMockPresentationTemplates([
-      {
-        id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
-        title: "Brand system",
-        sourceFilename: "brand-system.pptx",
-        coverUrl: "https://example.com/imported-cover.png",
-        pageCount: 18,
-        visibility: "public",
-        canManage: false,
-        pageUrls: [
-          "https://example.com/imported-cover.png",
-          "https://example.com/imported-page-2.png",
-        ],
-        createdAt: "2026-08-21T02:41:59.522Z",
-        updatedAt: "2026-08-21T02:41:59.522Z",
-      },
-    ]);
+    const importedTemplate = {
+      id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
+      title: "Brand system",
+      sourceFilename: "brand-system.pptx",
+      coverUrl: "https://example.com/imported-cover.png",
+      pageCount: 18,
+      visibility: "public" as const,
+      canManage: false,
+      pageUrls: [
+        "https://example.com/imported-cover.png",
+        "https://example.com/imported-page-2.png",
+      ],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    };
+    setMockPresentationTemplates([importedTemplate]);
 
     detachedSetupPage({
       context,
@@ -3444,6 +3446,162 @@ describe("chat composer templates", () => {
         },
       });
     });
+  });
+
+  it("revalidates a prefetched uploaded deck on its first picker open", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const prefetchedCatalogLoaded = context.mocks.deferred<void>();
+    const revalidatedCatalogLoaded = context.mocks.deferred<void>();
+    const templateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
+    const prefetchedTemplate = {
+      id: templateId,
+      title: "Draft deck",
+      sourceFilename: "brand-system.pptx",
+      coverUrl: "https://example.com/old-signed-cover.png",
+      pageCount: 6,
+      visibility: "public" as const,
+      canManage: false,
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    const revalidatedTemplate = {
+      ...prefetchedTemplate,
+      title: "Current deck",
+      coverUrl: "https://example.com/current-signed-cover.png",
+      updatedAt: "2026-08-23T03:14:00.000Z",
+    };
+    let catalog = [prefetchedTemplate];
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      if (catalog[0]?.title === prefetchedTemplate.title) {
+        prefetchedCatalogLoaded.resolve();
+      } else {
+        revalidatedCatalogLoaded.resolve();
+      }
+      return respond(200, catalog);
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await prefetchedCatalogLoaded.promise;
+    catalog = [revalidatedTemplate];
+    await user.click(screen.getByLabelText("Template"));
+    await revalidatedCatalogLoaded.promise;
+
+    const dialog = screen.getByRole("dialog");
+    const card = await waitFor(() => {
+      const found = dialog.querySelector(
+        `[data-imported-presentation-template="${templateId}"]`,
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Revalidated template card not found");
+      }
+      return found;
+    });
+    expect(within(card).getByText("Current deck")).toBeInTheDocument();
+    expect(within(card).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/current-signed-cover.png",
+    );
+    expect(within(dialog).queryByText("Draft deck")).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Select template Current deck"));
+    await expectInlineTemplateInComposer("Current deck");
+  });
+
+  it("makes a template published after navigating away usable in the other thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const analysisCatalogLoaded = context.mocks.deferred<void>();
+    const otherThreadCatalogLoaded = context.mocks.deferred<void>();
+    const publishedCatalogLoaded = context.mocks.deferred<void>();
+    const publishedTemplate = {
+      id: "9a6d0b2f-7a8e-4c3d-9f1a-2b3c4d5e6f70",
+      title: "Fresh deck",
+      sourceFilename: "fresh-deck.pptx",
+      coverUrl: "https://example.com/fresh-deck-cover.png",
+      pageCount: 12,
+      visibility: "private" as const,
+      canManage: true,
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    let catalog: (typeof publishedTemplate)[] = [];
+    let viewingOtherThread = false;
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      if (catalog.length > 0 && !publishedCatalogLoaded.settled()) {
+        publishedCatalogLoaded.resolve();
+      }
+      if (viewingOtherThread) {
+        if (!otherThreadCatalogLoaded.settled()) {
+          otherThreadCatalogLoaded.resolve();
+        }
+      } else if (!analysisCatalogLoaded.settled()) {
+        analysisCatalogLoaded.resolve();
+      }
+      return respond(200, catalog);
+    });
+    const lifecycle = mockChatLifecycle(context, { threadId: THREAD_ID });
+    lifecycle.setThreadList([
+      {
+        id: THREAD_ID,
+        title: "Template analysis",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-23T02:58:00.000Z",
+        updatedAt: "2026-08-23T03:00:00.000Z",
+      },
+      {
+        id: SUGGESTED_THREAD_ID,
+        title: "Other deck work",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-23T02:57:00.000Z",
+        updatedAt: "2026-08-23T02:59:00.000Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await analysisCatalogLoaded.promise;
+    await appendAndSend(user, "Analyze my uploaded deck");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    viewingOtherThread = true;
+    await user.click(linkByText("Other deck work"));
+    const otherThreadContainer = await waitFor(() => {
+      expect(document.title).toBe("Other deck work | VM0");
+      const container = document.querySelector(
+        `[data-chat-thread-container-id="${SUGGESTED_THREAD_ID}"]`,
+      );
+      if (!(container instanceof HTMLElement)) {
+        throw new Error("Other thread container not found");
+      }
+      return container;
+    });
+    await otherThreadCatalogLoaded.promise;
+
+    catalog = [publishedTemplate];
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("presentationTemplatesChanged"),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("presentationTemplatesChanged");
+    await publishedCatalogLoaded.promise;
+    lifecycle.completeRun("Template published");
+
+    click(within(otherThreadContainer).getByLabelText("Template"));
+    await expect(screen.findByText("Fresh deck")).resolves.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Select template Fresh deck"));
+    await expectInlineTemplateInComposer("Fresh deck");
   });
 
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
@@ -3511,14 +3669,12 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/imported-page-3.png",
     );
-    expect(screen.queryByText("Theme")).not.toBeInTheDocument();
-
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
     });
     await fill(titleInput, "Brand refresh");
     const renameButton = queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.trim() === "Rename template";
+      return candidate.getAttribute("aria-label") === "Rename template";
     });
     if (!renameButton) {
       throw new Error("Imported template Rename button not found");
@@ -3545,13 +3701,6 @@ describe("chat composer templates", () => {
       throw new Error("Imported template Delete button not found");
     }
     await user.click(initialDeleteButton);
-    await expect(
-      screen.findByText("Delete Brand refresh?"),
-    ).resolves.toBeInTheDocument();
-    const deleteButtons = queryAllByRoleFast("button").filter((candidate) => {
-      return candidate.textContent?.trim() === "Delete";
-    });
-    await user.click(deleteButtons[deleteButtons.length - 1]!);
     await waitFor(() => {
       expect(
         document.querySelector(

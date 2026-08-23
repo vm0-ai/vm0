@@ -331,6 +331,10 @@ describe("presentation template publish", () => {
       pageCount: 2,
     });
     expect(published.body.coverUrl).not.toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "presentationTemplatesChanged",
+      null,
+    );
 
     // The row is usable immediately: nothing is pending on a later transition.
     const listed = await accept(

@@ -128,6 +128,17 @@ export async function publishThreadListChangedSafely(
 }
 
 /**
+ * Notify the owner that a runner published a reusable presentation template.
+ * The catalog is server-owned, so every open client re-fetches it instead of
+ * trying to reconstruct the new entry from the notification payload.
+ */
+export async function publishPresentationTemplatesChangedSafely(
+  userId: string,
+): Promise<void> {
+  await publishUserSignal([userId], "presentationTemplatesChanged");
+}
+
+/**
  * Notify an open chat thread that server-owned detail fields changed without a
  * request from that client. The client re-fetches the authoritative detail.
  */

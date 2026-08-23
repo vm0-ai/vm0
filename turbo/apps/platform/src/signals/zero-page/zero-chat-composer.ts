@@ -362,8 +362,9 @@ function createTemplatePickerDialogSignals() {
     set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalTemplatePickerOpen$, open);
     if (open) {
-      // Opening is the moment the imported catalog has to be current: an import
-      // started here finishes later in another thread, and cover URLs expire.
+      // The always-mounted composer has already prefetched the catalog. This
+      // revalidates external mutations and expiring signed URLs while
+      // useLastResolved keeps that prefetched result on screen.
       set(refreshPresentationTemplates$);
     }
   });
