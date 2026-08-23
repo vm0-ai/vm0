@@ -4668,6 +4668,12 @@
         "chatModels": "Modelos de chat",
         "fast": "Rápido",
         "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
+        "generationPriceTiers": {
+          "higher": "Coste superior por generación",
+          "highest": "Coste más alto por generación",
+          "lowest": "Coste más bajo por generación",
+          "typical": "Coste habitual por generación"
+        },
         "imageModels": "Modelos de imagen",
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",

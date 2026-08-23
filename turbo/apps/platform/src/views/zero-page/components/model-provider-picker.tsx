@@ -65,6 +65,7 @@ import { resolveExplicitModelSelection$ } from "../../../signals/zero-page/model
 import { modelPickerPanelHeightRef$ } from "../../../signals/zero-page/model-picker-panel-height";
 import { detach, Reason } from "../../../signals/utils";
 import {
+  getMediaModelPriceTierLabel,
   getModelBrandIconType,
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
@@ -82,6 +83,8 @@ export interface MediaModelPanelOption {
   readonly key: string;
   readonly label: string;
   readonly icon: ReactNode;
+  /** What one reference generation costs, relative to the other rows here. */
+  readonly priceTier: Vm0ModelPriceTier;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
@@ -166,7 +169,13 @@ const CODEX_FAST_SELECTED_PREFIX = "__codex_fast_selected__:";
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
   "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
 
-function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
+function PriceTierBadge({
+  tier,
+  description,
+}: {
+  tier: Vm0ModelPriceTier;
+  description: string;
+}) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -176,7 +185,7 @@ function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {getVm0ModelPriceTierLabel(tier)}
+          {description}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -537,7 +546,10 @@ function ModelFirstPolicyRowContent({
         {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
       </span>
       {builtInPriceTier !== undefined ? (
-        <PriceTierBadge tier={builtInPriceTier} />
+        <PriceTierBadge
+          tier={builtInPriceTier}
+          description={getVm0ModelPriceTierLabel(builtInPriceTier)}
+        />
       ) : (
         <ByokBadge />
       )}
@@ -1031,6 +1043,10 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
     >
       {option.icon}
       <span className="min-w-0 flex-1 truncate">{option.label}</span>
+      <PriceTierBadge
+        tier={option.priceTier}
+        description={getMediaModelPriceTierLabel(option.priceTier)}
+      />
       {option.selected && (
         <Check size={15} className="absolute right-2 text-foreground" />
       )}
@@ -1190,9 +1206,10 @@ function ModelFirstModelPickerContentLayout({
         mediaModelPanel
           ? // The 302px bordered cap leaves a 300px scroll viewport: enough for
             // the header and seven model rows, while an eighth adds one 32px
-            // row plus its 4px gap. The cap grew with the header when it went
-            // from `py-1` to `py-2`; both numbers move together or seven rows
-            // stop fitting.
+            // row plus its 4px gap. The image category is the one that runs
+            // past it today, and scrolls by that single row. The cap grew with
+            // the header when it went from `py-1` to `py-2`; both numbers move
+            // together or seven rows stop fitting.
             "max-h-[302px]"
           : "max-h-[280px]",
       )}

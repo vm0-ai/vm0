@@ -4617,6 +4617,12 @@
         "chatModels": "チャットモデル",
         "fast": "速い",
         "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
+        "generationPriceTiers": {
+          "higher": "1 回の生成あたりのコストは高め",
+          "highest": "1 回の生成あたりのコストが最も高い",
+          "lowest": "1 回の生成あたりのコストが最も低い",
+          "typical": "1 回の生成あたりの標準的なコスト"
+        },
         "imageModels": "画像モデル",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",

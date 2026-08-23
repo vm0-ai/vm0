@@ -4618,6 +4618,12 @@
         "chatModels": "Chatmodelle",
         "fast": "Schnell",
         "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
+        "generationPriceTiers": {
+          "higher": "Höhere Kosten pro Generierung",
+          "highest": "Höchste Kosten pro Generierung",
+          "lowest": "Niedrigste Kosten pro Generierung",
+          "typical": "Typische Kosten pro Generierung"
+        },
         "imageModels": "Bildmodelle",
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",

@@ -4617,6 +4617,12 @@
         "chatModels": "Model chat",
         "fast": "Cepat",
         "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
+        "generationPriceTiers": {
+          "higher": "Biaya lebih tinggi per generasi",
+          "highest": "Biaya tertinggi per generasi",
+          "lowest": "Biaya terendah per generasi",
+          "typical": "Biaya umum per generasi"
+        },
         "imageModels": "Model gambar",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
