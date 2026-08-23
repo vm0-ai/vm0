@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.13...guest-contracts-v0.11.14) (2026-08-23)
+
+
+### Bug Fixes
+
+* **rust:** align mock codex rollout paths ([#28692](https://github.com/vm0-ai/vm0/issues/28692)) ([59ecfdb](https://github.com/vm0-ai/vm0/commit/59ecfdbbf4a1402dc5fc85ee460ef88cb0a26e55))
+
 ## [0.11.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.12...guest-contracts-v0.11.13) (2026-08-21)
 
 

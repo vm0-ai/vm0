@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.171.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.1...runner-rs-v0.171.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* **rust:** align mock codex rollout paths ([#28692](https://github.com/vm0-ai/vm0/issues/28692)) ([59ecfdb](https://github.com/vm0-ai/vm0/commit/59ecfdbbf4a1402dc5fc85ee460ef88cb0a26e55))
+
 ## [0.171.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.0...runner-rs-v0.171.1) (2026-08-23)
 
 ## [0.171.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.2...runner-rs-v0.171.0) (2026-08-23)
