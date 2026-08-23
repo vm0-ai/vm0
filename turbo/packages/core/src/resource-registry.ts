@@ -4030,7 +4030,6 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   const packageDir = `./generated/resources/${pkg.slug}`;
-  const imageHelper = `${packageDir}/tools/presentation-images.sh`;
   // The two archive versions are authored against different workflows: the
   // previous one drives a bundled deck-JSON renderer, the current one has no
   // renderer at all and the agent writes the HTML itself. Naming the wrong
@@ -4045,10 +4044,10 @@ export function buildPresentationRunbookInstructionLines(args: {
           `- For execution order, image scheduling, verification stopping, and publishing, follow the orchestration below even if SKILL.md contains broader review or delivery wording. Use SKILL.md for the template's design language, layout rules, and template-specific gate meanings.`,
           `- Under ${packageDir}, batch independent package reads: read design-system.md, color-systems/${colorSystemToken}.css, layouts/_shell.html, and decoration/PLACEMENT.md together; once layouts are selected, read all selected layout files together. Do not reopen unchanged package files.`,
           `- Images from the supplied material come first. Before authoring slide markup, decide whether 1-4 generated images are still needed; if so, write one manifest outside the hosted output as \`asset-id<TAB>raw prompt[<TAB>size]\`, using only 1024x1024, 1536x1024, or 1024x1536.`,
-          `- If a manifest exists, start the complete image batch exactly once with \`bash ${imageHelper} start <manifest.tsv> <state-dir>\`, then immediately continue to deck authoring while it runs. If no generated images are needed, skip both helper commands. The helper owns provider, model, quality, concurrency, queueing, and retry behavior; do not open it, reproduce its scheduling logic, or call \`okou generate image\` directly.`,
+          `- If a manifest exists, start the complete image batch exactly once with \`okou generate image-batch start <manifest.tsv> <state-dir>\`, then immediately continue to deck authoring while it runs. If no generated images are needed, skip both batch commands. The VM0 command owns provider, model, quality, concurrency, queueing, and retry behavior; do not reproduce its scheduling logic or call \`okou generate image\` directly.`,
           `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content while the image batch runs, or immediately when no batch was needed.`,
           `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          `- Before local verification, if a batch was started, join it exactly once with \`bash ${imageHelper} wait <state-dir>\` and embed the asset-id-to-URL results from \`<state-dir>/results.tsv\`. Keep the manifest, state, prompts, and logs outside the hosted output.`,
+          `- Before local verification, if a batch was started, join it exactly once with \`okou generate image-batch wait <state-dir>\` and embed the asset-id-to-URL results from \`<state-dir>/results.tsv\`. Keep the manifest, state, prompts, and logs outside the hosted output.`,
           `- Complete outline, identity, HTML/DOM, and navigation checks from the final source and computed DOM before the final local gate. Do not turn those checks into an all-slide screenshot, contact-sheet, or image-recognition pass.`,
           `- Treat ${packageDir}/tools/run.sh and its check helpers as opaque executables. Run the SKILL-documented gate against the final local HTML after images settle; do not open or reverse-engineer gate source.`,
           "- If the local gate fails, inspect only the named pages, elements, or advisory samples, batch the fixes, and rerun only after the HTML changes. Do not perform an unconditional all-slide screenshot, contact-sheet, or per-image recognition pass.",

@@ -113,7 +113,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("presentation-images.sh");
   });
 
-  it("switches the built-in presentation package to direct-HTML authoring and the async image helper", () => {
+  it("switches the built-in presentation package to direct-HTML authoring and the VM0 image batch command", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt(
@@ -143,17 +143,17 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain('data-color-system="carnival"');
     expect(result.prompt).toContain("read all selected layout files together");
     expect(result.prompt).toContain(
-      "./generated/resources/playful-launch/tools/presentation-images.sh start <manifest.tsv> <state-dir>",
+      "okou generate image-batch start <manifest.tsv> <state-dir>",
     );
     expect(result.prompt).toContain(
-      "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
+      "okou generate image-batch wait <state-dir>",
     );
     expect(result.prompt).toContain("Before authoring slide markup");
     expect(result.prompt).toContain(
-      "If no generated images are needed, skip both helper commands",
+      "If no generated images are needed, skip both batch commands",
     );
     expect(result.prompt).toContain(
-      "The helper owns provider, model, quality, concurrency, queueing, and retry behavior",
+      "The VM0 command owns provider, model, quality, concurrency, queueing, and retry behavior",
     );
     expect(result.prompt).toContain(
       "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
@@ -169,9 +169,7 @@ describe("buildGenerationTemplatePrompt", () => {
       "Do not perform an unconditional all-slide screenshot",
     );
     expect(
-      result.prompt.indexOf(
-        "tools/presentation-images.sh start <manifest.tsv>",
-      ),
+      result.prompt.indexOf("okou generate image-batch start <manifest.tsv>"),
     ).toBeLessThan(
       result.prompt.indexOf(
         "Author the finished deck directly as semantic HTML",
@@ -181,6 +179,7 @@ describe("buildGenerationTemplatePrompt", () => {
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.
     expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    expect(result.prompt).not.toContain("presentation-images.sh");
     expect(result.prompt).not.toContain('"colorSystem"');
   });
 

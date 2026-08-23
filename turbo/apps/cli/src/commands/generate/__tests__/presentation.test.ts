@@ -216,14 +216,12 @@ describe("okou generate presentation command", () => {
     );
     expect(stdout).toContain("read all selected layout files together");
     expect(stdout).toContain(
-      "./generated/resources/playful-launch/tools/presentation-images.sh start <manifest.tsv> <state-dir>",
+      "okou generate image-batch start <manifest.tsv> <state-dir>",
     );
-    expect(stdout).toContain(
-      "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
-    );
+    expect(stdout).toContain("okou generate image-batch wait <state-dir>");
     expect(stdout).toContain("Before authoring slide markup");
     expect(stdout).toContain(
-      "If no generated images are needed, skip both helper commands",
+      "If no generated images are needed, skip both batch commands",
     );
     expect(stdout).toContain(
       "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
@@ -231,12 +229,13 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain("A passing local gate is the stopping condition");
     expect(stdout).toContain("publish immediately and exactly once");
     expect(
-      stdout.indexOf("tools/presentation-images.sh start <manifest.tsv>"),
+      stdout.indexOf("okou generate image-batch start <manifest.tsv>"),
     ).toBeLessThan(
       stdout.indexOf("Author the finished deck directly as semantic HTML"),
     );
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
+    expect(stdout).not.toContain("presentation-images.sh");
   });
 
   it("rejects an unknown presentation template id with available templates", async () => {
