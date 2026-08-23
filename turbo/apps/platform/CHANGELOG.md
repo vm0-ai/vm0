@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.783.1](https://github.com/vm0-ai/vm0/compare/app-v0.783.0...app-v0.783.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* prefetch uploaded template previews ([#28705](https://github.com/vm0-ai/vm0/issues/28705)) ([e17447c](https://github.com/vm0-ai/vm0/commit/e17447c69a398ee38598b00beeb791483482f841))
+
+
+### Refactoring
+
+* **api:** retire target-only connector mutations ([#28708](https://github.com/vm0-ai/vm0/issues/28708)) ([a600615](https://github.com/vm0-ai/vm0/commit/a6006156e747df605582c3aa2742806f58263658))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.355.1
+    * @okouai/core bumped to 8.583.1
+
 ## [0.783.0](https://github.com/vm0-ai/vm0/compare/app-v0.782.2...app-v0.783.0) (2026-08-23)
 
 
