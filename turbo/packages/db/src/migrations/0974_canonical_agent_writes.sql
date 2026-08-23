@@ -21,6 +21,12 @@ ALTER TABLE "feishu_org_installations" ALTER COLUMN "default_compose_id" DROP NO
 --> statement-breakpoint
 ALTER TABLE "github_installations" ALTER COLUMN "default_compose_id" DROP NOT NULL;
 --> statement-breakpoint
+-- The canonical default already has its agents(id) FK. Remove the obsolete
+-- cross-shape FK that otherwise requires every Stage 7 default to keep an
+-- agent_composes anchor.
+ALTER TABLE "org_metadata"
+  DROP CONSTRAINT IF EXISTS "org_metadata_default_agent_id_agent_composes_id_fk";
+--> statement-breakpoint
 
 -- Retain sibling equality only for immutable reference identities. Mutable
 -- installation defaults require at least one sibling during the rollout, and

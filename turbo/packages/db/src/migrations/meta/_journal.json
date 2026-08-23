@@ -1167,7 +1167,7 @@
     {
       "idx": 974,
       "version": "7",
-      "when": 1787493681791,
+      "when": 1787494027221,
       "tag": "0974_canonical_agent_writes",
       "breakpoints": true
     }

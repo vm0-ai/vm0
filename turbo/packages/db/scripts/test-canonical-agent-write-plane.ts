@@ -8,7 +8,7 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(dirname, "../src/migrations");
-const previousMigration = "0972_boring_morlun";
+const previousMigration = "0973_backfill_agent_run_built_in_model_key_ids";
 const migration = "0974_canonical_agent_writes";
 const upgradeDatabase = "migration_canonical_agent_write_plane";
 const freshDatabase = "migration_canonical_agent_write_plane_fresh";
@@ -72,13 +72,14 @@ const canonicalReferenceColumns = [
   ["feishu_user_agent_preferences", "selected_agent_id"],
 ] as const;
 
-const canonicalReferenceForeignKeys = canonicalReferenceColumns.filter(
-  ([table]) => {
+const canonicalReferenceForeignKeys = [
+  ...canonicalReferenceColumns.filter(([table]) => {
     return !["chat_thread_events", "chat_event_search_messages"].includes(
       table,
     );
-  },
-);
+  }),
+  ["org_metadata", "default_agent_id"] as const,
+];
 
 const canonicalReferenceIndexes = [
   ["agent_sessions", "idx_agent_sessions_user_agent"],
@@ -164,6 +165,10 @@ function validateMigrationSql(sql: string): void {
   assert.match(sql, /SET lock_timeout = '1s'/u);
   assert.match(sql, /SET LOCAL lock_timeout = '1s'/u);
   assert.match(sql, /SET statement_timeout = '2h'/u);
+  assert.match(
+    sql,
+    /DROP CONSTRAINT IF EXISTS "org_metadata_default_agent_id_agent_composes_id_fk"/u,
+  );
   assert.match(sql, /TG_OP = 'INSERT' AND NEW\."agent_id" IS NOT NULL/u);
   assert.match(
     sql,
@@ -327,6 +332,14 @@ async function assertSchemaContract(client: Client): Promise<void> {
       `${table}.${column} must retain its canonical Agent foreign key`,
     );
   }
+
+  const obsoleteDefaultAgentForeignKey = await client.query<{ count: number }>(
+    `SELECT count(*)::int AS "count"
+     FROM "pg_constraint"
+     WHERE "conname" =
+       'org_metadata_default_agent_id_agent_composes_id_fk'`,
+  );
+  assert.equal(obsoleteDefaultAgentForeignKey.rows[0]?.count, 0);
 
   for (const [table, index] of canonicalReferenceIndexes) {
     const indexes = await client.query<{ count: number }>(
@@ -516,6 +529,17 @@ async function assertCanonicalAgentOperations(client: Client): Promise<void> {
   assert.equal(state.rows[0]?.legacyComposes, 0);
   assert.equal(state.rows[0]?.legacyProducts, 0);
 
+  await client.query(
+    `INSERT INTO "org_metadata" ("org_id", "default_agent_id")
+     VALUES ('canonical-only-org', $1)`,
+    [canonicalOnlyAgentId],
+  );
+  const canonicalDefault = await client.query<{ agentId: string }>(
+    `SELECT "default_agent_id"::text AS "agentId"
+     FROM "org_metadata" WHERE "org_id" = 'canonical-only-org'`,
+  );
+  assert.equal(canonicalDefault.rows[0]?.agentId, canonicalOnlyAgentId);
+
   await client.query("BEGIN");
   await client.query(
     `SELECT pg_advisory_xact_lock(hashtextextended('canonical-agent:' || $1::text, 0))`,
@@ -529,6 +553,11 @@ async function assertCanonicalAgentOperations(client: Client): Promise<void> {
     canonicalOnlyAgentId,
   ]);
   assert.equal(deleted.rowCount, 0);
+  const clearedDefault = await client.query<{ agentId: string | null }>(
+    `SELECT "default_agent_id"::text AS "agentId"
+     FROM "org_metadata" WHERE "org_id" = 'canonical-only-org'`,
+  );
+  assert.equal(clearedDefault.rows[0]?.agentId, null);
 }
 
 async function assertReferenceBridgeOperations(client: Client): Promise<void> {

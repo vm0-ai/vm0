@@ -10,7 +10,6 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 
 /**
@@ -27,12 +26,7 @@ export const orgMetadata = pgTable(
     // default to materialise a grant.
     credits: bigint("credits", { mode: "number" }).notNull().default(0),
     tier: text("tier").notNull().default("limited-free-1"),
-    defaultAgentId: uuid("default_agent_id").references(
-      () => {
-        return agentComposes.id;
-      },
-      { onDelete: "set null" },
-    ),
+    defaultAgentId: uuid("default_agent_id"),
     onboardingPaymentPending: boolean("onboarding_payment_pending")
       .notNull()
       .default(false),

@@ -1,5 +1,5 @@
 {
-  "id": "b2933426-7707-43b1-8bc2-d7d10eb897e7",
+  "id": "7caea3ac-152b-42d6-95f1-e74aaba50981",
   "prevId": "f5f3c029-bb42-4e96-8783-9e67ebe6ae51",
   "version": "7",
   "dialect": "postgresql",
@@ -17142,19 +17142,6 @@
         }
       },
       "foreignKeys": {
-        "org_metadata_default_agent_id_agent_composes_id_fk": {
-          "name": "org_metadata_default_agent_id_agent_composes_id_fk",
-          "tableFrom": "org_metadata",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "default_agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "org_metadata_default_agent_id_agents_id_fk": {
           "name": "org_metadata_default_agent_id_agents_id_fk",
           "tableFrom": "org_metadata",
