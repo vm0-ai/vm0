@@ -13,7 +13,6 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
 import type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
@@ -40,14 +39,7 @@ export const workflows = pgTable(
     orgId: text("org_id").notNull(),
     // Hard 1:N ownership: every workflow belongs to exactly one agent. Deleting
     // the agent cascades to its workflows and their volumes.
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     visibility: varchar("visibility", { length: 16 })
       .$type<WorkflowVisibility>()

@@ -1,5 +1,5 @@
 {
-  "id": "7caea3ac-152b-42d6-95f1-e74aaba50981",
+  "id": "63ae1d6e-ff36-43ce-a07e-645d311d394f",
   "prevId": "f5f3c029-bb42-4e96-8783-9e67ebe6ae51",
   "version": "7",
   "dialect": "postgresql",
@@ -476,19 +476,6 @@
         }
       },
       "foreignKeys": {
-        "zero_agent_drafts_agent_id_zero_agents_id_fk": {
-          "name": "zero_agent_drafts_agent_id_zero_agents_id_fk",
-          "tableFrom": "zero_agent_drafts",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "zero_agent_drafts_agent_id_agents_id_fk": {
           "name": "zero_agent_drafts_agent_id_agents_id_fk",
           "tableFrom": "zero_agent_drafts",
@@ -3412,19 +3399,6 @@
         }
       },
       "foreignKeys": {
-        "banking_agent_enablements_agent_id_zero_agents_id_fk": {
-          "name": "banking_agent_enablements_agent_id_zero_agents_id_fk",
-          "tableFrom": "banking_agent_enablements",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "banking_agent_enablements_connection_id_banking_connections_id_fk": {
           "name": "banking_agent_enablements_connection_id_banking_connections_id_fk",
           "tableFrom": "banking_agent_enablements",
@@ -23572,19 +23546,6 @@
         }
       },
       "foreignKeys": {
-        "thread_goals_agent_id_zero_agents_id_fk": {
-          "name": "thread_goals_agent_id_zero_agents_id_fk",
-          "tableFrom": "thread_goals",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "thread_goals_chat_thread_id_chat_threads_id_fk": {
           "name": "thread_goals_chat_thread_id_chat_threads_id_fk",
           "tableFrom": "thread_goals",
@@ -26885,19 +26846,6 @@
         }
       },
       "foreignKeys": {
-        "user_connectors_agent_id_zero_agents_id_fk": {
-          "name": "user_connectors_agent_id_zero_agents_id_fk",
-          "tableFrom": "user_connectors",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "user_connectors_agent_id_agents_id_fk": {
           "name": "user_connectors_agent_id_agents_id_fk",
           "tableFrom": "user_connectors",
@@ -27025,19 +26973,6 @@
         }
       },
       "foreignKeys": {
-        "user_custom_connectors_agent_id_zero_agents_id_fk": {
-          "name": "user_custom_connectors_agent_id_zero_agents_id_fk",
-          "tableFrom": "user_custom_connectors",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "user_custom_connectors_agent_id_agents_id_fk": {
           "name": "user_custom_connectors_agent_id_agents_id_fk",
           "tableFrom": "user_custom_connectors",
@@ -27287,19 +27222,6 @@
         }
       },
       "foreignKeys": {
-        "user_permission_grants_agent_id_zero_agents_id_fk": {
-          "name": "user_permission_grants_agent_id_zero_agents_id_fk",
-          "tableFrom": "user_permission_grants",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "user_permission_grants_agent_id_agents_id_fk": {
           "name": "user_permission_grants_agent_id_agents_id_fk",
           "tableFrom": "user_permission_grants",
@@ -28480,19 +28402,6 @@
         }
       },
       "foreignKeys": {
-        "zero_workflows_agent_id_zero_agents_id_fk": {
-          "name": "zero_workflows_agent_id_zero_agents_id_fk",
-          "tableFrom": "zero_workflows",
-          "tableTo": "zero_agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "zero_workflows_agent_id_agents_id_fk": {
           "name": "zero_workflows_agent_id_agents_id_fk",
           "tableFrom": "zero_workflows",

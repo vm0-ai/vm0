@@ -10,7 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 
 export type UserPermissionGrantAction = "allow" | "deny";
@@ -28,14 +27,7 @@ export const userPermissionGrants = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })

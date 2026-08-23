@@ -27,6 +27,31 @@ ALTER TABLE "github_installations" ALTER COLUMN "default_compose_id" DROP NOT NU
 ALTER TABLE "org_metadata"
   DROP CONSTRAINT IF EXISTS "org_metadata_default_agent_id_agent_composes_id_fk";
 --> statement-breakpoint
+-- Canonical dependent-reference columns already have agents(id) FKs. Remove
+-- only their obsolete cross-shape FKs to zero_agents so a Stage 7 Agent can
+-- own dependent state without a forbidden zero_agents dual write. Legacy
+-- sibling columns and every FK/index attached to those siblings remain.
+ALTER TABLE "banking_agent_enablements"
+  DROP CONSTRAINT IF EXISTS "banking_agent_enablements_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "thread_goals"
+  DROP CONSTRAINT IF EXISTS "thread_goals_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "user_connectors"
+  DROP CONSTRAINT IF EXISTS "user_connectors_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "user_custom_connectors"
+  DROP CONSTRAINT IF EXISTS "user_custom_connectors_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "user_permission_grants"
+  DROP CONSTRAINT IF EXISTS "user_permission_grants_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "zero_agent_drafts"
+  DROP CONSTRAINT IF EXISTS "zero_agent_drafts_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
+ALTER TABLE "zero_workflows"
+  DROP CONSTRAINT IF EXISTS "zero_workflows_agent_id_zero_agents_id_fk";
+--> statement-breakpoint
 
 -- Retain sibling equality only for immutable reference identities. Mutable
 -- installation defaults require at least one sibling during the rollout, and

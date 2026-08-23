@@ -72,13 +72,46 @@ const canonicalReferenceColumns = [
   ["feishu_user_agent_preferences", "selected_agent_id"],
 ] as const;
 
+const canonicalAuthorityReferences = [
+  [
+    "org_metadata",
+    "default_agent_id",
+    "org_metadata_default_agent_id_agent_composes_id_fk",
+  ],
+  [
+    "banking_agent_enablements",
+    "agent_id",
+    "banking_agent_enablements_agent_id_zero_agents_id_fk",
+  ],
+  ["thread_goals", "agent_id", "thread_goals_agent_id_zero_agents_id_fk"],
+  ["user_connectors", "agent_id", "user_connectors_agent_id_zero_agents_id_fk"],
+  [
+    "user_custom_connectors",
+    "agent_id",
+    "user_custom_connectors_agent_id_zero_agents_id_fk",
+  ],
+  [
+    "user_permission_grants",
+    "agent_id",
+    "user_permission_grants_agent_id_zero_agents_id_fk",
+  ],
+  [
+    "zero_agent_drafts",
+    "agent_id",
+    "zero_agent_drafts_agent_id_zero_agents_id_fk",
+  ],
+  ["zero_workflows", "agent_id", "zero_workflows_agent_id_zero_agents_id_fk"],
+] as const;
+
 const canonicalReferenceForeignKeys = [
   ...canonicalReferenceColumns.filter(([table]) => {
     return !["chat_thread_events", "chat_event_search_messages"].includes(
       table,
     );
   }),
-  ["org_metadata", "default_agent_id"] as const,
+  ...canonicalAuthorityReferences.map(([table, column]) => {
+    return [table, column] as const;
+  }),
 ];
 
 const canonicalReferenceIndexes = [
@@ -165,10 +198,12 @@ function validateMigrationSql(sql: string): void {
   assert.match(sql, /SET lock_timeout = '1s'/u);
   assert.match(sql, /SET LOCAL lock_timeout = '1s'/u);
   assert.match(sql, /SET statement_timeout = '2h'/u);
-  assert.match(
-    sql,
-    /DROP CONSTRAINT IF EXISTS "org_metadata_default_agent_id_agent_composes_id_fk"/u,
-  );
+  for (const [, , constraint] of canonicalAuthorityReferences) {
+    assert.match(
+      sql,
+      new RegExp(`DROP CONSTRAINT IF EXISTS "${constraint}"`, "u"),
+    );
+  }
   assert.match(sql, /TG_OP = 'INSERT' AND NEW\."agent_id" IS NOT NULL/u);
   assert.match(
     sql,
@@ -336,13 +371,17 @@ async function assertSchemaContract(client: Client): Promise<void> {
     );
   }
 
-  const obsoleteDefaultAgentForeignKey = await client.query<{ count: number }>(
+  const obsoleteCrossShapeForeignKeys = await client.query<{ count: number }>(
     `SELECT count(*)::int AS "count"
      FROM "pg_constraint"
-     WHERE "conname" =
-       'org_metadata_default_agent_id_agent_composes_id_fk'`,
+     WHERE "conname" = ANY($1::text[])`,
+    [
+      canonicalAuthorityReferences.map(([, , constraint]) => {
+        return constraint;
+      }),
+    ],
   );
-  assert.equal(obsoleteDefaultAgentForeignKey.rows[0]?.count, 0);
+  assert.equal(obsoleteCrossShapeForeignKeys.rows[0]?.count, 0);
 
   for (const [table, index] of canonicalReferenceIndexes) {
     const indexes = await client.query<{ count: number }>(
@@ -543,6 +582,16 @@ async function assertCanonicalAgentOperations(client: Client): Promise<void> {
   );
   assert.equal(canonicalDefault.rows[0]?.agentId, canonicalOnlyAgentId);
 
+  await client.query(
+    `INSERT INTO "zero_workflows" (
+       "org_id", "agent_id", "name", "owner_user_id", "created_by", "updated_by"
+     ) VALUES (
+       'canonical-only-org', $1, 'canonical-only-workflow',
+       'canonical-only-owner', 'canonical-only-owner', 'canonical-only-owner'
+     )`,
+    [canonicalOnlyAgentId],
+  );
+
   await client.query("BEGIN");
   await client.query(
     `SELECT pg_advisory_xact_lock(hashtextextended('canonical-agent:' || $1::text, 0))`,
@@ -561,6 +610,15 @@ async function assertCanonicalAgentOperations(client: Client): Promise<void> {
      FROM "org_metadata" WHERE "org_id" = 'canonical-only-org'`,
   );
   assert.equal(clearedDefault.rows[0]?.agentId, null);
+  assert.equal(
+    (
+      await client.query(
+        `SELECT 1 FROM "zero_workflows" WHERE "agent_id" = $1`,
+        [canonicalOnlyAgentId],
+      )
+    ).rowCount,
+    0,
+  );
 }
 
 async function assertReferenceBridgeOperations(client: Client): Promise<void> {

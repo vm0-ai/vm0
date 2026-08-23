@@ -11,7 +11,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 import type {
   BankingAccessAuditMetadata,
@@ -117,14 +116,7 @@ export const bankingAgentEnablements = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     connectionId: uuid("connection_id")
       .notNull()
       .references(
