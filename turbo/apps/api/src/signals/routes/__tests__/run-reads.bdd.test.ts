@@ -18,7 +18,10 @@ import {
   clearAgentRunVersionFixture,
   materializeAgentLegacyVersionFixture,
 } from "../../../test-fixtures/agent-compose-provenance";
-import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
+import {
+  readHistoricalAgentComposeHeadFixture,
+  setHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import {
   createBddApi,
   expectApiError,
@@ -3198,9 +3201,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       description: "Member isolation.",
       visibility: "private",
     });
-    const testCompose = await createClaudeCompose(actor, "bdd-test-logs", {
-      composeOnly: true,
-    });
+    const testCompose = await createClaudeCompose(actor, "bdd-test-logs");
     await materializeAgentLegacyVersionFixture(agentOne.agentId);
     const agentOneName = (
       await readHistoricalAgentComposeHeadFixture(agentOne.agentId)
@@ -3262,8 +3263,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       return entry.id === testRun.runId;
     });
     expect(testEntry).toMatchObject({
-      agentId: null,
-      displayName: null,
+      agentId: testCompose.composeId,
+      displayName: "Historical run fixture",
       triggerSource: "test",
     });
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
@@ -3543,9 +3544,12 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const currentCompose = await api.createHistoricalCompose(
       actor,
       foreignCompose.content,
-      { composeOnly: true },
     );
-    expect(currentCompose.versionId).toBe(foreignCompose.headVersionId);
+    await setHistoricalAgentComposeHeadFixture(
+      currentCompose.composeId,
+      foreignCompose.headVersionId,
+      context.signal,
+    );
 
     const sharedRun = await api.createDirectRun(actor, {
       agentId: currentCompose.composeId,
@@ -3559,8 +3563,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(listed.body.data).toContainEqual(
       expect.objectContaining({
         id: sharedRun.runId,
-        agentId: null,
-        displayName: null,
+        agentId: currentCompose.composeId,
+        displayName: "Historical run fixture",
         framework: "claude-code",
       }),
     );
@@ -3581,8 +3585,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     );
     expect(detail.body).toMatchObject({
       id: sharedRun.runId,
-      agentId: null,
-      displayName: null,
+      agentId: currentCompose.composeId,
+      displayName: "Historical run fixture",
       framework: "claude-code",
     });
   });
