@@ -251,6 +251,14 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
     catalogDigest: varchar("catalog_digest", { length: 71 }).notNull(),
     projectionVersion: integer("projection_version").notNull(),
     connectorCount: integer("connector_count").notNull(),
+    catalogValidationBackendVersion: varchar(
+      "catalog_validation_backend_version",
+      { length: 64 },
+    ),
+    catalogValidationBuildCommitSha: varchar(
+      "catalog_validation_build_commit_sha",
+      { length: 40 },
+    ),
   },
   (table) => {
     return [
@@ -281,6 +289,20 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
         "connector_catalog_projection_sets_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
       ),
+      check(
+        "connector_catalog_projection_sets_validator_complete",
+        sql`(
+          ${table.catalogValidationBackendVersion} IS NULL
+          AND ${table.catalogValidationBuildCommitSha} IS NULL
+        ) OR (
+          ${table.catalogValidationBackendVersion} IS NOT NULL
+          AND ${table.catalogValidationBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND (
+            ${table.catalogValidationBuildCommitSha} IS NULL
+            OR ${table.catalogValidationBuildCommitSha} ~ '^[a-f0-9]{40}$'
+          )
+        )`,
+      ),
     ];
   },
 );
@@ -294,6 +316,7 @@ export const connectorCatalogRuntimeProjections = pgTable(
     connector: jsonb("connector")
       .$type<ConnectorCatalogRuntimeProjection>()
       .notNull(),
+    connectorPayload: byteaColumn("connector_payload"),
   },
   (table) => {
     return [

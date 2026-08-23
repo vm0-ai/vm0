@@ -1149,6 +1149,13 @@
       "when": 1787468412312,
       "tag": "0971_daily_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 972,
+      "version": "7",
+      "when": 1787477993416,
+      "tag": "0972_boring_morlun",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorCatalogActiveSnapshot,
@@ -14,6 +15,7 @@ import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { singleton, testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { safeJsonParse } from "../utils";
 import {
   connectorCatalogArtifactConnectorSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
@@ -30,9 +32,12 @@ import { connectorCatalogSource } from "./connector-catalog-source";
 import {
   connectorCatalogValidationAuthorityIsCurrent,
   currentConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
+  type ConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 
-export const CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 1;
+const LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 1;
+export const CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 2;
 
 export type ConnectorCatalogRuntimeProjectionFallbackReason =
   | "schema_unavailable"
@@ -84,6 +89,7 @@ interface ConnectorCatalogRuntimeProjectionRow {
   readonly connectorSlug: ConnectorSlug;
   readonly connectorDigest: string;
   readonly connector: unknown;
+  readonly connectorPayload: Buffer | null;
 }
 
 export type ConnectorCatalogRuntimeProjectionRowsRead =
@@ -137,6 +143,18 @@ function authMethodKey(connectorSlug: string, authMethodId: string): string {
   return `${connectorSlug}\0${authMethodId}`;
 }
 
+function persistedConnectorCatalogValidationAuthority(args: {
+  readonly backendVersion: string | null;
+  readonly buildCommitSha: string | null;
+}): ConnectorCatalogValidationAuthority | null {
+  return args.backendVersion === null
+    ? null
+    : {
+        backendVersion: args.backendVersion,
+        buildCommitSha: args.buildCommitSha,
+      };
+}
+
 function isUnknownRecord(
   value: unknown,
 ): value is Readonly<Record<string, unknown>> {
@@ -159,11 +177,14 @@ function canonicalJsonValue(value: unknown): unknown {
   );
 }
 
-function connectorCatalogRuntimeProjectionDigest(
+function connectorCatalogRuntimeProjectionPayload(
   connector: ConnectorCatalogArtifactConnector,
-): string {
-  const canonical = JSON.stringify(canonicalJsonValue(connector));
-  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+): Buffer {
+  return Buffer.from(JSON.stringify(canonicalJsonValue(connector)), "utf8");
+}
+
+function connectorCatalogRuntimeProjectionDigest(payload: Uint8Array): string {
+  return `sha256:${createHash("sha256").update(payload).digest("hex")}`;
 }
 
 export async function connectorCatalogRuntimeProjectionSchemaAvailable(
@@ -178,15 +199,37 @@ export async function connectorCatalogRuntimeProjectionSchemaAvailable(
       available: sql`
         to_regclass('public.connector_catalog_runtime_projection_sets') IS NOT NULL
         AND to_regclass('public.connector_catalog_runtime_projections') IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projection_sets')
+            AND attname = 'catalog_validation_backend_version'
+            AND NOT attisdropped
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projection_sets')
+            AND attname = 'catalog_validation_build_commit_sha'
+            AND NOT attisdropped
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projections')
+            AND attname = 'connector_payload'
+            AND NOT attisdropped
+        )
       `.mapWith(pgBooleanDecoder),
     })
     .from(sql`(SELECT 1) AS connector_catalog_projection_schema_probe`)
     .limit(1);
   const available = state?.available ?? false;
-  // DB/API rollout can expose new code before migration 0963 for the observed
-  // ~102-minute maximum. Cache only success so a warm instance sees migration
-  // arrival. Remove this probe and its rollout test once 0963 is outside the
-  // production rollback window; tracked by #28275.
+  // DB/API rollout can expose new code before the base projection migration
+  // 0963 or the attested-payload migration 0971. Cache only success so a warm
+  // instance sees migration arrival. Remove this probe and its rollout test
+  // after both migrations leave the production rollback window; tracked by
+  // #28275.
   cache.available = available;
   return available;
 }
@@ -199,6 +242,7 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
     readonly catalogDigest: string;
   };
   readonly artifact: ConnectorCatalogArtifact;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<void> {
   await args.db
     .delete(connectorCatalogRuntimeProjectionSets)
@@ -220,6 +264,8 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
       catalogDigest: args.identity.catalogDigest,
       projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
       connectorCount: args.artifact.connectors.length,
+      catalogValidationBackendVersion: args.validator.backendVersion,
+      catalogValidationBuildCommitSha: args.validator.buildCommitSha,
     })
     .returning({ id: connectorCatalogRuntimeProjectionSets.id });
   if (projectionSet === undefined) {
@@ -227,11 +273,15 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
   }
   await args.db.insert(connectorCatalogRuntimeProjections).values(
     args.artifact.connectors.map((connector) => {
+      const connectorPayload =
+        connectorCatalogRuntimeProjectionPayload(connector);
       return {
         projectionSetId: projectionSet.id,
         connectorSlug: connector.slug,
-        connectorDigest: connectorCatalogRuntimeProjectionDigest(connector),
+        connectorDigest:
+          connectorCatalogRuntimeProjectionDigest(connectorPayload),
         connector,
+        connectorPayload,
       };
     }),
   );
@@ -251,11 +301,15 @@ async function queryProjectionIdentity(
       projectionVersion:
         connectorCatalogRuntimeProjectionSets.projectionVersion,
       connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
+      projectionValidationBackendVersion:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBackendVersion,
+      projectionValidationBuildCommitSha:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBuildCommitSha,
       evaluatedCapabilityDigest:
         connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-      validationBackendVersion:
+      compatibilityValidationBackendVersion:
         connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
-      validationBuildCommitSha:
+      compatibilityValidationBuildCommitSha:
         connectorCatalogCompatibilityEvaluation.catalogValidationBuildCommitSha,
       filteredAuthMethods:
         connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
@@ -328,6 +382,7 @@ async function readProjectionIdentity(
   }
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityState().digest;
+  const validator = currentConnectorCatalogValidatorIdentity();
   const row = await queryProjectionIdentity(db, sourceId, capabilityDigest);
   // Route integration tests use this seam to replace the active identity after
   // the read, making both retry generations deterministic without timing sleeps.
@@ -339,28 +394,47 @@ async function readProjectionIdentity(
   ) {
     return { kind: "fallback", reason: "not_ready" };
   }
-  if (
-    row.projectionVersion !== CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION ||
-    row.connectorCount === null
-  ) {
+  if (row.connectorCount === null) {
     return { kind: "fallback", reason: "unsupported" };
   }
   if (
+    row.projectionVersion !==
+      LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
+    row.projectionVersion !== CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
+  ) {
+    return { kind: "fallback", reason: "unsupported" };
+  }
+  const compatibilityAuthority = persistedConnectorCatalogValidationAuthority({
+    backendVersion: row.compatibilityValidationBackendVersion,
+    buildCommitSha: row.compatibilityValidationBuildCommitSha,
+  });
+  if (
     row.evaluatedCapabilityDigest === null ||
-    row.validationBackendVersion === null
+    compatibilityAuthority === null
   ) {
     return { kind: "fallback", reason: "compatibility_not_ready" };
   }
   if (
     !connectorCatalogValidationAuthorityIsCurrent({
-      authority: {
-        backendVersion: row.validationBackendVersion,
-        buildCommitSha: row.validationBuildCommitSha,
-      },
-      validator: currentConnectorCatalogValidatorIdentity(),
+      authority: compatibilityAuthority,
+      validator,
     })
   ) {
     return { kind: "fallback", reason: "compatibility_not_ready" };
+  }
+  const projectionAuthority = persistedConnectorCatalogValidationAuthority({
+    backendVersion: row.projectionValidationBackendVersion,
+    buildCommitSha: row.projectionValidationBuildCommitSha,
+  });
+  if (
+    row.projectionVersion === CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
+    (projectionAuthority === null ||
+      !connectorCatalogValidationAuthorityIsCurrent({
+        authority: projectionAuthority,
+        validator,
+      }))
+  ) {
+    return { kind: "fallback", reason: "not_ready" };
   }
   const compatibility = connectorCatalogCompatibilityEvaluationSchema.safeParse(
     row.filteredAuthMethods,
@@ -416,26 +490,143 @@ export async function queryConnectorCatalogRuntimeProjectionRows(args: {
   if (args.connectorSlugs.length === 0) {
     return [];
   }
-  return await args.db
+  const where = and(
+    projectionIdentityWhere(args.projection.identity),
+    inArray(connectorCatalogRuntimeProjections.connectorSlug, [
+      ...args.connectorSlugs,
+    ]),
+  );
+  if (
+    args.projection.identity.projectionVersion ===
+    LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
+  ) {
+    const rows = await args.db
+      .select({
+        connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
+        connectorDigest: connectorCatalogRuntimeProjections.connectorDigest,
+        connector: connectorCatalogRuntimeProjections.connector,
+      })
+      .from(connectorCatalogRuntimeProjections)
+      .where(where);
+    return rows.map((row) => {
+      return { ...row, connectorPayload: null };
+    });
+  }
+  const rows = await args.db
     .select({
       connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
       connectorDigest: connectorCatalogRuntimeProjections.connectorDigest,
-      connector: connectorCatalogRuntimeProjections.connector,
+      connectorPayload: connectorCatalogRuntimeProjections.connectorPayload,
     })
     .from(connectorCatalogRuntimeProjections)
-    .where(
-      and(
-        projectionIdentityWhere(args.projection.identity),
-        inArray(connectorCatalogRuntimeProjections.connectorSlug, [
-          ...args.connectorSlugs,
-        ]),
-      ),
+    .where(where);
+  return rows.map((row) => {
+    return { ...row, connector: null };
+  });
+}
+
+function isAttestedConnectorCatalogRuntimeProjection(
+  value: unknown,
+  connectorSlug: ConnectorSlug,
+): value is ConnectorCatalogArtifactConnector {
+  // The current validator authority on the exact projection generation
+  // establishes deep schema and semantic validity. Raw payload SHA plus this
+  // top-level row identity check binds the selected bytes without repeating
+  // complete connector validation on request traffic.
+  return isUnknownRecord(value) && value.slug === connectorSlug;
+}
+
+function parseAttestedConnectorCatalogRuntimeProjection(
+  payload: Buffer,
+  connectorSlug: ConnectorSlug,
+): ConnectorCatalogArtifactConnector | undefined {
+  if (
+    payload.byteLength === 0 ||
+    payload.byteLength > CONNECTOR_CATALOG_MAX_RAW_BYTES
+  ) {
+    return undefined;
+  }
+  const parsed = safeJsonParse(payload.toString("utf8"));
+  return isAttestedConnectorCatalogRuntimeProjection(parsed, connectorSlug)
+    ? parsed
+    : undefined;
+}
+
+function validateLegacyConnectorCatalogRuntimeProjectionRow(args: {
+  readonly row: ConnectorCatalogRuntimeProjectionRow;
+  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
+}):
+  | {
+      readonly kind: "ready";
+      readonly connector: ConnectorCatalogArtifactConnector;
+    }
+  | {
+      readonly kind: "fallback";
+      readonly reason: "malformed" | "digest_mismatch";
+    } {
+  const connector = args.timing.measureParse(() => {
+    const parsed = connectorCatalogArtifactConnectorSchema.safeParse(
+      args.row.connector,
     );
+    return parsed.success && parsed.data.slug === args.row.connectorSlug
+      ? parsed.data
+      : undefined;
+  });
+  if (connector === undefined) {
+    return { kind: "fallback", reason: "malformed" };
+  }
+  const digestMatches = args.timing.measureDigest(() => {
+    const payload = connectorCatalogRuntimeProjectionPayload(connector);
+    return (
+      connectorCatalogRuntimeProjectionDigest(payload) ===
+      args.row.connectorDigest
+    );
+  });
+  return digestMatches
+    ? { kind: "ready", connector }
+    : { kind: "fallback", reason: "digest_mismatch" };
+}
+
+function validateAttestedConnectorCatalogRuntimeProjectionRow(args: {
+  readonly row: ConnectorCatalogRuntimeProjectionRow;
+  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
+}):
+  | {
+      readonly kind: "ready";
+      readonly connector: ConnectorCatalogArtifactConnector;
+    }
+  | {
+      readonly kind: "fallback";
+      readonly reason: "malformed" | "digest_mismatch";
+    } {
+  const payload = args.row.connectorPayload;
+  if (payload === null) {
+    return { kind: "fallback", reason: "malformed" };
+  }
+  const digestMatches = args.timing.measureDigest(() => {
+    return (
+      connectorCatalogRuntimeProjectionDigest(payload) ===
+      args.row.connectorDigest
+    );
+  });
+  if (!digestMatches) {
+    return { kind: "fallback", reason: "digest_mismatch" };
+  }
+  const connector = args.timing.measureParse(() => {
+    return parseAttestedConnectorCatalogRuntimeProjection(
+      payload,
+      args.row.connectorSlug,
+    );
+  });
+  return connector === undefined
+    ? { kind: "fallback", reason: "malformed" }
+    : { kind: "ready", connector };
 }
 
 export function validateConnectorCatalogRuntimeProjectionRows(args: {
   readonly rows: readonly ConnectorCatalogRuntimeProjectionRow[];
   readonly connectorSlugs: readonly ConnectorSlug[];
+  readonly projectionVersion: number;
   readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
 }): ConnectorCatalogRuntimeProjectionRowsRead {
   const rowBySlug = new Map(
@@ -451,27 +642,21 @@ export function validateConnectorCatalogRuntimeProjectionRows(args: {
       missingConnectorSlugs.push(connectorSlug);
       continue;
     }
-    const connector = args.timing.measureParse(() => {
-      const parsed = connectorCatalogArtifactConnectorSchema.safeParse(
-        row.connector,
-      );
-      return parsed.success && parsed.data.slug === row.connectorSlug
-        ? parsed.data
-        : undefined;
-    });
-    if (connector === undefined) {
-      return { kind: "fallback", reason: "malformed" };
+    const validated =
+      args.projectionVersion ===
+      LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
+        ? validateLegacyConnectorCatalogRuntimeProjectionRow({
+            row,
+            timing: args.timing,
+          })
+        : validateAttestedConnectorCatalogRuntimeProjectionRow({
+            row,
+            timing: args.timing,
+          });
+    if (validated.kind === "fallback") {
+      return validated;
     }
-    const digestMatches = args.timing.measureDigest(() => {
-      return (
-        connectorCatalogRuntimeProjectionDigest(connector) ===
-        row.connectorDigest
-      );
-    });
-    if (!digestMatches) {
-      return { kind: "fallback", reason: "digest_mismatch" };
-    }
-    connectors.push(connector);
+    connectors.push(validated.connector);
   }
   return { kind: "ready", connectors, missingConnectorSlugs };
 }
@@ -516,6 +701,7 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
       return;
     }
     const sourceId = connectorCatalogSource().sourceId;
+    const validator = currentConnectorCatalogValidatorIdentity();
     await db.transaction(async (tx) => {
       if (!(await lockSyncState(tx, sourceId))) {
         return;
@@ -545,6 +731,10 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
         .select({
           projectionSetId: connectorCatalogRuntimeProjectionSets.id,
           connectorCount: connectorCatalogRuntimeProjectionSets.connectorCount,
+          validationBackendVersion:
+            connectorCatalogRuntimeProjectionSets.catalogValidationBackendVersion,
+          validationBuildCommitSha:
+            connectorCatalogRuntimeProjectionSets.catalogValidationBuildCommitSha,
         })
         .from(connectorCatalogRuntimeProjectionSets)
         .where(
@@ -570,20 +760,32 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
         )
         .limit(1);
       if (ready !== undefined) {
-        const actualCount = await countConnectorCatalogRuntimeProjectionRows({
-          db: tx,
-          identity: {
-            projectionSetId: ready.projectionSetId,
-            sourceId,
-            schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-            catalogVersion: snapshot.catalogVersion,
-            catalogDigest: snapshot.catalogDigest,
-            projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
-            connectorCount: ready.connectorCount,
-          },
+        const authority = persistedConnectorCatalogValidationAuthority({
+          backendVersion: ready.validationBackendVersion,
+          buildCommitSha: ready.validationBuildCommitSha,
         });
-        if (actualCount === ready.connectorCount) {
-          return;
+        if (
+          authority !== null &&
+          connectorCatalogValidationAuthorityIsCurrent({
+            authority,
+            validator,
+          })
+        ) {
+          const actualCount = await countConnectorCatalogRuntimeProjectionRows({
+            db: tx,
+            identity: {
+              projectionSetId: ready.projectionSetId,
+              sourceId,
+              schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+              catalogVersion: snapshot.catalogVersion,
+              catalogDigest: snapshot.catalogDigest,
+              projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+              connectorCount: ready.connectorCount,
+            },
+          });
+          if (actualCount === ready.connectorCount) {
+            return;
+          }
         }
       }
       const decoded = decodeConnectorCatalogSnapshot(snapshot);
@@ -592,6 +794,7 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
         sourceId,
         identity: snapshot,
         artifact: decoded.artifact,
+        validator,
       });
     });
     signal.throwIfAborted();
