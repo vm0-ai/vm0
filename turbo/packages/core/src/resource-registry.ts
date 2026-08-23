@@ -4041,7 +4041,7 @@ export function buildPresentationRunbookInstructionLines(args: {
           `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it.`,
           `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.`,
           `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          "- Generate every deck image with `okou generate image --provider built-in --model seedream4`, at most 3 in flight (more return HTTP 429), and embed the returned `Embed this URL in HTML` value, which serves AVIF/WebP through the CDN image transform.",
+          "- Generate deck images if needed (images from the supplied material come first) with `okou generate image --provider built-in --model seedream4`, at most 3 in flight (more return HTTP 429), and embed the returned `Embed this URL in HTML` value, which serves AVIF/WebP through the CDN image transform.",
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
