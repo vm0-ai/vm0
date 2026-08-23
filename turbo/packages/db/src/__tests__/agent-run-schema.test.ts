@@ -82,6 +82,15 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.launchSnapshot.notNull).toBe(false);
     expect(agentRuns.launchSnapshot.hasDefault).toBe(false);
     for (const column of [
+      agentRuns.vm0ModelKeyId,
+      agentRuns.builtInModelKeyId,
+    ]) {
+      expect(column.notNull).toBe(false);
+      expect(column.hasDefault).toBe(false);
+    }
+    expect(agentRuns.vm0ModelKeyId.name).toBe("vm0_model_key_id");
+    expect(agentRuns.builtInModelKeyId.name).toBe("built_in_model_key_id");
+    for (const column of [
       agentRuns.selectedImageModel,
       chatThreadEvents.selectedImageModel,
       chatThreads.selectedImageModel,
@@ -115,6 +124,7 @@ describe("agentRuns circular foreign keys", () => {
       "model_runtime_provider",
       "model_runtime_model",
       "vm0_model_key_id",
+      "built_in_model_key_id",
       "codex_service_tier",
       "selected_video_model",
       "selected_image_model",
@@ -127,7 +137,7 @@ describe("agentRuns circular foreign keys", () => {
     for (const column of metadataColumns) {
       expect(metadataPresenceSql).toContain(`"agent_runs"."${column}" IS NULL`);
     }
-    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(19);
+    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(20);
     expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
     expect(metadataPresenceSql).toContain(
       '"agent_runs"."trigger_source" IS NOT NULL',

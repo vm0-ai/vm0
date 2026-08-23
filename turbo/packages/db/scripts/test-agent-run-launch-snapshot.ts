@@ -315,6 +315,7 @@ function validateCallerIsolation(): void {
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-complete.service.ts",
+    "turbo/apps/api/src/signals/services/log-detail-run-selection.ts",
     "turbo/apps/api/src/signals/services/logs.service.ts",
     "turbo/apps/api/src/test-fixtures/agent-compose-provenance.ts",
     "turbo/packages/api-contracts/src/contracts/test-runtime-state.ts",

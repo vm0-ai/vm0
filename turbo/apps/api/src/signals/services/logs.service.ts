@@ -26,6 +26,7 @@ import {
 } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";
+import { logDetailRunSelection } from "./log-detail-run-selection";
 import { runContextCliAgentType } from "./run-context-framework.service";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
@@ -330,7 +331,7 @@ export function logDetail(
 
     const [result] = await db
       .select({
-        run: agentRuns,
+        run: logDetailRunSelection(),
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: agentRuns.triggerSource,
