@@ -4,21 +4,11 @@ import { useLoadable, useSet } from "ccstate-react";
 import { ChevronDown, ChevronUp, Database, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import {
-  formatLocalizedNumber,
-  resolvedAppLocale,
-} from "../../../../i18n/format.ts";
+import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import {
   managedModelCooldownDiagnostics$,
   reloadManagedModelCooldownDiagnostics$,
 } from "../../../../signals/zero-page/settings/managed-model-cooldown-diagnostics.ts";
-
-function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat(resolvedAppLocale(), {
-    dateStyle: "medium",
-    timeStyle: "medium",
-  }).format(new Date(value));
-}
 
 function CooldownDiagnosticsSummary({
   diagnostics,
@@ -181,7 +171,9 @@ function CooldownDiagnosticsContent({
                     })}
                   </dt>
                   <dd className="break-all text-foreground">
-                    {formatTimestamp(cooldown.unavailableUntil)}
+                    <time dateTime={cooldown.unavailableUntil}>
+                      {cooldown.unavailableUntil}
+                    </time>
                   </dd>
                 </div>
               </dl>

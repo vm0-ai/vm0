@@ -957,8 +957,8 @@ describe("settings dialog", () => {
       within(diagnostics).getByText("gpt-5.6-luna-2026-08-01"),
     ).toBeInTheDocument();
     expect(
-      within(diagnostics).getByText("Unavailable until").parentElement,
-    ).toHaveTextContent("2026");
+      within(diagnostics).getByText("2026-08-23T04:05:00.000Z"),
+    ).toHaveAttribute("datetime", "2026-08-23T04:05:00.000Z");
     expect(
       within(diagnostics).getByText(
         "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
