@@ -1,9 +1,16 @@
+import { performance } from "node:perf_hooks";
+
+import { now } from "../../lib/time";
 import type {
   ApiDispatchTimingActionType,
   ApiDispatchTimingCollector,
   ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
-import type { ConnectorCatalogRuntimeProjectionFallbackReason } from "./connector-catalog-runtime-projection.service";
+import type {
+  ConnectorCatalogRuntimeProjectionFallbackReason,
+  ConnectorCatalogRuntimeProjectionValidationTiming,
+} from "./connector-catalog-runtime-projection.service";
+import { safeSync } from "../utils";
 
 type AcceptedConnectorCatalogCacheOutcome = "hit" | "miss" | "in_flight";
 type AcceptedConnectorCatalogCacheMissReason =
@@ -265,6 +272,65 @@ export class ConnectorCatalogLoadTiming {
     operation: () => T,
   ): T {
     return this.collector.measureSync(actionType, "nested", operation);
+  }
+
+  measureProjectionRowValidation<T>(
+    operation: (timing: ConnectorCatalogRuntimeProjectionValidationTiming) => T,
+  ): T {
+    let parseDurationMs = 0;
+    let digestDurationMs = 0;
+    const measurePhase = <T>(
+      phase: "parse" | "digest",
+      phaseOperation: () => T,
+    ): T => {
+      const startedAt = performance.now();
+      const result = safeSync(phaseOperation);
+      const durationMs = performance.now() - startedAt;
+      if (phase === "parse") {
+        parseDurationMs += durationMs;
+      } else {
+        digestDurationMs += durationMs;
+      }
+      if ("error" in result) {
+        throw result.error;
+      }
+      return result.ok;
+    };
+    const timing: ConnectorCatalogRuntimeProjectionValidationTiming = {
+      measureParse<T>(phaseOperation: () => T): T {
+        return measurePhase("parse", phaseOperation);
+      },
+      measureDigest<T>(phaseOperation: () => T): T {
+        return measurePhase("digest", phaseOperation);
+      },
+    };
+    return this.measureSync(
+      "api_dispatch_connector_catalog_validate_projection_rows",
+      () => {
+        const result = safeSync(() => {
+          return operation(timing);
+        });
+        // Validation short-circuits per requested connector. Accumulate its
+        // interleaved phases instead of reordering work or logging per row.
+        const finishedAt = now();
+        this.collector.recordDuration(
+          "api_dispatch_connector_catalog_parse_projection_rows",
+          "nested",
+          parseDurationMs,
+          finishedAt,
+        );
+        this.collector.recordDuration(
+          "api_dispatch_connector_catalog_verify_projection_row_digests",
+          "nested",
+          digestDurationMs,
+          finishedAt,
+        );
+        if ("error" in result) {
+          throw result.error;
+        }
+        return result.ok;
+      },
+    );
   }
 
   async measureComplete<T>(operation: () => T | Promise<T>): Promise<T> {

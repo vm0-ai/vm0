@@ -243,6 +243,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_connector_catalog_query_projection_rows"
   | "api_dispatch_connector_catalog_fetch_projection_rows"
   | "api_dispatch_connector_catalog_validate_projection_rows"
+  | "api_dispatch_connector_catalog_parse_projection_rows"
+  | "api_dispatch_connector_catalog_verify_projection_row_digests"
   | "api_dispatch_connector_catalog_count_projection_rows"
   | "api_dispatch_connector_catalog_materialize_projection"
   | "api_dispatch_connector_catalog_query_identity"
@@ -322,7 +324,7 @@ export class ApiDispatchTimingCollector {
     | ApiProcessDispatchOrdinalBucket
     | undefined;
 
-  private recordDuration(
+  recordDuration(
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     durationMs: number,
