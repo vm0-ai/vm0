@@ -1026,20 +1026,10 @@ async function openModelPickerAndReadGeometry(
   await page
     .getByRole("combobox", { name: "Claude Fable 5", exact: true })
     .click();
-  const listbox = page.getByRole("listbox");
-  await expect(listbox).toBeVisible();
-  return listbox.evaluate((element) => {
-    let scrollContainer = element.parentElement;
-    while (scrollContainer) {
-      const overflowY = getComputedStyle(scrollContainer).overflowY;
-      if (overflowY === "auto" || overflowY === "scroll") {
-        break;
-      }
-      scrollContainer = scrollContainer.parentElement;
-    }
-    if (!scrollContainer) {
-      throw new Error("Model picker scroll container unavailable");
-    }
+  const scrollContainer = page.locator('[data-slot="select-content"]');
+  await expect(scrollContainer).toBeVisible();
+  await expect(scrollContainer.getByRole("option").first()).toBeVisible();
+  return scrollContainer.evaluate((element) => {
     const options = Array.from(
       element.querySelectorAll<HTMLElement>('[role="option"]'),
     ).filter((option) => {
@@ -1051,10 +1041,10 @@ async function openModelPickerAndReadGeometry(
       throw new Error("Model picker row geometry unavailable");
     }
     return {
-      clientHeight: scrollContainer.clientHeight,
+      clientHeight: element.clientHeight,
       optionCount: options.length,
       rowStep: second.top - first.top,
-      scrollHeight: scrollContainer.scrollHeight,
+      scrollHeight: element.scrollHeight,
     };
   });
 }
