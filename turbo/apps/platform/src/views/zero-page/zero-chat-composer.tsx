@@ -24,6 +24,7 @@ import {
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/zero-page/presentation-template-import.ts";
 import type {
+  ImportedPresentationTemplateResource,
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/zero-page/presentation-template-library.ts";
@@ -6587,6 +6588,26 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
+function ImportedPresentationTemplateResourcePreload({
+  resource,
+}: {
+  resource: ImportedPresentationTemplateResource;
+}) {
+  const detail = useLastResolved(resource.detail$);
+  return detail?.pageUrls.map((pageUrl) => {
+    return (
+      <img
+        key={pageUrl}
+        alt=""
+        src={pageUrl}
+        loading="eager"
+        decoding="async"
+        fetchPriority="low"
+      />
+    );
+  });
+}
+
 function ComposerTemplateAttachmentSync({
   signals,
 }: {
@@ -6609,6 +6630,9 @@ function ComposerTemplateAttachmentSync({
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates =
     useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplateResources =
+    useLastResolved(signals.template.importedPresentationTemplateResources$) ??
+    [];
   const attachment = selectedComposerTemplateAttachment(
     picker?.value,
     importedTemplates,
@@ -6652,6 +6676,14 @@ function ComposerTemplateAttachmentSync({
               loading="eager"
               decoding="async"
               fetchPriority="low"
+            />
+          );
+        })}
+        {importedTemplateResources.map((resource) => {
+          return (
+            <ImportedPresentationTemplateResourcePreload
+              key={resource.summary.id}
+              resource={resource}
             />
           );
         })}

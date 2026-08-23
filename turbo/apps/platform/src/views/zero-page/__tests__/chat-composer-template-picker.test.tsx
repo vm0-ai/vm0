@@ -3448,38 +3448,41 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("revalidates a prefetched uploaded deck on its first picker open", async () => {
+  it("prefetches uploaded deck pages without loading again on picker open", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
-    const prefetchedCatalogLoaded = context.mocks.deferred<void>();
-    const revalidatedCatalogLoaded = context.mocks.deferred<void>();
     const templateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
-    const prefetchedTemplate = {
+    const template = {
       id: templateId,
       title: "Draft deck",
       sourceFilename: "brand-system.pptx",
-      coverUrl: "https://example.com/old-signed-cover.png",
-      pageCount: 6,
+      coverUrl: "https://example.com/draft-cover.png",
+      pageCount: 3,
       visibility: "public" as const,
       canManage: false,
+      pageUrls: [
+        "https://example.com/draft-cover.png",
+        "https://example.com/draft-page-2.png",
+        "https://example.com/draft-page-3.png",
+      ],
       createdAt: "2026-08-23T03:00:00.000Z",
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
-    const revalidatedTemplate = {
-      ...prefetchedTemplate,
-      title: "Current deck",
-      coverUrl: "https://example.com/current-signed-cover.png",
-      updatedAt: "2026-08-23T03:14:00.000Z",
-    };
-    let catalog = [prefetchedTemplate];
+    const { pageUrls: _pageUrls, ...summary } = template;
+    let catalogRequestCount = 0;
+    let detailRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
-      if (catalog[0]?.title === prefetchedTemplate.title) {
-        prefetchedCatalogLoaded.resolve();
-      } else {
-        revalidatedCatalogLoaded.resolve();
-      }
-      return respond(200, catalog);
+      catalogRequestCount += 1;
+      return respond(200, [summary]);
     });
+    context.mocks.api(
+      presentationTemplatesContract.get,
+      ({ params, respond }) => {
+        expect(params.templateId).toBe(templateId);
+        detailRequestCount += 1;
+        return respond(200, template);
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -3487,30 +3490,56 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await prefetchedCatalogLoaded.promise;
-    catalog = [revalidatedTemplate];
-    await user.click(screen.getByLabelText("Template"));
-    await revalidatedCatalogLoaded.promise;
+    const preloadedPage = await waitFor(() => {
+      const found = document.querySelector(
+        'img[src="https://example.com/draft-page-2.png"]',
+      );
+      if (!(found instanceof HTMLImageElement)) {
+        throw new Error("Uploaded template page was not prefetched");
+      }
+      return found;
+    });
+    expect(preloadedPage).toHaveAttribute("loading", "eager");
+    expect(preloadedPage).toHaveAttribute("fetchpriority", "low");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(catalogRequestCount).toBe(1);
+    expect(detailRequestCount).toBe(1);
 
+    await user.click(screen.getByLabelText("Template"));
     const dialog = screen.getByRole("dialog");
     const card = await waitFor(() => {
       const found = dialog.querySelector(
         `[data-imported-presentation-template="${templateId}"]`,
       );
       if (!(found instanceof HTMLElement)) {
-        throw new Error("Revalidated template card not found");
+        throw new Error("Prefetched template card not found");
       }
       return found;
     });
-    expect(within(card).getByText("Current deck")).toBeInTheDocument();
-    expect(within(card).getByRole("img")).toHaveAttribute(
-      "src",
-      "https://example.com/current-signed-cover.png",
+    const previewButton = within(card).getByLabelText(
+      "Preview Draft deck at current slide",
     );
-    expect(within(dialog).queryByText("Draft deck")).not.toBeInTheDocument();
+    const preview = previewButton.parentElement;
+    if (!preview) {
+      throw new Error("Imported template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+    fireEvent.mouseEnter(preview);
+    fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
 
-    await user.click(screen.getByLabelText("Select template Current deck"));
-    await expectInlineTemplateInComposer("Current deck");
+    await waitFor(() => {
+      expect(within(preview).getByRole("img")).toHaveAttribute(
+        "src",
+        "https://example.com/draft-page-2.png",
+      );
+    });
+    expect(catalogRequestCount).toBe(1);
+    expect(detailRequestCount).toBe(1);
   });
 
   it("makes a template published after navigating away usable in the other thread", async () => {

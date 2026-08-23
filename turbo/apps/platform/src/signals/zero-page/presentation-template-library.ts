@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed, type State } from "ccstate";
 import {
   presentationTemplatesContract,
   type PresentationTemplateDetail,
@@ -13,6 +13,11 @@ import { presentationTemplateImportEnabled$ } from "./presentation-template-impo
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
 
+export interface ImportedPresentationTemplateResource {
+  readonly summary: PresentationTemplateSummary;
+  readonly detail$: Computed<Promise<PresentationTemplateDetail | null>>;
+}
+
 const presentationTemplatesVersion$ = state(0);
 
 /**
@@ -24,12 +29,8 @@ const presentationTemplatesVersion$ = state(0);
  * `accept` would surface that as an error toast on a dialog the user opened to
  * browse built-in templates.
  */
-/**
- * Refetch the catalog after a mutation or as the picker opens. Page-level
- * consumers load it while the picker is hidden, and `useLastResolved` keeps
- * that prefetched result visible during this authoritative revalidation.
- */
-export const refreshPresentationTemplates$ = command(({ get, set }) => {
+/** Refetch the catalog after a mutation or realtime catch-up. */
+const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 
@@ -72,6 +73,35 @@ function createImportedPresentationTemplates$() {
   );
 }
 
+function createImportedPresentationTemplateResources$(
+  importedPresentationTemplates$: Computed<
+    Promise<readonly PresentationTemplateSummary[]>
+  >,
+  internalDetailVersion$: State<number>,
+) {
+  return computed(
+    async (get): Promise<readonly ImportedPresentationTemplateResource[]> => {
+      const templates = await get(importedPresentationTemplates$);
+      return templates.map((summary) => {
+        return {
+          summary,
+          detail$: computed(
+            async (get): Promise<PresentationTemplateDetail | null> => {
+              get(internalDetailVersion$);
+              const client = get(apiClient$)(presentationTemplatesContract);
+              const result = await accept(
+                client.get({ params: { templateId: summary.id } }),
+                [200, 404],
+              );
+              return result.status === 404 ? null : result.body;
+            },
+          ),
+        };
+      });
+    },
+  );
+}
+
 interface ImportedPresentationTemplateHover {
   readonly templateId: string;
   readonly index: number;
@@ -101,22 +131,25 @@ export function createImportedPresentationTemplateSignals() {
   const importedPresentationTemplates$ = createImportedPresentationTemplates$();
   const internalRequestedTemplateId$ = state<string | null>(null);
   const internalDetailVersion$ = state(0);
+  const importedPresentationTemplateResources$ =
+    createImportedPresentationTemplateResources$(
+      importedPresentationTemplates$,
+      internalDetailVersion$,
+    );
   const importedPresentationTemplateRequestedId$ = computed((get) => {
     return get(internalRequestedTemplateId$);
   });
   const importedPresentationTemplateDetail$ = computed(
     async (get): Promise<PresentationTemplateDetail | null> => {
       const templateId = get(internalRequestedTemplateId$);
-      get(internalDetailVersion$);
       if (templateId === null) {
         return null;
       }
-      const client = get(apiClient$)(presentationTemplatesContract);
-      const result = await accept(
-        client.get({ params: { templateId } }),
-        [200],
-      );
-      return result.body;
+      const resources = await get(importedPresentationTemplateResources$);
+      const resource = resources.find((candidate) => {
+        return candidate.summary.id === templateId;
+      });
+      return resource === undefined ? null : await get(resource.detail$);
     },
   );
   const requestImportedPresentationTemplateDetail$ = command(
@@ -212,6 +245,7 @@ export function createImportedPresentationTemplateSignals() {
 
   return {
     importedPresentationTemplates$,
+    importedPresentationTemplateResources$,
     importedPresentationTemplateRequestedId$,
     importedPresentationTemplateDetail$,
     requestImportedPresentationTemplateDetail$,
