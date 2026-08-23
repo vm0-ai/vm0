@@ -3361,45 +3361,45 @@ export const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV =
 // Archive digests for uploaded private R2 presentation runbook packages. Keep
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
-  bloom: "db1cad7968de508939aacb1d1863c1edc65d212c030f15ba07017be23a7f4b76",
+  bloom: "ef31c52bd6ee8de97ab165589b3a5883f0f1c40d389bf65843dc289c72b262df",
   "blueprint-academy":
-    "5ef9dd33430d3c45ce35340894d20eec65ac0953197f60149c7927133b7a8554",
+    "2b35352f92047c7bcec9efe3d09a1fe510943f444fab2ca01db63768539d540f",
   "botane-organic":
-    "09cce166d735be6444c1ba2bffb67b8a869a6dc911cb58332f8969a3486dd262",
+    "f60613a657f47fb6592ecf1baed71c57493a25ef3b8b02034aeb1e3589b6a1bd",
   "business-data":
-    "aafe5ccb07d14a48ffb6f5a870a88b96bc494f00c5ca39599bddcda23da26b14",
-  crayon: "a3bc98e3a22d5a36df60cb597dbcda408c25d1878d787f68e96020cad5c8d43a",
+    "77f827beee2450ff2d82d941bbe2e5af4b823adf7782365459872d053c534114",
+  crayon: "7ef279bc8055886c18c94a9de63249ada745349021f07f5fadb444a0de12d32a",
   "creative-agency":
-    "b57ca925022b39c56b14521593ef3780a2f9f9dee2396778f9ae31b05c0698cd",
+    "fcc63e524d4f7b019c74920b88c925e9b3398bb1305f7ec83d4588f5f27549b3",
   "data-report":
-    "f1ac2126154139f5b9d433c7bec5b239d0173fa1049a86821b4eb4bf3ab4628b",
+    "d61a14aca5f9e5af5b5bfe37f9820c6f6a36ba9542f96a035fb8b6167fcf9be9",
   "editorial-magazine":
-    "31d28b4ca15818583ead5cb30c393e912b8625bd0f86aec2d74be44ed4b1947d",
+    "7d75ab72f71549b6c28f05fa8ae9d7d2e229a0c5add0f5faa231d10a38c1380a",
   "landing-consulting":
-    "a1206787ac402bd92903257a88cac8b0a5542aac9762159591f2c9d0b0732237",
-  lumina: "479811a0e8705d05bae893067936155e0a6bb1f297d5d3b63aa17c5b1b227696",
-  meridian: "556c31e9a88c532d975fbe3b060ecd5a9216c0e1deb0c0a981dd14112417b405",
+    "427ea1989014fb9d8b84de448946ec08ed8702dd354c5df6d9a16f347b3fdfe7",
+  lumina: "07e85e975b682db41757248910c02d31fd36d1e36d9187f69510c3620634d91b",
+  meridian: "e9551141f9f421ead54f310a36ede1d44adb477e4893ae98edbfd68052fdebf9",
   "mosaic-geometric":
-    "846afc579bd21355482ecd91adb299a42aba81bf84aae6101a5f6dc16bc5082f",
+    "468a795111ed2999ed007e7ac1b3775bb64a855cbd2245f0f679bad7ec782a8c",
   "neo-brutalism":
-    "7a516aaa4a9a7c19bc3ce0f524d0c33b878a6213c5dfea32a8d27b1adbfabfaa",
-  nocturne: "793b1317af6b8f5770a47bff99d5e811d733b13733644f8de06aeee91eddf933",
+    "9f4175199f9beac85f1abaf693356c2a93dad9a2d2eaa44b6e3e5ffab466965a",
+  nocturne: "105f8e51960a1a5fa7f89907ac382e6525c4653335b891f1d32e2de47857fa4f",
   "pixel-glitch":
-    "62355fd6c42d3414609be44ebd35b742db9d2a3f593977a974734d34215b0d79",
+    "6feb03e7ef19b7ec9d7cff34929e283212e64fe8cb4b3ed50b35f36232ccda5b",
   "playful-launch":
-    "4a9e29fb00a5bc9cfc323940b155fd041f4fa2a27d316bafb918198a2a50fd40",
+    "9139508877acbbf3d2f2bb2c3670758997aa83283912aa2f22fc56eadb42cde3",
   "playful-pop":
-    "784f04cafee53a00d6e170bfc53cea9297796b238f8b28d19302ef2d077ffba7",
+    "5d5127437813f60ba72bb3eb7d8f4ce157a53ed74110e85deb6211aa96febd21",
   prospectus:
-    "92353d7918b0ee09679785308ac0254961688a24f65cf08b45a2661a3b0f8da5",
+    "27d3140989dc019dd2fd6fce39356ac16e1c5eb74bcf0ccccce6f7c6c3ef605c",
   schoolhouse:
-    "d61844dc5030cd14a94b047b5cf4193dfcf470f5e389614eaacbf31f3943993e",
+    "08f9bd0c2be156c44ced76ebd582a25742be83663f13cc3b60000d1d6a78a620",
   "sticker-scrapbook":
-    "82dee1479d9b778529674faf096a74eeba19f19bf750a5c4911e4de66b86500f",
-  strata: "8d62c3275d01acbc251ebd95a197e6f00ef501531ebbc157e09c0f9ecdb62547",
+    "9385a404ac1c81fd3d1529dfb10953c0251b421df044444516bb210c8b242d58",
+  strata: "b0a3794293753b1f333c76e000e60fb7b03aa6b90f84951a429053c2e632b3b2",
   "taped-consulting":
-    "da2be65f75283b5d161178b303f9c1d2cea44a07f161388176bd4fed8db5aa97",
-  vantage: "73b46709be8278e76e26e6146c0cc1a2292acec75cfc0591ec9aafc82d60b22f",
+    "b490a6a04f44c2b3ee3f119c0618dc5b30da3b1c855594bcd967609426a7baf3",
+  vantage: "55c852c1e91246bcb917bfd2b0a72210fa0fef3d6561276d86d76c81b05dd1bc",
 };
 
 // The disabled side of LatestPresentationTemplates deliberately keeps the

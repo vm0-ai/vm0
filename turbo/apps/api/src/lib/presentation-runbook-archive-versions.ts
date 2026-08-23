@@ -23,51 +23,51 @@
 
 const CURRENT_PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS = {
   "template:html-ppt-bloom-pitch-runbook":
-    "f01d1c6e93e5bd2a2f4fe083a3cf6278fecda8c854913fae68a971e9ba5b268a",
+    "e3e73784c35c1bcd60f40c69201843ffce1c9e4f50a88aec40ff087f347f9e56",
   "template:html-ppt-blueprint-academy-runbook":
-    "60808948227925dc149183bffd0109c16dd7e1d6bc02f72bb6b9c6621b6652dc",
+    "ec0defd87a4e9afe838507188a5505a4d7c8c1d12dab97ac6c6d84748cffcb64",
   "template:html-ppt-botane-organic-runbook":
-    "c8bb87195fbbd69d70d34628d179a0ef05de0c1a7f8e5b69fe0e47e439a6a7e0",
+    "f12e570aca218108b8b47732654dd48e12ecbd91eb5fd4636bc23620649f3b74",
   "template:html-ppt-business-data-runbook":
-    "a1a5487c108b8ec482ec8d9ba29de453af255df606c1e1273f71f60180bc867f",
+    "32e271a536714f57112245425306dd03ae3e0f99f5a300836a607e364fb14558",
   "template:html-ppt-crayon-runbook":
-    "caf52d4fa167ea1d7cda2bb3a395b34622d5cf1ec8e8429750d569f617409527",
+    "0e059390f386568e8926b860aabf039a2236bc6a848ab09c772865581b6134df",
   "template:html-ppt-creative-agency-runbook":
-    "dc77ef0b4108244c07dbf7b876cde7a492d6bab66b8f964b976d18c8a255e9d7",
+    "bb78a6cb923eba78baf0e5df7d578e662cc5759177d2c719b15f31c9ba1e5a19",
   "template:html-ppt-data-report-runbook":
-    "db16b7278a92abe5e337c77ce2c37e2d6e341b657bcb2244ecc637f63eed42c5",
+    "4b0c27627f0f2678629e8c80161689751d1694c461e361604868412b62ee1c71",
   "template:html-ppt-editorial-magazine-runbook":
-    "12b418d52c94b3d6d9d6bac0e29e6a1c06324fcda3608b043eb6f19b11fc9ce1",
+    "ee0ae3079ede81b27ee93f75d4b1955515812079f7ac003d57796a69767d0e0e",
   "template:html-ppt-landing-consulting-runbook":
-    "878d90db4b73b46b1b5401ca4be4db08ac60dce2a5818fb03b541a262cc2e98a",
+    "288e486d84b74f283169008a809c45810e25e9bcf1eb5cfc3160378010aac132",
   "template:html-ppt-lumina-runbook":
-    "1fc90d062e5ffad07f534703afe914bd3139cf7ec823a911d7b1a294ac3a3a37",
+    "fef2381cdab885d4342f78709147687fdb740d874fbb17cabd61ad67144206b0",
   "template:html-ppt-meridian-runbook":
-    "7c32f0af1ed4ab08a6f9f0ad574750ea82b36c2203b26e1bdf9c6374820eb9bf",
+    "e488f9271b5a21ff96af939eb036e9ed3a5f813a46b7d3dc3893c5db624b095f",
   "template:html-ppt-mosaic-geometric-runbook":
-    "1091979fa03bfe273b8e0623d30ec757af0c4fed68fef4b2e0d9157375082899",
+    "d26dffa248cdded1c67ceb2f0caeeff0d47e121b7f0b5e5ec42bfb57c744c7c8",
   "template:html-ppt-neo-brutalism-runbook":
-    "236eeb0fd0b64ca39fa93110802bd6584dcfbd7d29ed6325c4ca7284985aa642",
+    "459e32c6b21149e23d2a1f5c1d0baa775f8d80d7a1ecca9b589b248d18c5c2cd",
   "template:html-ppt-nocturne-runbook":
-    "23b175b13a44d17f4c1fa43b968c48f985870332352d16e8fc31f19f7b80e719",
+    "fb49f224f5a9bb79bf58deff53cb410d3cfef42a7d236e2e74ada5326cb0627b",
   "template:html-ppt-pixel-glitch-runbook":
-    "c5541e04883a4687a586a363dbc41dc46501d498ea03579ef4655970bca8abf8",
+    "d3178a3d4254084a8e01fdb9c5acaef2483718e8dd4ea527123c5b14026f5922",
   "template:html-ppt-playful-launch-runbook":
-    "14b7e7fdfbc3401004039cf0a2e43ac235e605b014a3beb69df3883b74b5eda1",
+    "820847365300c3f5e9b06ec6107961d44eed467a7ed64a3fa84ff0f99383580c",
   "template:html-ppt-playful-pop-runbook":
-    "17e0d91f0b7c7b5354c60850a90d5f9ca8627f9aee064f10fe7b87bd8650ff50",
+    "739d574be1d370e433cefdb160c982d64de474e7bb1afc6619e5b30e81e5f639",
   "template:html-ppt-prospectus-runbook":
-    "7ccba0e3a58bd5db6151d6365d8c439bd8192c6ded10f4d1e441ae60bb7af55a",
+    "5763cb85870664d6d4c1b63f3e38d841f86717e2361e9d2eebc47a4aa0944b55",
   "template:html-ppt-schoolhouse-runbook":
-    "336fc7d044a97b970d741c6782fcd2742d63bd6475ef8b1db232d84f6b9b5227",
+    "c32e817ea80e696aaf288d3a4076e6ab59bc9e3f3364f56d3e5f704aac1811df",
   "template:html-ppt-sticker-scrapbook-runbook":
-    "afb984e327543adb769810a7961e65973033363982d2a729b8967181166bd826",
+    "261cfe145a278ded8214e7c201e1cf2ae7bb547ad1b258a739b842dad18a4fe4",
   "template:html-ppt-strata-runbook":
-    "3c1051437748a41d3907e15f366467b8d6b1457115783e8152bcf9739d63324b",
+    "98e339feef68f251d2813c81e37278ea7ba5a40814d8241f7876adf850e1e8c1",
   "template:html-ppt-taped-consulting-runbook":
-    "279efb09bdaa7598747932f39eca1043023f4364834df819958b19536386385d",
+    "335e24b12868f5807a4a7a04b370720ee8b4298a43d331e308dda8e2b731b571",
   "template:html-ppt-vantage-runbook":
-    "e1640374607ff6f8b3cacd67c29f105d3c52abf2cebf2b4945ebf334a2a429ea",
+    "432a6c78831a3d007669f0e505f6a33de03e38273ae6bb17dd92702cfcb99011",
 } as const satisfies Record<string, string>;
 
 // Pre-cutover CLI contexts and the disabled side of LatestPresentationTemplates
