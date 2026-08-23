@@ -2461,6 +2461,27 @@ fn exec_result_from_operation_result_preserves_terminal_metadata() {
 }
 
 #[test]
+fn storage_manifest_exec_result_preserves_terminal_metadata() {
+    let result = storage_manifest_exec_result(GuestStorageManifestResult {
+        termination: vsock_proto::ExecTermination::WaitFailed,
+        duration_ms: 19,
+        stdout: b"out".to_vec(),
+        stderr: b"err".to_vec(),
+        stdout_truncated: true,
+        stderr_truncated: false,
+        diagnostic: "containment cleanup failed".to_string(),
+    });
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(19));
+    assert_eq!(result.stdout, b"out");
+    assert_eq!(result.stderr, b"err");
+    assert!(result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
+}
+
+#[test]
 fn exec_result_from_operation_result_maps_terminal_edge_states() {
     for (termination, diagnostic, input_stderr, expected_termination) in [
         (
