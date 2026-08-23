@@ -5,7 +5,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
-import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage.service";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 
 export const AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT = "100ms";

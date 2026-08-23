@@ -15,9 +15,9 @@ import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { nowDate } from "../../lib/time";
 import {
   ensureAgentInstructionsStorage$,
-  removeAgentInstructionsStorageInTransaction,
   writeAgentInstructionsStorageInTransaction$,
 } from "./agent-instructions-storage.service";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import {
   grantOnboardingCredits,

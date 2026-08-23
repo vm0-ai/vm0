@@ -15,7 +15,7 @@ import { isLockNotAvailable } from "../../lib/pg-errors";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { settle } from "../utils";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
-import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage.service";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 export function agentExistsInOrg(args: {
