@@ -60,7 +60,7 @@ export function persistedChatThreadModelSnapshotColumns() {
     modelProviderType: chatThreads.modelProviderType,
     modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
     codexServiceTier: chatThreads.codexServiceTier,
-    agentComposeId: chatThreads.agentComposeId,
+    agentComposeId: chatThreads.agentId,
   };
 }
 
@@ -152,7 +152,9 @@ async function loadLockedChatThreadModel(
     )
     .limit(1)
     .for("update");
-  return thread;
+  return thread?.agentComposeId
+    ? { ...thread, agentComposeId: thread.agentComposeId }
+    : undefined;
 }
 
 async function loadChatThreadModel(
@@ -169,7 +171,9 @@ async function loadChatThreadModel(
       ),
     )
     .limit(1);
-  return thread;
+  return thread?.agentComposeId
+    ? { ...thread, agentComposeId: thread.agentComposeId }
+    : undefined;
 }
 
 function resolveCodexTier(args: {

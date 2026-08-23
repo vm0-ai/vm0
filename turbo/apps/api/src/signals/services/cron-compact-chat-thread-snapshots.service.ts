@@ -5,6 +5,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   gt,
   isNull,
   lt,
@@ -16,7 +17,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { z } from "zod";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -39,7 +40,7 @@ const snapshot = alias(chatThreadSnapshots, "snapshot");
 const event = alias(chatThreadEvents, "event");
 const marker = alias(chatThreadEvents, "marker");
 const thread = alias(chatThreads, "thread");
-const agent = alias(agentComposes, "agent");
+const agent = alias(agents, "agent");
 
 function chatThreadSnapshotBatchSize(): number {
   const raw = optionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE");
@@ -66,10 +67,10 @@ const prunedEventsRowSchema = z.object({ count: z.int() });
 function allScopesCte(staleCutoff: Date): SQL {
   return sql`
     all_scopes AS (
-      SELECT ${chatThreads.userId} AS user_id, ${agentComposes.orgId} AS org_id
+      SELECT ${chatThreads.userId} AS user_id, ${agents.orgId} AS org_id
       FROM ${chatThreads}
-      INNER JOIN ${agentComposes}
-        ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
+      INNER JOIN ${agents}
+        ON ${eq(agents.id, chatThreads.agentId)}
 
       UNION
 
@@ -143,7 +144,7 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
         SELECT jsonb_agg(
           jsonb_build_object(
             'id', thread.id,
-            'agentId', thread.agent_compose_id,
+            'agentId', thread.agent_id,
             'title', thread.title,
             'sortAt', thread.last_message_at,
             'createdAt', thread.created_at,
@@ -166,8 +167,8 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
             ${desc(thread.id)}
         ) AS chat_threads
         FROM ${chatThreads} ${thread}
-        INNER JOIN ${agentComposes} ${agent}
-          ON ${eq(agent.id, thread.agentComposeId)}
+        INNER JOIN ${agents} ${agent}
+          ON ${eq(agent.id, thread.agentId)}
         WHERE ${and(
           eq(thread.userId, sql`scope.user_id`),
           eq(agent.orgId, sql`scope.org_id`),
@@ -325,6 +326,12 @@ async function compactChatThreadSnapshotsForAllScopes(
         WHERE ${and(
           eq(event.userId, snapshot.userId),
           eq(event.orgId, snapshot.orgId),
+          exists(
+            db
+              .select({ id: agents.id })
+              .from(agents)
+              .where(eq(agents.id, event.agentId)),
+          ),
           lt(event.createdAt, cutoff),
           lt(event.seqId, marker.seqId),
         )}

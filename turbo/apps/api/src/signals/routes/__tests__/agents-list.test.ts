@@ -4,6 +4,7 @@ import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { overrideCanonicalAgentAuthorityFixture } from "../../../test-fixtures/canonical-agent-authority";
 import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
@@ -110,6 +111,71 @@ describe("GET /api/agents", () => {
     );
 
     expect(response.body).toStrictEqual([]);
+  });
+
+  it("uses canonical owner, product state, and updated-at ordering when legacy rows differ", async () => {
+    const owner = newOrgUser();
+    const canonicalOwner = {
+      orgId: owner.orgId,
+      userId: `user_${randomUUID()}`,
+    };
+    mocks.clerk.session(owner.userId, owner.orgId);
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const first = await accept(
+      apiClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Legacy First Agent" },
+      }),
+      [201],
+    );
+    const second = await accept(
+      apiClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Second Agent" },
+      }),
+      [201],
+    );
+
+    const legacy = await overrideCanonicalAgentAuthorityFixture({
+      agentId: first.body.agentId,
+      override: {
+        owner: canonicalOwner.userId,
+        displayName: "Canonical First Agent",
+        visibility: "private",
+        updatedAt: new Date("2099-01-01T00:00:00.000Z"),
+      },
+      signal: context.signal,
+    });
+    expect(legacy).toStrictEqual({
+      legacyOwner: owner.userId,
+      legacyDisplayName: "Legacy First Agent",
+      legacyVisibility: "public",
+    });
+
+    const ownerList = await accept(
+      apiClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      ownerList.body.map((agent) => {
+        return agent.agentId;
+      }),
+    ).toStrictEqual([second.body.agentId]);
+
+    mocks.clerk.session(canonicalOwner.userId, canonicalOwner.orgId);
+    const canonicalOwnerList = await accept(
+      apiClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(canonicalOwnerList.body).toHaveLength(2);
+    expect(canonicalOwnerList.body[0]).toMatchObject({
+      agentId: first.body.agentId,
+      ownerId: canonicalOwner.userId,
+      displayName: "Canonical First Agent",
+      visibility: "private",
+    });
+    expect(canonicalOwnerList.body[1]?.agentId).toBe(second.body.agentId);
   });
 
   // #28461 moved this contract to its neutral path, which removed both branded

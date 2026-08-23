@@ -8,7 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/feishu-connect";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -47,15 +47,12 @@ async function loadFeishuInstallations(db: ReadonlyDb, orgId: string) {
       callbackVerifiedAt: feishuOrgInstallations.callbackVerifiedAt,
       setupCompletedAt: feishuOrgInstallations.setupCompletedAt,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
-      defaultAgentName: zeroAgents.name,
-      defaultAgentDisplayName: zeroAgents.displayName,
+      defaultAgentId: agents.id,
+      defaultAgentName: agents.name,
+      defaultAgentDisplayName: agents.displayName,
     })
     .from(feishuOrgInstallations)
-    .leftJoin(
-      zeroAgents,
-      eq(zeroAgents.id, feishuOrgInstallations.defaultComposeId),
-    )
+    .innerJoin(agents, eq(agents.id, feishuOrgInstallations.defaultAgentId))
     .where(eq(feishuOrgInstallations.orgId, orgId))
     .orderBy(asc(feishuOrgInstallations.createdAt));
 }
@@ -433,16 +430,13 @@ export const configureFeishuInstallation$ = command(
   ): Promise<ConfigureFeishuResult> => {
     const db = set(writeDb$);
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
+      .select({ id: agents.id })
+      .from(agents)
       .where(
         and(
-          eq(zeroAgents.id, args.defaultAgentId),
-          eq(zeroAgents.orgId, args.orgId),
-          or(
-            eq(zeroAgents.visibility, "public"),
-            eq(zeroAgents.owner, args.userId),
-          ),
+          eq(agents.id, args.defaultAgentId),
+          eq(agents.orgId, args.orgId),
+          or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
         ),
       )
       .limit(1);
@@ -589,16 +583,13 @@ export const updateFeishuInstallationAgent$ = command(
   ): Promise<UpdateFeishuInstallationResult> => {
     const db = set(writeDb$);
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
+      .select({ id: agents.id })
+      .from(agents)
       .where(
         and(
-          eq(zeroAgents.id, args.defaultAgentId),
-          eq(zeroAgents.orgId, args.orgId),
-          or(
-            eq(zeroAgents.visibility, "public"),
-            eq(zeroAgents.owner, args.userId),
-          ),
+          eq(agents.id, args.defaultAgentId),
+          eq(agents.orgId, args.orgId),
+          or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
         ),
       )
       .limit(1);

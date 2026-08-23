@@ -18,7 +18,7 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
@@ -762,7 +762,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
-    .select({ selectedComposeId: teamsUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: teamsUserAgentPreferences.selectedAgentId })
     .from(teamsUserAgentPreferences)
     .where(
       and(
@@ -771,7 +771,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function setUserAgentPreference(args: {
@@ -806,12 +806,12 @@ async function getWorkspaceAgent(
 ): Promise<TeamsAgent | undefined> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.id, composeId), eq(zeroAgents.orgId, orgId)))
+    .from(agents)
+    .where(and(eq(agents.id, composeId), eq(agents.orgId, orgId)))
     .limit(1);
   return agent;
 }
@@ -824,19 +824,16 @@ async function getVisibleWorkspaceAgent(args: {
 }): Promise<TeamsAgent | undefined> {
   const [agent] = await args.db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.id, args.composeId),
-        eq(zeroAgents.orgId, args.orgId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.id, args.composeId),
+        eq(agents.orgId, args.orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
     .limit(1);
@@ -851,21 +848,18 @@ async function getVisibleAgentPickerOptions(args: {
 }): Promise<readonly TeamsAgentPickerOption[]> {
   const rows = await args.db
     .select({
-      composeId: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      composeId: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, args.orgId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.orgId, args.orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
-    .orderBy(desc(zeroAgents.updatedAt));
+    .orderBy(desc(agents.updatedAt));
 
   return rows
     .filter((agent) => {

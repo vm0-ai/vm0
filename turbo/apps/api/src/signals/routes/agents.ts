@@ -12,7 +12,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { randomPresetAvatar } from "@okouai/core/agent-avatar";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
@@ -23,19 +23,16 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { conflict, notFound } from "../../lib/error";
-import {
-  requireAdminPermission,
-  requireAgentPermission,
-} from "../../lib/require-agent-permission";
+import { requireAgentPermission } from "../../lib/require-agent-permission";
 import {
   createServerSideZeroAgentCompose$,
+  readAgentComposeHeadForWriterGuard,
   recomposeAgentIfStale$,
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
 import { deleteComposeById$ } from "../services/compose-data.service";
 import {
   agentResponse,
-  defaultAgentResponse,
   agentDetail,
   agentEnabledConnectorSlugs,
   agentCustomConnectorGrants,
@@ -62,8 +59,8 @@ interface AgentUpdateBody {
 }
 
 interface ExistingAgentVisibility {
-  readonly owner: string | null;
-  readonly visibility: AgentVisibility | null;
+  readonly owner: string;
+  readonly visibility: AgentVisibility;
 }
 
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
@@ -115,10 +112,8 @@ async function publicAgentCreateSlotError(
 ) {
   const [publicAgentCount] = await writeDb
     .select({ value: count() })
-    .from(zeroAgents)
-    .where(
-      and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.visibility, "public")),
-    );
+    .from(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.visibility, "public")));
   signal.throwIfAborted();
 
   return (publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT
@@ -163,17 +158,16 @@ async function findAgentForUpdate(
 ): Promise<ExistingAgentForUpdate | null> {
   const rows = await writeDb
     .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      owner: agents.owner,
+      visibility: agents.visibility,
+      displayName: agents.displayName,
       defaultAgentId: orgMetadata.defaultAgentId,
     })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agentComposes.orgId))
-    .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
+    .from(agents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+    .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -185,16 +179,16 @@ async function findAgentMetadataForUpdate(
 ) {
   const rows = await writeDb
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      owner: agents.owner,
+      visibility: agents.visibility,
+      displayName: agents.displayName,
       defaultAgentId: orgMetadata.defaultAgentId,
     })
-    .from(zeroAgents)
-    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
+    .from(agents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+    .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -203,14 +197,12 @@ function requireAgentConfigurationPermission(
   existing: ExistingAgentForUpdate,
   member: AgentMember,
 ) {
-  return existing.owner
-    ? requireAgentPermission(
-        existing.owner,
-        member,
-        "update agent configuration",
-        { visibility: existing.visibility },
-      )
-    : requireAdminPermission(member, "update agent configuration");
+  return requireAgentPermission(
+    existing.owner,
+    member,
+    "update agent configuration",
+    { visibility: existing.visibility },
+  );
 }
 
 function visibilityOwnerError(
@@ -218,11 +210,7 @@ function visibilityOwnerError(
   member: AgentMember,
   requestedVisibility: AgentVisibility | undefined,
 ) {
-  if (
-    requestedVisibility === undefined ||
-    !existing.owner ||
-    existing.owner === member.userId
-  ) {
+  if (requestedVisibility === undefined || existing.owner === member.userId) {
     return null;
   }
 
@@ -233,7 +221,7 @@ async function publicVisibilitySlotError(
   args: {
     readonly writeDb: Db;
     readonly orgId: string;
-    readonly currentVisibility: AgentVisibility | null;
+    readonly currentVisibility: AgentVisibility;
     readonly nextVisibility: AgentVisibility;
   },
   signal: AbortSignal,
@@ -244,13 +232,8 @@ async function publicVisibilitySlotError(
 
   const [publicAgentCount] = await args.writeDb
     .select({ value: count() })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, args.orgId),
-        eq(zeroAgents.visibility, "public"),
-      ),
-    );
+    .from(agents)
+    .where(and(eq(agents.orgId, args.orgId), eq(agents.visibility, "public")));
   signal.throwIfAborted();
 
   return (publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT
@@ -287,15 +270,6 @@ function validateAgentVisibilityUpdate(
     },
     signal,
   );
-}
-
-function requireExistingAgentVisibility(
-  existing: ExistingAgentVisibility,
-): AgentVisibility {
-  if (existing.visibility === null) {
-    throw new Error("Existing zero agent is missing visibility");
-  }
-  return existing.visibility;
 }
 
 function upsertZeroAgentAfterCompose(
@@ -338,21 +312,21 @@ async function readAgentForResponse(
 ) {
   const rows = await writeDb
     .select({
-      agentId: zeroAgents.id,
+      agentId: agents.id,
       defaultAgentId: orgMetadata.defaultAgentId,
-      owner: zeroAgents.owner,
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-      avatarUrl: zeroAgents.avatarUrl,
-      modelProviderId: zeroAgents.modelProviderId,
-      selectedModel: zeroAgents.selectedModel,
-      preferPersonalProvider: zeroAgents.preferPersonalProvider,
-      visibility: zeroAgents.visibility,
+      owner: agents.owner,
+      displayName: agents.displayName,
+      description: agents.description,
+      sound: agents.sound,
+      avatarUrl: agents.avatarUrl,
+      modelProviderId: agents.modelProviderId,
+      selectedModel: agents.selectedModel,
+      preferPersonalProvider: agents.preferPersonalProvider,
+      visibility: agents.visibility,
     })
-    .from(zeroAgents)
-    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
+    .from(agents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+    .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -405,21 +379,18 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const result = await writeDb.transaction(async (tx) => {
     await tx
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.orgId, auth.orgId))
+      .select({ id: agents.id })
+      .from(agents)
+      .where(eq(agents.orgId, auth.orgId))
       .for("update");
     signal.throwIfAborted();
 
     if (visibility === "public") {
       const [publicAgentCount] = await tx
         .select({ value: count() })
-        .from(zeroAgents)
+        .from(agents)
         .where(
-          and(
-            eq(zeroAgents.orgId, auth.orgId),
-            eq(zeroAgents.visibility, "public"),
-          ),
+          and(eq(agents.orgId, auth.orgId), eq(agents.visibility, "public")),
         );
       signal.throwIfAborted();
 
@@ -610,8 +581,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return permissionError;
   }
 
-  const nextVisibility =
-    updateBody.visibility ?? requireExistingAgentVisibility(existing);
+  const nextVisibility = updateBody.visibility ?? existing.visibility;
   const visibilityError = await validateAgentVisibilityUpdate(
     {
       writeDb,
@@ -652,12 +622,11 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
   signal.throwIfAborted();
 
-  return {
-    status: 200 as const,
-    body: agent
-      ? agentResponse(agent, publicBrand)
-      : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
-  };
+  if (!agent) {
+    throw new Error(`Canonical Agent missing after update: ${params.id}`);
+  }
+
+  return { status: 200 as const, body: agentResponse(agent, publicBrand) };
 });
 
 const updateAgentMetadataBody$ = bodyResultOf(
@@ -728,12 +697,11 @@ const updateAgentMetadataInner$ = command(
     const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
     signal.throwIfAborted();
 
-    return {
-      status: 200 as const,
-      body: agent
-        ? agentResponse(agent, publicBrand)
-        : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
-    };
+    if (!agent) {
+      throw new Error(`Canonical Agent missing after update: ${params.id}`);
+    }
+
+    return { status: 200 as const, body: agentResponse(agent, publicBrand) };
   },
 );
 
@@ -745,13 +713,13 @@ const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const writeDb = set(writeDb$);
   const [agent] = await writeDb
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
+      id: agents.id,
+      name: agents.name,
+      owner: agents.owner,
+      visibility: agents.visibility,
     })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, auth.orgId), eq(zeroAgents.id, params.id)))
+    .from(agents)
+    .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)))
     .limit(1);
   signal.throwIfAborted();
 
@@ -869,17 +837,14 @@ const updateAgentUserConnectorsInner$ = command(
     const writeDb = set(writeDb$);
     const [agent] = await writeDb
       .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        zeroAgentId: zeroAgents.id,
+        id: agents.id,
+        name: agents.name,
       })
-      .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .from(agents)
       .where(
         and(
-          eq(agentComposes.orgId, auth.orgId),
-          eq(agentComposes.id, params.id),
+          eq(agents.orgId, auth.orgId),
+          eq(agents.id, params.id),
           visibleJoinedAgentCondition(auth.userId),
         ),
       )
@@ -887,6 +852,15 @@ const updateAgentUserConnectorsInner$ = command(
     signal.throwIfAborted();
 
     if (!agent) {
+      return agentNotFound(params.id);
+    }
+
+    const currentHeadVersionId = await readAgentComposeHeadForWriterGuard(
+      writeDb,
+      agent.id,
+    );
+    signal.throwIfAborted();
+    if (currentHeadVersionId === undefined) {
       return agentNotFound(params.id);
     }
 
@@ -919,10 +893,6 @@ const updateAgentUserConnectorsInner$ = command(
       agentId: params.id,
       enabledConnectorSlugs: uniqueConnectorSlugs,
       operation,
-      allowMissingZeroAgentForEmptyReplace:
-        operation === "replace" &&
-        agent.zeroAgentId === null &&
-        uniqueConnectorSlugs.length === 0,
     });
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {
@@ -935,7 +905,7 @@ const updateAgentUserConnectorsInner$ = command(
         userId: auth.userId,
         agentComposeId: agent.id,
         agentName: agent.name,
-        currentHeadVersionId: agent.headVersionId,
+        currentHeadVersionId,
       },
       signal,
     );

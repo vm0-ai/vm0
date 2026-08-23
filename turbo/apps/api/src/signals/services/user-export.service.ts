@@ -20,7 +20,7 @@ import {
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -531,13 +531,13 @@ function collectAgentInstructionFiles(
 
     const composes = await runtime.db
       .select({
-        id: agentComposes.id,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
+        id: agents.id,
+        orgId: agents.orgId,
+        name: agents.name,
       })
-      .from(agentComposes)
-      .where(eq(agentComposes.userId, userId))
-      .orderBy(asc(agentComposes.orgId), asc(agentComposes.name));
+      .from(agents)
+      .where(eq(agents.owner, userId))
+      .orderBy(asc(agents.orgId), asc(agents.name));
     signal.throwIfAborted();
 
     for (const compose of composes) {

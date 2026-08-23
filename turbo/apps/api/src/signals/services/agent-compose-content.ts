@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { getInstructionsFilename } from "@okouai/core/frameworks";
+import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "./agent-execution-plan";
 
 type ZeroAgentComposeContent = {
@@ -46,6 +47,39 @@ export function buildZeroAgentComposeContent(
   };
 }
 
+function isApplicationRuntimeEnvironmentKey(name: string): boolean {
+  return APPLICATION_OWNED_AGENT_EXECUTION_PLAN.environment.runtimeOverrideKeys.some(
+    (runtimeKey) => {
+      return runtimeKey === name;
+    },
+  );
+}
+
+export function userConfiguredAgentEnvironmentRequirements(agentName: string): {
+  readonly secrets: string[];
+  readonly vars: string[];
+} {
+  const grouped = extractAndGroupVariables(
+    buildZeroAgentComposeContent(agentName),
+  );
+  return {
+    secrets: grouped.secrets
+      .map((secret) => {
+        return secret.name;
+      })
+      .filter((name) => {
+        return !isApplicationRuntimeEnvironmentKey(name);
+      }),
+    vars: grouped.vars
+      .map((variable) => {
+        return variable.name;
+      })
+      .filter((name) => {
+        return !isApplicationRuntimeEnvironmentKey(name);
+      }),
+  };
+}
+
 function sortObjectKeys(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") {
     return obj;
@@ -62,9 +96,7 @@ function sortObjectKeys(obj: unknown): unknown {
 }
 
 /** SHA-256 of the runtime canonical-JSON representation of compose content. */
-export function computeComposeVersionId(
-  content: Record<string, unknown>,
-): string {
+export function computeComposeVersionId(content: unknown): string {
   const canonical = JSON.stringify(sortObjectKeys(content));
   return createHash("sha256").update(canonical).digest("hex");
 }

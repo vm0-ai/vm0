@@ -1109,6 +1109,20 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       },
     });
 
+    mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
+    await compactChatThreadSnapshots();
+    const retainedDeletedAgentAnchor = await chat.requestThreadEvents(
+      actor,
+      { sinceSeqId: deletedCreateEvent.seqId },
+      [200],
+    );
+    expect(retainedDeletedAgentAnchor.status).toBe(200);
+    expect(
+      (await allThreadEvents(actor)).some((event) => {
+        return event.agentId === deletedAgent.agentId;
+      }),
+    ).toBeFalsy();
+
     const retainedAnchorCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: compactedSnapshot.latestSeqId ?? undefined },

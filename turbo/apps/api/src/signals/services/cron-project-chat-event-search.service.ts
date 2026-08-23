@@ -11,7 +11,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import {
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
@@ -449,11 +449,11 @@ async function loadCandidateThreads(
     .select({
       chatThreadId: chatThreads.id,
       userId: chatThreads.userId,
-      orgId: agentComposes.orgId,
-      agentComposeId: chatThreads.agentComposeId,
+      orgId: agents.orgId,
+      agentComposeId: agents.id,
     })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .innerJoin(agents, eq(chatThreads.agentId, agents.id))
     .leftJoin(
       chatEventSearchMessageWatermarks,
       eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),

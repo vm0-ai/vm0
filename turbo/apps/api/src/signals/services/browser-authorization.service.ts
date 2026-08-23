@@ -250,13 +250,14 @@ export const applyBrowserAuthorizationRequest$ = command(
           and(
             eq(chatThreads.id, loaded.request.chatThreadId),
             eq(chatThreads.userId, args.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentComposeId: chatThreads.agentId,
         });
-      if (!thread) {
+      if (!thread?.agentComposeId) {
         return false;
       }
       await appendChatThreadEvent(tx, {

@@ -1,5 +1,6 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
@@ -103,10 +104,11 @@ async function loadFeishuChatDeliveryContext(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -145,7 +147,7 @@ async function loadFeishuChatDeliveryContext(
   const [binding] = await args.db
     .select({
       feishuOpenId: feishuOrgConnections.feishuOpenId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatThreadRoutes)
@@ -334,7 +336,7 @@ async function deliverClaimedFeishuChatCallback(
       runId: args.callback.runId,
       agentId: run.agentId,
       publicBrand: binding.publicBrand,
-      defaultAgentId: binding.defaultAgentId,
+      defaultAgentId: binding.defaultAgentId ?? undefined,
       replyToMention:
         payload.replyInThread && mentionerCount > 1
           ? `<at id=${binding.feishuOpenId}></at>`

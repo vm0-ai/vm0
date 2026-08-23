@@ -13,7 +13,7 @@ import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connec
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
@@ -704,9 +704,9 @@ export async function loadComposeFeatureSwitchContext(
   signal: AbortSignal,
 ): Promise<FeatureSwitchContext> {
   const [compose] = await args.db
-    .select({ orgId: agentComposes.orgId, userId: agentComposes.userId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, args.composeId))
+    .select({ orgId: agents.orgId, userId: agents.owner })
+    .from(agents)
+    .where(eq(agents.id, args.composeId))
     .limit(1);
   signal.throwIfAborted();
 
@@ -734,9 +734,9 @@ export async function resolveGithubOauthOrgId(
   }
 
   const [compose] = await args.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, args.composeId))
+    .select({ orgId: agents.orgId })
+    .from(agents)
+    .where(eq(agents.id, args.composeId))
     .limit(1);
   signal.throwIfAborted();
 

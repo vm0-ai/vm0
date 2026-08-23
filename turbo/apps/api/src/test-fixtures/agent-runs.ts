@@ -9,9 +9,14 @@
 import { createStore } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@okouai/db/schema/agent-compose";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
@@ -19,14 +24,262 @@ import { storages } from "@okouai/db/schema/storage";
 import { and, count, eq, inArray } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { badRequestMessage, notFound } from "../lib/error";
 import { now } from "../lib/time";
 import {
   createAgentRun$,
   type CreateAgentRunArgs,
 } from "../signals/services/agent-run-create.service";
 import { agentRunList } from "../signals/services/agent-runs.service";
+import {
+  isCompressedSessionHistoryBlobEncoding,
+  normalizeSessionHistoryBlobEncoding,
+} from "../signals/services/session-history-blobs";
+import { projectLegacyWritebackArtifacts } from "../signals/services/storage-legacy-projection.service";
 
 const store = createStore();
+
+type LegacyDirectRunResolver = NonNullable<
+  CreateAgentRunArgs["testOnlyResolveLegacyDirectRunCompose"]
+>;
+type LegacyDirectRunResolution = Awaited<ReturnType<LegacyDirectRunResolver>>;
+type LegacyDirectRunResolverArgs = Parameters<LegacyDirectRunResolver>[0];
+type LegacyResolvedCompose = Extract<
+  LegacyDirectRunResolution,
+  { readonly composeId: string }
+>;
+
+const MISSING_AGENT_CONFIGURATION_MESSAGE =
+  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+
+async function measureLegacyDirectResolution<T>(
+  timing: LegacyDirectRunResolverArgs["timing"],
+  actionType:
+    | "api_dispatch_resolve_compose_lookup_agent"
+    | "api_dispatch_resolve_compose_lookup_session_snapshot"
+    | "api_dispatch_resolve_compose_resolve_session_history",
+  work: () => Promise<T> | T,
+): Promise<T> {
+  return timing
+    ? await timing.measure(actionType, "nested", work)
+    : await Promise.resolve(work());
+}
+
+function resumeSessionFromLegacySnapshot(snapshot: {
+  readonly runId: string;
+  readonly cliAgentSessionId: string;
+  readonly cliAgentSessionHistory: string | null;
+  readonly cliAgentSessionHistoryHash: string | null;
+  readonly sessionHistoryBlobEncoding: string | null;
+}): LegacyResolvedCompose["resumeSession"] {
+  const hash = snapshot.cliAgentSessionHistoryHash;
+  let encoding;
+  if (snapshot.sessionHistoryBlobEncoding !== null) {
+    const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+      snapshot.sessionHistoryBlobEncoding,
+    );
+    if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
+      encoding = parsedEncoding;
+    }
+  }
+  if (hash) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      historyGenerationRunId: snapshot.runId,
+      historyRef: {
+        kind: "blob",
+        hash,
+        ...(encoding ? { encoding } : {}),
+      },
+    };
+  }
+  if (snapshot.cliAgentSessionHistory) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      sessionHistory: snapshot.cliAgentSessionHistory,
+    };
+  }
+  return undefined;
+}
+
+async function resolveLegacyDirectAgentRun(
+  args: LegacyDirectRunResolverArgs,
+  agentId: string,
+): Promise<LegacyDirectRunResolution> {
+  const [row] = await measureLegacyDirectResolution(
+    args.timing,
+    "api_dispatch_resolve_compose_lookup_agent",
+    async () => {
+      return await args.db
+        .select({
+          composeId: agentComposes.id,
+          composeName: agentComposes.name,
+          composeOrgId: agentComposes.orgId,
+          composeUserId: agentComposes.userId,
+          headVersionId: agentComposes.headVersionId,
+          versionId: agentComposeVersions.id,
+          versionContent: agentComposeVersions.content,
+        })
+        .from(agentComposes)
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentComposeVersions.id, agentComposes.headVersionId),
+        )
+        .where(eq(agentComposes.id, agentId))
+        .limit(1);
+    },
+  );
+  if (!row) {
+    return notFound("Agent compose not found");
+  }
+  if (!row.headVersionId || !row.versionId) {
+    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
+  }
+  return {
+    agentComposeVersionId: row.versionId,
+    composeId: row.composeId,
+    composeUserId: row.composeUserId,
+    agentName: row.composeName || undefined,
+    orgId: row.composeOrgId,
+    content: row.versionContent as LegacyResolvedCompose["content"],
+    artifacts: [],
+  };
+}
+
+async function loadLegacyDirectSessionSnapshot(
+  args: LegacyDirectRunResolverArgs,
+  sessionId: string,
+) {
+  return await measureLegacyDirectResolution(
+    args.timing,
+    "api_dispatch_resolve_compose_lookup_session_snapshot",
+    async () => {
+      return await args.db
+        .select({
+          session: {
+            id: agentSessions.id,
+            storageMounts: agentSessions.storageMounts,
+          },
+          compose: {
+            id: agentComposes.id,
+            name: agentComposes.name,
+            orgId: agentComposes.orgId,
+            userId: agentComposes.userId,
+            headVersionId: agentComposes.headVersionId,
+          },
+          version: {
+            id: agentComposeVersions.id,
+            content: agentComposeVersions.content,
+          },
+          conversation: {
+            id: conversations.id,
+            runId: conversations.runId,
+            cliAgentSessionId: conversations.cliAgentSessionId,
+            cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+            cliAgentSessionHistoryHash:
+              conversations.cliAgentSessionHistoryHash,
+          },
+          historyBlob: { hash: blobs.hash, encoding: blobs.encoding },
+          previousRun: {
+            id: agentRuns.id,
+            vars: agentRuns.vars,
+            modelProvider: agentRuns.modelProvider,
+            modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+            modelRuntimeModel: agentRuns.modelRuntimeModel,
+          },
+        })
+        .from(agentSessions)
+        .leftJoin(
+          agentComposes,
+          eq(agentSessions.agentComposeId, agentComposes.id),
+        )
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentComposeVersions.id, agentComposes.headVersionId),
+        )
+        .leftJoin(
+          conversations,
+          eq(agentSessions.conversationId, conversations.id),
+        )
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
+        .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+        .where(
+          and(
+            eq(agentSessions.id, sessionId),
+            eq(agentSessions.userId, args.userId),
+            eq(agentSessions.orgId, args.orgId),
+          ),
+        )
+        .limit(1);
+    },
+  );
+}
+
+async function resolveLegacyDirectSessionRun(
+  args: LegacyDirectRunResolverArgs,
+  sessionId: string,
+): Promise<LegacyDirectRunResolution> {
+  const [snapshot] = await loadLegacyDirectSessionSnapshot(args, sessionId);
+  if (!snapshot) {
+    return notFound("Agent session not found");
+  }
+  if (!snapshot.compose) {
+    return notFound("Agent compose not found");
+  }
+  if (!snapshot.compose.headVersionId || !snapshot.version) {
+    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
+  }
+  if (snapshot.session.storageMounts === null) {
+    throw new Error(
+      `Agent session "${snapshot.session.id}" is missing canonical Storage mounts`,
+    );
+  }
+
+  const conversation = snapshot.conversation;
+  const resumeSession = conversation
+    ? await measureLegacyDirectResolution(
+        args.timing,
+        "api_dispatch_resolve_compose_resolve_session_history",
+        () => {
+          return resumeSessionFromLegacySnapshot({
+            ...conversation,
+            sessionHistoryBlobEncoding: snapshot.historyBlob?.encoding ?? null,
+          });
+        },
+      )
+    : undefined;
+  return {
+    agentComposeVersionId: snapshot.version.id,
+    composeId: snapshot.compose.id,
+    composeUserId: snapshot.compose.userId,
+    agentName: snapshot.compose.name || undefined,
+    orgId: snapshot.compose.orgId,
+    content: snapshot.version.content as LegacyResolvedCompose["content"],
+    artifacts: projectLegacyWritebackArtifacts(snapshot.session.storageMounts),
+    persistedStorageMounts: snapshot.session.storageMounts,
+    vars:
+      (snapshot.previousRun?.vars as Record<string, string> | null) ??
+      undefined,
+    agentSessionId: snapshot.session.id,
+    continuedFromAgentSessionId: snapshot.session.id,
+    resumeSession,
+    ...(snapshot.previousRun
+      ? { resumeSessionModelRoute: snapshot.previousRun }
+      : {}),
+  };
+}
+
+const resolveLegacyDirectRunCompose: LegacyDirectRunResolver = async (args) => {
+  if (args.body.sessionId) {
+    return await resolveLegacyDirectSessionRun(args, args.body.sessionId);
+  }
+  return args.body.agentId
+    ? await resolveLegacyDirectAgentRun(args, args.body.agentId)
+    : badRequestMessage("Missing agentId or sessionId");
+};
 
 export type DirectRunFixtureRequest = Omit<
   CreateAgentRunArgs["body"],
@@ -107,6 +360,7 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: body.modelProviderType,
+      testOnlyResolveLegacyDirectRunCompose: resolveLegacyDirectRunCompose,
       connectorScope: connectorScope ?? {
         allowedConnectorSlugs: [],
         allowedCustomConnectorIds: [],

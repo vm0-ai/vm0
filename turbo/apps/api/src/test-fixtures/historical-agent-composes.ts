@@ -5,6 +5,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
@@ -78,6 +79,10 @@ function normalizeHistoricalContent(content: HistoricalAgentComposeContent): {
 export async function createHistoricalAgentComposeFixture(args: {
   readonly actor: HistoricalAgentComposeActor;
   readonly content: HistoricalAgentComposeContent;
+  readonly canonicalAgent?: {
+    readonly displayName?: string;
+    readonly visibility: "private" | "public";
+  };
   readonly signal: AbortSignal;
 }): Promise<{
   readonly composeId: string;
@@ -133,6 +138,21 @@ export async function createHistoricalAgentComposeFixture(args: {
       .set({ headVersionId: versionId, updatedAt: nowDate() })
       .where(eq(agentComposes.id, composeId));
     args.signal.throwIfAborted();
+
+    if (args.canonicalAgent) {
+      await tx
+        .insert(zeroAgents)
+        .values({
+          id: composeId,
+          orgId: args.actor.orgId,
+          owner: args.actor.userId,
+          name: normalized.name,
+          visibility: args.canonicalAgent.visibility,
+          displayName: args.canonicalAgent.displayName,
+        })
+        .onConflictDoNothing();
+      args.signal.throwIfAborted();
+    }
 
     return { composeId, name: normalized.name, versionId };
   });

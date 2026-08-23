@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, exists, gt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
   ChatThreadEvent,
@@ -7,7 +7,7 @@ import type {
   CodexServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import {
   chatThreadEventSequences,
   chatThreadEvents,
@@ -75,9 +75,9 @@ export async function appendChatThreadEvent(
   let orgId = args.orgId ?? undefined;
   if (orgId === undefined) {
     const [compose] = await db
-      .select({ orgId: agentComposes.orgId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, args.agentComposeId))
+      .select({ orgId: agents.orgId })
+      .from(agents)
+      .where(eq(agents.id, args.agentComposeId))
       .limit(1);
     orgId = compose?.orgId;
   }
@@ -169,7 +169,7 @@ type ChatThreadEventRow = {
   readonly seqId: number;
   readonly kind: ChatThreadEventKind;
   readonly chatThreadId: string;
-  readonly agentComposeId: string;
+  readonly agentComposeId: string | null;
   readonly title: string | null;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
@@ -186,7 +186,15 @@ export function chatThreadServiceTierFromCodex(
   return codexServiceTier === "fast" ? "priority" : null;
 }
 
-function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
+function hasCanonicalAgentReference(
+  row: ChatThreadEventRow,
+): row is ChatThreadEventRow & { readonly agentComposeId: string } {
+  return row.agentComposeId !== null;
+}
+
+function toApiChatThreadEvent(
+  row: ChatThreadEventRow & { readonly agentComposeId: string },
+): ChatThreadEvent {
   return {
     id: row.id,
     seqId: row.seqId,
@@ -233,7 +241,7 @@ export async function getChatThreadEventsSince(
           seqId: pageChatThreadEvent.seqId,
           kind: pageChatThreadEvent.kind,
           chatThreadId: pageChatThreadEvent.chatThreadId,
-          agentComposeId: pageChatThreadEvent.agentComposeId,
+          agentComposeId: pageChatThreadEvent.agentId,
           title: pageChatThreadEvent.title,
           selectedModel: pageChatThreadEvent.selectedModel,
           serviceTier: pageChatThreadEvent.serviceTier,
@@ -251,6 +259,12 @@ export async function getChatThreadEventsSince(
           eq(pageChatThreadEvent.userId, args.userId),
           eq(pageChatThreadEvent.orgId, args.orgId),
           gt(pageChatThreadEvent.seqId, cursorChatThreadEvent.seqId),
+          exists(
+            db
+              .select({ id: agents.id })
+              .from(agents)
+              .where(eq(agents.id, pageChatThreadEvent.agentId)),
+          ),
         ),
       )
       .where(
@@ -275,7 +289,7 @@ export async function getChatThreadEventsSince(
         seqId: chatThreadEvents.seqId,
         kind: chatThreadEvents.kind,
         chatThreadId: chatThreadEvents.chatThreadId,
-        agentComposeId: chatThreadEvents.agentComposeId,
+        agentComposeId: chatThreadEvents.agentId,
         title: chatThreadEvents.title,
         selectedModel: chatThreadEvents.selectedModel,
         serviceTier: chatThreadEvents.serviceTier,
@@ -290,17 +304,24 @@ export async function getChatThreadEventsSince(
         and(
           eq(chatThreadEvents.userId, args.userId),
           eq(chatThreadEvents.orgId, args.orgId),
+          exists(
+            db
+              .select({ id: agents.id })
+              .from(agents)
+              .where(eq(agents.id, chatThreadEvents.agentId)),
+          ),
         ),
       )
       .orderBy(asc(chatThreadEvents.seqId))
       .limit(CHAT_THREAD_EVENTS_PAGE_SIZE + 1);
   }
 
+  const visibleRows = rows.filter(hasCanonicalAgentReference);
   return {
     kind: "ok",
-    events: rows
+    events: visibleRows
       .slice(0, CHAT_THREAD_EVENTS_PAGE_SIZE)
       .map(toApiChatThreadEvent),
-    hasMore: rows.length > CHAT_THREAD_EVENTS_PAGE_SIZE,
+    hasMore: visibleRows.length > CHAT_THREAD_EVENTS_PAGE_SIZE,
   };
 }

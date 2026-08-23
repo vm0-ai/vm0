@@ -398,7 +398,7 @@ async function findBankingRun(
   const [run] = await db
     .select({
       runId: agentRuns.id,
-      agentId: agentSessions.agentComposeId,
+      agentId: agentSessions.agentId,
       triggerSource: agentRuns.triggerSource,
     })
     .from(agentRuns)
@@ -412,7 +412,7 @@ async function findBankingRun(
     )
     .limit(1);
 
-  return run ?? null;
+  return run?.agentId ? { ...run, agentId: run.agentId } : null;
 }
 
 async function findBankingGrant(

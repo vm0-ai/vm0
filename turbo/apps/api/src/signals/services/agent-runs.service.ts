@@ -15,12 +15,11 @@ import {
   workspaceReuseResultSchema,
   type WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   and,
   asc,
@@ -155,16 +154,15 @@ function queuedRunRows(db: ReadDb, orgId: string): Promise<QueuedRunRow[]> {
       id: agentRuns.id,
       runUserId: agentRuns.userId,
       createdAt: agentRuns.createdAt,
-      agentName: agentComposes.name,
-      agentDisplayName: zeroAgents.displayName,
+      agentName: agents.name,
+      agentDisplayName: agents.displayName,
       prompt: agentRuns.prompt,
       triggerSource: agentRuns.triggerSource,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
     })
     .from(agentRuns)
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .leftJoin(agents, eq(agentSessions.agentId, agents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "queued")))
     .orderBy(asc(agentRuns.createdAt));
 }
@@ -175,13 +173,12 @@ function runningRunRows(db: ReadDb, orgId: string): Promise<RunningRunRow[]> {
       id: agentRuns.id,
       runUserId: agentRuns.userId,
       startedAt: agentRuns.startedAt,
-      agentName: agentComposes.name,
-      agentDisplayName: zeroAgents.displayName,
+      agentName: agents.name,
+      agentDisplayName: agents.displayName,
     })
     .from(agentRuns)
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .leftJoin(agents, eq(agentSessions.agentId, agents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "running")))
     .orderBy(asc(agentRuns.startedAt));
 }
@@ -381,7 +378,7 @@ export function agentRunList(args: {
     ];
 
     if (args.agent) {
-      conditions.push(eq(agentComposes.name, args.agent));
+      conditions.push(eq(agents.name, args.agent));
     }
 
     if (args.since) {
@@ -414,14 +411,11 @@ export function agentRunList(args: {
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
-        composeName: agentComposes.name,
+        composeName: agents.name,
       })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
+      .leftJoin(agents, eq(agentSessions.agentId, agents.id))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt))
       .limit(args.limit);

@@ -19,7 +19,7 @@ import {
   browserSessions,
   browserThreadProfiles,
 } from "@okouai/db/schema/browser-session";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
@@ -1061,13 +1061,13 @@ async function resolveViewerStartContext(
       browserRunId: browserSessions.runId,
     })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .leftJoin(browserSessions, eq(browserSessions.chatThreadId, chatThreads.id))
     .where(
       and(
         eq(chatThreads.id, access.chatThreadId),
         eq(chatThreads.userId, access.userId),
-        eq(agentComposes.orgId, access.orgId),
+        eq(agents.orgId, access.orgId),
       ),
     )
     .limit(1);
@@ -1144,12 +1144,12 @@ async function loadOwnedBrowserSidebarThread(
       userId: chatThreads.userId,
     })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(chatThreads.id, access.chatThreadId),
         eq(chatThreads.userId, access.userId),
-        eq(agentComposes.orgId, access.orgId),
+        eq(agents.orgId, access.orgId),
       ),
     )
     .limit(1);

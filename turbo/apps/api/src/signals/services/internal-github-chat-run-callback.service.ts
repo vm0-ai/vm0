@@ -114,7 +114,7 @@ async function loadGitHubChatDeliveryContext(
       orgId: agentRuns.orgId,
       sessionId: agentRuns.sessionId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: chatThreads.agentId,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))

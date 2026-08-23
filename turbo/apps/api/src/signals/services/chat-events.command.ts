@@ -22,7 +22,7 @@ import {
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -285,7 +285,7 @@ async function resolveChatAgentRunSourceById(
     .select({
       runId: agentRuns.id,
       threadId: chatThreads.id,
-      agentId: chatThreads.agentComposeId,
+      agentId: chatThreads.agentId,
       title: chatThreads.title,
       autonomyBudget: agentRuns.autonomyBudget,
     })
@@ -858,13 +858,13 @@ async function loadAgentForChatSend(
 ): Promise<AgentForChatSend | undefined> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      orgId: zeroAgents.orgId,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
+      id: agents.id,
+      orgId: agents.orgId,
+      owner: agents.owner,
+      visibility: agents.visibility,
     })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, agentId))
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
   return agent;
 }
@@ -1225,13 +1225,14 @@ async function maybePersistExplicitCodexServiceTier(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentComposeId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentComposeId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1275,13 +1276,14 @@ async function updateThreadComputerAccess(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentComposeId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentComposeId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1471,7 +1473,7 @@ async function createChatThread(
           and(
             eq(chatThreads.id, args.clientThreadId),
             eq(chatThreads.userId, args.userId),
-            eq(chatThreads.agentComposeId, args.agentId),
+            eq(chatThreads.agentId, args.agentId),
           ),
         )
         .limit(1);
@@ -1544,8 +1546,10 @@ function loadTimedExistingThreadSnapshot(params: {
           computerUseHostId: chatThreads.computerUseHostId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
           ...persistedChatThreadModelSnapshotColumns(),
+          agentComposeId: agents.id,
         })
         .from(chatThreads)
+        .innerJoin(agents, eq(agents.id, chatThreads.agentId))
         .where(
           and(
             eq(chatThreads.id, params.threadId),
@@ -1610,7 +1614,7 @@ async function resolveThread(params: {
     threadId: params.existingThreadId,
     timing: params.timing,
   });
-  if (!thread) {
+  if (!thread?.agentComposeId) {
     return notFound("Chat thread not found");
   }
 

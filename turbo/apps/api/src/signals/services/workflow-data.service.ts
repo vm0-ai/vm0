@@ -1,6 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { workflows } from "@okouai/db/schema/workflow";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { and, asc, desc, eq, or, type SQL } from "drizzle-orm";
@@ -188,8 +188,8 @@ export function requireWorkflowPermission(
  */
 export function visibleWorkflowCondition(member: WorkflowMember): SQL {
   const agentVisibleToMember = or(
-    eq(zeroAgents.visibility, "public"),
-    eq(zeroAgents.owner, member.userId),
+    eq(agents.visibility, "public"),
+    eq(agents.owner, member.userId),
   );
 
   const publicWorkflowOnVisibleAgent = and(
@@ -215,16 +215,16 @@ export async function loadVisibleWorkflowById(
     .select({
       workflow: workflows,
       agent: {
-        id: zeroAgents.id,
-        orgId: zeroAgents.orgId,
-        owner: zeroAgents.owner,
-        visibility: zeroAgents.visibility,
-        name: zeroAgents.name,
-        displayName: zeroAgents.displayName,
+        id: agents.id,
+        orgId: agents.orgId,
+        owner: agents.owner,
+        visibility: agents.visibility,
+        name: agents.name,
+        displayName: agents.displayName,
       },
     })
     .from(workflows)
-    .innerJoin(zeroAgents, eq(workflows.agentId, zeroAgents.id))
+    .innerJoin(agents, eq(workflows.agentId, agents.id))
     .where(
       and(
         eq(workflows.orgId, args.orgId),
@@ -461,11 +461,11 @@ export function workflowList(args: {
           createdAt: workflows.createdAt,
         },
         agent: {
-          id: zeroAgents.id,
-          owner: zeroAgents.owner,
-          visibility: zeroAgents.visibility,
-          name: zeroAgents.name,
-          displayName: zeroAgents.displayName,
+          id: agents.id,
+          owner: agents.owner,
+          visibility: agents.visibility,
+          name: agents.name,
+          displayName: agents.displayName,
         },
         ownerProfile: {
           name: userCache.name,
@@ -475,7 +475,7 @@ export function workflowList(args: {
         },
       })
       .from(workflows)
-      .innerJoin(zeroAgents, eq(workflows.agentId, zeroAgents.id))
+      .innerJoin(agents, eq(workflows.agentId, agents.id))
       .leftJoin(userCache, eq(userCache.userId, workflows.ownerUserId))
       .where(
         and(

@@ -1,10 +1,9 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentphoneMessages } from "@okouai/db/schema/agentphone-message";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { eq } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
@@ -198,14 +197,10 @@ function plainLabel(value: string | null | undefined): string | undefined {
 
 function displayLabel(row: {
   readonly agentDisplayName: string | null;
-  readonly agentName: string | null;
-  readonly composeName: string;
+  readonly agentName: string;
 }): string {
   return (
-    plainLabel(row.agentDisplayName) ??
-    plainLabel(row.agentName) ??
-    plainLabel(row.composeName) ??
-    "zero"
+    plainLabel(row.agentDisplayName) ?? plainLabel(row.agentName) ?? "zero"
   );
 }
 
@@ -215,13 +210,11 @@ async function resolveComposeLabel(
 ): Promise<string | undefined> {
   const [row] = await db
     .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
+      agentDisplayName: agents.displayName,
+      agentName: agents.name,
     })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return row ? displayLabel(row) : undefined;
 }

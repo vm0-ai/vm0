@@ -10,6 +10,7 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "@okouai/db/schema/agent-compose";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { browserSessions } from "@okouai/db/schema/browser-session";
 import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
@@ -144,6 +145,18 @@ async function seedRunForAction(
   if (!compose) {
     return actionBadRequest("failed to seed compose");
   }
+
+  // This route seeds product Run state, so mirror the current legacy writer's
+  // second half and let the one-way bridge supply canonical Agent identity.
+  // Protected compose-only fixtures intentionally omit this row elsewhere.
+  await db.insert(zeroAgents).values({
+    id: compose.id,
+    orgId,
+    owner: userId,
+    name: composeName,
+    visibility: "private",
+  });
+  signal.throwIfAborted();
 
   const agentComposeVersionId = versionId();
   await db.insert(agentComposeVersions).values({

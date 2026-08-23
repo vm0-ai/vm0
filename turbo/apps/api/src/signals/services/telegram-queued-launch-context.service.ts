@@ -1,5 +1,6 @@
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -112,7 +113,7 @@ async function loadTelegramLaunchContext(
       senderDisplayName: chatTelegramContext.senderDisplayName,
       senderUsername: chatTelegramContext.senderUsername,
       senderLanguage: chatTelegramContext.senderLanguage,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       customUserLinkId: telegramUserLinks.id,
       customInstallationId: telegramInstallations.telegramBotId,
       customBotUsername: telegramInstallations.botUsername,
@@ -135,6 +136,7 @@ async function loadTelegramLaunchContext(
         eq(chatThreads.userId, args.userId),
       ),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .leftJoin(
       telegramUserLinks,
       and(

@@ -6,7 +6,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
@@ -143,14 +143,11 @@ async function loadOwnedChatThread(
   },
 ): Promise<OwnedChatThread | undefined> {
   const [thread] = await db
-    .select({ agentId: chatThreads.agentComposeId })
+    .select({ agentId: agents.id })
     .from(chatThreads)
     .innerJoin(
-      agentComposes,
-      and(
-        eq(agentComposes.id, chatThreads.agentComposeId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
+      agents,
+      and(eq(agents.id, chatThreads.agentId), eq(agents.orgId, args.orgId)),
     )
     .where(
       and(
@@ -159,7 +156,7 @@ async function loadOwnedChatThread(
       ),
     )
     .limit(1);
-  return thread;
+  return thread?.agentId ? { agentId: thread.agentId } : undefined;
 }
 
 async function loadSelectionRows(

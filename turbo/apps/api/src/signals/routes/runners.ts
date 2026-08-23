@@ -29,6 +29,7 @@ import {
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
@@ -42,6 +43,7 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   lt,
   lte,
   notInArray,
@@ -821,11 +823,12 @@ async function getRunNetworkPolicyScope(
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       status: agentRuns.status,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
@@ -876,7 +879,7 @@ async function getClaimableJob(
         id: agentRuns.id,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
-        agentId: agentSessions.agentComposeId,
+        agentId: agentSessions.agentId,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         vars: agentRuns.vars,
@@ -889,13 +892,17 @@ async function getClaimableJob(
       and(
         eq(runnerJobQueue.runId, runId),
         gt(runnerJobQueue.expiresAt, sql`now()`),
+        isNotNull(agentSessions.agentId),
       ),
     )
     .limit(1);
   signal.throwIfAborted();
 
-  if (jobWithRun) {
-    return jobWithRun;
+  if (jobWithRun?.run.agentId) {
+    return {
+      ...jobWithRun,
+      run: { ...jobWithRun.run, agentId: jobWithRun.run.agentId },
+    };
   }
   return notFound("Job not found in queue");
 }

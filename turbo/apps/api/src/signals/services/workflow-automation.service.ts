@@ -53,7 +53,7 @@ import { parseScheduledAtTime } from "@okouai/core/timezone";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import {
   strapiIntegrations,
   strapiWorkflowAutomations,
@@ -949,14 +949,12 @@ async function loadAgent(
 ): Promise<UsableAgent | null> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
+      id: agents.id,
+      owner: agents.owner,
+      visibility: agents.visibility,
     })
-    .from(zeroAgents)
-    .where(
-      and(eq(zeroAgents.orgId, args.orgId), eq(zeroAgents.id, args.agentId)),
-    )
+    .from(agents)
+    .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.agentId)))
     .limit(1);
   return agent ?? null;
 }
@@ -1108,17 +1106,17 @@ export async function listWorkspaceWorkflowAutomations(
       automation: workflowAutomationColumns(),
       workflow: workflows,
       agent: {
-        id: zeroAgents.id,
-        owner: zeroAgents.owner,
-        visibility: zeroAgents.visibility,
-        name: zeroAgents.name,
-        displayName: zeroAgents.displayName,
+        id: agents.id,
+        owner: agents.owner,
+        visibility: agents.visibility,
+        name: agents.name,
+        displayName: agents.displayName,
       },
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
     .from(workflowAutomations)
     .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
-    .innerJoin(zeroAgents, eq(zeroAgents.id, workflows.agentId))
+    .innerJoin(agents, eq(agents.id, workflows.agentId))
     .leftJoin(
       workflowUserAutomationThreads,
       and(

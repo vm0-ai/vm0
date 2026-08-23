@@ -109,6 +109,7 @@ import {
   extractAndGroupVariables,
 } from "@okouai/core/variable-expander";
 import { expandMountPath } from "@okouai/api-contracts/contracts/composes";
+import { agents } from "@okouai/db/schema/agent";
 import {
   agentComposes,
   agentComposeVersions,
@@ -605,11 +606,17 @@ interface ProductResolutionOptions {
 
 interface ResolveComposeOptions {
   readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
+  readonly testOnlyResolveLegacyDirectRunCompose?: TestOnlyLegacyDirectRunComposeResolver;
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-const MISSING_AGENT_CONFIGURATION_MESSAGE =
-  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+type TestOnlyLegacyDirectRunComposeResolver = (args: {
+  readonly db: Db;
+  readonly body: CreateRunBody;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly timing?: ApiDispatchTimingCollector;
+}) => Promise<ResolvedCompose | CreateRunErrorResult>;
 
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
@@ -976,6 +983,12 @@ export interface CreateAgentRunArgs {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
+  /**
+   * Retired direct-run test support. Production callers must supply a canonical
+   * productAgentExecutionPlan; keeping legacy reads in the test fixture
+   * preserves historical runner coverage without restoring a runtime dual-read.
+   */
+  readonly testOnlyResolveLegacyDirectRunCompose?: TestOnlyLegacyDirectRunComposeResolver;
   readonly zeroTokenPublicBrand?: PublicBrand;
   readonly zeroTokenComputerUseHostId?: string;
   readonly zeroTokenCloudBrowserEnabled?: boolean;
@@ -5601,55 +5614,27 @@ async function checkOrgRunPlanStatus(
   return capabilities.status === "active" ? null : insufficientCredits();
 }
 
-async function resolveByAgentId(
+async function readLegacyRunVersionProvenanceForWrite(
   db: Db,
   agentId: string,
-  timing?: ApiDispatchTimingCollector,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await measureApiDispatchTiming(
-    timing,
-    "api_dispatch_resolve_compose_lookup_agent",
-    "nested",
-    async () => {
-      return await db
-        .select({
-          composeId: agentComposes.id,
-          composeName: agentComposes.name,
-          composeOrgId: agentComposes.orgId,
-          composeUserId: agentComposes.userId,
-          headVersionId: agentComposes.headVersionId,
-          versionId: agentComposeVersions.id,
-          versionContent: agentComposeVersions.content,
-        })
-        .from(agentComposes)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentComposeVersions.id, agentComposes.headVersionId),
-        )
-        .where(eq(agentComposes.id, agentId))
-        .limit(1);
-    },
-  );
+): Promise<string | null> {
+  const [row] = await db
+    .select({ versionId: agentComposeVersions.id })
+    .from(agentComposes)
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentComposes.headVersionId),
+    )
+    .where(eq(agentComposes.id, agentId))
+    .limit(1);
 
-  if (!row) {
-    return notFound("Agent compose not found");
-  }
-  if (!row.headVersionId || !row.versionId) {
-    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
-  }
-
-  return {
-    agentComposeVersionId: row.versionId,
-    composeId: row.composeId,
-    composeUserId: row.composeUserId,
-    agentName: row.composeName || undefined,
-    orgId: row.composeOrgId,
-    content: row.versionContent as AgentComposeContent,
-    artifacts: [],
-  };
+  // Stage 4 retained this nullable physical value solely as rollback material.
+  // It never supplies Agent identity or configuration, and Stage 6 must keep
+  // the legacy dependent writer unchanged until the column is removed.
+  return row?.versionId ?? null;
 }
 
-async function resolveProductByAgentId(
+async function resolveByAgentId(
   db: Db,
   agentId: string,
   options: ProductResolutionOptions,
@@ -5661,32 +5646,32 @@ async function resolveProductByAgentId(
     async () => {
       return await db
         .select({
-          composeId: agentComposes.id,
-          composeName: agentComposes.name,
-          composeOrgId: agentComposes.orgId,
-          composeUserId: agentComposes.userId,
-          versionId: agentComposeVersions.id,
+          agentId: agents.id,
+          agentName: agents.name,
+          agentOrgId: agents.orgId,
+          agentOwner: agents.owner,
         })
-        .from(agentComposes)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentComposeVersions.id, agentComposes.headVersionId),
-        )
-        .where(eq(agentComposes.id, agentId))
+        .from(agents)
+        .where(eq(agents.id, agentId))
         .limit(1);
     },
   );
 
   if (!row) {
-    return notFound("Agent compose not found");
+    return notFound("Agent not found");
   }
 
+  const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
+    db,
+    row.agentId,
+  );
+
   return {
-    agentComposeVersionId: row.versionId,
-    composeId: row.composeId,
-    composeUserId: row.composeUserId,
-    agentName: row.composeName || undefined,
-    orgId: row.composeOrgId,
+    agentComposeVersionId,
+    composeId: row.agentId,
+    composeUserId: row.agentOwner,
+    agentName: row.agentName || undefined,
+    orgId: row.agentOrgId,
     content: options.executionPlan.content,
     artifacts: [],
   };
@@ -5792,130 +5777,6 @@ function resolveBySessionId(
   agentSessionId: string,
   userId: string,
   orgId: string,
-  timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
-    const [snapshot] = await measureApiDispatchTiming(
-      timing,
-      "api_dispatch_resolve_compose_lookup_session_snapshot",
-      "nested",
-      async () => {
-        return await db
-          .select({
-            session: {
-              id: agentSessions.id,
-              storageMounts: agentSessions.storageMounts,
-            },
-            compose: {
-              id: agentComposes.id,
-              name: agentComposes.name,
-              orgId: agentComposes.orgId,
-              userId: agentComposes.userId,
-              headVersionId: agentComposes.headVersionId,
-            },
-            version: {
-              id: agentComposeVersions.id,
-              content: agentComposeVersions.content,
-            },
-            conversation: {
-              id: conversations.id,
-              runId: conversations.runId,
-              cliAgentSessionId: conversations.cliAgentSessionId,
-              cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-              cliAgentSessionHistoryHash:
-                conversations.cliAgentSessionHistoryHash,
-            },
-            historyBlob: {
-              hash: blobs.hash,
-              encoding: blobs.encoding,
-            },
-            previousRun: {
-              id: agentRuns.id,
-              vars: agentRuns.vars,
-              modelProvider: agentRuns.modelProvider,
-              modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-              modelRuntimeModel: agentRuns.modelRuntimeModel,
-            },
-          })
-          .from(agentSessions)
-          .leftJoin(
-            agentComposes,
-            eq(agentSessions.agentComposeId, agentComposes.id),
-          )
-          .leftJoin(
-            agentComposeVersions,
-            eq(agentComposeVersions.id, agentComposes.headVersionId),
-          )
-          .leftJoin(
-            conversations,
-            eq(agentSessions.conversationId, conversations.id),
-          )
-          .leftJoin(
-            blobs,
-            eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
-          )
-          .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
-          .where(
-            and(
-              eq(agentSessions.id, agentSessionId),
-              eq(agentSessions.userId, userId),
-              eq(agentSessions.orgId, orgId),
-            ),
-          )
-          .limit(1);
-      },
-    );
-
-    if (!snapshot) {
-      return notFound("Agent session not found");
-    }
-    if (!snapshot.compose) {
-      return notFound("Agent compose not found");
-    }
-    if (!snapshot.compose.headVersionId || !snapshot.version) {
-      return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
-    }
-
-    const conversation = snapshot.conversation;
-    const resumeSession = conversation
-      ? await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_resolve_session_history",
-          "nested",
-          (): StoredExecutionContext["resumeSession"] | undefined => {
-            return resumeSessionFromSnapshot({
-              ...conversation,
-              sessionHistoryBlobEncoding:
-                snapshot.historyBlob?.encoding ?? null,
-            });
-          },
-        )
-      : undefined;
-
-    return {
-      agentComposeVersionId: snapshot.version.id,
-      composeId: snapshot.compose.id,
-      composeUserId: snapshot.compose.userId,
-      agentName: snapshot.compose.name || undefined,
-      orgId: snapshot.compose.orgId,
-      content: snapshot.version.content as AgentComposeContent,
-      ...resolvedSessionStorage(snapshot.session),
-      vars:
-        (snapshot.previousRun?.vars as Record<string, string> | null) ??
-        undefined,
-      agentSessionId: snapshot.session.id,
-      continuedFromAgentSessionId: snapshot.session.id,
-      resumeSession,
-      ...resolvedSessionModelRoute(snapshot.previousRun),
-    };
-  });
-}
-
-function resolveProductBySessionId(
-  db: Db,
-  agentSessionId: string,
-  userId: string,
-  orgId: string,
   options: ProductResolutionOptions,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
@@ -5930,14 +5791,11 @@ function resolveProductBySessionId(
               id: agentSessions.id,
               storageMounts: agentSessions.storageMounts,
             },
-            compose: {
-              id: agentComposes.id,
-              name: agentComposes.name,
-              orgId: agentComposes.orgId,
-              userId: agentComposes.userId,
-            },
-            version: {
-              id: agentComposeVersions.id,
+            agent: {
+              id: agents.id,
+              name: agents.name,
+              orgId: agents.orgId,
+              owner: agents.owner,
             },
             conversation: {
               id: conversations.id,
@@ -5960,14 +5818,7 @@ function resolveProductBySessionId(
             },
           })
           .from(agentSessions)
-          .leftJoin(
-            agentComposes,
-            eq(agentSessions.agentComposeId, agentComposes.id),
-          )
-          .leftJoin(
-            agentComposeVersions,
-            eq(agentComposeVersions.id, agentComposes.headVersionId),
-          )
+          .leftJoin(agents, eq(agentSessions.agentId, agents.id))
           .leftJoin(
             conversations,
             eq(agentSessions.conversationId, conversations.id),
@@ -5991,9 +5842,14 @@ function resolveProductBySessionId(
     if (!snapshot) {
       return notFound("Agent session not found");
     }
-    if (!snapshot.compose) {
-      return notFound("Agent compose not found");
+    if (!snapshot.agent) {
+      return notFound("Agent not found");
     }
+
+    const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
+      db,
+      snapshot.agent.id,
+    );
 
     const conversation = snapshot.conversation;
     const resumeSession = conversation
@@ -6012,11 +5868,11 @@ function resolveProductBySessionId(
       : undefined;
 
     return {
-      agentComposeVersionId: snapshot.version?.id ?? null,
-      composeId: snapshot.compose.id,
-      composeUserId: snapshot.compose.userId,
-      agentName: snapshot.compose.name || undefined,
-      orgId: snapshot.compose.orgId,
+      agentComposeVersionId,
+      composeId: snapshot.agent.id,
+      composeUserId: snapshot.agent.owner,
+      agentName: snapshot.agent.name || undefined,
+      orgId: snapshot.agent.orgId,
       content: options.executionPlan.content,
       ...resolvedSessionStorage(snapshot.session),
       vars:
@@ -6039,6 +5895,43 @@ function resolveCompose(
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+      const testOnlyResolver = options.testOnlyResolveLegacyDirectRunCompose;
+      if (testOnlyResolver) {
+        if (!body.sessionId && !body.agentId) {
+          return badRequestMessage("Missing agentId or sessionId");
+        }
+        const resolved = await measureApiDispatchTiming(
+          options.timing,
+          body.sessionId
+            ? "api_dispatch_resolve_compose_by_session_id"
+            : "api_dispatch_resolve_compose_by_agent_id",
+          "nested",
+          async () => {
+            return await testOnlyResolver({
+              db,
+              body,
+              userId,
+              orgId,
+              timing: options.timing,
+            });
+          },
+        );
+        if (
+          !isRouteError(resolved) &&
+          body.agentId !== undefined &&
+          resolved.composeId !== body.agentId
+        ) {
+          return badRequestMessage("agentId does not match sessionId");
+        }
+        return resolved;
+      }
+
+      const productAgentExecutionPlan = options.productAgentExecutionPlan;
+      if (productAgentExecutionPlan === undefined) {
+        throw new Error(
+          "Product Agent execution plan is required for canonical resolution",
+        );
+      }
       if (body.sessionId) {
         const sessionId = body.sessionId;
         const resolved = await measureApiDispatchTiming(
@@ -6046,22 +5939,12 @@ function resolveCompose(
           "api_dispatch_resolve_compose_by_session_id",
           "nested",
           async () => {
-            return options.productAgentExecutionPlan
-              ? await get(
-                  resolveProductBySessionId(db, sessionId, userId, orgId, {
-                    executionPlan: options.productAgentExecutionPlan,
-                    timing: options.timing,
-                  }),
-                )
-              : await get(
-                  resolveBySessionId(
-                    db,
-                    sessionId,
-                    userId,
-                    orgId,
-                    options.timing,
-                  ),
-                );
+            return await get(
+              resolveBySessionId(db, sessionId, userId, orgId, {
+                executionPlan: productAgentExecutionPlan,
+                timing: options.timing,
+              }),
+            );
           },
         );
         if (
@@ -6082,12 +5965,10 @@ function resolveCompose(
         "api_dispatch_resolve_compose_by_agent_id",
         "nested",
         async () => {
-          return options.productAgentExecutionPlan
-            ? await resolveProductByAgentId(db, agentId, {
-                executionPlan: options.productAgentExecutionPlan,
-                timing: options.timing,
-              })
-            : await resolveByAgentId(db, agentId, options.timing);
+          return await resolveByAgentId(db, agentId, {
+            executionPlan: productAgentExecutionPlan,
+            timing: options.timing,
+          });
         },
       );
     },
@@ -8710,6 +8591,37 @@ function loadPreparedRunFeatureSwitchContext(
   });
 }
 
+function agentRunResolutionOptions(
+  args: CreateAgentRunArgs,
+): Pick<
+  ResolveComposeOptions,
+  "productAgentExecutionPlan" | "testOnlyResolveLegacyDirectRunCompose"
+> {
+  const productAgentExecutionPlan = args.productAgentExecutionPlan;
+  const testOnlyResolveLegacyDirectRunCompose =
+    args.testOnlyResolveLegacyDirectRunCompose;
+  if (
+    productAgentExecutionPlan === undefined &&
+    testOnlyResolveLegacyDirectRunCompose === undefined
+  ) {
+    throw new Error(
+      "Product Agent execution plan is required for Agent run preparation",
+    );
+  }
+  if (
+    productAgentExecutionPlan !== undefined &&
+    testOnlyResolveLegacyDirectRunCompose !== undefined
+  ) {
+    throw new Error(
+      "Agent run preparation cannot mix product and direct-run resolution",
+    );
+  }
+  return {
+    productAgentExecutionPlan,
+    testOnlyResolveLegacyDirectRunCompose,
+  };
+}
+
 function prepareRunBodyContext(
   args: {
     readonly db: Db;
@@ -8723,19 +8635,7 @@ function prepareRunBodyContext(
   return computed(async (get) => {
     const canonicalOkouRuntime =
       args.createArgs.includeZeroTokenSecret === true;
-    const suppliedProductAgentExecutionPlan =
-      args.createArgs.productAgentExecutionPlan;
-    if (
-      canonicalOkouRuntime &&
-      suppliedProductAgentExecutionPlan === undefined
-    ) {
-      throw new Error(
-        "Product Agent execution plan is required for canonical runtime",
-      );
-    }
-    const productAgentExecutionPlan = canonicalOkouRuntime
-      ? suppliedProductAgentExecutionPlan
-      : undefined;
+    const resolutionOptions = agentRunResolutionOptions(args.createArgs);
     const featureSwitchContext = await get(
       loadPreparedRunFeatureSwitchContext(
         {
@@ -8757,7 +8657,7 @@ function prepareRunBodyContext(
             args.createArgs.userId,
             args.createArgs.orgId,
             {
-              productAgentExecutionPlan,
+              ...resolutionOptions,
               timing: args.timing,
             },
           ),
