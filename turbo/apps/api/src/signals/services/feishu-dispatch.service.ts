@@ -337,7 +337,7 @@ async function setUserAgentPreference(args: {
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      selectedComposeId: args.composeId,
+      selectedAgentId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
@@ -345,7 +345,7 @@ async function setUserAgentPreference(args: {
         feishuUserAgentPreferences.orgId,
       ],
       set: {
-        selectedComposeId: args.composeId,
+        selectedAgentId: args.composeId,
         updatedAt: nowDate(),
       },
     });

@@ -246,10 +246,14 @@ async function persistReconciledChatThreadModel(args: {
   }
 
   const updatedAt = nowDate();
+  const pinColumns = chatThreadModelPinColumns(args.pin);
   await args.tx
     .update(chatThreads)
     .set({
-      ...chatThreadModelPinColumns(args.pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: args.persistedCodexServiceTier,
       updatedAt,
     })

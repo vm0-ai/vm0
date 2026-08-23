@@ -11,8 +11,10 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
-import { serverSideZeroAgentCompose$ } from "../services/agent-compose.service";
+import { nowDate } from "../../lib/time";
 import { agentResponse } from "../services/agent-data.service";
+import { lockCanonicalAgentMutation } from "../services/agent-mutation-lock.service";
+import { writeAgentInstructionsStorage$ } from "../services/agent-instructions-storage.service";
 import { agentInstructions } from "../services/agent-instructions.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -61,72 +63,86 @@ const updateAgentInstructionsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const [agentIdentity] = await writeDb
-      .select({
-        id: agents.id,
-        name: agents.name,
-        owner: agents.owner,
-        visibility: agents.visibility,
-      })
-      .from(agents)
-      .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)))
-      .limit(1);
+    const result = await writeDb.transaction(async (tx) => {
+      await lockCanonicalAgentMutation(tx, params.id);
+
+      const [current] = await tx
+        .select({
+          id: agents.id,
+          name: agents.name,
+          owner: agents.owner,
+          visibility: agents.visibility,
+        })
+        .from(agents)
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)))
+        .for("update")
+        .limit(1);
+      if (!current) {
+        return { kind: "missing" as const };
+      }
+
+      const permissionError = requireAgentPermission(
+        current.owner,
+        member,
+        "update agent instructions",
+        { visibility: current.visibility },
+      );
+      if (permissionError) {
+        return { kind: "forbidden" as const, response: permissionError };
+      }
+
+      await set(
+        writeAgentInstructionsStorage$,
+        {
+          orgId: auth.orgId,
+          agentName: current.name,
+          instructions: body.data.content,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      await tx
+        .update(agents)
+        .set({ updatedAt: nowDate() })
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, current.id)));
+
+      const [updated] = await tx
+        .select({
+          agentId: agents.id,
+          defaultAgentId: orgMetadata.defaultAgentId,
+          owner: agents.owner,
+          displayName: agents.displayName,
+          description: agents.description,
+          sound: agents.sound,
+          avatarUrl: agents.avatarUrl,
+          modelProviderId: agents.modelProviderId,
+          selectedModel: agents.selectedModel,
+          preferPersonalProvider: agents.preferPersonalProvider,
+          visibility: agents.visibility,
+        })
+        .from(agents)
+        .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, current.id)))
+        .limit(1);
+      if (!updated) {
+        throw new Error(`Canonical Agent missing after update: ${current.id}`);
+      }
+      return { kind: "updated" as const, agent: updated };
+    });
     signal.throwIfAborted();
 
-    if (!agentIdentity) {
+    if (result.kind === "missing") {
       return notFound(`Agent not found: ${params.id}`);
     }
-
-    const permissionError = requireAgentPermission(
-      agentIdentity.owner,
-      member,
-      "update agent instructions",
-      { visibility: agentIdentity.visibility },
-    );
-    if (permissionError) {
-      return permissionError;
+    if (result.kind === "forbidden") {
+      return result.response;
     }
 
-    const result = await set(
-      serverSideZeroAgentCompose$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        agentComposeId: agentIdentity.id,
-        agentName: agentIdentity.name,
-        instructions: body.data.content,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const [agent] = await writeDb
-      .select({
-        agentId: agents.id,
-        defaultAgentId: orgMetadata.defaultAgentId,
-        owner: agents.owner,
-        displayName: agents.displayName,
-        description: agents.description,
-        sound: agents.sound,
-        avatarUrl: agents.avatarUrl,
-        modelProviderId: agents.modelProviderId,
-        selectedModel: agents.selectedModel,
-        preferPersonalProvider: agents.preferPersonalProvider,
-        visibility: agents.visibility,
-      })
-      .from(agents)
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
-      .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, agentIdentity.id)))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!agent) {
-      throw new Error(
-        `Canonical Agent missing after update: ${result.composeId}`,
-      );
-    }
-
-    return { status: 200 as const, body: agentResponse(agent, publicBrand) };
+    return {
+      status: 200 as const,
+      body: agentResponse(result.agent, publicBrand),
+    };
   },
 );
 

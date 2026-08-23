@@ -3431,7 +3431,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!status.defaultAgentId) {
       throw new Error("Expected onboarding to configure a default agent");
     }
-    await bdd.deleteVersionFreeAgent(onboarded, status.defaultAgentId);
+    await bdd.deleteAgent(onboarded, status.defaultAgentId);
     const missingSlackUserId = uniqueSlackUserId();
     const missingInstall = await integrations.installSlackWorkspace(onboarded, {
       installerSlackUserId: missingSlackUserId,
@@ -4824,7 +4824,7 @@ describe("INT-02: Telegram integration", () => {
       [200],
       "okou",
     );
-    await bdd.deleteVersionFreeAgent(actor, onboarding.defaultAgentId);
+    await bdd.deleteAgent(actor, onboarding.defaultAgentId);
 
     const inbound = await integrations.requestTelegramWebhook(
       OFFICIAL_TELEGRAM_BOT_ID,

@@ -1,12 +1,10 @@
 import {
-  check,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 
@@ -38,12 +36,6 @@ export const slackUserAgentPreferences = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
-    return [
-      primaryKey({ columns: [table.userId, table.orgId] }),
-      check(
-        "slack_user_agent_preferences_agent_reference_match",
-        sql`${table.selectedAgentId} IS NULL OR ${table.selectedAgentId} IS NOT DISTINCT FROM ${table.selectedComposeId}`,
-      ),
-    ];
+    return [primaryKey({ columns: [table.userId, table.orgId] })];
   },
 );

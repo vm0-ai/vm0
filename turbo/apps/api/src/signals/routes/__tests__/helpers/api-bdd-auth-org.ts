@@ -71,7 +71,6 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
-import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agent-deletion";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { agentsRoutes } from "../../agents";
@@ -1382,16 +1381,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    /**
-     * Constructs the legacy-version-free cohort needed to exercise the
-     * transitional successful-delete path. Conflict tests must call the route
-     * directly so the production preconditions remain observable.
-     */
-    async deleteVersionFreeAgent(
-      actor: ApiTestUser,
-      agentId: string,
-    ): Promise<void> {
-      await removeAgentLegacyVersionsFixture(agentId);
+    async deleteAgent(actor: ApiTestUser, agentId: string): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsByIdContract,
       );

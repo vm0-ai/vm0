@@ -114,7 +114,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentComposeId,
+        agentId: args.agentComposeId,
         selectedModel: args.selectedModel,
         codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
@@ -122,7 +122,8 @@ export async function ensureCanonicalSlackChatThreadRoute(
         lastMessageAt: args.currentTime,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {

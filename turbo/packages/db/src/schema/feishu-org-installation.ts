@@ -34,14 +34,12 @@ export const feishuOrgInstallations = pgTable(
     encryptedAppSecret: text("encrypted_app_secret").notNull(),
     encryptedVerificationToken: text("encrypted_verification_token").notNull(),
     encryptedEncryptKey: text("encrypted_encrypt_key").notNull(),
-    defaultComposeId: uuid("default_compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    defaultComposeId: uuid("default_compose_id").references(
+      () => {
+        return agentComposes.id;
+      },
+      { onDelete: "cascade" },
+    ),
     defaultAgentId: uuid("default_agent_id").references(
       () => {
         return agents.id;
@@ -68,7 +66,7 @@ export const feishuOrgInstallations = pgTable(
       index("idx_feishu_org_installations_tenant").on(table.feishuTenantKey),
       check(
         "feishu_org_installations_agent_reference_match",
-        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
+        sql`${table.defaultAgentId} IS NOT NULL OR ${table.defaultComposeId} IS NOT NULL`,
       ),
       foreignKey({
         name: "fk_feishu_org_installations_custom_connector",

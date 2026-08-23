@@ -80,10 +80,14 @@ const updateModelSelectionInner$ = command(
 
     const updated = await writeDb.transaction(async (tx) => {
       const updatedAt = nowDate();
+      const pinColumns = chatThreadModelPinColumns(pin);
       const [thread] = await tx
         .update(chatThreads)
         .set({
-          ...chatThreadModelPinColumns(pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: body.data.codexServiceTier ?? null,
           updatedAt,
         })

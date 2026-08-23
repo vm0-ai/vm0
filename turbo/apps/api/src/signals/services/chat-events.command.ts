@@ -1433,17 +1433,22 @@ async function createChatThread(
       userId: args.userId,
       featureSwitchContext: args.featureSwitchContext,
     });
+    const pinColumns = chatThreadModelPinColumns(args.pin);
     if (args.clientThreadId) {
       const [thread] = await tx
         .insert(chatThreads)
         .values({
           id: args.clientThreadId,
           userId: args.userId,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           title: null,
-          ...chatThreadModelPinColumns(args.pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: args.codexServiceTier,
-          ...mediaModels,
+          selectedVideoModel: mediaModels.selectedVideoModel,
+          selectedImageModel: mediaModels.selectedImageModel,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1487,11 +1492,15 @@ async function createChatThread(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentId,
+        agentId: args.agentId,
         title: null,
-        ...chatThreadModelPinColumns(args.pin),
+        modelProviderId: pinColumns.modelProviderId,
+        modelProviderType: pinColumns.modelProviderType,
+        modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+        selectedModel: pinColumns.selectedModel,
         codexServiceTier: args.codexServiceTier,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {

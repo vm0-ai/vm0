@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
+
+import { agents } from "@okouai/db/schema/agent";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type { CheckpointAgentComposeSnapshot } from "@okouai/db/jsonb-contracts/checkpoint";
 import { count, eq, sql } from "drizzle-orm";
 
@@ -20,6 +24,76 @@ interface AgentComposeVersionProvenanceFixture {
   readonly composeId: string | null;
   readonly createdBy: string | null;
   readonly content: unknown;
+}
+
+/** Materialize an outgoing Stage 6 identity/version around a canonical Agent. */
+export async function materializeAgentLegacyVersionFixture(
+  agentId: string,
+): Promise<string> {
+  const [agent] = await db()
+    .select()
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .limit(1);
+  if (!agent) {
+    throw new Error("Expected a canonical Agent to materialize legacy state");
+  }
+
+  const content = {
+    version: "1" as const,
+    agents: {
+      [agent.name]: { framework: "claude-code" as const },
+    },
+  };
+  const versionId = createHash("sha256")
+    .update(JSON.stringify(content))
+    .digest("hex");
+  await db().transaction(async (tx) => {
+    await tx
+      .insert(agentComposes)
+      .values({
+        id: agent.id,
+        userId: agent.owner,
+        orgId: agent.orgId,
+        name: agent.name,
+        createdAt: agent.createdAt,
+        updatedAt: agent.updatedAt,
+      })
+      .onConflictDoNothing();
+    await tx
+      .insert(zeroAgents)
+      .values({
+        id: agent.id,
+        orgId: agent.orgId,
+        owner: agent.owner,
+        name: agent.name,
+        visibility: agent.visibility,
+        displayName: agent.displayName,
+        description: agent.description,
+        sound: agent.sound,
+        avatarUrl: agent.avatarUrl,
+        modelProviderId: agent.modelProviderId,
+        selectedModel: agent.selectedModel,
+        preferPersonalProvider: agent.preferPersonalProvider,
+        createdAt: agent.createdAt,
+        updatedAt: agent.updatedAt,
+      })
+      .onConflictDoNothing();
+    await tx
+      .insert(agentComposeVersions)
+      .values({
+        id: versionId,
+        composeId: agent.id,
+        content,
+        createdBy: agent.owner,
+      })
+      .onConflictDoNothing();
+    await tx
+      .update(agentComposes)
+      .set({ headVersionId: versionId })
+      .where(eq(agentComposes.id, agent.id));
+  });
+  return versionId;
 }
 
 export async function readAgentHeadVersionIdFixture(

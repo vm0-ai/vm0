@@ -133,7 +133,7 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
       "storageForwarding|turbo/apps/api/src/signals/services/agent-run-create.service.ts|1|14ef880a94a1bae38cf026d24cd1a98096a30e4a16df5a32a746f93fee32c04d",
     ],
     reviewedConsumers: [
-      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|15|0b32457eb47b9607654c2e0de310947870caf3dd3ff16a641203b51a297e47d3",
+      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|15|c3adf55fded539cb22e40f0e35cb63b603dd5e0335c5217ba273fc048579b815",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
       "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts|checkpoint-configuration-independent|4|74d3fb9deae6ab002c76acb740841daf5c24316832575875c6b4ad7947ef3e30",
       "turbo/packages/api-contracts/src/contracts/composes.ts|schema-authority|5|cbd115e5355554442c40dd32d555cf19eda9746e639b83b47ec159f2d647b814",

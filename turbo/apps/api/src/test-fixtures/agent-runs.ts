@@ -136,7 +136,6 @@ async function resolveLegacyDirectAgentRun(
     return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
   }
   return {
-    agentComposeVersionId: row.versionId,
     composeId: row.composeId,
     composeUserId: row.composeUserId,
     agentName: row.composeName || undefined,
@@ -252,7 +251,6 @@ async function resolveLegacyDirectSessionRun(
       )
     : undefined;
   return {
-    agentComposeVersionId: snapshot.version.id,
     composeId: snapshot.compose.id,
     composeUserId: snapshot.compose.userId,
     agentName: snapshot.compose.name || undefined,

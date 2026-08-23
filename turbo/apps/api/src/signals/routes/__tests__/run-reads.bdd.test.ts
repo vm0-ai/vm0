@@ -16,6 +16,7 @@ import { testContext } from "../../../__tests__/test-context";
 import {
   clearAgentRunLaunchSnapshotFixture,
   clearAgentRunVersionFixture,
+  materializeAgentLegacyVersionFixture,
 } from "../../../test-fixtures/agent-compose-provenance";
 import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import {
@@ -3200,6 +3201,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const testCompose = await createClaudeCompose(actor, "bdd-test-logs", {
       composeOnly: true,
     });
+    await materializeAgentLegacyVersionFixture(agentOne.agentId);
     const agentOneName = (
       await readHistoricalAgentComposeHeadFixture(agentOne.agentId)
     ).name;
@@ -3530,6 +3532,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       description: "Owns the first shared compose version row.",
       visibility: "private",
     });
+    await materializeAgentLegacyVersionFixture(foreignAgent.agentId);
     const foreignCompose = await readHistoricalAgentComposeHeadFixture(
       foreignAgent.agentId,
     );

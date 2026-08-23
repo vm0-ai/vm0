@@ -1156,6 +1156,13 @@
       "when": 1787477993416,
       "tag": "0972_boring_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 973,
+      "version": "7",
+      "when": 1787488678149,
+      "tag": "0973_canonical_agent_writes",
+      "breakpoints": true
     }
   ]
 }

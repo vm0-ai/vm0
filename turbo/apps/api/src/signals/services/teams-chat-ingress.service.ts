@@ -96,7 +96,7 @@ async function createCanonicalTeamsChatThread(
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentComposeId,
       computerUseHostId,
       selectedModel: args.selectedModel,
       codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
@@ -105,7 +105,8 @@ async function createCanonicalTeamsChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {

@@ -110,10 +110,6 @@ import {
 } from "@okouai/core/variable-expander";
 import { expandMountPath } from "@okouai/api-contracts/contracts/composes";
 import { agents } from "@okouai/db/schema/agent";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
 import { connectors } from "@okouai/db/schema/connector";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -578,7 +574,6 @@ interface AgentComposeContent {
 }
 
 interface ResolvedCompose {
-  readonly agentComposeVersionId: string | null;
   readonly composeId: string;
   readonly composeUserId: string;
   readonly orgId: string;
@@ -5614,26 +5609,6 @@ async function checkOrgRunPlanStatus(
   return capabilities.status === "active" ? null : insufficientCredits();
 }
 
-async function readLegacyRunVersionProvenanceForWrite(
-  db: Db,
-  agentId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ versionId: agentComposeVersions.id })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentComposes.headVersionId),
-    )
-    .where(eq(agentComposes.id, agentId))
-    .limit(1);
-
-  // Stage 4 retained this nullable physical value solely as rollback material.
-  // It never supplies Agent identity or configuration, and Stage 6 must keep
-  // the legacy dependent writer unchanged until the column is removed.
-  return row?.versionId ?? null;
-}
-
 async function resolveByAgentId(
   db: Db,
   agentId: string,
@@ -5661,13 +5636,7 @@ async function resolveByAgentId(
     return notFound("Agent not found");
   }
 
-  const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
-    db,
-    row.agentId,
-  );
-
   return {
-    agentComposeVersionId,
     composeId: row.agentId,
     composeUserId: row.agentOwner,
     agentName: row.agentName || undefined,
@@ -5846,11 +5815,6 @@ function resolveBySessionId(
       return notFound("Agent not found");
     }
 
-    const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
-      db,
-      snapshot.agent.id,
-    );
-
     const conversation = snapshot.conversation;
     const resumeSession = conversation
       ? await measureApiDispatchTiming(
@@ -5868,7 +5832,6 @@ function resolveBySessionId(
       : undefined;
 
     return {
-      agentComposeVersionId,
       composeId: snapshot.agent.id,
       composeUserId: snapshot.agent.owner,
       agentName: snapshot.agent.name || undefined,
@@ -6172,14 +6135,21 @@ interface LaunchRunRowsArgs {
   readonly error: string | undefined;
 }
 
-function launchSessionValues(
-  args: LaunchRunRowsArgs,
-): typeof agentSessions.$inferInsert {
+interface LaunchSessionValues {
+  readonly id: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly storageMounts: PersistedStorageMount[] | null;
+  readonly conversationId: null;
+}
+
+function launchSessionValues(args: LaunchRunRowsArgs): LaunchSessionValues {
   return {
     id: args.identity.sessionId,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeId: args.resolved.composeId,
+    agentId: args.resolved.composeId,
     storageMounts: args.sessionStorageMounts
       ? [...args.sessionStorageMounts]
       : null,
@@ -6197,7 +6167,6 @@ function launchRunValues(
     createdAt,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeVersionId: args.resolved.agentComposeVersionId,
     status: args.status,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,

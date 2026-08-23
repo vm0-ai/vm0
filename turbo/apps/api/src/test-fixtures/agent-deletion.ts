@@ -4,6 +4,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -14,6 +15,7 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { createDeferredPromise } from "../signals/utils";
+import { materializeAgentLegacyVersionFixture } from "./agent-compose-provenance";
 
 // These fixtures construct transitional and concurrent database states that
 // the production API cannot pause or create. Route tests must opt into their
@@ -75,25 +77,8 @@ function boundaryFromPid(args: {
   };
 }
 
-export async function removeAgentLegacyVersionsFixture(
-  agentId: string,
-): Promise<readonly string[]> {
-  const rows = await db().transaction(async (tx) => {
-    // The Stage 0 production DELETE veto is intentionally bypassed only for
-    // this test-only fixture so the legacy-version-free cohort remains
-    // constructible. SET LOCAL keeps the bypass scoped to this transaction.
-    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-    return await tx
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, agentId))
-      .returning({ id: agentComposeVersions.id });
-  });
-  return rows.map((row) => {
-    return row.id;
-  });
-}
-
 async function agentHeadVersionId(agentId: string): Promise<string> {
+  await materializeAgentLegacyVersionFixture(agentId);
   const [agent] = await db()
     .select({ headVersionId: agentComposes.headVersionId })
     .from(agentComposes)
@@ -144,7 +129,7 @@ export async function readAgentLifecycleIdsFixture(agentId: string): Promise<{
   const sessions = await db()
     .select({ id: agentSessions.id })
     .from(agentSessions)
-    .where(eq(agentSessions.agentComposeId, agentId))
+    .where(eq(agentSessions.agentId, agentId))
     .orderBy(asc(agentSessions.id));
   const sessionIds = sessions.map((session) => {
     return session.id;
@@ -174,8 +159,8 @@ export async function readAgentLifecycleCountsFixture(
 }> {
   const [agentCount] = await db()
     .select({ value: count() })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentId));
+    .from(agents)
+    .where(eq(agents.id, agentId));
   const lifecycle = await readAgentLifecycleIdsFixture(agentId);
   return {
     agents: agentCount?.value ?? 0,
@@ -231,9 +216,9 @@ export async function holdAgentDeletionRowLockFixture(args: {
     const rows =
       args.kind === "agent"
         ? await tx
-            .select({ id: agentComposes.id })
-            .from(agentComposes)
-            .where(eq(agentComposes.id, args.id))
+            .select({ id: agents.id })
+            .from(agents)
+            .where(eq(agents.id, args.id))
             .for("update")
         : args.kind === "session"
           ? await tx
@@ -326,7 +311,7 @@ export async function holdAgentSessionInsertFixture(args: {
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
     await tx.insert(agentSessions).values({
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       orgId: args.orgId,
       userId: args.userId,
     });

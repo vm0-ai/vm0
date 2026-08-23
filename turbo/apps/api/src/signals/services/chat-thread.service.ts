@@ -682,7 +682,7 @@ export const createChatThread$ = command(
             ? { id: args.clientThreadId }
             : {}),
           userId: args.userId,
-          agentComposeId: args.agentComposeId,
+          agentId: args.agentComposeId,
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
           modelProviderId: args.modelProviderId,

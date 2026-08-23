@@ -88,7 +88,7 @@ const updateOfficialBot$ = command(
       .values({
         userId: args.auth.userId,
         orgId: args.auth.orgId,
-        selectedComposeId: args.selectedAgentId,
+        selectedAgentId: args.selectedAgentId,
       })
       .onConflictDoUpdate({
         target: [
@@ -96,7 +96,7 @@ const updateOfficialBot$ = command(
           telegramUserAgentPreferences.orgId,
         ],
         set: {
-          selectedComposeId: args.selectedAgentId,
+          selectedAgentId: args.selectedAgentId,
           updatedAt: nowDate(),
         },
       });
@@ -170,7 +170,7 @@ const updateCustomBot$ = command(
 
     await writeDb
       .update(telegramInstallations)
-      .set({ defaultComposeId: compose.id, updatedAt: nowDate() })
+      .set({ defaultAgentId: compose.id, updatedAt: nowDate() })
       .where(
         eq(telegramInstallations.telegramBotId, installation.telegramBotId),
       );
