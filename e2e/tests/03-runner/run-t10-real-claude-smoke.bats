@@ -19,10 +19,11 @@ setup_file() {
     local feature_switches
     feature_switches="$(runner_api_curl "/api/feature-switches" \
         -X POST \
-        -d '{"switches":{"realAgentInPreview":true,"piLoop":true}}')"
+        -d '{"switches":{"realAgentInPreview":true,"piLoop":true,"managedModelProviderFallback":true}}')"
     jq -e '
         .effectiveSwitches.realAgentInPreview == true and
-        .effectiveSwitches.piLoop == true
+        .effectiveSwitches.piLoop == true and
+        .effectiveSwitches.managedModelProviderFallback == true
     ' <<<"$feature_switches" >/dev/null
 
     export RUNNER_AGENT_ID

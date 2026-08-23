@@ -2714,9 +2714,12 @@ jobs:
 
           curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"switches":{"realAgentInPreview":true}}' \
+            -d '{"switches":{"realAgentInPreview":true,"managedModelProviderFallback":true}}' \
             "${api_url}/api/okou/feature-switches" \
-            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            | jq -e '
+                .effectiveSwitches.realAgentInPreview == true and
+                .effectiveSwitches.managedModelProviderFallback == true
+              ' \
             >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2840,6 +2843,7 @@ jobs:
             "${test_files[@]}"
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VM0_MITM_RUNNER_TOKEN: ${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}
       - name: Print runner E2E trace log
         if: always()
         shell: bash
