@@ -141,9 +141,8 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain('data-color-system="carnival"');
     expect(result.prompt).toContain("--model seedream4");
-    expect(result.prompt).toContain(
-      "Keep at most 3 image generations in flight at once",
-    );
+    expect(result.prompt).toContain("at most 3 in flight");
+    expect(result.prompt).toContain("Embed this URL in HTML");
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.

@@ -4038,12 +4038,10 @@ export function buildPresentationRunbookInstructionLines(args: {
           `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
         ]
       : [
-          `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it. It is the entrypoint; there is no runbook, deck JSON schema, or build script in this package.`,
+          `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it.`,
           `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.`,
           `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          "- Generate every deck image with `okou generate image --provider built-in`, defaulting to `--model seedream4` unless the user names another image model. This package ships no image resolver; do not call a stock-photo resolve API.",
-          "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
-          "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
+          "- Generate every deck image with `okou generate image --provider built-in --model seedream4`, at most 3 in flight (more return HTTP 429), and embed the returned `Embed this URL in HTML` value, which serves AVIF/WebP through the CDN image transform.",
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
