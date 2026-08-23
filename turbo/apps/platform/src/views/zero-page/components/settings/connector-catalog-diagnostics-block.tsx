@@ -3,7 +3,7 @@ import type {
   ConnectorCatalogDiagnostics,
   ConnectorCatalogSyncFailureCode,
 } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
-import { Database } from "lucide-react";
+import { ChevronDown, ChevronUp, Database } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -211,6 +211,70 @@ function DiagnosticField({
         {value}
       </Value>
     </div>
+  );
+}
+
+function CatalogDiagnosticsSummary({
+  diagnostics,
+}: {
+  readonly diagnostics: ConnectorCatalogDiagnostics;
+}) {
+  const activeVersion = diagnostics.active?.catalogVersion ?? emptyValue();
+  const lastAttempt = diagnostics.lastAttempt
+    ? formatEnumValue(diagnostics.lastAttempt.outcome)
+    : emptyValue();
+  const evaluation = formatEnumValue(
+    diagnostics.filtering.stale ? "stale" : "current",
+  );
+
+  return (
+    <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+        <Database size={22} className="text-muted-foreground" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-2">
+        <span
+          id="connector-catalog-diagnostics-title"
+          className="text-sm font-medium text-foreground"
+        >
+          {i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.title;
+          })}
+        </span>
+        <span className="flex min-w-0 flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
+          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+            {i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .syncState;
+            })}
+            : {formatEnumValue(diagnostics.state)}
+          </span>
+          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+            {i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .activeVersion;
+            })}
+            : {activeVersion}
+          </span>
+          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+            {i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .lastAttempt;
+            })}
+            : {lastAttempt}
+          </span>
+          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+            {i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .evaluation;
+            })}
+            : {evaluation}
+          </span>
+        </span>
+      </span>
+      <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />
+      <ChevronUp className="mt-1 hidden h-4 w-4 shrink-0 text-muted-foreground group-open:block" />
+    </summary>
   );
 }
 
@@ -500,38 +564,45 @@ export function ConnectorCatalogDiagnosticsBlock() {
   return (
     <section
       aria-labelledby="connector-catalog-diagnostics-title"
-      className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border"
+      className="overflow-hidden rounded-xl bg-card zero-border"
     >
-      <div className="shrink-0">
-        <div className="flex h-7 w-7 items-center justify-center">
-          <Database size={22} className="text-muted-foreground" />
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div
-          id="connector-catalog-diagnostics-title"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.providerSettings.catalogDiagnostics.title;
-          })}
-        </div>
-        {diagnostics ? (
-          <DiagnosticsContent diagnostics={diagnostics} />
-        ) : (
-          <div className="text-sm text-muted-foreground">
-            {loading
-              ? t(($) => {
-                  return $.connectors.providerSettings.catalogDiagnostics
-                    .loading;
-                })
-              : t(($) => {
-                  return $.connectors.providerSettings.catalogDiagnostics
-                    .unavailable;
-                })}
+      {diagnostics ? (
+        <details className="group">
+          <CatalogDiagnosticsSummary diagnostics={diagnostics} />
+          <div className="border-t border-border/60 p-4">
+            <DiagnosticsContent diagnostics={diagnostics} />
           </div>
-        )}
-      </div>
+        </details>
+      ) : (
+        <div className="flex items-start gap-4 p-4">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <Database size={22} className="text-muted-foreground" />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div
+              id="connector-catalog-diagnostics-title"
+              className="text-sm font-medium text-foreground"
+            >
+              {t(($) => {
+                return $.connectors.providerSettings.catalogDiagnostics.title;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {loading
+                ? t(($) => {
+                    return $.connectors.providerSettings.catalogDiagnostics
+                      .loading;
+                  })
+                : t(($) => {
+                    return $.connectors.providerSettings.catalogDiagnostics
+                      .unavailable;
+                  })}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

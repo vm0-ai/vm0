@@ -85,6 +85,22 @@ function createPreferences(
   };
 }
 
+function connectorCatalogDisclosure(region: HTMLElement): {
+  readonly details: HTMLDetailsElement;
+  readonly summary: HTMLElement;
+} {
+  const title = within(region).getByText("Connector catalog");
+  const summary = title.closest("summary");
+  const details = summary?.closest("details");
+  if (!(summary instanceof HTMLElement)) {
+    throw new Error("Connector catalog summary not found");
+  }
+  if (!(details instanceof HTMLDetailsElement)) {
+    throw new Error("Connector catalog disclosure not found");
+  }
+  return { details, summary };
+}
+
 describe("settings dialog", () => {
   it("keeps every available locale in the language menu", async () => {
     context.mocks.data.userPreferences(
@@ -889,9 +905,15 @@ describe("settings dialog", () => {
     const diagnostics = await screen.findByRole("region", {
       name: "Connector catalog",
     });
-    expect(within(diagnostics).getByText("Stale")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("Current")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("2026-07-25.1")).toBeInTheDocument();
+    const { details, summary } = connectorCatalogDisclosure(diagnostics);
+    expect(details.open).toBeFalsy();
+    expect(summary).toHaveTextContent("Sync state: Stale");
+    expect(summary).toHaveTextContent("Active version: 2026-07-25.1");
+    expect(summary).toHaveTextContent("Last attempt: Rejected");
+    expect(summary).toHaveTextContent("Evaluation: Current");
+
+    click(summary);
+    expect(details.open).toBeTruthy();
     expect(within(diagnostics).getByText("2026-07-25.2")).toBeInTheDocument();
     expect(within(diagnostics).getByText("1.319.0")).toBeInTheDocument();
     expect(within(diagnostics).getByText("Reused")).toBeInTheDocument();
@@ -914,6 +936,9 @@ describe("settings dialog", () => {
     expect(
       within(diagnostics).getByText("Unresolved bridge credentials"),
     ).toBeInTheDocument();
+
+    click(summary);
+    expect(details.open).toBeFalsy();
   });
 
   it("refreshes connector catalog diagnostics on every Debug entry", async () => {
@@ -953,10 +978,15 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "debug");
 
-    await expect(
-      screen.findByText("2026-08-19.1"),
-    ).resolves.toBeInTheDocument();
+    let diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    let { details, summary } = connectorCatalogDisclosure(diagnostics);
+    expect(summary).toHaveTextContent("Active version: 2026-08-19.1");
     expect(requestCount).toBe(1);
+
+    click(summary);
+    expect(details.open).toBeTruthy();
 
     click(screen.getByRole("switch"));
     await expect(
@@ -984,9 +1014,14 @@ describe("settings dialog", () => {
     ).resolves.toBeInTheDocument();
 
     click(dialogButton("Debug"));
-    await expect(
-      screen.findByText("2026-08-19.2"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      diagnostics = screen.getByRole("region", {
+        name: "Connector catalog",
+      });
+      ({ details, summary } = connectorCatalogDisclosure(diagnostics));
+      expect(summary).toHaveTextContent("Active version: 2026-08-19.2");
+      expect(details.open).toBeFalsy();
+    });
     expect(requestCount).toBe(2);
 
     click(dialogButton("Close"));
@@ -996,9 +1031,14 @@ describe("settings dialog", () => {
 
     await context.store.set(openSettingsDialogAt$, "debug", context.signal);
 
-    await expect(
-      screen.findByText("2026-08-19.3"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      diagnostics = screen.getByRole("region", {
+        name: "Connector catalog",
+      });
+      ({ details, summary } = connectorCatalogDisclosure(diagnostics));
+      expect(summary).toHaveTextContent("Active version: 2026-08-19.3");
+      expect(details.open).toBeFalsy();
+    });
     expect(requestCount).toBe(3);
   });
 
@@ -1039,29 +1079,43 @@ describe("settings dialog", () => {
     const diagnostics = await screen.findByRole("region", {
       name: "Connector catalog",
     });
+    const { summary } = connectorCatalogDisclosure(diagnostics);
+    click(summary);
     expect(within(diagnostics).getByText("Not reused")).toBeInTheDocument();
     expect(
       within(diagnostics).queryByText("Fresh evaluation"),
     ).not.toBeInTheDocument();
   });
 
-  it("keeps Debug settings usable when diagnostics are unavailable", async () => {
-    context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
-      return respond(404, {
-        error: {
-          message: "Connector catalog diagnostics are unavailable",
-          code: "NOT_FOUND",
-        },
-      });
-    });
+  it("keeps Debug settings usable while diagnostics load or are unavailable", async () => {
+    const releaseDiagnostics = context.mocks.deferred<void>();
+    context.mocks.api(
+      connectorCatalogContract.diagnostics,
+      async ({ respond }) => {
+        await releaseDiagnostics.promise;
+        return respond(404, {
+          error: {
+            message: "Connector catalog diagnostics are unavailable",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
 
     await openDialog("admin", "debug");
 
     const diagnostics = await screen.findByRole("region", {
       name: "Connector catalog",
     });
-    expect(within(diagnostics).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Loading")).toBeInTheDocument();
+    expect(diagnostics.querySelector("summary")).toBeNull();
     expect(screen.getByText("Build information")).toBeInTheDocument();
     expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+
+    releaseDiagnostics.resolve();
+    await expect(
+      within(diagnostics).findByText("Unavailable"),
+    ).resolves.toBeInTheDocument();
+    expect(diagnostics.querySelector("summary")).toBeNull();
   });
 });
