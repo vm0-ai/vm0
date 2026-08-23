@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { testComputerUseStateContract } from "@okouai/api-contracts/contracts/test-computer-use-state";
+import { agents } from "@okouai/db/schema/agent";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -97,11 +98,21 @@ async function seedBaseComputerUseRun(args: {
   });
   args.signal.throwIfAborted();
 
+  await args.db.insert(agents).values({
+    id: composeId,
+    owner: args.userId,
+    orgId: args.orgId,
+    name: `computer-use-auth-${composeId.slice(0, 8)}`,
+    visibility: "private",
+  });
+  args.signal.throwIfAborted();
+
   if (threadId) {
     await args.db.insert(chatThreads).values({
       id: threadId,
       userId: args.userId,
       agentComposeId: composeId,
+      agentId: composeId,
       title: "Computer Use authorization test",
     });
     args.signal.throwIfAborted();
@@ -112,6 +123,7 @@ async function seedBaseComputerUseRun(args: {
     userId: args.userId,
     orgId: args.orgId,
     agentComposeId: composeId,
+    agentId: composeId,
   });
   args.signal.throwIfAborted();
 

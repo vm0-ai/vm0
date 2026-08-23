@@ -3696,30 +3696,16 @@ async function testProductRuntimeVersionContentIsolation(): Promise<void> {
     );
   }
 
-  const directAgentResolver = sourceRange(
-    runCreate,
-    "async function resolveByAgentId(",
-    "async function resolveProductByAgentId(",
-  );
   const productAgentResolver = sourceRange(
     runCreate,
-    "async function resolveProductByAgentId(",
+    "async function resolveByAgentId(",
     "interface ResumeSessionSnapshot",
-  );
-  const directSessionResolver = sourceRange(
-    runCreate,
-    "function resolveBySessionId(",
-    "function resolveProductBySessionId(",
   );
   const productSessionResolver = sourceRange(
     runCreate,
-    "function resolveProductBySessionId(",
+    "function resolveBySessionId(",
     "function resolveCompose(",
   );
-  for (const directResolver of [directAgentResolver, directSessionResolver]) {
-    assert.match(directResolver, /agentComposeVersions\.content/u);
-    assert.match(directResolver, /MISSING_AGENT_CONFIGURATION_MESSAGE/u);
-  }
   for (const productResolver of [
     productAgentResolver,
     productSessionResolver,
