@@ -12,6 +12,7 @@ use crate::support::{BIN, ChildWaitOutcome, require_session_file, run, wait_chil
 
 const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const MOCK_CODEX_SESSION_TIMESTAMP_ENV: &str = "MOCK_CODEX_SESSION_TIMESTAMP";
 
 pub(crate) struct AppServerProcess {
     child: Option<Child>,
@@ -174,7 +175,7 @@ pub(crate) fn spawn_app_server(
     spawn_app_server_with_env(codex_home, args, scenario, &[])
 }
 
-fn spawn_app_server_with_env(
+pub(crate) fn spawn_app_server_with_env(
     codex_home: &Path,
     args: &[&str],
     scenario: Option<&str>,
@@ -183,6 +184,7 @@ fn spawn_app_server_with_env(
     let mut cmd = Command::new(BIN);
     cmd.env("CODEX_HOME", codex_home).args(args);
     cmd.env_remove("MOCK_CODEX_APP_SERVER_SCENARIO");
+    cmd.env_remove(MOCK_CODEX_SESSION_TIMESTAMP_ENV);
     if let Some(value) = scenario {
         cmd.env("MOCK_CODEX_APP_SERVER_SCENARIO", value);
     }
