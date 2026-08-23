@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.171.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.2...runner-rs-v0.171.0) (2026-08-23)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+
 ## [0.170.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.170.1...runner-rs-v0.170.2) (2026-08-22)
 
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.478.0](https://github.com/vm0-ai/vm0/compare/api-v1.477.1...api-v1.478.0) (2026-08-23)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+* **presentation:** switch built-in decks to the latest template archives ([#28645](https://github.com/vm0-ai/vm0/issues/28645)) ([7c4a3a9](https://github.com/vm0-ai/vm0/commit/7c4a3a9fc7a1608f4033c8d20866c30f9510be66))
+
+
+### Bug Fixes
+
+* **api:** disable unsupported openrouter deepseek apply patch ([#28656](https://github.com/vm0-ai/vm0/issues/28656)) ([4cffdec](https://github.com/vm0-ai/vm0/commit/4cffdec2f1d080c2147ca134d80eabf65de023ea))
+
+
+### Refactoring
+
+* **api:** isolate connector singleton compatibility ([#28658](https://github.com/vm0-ai/vm0/issues/28658)) ([1a822c0](https://github.com/vm0-ai/vm0/commit/1a822c0580d12bc6c4b2001a76c61e7bd203b9e5))
+
+
+### Performance Improvements
+
+* **api:** attribute connector projection validation ([#28663](https://github.com/vm0-ai/vm0/issues/28663)) ([fdd69c0](https://github.com/vm0-ai/vm0/commit/fdd69c02efe454ea42ff14bbf19c49ad32fd1470))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.354.0
+    * @okouai/core bumped to 8.582.0
+    * @okouai/db bumped to 1.218.0
+    * @okouai/pi-agent-runtime bumped to 1.6.0
+
 ## [1.477.1](https://github.com/vm0-ai/vm0/compare/api-v1.477.0...api-v1.477.1) (2026-08-22)
 
 
