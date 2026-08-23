@@ -214,7 +214,7 @@ async function createSharedThreadSnapshot(
   origin?: string,
 ): Promise<CreatedSharedThreadResult> {
   const response = await sharedThreadTestApp().request(
-    `/api/zero/chat-threads/${threadId}/shared-threads`,
+    `/api/chat-threads/${threadId}/shared-threads`,
     {
       method: "POST",
       headers: {
@@ -237,7 +237,7 @@ async function readSharedThreadSnapshot(
   id: string,
 ): Promise<ReadSharedThreadResult> {
   const response = await sharedThreadTestApp().request(
-    `/api/zero/shared-threads/${id}`,
+    `/api/shared-threads/${id}`,
   );
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
@@ -248,7 +248,7 @@ async function readSharedThreadMeta(
   id: string,
 ): Promise<ReadSharedThreadResult> {
   const response = await sharedThreadTestApp().request(
-    `/api/zero/shared-threads/${id}/meta`,
+    `/api/shared-threads/${id}/meta`,
   );
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
@@ -1297,7 +1297,7 @@ describe("shared thread routes", () => {
     await flushWaitUntilForTest();
 
     const afterOrgDeletionResponse = await sharedThreadTestApp().request(
-      `/api/zero/shared-threads/${first.id}`,
+      `/api/shared-threads/${first.id}`,
     );
     expect(afterOrgDeletionResponse.status).toBe(404);
     const afterOrgDeletion = asRecord(await afterOrgDeletionResponse.json());

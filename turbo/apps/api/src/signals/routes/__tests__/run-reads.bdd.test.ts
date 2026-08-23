@@ -894,10 +894,7 @@ describe("RUN-03: queue position", () => {
     expectApiError(unknown.body);
     expect(unknown.body.error.code).toBe("NOT_FOUND");
 
-    const missingRunId = await reads.rawApiRequest(
-      null,
-      "/api/zero/queue-position",
-    );
+    const missingRunId = await reads.rawApiRequest(null, "/api/queue-position");
     expect(missingRunId.status).toBe(400);
     expect(JSON.stringify(missingRunId.body)).toContain("runId");
 

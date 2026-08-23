@@ -372,7 +372,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       }).request(
-        `/api/zero/integrations/phone/download-file?file_id=${encodeURIComponent(fileId)}`,
+        `/api/integrations/phone/download-file?file_id=${encodeURIComponent(fileId)}`,
         {
           method: "GET",
           headers: { authorization: `Bearer ${token}` },

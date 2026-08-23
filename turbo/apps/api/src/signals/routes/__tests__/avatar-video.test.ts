@@ -193,7 +193,7 @@ describe("JoggAI built-in avatar video routes", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const response = await createAvatarVideoTestApp(
       fixture.usagePricingResolution,
-    ).request("/api/zero/avatar-video/generate", {
+    ).request("/api/avatar-video/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -463,7 +463,7 @@ describe("JoggAI built-in avatar video routes", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
-    const response = await app.request("/api/zero/avatar-video/generate", {
+    const response = await app.request("/api/avatar-video/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -646,7 +646,7 @@ describe("JoggAI built-in avatar video routes", () => {
 
     const response = await createAvatarVideoTestApp(
       fixture.usagePricingResolution,
-    ).request("/api/zero/avatar-video/generate", {
+    ).request("/api/avatar-video/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
