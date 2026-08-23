@@ -99,10 +99,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain('"colorSystem": "carnival"');
     expect(result.prompt).toContain(
-      "every slide and all visible content in final index.html; the first slide must render before JavaScript",
-    );
-    expect(result.prompt).toContain(
-      "JavaScript may only enhance navigation, controls, themes, or animation",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
     expect(result.prompt).toContain(
       "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
@@ -137,11 +134,10 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/SKILL.md",
     );
+    expect(result.prompt).toContain("Color system token: carnival");
     expect(result.prompt).toContain(
-      "./generated/resources/playful-launch/color-systems/carnival.css",
+      "follow its template, authoring, and verification instructions",
     );
-    expect(result.prompt).toContain('data-color-system="carnival"');
-    expect(result.prompt).toContain("then batch-read chosen layouts");
     expect(result.prompt).toContain(
       "okou generate image-batch start <manifest.tsv> <state-dir>",
     );
@@ -153,29 +149,27 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "The command owns generation settings, concurrency, and retry",
     );
-    expect(result.prompt).toContain(
-      "this list owns execution order and stopping",
-    );
     expect(result.prompt).toContain("<state-dir>/results.tsv");
-    expect(result.prompt).toContain("run the opaque");
-    expect(result.prompt).toContain("full-deck screenshots or contact sheets");
-    expect(result.prompt).toContain("visually review unflagged slides");
-    expect(result.prompt).toContain("fix only named blockers or advisories");
-    expect(result.prompt).toContain("On pass, publish once");
     expect(
       result.prompt.indexOf("okou generate image-batch start <manifest.tsv>"),
     ).toBeLessThan(
       result.prompt.indexOf("author the final semantic HTML/CSS/SVG"),
     );
-    expect(
-      result.prompt.indexOf("okou generate image-batch wait <state-dir>"),
-    ).toBeLessThan(result.prompt.indexOf("run the opaque"));
+    expect(result.prompt).toContain(
+      "wait once before verification with `okou generate image-batch wait <state-dir>`",
+    );
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.
     expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
     expect(result.prompt).not.toContain("presentation-images.sh");
     expect(result.prompt).not.toContain('"colorSystem"');
+    expect(result.prompt).not.toContain("color-systems/");
+    expect(result.prompt).not.toContain("data-color-system");
+    expect(result.prompt).not.toContain("design-system.md");
+    expect(result.prompt).not.toContain("layouts/_shell.html");
+    expect(result.prompt).not.toContain("decoration/PLACEMENT.md");
+    expect(result.prompt).not.toContain("tools/run.sh");
   });
 
   it("points a private template at its mounted package and forbids an intermediate representation", () => {
@@ -200,10 +194,16 @@ describe("buildGenerationTemplatePrompt", () => {
     const packageDir = `./generated/presentation-template/${USER_TEMPLATE_ROW_ID}`;
     expect(result.prompt).toContain(`mounted at ${packageDir}.`);
     expect(result.prompt).toContain(
-      `Read ${packageDir}/SKILL.md and ${packageDir}/design-system.md before authoring anything`,
+      `Read ${packageDir}/SKILL.md fully and follow only the files and assets it names`,
     );
     expect(result.prompt).toContain(
       "Author the finished deck directly as semantic HTML, CSS, and SVG",
+    );
+    expect(result.prompt).toContain(
+      "okou generate image-batch start <manifest.tsv> <state-dir>",
+    );
+    expect(result.prompt).toContain(
+      "okou generate image-batch wait <state-dir>",
     );
     // The package is a visual language, not a renderer: an agent that reaches
     // for slide JSON produces something the guidance cannot inform.
@@ -215,6 +215,9 @@ describe("buildGenerationTemplatePrompt", () => {
     // A private package has no registry resource to pull.
     expect(result.prompt).not.toContain("okou resource pull");
     expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    expect(result.prompt).not.toContain("design-system.md");
+    expect(result.prompt).not.toContain("color-systems/");
+    expect(result.prompt).not.toContain("data-color-system");
     // The raw row id may name the mount, but no storage key may leak.
     expect(result.prompt).not.toContain("presentation-template@");
   });

@@ -8,6 +8,10 @@ import {
   listPresentationRunbookPackages,
   resolvePresentationRunbookColorToken,
 } from "@okouai/core/resource-registry";
+import {
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
+  PRESENTATION_STATIC_HTML_INSTRUCTION,
+} from "@okouai/core/presentation-generation-instructions";
 import { canonicalizeRegistryId } from "./resource-listing";
 import { presentationRunbookArchiveVersionFromEnvironment } from "./presentation-runbook-archive-version";
 
@@ -173,8 +177,8 @@ ${formatPresentationTemplateListing(templates)}`;
             "- Think like a presentation designer, not a web page designer.",
             "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
             "- Use one section per slide and keep repeated elements in consistent positions.",
-            "- Build the deck static-first: the final index.html must contain every slide section and all user-visible slide content, with the first slide visible before JavaScript runs.",
-            "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
+            PRESENTATION_STATIC_HTML_INSTRUCTION,
+            ...PRESENTATION_IMAGE_BATCH_INSTRUCTION_LINES,
             "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
             "- Keep slide text readable from across a room; avoid memo-like walls of text.",
             "- Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",
