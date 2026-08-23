@@ -941,6 +941,42 @@ describe("settings dialog", () => {
     expect(details.open).toBeFalsy();
   });
 
+  it("summarizes a never-synced connector catalog", async () => {
+    context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
+      return respond(200, {
+        state: "never-synced",
+        active: null,
+        lastAttempt: null,
+        lastSuccessAt: null,
+        rejectedCandidate: null,
+        filtering: {
+          capabilityDigest: `sha256:${"a".repeat(64)}`,
+          evaluatedAt: null,
+          stale: true,
+          filteredAuthMethods: [],
+        },
+        credentialStorage: {
+          missingConnectorVersions: 0,
+          unownedConnectorSecrets: 0,
+          unownedConnectorVariables: 0,
+          unresolvedBridgeCredentials: 0,
+        },
+      });
+    });
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    const { details, summary } = connectorCatalogDisclosure(diagnostics);
+    expect(details.open).toBeFalsy();
+    expect(summary).toHaveTextContent("Sync state: Never synced");
+    expect(summary).toHaveTextContent("Active version: None");
+    expect(summary).toHaveTextContent("Last attempt: None");
+    expect(summary).toHaveTextContent("Evaluation: Stale");
+  });
+
   it("refreshes connector catalog diagnostics on every Debug entry", async () => {
     let requestCount = 0;
     context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
