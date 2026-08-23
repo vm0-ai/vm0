@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { schema } from "../index";
+import { connectorExternalCodeSessions } from "../schema/connector-external-code-session";
 import { connectorOauthDeviceAuthorizationSessions } from "../schema/connector-oauth-device-authorization-session";
 
 interface ExtraConfigColumn {
@@ -68,10 +69,13 @@ function getExtraConfigColumnNames(table: object, name: string): string[] {
   );
 }
 
-describe("connectorOauthDeviceAuthorizationSessions schema", () => {
-  it("exports the OAuth device authorization session table", () => {
+describe("connector authorization session schemas", () => {
+  it("exports the durable authorization session tables", () => {
     expect(schema.connectorOauthDeviceAuthorizationSessions).toBe(
       connectorOauthDeviceAuthorizationSessions,
+    );
+    expect(schema.connectorExternalCodeSessions).toBe(
+      connectorExternalCodeSessions,
     );
   });
 
@@ -104,7 +108,11 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     );
     expect(
       connectorOauthDeviceAuthorizationSessions.accountMutation.notNull,
-    ).toBe(false);
+    ).toBe(true);
+    expect(connectorExternalCodeSessions.accountMutation.name).toBe(
+      "account_mutation",
+    );
+    expect(connectorExternalCodeSessions.accountMutation.notNull).toBe(true);
     expect(connectorOauthDeviceAuthorizationSessions.userCode.name).toBe(
       "user_code",
     );

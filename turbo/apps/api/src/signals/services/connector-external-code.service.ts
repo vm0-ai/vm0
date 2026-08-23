@@ -22,6 +22,7 @@ import {
   type ConnectorAuthProviderGrantResult,
 } from "@okouai/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -93,7 +94,12 @@ const externalCodeSessionSelection = Object.freeze({
   completedAt: connectorExternalCodeSessions.completedAt,
 });
 
-type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
+type ExternalCodeSessionRow = Omit<
+  typeof connectorExternalCodeSessions.$inferSelect,
+  "accountMutation"
+> & {
+  readonly accountMutation: StoredConnectorAccountMutation | null;
+};
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;

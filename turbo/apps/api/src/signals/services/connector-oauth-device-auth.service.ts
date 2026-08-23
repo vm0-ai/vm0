@@ -24,6 +24,7 @@ import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
 } from "@okouai/connectors/auth-providers/provider-flow-types";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorOauthDeviceAuthorizationSessions } from "@okouai/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -105,8 +106,12 @@ const deviceAuthSessionSelection = Object.freeze({
   completedAt: connectorOauthDeviceAuthorizationSessions.completedAt,
 });
 
-type DeviceAuthSessionRow =
-  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
+type DeviceAuthSessionRow = Omit<
+  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
+  "accountMutation"
+> & {
+  readonly accountMutation: StoredConnectorAccountMutation | null;
+};
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,

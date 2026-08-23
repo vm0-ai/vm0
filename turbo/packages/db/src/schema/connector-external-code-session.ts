@@ -32,8 +32,9 @@ export const connectorExternalCodeSessions = pgTable(
       .notNull(),
     sessionTokenHash: varchar("session_token_hash", { length: 128 }).notNull(),
     encryptedProviderState: text("encrypted_provider_state").notNull(),
-    accountMutation:
-      jsonb("account_mutation").$type<StoredConnectorAccountMutation>(),
+    accountMutation: jsonb("account_mutation")
+      .$type<StoredConnectorAccountMutation>()
+      .notNull(),
     authorizationUrl: text("authorization_url").notNull(),
     errorCode: varchar("error_code", { length: 255 }),
     errorMessage: text("error_message"),
