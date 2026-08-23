@@ -4030,28 +4030,20 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   const packageDir = `./generated/resources/${pkg.slug}`;
-  // The two archive versions are authored against different workflows: the
-  // previous one drives a bundled deck-JSON renderer, the current one has no
-  // renderer at all and the agent writes the HTML itself. Naming the wrong
-  // entrypoint costs a whole run, so the instructions switch with the archive.
+  // Previous archives use deck JSON; latest archives require direct HTML.
   const packageLines =
     args.archiveVersion === "previous"
       ? [
           `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
         ]
       : [
-          `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it.`,
-          `- For execution order, image scheduling, verification stopping, and publishing, follow the orchestration below even if SKILL.md contains broader review or delivery wording. Use SKILL.md for the template's design language, layout rules, and template-specific gate meanings.`,
-          `- Under ${packageDir}, batch independent package reads: read design-system.md, color-systems/${colorSystemToken}.css, layouts/_shell.html, and decoration/PLACEMENT.md together; once layouts are selected, read all selected layout files together. Do not reopen unchanged package files.`,
-          `- Images from the supplied material come first. Before authoring slide markup, decide whether 1-4 generated images are still needed; if so, write one manifest outside the hosted output as \`asset-id<TAB>raw prompt[<TAB>size]\`, using only 1024x1024, 1536x1024, or 1024x1536.`,
-          `- If a manifest exists, start the complete image batch exactly once with \`okou generate image-batch start <manifest.tsv> <state-dir>\`, then immediately continue to deck authoring while it runs. If no generated images are needed, skip both batch commands. The VM0 command owns provider, model, quality, concurrency, queueing, and retry behavior; do not reproduce its scheduling logic or call \`okou generate image\` directly.`,
-          `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content while the image batch runs, or immediately when no batch was needed.`,
-          `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          `- Before local verification, if a batch was started, join it exactly once with \`okou generate image-batch wait <state-dir>\` and embed the asset-id-to-URL results from \`<state-dir>/results.tsv\`. Keep the manifest, state, prompts, and logs outside the hosted output.`,
-          `- Complete outline, identity, HTML/DOM, and navigation checks from the final source and computed DOM before the final local gate. Do not turn those checks into an all-slide screenshot, contact-sheet, or image-recognition pass.`,
-          `- Treat ${packageDir}/tools/run.sh and its check helpers as opaque executables. Run the SKILL-documented gate against the final local HTML after images settle; do not open or reverse-engineer gate source.`,
-          "- If the local gate fails, inspect only the named pages, elements, or advisory samples, batch the fixes, and rerun only after the HTML changes. Do not perform an unconditional all-slide screenshot, contact-sheet, or per-image recognition pass.",
-          "- A passing local gate is the stopping condition: publish immediately and exactly once. Do not rerun the gate or visual review on the hosted URL unless hosting changed the artifact or the URL failed.",
+          `- Read ${packageDir}/SKILL.md fully. It owns design, layouts, and gate meanings; this list owns execution order and stopping.`,
+          `- Batch-read ${packageDir}/design-system.md, color-systems/${colorSystemToken}.css, layouts/_shell.html, and decoration/PLACEMENT.md; then batch-read chosen layouts. Do not reopen unchanged files.`,
+          `- Use supplied images first. If 1-4 generated images are needed, write an outside-output manifest before HTML: \`asset-id<TAB>raw prompt[<TAB>size]\`; sizes: 1024x1024, 1536x1024, or 1024x1536.`,
+          `- Start the batch once with \`okou generate image-batch start <manifest.tsv> <state-dir>\`, then author the final semantic HTML/CSS/SVG while it runs. No manifest: skip start and wait. The command owns generation settings, concurrency, and retry; never call \`okou generate image\` directly.`,
+          `- Inline ${packageDir}/color-systems/${colorSystemToken}.css, set data-color-system="${colorSystemToken}" on the root, and load no other color system. If a batch started, wait once before the gate with \`okou generate image-batch wait <state-dir>\`, embed \`<state-dir>/results.tsv\`, and keep batch files outside the hosted output.`,
+          `- Check outline, identity, DOM, and navigation from source or computed DOM. After images settle, run the opaque ${packageDir}/tools/run.sh once on final HTML; do not inspect gate source, use image recognition, create full-deck screenshots or contact sheets, or visually review unflagged slides.`,
+          "- On failure, fix only named blockers or advisories and rerun only after HTML changes. On pass, publish once; recheck the hosted URL only if the artifact changed or the URL failed.",
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
@@ -4060,11 +4052,11 @@ export function buildPresentationRunbookInstructionLines(args: {
     "To produce the presentation:",
     `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
     ...packageLines,
-    "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-    "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
-    "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
+    "- Use the requested slide count; default to 8.",
+    "- Keep every slide and all visible content in final index.html; the first slide must render before JavaScript.",
+    "- JavaScript may only enhance navigation, controls, themes, or animation; never create, inject, fetch, hydrate, or replace slide content.",
     "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
-    "- Return only the generated HTML deck as the final deliverable.",
+    "- Return only the HTML deck.",
   ];
 }
 

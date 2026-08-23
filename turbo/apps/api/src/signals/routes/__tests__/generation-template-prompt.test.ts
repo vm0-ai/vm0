@@ -99,10 +99,10 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain('"colorSystem": "carnival"');
     expect(result.prompt).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "every slide and all visible content in final index.html; the first slide must render before JavaScript",
     );
     expect(result.prompt).toContain(
-      "Do not store slide content in JavaScript data",
+      "JavaScript may only enhance navigation, controls, themes, or animation",
     );
     expect(result.prompt).toContain(
       "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
@@ -141,40 +141,35 @@ describe("buildGenerationTemplatePrompt", () => {
       "./generated/resources/playful-launch/color-systems/carnival.css",
     );
     expect(result.prompt).toContain('data-color-system="carnival"');
-    expect(result.prompt).toContain("read all selected layout files together");
+    expect(result.prompt).toContain("then batch-read chosen layouts");
     expect(result.prompt).toContain(
       "okou generate image-batch start <manifest.tsv> <state-dir>",
     );
     expect(result.prompt).toContain(
       "okou generate image-batch wait <state-dir>",
     );
-    expect(result.prompt).toContain("Before authoring slide markup");
+    expect(result.prompt).toContain("manifest before HTML");
+    expect(result.prompt).toContain("No manifest: skip start and wait");
     expect(result.prompt).toContain(
-      "If no generated images are needed, skip both batch commands",
+      "The command owns generation settings, concurrency, and retry",
     );
     expect(result.prompt).toContain(
-      "The VM0 command owns provider, model, quality, concurrency, queueing, and retry behavior",
-    );
-    expect(result.prompt).toContain(
-      "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
+      "this list owns execution order and stopping",
     );
     expect(result.prompt).toContain("<state-dir>/results.tsv");
-    expect(result.prompt).toContain("opaque executables");
-    expect(result.prompt).toContain("before the final local gate");
-    expect(result.prompt).toContain(
-      "A passing local gate is the stopping condition",
-    );
-    expect(result.prompt).toContain("publish immediately and exactly once");
-    expect(result.prompt).toContain(
-      "Do not perform an unconditional all-slide screenshot",
-    );
+    expect(result.prompt).toContain("run the opaque");
+    expect(result.prompt).toContain("full-deck screenshots or contact sheets");
+    expect(result.prompt).toContain("visually review unflagged slides");
+    expect(result.prompt).toContain("fix only named blockers or advisories");
+    expect(result.prompt).toContain("On pass, publish once");
     expect(
       result.prompt.indexOf("okou generate image-batch start <manifest.tsv>"),
     ).toBeLessThan(
-      result.prompt.indexOf(
-        "Author the finished deck directly as semantic HTML",
-      ),
+      result.prompt.indexOf("author the final semantic HTML/CSS/SVG"),
     );
+    expect(
+      result.prompt.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(result.prompt.indexOf("run the opaque"));
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.

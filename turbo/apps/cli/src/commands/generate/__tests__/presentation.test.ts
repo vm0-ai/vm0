@@ -184,9 +184,11 @@ describe("okou generate presentation command", () => {
     );
     expect(stdout).toContain('"colorSystem": "carnival"');
     expect(stdout).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "every slide and all visible content in final index.html; the first slide must render before JavaScript",
     );
-    expect(stdout).toContain("Do not store slide content in JavaScript data");
+    expect(stdout).toContain(
+      "JavaScript may only enhance navigation, controls, themes, or animation",
+    );
     expect(stdout).toContain("User request: create a 15-slide launch deck");
     expect(stdout).not.toContain("Selected design system:");
     expect(stdout).not.toContain("design-system:");
@@ -214,25 +216,28 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain(
       "./generated/resources/playful-launch/color-systems/carnival.css",
     );
-    expect(stdout).toContain("read all selected layout files together");
+    expect(stdout).toContain("then batch-read chosen layouts");
     expect(stdout).toContain(
       "okou generate image-batch start <manifest.tsv> <state-dir>",
     );
     expect(stdout).toContain("okou generate image-batch wait <state-dir>");
-    expect(stdout).toContain("Before authoring slide markup");
+    expect(stdout).toContain("manifest before HTML");
+    expect(stdout).toContain("No manifest: skip start and wait");
     expect(stdout).toContain(
-      "If no generated images are needed, skip both batch commands",
+      "The command owns generation settings, concurrency, and retry",
     );
-    expect(stdout).toContain(
-      "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
-    );
-    expect(stdout).toContain("A passing local gate is the stopping condition");
-    expect(stdout).toContain("publish immediately and exactly once");
+    expect(stdout).toContain("this list owns execution order and stopping");
+    expect(stdout).toContain("run the opaque");
+    expect(stdout).toContain("full-deck screenshots or contact sheets");
+    expect(stdout).toContain("visually review unflagged slides");
+    expect(stdout).toContain("fix only named blockers or advisories");
+    expect(stdout).toContain("On pass, publish once");
     expect(
       stdout.indexOf("okou generate image-batch start <manifest.tsv>"),
-    ).toBeLessThan(
-      stdout.indexOf("Author the finished deck directly as semantic HTML"),
-    );
+    ).toBeLessThan(stdout.indexOf("author the final semantic HTML/CSS/SVG"));
+    expect(
+      stdout.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(stdout.indexOf("run the opaque"));
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
     expect(stdout).not.toContain("presentation-images.sh");
