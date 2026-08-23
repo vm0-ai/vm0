@@ -199,7 +199,7 @@ async function expectTelegramBotConnection(args: {
   );
 }
 
-describe("GET /api/zero/integrations/telegram/bots", () => {
+describe("GET /api/integrations/telegram/bots", () => {
   const fixtures: TelegramFixture[] = [];
 
   beforeEach(() => {

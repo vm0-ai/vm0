@@ -191,7 +191,7 @@ describe("low-credit email delivery", () => {
   });
 });
 
-describe("POST /api/zero/email/inbound", () => {
+describe("POST /api/email/inbound", () => {
   it("rejects missing or invalid Svix signatures", async () => {
     const missingHeaders = await webhooks.requestResendInboundWebhook(
       { type: "email.received" },

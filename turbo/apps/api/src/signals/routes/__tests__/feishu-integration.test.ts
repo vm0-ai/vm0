@@ -1059,7 +1059,7 @@ describe("Feishu integration", () => {
       signal: context.signal,
       routes: feishuBrowserConnectRoutes,
     });
-    const response = await connectApp.request("/api/zero/feishu/connect", {
+    const response = await connectApp.request("/api/feishu/connect", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1077,7 +1077,7 @@ describe("Feishu integration", () => {
     );
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
-      `/api/zero/feishu/connect/status?${new URLSearchParams(
+      `/api/feishu/connect/status?${new URLSearchParams(
         Object.entries(connectBody).map(([key, value]): [string, string] => {
           return [key, String(value)];
         }),
@@ -2931,17 +2931,14 @@ describe("Feishu integration", () => {
     });
     failedSendTargets.push("ou_feishu_user");
     context.mocks.ably.publish.mockClear();
-    const connectResponse = await connectApp.request(
-      "/api/zero/feishu/connect",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie: "__session=opaque",
-        },
-        body: JSON.stringify(feishuConnectBody(connectUrl)),
+    const connectResponse = await connectApp.request("/api/feishu/connect", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "__session=opaque",
       },
-    );
+      body: JSON.stringify(feishuConnectBody(connectUrl)),
+    });
     const authorizationUrl =
       await feishuAuthorizationUrlFromResponse(connectResponse);
     expect(
@@ -3005,7 +3002,7 @@ describe("Feishu integration", () => {
       [200],
     );
     const retryConnectResponse = await connectApp.request(
-      "/api/zero/feishu/connect",
+      "/api/feishu/connect",
       {
         method: "POST",
         headers: {
@@ -3048,17 +3045,14 @@ describe("Feishu integration", () => {
       orgRole: "org:member",
     });
     mocks.clerk.session(otherActor.userId, otherActor.orgId, "org:member");
-    const rebindResponse = await connectApp.request(
-      "/api/zero/feishu/connect",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie: "__session=opaque",
-        },
-        body: JSON.stringify(feishuConnectBody(connectUrl)),
+    const rebindResponse = await connectApp.request("/api/feishu/connect", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "__session=opaque",
       },
-    );
+      body: JSON.stringify(feishuConnectBody(connectUrl)),
+    });
     const rebindAuthorizationUrl =
       await feishuAuthorizationUrlFromResponse(rebindResponse);
     const rebindCompletionUrl = await completeFeishuAuthorization(
@@ -3090,7 +3084,7 @@ describe("Feishu integration", () => {
       "Expected replacement Feishu connect URL",
     );
     const legacyReplacementConnectUrl = new URL(
-      "/api/zero/feishu/connect",
+      "/api/feishu/connect",
       "https://www.vm0.test",
     );
     legacyReplacementConnectUrl.search = new URL(replacementConnectUrl).search;
@@ -3521,7 +3515,7 @@ describe("Feishu integration", () => {
       routes: integrationsFeishuFileRoutes,
     });
     const downloadResponse = await app.request(
-      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+      `/api/integrations/feishu/download-file?${new URLSearchParams({
         message_id: "om_misquoted_by_model",
         file_key: fileId ?? "",
         type: "image",
@@ -3545,7 +3539,7 @@ describe("Feishu integration", () => {
     ).toBeTruthy();
 
     const wrongRunResponse = await app.request(
-      `/api/zero/integrations/feishu/download-file?${new URLSearchParams({
+      `/api/integrations/feishu/download-file?${new URLSearchParams({
         message_id: "om_file_message",
         file_key: fileId ?? "",
         type: "file",

@@ -722,7 +722,7 @@ describe("okou browser route", () => {
       signal: context.signal,
       routes: TEST_APP_ROUTES,
     }).request(
-      `/api/zero/chat-threads/${createdInOtherThread.body.browser.threadId}/browser/resize`,
+      `/api/chat-threads/${createdInOtherThread.body.browser.threadId}/browser/resize`,
       {
         method: "POST",
         headers: {

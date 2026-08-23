@@ -18,7 +18,7 @@ import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const CONNECT_PATH = "http://api.test/api/zero/teams/connect";
+const CONNECT_PATH = "http://api.test/api/teams/connect";
 const APP_ORIGIN = "https://app.vm0.test";
 
 function connectUrl(params: {
@@ -168,7 +168,7 @@ async function expectTeamsConnected(
   });
 }
 
-describe("GET /api/zero/teams/connect", () => {
+describe("GET /api/teams/connect", () => {
   const track = createFixtureTracker<TeamsConnectFixture>((fixture) => {
     return removeTeamsForTest(context.signal, fixture);
   });

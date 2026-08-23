@@ -471,7 +471,7 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
   return body.credits;
 }
 
-describe("POST /api/zero/video-io/generate", () => {
+describe("POST /api/video-io/generate", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -500,7 +500,7 @@ describe("POST /api/zero/video-io/generate", () => {
 
   it("returns 401 when not authenticated", async () => {
     const app = createVideoIoTestApp();
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       body: JSON.stringify({ prompt: "a city at night" }),
     });
@@ -523,7 +523,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city", duration: "3s" }),
@@ -552,7 +552,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -577,7 +577,7 @@ describe("POST /api/zero/video-io/generate", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -609,7 +609,7 @@ describe("POST /api/zero/video-io/generate", () => {
       );
 
       const app = createVideoIoTestApp(fixture.pricingResolution);
-      const response = await app.request("/api/zero/video-io/generate", {
+      const response = await app.request("/api/video-io/generate", {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ prompt: "a city" }),
@@ -646,7 +646,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -676,7 +676,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -748,7 +748,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -834,7 +834,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -906,7 +906,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -968,7 +968,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1060,7 +1060,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1148,7 +1148,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1205,7 +1205,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1236,7 +1236,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1267,7 +1267,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -1326,7 +1326,7 @@ describe("POST /api/zero/video-io/generate", () => {
       publicBrand: "okou",
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1473,7 +1473,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1572,7 +1572,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1669,7 +1669,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1711,7 +1711,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1777,7 +1777,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1873,7 +1873,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2021,7 +2021,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2148,7 +2148,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2208,7 +2208,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2240,7 +2240,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2304,7 +2304,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2417,7 +2417,7 @@ describe("POST /api/zero/video-io/generate", () => {
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2495,7 +2495,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -2558,7 +2558,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),

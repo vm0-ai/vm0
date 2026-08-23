@@ -99,7 +99,7 @@ function rawImageModelRequest(
   return setupRawAppRequest({
     context,
     routes: chatThreadImageModelRoutes,
-  })(`/api/okou/chat-threads/${threadId}/image-model`, {
+  })(`/api/chat-threads/${threadId}/image-model`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
@@ -125,7 +125,7 @@ async function readImageModelEvents(token: string) {
   });
 }
 
-describe("POST /api/okou/chat-threads/:id/image-model", () => {
+describe("POST /api/chat-threads/:id/image-model", () => {
   it("pins a canonical image model and records one event", async () => {
     const fixture = await seedChatThread("Product launch still");
     const token = zeroToken({

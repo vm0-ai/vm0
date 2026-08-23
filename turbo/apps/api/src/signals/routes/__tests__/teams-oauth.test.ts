@@ -157,7 +157,7 @@ describe("Teams OAuth API routes", () => {
 
   it("redirects to Microsoft OAuth with connect state without a browser session", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
     );
 
     expect(response.status).toBe(307);
@@ -190,7 +190,7 @@ describe("Teams OAuth API routes", () => {
 
   it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
     );
 
@@ -206,7 +206,7 @@ describe("Teams OAuth API routes", () => {
 
   it("projects the callback origin onto the Okou brand host", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: OKOU_API_ORIGIN },
     );
 
@@ -230,7 +230,7 @@ describe("Teams OAuth API routes", () => {
   // a refactor that moves it off this string breaks Microsoft's allowlist.
   it("leaves the VM0 brand authorization URI on the registered legacy value", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
     );
 
@@ -250,7 +250,7 @@ describe("Teams OAuth API routes", () => {
   });
 
   it("rejects connect requests without org and user state", async () => {
-    const response = await appRequest("/api/zero/teams/oauth/connect");
+    const response = await appRequest("/api/teams/oauth/connect");
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({

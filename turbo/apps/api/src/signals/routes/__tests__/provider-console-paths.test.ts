@@ -219,31 +219,51 @@ describe("provider console paths", () => {
     });
   });
 
-  // Like the Teams callback above, this one is no longer console-held: #28544
-  // moved the contract to the neutral path, so the two branded forms below
-  // depend on a `MIGRATED_BRANDED_PATHS` row rather than on a contract
-  // declaration. Kept here because the property being pinned — all three forms
-  // produce the same response — is unchanged.
+  // The one endpoint in this file whose branded forms are gone. #28544 moved
+  // the contract to the neutral path and gave it a `MIGRATED_BRANDED_PATHS`
+  // row; #28709 removed that row, because the only thing holding the branded
+  // form was an already-loaded platform tab forwarding a code, a window that
+  // closed well before the retained request log begins.
+  //
+  // Kept in this file rather than deleted with the row: the callback is still
+  // reached from a Feishu console flow, so the neutral path answering is worth
+  // pinning here, and the two 404s are what tells a reader the branded forms
+  // were retired deliberately rather than lost.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
-    const paths = namespacePaths(
-      "/feishu/oauth/callback",
-      "/api/integrations/feishu/oauth/callback",
-    );
+    const brandedPaths = [
+      "/api/okou/feishu/oauth/callback",
+      "/api/zero/feishu/oauth/callback",
+    ];
 
-    it("rejects a callback without connect state identically", async () => {
+    it("rejects a callback without connect state on the neutral path", async () => {
       const snapshots = await snapshotEachPath(
-        paths,
+        ["/api/integrations/feishu/oauth/callback"],
+        getRequest(feishuOauthRoutes),
+      );
+
+      expect(snapshots).toStrictEqual([
+        {
+          status: 400,
+          location: null,
+          body: jsonBody({ error: "Invalid or expired connect state" }),
+        },
+      ]);
+    });
+
+    it("no longer answers on either branded path", async () => {
+      const snapshots = await snapshotEachPath(
+        brandedPaths,
         getRequest(feishuOauthRoutes),
       );
 
       expect(snapshots).toStrictEqual(
         repeated(
           {
-            status: 400,
+            status: 404,
             location: null,
-            body: jsonBody({ error: "Invalid or expired connect state" }),
+            body: jsonBody({ error: "Not found" }),
           },
-          paths,
+          brandedPaths,
         ),
       );
     });

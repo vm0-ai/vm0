@@ -484,7 +484,7 @@ describe("POST /api/integrations/feishu/message", () => {
       type: "file",
     });
     const response = await app.request(
-      `/api/zero/integrations/feishu/download-file?${query.toString()}`,
+      `/api/integrations/feishu/download-file?${query.toString()}`,
       {
         headers: {
           authorization: `Bearer ${okouToken(actor)}`,

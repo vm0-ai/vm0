@@ -147,7 +147,7 @@ async function seedSendableContext(args: {
   };
 }
 
-describe("POST /api/zero/integrations/telegram/message", () => {
+describe("POST /api/integrations/telegram/message", () => {
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({
       context,
