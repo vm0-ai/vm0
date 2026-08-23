@@ -36,14 +36,11 @@ export const presentationTemplates$ = computed(
 );
 
 /**
- * Refetch the catalog.
- *
- * The picker calls this as it opens rather than reading a session-long cache,
- * because both facts it renders go stale on their own: an import finishes
- * minutes after the deck was handed over, in a thread the user navigates away
- * from, and every cover URL is a short-lived signed URL.
+ * Refetch the catalog after a mutation. Page-level consumers load and retain
+ * the catalog before the picker opens so opening the dialog never swaps signed
+ * cover URLs while they are visible.
  */
-export const refreshPresentationTemplates$ = command(({ get, set }) => {
+const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 

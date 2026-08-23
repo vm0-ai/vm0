@@ -615,8 +615,6 @@
       "categories": "Categorie di modelli",
       "category": "Categoria modello",
       "chooseVoice": "Scegli una voce per {{title}}",
-      "deleteImportedTemplateDescription": "Questa operazione rimuove il modello per chiunque possa accedervi e non può essere annullata.",
-      "deleteImportedTemplateTitle": "Eliminare {{title}}?",
       "filters": {
         "age": "Età",
         "all": "Tutti",

@@ -4947,16 +4947,12 @@ function importedPresentationTemplateSlideIndex(
 function ImportedPptCardMediaControls({
   template,
   selected,
-  activeSlideIndex,
-  slideCount,
   loading,
   onPreview,
   onSelect,
 }: {
   template: PresentationTemplateSummary;
   selected: boolean;
-  activeSlideIndex: number;
-  slideCount: number;
   loading: boolean;
   onPreview: () => void;
   onSelect: () => void;
@@ -4981,9 +4977,6 @@ function ImportedPptCardMediaControls({
           <Check size={14} />
         </span>
       ) : null}
-      <span className="pointer-events-none absolute right-2 top-2 z-20 rounded-md border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
-        {activeSlideIndex + 1}/{slideCount}
-      </span>
       <button
         type="button"
         aria-label={t(
@@ -5073,8 +5066,6 @@ function ImportedPptCardMedia({
       <ImportedPptCardMediaControls
         template={template}
         selected={selected}
-        activeSlideIndex={activeSlideIndex}
-        slideCount={slideCount}
         loading={loading}
         onPreview={onPreview}
         onSelect={onSelect}
@@ -5210,9 +5201,12 @@ function ImportedPresentationTemplateRenameControl({
   onRename: (title: string) => void;
 }) {
   const { t } = useTranslation();
+  const label = t(($) => {
+    return $.artifacts.templates.renameImportedTemplate;
+  });
   return (
     <form
-      className="space-y-2"
+      className="flex min-w-0 items-center gap-1.5"
       onSubmit={(event) => {
         event.preventDefault();
         const nextTitle = new FormData(event.currentTarget).get("title");
@@ -5221,30 +5215,32 @@ function ImportedPresentationTemplateRenameControl({
         }
       }}
     >
-      <label className="text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.artifacts.templates.renameImportedTemplate;
-        })}
-        <Input
-          key={title}
-          name="title"
-          defaultValue={title}
-          required
-          maxLength={255}
-          className="mt-2"
-        />
-      </label>
-      <Button
-        type="submit"
-        variant="outline"
-        size="sm"
-        disabled={updating}
-        className="w-full"
-      >
-        {t(($) => {
-          return $.artifacts.templates.renameImportedTemplate;
-        })}
-      </Button>
+      <Input
+        key={title}
+        name="title"
+        aria-label={label}
+        defaultValue={title}
+        required
+        maxLength={255}
+        className="h-10 min-w-0 flex-1 border-transparent bg-transparent px-1 text-xl font-semibold hover:border-[hsl(var(--gray-400))]"
+      />
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="submit"
+              variant="quiet"
+              size="icon-sm"
+              disabled={updating}
+              aria-label={label}
+              className="shrink-0"
+            >
+              {updating ? <Loader2 className="animate-spin" /> : <Check />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{label}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </form>
   );
 }
@@ -5260,7 +5256,7 @@ function ImportedPresentationTemplateVisibilityControl({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mt-4 space-y-2">
+    <div className="space-y-2">
       <p className="text-xs font-medium text-muted-foreground">
         {t(($) => {
           return $.workflows.detail.metadata.visibility;
@@ -5299,48 +5295,6 @@ function ImportedPresentationTemplateVisibilityControl({
   );
 }
 
-function ImportedPresentationTemplateOwnerEditControls({
-  summary,
-  title,
-  visibility,
-  signals,
-}: {
-  summary: PresentationTemplateSummary;
-  title: string;
-  visibility: PresentationTemplateSummary["visibility"];
-  signals: ComposerSignals;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateTemplate] = useLoadableSet(
-    signals.template.updateImportedPresentationTemplate$,
-  );
-  const updating = updateLoadable.state === "loading";
-  const update = (
-    body: { title: string } | { visibility: "private" | "public" },
-  ) => {
-    detach(updateTemplate(summary.id, body, pageSignal), Reason.DomCallback);
-  };
-  return (
-    <>
-      <div className="my-5 border-t border-border" />
-      <ImportedPresentationTemplateRenameControl
-        title={title}
-        updating={updating}
-        onRename={(nextTitle) => {
-          update({ title: nextTitle });
-        }}
-      />
-      <ImportedPresentationTemplateVisibilityControl
-        visibility={visibility}
-        updating={updating}
-        onChange={(nextVisibility) => {
-          update({ visibility: nextVisibility });
-        }}
-      />
-    </>
-  );
-}
-
 function ImportedPresentationTemplateUseButton({
   template,
   onSelect,
@@ -5372,11 +5326,9 @@ function ImportedPresentationTemplateUseButton({
 
 function ImportedPresentationTemplateDeleteControl({
   summary,
-  title,
   signals,
 }: {
   summary: PresentationTemplateSummary;
-  title: string;
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
@@ -5386,63 +5338,21 @@ function ImportedPresentationTemplateDeleteControl({
   );
   const deleting = deleteLoadable.state === "loading";
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="quiet"
-          size="sm"
-          disabled={deleting}
-          className="mt-2 w-full text-destructive hover:text-destructive"
-        >
-          {t(($) => {
-            return $.chat.actions.delete;
-          })}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 space-y-3 p-4">
-        <div>
-          <p className="font-medium text-foreground">
-            {t(
-              ($) => {
-                return $.artifacts.templates.deleteImportedTemplateTitle;
-              },
-              { title },
-            )}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t(($) => {
-              return $.artifacts.templates.deleteImportedTemplateDescription;
-            })}
-          </p>
-        </div>
-        <div className="flex justify-end gap-2">
-          <PopoverClose asChild>
-            <Button type="button" variant="outline" size="sm">
-              {t(($) => {
-                return $.chat.actions.cancel;
-              })}
-            </Button>
-          </PopoverClose>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            disabled={deleting}
-            onClick={() => {
-              detach(
-                deleteTemplate(summary.id, pageSignal),
-                Reason.DomCallback,
-              );
-            }}
-          >
-            {t(($) => {
-              return $.chat.actions.delete;
-            })}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <Button
+      type="button"
+      variant="quiet"
+      size="sm"
+      disabled={deleting}
+      className="mt-2 w-full text-destructive hover:text-destructive"
+      onClick={() => {
+        detach(deleteTemplate(summary.id, pageSignal), Reason.DomCallback);
+      }}
+    >
+      {deleting ? <Loader2 className="animate-spin" /> : null}
+      {t(($) => {
+        return $.chat.actions.delete;
+      })}
+    </Button>
   );
 }
 
@@ -5450,7 +5360,6 @@ function ImportedPresentationTemplateSidebar({
   summary,
   detail,
   title,
-  sourceFilename,
   slideCount,
   onSelect,
   signals,
@@ -5458,22 +5367,37 @@ function ImportedPresentationTemplateSidebar({
   summary: PresentationTemplateSummary;
   detail: PresentationTemplateDetail | null;
   title: string;
-  sourceFilename: string;
   slideCount: number;
   onSelect: (template: PresentationTemplateSummary) => void;
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTemplate] = useLoadableSet(
+    signals.template.updateImportedPresentationTemplate$,
+  );
   const activeTemplate = detail === null ? summary : detail;
+  const updating = updateLoadable.state === "loading";
+  const update = (
+    body: { title: string } | { visibility: "private" | "public" },
+  ) => {
+    detach(updateTemplate(summary.id, body, pageSignal), Reason.DomCallback);
+  };
   return (
     <div className="flex flex-col lg:sticky lg:top-0">
       <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
-        <h3 className="text-xl font-semibold text-foreground">{title}</h3>
-        <p
-          className="mt-1 truncate text-xs text-muted-foreground"
-          title={sourceFilename}
-        >
-          {sourceFilename} ·{" "}
+        {activeTemplate.canManage ? (
+          <ImportedPresentationTemplateRenameControl
+            title={title}
+            updating={updating}
+            onRename={(nextTitle) => {
+              update({ title: nextTitle });
+            }}
+          />
+        ) : (
+          <h3 className="text-xl font-semibold text-foreground">{title}</h3>
+        )}
+        <p className="mt-1 text-xs text-muted-foreground">
           {t(
             ($) => {
               return $.artifacts.templates.importedSlides;
@@ -5482,12 +5406,16 @@ function ImportedPresentationTemplateSidebar({
           )}
         </p>
         {activeTemplate.canManage ? (
-          <ImportedPresentationTemplateOwnerEditControls
-            summary={summary}
-            title={title}
-            visibility={activeTemplate.visibility}
-            signals={signals}
-          />
+          <>
+            <div className="my-5 border-t border-border" />
+            <ImportedPresentationTemplateVisibilityControl
+              visibility={activeTemplate.visibility}
+              updating={updating}
+              onChange={(nextVisibility) => {
+                update({ visibility: nextVisibility });
+              }}
+            />
+          </>
         ) : null}
         <ImportedPresentationTemplateUseButton
           template={activeTemplate}
@@ -5496,7 +5424,6 @@ function ImportedPresentationTemplateSidebar({
         {activeTemplate.canManage ? (
           <ImportedPresentationTemplateDeleteControl
             summary={summary}
-            title={title}
             signals={signals}
           />
         ) : null}
@@ -5692,7 +5619,6 @@ function ImportedPresentationTemplatePreviewPage({
       : null;
   const activeTemplate = detail === null ? summary : detail;
   const title = activeTemplate.title;
-  const sourceFilename = activeTemplate.sourceFilename;
   const pageUrls =
     detail === null
       ? summary.coverUrl === null
@@ -5750,7 +5676,6 @@ function ImportedPresentationTemplatePreviewPage({
           summary={summary}
           detail={detail}
           title={title}
-          sourceFilename={sourceFilename}
           slideCount={slideCount}
           onSelect={onSelect}
           signals={signals}
@@ -6682,6 +6607,11 @@ function ComposerTemplateAttachmentSync({
     picker?.value,
     importedTemplates,
   );
+  const importedTemplateCoverUrls = uniqueTemplatePreviewImageUrls(
+    importedTemplates.flatMap((template) => {
+      return template.coverUrl === null ? [] : [template.coverUrl];
+    }),
+  ).slice(0, TEMPLATE_PREWARM_IMAGE_COUNT);
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6702,25 +6632,46 @@ function ComposerTemplateAttachmentSync({
   };
 
   return (
-    <button
-      key={composerTemplateAttachmentLifecycleKey(attachment)}
-      ref={setLifecycleRef}
-      type="button"
-      hidden
-      data-template-type={attachment?.type}
-      data-template-title={attachment?.title}
-      data-template-category={attachment?.category}
-      data-template-preview-url={attachment?.previewImageUrl}
-      onClick={(event) => {
-        const action = event.currentTarget.dataset.templateAction;
-        if (action === "open") {
-          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
-        } else if (action === "remove") {
-          picker?.onChange(undefined);
-          onDraftChange?.();
-        }
-      }}
-    />
+    <>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+      >
+        {importedTemplateCoverUrls.map((coverUrl) => {
+          return (
+            <img
+              key={coverUrl}
+              alt=""
+              src={coverUrl}
+              loading="eager"
+              decoding="async"
+              fetchPriority="low"
+            />
+          );
+        })}
+      </span>
+      <button
+        key={composerTemplateAttachmentLifecycleKey(attachment)}
+        ref={setLifecycleRef}
+        type="button"
+        hidden
+        data-template-type={attachment?.type}
+        data-template-title={attachment?.title}
+        data-template-category={attachment?.category}
+        data-template-preview-url={attachment?.previewImageUrl}
+        onClick={(event) => {
+          const action = event.currentTarget.dataset.templateAction;
+          if (action === "open") {
+            openPicker(
+              event.currentTarget.dataset.templateCategory ?? "slides",
+            );
+          } else if (action === "remove") {
+            picker?.onChange(undefined);
+            onDraftChange?.();
+          }
+        }}
+      />
+    </>
   );
 }
 

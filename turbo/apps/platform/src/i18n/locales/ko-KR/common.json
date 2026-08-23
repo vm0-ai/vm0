@@ -598,8 +598,6 @@
       "categories": "템플릿 카테고리",
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
-      "deleteImportedTemplateDescription": "이 템플릿에 액세스할 수 있는 모든 사용자에게서 템플릿이 제거됩니다. 이 작업은 실행 취소할 수 없습니다.",
-      "deleteImportedTemplateTitle": "{{title}}을(를) 삭제할까요?",
       "filters": {
         "age": "연령",
         "all": "전체",

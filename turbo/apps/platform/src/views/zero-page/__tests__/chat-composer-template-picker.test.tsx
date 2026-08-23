@@ -13,6 +13,7 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
 import {
   avatarVideoContract,
   type AvatarVideoAvatarsQuery,
@@ -3360,35 +3361,50 @@ describe("chat composer templates", () => {
   it("lists uploaded decks ahead of built-ins and uses one in the next message", async () => {
     const user = userEvent.setup({ delay: null });
     let submittedTemplate: GenerationTemplateRequest | undefined;
+    let listRequestCount = 0;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate(body) {
         submittedTemplate = sentInlineTemplate(body.userMessage);
       },
     });
-    setMockPresentationTemplates([
-      {
-        id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
-        title: "Brand system",
-        sourceFilename: "brand-system.pptx",
-        coverUrl: "https://example.com/imported-cover.png",
-        pageCount: 18,
-        visibility: "public",
-        canManage: false,
-        pageUrls: [
-          "https://example.com/imported-cover.png",
-          "https://example.com/imported-page-2.png",
-        ],
-        createdAt: "2026-08-21T02:41:59.522Z",
-        updatedAt: "2026-08-21T02:41:59.522Z",
-      },
-    ]);
+    const importedTemplate = {
+      id: "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e",
+      title: "Brand system",
+      sourceFilename: "brand-system.pptx",
+      coverUrl: "https://example.com/imported-cover.png",
+      pageCount: 18,
+      visibility: "public" as const,
+      canManage: false,
+      pageUrls: [
+        "https://example.com/imported-cover.png",
+        "https://example.com/imported-page-2.png",
+      ],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    };
+    setMockPresentationTemplates([importedTemplate]);
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      listRequestCount += 1;
+      const { pageUrls: _pageUrls, ...summary } = importedTemplate;
+      return respond(200, [summary]);
+    });
 
     detachedSetupPage({
       context,
       featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
       path: `/chats/${THREAD_ID}`,
     });
+
+    await waitFor(() => {
+      expect(listRequestCount).toBe(1);
+      expect(
+        document.querySelector(
+          'img[src="https://example.com/imported-cover.png"]',
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     click(
       await waitFor(() => {
@@ -3411,6 +3427,8 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/imported-cover.png",
     );
+    expect(within(card).queryByText("1/18")).not.toBeInTheDocument();
+    expect(listRequestCount).toBe(1);
 
     // Grid order is the import tile, then this user's decks, then the
     // built-ins: a returning user looks for their own deck first.
@@ -3512,13 +3530,14 @@ describe("chat composer templates", () => {
       "https://example.com/imported-page-3.png",
     );
     expect(screen.queryByText("Theme")).not.toBeInTheDocument();
+    expect(screen.queryByText(/brand-system\.pptx/)).not.toBeInTheDocument();
 
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
     });
     await fill(titleInput, "Brand refresh");
     const renameButton = queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.trim() === "Rename template";
+      return candidate.getAttribute("aria-label") === "Rename template";
     });
     if (!renameButton) {
       throw new Error("Imported template Rename button not found");
@@ -3545,13 +3564,7 @@ describe("chat composer templates", () => {
       throw new Error("Imported template Delete button not found");
     }
     await user.click(initialDeleteButton);
-    await expect(
-      screen.findByText("Delete Brand refresh?"),
-    ).resolves.toBeInTheDocument();
-    const deleteButtons = queryAllByRoleFast("button").filter((candidate) => {
-      return candidate.textContent?.trim() === "Delete";
-    });
-    await user.click(deleteButtons[deleteButtons.length - 1]!);
+    expect(screen.queryByText("Delete Brand refresh?")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
         document.querySelector(

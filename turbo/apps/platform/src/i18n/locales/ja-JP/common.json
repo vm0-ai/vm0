@@ -598,8 +598,6 @@
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
-      "deleteImportedTemplateDescription": "このテンプレートにアクセスできるすべてのユーザーから削除されます。この操作は元に戻せません。",
-      "deleteImportedTemplateTitle": "{{title}}を削除しますか？",
       "filters": {
         "age": "年齢",
         "all": "すべて",

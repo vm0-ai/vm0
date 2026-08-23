@@ -598,8 +598,6 @@
       "categories": "Kategori template",
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
-      "deleteImportedTemplateDescription": "Tindakan ini menghapus templat untuk semua orang yang dapat mengaksesnya. Tindakan ini tidak dapat dibatalkan.",
-      "deleteImportedTemplateTitle": "Hapus {{title}}?",
       "filters": {
         "age": "Usia",
         "all": "Semua",

@@ -615,8 +615,6 @@
       "categories": "Catégories de modèles",
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
-      "deleteImportedTemplateDescription": "Cela supprime le modèle pour toutes les personnes qui y ont accès. Cette action est irréversible.",
-      "deleteImportedTemplateTitle": "Supprimer {{title}} ?",
       "filters": {
         "age": "Âge",
         "all": "Tous",
