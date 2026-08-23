@@ -52,10 +52,12 @@ import {
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
+  expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogRuntimeProjection,
+  readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
@@ -1722,6 +1724,23 @@ describe("connector catalog valid lifecycle", () => {
       connectorCount: 1,
       connectorSlugs: [first.connectorSlug],
     });
+
+    await expireApiTestConnectorCatalogRuntimeProjectionAuthority();
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "999.0.0",
+      buildCommitSha: null,
+    });
+    mockNow(new Date("2026-07-15T08:02:00.000Z"));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "unchanged",
+      state: "current",
+      active: { catalogVersion: first.version },
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({

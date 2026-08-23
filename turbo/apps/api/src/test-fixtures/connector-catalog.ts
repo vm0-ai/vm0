@@ -699,6 +699,28 @@ export async function expireApiTestConnectorCatalogRuntimeProjectionAuthority():
   requireSingleCatalogMutation(updated, "runtime projection authority expiry");
 }
 
+export async function readApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<ConnectorCatalogValidationAuthority | null> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const [projectionSet] = await db
+    .select({
+      backendVersion:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBackendVersion,
+      buildCommitSha:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBuildCommitSha,
+    })
+    .from(connectorCatalogRuntimeProjectionSets)
+    .where(currentApiTestConnectorCatalogRuntimeProjectionSetWhere(identity))
+    .limit(1);
+  if (projectionSet === undefined || projectionSet.backendVersion === null) {
+    return null;
+  }
+  return {
+    backendVersion: projectionSet.backendVersion,
+    buildCommitSha: projectionSet.buildCommitSha,
+  };
+}
+
 export async function readApiTestConnectorCatalogRuntimeProjection(): Promise<{
   readonly connectorCount: number;
   readonly connectorSlugs: readonly string[];
