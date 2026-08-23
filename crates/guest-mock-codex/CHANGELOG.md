@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.13...guest-mock-codex-v0.8.14) (2026-08-23)
+
+
+### Bug Fixes
+
+* **rust:** align mock codex rollout paths ([#28692](https://github.com/vm0-ai/vm0/issues/28692)) ([59ecfdb](https://github.com/vm0-ai/vm0/commit/59ecfdbbf4a1402dc5fc85ee460ef88cb0a26e55))
+
 ## [0.8.13](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.12...guest-mock-codex-v0.8.13) (2026-08-21)
 
 ## [0.8.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.8.11...guest-mock-codex-v0.8.12) (2026-08-20)

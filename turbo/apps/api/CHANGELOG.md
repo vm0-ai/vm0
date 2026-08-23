@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.478.3](https://github.com/vm0-ai/vm0/compare/api-v1.478.2...api-v1.478.3) (2026-08-23)
+
+
+### Refactoring
+
+* **db:** bridge agent run built-in model key ([#28691](https://github.com/vm0-ai/vm0/issues/28691)) ([9d66e10](https://github.com/vm0-ai/vm0/commit/9d66e1063659395968913764247f6985f3c20f7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.218.3
+
 ## [1.478.2](https://github.com/vm0-ai/vm0/compare/api-v1.478.1...api-v1.478.2) (2026-08-23)
 
 
