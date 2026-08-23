@@ -5,19 +5,12 @@ import { z } from "zod";
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
 import { avatarVideoRoutes } from "../signals/routes/avatar-video";
-import { bankingRoutes } from "../signals/routes/banking";
 import { billingStatusRoutes } from "../signals/routes/billing-status";
-import { connectorAccountRoutes } from "../signals/routes/connector-accounts";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
-import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
-import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
 import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
-import { imageShareXRoutes } from "../signals/routes/image-share-x";
-import { mapsRoutes } from "../signals/routes/maps";
 import { orgReadRoutes } from "../signals/routes/org-read";
 import { peopleSearchRoutes } from "../signals/routes/people-search";
-import { queuePositionRoutes } from "../signals/routes/queue-position";
 import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
@@ -25,12 +18,10 @@ import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { socialRoutes } from "../signals/routes/social";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
 import { teamsBotRoutes } from "../signals/routes/teams-bot";
-import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import { translationRoutes } from "../signals/routes/translation";
 import { uploadsPrepareRoutes } from "../signals/routes/uploads-prepare";
-import { videoIoGenerateRoutes } from "../signals/routes/video-io-generate";
 import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
 import { weatherRoutes } from "../signals/routes/weather";
 import { webFileUrlRoutes } from "../signals/routes/web-file-url";
@@ -118,27 +109,9 @@ const MIGRATED_TABLE: Readonly<Record<string, readonly string[]>> = {
 // so dropping a contract path or a table row fails the test that uses this.
 const MAPS_OPERATIONS = ["geocode"] as const;
 
-// The maps operations #28709 retired. Listed separately, and asserted to be
-// absent, so restoring a row without restoring its evidence fails here.
-const RETIRED_MAPS_OPERATIONS = [
-  "reverse-geocode",
-  "directions",
-  "places/search",
-  "places/details",
-  "osm/download",
-  "osm/render",
-] as const;
-
-// The weather twin of the two lists above: #28357 moved five operations off
+// The weather twin of the list above: #28357 moved five operations off
 // `/api/okou/weather/**` and #28709 kept only the one with measured traffic.
 const WEATHER_OPERATIONS = ["current"] as const;
-
-const RETIRED_WEATHER_OPERATIONS = [
-  "forecast/hourly",
-  "forecast/daily",
-  "history/hourly",
-  "air-quality/current",
-] as const;
 
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
@@ -1229,15 +1202,22 @@ describe("branded paths for migrated neutral routes", () => {
   });
 
   // A count, restated here as a literal, over the inventory above. The
-  // per-family cases prove that the rows still listed are served and that the
-  // ones #28709 dropped are not; this proves the inventory itself is complete,
-  // so a later change that removes a still-needed row fails a test instead of
-  // passing because nothing enumerated it.
+  // per-family cases prove that every row the inventory lists is served on both
+  // branded forms; this proves the inventory itself is complete, so a later
+  // change that removes a still-needed row fails a test instead of passing
+  // because nothing enumerated it.
+  //
+  // That is the guard #28709 left behind when it took the table from 314 rows
+  // to 184. It deliberately did not leave a case asserting the removed rows now
+  // 404: `docs/fallback.md` section 1 rules that class out, and the route table
+  // already proves the registration is gone. What needs a test is the opposite
+  // direction — a row disappearing without the request-log evidence #26701
+  // requires — which is what this count and the per-family cases catch.
   //
   // `MIGRATED_ROUTE_PATHS` carries every row but the two the maps and weather
   // cases own, which is why the total below is two higher than its size. Raise
-  // both numbers only with the request-log evidence #26701 requires — an
-  // unexplained edit here is the failure this is for.
+  // both numbers only with that evidence; an unexplained edit here is the
+  // failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
     const MIGRATED_ROWS_WITH_OWN_CASE = 2;
     const MIGRATED_BRANDED_ROW_COUNT = 184;
@@ -1287,152 +1267,6 @@ describe("branded paths for migrated neutral routes", () => {
         zero: neutral,
       });
       expect(neutral).not.toBe(404);
-    }
-  });
-
-  // The inverse of every assertion above, and the one #28709 exists for. A row
-  // this table no longer holds must 404 on both branded forms while its neutral
-  // path keeps answering, which is the whole observable effect of removing one.
-  //
-  // Driven through the production app factory with named routes rather than
-  // over the table's length, so a row that comes back — or a removal that took
-  // the neutral registration with it — fails here. Requests are
-  // unauthenticated, so the neutral status is whatever the auth layer returns;
-  // the point is that it is not the 404 the branded forms now give.
-  //
-  // These endpoints are the retired half of the families the tests above still
-  // cover, so each pair reads against a sibling that was kept. `queue-position`
-  // and `image-share/x` were the whole of the #28459 request-level case before
-  // this change, which is why that test is gone rather than shortened.
-  it("stops serving the branded forms of the rows #28709 removed", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const retired = [
-      { routes: queuePositionRoutes, method: "GET", suffix: "queue-position" },
-      { routes: imageShareXRoutes, method: "POST", suffix: "image-share/x" },
-      { routes: bankingRoutes, method: "POST", suffix: "banking/accounts" },
-      {
-        routes: videoIoGenerateRoutes,
-        method: "POST",
-        suffix: "video-io/generate",
-      },
-      {
-        routes: avatarVideoRoutes,
-        method: "POST",
-        suffix: "avatar-video/generate",
-      },
-      {
-        routes: connectorAccountRoutes,
-        method: "GET",
-        suffix: "connector-accounts",
-      },
-      {
-        routes: feishuConnectRoutes,
-        method: "GET",
-        suffix: "integrations/feishu/app-id",
-      },
-      {
-        routes: feishuBrowserConnectRoutes,
-        method: "GET",
-        suffix: "feishu/connect",
-      },
-      {
-        routes: teamsBrowserConnectRoutes,
-        method: "GET",
-        suffix: "teams/connect",
-      },
-      {
-        routes: teamsOauthRoutes,
-        method: "GET",
-        suffix: "teams/oauth/connect",
-      },
-      {
-        routes: feishuOauthRoutes,
-        method: "GET",
-        suffix: "feishu/oauth/connect",
-      },
-    ] as const;
-
-    for (const { routes, method, suffix } of retired) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method,
-          headers: { "content-type": "application/json" },
-          ...(method === "POST" ? { body: "{}" } : {}),
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, okou, zero }).toStrictEqual({
-        suffix,
-        okou: 404,
-        zero: 404,
-      });
-      expect(neutral, `Expected /api/${suffix} to still resolve`).not.toBe(404);
-    }
-  });
-
-  // The maps and weather twin of the case above. Those two families kept one
-  // operation each, so the retired ones are asserted against a sibling that is
-  // still served in the same app rather than in isolation.
-  it("stops serving the branded maps and weather operations #28709 removed", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const families = [
-      {
-        routes: mapsRoutes,
-        prefix: "maps",
-        kept: MAPS_OPERATIONS,
-        retired: RETIRED_MAPS_OPERATIONS,
-      },
-      {
-        routes: weatherRoutes,
-        prefix: "weather",
-        kept: WEATHER_OPERATIONS,
-        retired: RETIRED_WEATHER_OPERATIONS,
-      },
-    ] as const;
-
-    for (const { routes, prefix, kept, retired } of families) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}",
-        });
-        return response.status;
-      }
-
-      for (const operation of retired) {
-        const neutral = await statusFor(`/api/${prefix}/${operation}`);
-        const okou = await statusFor(`/api/okou/${prefix}/${operation}`);
-        const zero = await statusFor(`/api/zero/${prefix}/${operation}`);
-
-        expect({ operation, okou, zero }).toStrictEqual({
-          operation,
-          okou: 404,
-          zero: 404,
-        });
-        expect(neutral).not.toBe(404);
-      }
-
-      for (const operation of kept) {
-        const okou = await statusFor(`/api/okou/${prefix}/${operation}`);
-
-        expect({ operation, okou }).not.toStrictEqual({ operation, okou: 404 });
-      }
     }
   });
 
