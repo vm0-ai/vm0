@@ -90,7 +90,7 @@ function metadataClient() {
   );
 }
 
-describe("POST /api/zero/chat-threads/:id/rename", () => {
+describe("POST /api/chat-threads/:id/rename", () => {
   it("renames a thread with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Original title");
     const token = okouToken({

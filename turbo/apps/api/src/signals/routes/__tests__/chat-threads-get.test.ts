@@ -80,7 +80,7 @@ function client() {
   );
 }
 
-describe("GET /api/zero/chat-threads/:id/metadata", () => {
+describe("GET /api/chat-threads/:id/metadata", () => {
   it("returns thread metadata with ZERO_TOKEN chat-thread:read capability", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = okouToken({

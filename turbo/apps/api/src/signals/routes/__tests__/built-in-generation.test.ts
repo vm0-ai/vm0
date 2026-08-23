@@ -182,10 +182,11 @@ describe("GET /api/built-in-generations/:generationId", () => {
   });
 
   // #28415 moved the contract to the neutral path, so both branded paths reach
-  // this handler only through `MIGRATED_BRANDED_PATHS`. A released CLI build
-  // still polls the `okou` form; 401 rather than 404 is what proves it still
-  // arrives.
-  it("still serves the branded paths released callers hold", async () => {
+  // this handler only through `MIGRATED_BRANDED_PATHS`, and #28711 removed the
+  // row: the request log showed the CLI builds that polled the `okou` form had
+  // drained past the window an execution context can pin one for. 404 rather
+  // than 401 is what proves the row is gone rather than merely unused.
+  it("no longer serves the branded paths #28711 retired", async () => {
     const app = createAppWithRoutes({
       signal: context.signal,
       routes: builtInGenerationRoutes,
@@ -201,6 +202,6 @@ describe("GET /api/built-in-generations/:generationId", () => {
       statuses.push(response.status);
     }
 
-    expect(statuses).toStrictEqual([401, 401]);
+    expect(statuses).toStrictEqual([404, 404]);
   });
 });

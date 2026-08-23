@@ -256,12 +256,16 @@ describe("GET /api/connectors", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  // #28460 moved this contract to its neutral path, so the typed client can no
-  // longer express the branded forms a released CLI or browser build still
-  // requests — `MIGRATED_BRANDED_PATHS` is the only thing keeping them
-  // registered. These are the requests that prove they still answer, on a
-  // plain path and on one carrying a path parameter.
-  it("still answers on both branded paths", async () => {
+  // #28460 moved this contract to its neutral path, so `MIGRATED_BRANDED_PATHS`
+  // was the only thing keeping the branded forms registered, and #28711 removed
+  // both rows once the request log showed their callers drained. These are the
+  // requests that prove the retirement reached a real handler, on a plain path
+  // and on one carrying a path parameter — a row that only half-disappeared
+  // would leave one of the four answering.
+  //
+  // The fixture is still connected and authenticated, so a 404 here is the
+  // missing registration rather than a request that would have failed anyway.
+  it("no longer answers on either branded path", async () => {
     const fixture = seedAuthenticatedFixture();
     seededFixtures.push(fixture);
     await connectGitlab(fixture);
@@ -283,10 +287,19 @@ describe("GET /api/connectors", () => {
     }
 
     expect(results).toStrictEqual([
-      { path: "/api/okou/connectors", status: 200 },
-      { path: "/api/zero/connectors", status: 200 },
-      { path: "/api/okou/connectors/gitlab", status: 200 },
-      { path: "/api/zero/connectors/gitlab", status: 200 },
+      { path: "/api/okou/connectors", status: 404 },
+      { path: "/api/zero/connectors", status: 404 },
+      { path: "/api/okou/connectors/gitlab", status: 404 },
+      { path: "/api/zero/connectors/gitlab", status: 404 },
     ]);
+
+    // The neutral path the contract declares is untouched by the removal, which
+    // is what makes the four 404s above a retirement rather than an outage.
+    const neutral = await request("/api/connectors", {
+      method: "GET",
+      headers: authHeaders(),
+    });
+
+    expect(neutral.status).toBe(200);
   });
 });

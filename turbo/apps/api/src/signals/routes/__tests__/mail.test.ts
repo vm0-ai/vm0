@@ -314,7 +314,7 @@ async function linkDraft(
   );
 }
 
-describe("POST /api/zero/mail/drafts/link", () => {
+describe("POST /api/mail/drafts/link", () => {
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();
