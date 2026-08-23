@@ -60,7 +60,7 @@ describe("okou generate image-batch command", () => {
         "detail\tDog collar detail\t1024x1024",
         "retry\tDog running through grass\t1024x1536",
         "team\tFour dogs together",
-        "fifth\tDog asleep by a window\t1536x1024",
+        "fifth\tDog asleep by a window\t2048x1024",
       ].join("\n"),
       "utf8",
     );
@@ -134,6 +134,16 @@ describe("okou generate image-batch command", () => {
       prompt: "Four dogs together",
       model: "seedream4",
       size: "1536x1024",
+      quality: "low",
+      background: "auto",
+      outputFormat: "png",
+      moderation: "auto",
+      safetyTolerance: "4",
+    });
+    expect(requests.get("Dog asleep by a window")).toEqual({
+      prompt: "Dog asleep by a window",
+      model: "seedream4",
+      size: "2048x1024",
       quality: "low",
       background: "auto",
       outputFormat: "png",

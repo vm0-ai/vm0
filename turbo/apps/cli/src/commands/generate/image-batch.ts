@@ -20,7 +20,6 @@ const MAX_CONCURRENCY = 3;
 const DEFAULT_SIZE = "1536x1024";
 const POLL_INTERVAL_MS = 500;
 const RETRY_DELAY_MS = 1_000;
-const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 
 interface ImageBatchJob {
   readonly id: string;
@@ -100,12 +99,6 @@ async function readManifest(manifestPath: string): Promise<ImageBatchJob[]> {
         `Image batch manifest line ${index + 1} has an empty prompt`,
       );
     }
-    if (!ALLOWED_SIZES.has(size)) {
-      throw new Error(
-        `Image batch manifest line ${index + 1} has an unsupported size: ${size}`,
-      );
-    }
-
     ids.add(id);
     return { id, prompt, size };
   });
@@ -375,5 +368,5 @@ export const imageBatchCommand = new Command("image-batch")
   .addCommand(runCommand, { hidden: true })
   .addHelpText(
     "after",
-    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>1024x1024|1536x1024|1024x1536]\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
+    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>size]\n  Size is optional per image and defaults to ${DEFAULT_SIZE}; the image API validates it.\n\nResult format:\n  asset-id<TAB>image URL\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
   );
