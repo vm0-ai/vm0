@@ -152,7 +152,7 @@ export function createRunReadsApi(context: TestContext) {
       return await accept(Promise.resolve(response), statuses);
     },
 
-    async requestZeroRunAgentEvents<
+    async requestAgentRunAgentEvents<
       TStatus extends 200 | 400 | 401 | 403 | 404,
     >(
       actor: ApiTestUser | null,
@@ -172,7 +172,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestZeroRunNetworkLogs<
+    async requestAgentRunNetworkLogs<
       TStatus extends 200 | 400 | 401 | 403 | 404,
     >(
       actor: ApiTestUser | null,

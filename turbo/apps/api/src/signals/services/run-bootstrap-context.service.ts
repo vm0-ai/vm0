@@ -150,7 +150,7 @@ function emptyBootstrapMetadataFields() {
   };
 }
 
-function zeroRunCustomConnectorMetadataQuery(
+function agentRunCustomConnectorMetadataQuery(
   db: ReadonlyDb,
   args: RunBootstrapSnapshotArgs,
 ) {
@@ -252,7 +252,7 @@ async function queryRunBootstrapMetadataSnapshot(
         eq(userConnectors.agentId, args.agentId),
       ),
     );
-  const customConnectorQuery = zeroRunCustomConnectorMetadataQuery(db, args);
+  const customConnectorQuery = agentRunCustomConnectorMetadataQuery(db, args);
   const permissionGrantQuery = db
     .select({
       kind: sql`'permission_grant'`
@@ -287,7 +287,7 @@ async function queryRunBootstrapMetadataSnapshot(
   );
 }
 
-async function queryZeroRunWorkflowCandidates(
+async function queryAgentRunWorkflowCandidates(
   db: ReadonlyDb,
   args: RunBootstrapSnapshotArgs,
 ): Promise<RunWorkflowSourceRow[]> {
@@ -318,7 +318,7 @@ export async function loadRunBootstrapSnapshotRows(
 ): Promise<RunBootstrapSnapshotRows> {
   const [metadataRows, workflowRows] = await Promise.all([
     queryRunBootstrapMetadataSnapshot(db, args),
-    queryZeroRunWorkflowCandidates(db, args),
+    queryAgentRunWorkflowCandidates(db, args),
   ]);
   return { metadataRows, workflowRows };
 }

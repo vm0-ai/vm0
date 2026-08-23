@@ -27,7 +27,7 @@ import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type { ModelFirstPin } from "./model-selection.service";
-import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
@@ -39,8 +39,8 @@ const GOAL_CONTINUATION_PROMPT = "Continue the active thread goal.";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
-type QueueFirstZeroRunInput = Parameters<
-  (typeof createQueueFirstZeroRun$)["write"]
+type QueueFirstAgentRunInput = Parameters<
+  (typeof createQueueFirstAgentRun$)["write"]
 >[1];
 
 function goalDrainAttempt(attempt: number): GoalDrainAttempt {
@@ -144,7 +144,7 @@ function buildQueueFirstGoalRunInput(args: {
   readonly apiStartTime: number;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly timing: ApiDispatchTimingCollector;
-}): QueueFirstZeroRunInput {
+}): QueueFirstAgentRunInput {
   const normalizedGoal = {
     ...args.goal,
     objectiveBrief: normalizeGoalObjectiveBrief({
@@ -197,7 +197,7 @@ function buildQueueFirstGoalRunInput(args: {
       threadId: normalizedGoal.threadId,
       agentId: normalizedGoal.agentId,
     }),
-    zeroRunMetadata: {
+    agentRunMetadata: {
       goalId: normalizedGoal.goalId,
       autonomyBudget: normalizedGoal.autonomyBudget,
     },
@@ -212,7 +212,7 @@ function buildQueueFirstGoalRunInput(args: {
       orgId: normalizedGoal.orgId,
       userId: normalizedGoal.userId,
     },
-    zeroRunModelPin: {
+    agentRunModelPin: {
       modelProvider: effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
@@ -373,7 +373,7 @@ const launchQueuedGoal$ = command(
     if (!modelContext.ok) {
       return modelContext.failure;
     }
-    const runInput = args.timing.measureSync<QueueFirstZeroRunInput>(
+    const runInput = args.timing.measureSync<QueueFirstAgentRunInput>(
       "api_dispatch_pre_create_zero_goal_drain_build_run_input",
       "nested",
       () => {
@@ -406,7 +406,7 @@ const launchQueuedGoal$ = command(
       handoffAt,
       phaseDimensions,
     );
-    const result = await set(createQueueFirstZeroRun$, runInput, signal);
+    const result = await set(createQueueFirstAgentRun$, runInput, signal);
 
     if (isQueueFirstRunClaimLost(result)) {
       signal.throwIfAborted();

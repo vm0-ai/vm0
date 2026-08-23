@@ -432,12 +432,12 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function expectZeroPreCreateSource(runId: string, source: string): void {
+function expectAgentRunPreCreateSource(runId: string, source: string): void {
   expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
     expect.arrayContaining([
       expect.objectContaining({
         op_type: "api_dispatch_pre_create_agent_run",
-        zero_pre_create_source: source,
+        agent_run_pre_create_source: source,
       }),
     ]),
   );
@@ -781,7 +781,7 @@ describe("workflows", () => {
     if (!run.body.runId) {
       throw new Error("Expected an idle workflow invocation to create a run");
     }
-    expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+    expectAgentRunPreCreateSource(run.body.runId, "workflow_slash_command");
     expect(run.body.chatThreadId).toBe(prepared.body.chatThreadId);
     const timingEvents = sandboxOperationEventsForRun(run.body.runId);
     const actionTypes = timingEvents.map((event) => {

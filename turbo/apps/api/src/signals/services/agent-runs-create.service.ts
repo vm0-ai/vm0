@@ -47,7 +47,7 @@ import {
   type DispatchFailedRunCallbacks,
   type QueueFirstRunClaimLost,
   type RunConnectorCatalogSelection,
-  type ZeroRunModelPin,
+  type AgentRunModelPin,
 } from "./agent-run-create.service";
 import { buildZeroAgentComposeContent } from "./agent-compose-content";
 import {
@@ -81,9 +81,12 @@ import {
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
 
-type ZeroRunCreateBody = z.infer<typeof runCreateBodySchema>;
-type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
-export type ZeroPreCreateSource =
+type AgentRunCreateBody = z.infer<typeof runCreateBodySchema>;
+// Emitted as the agent_run_origin observability dimension. The values name what
+// started the run, so the fallback is "direct" (neither automation nor goal
+// continuation) rather than a restatement that this is an agent run.
+type AgentRunOrigin = "direct" | "workflow_automation" | "goal_continuation";
+export type AgentRunPreCreateSource =
   | "chat_callback_auto_send"
   | "workflow_slash_command";
 
@@ -139,7 +142,7 @@ interface InternalRunCallback {
 
 type RunCallback = HttpRunCallback | InternalRunCallback;
 
-interface ZeroRunMetadata {
+interface AgentRunMetadata {
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly goalId?: string;
@@ -147,9 +150,9 @@ interface ZeroRunMetadata {
   readonly codexServiceTier?: CodexServiceTier;
 }
 
-interface CreateZeroRunCommandArgs {
+interface CreateAgentRunCommandArgs {
   readonly auth: AuthContext & { readonly orgId: string };
-  readonly body: ZeroRunCreateBody;
+  readonly body: AgentRunCreateBody;
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
   readonly publicBrand?: PublicBrand;
@@ -180,28 +183,28 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly codexServiceTier?: CodexServiceTier;
-  readonly zeroRunMetadata?: ZeroRunMetadata;
+  readonly agentRunMetadata?: AgentRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-  readonly zeroRunModelPin?: ZeroRunModelPin;
+  readonly agentRunModelPin?: AgentRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
-  readonly zeroPreCreateSource?: ZeroPreCreateSource;
+  readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
 }
 
-interface CreateQueueFirstZeroRunCommandArgs extends Omit<
-  CreateZeroRunCommandArgs,
-  "chatThreadId" | "zeroRunModelPin"
+interface CreateQueueFirstAgentRunCommandArgs extends Omit<
+  CreateAgentRunCommandArgs,
+  "chatThreadId" | "agentRunModelPin"
 > {
   readonly chatThreadId: string;
   readonly queueFirstAssociation: QueueFirstRunAssociation;
-  readonly zeroRunModelPin: ZeroRunModelPin;
+  readonly agentRunModelPin: AgentRunModelPin;
 }
 
-type AnyCreateZeroRunCommandArgs =
-  | CreateZeroRunCommandArgs
-  | CreateQueueFirstZeroRunCommandArgs;
+type AnyCreateAgentRunCommandArgs =
+  | CreateAgentRunCommandArgs
+  | CreateQueueFirstAgentRunCommandArgs;
 
-function assertThreadBoundZeroRunHasQueueAssociation(
-  args: AnyCreateZeroRunCommandArgs,
+function assertThreadBoundAgentRunHasQueueAssociation(
+  args: AnyCreateAgentRunCommandArgs,
 ): void {
   if (!("queueFirstAssociation" in args)) {
     if (args.chatThreadId !== undefined) {
@@ -538,7 +541,7 @@ async function loadZeroAgent(
   return agent ?? null;
 }
 
-function buildZeroRunExtraEnvironment(args: {
+function buildAgentRunExtraEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
@@ -566,19 +569,19 @@ function buildZeroRunExtraEnvironment(args: {
   };
 }
 
-function zeroRunTimingDimensions(args: {
-  readonly origin: ZeroRunOrigin;
-  readonly command: AnyCreateZeroRunCommandArgs;
-  readonly source?: ZeroPreCreateSource;
+function agentRunTimingDimensions(args: {
+  readonly origin: AgentRunOrigin;
+  readonly command: AnyCreateAgentRunCommandArgs;
+  readonly source?: AgentRunPreCreateSource;
 }): ApiDispatchTimingDimensions {
   const apiStartSource =
     "queueFirstAssociation" in args.command
       ? args.command.queueFirstAssociation.kind
       : "request";
   return {
-    zero_run_origin: args.origin,
+    agent_run_origin: args.origin,
     api_start_source: apiStartSource,
-    ...(args.source ? { zero_pre_create_source: args.source } : {}),
+    ...(args.source ? { agent_run_pre_create_source: args.source } : {}),
   };
 }
 
@@ -610,12 +613,11 @@ function zeroBootstrapLoadTimingDimensions(
     return undefined;
   }
   return {
-    zero_bootstrap_total_row_count_bucket: zeroBootstrapCountBucket(
+    agent_run_bootstrap_total_row_count_bucket: zeroBootstrapCountBucket(
       rows.metadataRows.length + rows.workflowRows.length,
     ),
-    zero_bootstrap_workflow_candidate_count_bucket: zeroBootstrapCountBucket(
-      rows.workflowRows.length,
-    ),
+    agent_run_bootstrap_workflow_candidate_count_bucket:
+      zeroBootstrapCountBucket(rows.workflowRows.length),
   };
 }
 
@@ -627,28 +629,27 @@ function zeroBootstrapMaterializeTimingDimensions(
     ...zeroBootstrapLoadTimingDimensions(rows),
     ...(context
       ? {
-          zero_bootstrap_workflow_winner_count_bucket: zeroBootstrapCountBucket(
-            context.workflows.length,
-          ),
+          agent_run_bootstrap_workflow_winner_count_bucket:
+            zeroBootstrapCountBucket(context.workflows.length),
         }
       : {}),
   };
 }
 
-function zeroRunOrigin(args: {
-  readonly command: AnyCreateZeroRunCommandArgs;
-}): ZeroRunOrigin {
-  if (args.command.zeroRunMetadata?.workflowAutomationId) {
+function agentRunOrigin(args: {
+  readonly command: AnyCreateAgentRunCommandArgs;
+}): AgentRunOrigin {
+  if (args.command.agentRunMetadata?.workflowAutomationId) {
     return "workflow_automation";
   }
-  if (args.command.zeroRunMetadata?.goalId) {
+  if (args.command.agentRunMetadata?.goalId) {
     return "goal_continuation";
   }
-  return "zero_run";
+  return "direct";
 }
 
 function createRunBody(args: {
-  readonly body: ZeroRunCreateBody;
+  readonly body: AgentRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
@@ -723,9 +724,9 @@ function zeroServiceEntryTiming(args: {
   return timing;
 }
 
-async function resolveZeroRunAgentId(
+async function resolveAgentRunAgentId(
   db: Db,
-  args: AnyCreateZeroRunCommandArgs,
+  args: AnyCreateAgentRunCommandArgs,
 ): Promise<string | null> {
   return (
     args.body.agentId ??
@@ -739,7 +740,7 @@ async function resolveZeroRunAgentId(
   );
 }
 
-async function loadZeroRunPostAuthorizationContext(
+async function loadAgentRunPostAuthorizationContext(
   db: Db,
   args: {
     readonly userId: string;
@@ -831,7 +832,7 @@ async function loadZeroRunPostAuthorizationContext(
 }
 
 function buildZeroCreateAgentRunArgs(args: {
-  readonly command: AnyCreateZeroRunCommandArgs;
+  readonly command: AnyCreateAgentRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
@@ -889,7 +890,7 @@ function buildZeroCreateAgentRunArgs(args: {
     ...(args.threadSessionResolution
       ? { threadSessionResolution: args.threadSessionResolution }
       : {}),
-    extraEnvironment: buildZeroRunExtraEnvironment({
+    extraEnvironment: buildAgentRunExtraEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
@@ -911,29 +912,29 @@ function buildZeroCreateAgentRunArgs(args: {
       source: "zero_agent",
     },
     validateEnvironmentReferences: false,
-    zeroRunMetadata: {
-      ...command.zeroRunMetadata,
+    agentRunMetadata: {
+      ...command.agentRunMetadata,
       codexServiceTier: command.codexServiceTier,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    ...(command.zeroRunModelPin
-      ? { zeroRunModelPin: command.zeroRunModelPin }
+    ...(command.agentRunModelPin
+      ? { agentRunModelPin: command.agentRunModelPin }
       : {}),
     ...("queueFirstAssociation" in command
       ? { queueFirstAssociation: command.queueFirstAssociation }
       : {}),
     timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions({
-      origin: zeroRunOrigin({
+    timingDimensions: agentRunTimingDimensions({
+      origin: agentRunOrigin({
         command,
       }),
       command,
-      source: command.zeroPreCreateSource,
+      source: command.agentRunPreCreateSource,
     }),
   };
 }
 
-interface ZeroRunAfterPreCreate {
+interface AgentRunAfterPreCreate {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -945,14 +946,14 @@ interface ZeroRunAfterPreCreate {
   readonly customConnectorGrants: readonly AgentCustomConnectorGrant[];
   readonly timing: ApiDispatchTimingCollector;
   readonly cloudBrowserEnabled: boolean | undefined;
-  readonly command: AnyCreateZeroRunCommandArgs;
+  readonly command: AnyCreateAgentRunCommandArgs;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
-async function resolveThreadSessionForZeroRun(
+async function resolveThreadSessionForAgentRun(
   db: Db,
-  input: ZeroRunAfterPreCreate,
-): Promise<ZeroRunAfterPreCreate> {
+  input: AgentRunAfterPreCreate,
+): Promise<AgentRunAfterPreCreate> {
   const threadId = input.command.chatThreadId;
   if (!threadId) {
     return input;
@@ -990,7 +991,7 @@ async function resolveThreadSessionForZeroRun(
         },
       )
     : input.command.appendSystemPrompt;
-  const body: ZeroRunCreateBody = { ...input.command.body };
+  const body: AgentRunCreateBody = { ...input.command.body };
   if (resolution.sessionId) {
     body.sessionId = resolution.sessionId;
   } else {
@@ -1007,14 +1008,14 @@ async function resolveThreadSessionForZeroRun(
 const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
 
 const createAgentRunAfterZeroPreCreate$ = command(
-  async ({ set }, input: ZeroRunAfterPreCreate, signal: AbortSignal) => {
+  async ({ set }, input: AgentRunAfterPreCreate, signal: AbortSignal) => {
     const db = set(writeDb$);
     for (
       let attempt = 0;
       attempt < THREAD_SESSION_PREPARATION_ATTEMPTS;
       attempt += 1
     ) {
-      const attemptInput = await resolveThreadSessionForZeroRun(db, input);
+      const attemptInput = await resolveThreadSessionForAgentRun(db, input);
       signal.throwIfAborted();
       const baseCreateAgentRunArgs = await measureZeroPreCreate(
         input.timing,
@@ -1081,9 +1082,9 @@ const createAgentRunAfterZeroPreCreate$ = command(
   },
 );
 
-const createZeroRunInternal$ = command(
-  async ({ set }, args: AnyCreateZeroRunCommandArgs, signal: AbortSignal) => {
-    assertThreadBoundZeroRunHasQueueAssociation(args);
+const createAgentRunInternal$ = command(
+  async ({ set }, args: AnyCreateAgentRunCommandArgs, signal: AbortSignal) => {
+    assertThreadBoundAgentRunHasQueueAssociation(args);
     const timing = zeroServiceEntryTiming({
       apiStartTime: args.apiStartTime,
       timing: args.timing,
@@ -1094,7 +1095,7 @@ const createZeroRunInternal$ = command(
       timing,
       "api_dispatch_pre_create_zero_resolve_agent_id",
       async () => {
-        return await resolveZeroRunAgentId(db, args);
+        return await resolveAgentRunAgentId(db, args);
       },
     );
     signal.throwIfAborted();
@@ -1130,7 +1131,7 @@ const createZeroRunInternal$ = command(
       workflows,
       runPermissionPolicies,
       connectorCatalogSelection,
-    } = await loadZeroRunPostAuthorizationContext(
+    } = await loadAgentRunPostAuthorizationContext(
       db,
       {
         userId: args.auth.userId,
@@ -1165,11 +1166,11 @@ const createZeroRunInternal$ = command(
 
 /**
  * Test-fixture adapter for exercising run behavior that has no production
- * entry point. Production run sources must use createQueueFirstZeroRun$.
+ * entry point. Production run sources must use createQueueFirstAgentRun$.
  */
-export const createTestFixtureZeroRun$ = command(
-  async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
-    const result = await set(createZeroRunInternal$, args, signal);
+export const createTestFixtureAgentRun$ = command(
+  async ({ set }, args: CreateAgentRunCommandArgs, signal: AbortSignal) => {
+    const result = await set(createAgentRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {
       throw new Error("Zero run without a queue association lost a claim");
     }
@@ -1177,13 +1178,13 @@ export const createTestFixtureZeroRun$ = command(
   },
 );
 
-export const createQueueFirstZeroRun$ = command(
+export const createQueueFirstAgentRun$ = command(
   async (
     { set },
-    args: CreateQueueFirstZeroRunCommandArgs,
+    args: CreateQueueFirstAgentRunCommandArgs,
     signal: AbortSignal,
   ) => {
-    const result = await set(createZeroRunInternal$, args, signal);
+    const result = await set(createAgentRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {
       const lostResult: QueueFirstRunClaimLost = result;
       return lostResult;

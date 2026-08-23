@@ -273,13 +273,13 @@ function rawContentSourceNode(node: ts.PropertyAccessExpression): ts.Node {
   return ts.isPropertyAssignment(node.parent) ? node.parent : node;
 }
 
-function isZeroRunRawContentUse(
+function isAgentRunRawContentUse(
   parsed: ParsedProductionSource,
   node: ts.Node,
 ): node is ts.PropertyAccessExpression {
   return (
     parsed.relativePath ===
-      "turbo/apps/api/src/signals/services/zero-runs-create.service.ts" &&
+      "turbo/apps/api/src/signals/services/agent-runs-create.service.ts" &&
     ts.isPropertyAccessExpression(node) &&
     ts.isIdentifier(node.expression) &&
     node.expression.text === "agent" &&
@@ -331,7 +331,7 @@ function discoveryEntries(parsed: ParsedProductionSource): string[] {
   const schemaParses: ts.Node[] = [];
   const storageForwarding: ts.Node[] = [];
   const volumeSystemReads: ts.Node[] = [];
-  const zeroRunRawContentUses: ts.Node[] = [];
+  const agentRunRawContentUses: ts.Node[] = [];
   const contentTypeDeclarations: ts.Node[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -365,8 +365,8 @@ function discoveryEntries(parsed: ParsedProductionSource): string[] {
       }
       if (name === "prepareAgentRunStorage") storageForwarding.push(node);
     }
-    if (isZeroRunRawContentUse(parsed, node)) {
-      zeroRunRawContentUses.push(node);
+    if (isAgentRunRawContentUse(parsed, node)) {
+      agentRunRawContentUses.push(node);
     }
     if (
       ts.isInterfaceDeclaration(node) &&
@@ -389,7 +389,7 @@ function discoveryEntries(parsed: ParsedProductionSource): string[] {
     ["schemaParse", schemaParses],
     ["storageForwarding", storageForwarding],
     ["legacyVolumeSystemRead", volumeSystemReads],
-    ["zeroRunRawContentUse", zeroRunRawContentUses],
+    ["agentRunRawContentUse", agentRunRawContentUses],
     ["contentTypeDeclaration", contentTypeDeclarations],
   ] as const;
   return kinds.flatMap(([kind, nodes]) => {

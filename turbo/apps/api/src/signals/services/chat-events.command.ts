@@ -47,9 +47,9 @@ import {
 import { env } from "../../lib/env";
 import type { AuthContext } from "../../types/auth";
 import {
-  createQueueFirstZeroRun$,
-  type ZeroPreCreateSource,
-} from "./zero-runs-create.service";
+  createQueueFirstAgentRun$,
+  type AgentRunPreCreateSource,
+} from "./agent-runs-create.service";
 import { isQueueFirstRunClaimLost } from "./agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
@@ -238,7 +238,7 @@ interface NormalSendArgs {
   readonly publicBrand: PublicBrand;
   readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
-  readonly zeroPreCreateSource?: ZeroPreCreateSource;
+  readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
 }
 
 interface PreparedNormalSend {
@@ -420,7 +420,7 @@ function normalSendBodyWithAgentRunSource(
 }
 
 function shouldTouchThreadSortFromNormalSend(
-  source: ZeroPreCreateSource | undefined,
+  source: AgentRunPreCreateSource | undefined,
   isNewThread: boolean,
 ): boolean {
   return (
@@ -2650,7 +2650,7 @@ const prepareNormalSend$ = command(
       videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
       attachFileMetadata,
       runConfiguration,
       clientEventPrechecked,
@@ -3144,7 +3144,7 @@ function cliAgentTypeForRun(prepared: PreparedNormalSend) {
     : prepared.runConfiguration.providerAdmission.cliAgentType;
 }
 
-function buildCreateZeroRunArgs(params: {
+function buildCreateAgentRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
   readonly realAgentInPreviewEnabled: boolean;
@@ -3175,7 +3175,7 @@ function buildCreateZeroRunArgs(params: {
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
     ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
-    zeroRunModelPin: {
+    agentRunModelPin: {
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
@@ -3224,23 +3224,23 @@ function buildCreateZeroRunArgs(params: {
         }
       : { webChatSessionPromptContext }),
     ...(args.timing ? { timing: args.timing } : {}),
-    ...(args.zeroPreCreateSource
-      ? { zeroPreCreateSource: args.zeroPreCreateSource }
+    ...(args.agentRunPreCreateSource
+      ? { agentRunPreCreateSource: args.agentRunPreCreateSource }
       : {}),
   };
 }
 
-async function buildTimedCreateZeroRunArgs(params: {
+async function buildTimedCreateAgentRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
   readonly realAgentInPreviewEnabled: boolean;
-}): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
+}): Promise<ReturnType<typeof buildCreateAgentRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
     "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
     "nested",
     () => {
-      return buildCreateZeroRunArgs(params);
+      return buildCreateAgentRunArgs(params);
     },
   );
 }
@@ -3298,7 +3298,7 @@ function scheduleNormalChatRunSideEffects(params: {
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
     attachFileMetadata: params.prepared.attachFileMetadata,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
-      params.args.zeroPreCreateSource,
+      params.args.agentRunPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
@@ -3321,7 +3321,7 @@ async function buildNormalChatRunArgs(
   );
   signal.throwIfAborted();
 
-  const createRunArgs = await buildTimedCreateZeroRunArgs({
+  const createRunArgs = await buildTimedCreateAgentRunArgs({
     args,
     prepared,
     realAgentInPreviewEnabled: isFeatureEnabled(
@@ -3358,7 +3358,7 @@ const createNormalChatRun$ = command(
         orgId: args.orgId,
         publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
-          args.zeroPreCreateSource,
+          args.agentRunPreCreateSource,
           prepared.thread.isNewThread,
         ),
         queueFirstEventId,
@@ -3398,11 +3398,11 @@ const createNormalChatRun$ = command(
       );
     }
     const runResult = await set(
-      createQueueFirstZeroRun$,
+      createQueueFirstAgentRun$,
       {
         ...createRunArgs,
         apiStartTime: args.apiStartTime,
-        zeroRunMetadata: {
+        agentRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
         },
         queueFirstAssociation: {
@@ -3560,7 +3560,7 @@ const sendQueueFirstNormalEvent$ = command(
           body: prepared.body,
           userId: args.userId,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(
-            args.zeroPreCreateSource,
+            args.agentRunPreCreateSource,
             prepared.thread.isNewThread,
           ),
           orgId: args.orgId,

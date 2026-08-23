@@ -3658,15 +3658,15 @@ async function testProductRuntimeVersionContentIsolation(): Promise<void> {
   const readSource = async (relativePath: string): Promise<string> => {
     return await fs.readFile(path.join(repositoryRoot, relativePath), "utf8");
   };
-  const zeroRunCreatePath =
-    "turbo/apps/api/src/signals/services/zero-runs-create.service.ts";
+  const agentRunCreatePath =
+    "turbo/apps/api/src/signals/services/agent-runs-create.service.ts";
   const runCreatePath =
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts";
-  const zeroRunCreate = await readSource(zeroRunCreatePath);
+  const agentRunCreate = await readSource(agentRunCreatePath);
   const runCreate = await readSource(runCreatePath);
 
-  assert.match(zeroRunCreate, /buildZeroAgentComposeContent/u);
-  assert.match(zeroRunCreate, /productAgentExecutionPlan/u);
+  assert.match(agentRunCreate, /buildZeroAgentComposeContent/u);
+  assert.match(agentRunCreate, /productAgentExecutionPlan/u);
   for (const forbidden of [
     "agentComposeVersions",
     "headVersionId",
@@ -3675,9 +3675,9 @@ async function testProductRuntimeVersionContentIsolation(): Promise<void> {
     "historical-product-builder",
   ]) {
     assert.equal(
-      zeroRunCreate.includes(forbidden),
+      agentRunCreate.includes(forbidden),
       false,
-      `${zeroRunCreatePath} must not contain ${forbidden}`,
+      `${agentRunCreatePath} must not contain ${forbidden}`,
     );
   }
 

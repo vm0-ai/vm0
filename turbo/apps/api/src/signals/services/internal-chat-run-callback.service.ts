@@ -166,7 +166,7 @@ import {
   loadChatThreadRecommendedFollowupContext,
   scheduleChatThreadTitleGeneration,
 } from "./chat-title.service";
-import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
@@ -328,8 +328,8 @@ export class ChatCallbackPreCreateTimingCollector {
           dimensions: {
             span_kind: record.spanKind,
             trigger_source: triggerSource,
-            zero_run_origin: "zero_run",
-            zero_pre_create_source: "chat_callback_auto_send",
+            agent_run_origin: "direct",
+            agent_run_pre_create_source: "chat_callback_auto_send",
           },
         };
       }),
@@ -882,7 +882,7 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildQueuedCreateZeroRunArgs(
+function buildQueuedCreateAgentRunArgs(
   input: CreateQueuedChatRunInput,
   admissionTime: number,
   dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
@@ -955,7 +955,7 @@ function buildQueuedCreateZeroRunArgs(
         : []),
     ],
     triggerSource: input.triggerSource,
-    zeroPreCreateSource: "chat_callback_auto_send" as const,
+    agentRunPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
     publicBrand: input.publicBrand,
     userInfoExtras: input.userInfoExtras,
@@ -971,13 +971,13 @@ function buildQueuedCreateZeroRunArgs(
           }
         : {}),
     },
-    zeroRunModelPin: {
+    agentRunModelPin: {
       modelProvider: input.effectiveModelProvider ?? null,
       modelProviderId: input.modelPin.modelProviderId,
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
     },
-    zeroRunMetadata: { autonomyBudget: input.autonomyBudget },
+    agentRunMetadata: { autonomyBudget: input.autonomyBudget },
     ...(input.builtInModelRuntimeRoute
       ? { builtInModelRuntimeRoute: input.builtInModelRuntimeRoute }
       : {}),
@@ -5407,13 +5407,13 @@ const buildChatCallbackDependencies$ = command(
           runInput,
           inputSignal,
         );
-        const createArgs = buildQueuedCreateZeroRunArgs(
+        const createArgs = buildQueuedCreateAgentRunArgs(
           runInput,
           admissionTime,
           dispatchFailedCallbacks,
         );
         const settledRunResult = await settle(
-          set(createQueueFirstZeroRun$, createArgs, inputSignal),
+          set(createQueueFirstAgentRun$, createArgs, inputSignal),
         );
         if (!settledRunResult.ok) {
           if (

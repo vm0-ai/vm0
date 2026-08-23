@@ -374,10 +374,10 @@ export default [
         {
           patterns: [
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -454,10 +454,10 @@ export default [
               message: productionRouteTestImportMessage,
             },
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -499,10 +499,10 @@ export default [
               message: lowerLayerRouteImportMessage,
             },
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },

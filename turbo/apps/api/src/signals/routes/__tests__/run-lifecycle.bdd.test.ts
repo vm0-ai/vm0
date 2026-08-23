@@ -7036,7 +7036,7 @@ describe("RUN-01: zero run authorization and session boundaries", () => {
   it("does not expose the removed Zero run creation route", async () => {
     const actor = createBddApi(context).user();
     await expect(
-      createRunsApi(context).requestRemovedZeroRunCreation(actor),
+      createRunsApi(context).requestRemovedAgentRunCreation(actor),
     ).resolves.toBe(404);
   });
 
@@ -8461,7 +8461,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       }),
     );
     expect(buildStoredConnectorStateEvent).not.toHaveProperty(
-      "zero_run_origin",
+      "agent_run_origin",
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       "x-bdd-overridden-access",
@@ -14589,8 +14589,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        zero_bootstrap_total_row_count_bucket: "5_8",
-        zero_bootstrap_workflow_candidate_count_bucket: "1",
+        agent_run_bootstrap_total_row_count_bucket: "5_8",
+        agent_run_bootstrap_workflow_candidate_count_bucket: "1",
       }),
     );
     expect(
@@ -14600,9 +14600,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        zero_bootstrap_total_row_count_bucket: "5_8",
-        zero_bootstrap_workflow_candidate_count_bucket: "1",
-        zero_bootstrap_workflow_winner_count_bucket: "1",
+        agent_run_bootstrap_total_row_count_bucket: "5_8",
+        agent_run_bootstrap_workflow_candidate_count_bucket: "1",
+        agent_run_bootstrap_workflow_winner_count_bucket: "1",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [

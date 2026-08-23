@@ -4190,7 +4190,7 @@ describe("okou workflow automations", () => {
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
           trigger_source: "automation-schedule",
-          zero_run_origin: "workflow_automation",
+          agent_run_origin: "workflow_automation",
         }),
       ]),
     );
@@ -4217,7 +4217,7 @@ describe("okou workflow automations", () => {
           op_type:
             "api_dispatch_pre_create_zero_workflow_automation_create_run",
           trigger_source: "automation-schedule",
-          zero_run_origin: "workflow_automation",
+          agent_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),

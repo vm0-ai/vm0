@@ -866,7 +866,7 @@ async function expectGoalDrainPreCreateTiming(args: {
         run_id: args.runId,
         span_kind: "nested",
         trigger_source: "goal",
-        zero_run_origin: "goal_continuation",
+        agent_run_origin: "goal_continuation",
         goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
           ? "waiting"
           : "phase",
@@ -899,7 +899,7 @@ async function expectGoalDrainPreCreateTiming(args: {
       run_id: args.runId,
       span_kind: "nested",
       trigger_source: "goal",
-      zero_run_origin: "goal_continuation",
+      agent_run_origin: "goal_continuation",
       goal_drain_attempt: "initial",
       goal_drain_timing_role: "aggregate",
     }),
@@ -923,7 +923,7 @@ async function expectGoalDrainPreCreateTiming(args: {
     expect.objectContaining({
       span_kind: "top_level",
       trigger_source: "goal",
-      zero_run_origin: "goal_continuation",
+      agent_run_origin: "goal_continuation",
     }),
   );
 
@@ -983,7 +983,7 @@ function expectNoChatCallbackPreCreateTimingActions(
   }
 }
 
-async function expectZeroPreCreateSource(
+async function expectAgentRunPreCreateSource(
   runId: string,
   source: string,
 ): Promise<void> {
@@ -995,7 +995,7 @@ async function expectZeroPreCreateSource(
       expect.arrayContaining([
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
-          zero_pre_create_source: source,
+          agent_run_pre_create_source: source,
         }),
       ]),
     );
@@ -1664,7 +1664,10 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to auto-send");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectAgentRunPreCreateSource(
+      claimed.runId,
+      "chat_callback_auto_send",
+    );
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
@@ -4842,7 +4845,10 @@ describe("CHAT-02: auto-send after failures", () => {
       );
     }
     expect(claimed.runId).not.toBe(second.runId);
-    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectAgentRunPreCreateSource(
+      claimed.runId,
+      "chat_callback_auto_send",
+    );
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [
