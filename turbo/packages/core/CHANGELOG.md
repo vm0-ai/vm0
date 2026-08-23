@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.582.0](https://github.com/vm0-ai/vm0/compare/core-v8.581.0...core-v8.582.0) (2026-08-23)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+* **presentation:** switch built-in decks to the latest template archives ([#28645](https://github.com/vm0-ai/vm0/issues/28645)) ([7c4a3a9](https://github.com/vm0-ai/vm0/commit/7c4a3a9fc7a1608f4033c8d20866c30f9510be66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.354.0
+
 ## [8.581.0](https://github.com/vm0-ai/vm0/compare/core-v8.580.6...core-v8.581.0) (2026-08-22)
 
 
