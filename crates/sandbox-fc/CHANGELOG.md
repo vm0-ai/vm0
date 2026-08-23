@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.235](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.234...sandbox-fc-v0.37.235) (2026-08-23)
+
+
+### Documentation
+
+* **rust:** document the pre-reap contract of ChildExitNotifier ([#28690](https://github.com/vm0-ai/vm0/issues/28690)) ([eb4178f](https://github.com/vm0-ai/vm0/commit/eb4178f07909ea26cb6d05404a772e5a62ce5f83))
+
 ## [0.37.234](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.233...sandbox-fc-v0.37.234) (2026-08-21)
 
 ## [0.37.233](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.232...sandbox-fc-v0.37.233) (2026-08-21)
