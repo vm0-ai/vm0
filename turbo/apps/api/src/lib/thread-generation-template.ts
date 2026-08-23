@@ -15,6 +15,7 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
    * Private template row ids whose packages the run being built will mount.
@@ -24,6 +25,7 @@ export function resolveThreadGenerationTemplatePrompt(args: {
 }): string {
   const options = {
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,
   };

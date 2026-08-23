@@ -112,6 +112,44 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("okou generate presentation");
   });
 
+  it("switches the built-in presentation package to direct-HTML authoring and seedream4 images", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: item.templateId,
+          colorSystemId: item.colorSystemId,
+        },
+      },
+      { latestPresentationTemplatesEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/color-systems/carnival.css",
+    );
+    expect(result.prompt).toContain('data-color-system="carnival"');
+    expect(result.prompt).toContain("--model seedream4");
+    expect(result.prompt).toContain("at most 3 in flight");
+    expect(result.prompt).toContain("Embed this URL in HTML");
+    // The package this side pulls carries no renderer, so naming the previous
+    // entrypoint or its deck JSON would send the run down a path that does not
+    // exist in the archive it just downloaded.
+    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    expect(result.prompt).not.toContain('"colorSystem"');
+  });
+
   it("points a private template at its mounted package and forbids an intermediate representation", () => {
     const result = buildGenerationTemplatePrompt(
       {

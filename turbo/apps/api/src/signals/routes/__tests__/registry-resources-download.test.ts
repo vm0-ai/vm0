@@ -31,21 +31,38 @@ function client() {
 }
 
 describe("registry resource download", () => {
-  it("resolves the presentation archive for the current registry digest", () => {
-    const currentSha256 =
-      "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
+  const CURRENT_PRESENTATION_SHA256 =
+    "d61844dc5030cd14a94b047b5cf4193dfcf470f5e389614eaacbf31f3943993e";
+  const PREVIOUS_PRESENTATION_SHA256 =
+    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
 
+  it("resolves the presentation archive for the current registry digest", () => {
     expect(
       resolvePrivateRegistryResourceArchive(
         "template:html-ppt-schoolhouse-runbook",
-        currentSha256,
-        currentSha256,
+        CURRENT_PRESENTATION_SHA256,
+        CURRENT_PRESENTATION_SHA256,
+      ),
+    ).toStrictEqual({
+      storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
+      versionId:
+        "336fc7d044a97b970d741c6782fcd2742d63bd6475ef8b1db232d84f6b9b5227",
+      sha256: CURRENT_PRESENTATION_SHA256,
+    });
+  });
+
+  it("still serves the pre-cutover presentation digest a drained run context asks for", () => {
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        "template:html-ppt-schoolhouse-runbook",
+        PREVIOUS_PRESENTATION_SHA256,
+        CURRENT_PRESENTATION_SHA256,
       ),
     ).toStrictEqual({
       storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
       versionId:
         "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
-      sha256: currentSha256,
+      sha256: PREVIOUS_PRESENTATION_SHA256,
     });
   });
 
@@ -54,7 +71,7 @@ describe("registry resource download", () => {
       resolvePrivateRegistryResourceArchive(
         "template:html-ppt-schoolhouse-runbook",
         "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
-        "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
+        CURRENT_PRESENTATION_SHA256,
       ),
     ).toBeUndefined();
   });

@@ -327,6 +327,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.LatestPresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
     description:

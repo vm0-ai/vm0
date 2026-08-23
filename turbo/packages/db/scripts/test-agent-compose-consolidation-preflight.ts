@@ -563,6 +563,7 @@ function testApplicationOwnedPlanAndCanonicalCompatibility(): void {
         "CLI_PKG_URL",
         "OKOU_AGENT_ID",
         "OKOU_APP_URL",
+        "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION",
         "OKOU_TOKEN",
         "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION",
       ],
