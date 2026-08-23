@@ -24,6 +24,7 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
+const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/zero/teams/oauth/callback`;
 const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const APP_ORIGIN = "https://app.vm0.test";
@@ -271,7 +272,11 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );
@@ -330,31 +335,6 @@ describe("Teams OAuth API routes", () => {
     );
   });
 
-  it("falls back to the legacy callback URI for state without a redirect URI", async () => {
-    const fixture = await seedTeamsInstallation(track);
-    await seedMembership(fixture.orgId, fixture.userId, "admin");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockMicrosoftOAuth({
-      tenantId: fixture.teamsTenantId,
-      aadObjectId: fixture.teamsAadObjectId,
-      userPrincipalName: fixture.teamsUserPrincipalName,
-      expectedRedirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
-    });
-
-    const response = await appRequest(
-      callbackPath({
-        code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
-      }),
-      { origin: API_ORIGIN },
-    );
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      `${APP_ORIGIN}/settings/teams?status=connected`,
-    );
-  });
-
   it("rejects OAuth users when the org is already bound to another Microsoft tenant", async () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
@@ -383,7 +363,11 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );
@@ -405,7 +389,11 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );
