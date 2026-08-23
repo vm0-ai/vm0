@@ -57,10 +57,7 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "../services/connector-account-mutation.service";
+import { connectorAccountSiblingWritesEnabled } from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 
@@ -515,7 +512,7 @@ const startConnectorOauthInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
-        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+        mutation: bodyResult.data.account,
         allowSiblings:
           connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
@@ -638,7 +635,7 @@ const startConnectorOpenIdInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
-        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+        mutation: bodyResult.data.account,
         allowSiblings:
           connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });

@@ -583,7 +583,7 @@ export const startCustomConnectorOAuth2$ = command(
         orgId: args.orgId,
         userId: args.userId,
         target: { kind: "custom", customConnectorId: connector.id },
-        mutation: normalizeConnectorAccountMutation(args.account),
+        mutation: args.account,
         allowSiblings:
           !isIntegrationManagedCustomConnector(connector) &&
           connectorAccountSiblingWritesEnabled(featureContext),

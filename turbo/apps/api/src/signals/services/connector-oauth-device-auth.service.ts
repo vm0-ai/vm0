@@ -60,7 +60,6 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
 } from "./connector-account-mutation.service";
@@ -1026,7 +1025,7 @@ async function createDeviceAuthSession(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
       allowSiblings: args.allowSiblings,
     });
     signal.throwIfAborted();
