@@ -17,7 +17,7 @@ import { generateWebImage } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const MAX_CONCURRENCY = 3;
-const DEFAULT_SIZE = "1024x1024";
+const DEFAULT_SIZE = "816x816";
 const POLL_INTERVAL_MS = 500;
 const RETRY_DELAY_MS = 1_000;
 

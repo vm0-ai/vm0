@@ -133,7 +133,7 @@ describe("okou generate image-batch command", () => {
     expect(requests.get("Four dogs together")).toEqual({
       prompt: "Four dogs together",
       model: "seedream4",
-      size: "1024x1024",
+      size: "816x816",
       quality: "low",
       background: "auto",
       outputFormat: "png",
