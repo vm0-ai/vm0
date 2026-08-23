@@ -83,17 +83,22 @@ async function entitledActor(): Promise<ApiTestUser> {
 async function createClaudeCompose(
   actor: ApiTestUser,
   prefix: string,
+  options?: { readonly composeOnly?: boolean },
 ): Promise<{ readonly composeId: string; readonly name: string }> {
   const name = `${prefix}-${randomUUID().slice(0, 8)}`;
-  return await api.createHistoricalCompose(actor, {
-    version: "1",
-    agents: {
-      [name]: {
-        framework: "claude-code",
-        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+  return await api.createHistoricalCompose(
+    actor,
+    {
+      version: "1",
+      agents: {
+        [name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
       },
     },
-  });
+    options,
+  );
 }
 
 function sandboxHeaders(token: string): { readonly authorization: string } {
@@ -3195,7 +3200,9 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       description: "Member isolation.",
       visibility: "private",
     });
-    const testCompose = await createClaudeCompose(actor, "bdd-test-logs");
+    const testCompose = await createClaudeCompose(actor, "bdd-test-logs", {
+      composeOnly: true,
+    });
     const agentOneName = (
       await readHistoricalAgentComposeHeadFixture(agentOne.agentId)
     ).name;
@@ -3536,6 +3543,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const currentCompose = await api.createHistoricalCompose(
       actor,
       foreignCompose.content,
+      { composeOnly: true },
     );
     expect(currentCompose.versionId).toBe(foreignCompose.headVersionId);
 
