@@ -110,6 +110,7 @@ export async function referenceAgentHeadFixture(args: {
   readonly agentId: string;
   readonly versionAgentId: string;
 }): Promise<string> {
+  await materializeAgentLegacyVersionFixture(args.agentId);
   const versionId = await agentHeadVersionId(args.versionAgentId);
   const rows = await db()
     .update(agentComposes)
