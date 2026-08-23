@@ -22,7 +22,7 @@ import {
 
 /**
  * Zero run request schema — subset of unified schema.
- * Server-side defaults are injected by createAgentRun():
+ * Server-side defaults are injected by agent-runs-create.service.ts:
  * artifacts, disallowedTools.
  * Fields not used by unattended workflow runs are omitted:
  * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
