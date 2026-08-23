@@ -7,7 +7,7 @@ load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
-MANAGED_FALLBACK_MODEL="gpt-5.6-sol"
+MANAGED_FALLBACK_MODEL="gpt-5.6-luna"
 
 setup() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
@@ -149,7 +149,7 @@ report_managed_model_failure() {
     run jq -e '
         .cliAgentType == "codex" and
         .environment.OPENAI_BASE_URL == "https://openrouter.ai/api/v1" and
-        .environment.OPENAI_MODEL == "openai/gpt-5.6-sol" and
+        .environment.OPENAI_MODEL == "openai/gpt-5.6-luna" and
         any(.firewalls[]?;
             .kind == "builtin" and
             .name == "model-provider:openrouter-codex"
