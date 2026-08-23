@@ -4762,6 +4762,24 @@
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
         },
+        "managedModelCooldown": {
+          "description": "Periksa rute model terkelola yang sementara dikecualikan dari pemilihan fallback.",
+          "disabled": "dinonaktifkan",
+          "disabledExplanation": "Fallback model terkelola dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
+          "empty": "Saat ini tidak ada rute model terkelola dalam cooldown global.",
+          "enabled": "diaktifkan",
+          "globalActive": "cooldown global aktif",
+          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model terkelola diaktifkan di sini.",
+          "loading": "Memuat diagnostik cooldown model terkelola...",
+          "providerType": "Jenis penyedia",
+          "refresh": "Segarkan",
+          "selectedModel": "Model terpilih",
+          "title": "Fallback model terkelola",
+          "unavailable": "Diagnostik cooldown model terkelola tidak tersedia.",
+          "unavailableUntil": "Tidak tersedia hingga",
+          "upstreamModel": "Model upstream",
+          "workspaceFallback": "fallback workspace"
+        },
         "tab": "Debug"
       },
       "documentTitle": "Preferensi",

@@ -4815,6 +4815,24 @@
           "title": "Diagnostic de connexion en temps réel",
           "unavailable": "indisponible"
         },
+        "managedModelCooldown": {
+          "description": "Inspectez les routes de modèles gérés temporairement exclues de la sélection de secours.",
+          "disabled": "désactivé",
+          "disabledExplanation": "Le secours des modèles gérés est désactivé pour cet espace de travail. Ces délais d'attente globaux y sont donc actuellement ignorés.",
+          "empty": "Aucune route de modèle géré n'est actuellement soumise à un délai d'attente global.",
+          "enabled": "activé",
+          "globalActive": "délais d'attente globaux actifs",
+          "globalExplanation": "Les délais d'attente constituent un état opérationnel global. Ils ne peuvent affecter cet espace de travail que lorsque le secours des modèles gérés y est activé.",
+          "loading": "Chargement du diagnostic des délais d'attente des modèles gérés...",
+          "providerType": "Type de fournisseur",
+          "refresh": "Actualiser",
+          "selectedModel": "Modèle sélectionné",
+          "title": "Secours des modèles gérés",
+          "unavailable": "Le diagnostic des délais d'attente des modèles gérés n'est pas disponible.",
+          "unavailableUntil": "Indisponible jusqu'au",
+          "upstreamModel": "Modèle en amont",
+          "workspaceFallback": "secours de l'espace de travail"
+        },
         "tab": "Débogage"
       },
       "documentTitle": "Préférences",

@@ -1,19 +1,27 @@
 import { randomUUID } from "node:crypto";
 import {
+  modelProviderCooldownDiagnosticsContract,
   modelProvidersByTypeContract,
   modelProvidersMainContract,
 } from "@okouai/api-contracts/contracts/model-provider-routes";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { now } from "../../../lib/time";
+import { now, withMockNowForTest } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/feature-switches";
+import { setVm0ManagedCandidateCooldownFixture } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 import { modelProvidersRoutes } from "../model-providers";
@@ -489,6 +497,138 @@ describe("GET /api/model-providers", () => {
     );
     expect(provider?.needsReconnect).toBeTruthy();
     expect(provider?.lastRefreshErrorCode).toBe("refresh_token_expired");
+  });
+});
+
+describe("GET /api/model-providers/cooldown-diagnostics", () => {
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const response = await accept(client.get({ headers: {} }), [401]);
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 403 when ZeroDebug is disabled", async () => {
+    const fixture = uniqueOrgUser("cooldown-disabled");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Managed model cooldown diagnostics are not enabled",
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("returns active global cooldowns and the effective org fallback state", async () => {
+    const fixture = uniqueOrgUser("cooldown-active");
+    const selectedModelPrefix = `diagnostic-${randomUUID()}`;
+    const startedAt = Date.UTC(2026, 7, 23, 12, 0, 0);
+    const earlierDeadline = new Date(startedAt + 30_000);
+    const laterDeadline = new Date(startedAt + 60_000);
+    const expiredDeadline = new Date(startedAt - 1);
+    const firstRoute = {
+      provider_type: "openai-api-key",
+      upstream_model: `${selectedModelPrefix}-upstream-b`,
+      model_key_id: randomUUID(),
+    };
+    const secondRoute = {
+      provider_type: "openrouter-codex",
+      upstream_model: `${selectedModelPrefix}-upstream-a`,
+      model_key_id: randomUUID(),
+    };
+    const expiredRoute = {
+      provider_type: "openai-api-key",
+      upstream_model: `${selectedModelPrefix}-expired`,
+      model_key_id: randomUUID(),
+    };
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      `${selectedModelPrefix}-b`,
+      firstRoute,
+      laterDeadline,
+    );
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      `${selectedModelPrefix}-a`,
+      secondRoute,
+      earlierDeadline,
+    );
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      `${selectedModelPrefix}-expired`,
+      expiredRoute,
+      expiredDeadline,
+    );
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.ManagedModelProviderFallback]: false,
+    });
+    onTestFinished(async () => {
+      await deleteFeatureSwitchesForUser(context, fixture);
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const disabledResponse = await withMockNowForTest(startedAt, async () => {
+      return await accept(
+        client.get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+    });
+    const ownedCooldowns = disabledResponse.body.activeCooldowns.filter(
+      (cooldown) => {
+        return cooldown.selectedModel.startsWith(selectedModelPrefix);
+      },
+    );
+
+    expect(disabledResponse.body.fallbackEnabled).toBeFalsy();
+    expect(ownedCooldowns).toStrictEqual([
+      {
+        selectedModel: `${selectedModelPrefix}-a`,
+        providerType: secondRoute.provider_type,
+        upstreamModel: secondRoute.upstream_model,
+        unavailableUntil: earlierDeadline.toISOString(),
+      },
+      {
+        selectedModel: `${selectedModelPrefix}-b`,
+        providerType: firstRoute.provider_type,
+        upstreamModel: firstRoute.upstream_model,
+        unavailableUntil: laterDeadline.toISOString(),
+      },
+    ]);
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const enabledResponse = await withMockNowForTest(startedAt, async () => {
+      return await accept(
+        client.get({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+    });
+
+    expect(enabledResponse.body.fallbackEnabled).toBeTruthy();
   });
 });
 

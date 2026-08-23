@@ -4815,6 +4815,24 @@
           "title": "Diagnóstico de conexão em tempo real",
           "unavailable": "indisponível"
         },
+        "managedModelCooldown": {
+          "description": "Inspecione as rotas de modelos gerenciados temporariamente excluídas da seleção de fallback.",
+          "disabled": "desativado",
+          "disabledExplanation": "O fallback de modelos gerenciados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
+          "empty": "Nenhuma rota de modelo gerenciado está em cooldown global no momento.",
+          "enabled": "ativado",
+          "globalActive": "cooldowns globais ativos",
+          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos gerenciados estiver ativado aqui.",
+          "loading": "Carregando diagnósticos de cooldown de modelos gerenciados...",
+          "providerType": "Tipo de provedor",
+          "refresh": "Atualizar",
+          "selectedModel": "Modelo selecionado",
+          "title": "Fallback de modelos gerenciados",
+          "unavailable": "Os diagnósticos de cooldown de modelos gerenciados estão indisponíveis.",
+          "unavailableUntil": "Indisponível até",
+          "upstreamModel": "Modelo upstream",
+          "workspaceFallback": "fallback do workspace"
+        },
         "tab": "Depuração"
       },
       "documentTitle": "Preferências",

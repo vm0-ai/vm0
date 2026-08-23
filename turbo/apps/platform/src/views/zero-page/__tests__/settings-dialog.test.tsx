@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
+import { modelProviderCooldownDiagnosticsContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import {
   type UserLocale,
   type UserPreferencesResponse,
@@ -97,6 +98,22 @@ function connectorCatalogDisclosure(region: HTMLElement): {
   }
   if (!(details instanceof HTMLDetailsElement)) {
     throw new Error("Connector catalog disclosure not found");
+  }
+  return { details, summary };
+}
+
+function managedModelCooldownDisclosure(region: HTMLElement): {
+  readonly details: HTMLDetailsElement;
+  readonly summary: HTMLElement;
+} {
+  const title = within(region).getByText("Managed model fallback");
+  const summary = title.closest("summary");
+  const details = summary?.closest("details");
+  if (!(summary instanceof HTMLElement)) {
+    throw new Error("Managed model cooldown summary not found");
+  }
+  if (!(details instanceof HTMLDetailsElement)) {
+    throw new Error("Managed model cooldown disclosure not found");
   }
   return { details, summary };
 }
@@ -897,6 +914,180 @@ describe("settings dialog", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).queryByText("Workspace")).not.toBeInTheDocument();
     expect(screen.getByText("Theme")).toBeInTheDocument();
+  });
+
+  it("shows complete managed model cooldown diagnostics in a collapsed disclosure", async () => {
+    let requestCount = 0;
+    context.mocks.api(
+      modelProviderCooldownDiagnosticsContract.get,
+      ({ respond }) => {
+        requestCount += 1;
+        return respond(200, {
+          fallbackEnabled: false,
+          activeCooldowns: [
+            {
+              selectedModel: "gpt-5.6-luna",
+              providerType: "openai-api-key",
+              upstreamModel: "gpt-5.6-luna-2026-08-01",
+              unavailableUntil: "2026-08-23T04:05:00.000Z",
+            },
+          ],
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Managed model fallback",
+    });
+    const { details, summary } = managedModelCooldownDisclosure(diagnostics);
+    expect(details.open).toBeFalsy();
+    expect(summary).toHaveTextContent("workspace fallback: disabled");
+    expect(summary).toHaveTextContent("global active cooldowns: 1");
+    expect(
+      within(diagnostics).queryByText("gpt-5.6-luna-2026-08-01"),
+    ).not.toBeVisible();
+
+    click(summary);
+    expect(details.open).toBeTruthy();
+    expect(within(diagnostics).getByText("gpt-5.6-luna")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("openai-api-key")).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("gpt-5.6-luna-2026-08-01"),
+    ).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Unavailable until").parentElement,
+    ).toHaveTextContent("2026");
+    expect(
+      within(diagnostics).getByText(
+        "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
+      ),
+    ).toBeInTheDocument();
+
+    const refreshButton = queryAllByRoleFast("button", diagnostics).find(
+      (button) => {
+        return button.textContent?.trim() === "Refresh";
+      },
+    );
+    if (!refreshButton) {
+      throw new Error("Managed model cooldown refresh button not found");
+    }
+    click(refreshButton);
+    await waitFor(() => {
+      expect(requestCount).toBe(2);
+    });
+  });
+
+  it("refreshes managed model cooldown diagnostics on every Debug entry", async () => {
+    let requestCount = 0;
+    context.mocks.api(
+      modelProviderCooldownDiagnosticsContract.get,
+      ({ respond }) => {
+        requestCount += 1;
+        return respond(200, {
+          fallbackEnabled: true,
+          activeCooldowns: [],
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    let diagnostics = await screen.findByRole("region", {
+      name: "Managed model fallback",
+    });
+    let disclosure = managedModelCooldownDisclosure(diagnostics);
+    expect(disclosure.summary).toHaveTextContent("workspace fallback: enabled");
+    expect(disclosure.summary).toHaveTextContent("global active cooldowns: 0");
+    click(disclosure.summary);
+    expect(
+      within(diagnostics).getByText(
+        "No managed model routes are currently in global cooldown.",
+      ),
+    ).toBeInTheDocument();
+    expect(requestCount).toBe(1);
+
+    const dialog = screen.getByRole("dialog");
+    const dialogButton = (label: string): HTMLElement => {
+      const button = queryAllByRoleFast("button", dialog).find((candidate) => {
+        return (
+          candidate.textContent?.trim() === label ||
+          candidate.getAttribute("aria-label") === label
+        );
+      });
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    };
+
+    click(dialogButton("Preference"));
+    await expect(
+      screen.findByRole("heading", { name: "Preference" }),
+    ).resolves.toBeInTheDocument();
+    click(dialogButton("Debug"));
+    await waitFor(() => {
+      diagnostics = screen.getByRole("region", {
+        name: "Managed model fallback",
+      });
+      disclosure = managedModelCooldownDisclosure(diagnostics);
+      expect(disclosure.details.open).toBeFalsy();
+      expect(requestCount).toBe(2);
+    });
+
+    click(dialogButton("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await context.store.set(openSettingsDialogAt$, "debug", context.signal);
+
+    await waitFor(() => {
+      diagnostics = screen.getByRole("region", {
+        name: "Managed model fallback",
+      });
+      disclosure = managedModelCooldownDisclosure(diagnostics);
+      expect(disclosure.details.open).toBeFalsy();
+      expect(requestCount).toBe(3);
+    });
+  });
+
+  it("keeps Debug settings usable while managed model diagnostics are unavailable", async () => {
+    const releaseDiagnostics = context.mocks.deferred<void>();
+    context.mocks.api(
+      modelProviderCooldownDiagnosticsContract.get,
+      async ({ respond }) => {
+        await releaseDiagnostics.promise;
+        return respond(404, {
+          error: {
+            message: "Managed model cooldown diagnostics are unavailable",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Managed model fallback",
+    });
+    expect(
+      within(diagnostics).getByText(
+        "Loading managed model cooldown diagnostics...",
+      ),
+    ).toBeInTheDocument();
+    expect(diagnostics.querySelector("summary")).toBeNull();
+    expect(screen.getByText("Build information")).toBeInTheDocument();
+    expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+
+    releaseDiagnostics.resolve();
+    await expect(
+      within(diagnostics).findByText(
+        "Managed model cooldown diagnostics are unavailable.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(diagnostics.querySelector("summary")).toBeNull();
   });
 
   it("shows connector catalog diagnostics in Debug settings", async () => {
