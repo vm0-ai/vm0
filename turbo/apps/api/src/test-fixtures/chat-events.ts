@@ -2583,7 +2583,7 @@ export async function insertCanonicalChatEventWritesFixture(args: {
       id: interruptTargetSessionId,
       userId: args.userId,
       orgId: args.orgId,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
     });
     await tx.insert(agentRuns).values({
       id: single.interruptTargetRunId,
