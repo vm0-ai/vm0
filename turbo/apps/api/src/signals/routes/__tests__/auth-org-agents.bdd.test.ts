@@ -896,7 +896,7 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expect(cleared.grants).toStrictEqual([]);
 
-    await api.disconnectCustomConnector(admin, connector.id);
+    await api.disconnectSingleCustomConnectorAccount(admin, connector.id);
     const afterDisconnect = await api.listCustomConnectors(admin);
     expect(
       afterDisconnect.connectors.find((candidate) => {

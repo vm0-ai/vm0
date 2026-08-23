@@ -25,7 +25,7 @@ runner_e2e_teardown_test() {
         delete_runner_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
     if [[ -n "$connector_slug" ]]; then
-        runner_e2e_delete_connector "$connector_slug" >/dev/null 2>&1 || true
+        runner_e2e_disconnect_single_connector_account "$connector_slug" >/dev/null 2>&1 || true
     fi
 }
 
@@ -39,15 +39,21 @@ runner_e2e_connect_manual_connector() {
         --arg authMethod "$auth_method" \
         --arg agentId "$agent_id" \
         --argjson values "$values" \
-        '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, values: $values}')
+        '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, account: {intent: "single-account"}, values: $values}')
     runner_api_curl "/api/connectors/${connector_slug}/manual-grant" \
         -X POST \
         -d "$payload"
 }
 
-runner_e2e_delete_connector() {
+runner_e2e_disconnect_single_connector_account() {
     local connector_slug="$1"
-    runner_api_curl "/api/connectors/${connector_slug}" -X DELETE
+    local payload
+    payload=$(jq -nc \
+        --arg connectorSlug "$connector_slug" \
+        '{target: {kind: "builtin", connectorSlug: $connectorSlug}}')
+    runner_api_curl "/api/connector-accounts/single-account" \
+        -X DELETE \
+        -d "$payload"
 }
 
 runner_e2e_upload_text() {

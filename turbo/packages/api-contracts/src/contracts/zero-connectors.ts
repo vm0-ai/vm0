@@ -40,7 +40,7 @@ export const zeroConnectorsMainContract = c.router({
 });
 
 /**
- * Zero contract for GET/DELETE /api/connectors/:connectorSlug
+ * Zero contract for GET /api/connectors/:connectorSlug
  */
 export const zeroConnectorsBySlugContract = c.router({
   get: {
@@ -55,19 +55,6 @@ export const zeroConnectorsBySlugContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get connector by slug (zero proxy)",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/connectors/:connectorSlug",
-    headers: authHeadersSchema,
-    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Disconnect a connector (zero proxy)",
   },
 });
 
@@ -102,7 +89,7 @@ export const zeroConnectorOauthStartContract = c.router({
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
       callbackTarget: z.literal("app").optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
     }),
     responses: {
       200: connectorOauthStartResponseSchema,
@@ -127,7 +114,7 @@ export const zeroConnectorOpenIdStartContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
     }),
     responses: {
       200: connectorOauthStartResponseSchema,
@@ -178,7 +165,7 @@ export const zeroConnectorNoAuthGrantContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
     }),
     responses: {
       200: connectorResponseSchema,
@@ -203,7 +190,7 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
       options: z.record(z.string(), z.string()).optional(),
     }),
     responses: {
@@ -248,7 +235,7 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
     }),
     responses: {
       200: connectorExternalCodeSessionStartResponseSchema,

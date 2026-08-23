@@ -478,7 +478,10 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       createStripeAutomationRequest(scenario),
       [201],
     );
-    await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+    await connectors.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "stripe",
+    );
     const replacement = await connectStripeOAuth(scenario.actor, {
       accountId: STRIPE_ACCOUNT_ID,
       code: "stripe-recreated-connection",

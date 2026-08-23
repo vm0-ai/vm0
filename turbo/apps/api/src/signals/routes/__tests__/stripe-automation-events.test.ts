@@ -914,7 +914,10 @@ describe("Stripe automation event webhook", () => {
       EXECUTED_EXECUTION,
     );
 
-    await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+    await connectors.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "stripe",
+    );
     const replacement = await connectStripeOAuth(
       scenario.actor,
       STRIPE_ACCOUNT_ID,
@@ -1412,7 +1415,10 @@ describe("Stripe automation event webhook", () => {
     it("when the connector is deleted", async () => {
       const { scenario } =
         await setupPendingLifecycleDelivery("deleted_connector");
-      await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+      await connectors.disconnectSingleBuiltinConnectorAccount(
+        scenario.actor,
+        "stripe",
+      );
       const result = await executeLifecycleDelivery(scenario);
       expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
       expect((await readStripeAutomation(scenario)).health).toMatchObject({

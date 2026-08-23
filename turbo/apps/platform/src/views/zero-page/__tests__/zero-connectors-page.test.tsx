@@ -24,7 +24,6 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
@@ -1311,7 +1310,6 @@ describe("connectors page", () => {
   it("disconnects a connected catalog connector from the options menu", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     const disconnectTargets: unknown[] = [];
-    let legacyDisconnectCount = 0;
     context.mocks.api(
       connectorAccountsContract.disconnectSingleAccount,
       ({ body, respond }) => {
@@ -1320,11 +1318,6 @@ describe("connectors page", () => {
         return respond(204);
       },
     );
-    context.mocks.api(zeroConnectorsBySlugContract.delete, ({ respond }) => {
-      legacyDisconnectCount += 1;
-      return respond(204);
-    });
-
     detachedSetupPage({
       context,
       path: "/connectors",
@@ -1348,13 +1341,11 @@ describe("connectors page", () => {
     expect(disconnectTargets).toStrictEqual([
       { kind: "builtin", connectorSlug: "github" },
     ]);
-    expect(legacyDisconnectCount).toBe(0);
   });
 
   it("keeps a connector connected when compact disconnect is ambiguous", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     let disconnectCount = 0;
-    let legacyDisconnectCount = 0;
     context.mocks.api(
       connectorAccountsContract.disconnectSingleAccount,
       ({ body, respond }) => {
@@ -1371,11 +1362,6 @@ describe("connectors page", () => {
         });
       },
     );
-    context.mocks.api(zeroConnectorsBySlugContract.delete, ({ respond }) => {
-      legacyDisconnectCount += 1;
-      return respond(204);
-    });
-
     detachedSetupPage({ context, path: "/connectors" });
 
     const card = await waitFor(() => {
@@ -1389,7 +1375,6 @@ describe("connectors page", () => {
     ).resolves.toBeInTheDocument();
     expect(within(card).getByText("@octocat")).toBeInTheDocument();
     expect(disconnectCount).toBe(1);
-    expect(legacyDisconnectCount).toBe(0);
 
     click(within(card).getByLabelText("More options"));
     expect(menuItemByText("Disconnect")).toBeInTheDocument();

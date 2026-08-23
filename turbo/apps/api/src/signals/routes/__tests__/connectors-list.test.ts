@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
@@ -20,6 +21,7 @@ import {
   setConnectorDefaultState,
 } from "./helpers/connector-credential-storage-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
@@ -69,11 +71,11 @@ async function deleteConnector(
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
-    ).delete({
-      params: { connectorSlug },
+    setupApp({ context, routes: connectorAccountRoutes })(
+      connectorAccountsContract,
+    ).disconnectSingleAccount({
       headers: authHeaders(),
+      body: { target: { kind: "builtin", connectorSlug } },
     }),
     [204, 404],
   );

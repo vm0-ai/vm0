@@ -18,10 +18,7 @@ import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
 } from "../connector-check";
-import {
-  zeroConnectorsBySlugContract,
-  zeroConnectorsSearchContract,
-} from "../zero-connectors";
+import { zeroConnectorsSearchContract } from "../zero-connectors";
 import {
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
@@ -366,10 +363,6 @@ describe("connector path parameter contracts", () => {
       },
     };
 
-    await initClient(zeroConnectorsBySlugContract, config).delete({
-      params: { connectorSlug: "github" },
-      headers: {},
-    });
     await initClient(connectorAccountsContract, config).disconnectSingleAccount(
       {
         headers: {},
@@ -387,7 +380,6 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/connectors/github",
       "https://api.example.test/api/connector-accounts/single-account",
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",

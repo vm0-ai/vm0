@@ -15,7 +15,10 @@ import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { githubOauthContract } from "@okouai/api-contracts/contracts/github-oauth";
 import {
@@ -28,7 +31,6 @@ import {
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorValuesContract,
@@ -70,6 +72,7 @@ import { connectorsSlugCallbackRoutes } from "../../connectors-slug-callback";
 import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { agentsRoutes } from "../../agents";
+import { connectorAccountRoutes } from "../../connector-accounts";
 import { connectorsRoutes } from "../../connectors";
 import { connectorsExternalCodeRoutes } from "../../connectors-external-code";
 import { connectorsOauthDeviceAuthRoutes } from "../../connectors-oauth-device-auth";
@@ -78,7 +81,6 @@ import { customConnectorsDeleteRoutes } from "../../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../../custom-connectors-get";
 import { customConnectorOAuth2Routes } from "../../custom-connectors-oauth2";
 import { customConnectorProposalRoutes } from "../../custom-connectors-proposal";
-import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconnect";
 import { customConnectorsUpdateRoutes } from "../../custom-connectors-update";
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { featureSwitchesRoutes } from "../../feature-switches";
@@ -94,6 +96,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...githubOauthRoutes,
   ...integrationsGithubRoutes,
   ...agentsRoutes,
+  ...connectorAccountRoutes,
   ...connectorsExternalCodeRoutes,
   ...connectorsOauthDeviceAuthRoutes,
   ...connectorsRoutes,
@@ -1405,18 +1408,18 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async deleteConnectorBySlug(
+    async disconnectSingleBuiltinConnectorAccount(
       actor: ApiTestUser,
       connectorSlug: ConnectorSlug,
       statuses: readonly (204 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
-      const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
       );
       await accept(
-        client.delete({
-          params: { connectorSlug },
+        client.disconnectSingleAccount({
           headers: authenticate(actor),
+          body: { target: { kind: "builtin", connectorSlug } },
         }),
         statuses,
       );
@@ -1472,7 +1475,7 @@ export function createConnectorBddApi(context: TestContext) {
             values,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
-            ...(options.account ? { account: options.account } : {}),
+            account: options.account ?? { intent: "single-account" },
           },
         }),
         options.statuses,
@@ -1523,7 +1526,7 @@ export function createConnectorBddApi(context: TestContext) {
             ...(options.callbackTarget
               ? { callbackTarget: options.callbackTarget }
               : {}),
-            ...(options.account ? { account: options.account } : {}),
+            account: options.account ?? { intent: "single-account" },
           },
         }),
         options.statuses,
@@ -1684,7 +1687,8 @@ export function createConnectorBddApi(context: TestContext) {
         account?: ConnectorAccountMutationIntent,
       ]
     ) {
-      const [options, statuses, account] = request;
+      const [options, statuses, account = { intent: "single-account" }] =
+        request;
       const client = setupApp({
         context,
         routes: connectorsOauthDeviceAuthRoutes,
@@ -1704,7 +1708,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options?: Readonly<Record<string, string>>,
-      account?: ConnectorAccountMutationIntent,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
     ): Promise<ConnectorOauthDeviceAuthSessionStartResponse> {
       const response = await api.requestDeviceAuthStart(
         actor,
@@ -1761,7 +1765,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account?: ConnectorAccountMutationIntent,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
     ) {
       const client = setupApp({
         context,
@@ -2083,7 +2087,10 @@ export function createConnectorBddApi(context: TestContext) {
         client.set({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body: { values: [{ key: "secret", kind: "secret", value }] },
+          body: {
+            values: [{ key: "secret", kind: "secret", value }],
+            account: { intent: "single-account" },
+          },
         }),
         statuses,
       );
@@ -2108,7 +2115,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       values: readonly CustomConnectorValueInput[],
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account?: ConnectorAccountMutationIntent,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
     ) {
       const client = setupApp({
         context,
@@ -2141,45 +2148,53 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestDisconnectCustomConnector(
+    async requestDisconnectSingleCustomConnectorAccount(
       actor: ApiTestUser | null,
       connectorId: string,
-      statuses: readonly (204 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
     ) {
       const client = setupApp({
         context,
-        routes: customConnectorDisconnectRoutes,
-      })(zeroCustomConnectorConnectionContract);
+        routes: connectorAccountRoutes,
+      })(connectorAccountsContract);
       return await accept(
-        client.disconnect({
-          params: { id: connectorId },
+        client.disconnectSingleAccount({
           headers: authenticate(actor),
+          body: {
+            target: { kind: "custom", customConnectorId: connectorId },
+          },
         }),
         statuses,
       );
     },
 
-    async disconnectCustomConnector(
+    async disconnectSingleCustomConnectorAccount(
       actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 401 | 404 | 409 | 500)[] = [204],
+      statuses: readonly (204 | 400 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
-      await api.requestDisconnectCustomConnector(actor, connectorId, statuses);
+      await api.requestDisconnectSingleCustomConnectorAccount(
+        actor,
+        connectorId,
+        statuses,
+      );
     },
 
-    async requestDisconnectCustomConnectorWithToken(
+    async requestDisconnectSingleCustomConnectorAccountWithToken(
       token: string,
       connectorId: string,
-      statuses: readonly (204 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
     ) {
       const client = setupApp({
         context,
-        routes: customConnectorDisconnectRoutes,
-      })(zeroCustomConnectorConnectionContract);
+        routes: connectorAccountRoutes,
+      })(connectorAccountsContract);
       return await accept(
-        client.disconnect({
-          params: { id: connectorId },
+        client.disconnectSingleAccount({
           headers: { authorization: `Bearer ${token}` },
+          body: {
+            target: { kind: "custom", customConnectorId: connectorId },
+          },
         }),
         statuses,
       );
@@ -2190,7 +2205,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
       agentId?: string,
-      account?: ConnectorAccountMutationIntent,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
     ) {
       const client = setupApp({
         context,

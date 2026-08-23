@@ -284,7 +284,7 @@ export type UpdateCustomConnectorBody = z.infer<
 export const startCustomConnectorOAuth2BodySchema = z
   .object({
     agentId: z.string().uuid().optional(),
-    account: connectorAccountMutationIntentSchema.optional(),
+    account: connectorAccountMutationIntentSchema,
   })
   .strict();
 
@@ -303,7 +303,7 @@ export type CustomConnectorValueInput = z.infer<
 
 export const setCustomConnectorValuesBodySchema = z.object({
   values: z.array(customConnectorValueInputSchema),
-  account: connectorAccountMutationIntentSchema.optional(),
+  account: connectorAccountMutationIntentSchema,
 });
 export type SetCustomConnectorValuesBody = z.infer<
   typeof setCustomConnectorValuesBodySchema
@@ -441,26 +441,6 @@ export const zeroCustomConnectorByIdContract = c.router({
 });
 export type ZeroCustomConnectorByIdContract =
   typeof zeroCustomConnectorByIdContract;
-
-export const zeroCustomConnectorConnectionContract = c.router({
-  disconnect: {
-    method: "DELETE",
-    path: "/api/custom-connectors/:id/connection",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Disconnect the calling user's custom connector connection",
-  },
-});
-export type ZeroCustomConnectorConnectionContract =
-  typeof zeroCustomConnectorConnectionContract;
 
 export const zeroCustomConnectorValuesContract = c.router({
   set: {
