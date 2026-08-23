@@ -10,13 +10,6 @@ export type { SignalRouteHandler };
 export interface RouteEntry {
   readonly route: AppRoute;
   readonly handler: SignalRouteHandler<unknown>;
-  /**
-   * Set when this registration exists only because the blanket namespace
-   * expansion derived it, and not because `LEGACY_ZERO_PATHS` lists it. Route
-   * modules never set it; `withApiNamespaceAliases` is its only producer, and
-   * `createAppWithRoutes` reads it to report the first request that arrives.
-   */
-  readonly viaNamespaceAliasFallback?: boolean;
 }
 
 function routeRegistrationKey(entry: RouteEntry): string {
@@ -53,75 +46,48 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
  * is compatibility kept deliberately, rather than a derivation nobody can
  * audit.
  *
- * While the fallback below is still in place, a row is what separates a
- * deliberate legacy path from a reported one — removing a row makes that path
- * start reporting, not start 404ing. Reachability follows the table only once
- * #26701 removes the fallback; that is the slice where a deleted row also
- * retires the path.
+ * The table is exhaustive. #28701 removed the blanket expansion that used to
+ * keep every other `/api/zero/**` path resolving behind it, so a `/api/zero/**`
+ * path is served only when this table or `MIGRATED_BRANDED_PATHS` names it, and
+ * removing a row now retires the path rather than downgrading it to a reported
+ * one.
  *
  * Keyed by path alone rather than by `METHOD path`: the evidence below is a
  * path template with no method attached, so restricting an entry to the single
- * method that happened to appear inside a three-day window would 404 a
+ * method that happened to appear inside the retained window would 404 a
  * caller's other methods on the same path.
  *
- * The first group is every `/api/zero/**` path template that received a
- * request in `vm0-request-log-prod`, re-derived on 2026-08-20 over the whole
- * retained window. Some of the lowest-count rows are operator probes from the
- * #28356 investigation rather than real clients; they stay, because a dead
- * row costs one line and a missing row costs a real caller a 404.
+ * Every remaining row belongs to a provider console — a Slack or Teams app
+ * configuration holds the URL, not a client we control — so no deploy and no
+ * client release drains it. #28701 narrowed the table to these six against the
+ * 6.3 days `vm0-request-log-prod` retains, 2026-08-17 to 2026-08-23:
  *
- * The second group is seeded regardless of measured traffic, because a
- * provider console — not a client we control — holds the URL.
+ * - `slack/events`, `slack/oauth/install`, and `slack/oauth/callback` were
+ *   still taking requests on the last day of the window, from 33 and 17
+ *   distinct source addresses inside Slack's own infrastructure. That is what
+ *   proves the Slack app configuration still points at the legacy paths.
+ * - `slack/commands` and `slack/interactive` saw no traffic in the window and
+ *   stay anyway: they live in the same Slack app configuration as the Event
+ *   Subscriptions URL that is demonstrably still legacy, so their silence says
+ *   nobody used a slash command that week, not that the configuration moved.
+ * - `slack/oauth/callback` and `teams/oauth/callback` are also produced inside
+ *   this repository, as `redirect_uri` values in `routes/slack-oauth.ts` and
+ *   `routes/teams-oauth.ts`. The Teams row is held deliberately so that
+ *   `api.vm0.ai` and `/api/zero/**` retire together, as recorded on #26701.
+ *
+ * The rows #28701 removed are still served, by `MIGRATED_BRANDED_PATHS`: each
+ * of those contracts moved to a neutral path in a #28278 slice, and a row there
+ * names both branded forms. A row here records that a path is owed rather than
+ * which table serves it, which is why removing these twenty-five changed
+ * nothing a caller can observe.
  */
 const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
-  // Measured `/api/zero/**` traffic, most requests first.
-  "/api/okou/realtime/token": "/api/zero/realtime/token",
-  "/api/okou/computer-use/host/commands/next":
-    "/api/zero/computer-use/host/commands/next",
-  "/api/okou/computer-use/audit-events": "/api/zero/computer-use/audit-events",
-  "/api/okou/computer-use/heartbeat": "/api/zero/computer-use/heartbeat",
   "/api/okou/slack/events": "/api/zero/slack/events",
-  "/api/okou/org": "/api/zero/org",
-  "/api/okou/connector-catalog/:connectorSlug/permissions":
-    "/api/zero/connector-catalog/:connectorSlug/permissions",
   "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/host/deployments/:deploymentId/complete":
-    "/api/zero/host/deployments/:deploymentId/complete",
-  "/api/okou/host/deployments/prepare": "/api/zero/host/deployments/prepare",
-  "/api/okou/uploads/prepare": "/api/zero/uploads/prepare",
-  "/api/okou/uploads/complete": "/api/zero/uploads/complete",
-  "/api/okou/recognize": "/api/zero/recognize",
-  "/api/okou/web/download-file": "/api/zero/web/download-file",
-  "/api/okou/teams/bot": "/api/zero/teams/bot",
-  "/api/okou/logs": "/api/zero/logs",
-  "/api/okou/agents/:id": "/api/zero/agents/:id",
-  "/api/okou/agents/:id/user-connectors":
-    "/api/zero/agents/:id/user-connectors",
-  "/api/okou/scrape": "/api/zero/scrape",
-  "/api/okou/connectors": "/api/zero/connectors",
-  "/api/okou/host/sites/:publicSlug/files":
-    "/api/zero/host/sites/:publicSlug/files",
-  "/api/okou/billing/concurrency-checkout/preview":
-    "/api/zero/billing/concurrency-checkout/preview",
-  "/api/okou/feishu/events/:installationId":
-    "/api/zero/feishu/events/:installationId",
-  "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
-  "/api/okou/logs/:id": "/api/zero/logs/:id",
-  "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
-
-  // Seeded rather than measured, because a provider console — not a client we
-  // control — held the URL when the row was written. Every one of these rows
-  // now belongs to a contract that has moved to its neutral path, so
-  // `MIGRATED_BRANDED_PATHS` serves both branded forms rather than the
-  // expansion deriving the `zero` one: the Teams routes in #28545, the Feishu
-  // routes in #28544, and the four Slack routes in #28600. They stay listed,
-  // because a row records that a path is owed rather than which table serves it
-  // — see the ordering constraint recorded on #26701.
-  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
-  "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
   "/api/okou/slack/commands": "/api/zero/slack/commands",
   "/api/okou/slack/interactive": "/api/zero/slack/interactive",
+  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
 
 interface BrandedPathForms {
@@ -149,46 +115,50 @@ function brandedPathForms(path: string): BrandedPathForms | undefined {
 }
 
 /**
- * True when only the blanket expansion produces `aliasPath`: it is a legacy
- * path that no contract declares and `LEGACY_ZERO_PATHS` does not list.
+ * True when the expansion may register `aliasPath` for a contract declaring
+ * `declaredPath`. The declared path and the canonical `/api/okou/**` form
+ * always register; a derived `/api/zero/**` path registers only when
+ * `LEGACY_ZERO_PATHS` names it.
  */
-function isFallbackOnlyLegacyPath(
+function servesNamespaceAliasPath(
   declaredPath: string,
   aliasPath: string,
 ): boolean {
   if (aliasPath === declaredPath) {
-    return false;
+    return true;
   }
   const forms = brandedPathForms(declaredPath);
   if (!forms || aliasPath !== forms.legacy) {
-    return false;
+    return true;
   }
-  return LEGACY_ZERO_PATHS[forms.canonical] !== aliasPath;
+  return LEGACY_ZERO_PATHS[forms.canonical] === aliasPath;
 }
 
 /**
- * Registers the legacy `/api/zero/**` paths named in `LEGACY_ZERO_PATHS`, and
- * keeps the blanket expansion behind them as a fallback so no path that
- * resolves today stops resolving.
+ * Registers the canonical `/api/okou/**` form of every branded contract path,
+ * and the legacy `/api/zero/**` form only where `LEGACY_ZERO_PATHS` names it.
  *
- * The fallback stays until #26701 can prove it is unused, which the request
- * log alone cannot do: it retains about three days, which cannot tell a
- * drained caller apart from a weekly one. Narrowing on that evidence would
- * silently 404 a real client, so instead every fallback-only registration is
- * marked and `createAppWithRoutes` reports the first request that reaches it.
- * That turns each gap in the table into a measurement rather than an outage.
+ * Until #28701 this expansion derived the legacy form unconditionally and
+ * marked the registrations the table did not list, so `createAppWithRoutes`
+ * could report the first request that reached one. That fallback existed
+ * because the request log retained about three days, which cannot tell a
+ * drained caller apart from a weekly one, and narrowing on that evidence would
+ * have silently 404ed a real client. The log retains 6.3 days now and #28701
+ * measured the whole window, so the table names every legacy path still owed
+ * and the derivation behind it is gone — the reporting was retired because it
+ * had nothing left to find, not because it was unwanted.
  */
 export function withApiNamespaceAliases(
   routes: readonly RouteEntry[],
 ): readonly RouteEntry[] {
   return routes.flatMap((entry) => {
-    return apiNamespaceAliasPaths(entry.route.path).map((path) => {
-      const alias = routeEntryWithPath(entry, path);
-      if (!isFallbackOnlyLegacyPath(entry.route.path, path)) {
-        return alias;
-      }
-      return { ...alias, viaNamespaceAliasFallback: true };
-    });
+    return apiNamespaceAliasPaths(entry.route.path)
+      .filter((path) => {
+        return servesNamespaceAliasPath(entry.route.path, path);
+      })
+      .map((path) => {
+        return routeEntryWithPath(entry, path);
+      });
   });
 }
 
@@ -197,14 +167,15 @@ export function withApiNamespaceAliases(
  * canonical path its contract now declares.
  *
  * `LEGACY_ZERO_PATHS` cannot express this, which is why this is a second table
- * rather than more rows in that one. That table classifies which of the
- * `/api/zero/**` registrations the expansion above already produced are
- * intentional; this one decides which branded registrations exist at all.
- * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
- * moves a contract off `/api/okou/**` the expansion produces no branded path
- * for it and neither branded path is registered any more — published CLI builds
- * still calling the branded path would get a 404 with nothing in either table
- * able to say otherwise.
+ * rather than more rows in that one. That table names the `/api/zero/**` form
+ * the expansion above may derive for a contract that still declares a branded
+ * path; this one names branded registrations for a contract that declares a
+ * neutral one, including the `/api/okou/**` form the expansion cannot derive
+ * either. `apiNamespaceAliasPaths` returns a neutral path unchanged, so once
+ * #28278 moves a contract off `/api/okou/**` the expansion produces no branded
+ * path for it and neither branded path is registered any more — published CLI
+ * builds still calling the branded path would get a 404 with nothing in either
+ * table able to say otherwise.
  *
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
@@ -213,9 +184,10 @@ export function withApiNamespaceAliases(
  * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
- * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
- * request log retains about three days, which by itself cannot prove a row is
- * drained — it cannot tell a caller that left from one that calls weekly.
+ * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules.
+ * `vm0-request-log-prod` retained 6.3 days when #28701 read it, which is long
+ * enough to name a caller that is still there and not long enough to prove a
+ * silent row has no caller that returns.
  *
  * The surfaces a row holds open, and the window each one bounds: an open web or
  * app page keeps the bundle it loaded for about two days, and an execution
@@ -660,10 +632,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // 7, and a CLI package pinned by an execution context's `CLI_PKG_URL` embeds
   // the contract path it was built from for that context's queue and claimed-run
   // lifetime. The `zero` form was reachable through the blanket expansion until
-  // the contract moved, and `/api/zero/billing/concurrency-checkout/preview` is
-  // measured traffic in `LEGACY_ZERO_PATHS`, so it is owed by evidence rather
-  // than by symmetry. Both forms are removable only under #26701's evidence
-  // rules, like every other row in this table.
+  // the contract moved, and `/api/zero/billing/concurrency-checkout/preview`
+  // carried measured traffic of its own, so it is owed by evidence rather than
+  // by symmetry — #28701 dropped its `LEGACY_ZERO_PATHS` row because these rows
+  // are what serve it, not because the evidence expired. Both forms are
+  // removable only under #26701's evidence rules, like every other row here.
   "/api/billing/auto-recharge": [
     "/api/okou/billing/auto-recharge",
     "/api/zero/billing/auto-recharge",
@@ -809,12 +782,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // measured traffic of its own and was reachable through the blanket expansion
   // until the contract moved. Both are owed on all sixteen paths.
   //
-  // The four rows `LEGACY_ZERO_PATHS` lists — `host/commands/next`,
-  // `audit-events`, `heartbeat`, and `hosts/start` — were served by that table
-  // before this move and are served by these rows after it: the contract no
-  // longer declares a branded path for the expansion to classify. The rows
-  // there stay untouched, and removal of either set follows #26701's evidence
-  // rules.
+  // Four of these paths — `host/commands/next`, `audit-events`, `heartbeat`,
+  // and `hosts/start` — were served by `LEGACY_ZERO_PATHS` before this move and
+  // are served by these rows after it: the contract no longer declares a
+  // branded path for the expansion to derive. #28701 dropped their rows from
+  // that table once it was clear these rows are what serve them. Removal of
+  // these follows #26701's evidence rules like every other row here.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
@@ -1682,11 +1655,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
  * callers still hold.
  *
  * Applied after `withApiNamespaceAliases` and never before it: these paths are
- * finished registrations, and passing them back through the blanket expansion
- * would derive each one's sibling namespace a second time and register it
- * twice. Nothing produced here is marked `viaNamespaceAliasFallback` — a row is
- * a declared commitment rather than a gap the compatibility table missed, so it
- * must not reach the fallback report in `createAppWithRoutes`.
+ * finished registrations, and passing a row's `/api/zero/**` form back through
+ * the expansion would derive its canonical sibling a second time and register
+ * that path twice.
  */
 export function withMigratedBrandedPaths(
   routes: readonly RouteEntry[],

@@ -1302,7 +1302,7 @@ function missingBrandedPaths(
   });
 }
 
-// `withApiNamespaceAliases` derives a branded route's second namespace and
+// `withApiNamespaceAliases` derives a branded route's canonical namespace and
 // leaves a neutral path alone, which is why a contract that moves to its
 // neutral path loses both branded registrations. This file covers the table
 // that gives them back: what it registers, what it must not touch, and the
@@ -1339,21 +1339,6 @@ describe("branded paths for migrated neutral routes", () => {
     );
 
     expect(registeredPaths(registered)).toStrictEqual(["/api/synthetic/other"]);
-  });
-
-  // A row is compatibility promised on purpose, so it must not reach the
-  // unlisted-legacy-path report that `createAppWithRoutes` writes.
-  it("marks nothing it registers as a namespace alias fallback", () => {
-    const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases([NEUTRAL_ROUTE]),
-      MIGRATED_TABLE,
-    );
-
-    expect(
-      registered.map((entry) => {
-        return entry.viaNamespaceAliasFallback;
-      }),
-    ).toStrictEqual([undefined, undefined, undefined]);
   });
 
   it("fails uniqueness when a row collides with a declared path", () => {
@@ -1396,12 +1381,16 @@ describe("branded paths for migrated neutral routes", () => {
   // contract moves, every mechanism assertion still holds, and both branded
   // paths 404 for callers running a released build. A row is the way out, and
   // adding one has to be deliberate.
+  //
+  // Since #28701 the expansion no longer derives an unlisted `/api/zero/**`
+  // path, so a branded contract owes its legacy form to a table row even before
+  // the move. The canonical form is what the move itself drops.
   it("reports the branded paths a move to a neutral path drops", () => {
     const beforeMove = missingBrandedPaths([BRANDED_ROUTE], {});
     const movedWithoutRow = missingBrandedPaths([NEUTRAL_ROUTE], {});
     const movedWithRow = missingBrandedPaths([NEUTRAL_ROUTE], MIGRATED_TABLE);
 
-    expect(beforeMove).toStrictEqual([]);
+    expect(beforeMove).toStrictEqual(["/api/zero/synthetic/thing"]);
     expect(movedWithoutRow).toStrictEqual([
       "/api/okou/synthetic/thing",
       "/api/zero/synthetic/thing",
@@ -1522,9 +1511,6 @@ describe("branded paths for migrated neutral routes", () => {
           }
           expect(match.handler).toBe(source.handler);
           expect(match.route).toStrictEqual({ ...source.route, path });
-          // A row is compatibility promised on purpose, so it must not be
-          // reported as a gap the compatibility table missed.
-          expect(match.viaNamespaceAliasFallback).toBeUndefined();
         }
       }
     }
@@ -2017,6 +2003,11 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
+  // The synthetic routes are not in the production `MIGRATED_BRANDED_PATHS`, so
+  // this app registers only what the two contracts declare and what the
+  // expansion derives from them. Since #28701 that no longer includes the
+  // legacy form of the branded contract, which is why the last status is a 404
+  // rather than the third 200 this test asserted while the fallback existed.
   it("builds an app that serves every path it registers", async () => {
     const app = createAppWithRoutes({
       signal: context.signal,
@@ -2038,6 +2029,6 @@ describe("branded paths for migrated neutral routes", () => {
       statuses.push(response.status);
     }
 
-    expect(statuses).toStrictEqual([200, 200, 200]);
+    expect(statuses).toStrictEqual([200, 200, 404]);
   });
 });

@@ -14,61 +14,47 @@ import {
 const CANONICAL_PREFIX = "/api/okou";
 const LEGACY_PREFIX = "/api/zero";
 
-// The legacy `/api/zero/**` paths #28356 owes callers, keyed by the canonical
-// `/api/okou/**` path. Restated here so registration is asserted against the
-// issue's measured table rather than against the map the production code
-// reads: the first group is the traffic measured in `vm0-request-log-prod`,
-// the second is seeded because a provider console holds the URL.
+// The six legacy `/api/zero/**` paths this service still owes a caller after
+// #28701, keyed by the canonical `/api/okou/**` path. Restated here rather than
+// imported from `route-entry.ts`, so narrowing the production table fails this
+// file instead of quietly agreeing with itself.
 //
-// This literal list is the only non-tautological expectation in this file. The
-// mechanism tests below derive their expectation from `apiNamespaceAliasPaths`,
-// the same function that produces the registration, so they cannot notice a
-// path disappearing: when #28278 migrates a contract from `/api/okou/x` to a
-// neutral path, `apiNamespaceAliasPaths` returns the neutral path unchanged,
-// every mechanism assertion still holds, and both branded registrations vanish
-// silently. Only a literal list catches that, and editing this list is meant to
-// be the friction that forces the migration to be a conscious decision.
+// Every row is held by a Slack or Teams app configuration: a provider console
+// holds the URL, so no deploy and no client release drains it. `slack/commands`
+// and `slack/interactive` carried no traffic in the 6.3 days
+// `vm0-request-log-prod` retained when #28701 read it, and stay because they
+// live in the same Slack app configuration as the Event Subscriptions URL that
+// demonstrably still points at the legacy path.
 const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
-  "/api/okou/realtime/token": "/api/zero/realtime/token",
-  "/api/okou/computer-use/host/commands/next":
-    "/api/zero/computer-use/host/commands/next",
-  "/api/okou/computer-use/audit-events": "/api/zero/computer-use/audit-events",
-  "/api/okou/computer-use/heartbeat": "/api/zero/computer-use/heartbeat",
   "/api/okou/slack/events": "/api/zero/slack/events",
-  "/api/okou/org": "/api/zero/org",
-  "/api/okou/connector-catalog/:connectorSlug/permissions":
-    "/api/zero/connector-catalog/:connectorSlug/permissions",
   "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/host/deployments/:deploymentId/complete":
-    "/api/zero/host/deployments/:deploymentId/complete",
-  "/api/okou/host/deployments/prepare": "/api/zero/host/deployments/prepare",
-  "/api/okou/uploads/prepare": "/api/zero/uploads/prepare",
-  "/api/okou/uploads/complete": "/api/zero/uploads/complete",
-  "/api/okou/recognize": "/api/zero/recognize",
-  "/api/okou/web/download-file": "/api/zero/web/download-file",
-  "/api/okou/teams/bot": "/api/zero/teams/bot",
-  "/api/okou/logs": "/api/zero/logs",
-  "/api/okou/agents/:id": "/api/zero/agents/:id",
-  "/api/okou/agents/:id/user-connectors":
-    "/api/zero/agents/:id/user-connectors",
-  "/api/okou/scrape": "/api/zero/scrape",
-  "/api/okou/connectors": "/api/zero/connectors",
-  "/api/okou/host/sites/:publicSlug/files":
-    "/api/zero/host/sites/:publicSlug/files",
-  "/api/okou/billing/concurrency-checkout/preview":
-    "/api/zero/billing/concurrency-checkout/preview",
-  "/api/okou/feishu/events/:installationId":
-    "/api/zero/feishu/events/:installationId",
-  "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
-  "/api/okou/logs/:id": "/api/zero/logs/:id",
-  "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
-
-  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
-  "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
   "/api/okou/slack/commands": "/api/zero/slack/commands",
   "/api/okou/slack/interactive": "/api/zero/slack/interactive",
+  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
+
+// A legacy path #28701 retired. Its contract still declares the canonical
+// branded form, so before that issue the blanket expansion derived the legacy
+// form, marked it, and `createAppWithRoutes` reported the first request that
+// reached it; now nothing registers it and the path 404s. Written out rather
+// than derived from the route table, so a slice that moves this contract has to
+// choose a new subject instead of silently testing nothing.
+const RETIRED_LEGACY_PATH = "/api/zero/integrations/slack/download-file";
+const RETIRED_LEGACY_CANONICAL_PATH =
+  "/api/okou/integrations/slack/download-file";
+
+// A row #28701 removed from the compatibility table whose path did not retire
+// with it: `MIGRATED_BRANDED_PATHS` names both branded forms of the neutral
+// `/api/org` contract, so the table row recorded that the path was owed rather
+// than being what served it. Pinned here because it is the difference between
+// the two tables, and the reason removing twenty-five rows changed nothing a
+// caller can observe.
+const MIGRATED_BRANDED_SUBJECT = {
+  neutral: "/api/org",
+  canonical: "/api/okou/org",
+  legacy: "/api/zero/org",
+} as const;
 
 function routeKey(entry: RouteEntry): string {
   return `${entry.route.method} ${entry.route.path}`;
@@ -79,13 +65,6 @@ function canonicalPath(path: string): string {
     return path;
   }
   return `${CANONICAL_PREFIX}${path.slice(LEGACY_PREFIX.length)}`;
-}
-
-function legacyPath(path: string): string {
-  if (brandedApiNamespace(path) !== "okou") {
-    return path;
-  }
-  return `${LEGACY_PREFIX}${path.slice(CANONICAL_PREFIX.length)}`;
 }
 
 // Both branded forms of every compatibility path, taken from the literal list
@@ -126,8 +105,8 @@ function requireBrandedRoute(): RouteEntry {
 // Per-endpoint behaviour is covered through the endpoints themselves. This
 // file asserts the properties no single endpoint can express: over the whole
 // route table, which paths are registered, which of them the compatibility
-// table owes on purpose, and which exist only because the fallback derived
-// them.
+// table owes on purpose, and which the expansion is no longer allowed to
+// derive.
 describe("API namespace compatibility", () => {
   const registeredRoutes = withApiNamespaceAliases(ROUTES);
   // Composed the way production registers routes. The expansion above is the
@@ -142,7 +121,7 @@ describe("API namespace compatibility", () => {
     });
   }
 
-  it("registers symmetric Zero and Okou paths with the same handler and schema", () => {
+  it("registers the declared path and the canonical form of every contract", () => {
     const registrationCounts = new Map<string, number>();
     for (const entry of registeredRoutes) {
       const key = routeKey(entry);
@@ -150,12 +129,18 @@ describe("API namespace compatibility", () => {
     }
 
     for (const source of ROUTES) {
-      const paths = apiNamespaceAliasPaths(source.route.path);
+      const paths = new Set([
+        source.route.path,
+        canonicalPath(source.route.path),
+      ]);
       for (const path of paths) {
         const matches = registeredRoutes.filter(({ route }) => {
           return route.method === source.route.method && route.path === path;
         });
-        expect(matches).toHaveLength(1);
+        expect(
+          matches,
+          `Missing registration for ${source.route.method} ${path}`,
+        ).toHaveLength(1);
         const match = matches[0];
         if (!match) {
           throw new Error(
@@ -177,6 +162,51 @@ describe("API namespace compatibility", () => {
     }).not.toThrow();
   });
 
+  // What #28701 replaced the fallback with. Before it, the expansion derived
+  // the legacy form of every branded contract path and only marked the ones the
+  // table did not list; a `/api/zero/**` path now exists because the table names
+  // it, not because something derived it.
+  it("derives no legacy path the compatibility table does not name", () => {
+    const owed = new Set(Object.values(LEGACY_ZERO_PATHS));
+    const derived = registeredRoutes
+      .map(({ route }) => {
+        return route.path;
+      })
+      .filter((path) => {
+        return brandedApiNamespace(path) === "zero" && !owed.has(path);
+      })
+      .sort();
+
+    expect(derived).toStrictEqual([]);
+  });
+
+  it("retires a legacy path the table no longer names while keeping its canonical form", () => {
+    expect(
+      ROUTES.filter((entry) => {
+        return entry.route.path === RETIRED_LEGACY_CANONICAL_PATH;
+      }),
+      `Expected a contract declaring ${RETIRED_LEGACY_CANONICAL_PATH} for this guard to retire something`,
+    ).not.toHaveLength(0);
+
+    expect(registrationsFor(RETIRED_LEGACY_PATH)).toStrictEqual([]);
+    expect(
+      registrationsFor(RETIRED_LEGACY_CANONICAL_PATH).length,
+    ).toBeGreaterThan(0);
+  });
+
+  // The issue that narrowed the table proposed `/api/zero/org` as the retired
+  // subject, from a request-log window where its traffic had stopped. It is not
+  // retired, and this pins why: the row removed from the compatibility table is
+  // not what served the path.
+  it("keeps a removed row's path served by the migrated branded table", () => {
+    for (const path of Object.values(MIGRATED_BRANDED_SUBJECT)) {
+      expect(
+        registrationsFor(path).length,
+        `Expected ${path} to stay served`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
   it("keeps neutral health, webhook, and product-scoped Desktop routes single", () => {
     const neutralPaths = [
       "/health",
@@ -193,7 +223,7 @@ describe("API namespace compatibility", () => {
     }
   });
 
-  it("remains symmetric when the source contract uses the legacy Zero path", () => {
+  it("registers the canonical form when the source contract uses the legacy Zero path", () => {
     const source = requireBrandedRoute();
     const zeroSource: RouteEntry = {
       route: {
@@ -214,7 +244,7 @@ describe("API namespace compatibility", () => {
     const source = requireBrandedRoute();
     const composedRouteSlice = withApiNamespaceAliases([source, source]);
 
-    expect(composedRouteSlice).toHaveLength(4);
+    expect(composedRouteSlice).toHaveLength(2);
     expect(() => {
       assertUniqueRouteRegistrations(composedRouteSlice);
     }).toThrow(`Duplicate API route registration: ${routeKey(source)}`);
@@ -240,9 +270,6 @@ describe("API namespace compatibility", () => {
         }
         expect(match.handler).toBe(source.handler);
         expect(match.route).toStrictEqual({ ...source.route, path: legacy });
-        // A listed path is compatibility owed on purpose, so it must not be
-        // reported as a gap the table missed.
-        expect(match.viaNamespaceAliasFallback).toBeUndefined();
       }
     }
   });
@@ -323,33 +350,5 @@ describe("API namespace compatibility", () => {
         return !servedCanonicalPaths.has(path);
       }),
     ).toStrictEqual([]);
-  });
-
-  it("marks exactly the unlisted legacy registrations as fallback", () => {
-    const expectedFallbackKeys = ROUTES.flatMap(({ route }) => {
-      if (brandedApiNamespace(route.path) === undefined) {
-        return [];
-      }
-      const legacy = legacyPath(route.path);
-      if (
-        route.path === legacy ||
-        LEGACY_ZERO_PATHS[canonicalPath(route.path)] === legacy
-      ) {
-        return [];
-      }
-      return [`${route.method} ${legacy}`];
-    }).sort();
-
-    const markedKeys = registeredRoutes
-      .filter((entry) => {
-        return entry.viaNamespaceAliasFallback === true;
-      })
-      .map(routeKey)
-      .sort();
-
-    expect(markedKeys).toStrictEqual(expectedFallbackKeys);
-    // The fallback still carries the bulk of the branded surface; #26701
-    // removes it only once the fallback log has gone quiet for long enough.
-    expect(markedKeys.length).toBeGreaterThan(0);
   });
 });
