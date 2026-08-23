@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
@@ -37,7 +38,6 @@ import {
 } from "@okouai/api-contracts/contracts/agents";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
@@ -75,11 +75,11 @@ import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agen
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { agentsRoutes } from "../../agents";
+import { connectorAccountRoutes } from "../../connector-accounts";
 import { customConnectorsRoutes } from "../../custom-connectors";
 import { customConnectorsCreateRoutes } from "../../custom-connectors-create";
 import { customConnectorsDeleteRoutes } from "../../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../../custom-connectors-get";
-import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconnect";
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
@@ -208,12 +208,12 @@ const authOrgRoutes = [
   ...orgLogoRoutes,
   ...teamRoutes,
   ...agentsRoutes,
+  ...connectorAccountRoutes,
   ...customConnectorsRoutes,
   ...customConnectorsCreateRoutes,
   ...customConnectorsGetRoutes,
   ...customConnectorsDeleteRoutes,
   ...customConnectorsValuesSetRoutes,
-  ...customConnectorDisconnectRoutes,
 ] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
@@ -1474,23 +1474,28 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.set({
           headers: authenticate(actor),
           params: { id: connectorId },
-          body: { values: [{ key: "secret", kind: "secret", value }] },
+          body: {
+            values: [{ key: "secret", kind: "secret", value }],
+            account: { intent: "single-account" },
+          },
         }),
         [200],
       );
     },
 
-    async disconnectCustomConnector(
+    async disconnectSingleCustomConnectorAccount(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorConnectionContract,
+        connectorAccountsContract,
       );
       await accept(
-        client.disconnect({
+        client.disconnectSingleAccount({
           headers: authenticate(actor),
-          params: { id: connectorId },
+          body: {
+            target: { kind: "custom", customConnectorId: connectorId },
+          },
         }),
         [204],
       );

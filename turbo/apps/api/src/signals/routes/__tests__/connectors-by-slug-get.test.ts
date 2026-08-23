@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
@@ -19,6 +20,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
@@ -77,11 +79,11 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
-    ).delete({
-      params: { connectorSlug: "openai" },
+    setupApp({ context, routes: connectorAccountRoutes })(
+      connectorAccountsContract,
+    ).disconnectSingleAccount({
       headers: authHeaders(),
+      body: { target: { kind: "builtin", connectorSlug: "openai" } },
     }),
     [204, 404],
   );

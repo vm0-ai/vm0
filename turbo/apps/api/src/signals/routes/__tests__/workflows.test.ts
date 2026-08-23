@@ -76,7 +76,7 @@ type StaffFixture =
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
     case "connector": {
-      await connectorApi.deleteConnectorBySlug(
+      await connectorApi.disconnectSingleBuiltinConnectorAccount(
         fixture.actor,
         fixture.connectorSlug,
       );

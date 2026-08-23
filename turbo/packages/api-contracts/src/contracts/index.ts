@@ -1150,7 +1150,6 @@ export {
 export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorOAuth2Contract,
   customConnectorResponseSchema,
@@ -1167,7 +1166,6 @@ export {
   isIntegrationManagedCustomConnectorProviderAdapter,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
-  type ZeroCustomConnectorConnectionContract,
   type ZeroCustomConnectorValuesContract,
   type ZeroCustomConnectorOAuth2Contract,
   type CustomConnectorResponse,

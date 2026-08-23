@@ -170,7 +170,11 @@ function createConnectorCleanup(
   return async () => {
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
     mockApiTestConnectorProviderConfiguration();
-    await connectorsApi.deleteConnectorBySlug(actor, connectorSlug, [204, 404]);
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      connectorSlug,
+      [204, 404],
+    );
   };
 }
 
@@ -2603,7 +2607,7 @@ describe("connector catalog valid lifecycle", () => {
     const filtered = await syncCatalog();
     expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
 
-    await connectorsApi.deleteConnectorBySlug(actor, "agora");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "agora");
     const secretsAfterDelete = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2683,7 +2687,11 @@ describe("connector catalog valid lifecycle", () => {
       { statuses: [200] },
     );
     expect(replacement.status).toBe(200);
-    await connectorsApi.deleteConnectorBySlug(actor, "agora", [204]);
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "agora",
+      [204],
+    );
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -3789,7 +3797,10 @@ describe("connector catalog valid lifecycle", () => {
       ).start({
         params: { connectorSlug: "steam" },
         headers,
-        body: { authMethod: "openid" },
+        body: {
+          authMethod: "openid",
+          account: { intent: "single-account" },
+        },
       }),
       [200],
     );
@@ -3967,7 +3978,7 @@ describe("connector catalog valid lifecycle", () => {
       code: "catalog-slack-code",
       state,
     });
-    await connectorsApi.deleteConnectorBySlug(actor, "slack");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "slack");
     expect(revokeCalls).toBe(1);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });

@@ -47,7 +47,7 @@ interface ConnectedFixture {
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
   async (fixture) => {
-    await connectorsApi.deleteConnectorBySlug(
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
       fixture.actor,
       fixture.connectorSlug,
     );

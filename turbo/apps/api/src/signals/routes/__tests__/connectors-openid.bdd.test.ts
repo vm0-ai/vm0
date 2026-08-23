@@ -53,7 +53,7 @@ function mockSteamRuntimeEnv(): void {
 
 async function startSteamOpenId(
   actor: TestActor,
-  account?: ConnectorAccountMutationIntent,
+  account: ConnectorAccountMutationIntent = { intent: "single-account" },
 ): Promise<URL> {
   mockSession(actor);
   const response = await accept(
@@ -464,7 +464,7 @@ describe("Steam OpenID connector", () => {
       ).start({
         params: { connectorSlug: "github" },
         headers: authHeaders(),
-        body: { authMethod: "oauth" },
+        body: { authMethod: "oauth", account: { intent: "single-account" } },
       }),
       [400],
     );

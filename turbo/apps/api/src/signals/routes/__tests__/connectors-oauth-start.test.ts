@@ -156,6 +156,7 @@ async function requestOauthStart(
     headers,
     body: JSON.stringify({
       authMethod: options.authMethod ?? "oauth",
+      account: { intent: "single-account" },
       ...(options.callbackTarget
         ? { callbackTarget: options.callbackTarget }
         : {}),

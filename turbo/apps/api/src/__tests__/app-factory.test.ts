@@ -29,8 +29,6 @@ const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...mailRoutes]);
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
-const PRE_RETIRED_CHAT_EVENTS_API_VERSION = "0.738.0";
-
 // Derived so that raising the supported floor does not turn this fixture into
 // an unsupported version.
 const NEWER_WEB_CLIENT_VERSION = MINIMUM_WEB_CLIENT_VERSION.replace(
@@ -1093,23 +1091,20 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients older than the retired events API floor", async () => {
+    it("force-upgrades pre-account-explicit app clients before removed connector route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request(
-        "/api/zero/chat-threads/00000000-0000-4000-8000-000000000001/events",
-        {
-          method: "GET",
-          headers: {
-            [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-            [CLIENT_VERSION_HEADER]: PRE_RETIRED_CHAT_EVENTS_API_VERSION,
-          },
+      const response = await app.request("/api/connectors/github", {
+        method: "DELETE",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.781.0",
         },
-      );
+      });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.738.1");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.781.1");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",

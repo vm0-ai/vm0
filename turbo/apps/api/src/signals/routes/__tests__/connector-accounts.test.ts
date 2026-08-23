@@ -8,7 +8,6 @@ import {
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
@@ -16,12 +15,11 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
-import { customConnectorDisconnectRoutes } from "../custom-connectors-disconnect";
 import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { featureSwitchesRoutes } from "../feature-switches";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
@@ -34,13 +32,8 @@ const routes = Object.freeze([
   ...connectorsRoutes,
   ...customConnectorsRoutes,
   ...customConnectorsDeleteRoutes,
-  ...customConnectorDisconnectRoutes,
   ...customConnectorsValuesSetRoutes,
   ...featureSwitchesRoutes,
-]);
-const legacyDisconnectRoutes = Object.freeze([
-  ...connectorsRoutes,
-  ...customConnectorDisconnectRoutes,
 ]);
 
 interface Fixture {
@@ -60,7 +53,7 @@ function connectorClient() {
   return setupApp({ context, routes })(zeroConnectorManualGrantContract);
 }
 
-function legacyConnectorClient() {
+function connectorProjectionClient() {
   return setupApp({ context, routes })(zeroConnectorsBySlugContract);
 }
 
@@ -78,10 +71,6 @@ function customConnectorByIdClient() {
 
 function customConnectorValuesClient() {
   return setupApp({ context, routes })(zeroCustomConnectorValuesContract);
-}
-
-function customConnectorConnectionClient() {
-  return setupApp({ context, routes })(zeroCustomConnectorConnectionContract);
 }
 
 async function setConnectorAccountsEnabled(
@@ -278,7 +267,7 @@ describe("connector account lifecycle routes", () => {
     expect(selectedDefault.body.isDefault).toBeTruthy();
 
     const legacyProjection = await accept(
-      legacyConnectorClient().get({
+      connectorProjectionClient().get({
         headers: authHeaders(),
         params: { connectorSlug: "openai" },
       }),
@@ -562,48 +551,6 @@ describe("connector account lifecycle routes", () => {
     expect(disconnectedAccounts.body.connections).toStrictEqual([]);
   });
 
-  it("keeps accounts intact when a new client reaches an old API", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
-
-    const account = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          account: { intent: "single-account" },
-          values: { apiKey: "sk-old-api" },
-        },
-      }),
-      [200],
-    );
-
-    const oldApiResponse = await setupRawAppRequest({
-      context,
-      routes: legacyDisconnectRoutes,
-    })("/api/connector-accounts/single-account", {
-      method: "DELETE",
-      headers: {
-        ...authHeaders(),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        target: { kind: "builtin", connectorSlug: "openai" },
-      }),
-    });
-    expect(oldApiResponse.status).toBe(404);
-
-    const preserved = await accept(
-      accountClient().connections({
-        headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
-      }),
-      [200],
-    );
-    expect(preserved.body.connections).toMatchObject([{ id: account.body.id }]);
-  });
-
   it("paginates and searches more than one hundred accounts", async () => {
     const fixture = await seedFixture();
     await setConnectorAccountsEnabled(fixture, true);
@@ -884,17 +831,6 @@ describe("connector account lifecycle routes", () => {
         [409],
       );
       expect(safeDisconnect.body.error.message).toBe(
-        "Multiple connector accounts require an exact choice",
-      );
-
-      const legacyDisconnect = await accept(
-        customConnectorConnectionClient().disconnect({
-          headers: authHeaders(),
-          params: { id: definition.body.id },
-        }),
-        [409],
-      );
-      expect(legacyDisconnect.body.error.message).toBe(
         "Multiple connector accounts require an exact choice",
       );
 

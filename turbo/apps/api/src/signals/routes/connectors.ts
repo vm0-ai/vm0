@@ -32,7 +32,6 @@ import {
 import {
   connectManualGrantConnector$,
   connectNoAuthConnector$,
-  deleteConnectorLocalState$,
   connectorBySlug,
   connectorList,
   connectorScopeDiff,
@@ -202,32 +201,6 @@ const getConnectorBySlugInner$ = computed(async (get) => {
 
   return { status: 200 as const, body: connector };
 });
-
-const deleteConnectorBySlugInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
-    const deleted = await set(
-      deleteConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: params.connectorSlug,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (deleted === "missing") {
-      return notFound("Connector not found");
-    }
-    if (deleted === "ambiguous") {
-      return conflict("Multiple connector accounts require an exact choice");
-    }
-
-    return { status: 204 as const, body: undefined };
-  },
-);
 
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -735,9 +708,5 @@ export const connectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorsBySlugContract.get,
     handler: authRoute(connectorReadAuth, getConnectorBySlugInner$),
-  },
-  {
-    route: zeroConnectorsBySlugContract.delete,
-    handler: authRoute(connectorWriteAuth, deleteConnectorBySlugInner$),
   },
 ];

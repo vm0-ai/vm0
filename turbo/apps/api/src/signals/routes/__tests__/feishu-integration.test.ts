@@ -16,7 +16,6 @@ import {
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorValuesContract,
@@ -78,7 +77,6 @@ import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../custom-connectors-get";
 import { customConnectorOAuth2Routes } from "../custom-connectors-oauth2";
 import { customConnectorProposalRoutes } from "../custom-connectors-proposal";
-import { customConnectorDisconnectRoutes } from "../custom-connectors-disconnect";
 import { customConnectorsUpdateRoutes } from "../custom-connectors-update";
 import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { feishuConnectRoutes } from "../feishu-connect";
@@ -2250,19 +2248,6 @@ describe("Feishu integration", () => {
       [403],
     );
     expect(managedProposal.body.error.message).toBe(
-      "This connector is managed by its integration",
-    );
-
-    const managedDisconnect = await accept(
-      setupApp({ context, routes: customConnectorDisconnectRoutes })(
-        zeroCustomConnectorConnectionContract,
-      ).disconnect({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { id: managedConnector.id },
-      }),
-      [403],
-    );
-    expect(managedDisconnect.body.error.message).toBe(
       "This connector is managed by its integration",
     );
 

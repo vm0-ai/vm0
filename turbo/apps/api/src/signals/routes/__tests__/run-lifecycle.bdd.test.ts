@@ -10326,7 +10326,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.disconnectCustomConnector(actor, custom.id);
+    await connectors.disconnectSingleCustomConnectorAccount(actor, custom.id);
     const [deletedExactRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -12628,7 +12628,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await connectors.disconnectCustomConnector(actor, saved.connector.id);
+    await connectors.disconnectSingleCustomConnectorAccount(
+      actor,
+      saved.connector.id,
+    );
 
     const incompleteRun = await api.createRun(actor, {
       agentId,

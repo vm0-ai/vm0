@@ -3061,7 +3061,7 @@ describe("okou workflow automations", () => {
           return;
         }
         deleteConnector = false;
-        await connectorsApi.deleteConnectorBySlug(
+        await connectorsApi.disconnectSingleBuiltinConnectorAccount(
           scenario.actor,
           "google-calendar",
         );
@@ -3520,7 +3520,10 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    await connectorsApi.deleteConnectorBySlug(scenario.actor, "gmail");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "gmail",
+    );
     expect(stop.calls).toBe(1);
   });
 

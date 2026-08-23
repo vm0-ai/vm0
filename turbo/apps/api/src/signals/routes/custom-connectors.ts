@@ -10,7 +10,6 @@ import { customConnectorsDeleteRoutes } from "./custom-connectors-delete";
 import { customConnectorsGetRoutes } from "./custom-connectors-get";
 import { customConnectorsUpdateRoutes } from "./custom-connectors-update";
 import { customConnectorProposalRoutes } from "./custom-connectors-proposal";
-import { customConnectorDisconnectRoutes } from "./custom-connectors-disconnect";
 import { customConnectorOAuth2Routes } from "./custom-connectors-oauth2";
 import { customConnectorsValuesSetRoutes } from "./custom-connectors-values-set";
 
@@ -39,7 +38,6 @@ export const customConnectorsRoutes: readonly RouteEntry[] = [
   ...customConnectorsDeleteRoutes,
   ...customConnectorsUpdateRoutes,
   ...customConnectorProposalRoutes,
-  ...customConnectorDisconnectRoutes,
   ...customConnectorsValuesSetRoutes,
   ...customConnectorOAuth2Routes,
 ];

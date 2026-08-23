@@ -457,7 +457,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       "cli",
       { intent: "reconnect", connectionId: complete.connector.id },
     );
-    await connectorsApi.deleteConnectorBySlug(actor, "aws");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "aws");
     const rejectedReconnect = await connectorsApi.requestExternalCodeComplete(
       actor,
       "aws",
@@ -544,7 +544,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     const readBack = await connectorsApi.readConnectorBySlug(actor, "aws");
     expect(readBack.id).toBe(retried.connector.id);
 
-    await connectorsApi.deleteConnectorBySlug(actor, "aws");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "aws");
   });
 
   it("returns generic external-code copy when the PlayStation NPSSO token is rejected", async () => {
@@ -702,7 +702,10 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(storedSecrets, "bdd-nintendo-session-token");
     expectNoVisibleSecret(storedSecrets, "bdd-nintendo-access-token");
 
-    await connectorsApi.deleteConnectorBySlug(actor, "nintendo-store");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "nintendo-store",
+    );
   });
 
   it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
@@ -870,7 +873,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     ]);
 
     provider.failLogout();
-    await connectorsApi.deleteConnectorBySlug(
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
       actor,
       "nintendo-switch-parental-controls",
     );
@@ -957,7 +960,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(secondComplete.connector.slug).toBe("aws");
     expect(provider.tokenRequests).toHaveLength(2);
 
-    await connectorsApi.deleteConnectorBySlug(actor, "aws");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "aws");
   });
 
   it("expires external-code sessions past their deadline, including stale completing claims", async () => {

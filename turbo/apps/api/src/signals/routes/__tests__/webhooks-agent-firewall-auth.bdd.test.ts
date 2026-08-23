@@ -356,7 +356,7 @@ describe("FW-2: template resolution without connector refresh", () => {
       "X-Email": "current@example.test",
     });
 
-    await connectorsApi.deleteConnectorBySlug(actor, "jira");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "jira");
     const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
     if (disconnected.status !== 424) {
       throw new Error("Expected disconnected builtin connector auth to fail");
@@ -982,7 +982,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       "X-AWS-Session-Token": oldCredentials.sessionToken,
     });
 
-    await connectors.deleteConnectorBySlug(actor, "aws");
+    await connectors.disconnectSingleBuiltinConnectorAccount(actor, "aws");
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {

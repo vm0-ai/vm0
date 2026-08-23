@@ -135,7 +135,10 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
 
     expectApiError(response.body);
     expect(response.body.error.code).toBe("NOT_FOUND");
-    await connectorsApi.deleteConnectorBySlug(actor, "openai");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "openai",
+    );
   });
 
   it("returns an empty diff when stored scopes match current scopes exactly", async () => {
