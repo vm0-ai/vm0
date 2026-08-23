@@ -26,6 +26,16 @@ pub(crate) fn kill_process_group_by_pid(pid: u32) {
     }
 }
 
+/// Best-effort notification that a child process has exited without reaping it.
+///
+/// On Linux, this uses a pidfd registered with Tokio. A successful
+/// [`Self::wait_for_exit`] result is only a pre-reap observation: it does not
+/// consume the child's exit status or call [`tokio::process::Child::wait`]. The
+/// caller retains ownership of the child and must still reap it explicitly.
+///
+/// Pidfd notification can be unavailable because the child has no PID, the
+/// platform does not support pidfds, or pidfd setup fails. Callers must provide
+/// an explicit fallback when [`Self::is_available`] is false.
 pub(crate) struct ChildExitNotifier {
     inner: ChildExitNotifierInner,
 }
@@ -37,15 +47,25 @@ enum ChildExitNotifierInner {
 }
 
 #[derive(Debug)]
+/// Explains why a [`ChildExitNotifier`] cannot provide pidfd-backed notification.
+///
+/// An unavailable notifier is not an exit result. Callers must choose an
+/// explicit fallback, such as waiting on the child directly, and can use this
+/// value for diagnostics through [`ChildExitNotifier::unavailable_reason`].
 pub(crate) enum ChildExitNotifierUnavailable {
+    /// The child did not expose a PID when the notifier was opened.
     MissingPid,
     #[cfg(not(target_os = "linux"))]
+    /// The current platform does not provide pidfd-based notification.
     Unsupported,
     #[cfg(target_os = "linux")]
+    /// Opening a pidfd for the child failed.
     OpenFailed(io::Error),
     #[cfg(target_os = "linux")]
+    /// Registering the pidfd with Tokio's async runtime failed.
     RegisterFailed(io::Error),
     #[cfg(test)]
+    /// The unavailable state was forced by a test.
     ForcedForTest,
 }
 
@@ -66,6 +86,12 @@ impl fmt::Display for ChildExitNotifierUnavailable {
 }
 
 impl ChildExitNotifier {
+    /// Opens a best-effort exit notifier for `child` without taking ownership of it.
+    ///
+    /// A missing PID or pidfd setup failure is represented by an unavailable
+    /// notifier. On non-Linux platforms, the notifier is always unavailable.
+    /// Callers must check [`Self::is_available`] and retain their explicit child
+    /// wait fallback.
     pub(crate) fn open(child: &tokio::process::Child) -> Self {
         let Some(pid) = child.id() else {
             return Self::unavailable(ChildExitNotifierUnavailable::MissingPid);
@@ -73,6 +99,10 @@ impl ChildExitNotifier {
         Self::open_for_pid(pid)
     }
 
+    /// Returns whether this notifier can provide pidfd-backed exit notification.
+    ///
+    /// `false` means that [`Self::wait_for_exit`] cannot be used as the exit
+    /// observation path and does not mean that the child has exited.
     pub(crate) fn is_available(&self) -> bool {
         match &self.inner {
             #[cfg(target_os = "linux")]
@@ -81,6 +111,10 @@ impl ChildExitNotifier {
         }
     }
 
+    /// Returns the reason pidfd-backed notification is unavailable, if any.
+    ///
+    /// The reason is diagnostic only; it is not a child exit status or a
+    /// replacement for waiting on the child.
     pub(crate) fn unavailable_reason(&self) -> Option<&ChildExitNotifierUnavailable> {
         match &self.inner {
             #[cfg(target_os = "linux")]
@@ -89,6 +123,17 @@ impl ChildExitNotifier {
         }
     }
 
+    /// Waits for the child to reach the pre-reap exit-notification point.
+    ///
+    /// On Linux, pidfd readability indicates that the process has exited, but
+    /// this method does not reap the child, consume its exit status, or transfer
+    /// ownership of [`tokio::process::Child`]. The caller must still call
+    /// [`tokio::process::Child::wait`] explicitly.
+    ///
+    /// This pre-reap point lets callers perform work that must happen before
+    /// reaping, such as process-group cleanup or draining child output. If the
+    /// notifier is unavailable, or notification fails, callers must use their
+    /// explicit fallback instead.
     pub(crate) async fn wait_for_exit(&self) -> io::Result<()> {
         match &self.inner {
             #[cfg(target_os = "linux")]
