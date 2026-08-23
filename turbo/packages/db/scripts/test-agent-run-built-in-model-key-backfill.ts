@@ -5,6 +5,183 @@ import { Client } from "pg";
 export const AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME =
   "backfill_agent_run_built_in_model_key_ids_0973";
 
+interface AgentRunModelKeyBridgeIdentity {
+  readonly functionBodyHash: string;
+  readonly triggerDefinition: string;
+}
+
+export function agentRunModelKeyBackfillProcedureStatement(
+  statements: readonly string[],
+): string {
+  const procedure = statements.find((statement) => {
+    return statement.includes(
+      `CREATE OR REPLACE PROCEDURE "${AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME}"(`,
+    );
+  });
+  assert.ok(procedure);
+  return procedure;
+}
+
+function requiredStatement(
+  statements: readonly string[],
+  marker: string,
+): string {
+  const statement = statements.find((candidate) => {
+    return candidate.includes(marker);
+  });
+  assert.ok(statement);
+  return statement;
+}
+
+function countOccurrences(value: string, expected: string): number {
+  return value.split(expected).length - 1;
+}
+
+function validateBackfillPreflight(
+  statements: readonly string[],
+  procedure: string,
+  bridgeIdentity: AgentRunModelKeyBridgeIdentity,
+): void {
+  const preflight = requiredStatement(
+    statements,
+    "Agent Run model key backfill requires the accepted enabled 0971 bridge",
+  );
+  assert.ok(
+    statements.indexOf(preflight) < statements.indexOf(procedure),
+    "the fail-closed preflight must run before the backfill procedure",
+  );
+  assert.ok(preflight.includes(bridgeIdentity.triggerDefinition));
+  assert.ok(preflight.includes(bridgeIdentity.functionBodyHash));
+  assert.match(preflight, /"trigger_row"\."tgenabled" = 'O'/u);
+  assert.match(
+    preflight,
+    /"vm0_model_key_id" IS NULL\s+AND "built_in_model_key_id" IS NOT NULL/u,
+  );
+  assert.match(
+    preflight,
+    /"vm0_model_key_id" IS NOT NULL\s+AND "built_in_model_key_id" IS NOT NULL\s+AND "vm0_model_key_id" IS DISTINCT FROM "built_in_model_key_id"/u,
+  );
+}
+
+function validateBackfillProcedure(
+  statements: readonly string[],
+  procedure: string,
+): void {
+  const batchStatement = procedure.match(
+    /WITH "batch" AS MATERIALIZED \(([\s\S]*?)\),\s*"updated" AS \(([\s\S]*?)\)\s*SELECT/u,
+  );
+  assert.ok(batchStatement);
+  const candidateSql = batchStatement[1]!;
+  const updateSql = batchStatement[2]!;
+  assert.match(
+    candidateSql,
+    /WHERE \(v_scan_after IS NULL OR "candidate"\."id" > v_scan_after\)\s+AND "candidate"\."vm0_model_key_id" IS NOT NULL\s+AND "candidate"\."built_in_model_key_id" IS NULL/u,
+  );
+  assert.match(
+    candidateSql,
+    /ORDER BY "candidate"\."id"\s+LIMIT 500\s+FOR UPDATE OF "candidate" SKIP LOCKED/u,
+  );
+  assert.match(
+    updateSql,
+    /UPDATE "agent_runs" AS "target"\s+SET "built_in_model_key_id" = "batch"\."vm0_model_key_id"\s+FROM "batch"/u,
+  );
+  assert.match(
+    updateSql,
+    /WHERE "target"\."id" = "batch"\."id"\s+AND "target"\."vm0_model_key_id" IS NOT NULL\s+AND "target"\."built_in_model_key_id" IS NULL/u,
+  );
+  assert.equal(
+    countOccurrences(procedure, 'UPDATE "agent_runs" AS "target"'),
+    1,
+  );
+  assert.equal((procedure.match(/\bCOMMIT;/gu) ?? []).length, 1);
+  assert.match(
+    procedure,
+    /COMMIT;\s+SET LOCAL lock_timeout = '1s';\s+SET LOCAL transaction_timeout = '5min';/u,
+  );
+  assert.equal(countOccurrences(procedure, "PERFORM pg_sleep(0.05);"), 2);
+  assert.match(procedure, /v_updated_ids IS DISTINCT FROM v_batch_ids/u);
+  assert.match(procedure, /p_no_progress_timeout > interval '30 seconds'/u);
+  assert.match(
+    procedure,
+    /Agent Run model key backfill made no progress for % while eligible rows remained/u,
+  );
+  assert.equal(
+    statements.includes(
+      `CALL "${AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME}"(interval '30 seconds');`,
+    ),
+    true,
+  );
+  assert.equal(
+    statements.includes(
+      `DROP PROCEDURE IF EXISTS "${AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME}"(interval);`,
+    ),
+    true,
+  );
+}
+
+function validateBackfillFinalAssertions(
+  statements: readonly string[],
+  bridgeIdentity: AgentRunModelKeyBridgeIdentity,
+): void {
+  const finalAssertions = requiredStatement(
+    statements,
+    "Agent Run model key backfill procedure still exists",
+  );
+  for (const assertion of [
+    "Agent Run model key backfill left legacy-only rows",
+    "Agent Run model key backfill left canonical-only rows",
+    "Agent Run model key backfill left unequal dual rows",
+    "Agent Run model key backfill did not preserve the accepted enabled 0971 bridge",
+    "Agent Run model key backfill procedure still exists",
+  ]) {
+    assert.ok(finalAssertions.includes(assertion));
+  }
+  assert.ok(finalAssertions.includes(bridgeIdentity.triggerDefinition));
+  assert.ok(finalAssertions.includes(bridgeIdentity.functionBodyHash));
+  assert.match(finalAssertions, /to_regprocedure\(/u);
+}
+
+function validateBackfillMutationSurface(
+  migrationSql: string,
+  statements: readonly string[],
+): void {
+  const executableSql = migrationSql.replace(/^--.*$/gmu, "");
+  assert.doesNotMatch(executableSql, /\bLOCK\s+TABLE\b/iu);
+  assert.doesNotMatch(
+    executableSql,
+    /ALTER\s+TABLE\s+(?:public\.)?"?agent_runs"?/iu,
+  );
+  assert.doesNotMatch(
+    executableSql,
+    /\b(?:INSERT INTO|DELETE FROM|TRUNCATE)\s+(?:public\.)?"?agent_runs"?/iu,
+  );
+  for (const statement of statements) {
+    const executableStatement = statement.replace(
+      /^(?:--[^\n]*(?:\n|$)\s*)+/u,
+      "",
+    );
+    assert.doesNotMatch(
+      executableStatement,
+      /^(?:ALTER\s+TABLE[\s\S]*?(?:DISABLE|ENABLE)\s+TRIGGER|(?:CREATE|REPLACE|DROP)\s+(?:TRIGGER|FUNCTION)\s+"?sync_agent_run_model_key_ids_0971)/iu,
+    );
+  }
+  assert.doesNotMatch(executableSql, /\b2325\b/u);
+}
+
+export function validateAgentRunBuiltInModelKeyBackfillMigrationSql(
+  migrationSql: string,
+  statements: readonly string[],
+  bridgeIdentity: AgentRunModelKeyBridgeIdentity,
+): void {
+  assert.equal(statements.length, 13);
+  assert.match(statements[0] ?? "", /^-- vm0:non-transactional/mu);
+  const procedure = agentRunModelKeyBackfillProcedureStatement(statements);
+  validateBackfillPreflight(statements, procedure, bridgeIdentity);
+  validateBackfillProcedure(statements, procedure);
+  validateBackfillFinalAssertions(statements, bridgeIdentity);
+  validateBackfillMutationSurface(migrationSql, statements);
+}
+
 interface BackfillLockFixture {
   readonly orgId: string;
   readonly sessionId: string;

@@ -12,10 +12,11 @@ import { Client } from "pg";
 import { logDetailRunSelection } from "../../../apps/api/src/signals/services/log-detail-run-selection";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
-  AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME as backfillProcedureName,
+  agentRunModelKeyBackfillProcedureStatement as backfillProcedureStatement,
   agentRunModelKeyBackfillProcedureCount as backfillProcedureCount,
+  validateAgentRunBuiltInModelKeyBackfillMigrationSql as validateBackfillMigrationSql,
   validateAgentRunBuiltInModelKeyBackfillLockRetryAndTimeout,
-} from "./test-agent-run-built-in-model-key-backfill-lock";
+} from "./test-agent-run-built-in-model-key-backfill";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.join(scriptDirectory, "..");
@@ -194,20 +195,6 @@ async function backfillMigrationStatements(): Promise<readonly string[]> {
   return cachedBackfillMigrationStatements;
 }
 
-function backfillProcedureStatement(statements: readonly string[]): string {
-  const procedure = statements.find((statement) => {
-    return statement.includes(
-      `CREATE OR REPLACE PROCEDURE "${backfillProcedureName}"(`,
-    );
-  });
-  assert.ok(procedure);
-  return procedure;
-}
-
-function countOccurrences(value: string, expected: string): number {
-  return value.split(expected).length - 1;
-}
-
 async function executeStatements(
   client: Client,
   statements: readonly string[],
@@ -361,126 +348,6 @@ function validateMigrationSql(migrationSql: string): void {
   assert.doesNotMatch(executableSql, /\bCOALESCE\b/iu);
 }
 
-function validateBackfillMigrationSql(migrationSql: string): void {
-  const statements = migrationStatements(migrationSql);
-  const executableSql = migrationSql.replace(/^--.*$/gmu, "");
-  assert.equal(statements.length, 13);
-  assert.match(statements[0] ?? "", /^-- vm0:non-transactional/mu);
-  const preflight = statements.find((statement) => {
-    return statement.includes(
-      "Agent Run model key backfill requires the accepted enabled 0971 bridge",
-    );
-  });
-  const procedure = backfillProcedureStatement(statements);
-  const finalAssertions = statements.find((statement) => {
-    return statement.includes(
-      "Agent Run model key backfill procedure still exists",
-    );
-  });
-  assert.ok(preflight);
-  assert.ok(finalAssertions);
-  assert.ok(
-    statements.indexOf(preflight) < statements.indexOf(procedure),
-    "the fail-closed preflight must run before the backfill procedure",
-  );
-  assert.ok(preflight.includes(AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION));
-  assert.ok(preflight.includes(AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH));
-  assert.match(preflight, /"trigger_row"\."tgenabled" = 'O'/u);
-  assert.match(
-    preflight,
-    /"vm0_model_key_id" IS NULL\s+AND "built_in_model_key_id" IS NOT NULL/u,
-  );
-  assert.match(
-    preflight,
-    /"vm0_model_key_id" IS NOT NULL\s+AND "built_in_model_key_id" IS NOT NULL\s+AND "vm0_model_key_id" IS DISTINCT FROM "built_in_model_key_id"/u,
-  );
-  const batchStatement = procedure.match(
-    /WITH "batch" AS MATERIALIZED \(([\s\S]*?)\),\s*"updated" AS \(([\s\S]*?)\)\s*SELECT/u,
-  );
-  assert.ok(batchStatement);
-  const candidateSql = batchStatement[1]!;
-  const updateSql = batchStatement[2]!;
-  assert.match(
-    candidateSql,
-    /WHERE \(v_scan_after IS NULL OR "candidate"\."id" > v_scan_after\)\s+AND "candidate"\."vm0_model_key_id" IS NOT NULL\s+AND "candidate"\."built_in_model_key_id" IS NULL/u,
-  );
-  assert.match(
-    candidateSql,
-    /ORDER BY "candidate"\."id"\s+LIMIT 500\s+FOR UPDATE OF "candidate" SKIP LOCKED/u,
-  );
-  assert.match(
-    updateSql,
-    /UPDATE "agent_runs" AS "target"\s+SET "built_in_model_key_id" = "batch"\."vm0_model_key_id"\s+FROM "batch"/u,
-  );
-  assert.match(
-    updateSql,
-    /WHERE "target"\."id" = "batch"\."id"\s+AND "target"\."vm0_model_key_id" IS NOT NULL\s+AND "target"\."built_in_model_key_id" IS NULL/u,
-  );
-  assert.equal(
-    countOccurrences(procedure, 'UPDATE "agent_runs" AS "target"'),
-    1,
-  );
-  assert.equal((procedure.match(/\bCOMMIT;/gu) ?? []).length, 1);
-  assert.match(
-    procedure,
-    /COMMIT;\s+SET LOCAL lock_timeout = '1s';\s+SET LOCAL transaction_timeout = '5min';/u,
-  );
-  assert.equal(countOccurrences(procedure, "PERFORM pg_sleep(0.05);"), 2);
-  assert.match(procedure, /v_updated_ids IS DISTINCT FROM v_batch_ids/u);
-  assert.match(procedure, /p_no_progress_timeout > interval '30 seconds'/u);
-  assert.match(
-    procedure,
-    /Agent Run model key backfill made no progress for % while eligible rows remained/u,
-  );
-  assert.equal(
-    statements.includes(
-      `CALL "${backfillProcedureName}"(interval '30 seconds');`,
-    ),
-    true,
-  );
-  assert.equal(
-    statements.includes(
-      `DROP PROCEDURE IF EXISTS "${backfillProcedureName}"(interval);`,
-    ),
-    true,
-  );
-  for (const assertion of [
-    "Agent Run model key backfill left legacy-only rows",
-    "Agent Run model key backfill left canonical-only rows",
-    "Agent Run model key backfill left unequal dual rows",
-    "Agent Run model key backfill did not preserve the accepted enabled 0971 bridge",
-    "Agent Run model key backfill procedure still exists",
-  ]) {
-    assert.ok(finalAssertions.includes(assertion));
-  }
-  assert.ok(
-    finalAssertions.includes(AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION),
-  );
-  assert.ok(
-    finalAssertions.includes(AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH),
-  );
-  assert.match(finalAssertions, /to_regprocedure\(/u);
-  assert.doesNotMatch(executableSql, /\bLOCK\s+TABLE\b/iu);
-  assert.doesNotMatch(
-    executableSql,
-    /ALTER\s+TABLE\s+(?:public\.)?"?agent_runs"?/iu,
-  );
-  assert.doesNotMatch(
-    executableSql,
-    /\b(?:INSERT INTO|DELETE FROM|TRUNCATE)\s+(?:public\.)?"?agent_runs"?/iu,
-  );
-  for (const statement of statements) {
-    const executableStatement = statement.replace(
-      /^(?:--[^\n]*(?:\n|$)\s*)+/u,
-      "",
-    );
-    assert.doesNotMatch(
-      executableStatement,
-      /^(?:ALTER\s+TABLE[\s\S]*?(?:DISABLE|ENABLE)\s+TRIGGER|(?:CREATE|REPLACE|DROP)\s+(?:TRIGGER|FUNCTION)\s+"?sync_agent_run_model_key_ids_0971)/iu,
-    );
-  }
-  assert.doesNotMatch(executableSql, /\b2325\b/u);
-}
 async function seedDependencies(
   client: Client,
   fixture: BridgeFixture,
@@ -1348,9 +1215,13 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     "utf8",
   );
   validateMigrationSql(migrationSql);
-  validateBackfillMigrationSql(backfillSql);
+  const backfillStatements = migrationStatements(backfillSql);
+  validateBackfillMigrationSql(backfillSql, backfillStatements, {
+    functionBodyHash: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH,
+    triggerDefinition: AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION,
+  });
   cachedMigrationOwnedBridgeStatements = bridgeStatements(migrationSql);
-  cachedBackfillMigrationStatements = migrationStatements(backfillSql);
+  cachedBackfillMigrationStatements = backfillStatements;
   await validateRuntimeCallerIsolation();
 
   const adminUrl = new URL(databaseUrl);
