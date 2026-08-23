@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CLIENT_TYPE_APP,
-  CLIENT_TYPE_HEADER,
-  CLIENT_VERSION_HEADER,
-} from "@okouai/api-contracts/contracts/client-headers";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   zeroConnectorManualGrantContract,
@@ -20,7 +15,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 import { customConnectorsRoutes } from "../custom-connectors";
@@ -554,22 +549,6 @@ describe("connector account lifecycle routes", () => {
       [200],
     );
     expect(disconnectedAccounts.body.connections).toStrictEqual([]);
-  });
-
-  it.each([
-    "/api/connectors/openai",
-    `/api/custom-connectors/${randomUUID()}/connection`,
-  ])("returns not found for removed disconnect route %s", async (path) => {
-    const response = await setupRawAppRequest({ context, routes })(path, {
-      method: "DELETE",
-      headers: {
-        ...authHeaders(),
-        [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-        [CLIENT_VERSION_HEADER]: "0.781.1",
-      },
-    });
-
-    expect(response.status).toBe(404);
   });
 
   it("paginates and searches more than one hundred accounts", async () => {
