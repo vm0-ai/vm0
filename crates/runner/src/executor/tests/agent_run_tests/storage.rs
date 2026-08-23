@@ -12,7 +12,6 @@ use super::support::{
     assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
-use crate::executor::storage::guest_download_stdin_command;
 use crate::executor::telemetry::RunnerSpawnTiming;
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage, create_overridden_sandbox,
@@ -100,13 +99,7 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
     .await
     .unwrap();
 
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .any(|call| call.cmd == guest_download_stdin_command()),
-        "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
-    );
+    assert_eq!(sandbox.storage_manifest_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
@@ -173,13 +166,7 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
             archive_request.try_recv(),
             Err(oneshot::error::TryRecvError::Empty)
         ));
-        let exec_calls = overrides.exec_calls();
-        assert!(
-            exec_calls
-                .iter()
-                .any(|call| call.cmd == guest_download_stdin_command()),
-            "cache miss passthrough should reach guest-download before process spawn; calls: {exec_calls:?}"
-        );
+        assert_eq!(overrides.storage_manifest_calls().len(), 1);
 
         start_process_gate.release_one();
         tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
@@ -387,13 +374,7 @@ async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_do
     .await
     .unwrap();
 
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .all(|call| call.cmd != guest_download_stdin_command()),
-        "fully cached storage without cleanup or instruction normalization should skip guest-download; calls: {exec_calls:?}"
-    );
+    assert!(sandbox.storage_manifest_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
@@ -512,13 +493,7 @@ async fn run_in_sandbox_rejects_non_empty_artifact_without_archive_url() {
             .contains("storage manifest artifact memory version version-2 is missing archiveUrl"),
         "got: {error}"
     );
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .all(|call| call.cmd != guest_download_stdin_command()),
-        "invalid storage manifest should fail before guest-download; calls: {exec_calls:?}"
-    );
+    assert!(sandbox.storage_manifest_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
     assert_failed_action_error_once(
         &ops,

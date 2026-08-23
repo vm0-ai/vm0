@@ -61,5 +61,5 @@ pub use types::{
     GuestProcessHandle, GuestProcessWaiter, ProcessControlAck, ProcessControlFailureKind,
     ProcessControlGuestStatus, ProcessControlMode, ProcessControlOutcome, ProcessControlWriteState,
     ProcessExit, ProcessOutputChunk, ProcessOutputMode, ProcessOutputReceiver, StartProcessRequest,
-    WriteFileEntry,
+    StorageManifestRequest, WriteFileEntry,
 };

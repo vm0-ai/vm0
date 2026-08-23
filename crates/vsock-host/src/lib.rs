@@ -71,6 +71,7 @@ mod connection;
 mod exec_operation;
 mod file;
 mod guest_dns_readiness;
+mod guest_storage_manifest;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
@@ -99,6 +100,7 @@ pub use exec_operation::{
 };
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
+pub use guest_storage_manifest::GuestStorageManifestResult;
 
 /// Observer called when a request frame reaches the guest-write boundary.
 ///

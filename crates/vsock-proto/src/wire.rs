@@ -89,6 +89,12 @@ pub const MSG_GUEST_DNS_READINESS: u8 = 0x16;
 /// Guest-to-host result of the fixed guest DNS readiness operation.
 pub const MSG_GUEST_DNS_READINESS_RESULT: u8 = 0x17;
 
+/// Host-to-guest request to apply a bounded storage manifest.
+pub const MSG_GUEST_STORAGE_MANIFEST: u8 = 0x18;
+
+/// Guest-to-host result of applying a bounded storage manifest.
+pub const MSG_GUEST_STORAGE_MANIFEST_RESULT: u8 = 0x19;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -153,6 +159,16 @@ mod tests {
                 "MSG_GUEST_DNS_READINESS_RESULT",
                 MSG_GUEST_DNS_READINESS_RESULT,
                 0x17,
+            ),
+            (
+                "MSG_GUEST_STORAGE_MANIFEST",
+                MSG_GUEST_STORAGE_MANIFEST,
+                0x18,
+            ),
+            (
+                "MSG_GUEST_STORAGE_MANIFEST_RESULT",
+                MSG_GUEST_STORAGE_MANIFEST_RESULT,
+                0x19,
             ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];

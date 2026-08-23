@@ -17,7 +17,7 @@ use sandbox::{
     SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
-    SevereMemoryRetentionDiagnostics, StartProcessRequest, WriteFileEntry,
+    SevereMemoryRetentionDiagnostics, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -25,8 +25,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use vsock_host::{
     ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
-    NormalOperationFence, NormalOperationFenceRejection, SupervisedExecControl,
-    SupervisedExecRequest, VsockHost,
+    GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
+    SupervisedExecControl, SupervisedExecRequest, VsockHost,
 };
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
@@ -2407,6 +2407,29 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn apply_storage_manifest(
+        &self,
+        request: &StorageManifestRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::Exec;
+        let timeout_ms = request.timeout_ms();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            validate_exec_capture_timeout(timeout_ms)?;
+            guest
+                .guest_storage_manifest(
+                    request.manifest_json,
+                    request.run_id,
+                    request.runtime_dir,
+                    timeout_ms,
+                    Duration::from_millis(u64::from(timeout_ms) + 5_000),
+                )
+                .await
+                .map(storage_manifest_exec_result)
+        })
+        .await
+    }
+
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         let operation = SandboxOperation::ReadFile;
 
@@ -2611,6 +2634,18 @@ impl Sandbox for FirecrackerSandbox {
                 Err(Self::backend_crashed_error(operation))
             }
         }
+    }
+}
+
+fn storage_manifest_exec_result(result: GuestStorageManifestResult) -> ExecResult {
+    ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        diagnostic: result.diagnostic,
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
     }
 }
 

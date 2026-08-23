@@ -2,6 +2,7 @@ pub(crate) mod empty;
 pub(crate) mod error;
 pub(crate) mod exec_operation;
 pub(crate) mod guest_dns_readiness;
+pub(crate) mod guest_storage_manifest;
 pub(crate) mod memory_snapshot;
 pub(crate) mod write_file;
 

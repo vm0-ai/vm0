@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, StartProcessCall,
-    WaitProcessCall, WriteFileCall, WriteFilesCall,
+    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -38,6 +38,8 @@ pub(crate) struct ExecOverrideState {
     pub(crate) persistent_matchers: Mutex<Vec<ExecMatcherResult>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     pub(crate) calls: Mutex<Vec<ExecCall>>,
+    /// Recorded fixed storage-manifest calls across all attached sandboxes.
+    pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
     /// Wakes tests after an exec call is recorded.
     pub(crate) call_notify: tokio::sync::Notify,
     /// Optional gate entered after every exec call is recorded but before its
@@ -450,6 +452,14 @@ impl MockSandboxOverrides {
     /// is captured before exec matchers or queued exec results are consumed.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec.calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return fixed storage-manifest calls across all attached sandboxes.
+    pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
+        self.exec
+            .storage_manifest_calls
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Wait until at least `expected` exec calls have been recorded.
