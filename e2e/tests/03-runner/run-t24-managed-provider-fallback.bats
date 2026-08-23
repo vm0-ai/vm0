@@ -146,10 +146,10 @@ report_managed_model_failure() {
     run runner_api_curl "/api/runs/${fallback_run_id}/context"
     assert_success
     fallback_context="$output"
-    run jq -e '
+    run jq -e --arg model "openai/${MANAGED_FALLBACK_MODEL}" '
         .cliAgentType == "codex" and
         .environment.OPENAI_BASE_URL == "https://openrouter.ai/api/v1" and
-        .environment.OPENAI_MODEL == "openai/gpt-5.6-luna" and
+        .environment.OPENAI_MODEL == $model and
         any(.firewalls[]?;
             .kind == "builtin" and
             .name == "model-provider:openrouter-codex"
