@@ -6,6 +6,7 @@ import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
+import { reloadManagedModelCooldownDiagnostics$ } from "./managed-model-cooldown-diagnostics.ts";
 import {
   clearBillingScrollTarget$,
   clearPendingLogo$,
@@ -101,6 +102,7 @@ export const setSettingsActiveSection$ = command(
   ({ get, set }, section: SettingsSection) => {
     if (section === "debug" && get(internalActiveSection$) !== "debug") {
       set(reloadConnectorCatalogDiagnostics$);
+      set(reloadManagedModelCooldownDiagnostics$);
     }
     set(internalActiveSection$, section);
     if (section !== "billing") {
@@ -215,6 +217,7 @@ export const setSettingsDialogOpen$ = command(
     set(reloadBillingStatus$);
     if (get(internalActiveSection$) === "debug") {
       set(reloadConnectorCatalogDiagnostics$);
+      set(reloadManagedModelCooldownDiagnostics$);
     }
     set(internalSettingsDialogOpen$, true);
     await set(initProfileName$, modalSignal);

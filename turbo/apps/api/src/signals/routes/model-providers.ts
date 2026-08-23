@@ -4,14 +4,21 @@ import {
   type ModelProviderResponse,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
+  modelProviderCooldownDiagnosticsContract,
   modelProvidersByTypeContract,
   modelProvidersMainContract,
 } from "@okouai/api-contracts/contracts/model-provider-routes";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
+import { asc, gt } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { db$ } from "../external/db";
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
+import { nowDate } from "../../lib/time";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
 import {
   deleteOrgModelProvider$,
@@ -21,6 +28,7 @@ import {
   modelProviders,
   type ModelProviderInfo,
 } from "../services/model-provider.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -33,11 +41,69 @@ const adminRequired = Object.freeze({
   }),
 });
 
+const cooldownDiagnosticsDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Managed model cooldown diagnostics are not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const listModelProvidersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const result = await get(modelProviders(auth.orgId));
   return { status: 200 as const, body: result };
 });
+
+const getManagedModelCooldownDiagnosticsInner$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    });
+    if (!featureStates[FeatureSwitchKey.ZeroDebug]) {
+      return cooldownDiagnosticsDisabled;
+    }
+
+    const activeCooldowns = await get(db$)
+      .select({
+        selectedModel: managedModelCandidateCooldown.selectedModel,
+        providerType: managedModelCandidateCooldown.providerType,
+        upstreamModel: managedModelCandidateCooldown.upstreamModel,
+        unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+      })
+      .from(managedModelCandidateCooldown)
+      .where(gt(managedModelCandidateCooldown.unavailableUntil, nowDate()))
+      .orderBy(
+        asc(managedModelCandidateCooldown.selectedModel),
+        asc(managedModelCandidateCooldown.providerType),
+        asc(managedModelCandidateCooldown.upstreamModel),
+      );
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        fallbackEnabled:
+          featureStates[FeatureSwitchKey.ManagedModelProviderFallback],
+        activeCooldowns: activeCooldowns.map((cooldown) => {
+          return {
+            ...cooldown,
+            unavailableUntil: cooldown.unavailableUntil.toISOString(),
+          };
+        }),
+      },
+    };
+  },
+);
 
 function toModelProviderResponse(
   provider: ModelProviderInfo,
@@ -199,6 +265,17 @@ const deleteModelProviderInner$ = command(
 );
 
 export const modelProvidersRoutes: readonly RouteEntry[] = [
+  {
+    route: modelProviderCooldownDiagnosticsContract.get,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        accept: ["session"],
+      },
+      getManagedModelCooldownDiagnosticsInner$,
+    ),
+  },
   {
     route: modelProvidersMainContract.list,
     handler: authRoute(

@@ -4815,6 +4815,24 @@
           "title": "Diagnóstico de conexión en tiempo real",
           "unavailable": "no disponible"
         },
+        "managedModelCooldown": {
+          "description": "Inspecciona las rutas de modelos administrados excluidas temporalmente de la selección de respaldo.",
+          "disabled": "desactivado",
+          "disabledExplanation": "El respaldo de modelos administrados está desactivado en este espacio de trabajo, por lo que estos tiempos de espera globales se ignoran aquí actualmente.",
+          "empty": "Actualmente no hay rutas de modelos administrados en tiempo de espera global.",
+          "enabled": "activado",
+          "globalActive": "tiempos de espera globales activos",
+          "globalExplanation": "Los tiempos de espera son un estado operativo global. Solo pueden afectar a este espacio de trabajo mientras el respaldo de modelos administrados esté activado aquí.",
+          "loading": "Cargando diagnósticos de tiempo de espera de modelos administrados...",
+          "providerType": "Tipo de proveedor",
+          "refresh": "Actualizar",
+          "selectedModel": "Modelo seleccionado",
+          "title": "Respaldo de modelos administrados",
+          "unavailable": "Los diagnósticos de tiempo de espera de modelos administrados no están disponibles.",
+          "unavailableUntil": "No disponible hasta",
+          "upstreamModel": "Modelo de origen",
+          "workspaceFallback": "respaldo del espacio de trabajo"
+        },
         "tab": "Depuración"
       },
       "documentTitle": "Preferencias",

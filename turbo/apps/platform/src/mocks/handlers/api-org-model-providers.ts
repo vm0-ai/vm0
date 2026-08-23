@@ -1,5 +1,6 @@
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
+  modelProviderCooldownDiagnosticsContract,
   modelProvidersMainContract,
   modelProvidersByTypeContract,
 } from "@okouai/api-contracts/contracts/model-provider-routes";
@@ -23,6 +24,13 @@ export function resetMockOrgModelProviders(): void {
 }
 
 export const apiOrgModelProvidersHandlers = [
+  mockApi(modelProviderCooldownDiagnosticsContract.get, ({ respond }) => {
+    return respond(200, {
+      fallbackEnabled: false,
+      activeCooldowns: [],
+    });
+  }),
+
   // GET /api/model-providers - List all org model providers
   mockApi(modelProvidersMainContract.list, ({ respond }) => {
     return respond(200, { modelProviders: mockOrgModelProviders });
