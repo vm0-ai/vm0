@@ -180,6 +180,7 @@ export async function installApiTestConnectorCatalog(
         sourceId: source.sourceId,
         identity: { catalogVersion, catalogDigest },
         artifact: catalog,
+        validator: currentConnectorCatalogValidatorIdentity(),
       });
     }
   });
@@ -610,6 +611,118 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionDigest(
       connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
     });
   requireSingleCatalogMutation(updated, "runtime projection digest corruption");
+}
+
+export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
+  connectorSlug: string,
+  connectorPayload: Buffer | null = Buffer.from("{}", "utf8"),
+): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const projectionSet =
+    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+      db,
+      identity,
+    );
+  const updated = await db
+    .update(connectorCatalogRuntimeProjections)
+    .set(
+      connectorPayload === null
+        ? { connectorPayload: null }
+        : {
+            connectorDigest: sha256Digest(connectorPayload),
+            connectorPayload,
+          },
+    )
+    .where(
+      and(
+        eq(
+          connectorCatalogRuntimeProjections.projectionSetId,
+          projectionSet.id,
+        ),
+        eq(connectorCatalogRuntimeProjections.connectorSlug, connectorSlug),
+      ),
+    )
+    .returning({
+      connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
+    });
+  requireSingleCatalogMutation(
+    updated,
+    "runtime projection payload corruption",
+  );
+}
+
+export async function setApiTestConnectorCatalogRuntimeProjectionLegacy(): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const projectionSet =
+    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+      db,
+      identity,
+    );
+  const updatedRows = await db
+    .update(connectorCatalogRuntimeProjections)
+    .set({ connectorPayload: null })
+    .where(
+      eq(connectorCatalogRuntimeProjections.projectionSetId, projectionSet.id),
+    )
+    .returning({
+      connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
+    });
+  if (updatedRows.length !== projectionSet.connectorCount) {
+    throw new Error("Unexpected legacy runtime projection row count");
+  }
+  const updatedSets = await db
+    .update(connectorCatalogRuntimeProjectionSets)
+    .set({
+      projectionVersion: 1,
+      catalogValidationBackendVersion: null,
+      catalogValidationBuildCommitSha: null,
+    })
+    .where(eq(connectorCatalogRuntimeProjectionSets.id, projectionSet.id))
+    .returning({ id: connectorCatalogRuntimeProjectionSets.id });
+  requireSingleCatalogMutation(updatedSets, "legacy runtime projection update");
+}
+
+export async function expireApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const projectionSet =
+    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
+      db,
+      identity,
+    );
+  const updated = await db
+    .update(connectorCatalogRuntimeProjectionSets)
+    .set({
+      catalogValidationBackendVersion: "999.0.0",
+      catalogValidationBuildCommitSha: null,
+    })
+    .where(eq(connectorCatalogRuntimeProjectionSets.id, projectionSet.id))
+    .returning({ id: connectorCatalogRuntimeProjectionSets.id });
+  requireSingleCatalogMutation(updated, "runtime projection authority expiry");
+}
+
+export async function readApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<ConnectorCatalogValidationAuthority | null> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const [projectionSet] = await db
+    .select({
+      backendVersion:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBackendVersion,
+      buildCommitSha:
+        connectorCatalogRuntimeProjectionSets.catalogValidationBuildCommitSha,
+    })
+    .from(connectorCatalogRuntimeProjectionSets)
+    .where(currentApiTestConnectorCatalogRuntimeProjectionSetWhere(identity))
+    .limit(1);
+  if (projectionSet === undefined || projectionSet.backendVersion === null) {
+    return null;
+  }
+  return {
+    backendVersion: projectionSet.backendVersion,
+    buildCommitSha: projectionSet.buildCommitSha,
+  };
 }
 
 export async function readApiTestConnectorCatalogRuntimeProjection(): Promise<{
