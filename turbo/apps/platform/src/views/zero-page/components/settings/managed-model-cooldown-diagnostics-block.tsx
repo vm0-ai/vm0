@@ -130,11 +130,11 @@ function CooldownDiagnosticsContent({
       ) : (
         <div className="flex flex-col gap-2">
           {diagnostics.activeCooldowns.map((cooldown) => {
-            const key = [
+            const key = JSON.stringify([
               cooldown.selectedModel,
               cooldown.providerType,
               cooldown.upstreamModel,
-            ].join(":");
+            ]);
             return (
               <dl
                 key={key}
