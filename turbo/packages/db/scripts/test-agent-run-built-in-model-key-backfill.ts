@@ -304,7 +304,7 @@ export async function validateAgentRunBuiltInModelKeyBackfillLockRetryAndTimeout
       try {
         await lockAgentRun(locker, runIds[0]!);
         const running = runner.query(
-          `CALL "${AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME}"(interval '1 second')`,
+          `CALL "${AGENT_RUN_MODEL_KEY_BACKFILL_PROCEDURE_NAME}"(interval '5 seconds')`,
         );
         await waitForEligibleRowCount(setup, runIds, 1);
         await locker.query("COMMIT");
