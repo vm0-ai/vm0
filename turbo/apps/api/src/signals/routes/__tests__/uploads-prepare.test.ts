@@ -64,7 +64,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId,
@@ -101,7 +101,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId,

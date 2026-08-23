@@ -656,8 +656,8 @@ test("does not delete the org when its proportional refund fails", async () => {
     orgRole: "org:admin",
     email: "org-delete-refund-failure@example.test",
   };
-  const zeroToken = signSandboxJwtForTests({
-    scope: "zero",
+  const okouToken = signSandboxJwtForTests({
+    scope: "okou",
     userId: fixture.userId,
     orgId: fixture.orgId,
     runId: "run_org_delete_refund_failure",
@@ -683,7 +683,7 @@ test("does not delete the org when its proportional refund fails", async () => {
   });
   await accept(
     agents.list({
-      headers: { authorization: `Bearer ${zeroToken}` },
+      headers: { authorization: `Bearer ${okouToken}` },
     }),
     [200],
   );
@@ -742,7 +742,7 @@ test("does not delete the org when its proportional refund fails", async () => {
   );
   await accept(
     agents.list({
-      headers: { authorization: `Bearer ${zeroToken}` },
+      headers: { authorization: `Bearer ${okouToken}` },
     }),
     [200],
   );

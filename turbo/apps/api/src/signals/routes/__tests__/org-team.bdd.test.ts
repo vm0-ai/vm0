@@ -29,7 +29,7 @@ zero-team, and zero-default-agent route tests:
 - Per-route 401 / no-org / sandbox-token-rejection duplicates are merged:
   one representative per distinct inner-handler statement, plus two
   representative sandbox rejections in the run-scoped token chain.
-- "zero token without billing:read -> 403" is dropped: `generateZeroToken`
+- "zero token without billing:read -> 403" is dropped: `generateOkouToken`
   grants billing:read unconditionally, so the case is not API-constructible
   (zero-maps precedent).
 */

@@ -3528,7 +3528,7 @@ describe("Feishu integration", () => {
       }).toString()}`,
       {
         headers: {
-          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+          authorization: `Bearer ${runsApi.okouTokenForRunWithCapabilities(
             actor,
             run.id,
             ["feishu:write"],
@@ -3552,7 +3552,7 @@ describe("Feishu integration", () => {
       }).toString()}`,
       {
         headers: {
-          authorization: `Bearer ${runsApi.zeroTokenForRunWithCapabilities(
+          authorization: `Bearer ${runsApi.okouTokenForRunWithCapabilities(
             actor,
             randomUUID(),
             ["feishu:write"],

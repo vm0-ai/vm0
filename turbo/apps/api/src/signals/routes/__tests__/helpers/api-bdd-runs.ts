@@ -739,7 +739,7 @@ export function createRunsApi(context: TestContext) {
     },
 
     /** Mints a route-test token without changing production capability issuance. */
-    zeroTokenForRunWithCapabilities(
+    okouTokenForRunWithCapabilities(
       actor: ApiTestUser,
       runId: string,
       capabilities: readonly Capability[],
@@ -750,7 +750,7 @@ export function createRunsApi(context: TestContext) {
       }
       const seconds = Math.floor(now() / 1000);
       return signSandboxJwtForTests({
-        scope: "zero",
+        scope: "okou",
         userId: actor.userId,
         orgId: actor.orgId,
         runId,

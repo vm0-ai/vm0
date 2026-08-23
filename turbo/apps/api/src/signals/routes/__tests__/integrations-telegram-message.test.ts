@@ -31,14 +31,14 @@ function uniqueBotId(): string {
   return String(100_000_000 + Math.floor(Math.random() * 899_999_999));
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -174,7 +174,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -268,7 +268,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
           messageThreadId: 7,
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,
@@ -337,7 +337,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
           text: "Hello",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,
@@ -376,7 +376,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
           text: "hello",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({ userId, orgId, runId })}`,
+          authorization: `Bearer ${okouToken({ userId, orgId, runId })}`,
         },
       }),
       [404],
@@ -416,7 +416,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
           text: "hello",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,
@@ -459,7 +459,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
           text: "hello",
         },
         headers: {
-          authorization: `Bearer ${zeroToken({
+          authorization: `Bearer ${okouToken({
             userId: fixture.userId,
             orgId: fixture.orgId,
             runId: fixture.runId,

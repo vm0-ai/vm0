@@ -291,7 +291,7 @@ function readGenerationResult(body: unknown): unknown {
   throw new Error("Expected completed generation result");
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -300,7 +300,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -626,7 +626,7 @@ describe("POST /api/image-io/generate", () => {
   });
 
   it("returns 403 when a zero token lacks file write capability", async () => {
-    const token = zeroToken({
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: randomUUID(),
@@ -728,7 +728,7 @@ describe("POST /api/image-io/generate", () => {
         return HttpResponse.json(falQueueHandle(`run-default-${falCalls}`));
       }),
     );
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -772,7 +772,7 @@ describe("POST /api/image-io/generate", () => {
         return HttpResponse.json(falQueueHandle("unexpected-qwen"));
       }),
     );
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -888,7 +888,7 @@ describe("POST /api/image-io/generate", () => {
     for (const runCase of runCases) {
       const fixture = await seedImageFixture({});
       const { runId } = await seedImageRun(fixture, runCase);
-      const token = zeroToken({
+      const token = okouToken({
         userId: fixture.userId,
         orgId: fixture.orgId,
         runId,
@@ -1113,7 +1113,7 @@ describe("POST /api/image-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1205,7 +1205,7 @@ describe("POST /api/image-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1816,7 +1816,7 @@ describe("POST /api/image-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,

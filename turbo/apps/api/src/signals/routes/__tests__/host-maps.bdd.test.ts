@@ -27,7 +27,7 @@ legacy zero-host.test.ts and zero-maps.test.ts route tests:
   billing-usage-media.bdd.test.ts BILL-02; the slug-suffix reuse and
   missing-index validations stay owned by chat-files.bdd.test.ts FILE-01.
 - "run token without maps:read -> 403" is dropped: every production Okou
-  token carries maps:read unconditionally (generateZeroToken), so the case is
+  token carries maps:read unconditionally (generateOkouToken), so the case is
   not API-constructible.
 */
 
@@ -273,7 +273,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         },
       ],
     });
-    const okouToken = runs.zeroTokenForRunWithCapabilities(
+    const okouToken = runs.okouTokenForRunWithCapabilities(
       actor,
       randomUUID(),
       ["host:write"],

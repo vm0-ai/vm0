@@ -44,7 +44,7 @@ function fileMode(mode: number): number {
   return mode & 0o777;
 }
 
-function buildZeroToken(payload: Record<string, unknown>): string {
+function buildOkouToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -109,7 +109,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should be visible when OKOU_TOKEN includes computer-use:write", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",
@@ -127,7 +127,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should be hidden when OKOU_TOKEN lacks computer-use:write", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",

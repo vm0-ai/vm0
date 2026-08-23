@@ -29,7 +29,7 @@ type ResolvedEnvironmentDiagnostic = Extract<
 type ConnectorIdentity = ResolvedDiagnostic["connector"];
 type ConnectorRun = ResolvedDiagnostic["run"];
 
-function buildZeroToken(
+function buildOkouToken(
   overrides: Partial<{
     readonly userId: string;
     readonly runId: string;
@@ -240,7 +240,7 @@ describe("okou connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");

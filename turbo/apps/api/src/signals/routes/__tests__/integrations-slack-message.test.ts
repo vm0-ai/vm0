@@ -22,7 +22,7 @@ const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -30,7 +30,7 @@ function zeroToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -163,7 +163,7 @@ describe("POST /api/integrations/slack/message", () => {
 
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -203,7 +203,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when no Slack installation exists for org", async () => {
     const { orgId, userId } = await seedBaseContext();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -221,7 +221,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("sends message successfully and returns Slack response", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -252,7 +252,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("forwards Slack API error with 400 status", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
       Object.assign(new Error("channel_not_found"), {
@@ -277,7 +277,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("sends DM via user field using conversations.open", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -305,7 +305,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when conversations.open fails with user_not_found", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     context.mocks.slack.conversations.open.mockRejectedValueOnce(
       Object.assign(new Error("user_not_found"), {
@@ -335,7 +335,7 @@ describe("POST /api/integrations/slack/message", () => {
       { slackWorkspaceId, userId: userId },
       context.signal,
     );
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -357,7 +357,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when 'me' is used but no Slack connection exists", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -376,7 +376,7 @@ describe("POST /api/integrations/slack/message", () => {
   it("appends 'Sent via' footer when agent is resolvable from run", async () => {
     const { orgId, userId } = await seedWithInstallation();
     const { runId } = await seedAgentRun({ orgId, userId });
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,
@@ -421,7 +421,7 @@ describe("POST /api/integrations/slack/message", () => {
       context.signal,
     );
 
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,

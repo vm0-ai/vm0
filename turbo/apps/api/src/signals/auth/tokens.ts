@@ -38,8 +38,7 @@ const AGENT_EXCLUDED_CAPABILITIES = [
   "agent:delete",
 ] as const satisfies readonly Capability[];
 
-interface ZeroTokenOptions {
-  readonly scope?: "zero" | "okou";
+interface OkouTokenOptions {
   readonly publicBrand?: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
@@ -75,8 +74,8 @@ const zeroCapabilitiesSchema = z
   })
   .readonly();
 
-const zeroTokenPayloadSchema = jwtBaseSchema.extend({
-  scope: z.enum(["zero", "okou"]),
+const okouTokenPayloadSchema = jwtBaseSchema.extend({
+  scope: z.literal("okou"),
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
@@ -87,7 +86,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   cloudBrowserEnabled: z.literal(true).optional(),
 });
 
-type ZeroTokenClaims = Omit<z.infer<typeof zeroTokenPayloadSchema>, "scope">;
+type OkouTokenClaims = Omit<z.infer<typeof okouTokenPayloadSchema>, "scope">;
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("cli"),
@@ -100,11 +99,22 @@ const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
   jobId: z.string().min(1),
 });
 
+// The `zero` scope is retired and no issuer produces it any more. The shape
+// stays reachable through the test signer alone so verification tests can
+// prove a legacy token is rejected.
+type RetiredZeroScopePayload = Omit<
+  z.input<typeof okouTokenPayloadSchema>,
+  "scope"
+> & {
+  readonly scope: "zero";
+};
+
 type JwtPayloadInput =
   | z.input<typeof sandboxTokenPayloadSchema>
-  | z.input<typeof zeroTokenPayloadSchema>
+  | z.input<typeof okouTokenPayloadSchema>
   | z.input<typeof cliTokenPayloadSchema>
-  | z.input<typeof composeJobTokenPayloadSchema>;
+  | z.input<typeof composeJobTokenPayloadSchema>
+  | RetiredZeroScopePayload;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
@@ -150,7 +160,7 @@ function isZeroCapabilityEnabled(
 
 function isCapabilityAvailableToAgent(
   capability: Capability,
-  options: ZeroTokenOptions | undefined,
+  options: OkouTokenOptions | undefined,
 ): boolean {
   if (
     AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
@@ -252,8 +262,8 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
   };
 }
 
-export function verifyZeroToken(token: string): ZeroAuth | null {
-  const parsed = zeroTokenPayloadSchema.safeParse(
+export function verifyOkouToken(token: string): ZeroAuth | null {
+  const parsed = okouTokenPayloadSchema.safeParse(
     verifyPrefixedToken(token, SANDBOX_TOKEN_PREFIX),
   );
 
@@ -325,26 +335,25 @@ export function generateSandboxToken(
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 
-export function generateZeroToken(
+export function generateOkouToken(
   userId: string,
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: ZeroTokenOptions,
+  options?: OkouTokenOptions,
 ): string {
-  return signZeroToken(
-    options?.scope ?? "zero",
-    buildZeroTokenClaims(userId, runId, orgId, overrides, options),
+  return signOkouToken(
+    buildOkouTokenClaims(userId, runId, orgId, overrides, options),
   );
 }
 
-function buildZeroTokenClaims(
+function buildOkouTokenClaims(
   userId: string,
   runId: string,
   orgId: string,
   overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-  options: Omit<ZeroTokenOptions, "scope"> | undefined,
-): ZeroTokenClaims {
+  options: OkouTokenOptions | undefined,
+): OkouTokenClaims {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: Capability[] = [];
   for (const capability of CAPABILITIES) {
@@ -374,11 +383,11 @@ function buildZeroTokenClaims(
   };
 }
 
-function signZeroToken(
-  scope: "zero" | "okou",
-  claims: ZeroTokenClaims,
-): string {
-  const payload: z.infer<typeof zeroTokenPayloadSchema> = { scope, ...claims };
+function signOkouToken(claims: OkouTokenClaims): string {
+  const payload: z.infer<typeof okouTokenPayloadSchema> = {
+    scope: "okou",
+    ...claims,
+  };
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 

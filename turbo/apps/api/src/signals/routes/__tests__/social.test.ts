@@ -440,7 +440,7 @@ describe("managed SocialKit route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_zero_social_missing_capability",
@@ -519,7 +519,7 @@ describe("managed SocialKit route", () => {
       agentId: compose.composeId,
       prompt: "Retrieve public social data",
     });
-    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+    const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "social:read",
     ]);
     server.use(providerHandler("GET", "/youtube/transcript"));

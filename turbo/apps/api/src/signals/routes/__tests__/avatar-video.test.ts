@@ -77,7 +77,7 @@ function createAvatarVideoTestApp(
   });
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -85,7 +85,7 @@ function zeroToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -433,7 +433,7 @@ describe("JoggAI built-in avatar video routes", () => {
       },
       context.signal,
     );
-    const token = zeroToken({ ...fixture, runId, publicBrand: "okou" });
+    const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
     const videoDownloadStarted = createDeferredPromise<void>(context.signal);
     const releaseVideoDownload = createDeferredPromise<void>(context.signal);
     let observedBody: unknown = null;

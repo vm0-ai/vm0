@@ -322,7 +322,7 @@ describe("GET/PUT /api/model-policies", () => {
     authOrgApi.mockClerkOrg(fixture);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,

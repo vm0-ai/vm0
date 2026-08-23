@@ -962,7 +962,7 @@ describe("GET /api/usage/record", () => {
     });
     const settledAt = new Date(nowDate().getTime() + 8 * DAY_MS);
     mockNow(settledAt);
-    const mapsToken = api.zeroTokenForRunWithCapabilities(
+    const mapsToken = api.okouTokenForRunWithCapabilities(
       fixture.actor,
       run.runId,
       ["maps:read"],

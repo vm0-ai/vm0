@@ -14,7 +14,7 @@ import {
 } from "../services/banking.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
-function zeroTokenRequired() {
+function okouTokenRequired() {
   return {
     status: 403 as const,
     body: {
@@ -55,7 +55,7 @@ const transactionsBody$ = bodyResultOf(bankingContract.transactions);
 const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.tokenType !== "zero") {
-    return zeroTokenRequired();
+    return okouTokenRequired();
   }
   if (!(await set(bankingEnabled$))) {
     return bankingDisabled;
@@ -74,7 +74,7 @@ const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.tokenType !== "zero") {
-    return zeroTokenRequired();
+    return okouTokenRequired();
   }
   if (!(await set(bankingEnabled$))) {
     return bankingDisabled;
@@ -94,7 +94,7 @@ const transactionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     if (auth.tokenType !== "zero") {
-      return zeroTokenRequired();
+      return okouTokenRequired();
     }
     if (!(await set(bankingEnabled$))) {
       return bankingDisabled;

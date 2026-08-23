@@ -19,7 +19,7 @@ describe("POST /api/zero/chat/events authorization", () => {
   it("rejects a zero token without chat-event:write", async () => {
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,

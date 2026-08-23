@@ -6,7 +6,7 @@ import {
   isSandboxToken,
   verifyCliToken,
   verifySandboxToken,
-  verifyZeroToken,
+  verifyOkouToken,
 } from "./tokens";
 import { clerkSessionAuth$ } from "./clerk-session";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
@@ -123,7 +123,7 @@ const zeroAuth$ = command(
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
-    const zeroAuth = verifyZeroToken(token);
+    const zeroAuth = verifyOkouToken(token);
     if (!zeroAuth) {
       return null;
     }
@@ -282,7 +282,7 @@ function sandboxTokenAuthError(
   }
 
   const sandboxAuth = verifySandboxToken(token);
-  const zeroAuth = sandboxAuth ? null : verifyZeroToken(token);
+  const zeroAuth = sandboxAuth ? null : verifyOkouToken(token);
   if (!sandboxAuth && !zeroAuth) {
     return null;
   }

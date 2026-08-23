@@ -25,7 +25,7 @@ const REFRESH_SEQ_ID = 4;
 const SNAPSHOT_URL = "http://localhost:3000/api/chat-threads/snapshot";
 const EVENTS_URL = "http://localhost:3000/api/chat-threads/events";
 
-function zeroToken(): string {
+function okouToken(): string {
   const payload = Buffer.from(
     JSON.stringify({
       userId: "user_test",
@@ -85,7 +85,7 @@ describe("okou chat list command", () => {
     chalk.level = 0;
     cacheDirectory = await mkdtemp(join(tmpdir(), "chat-list-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", zeroToken());
+    vi.stubEnv("OKOU_TOKEN", okouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("XDG_CACHE_HOME", cacheDirectory);
   });

@@ -80,7 +80,7 @@ function zeroAgentReadHeaders(user: ApiTestUser): AuthHeaders {
   }
   const seconds = Math.floor(now() / 1000);
   const token = signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: user.userId,
     orgId: user.orgId,
     runId: `run_${randomUUID()}`,

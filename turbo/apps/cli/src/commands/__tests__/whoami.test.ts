@@ -21,7 +21,7 @@ function buildJwt(payload: Record<string, unknown>, prefix: string): string {
  * Build a valid OKOU_TOKEN for testing.
  * Format: vm0_sandbox_<header>.<payload>.<signature>
  */
-function buildZeroToken(payload: Record<string, unknown>): string {
+function buildOkouToken(payload: Record<string, unknown>): string {
   return buildJwt(payload, "vm0_sandbox_");
 }
 
@@ -98,7 +98,7 @@ describe("okou whoami command", () => {
 
   describe("sandbox mode (OKOU_AGENT_ID set)", () => {
     it("should show agent ID, run context, and capabilities with full JWT", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -159,7 +159,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv(
         "OKOU_TOKEN",
-        buildZeroToken({
+        buildOkouToken({
           userId: "user-1",
           runId: "run-abc",
           orgId: "org-xyz",
@@ -190,7 +190,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv(
         "OKOU_TOKEN",
-        buildZeroToken({
+        buildOkouToken({
           userId: "user-1",
           runId: "run-abc",
           orgId: "org-xyz",
@@ -283,7 +283,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show connected service identities", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -356,7 +356,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show needs reconnect warning", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -404,7 +404,7 @@ describe("okou whoami command", () => {
     });
 
     it("should gracefully handle connector API error", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -447,7 +447,7 @@ describe("okou whoami command", () => {
     });
 
     it("should skip connected services section when no connectors have identity", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -485,7 +485,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show identity without permission details by default", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -549,7 +549,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show connector permissions with --permissions flag", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -628,7 +628,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show permissions for a server-authored connector slug", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -709,7 +709,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show full access with --permissions for connector with null policies", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -767,7 +767,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show identity only when permission grant API fails with --permissions", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -841,7 +841,7 @@ describe("okou whoami command", () => {
     });
 
     it("should omit supplementary connectors when permission metadata fails", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -913,7 +913,7 @@ describe("okou whoami command", () => {
     });
 
     it("should show identity only when connector access API fails with --permissions", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -987,7 +987,7 @@ describe("okou whoami command", () => {
     });
 
     it("should skip connectors without identity info", async () => {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
@@ -1063,7 +1063,7 @@ describe("okou whoami command", () => {
     it("should show authenticated via OKOU_TOKEN env var", async () => {
       vi.stubEnv(
         "OKOU_TOKEN",
-        buildZeroToken({
+        buildOkouToken({
           scope: "okou",
           orgId: "test-org",
           userId: "user-1",
@@ -1110,7 +1110,7 @@ describe("okou whoami command", () => {
     it("should identify an expired OKOU_TOKEN", async () => {
       vi.stubEnv(
         "OKOU_TOKEN",
-        buildZeroToken({
+        buildOkouToken({
           scope: "okou",
           orgId: "test-org",
           userId: "user-1",
@@ -1126,7 +1126,7 @@ describe("okou whoami command", () => {
     });
 
     it("should display active org from OKOU_TOKEN", async () => {
-      const zeroToken = buildZeroToken({
+      const okouToken = buildOkouToken({
         scope: "okou",
         orgId: "test-org-slug",
         userId: "user-1",
@@ -1134,7 +1134,7 @@ describe("okou whoami command", () => {
         capabilities: [],
         exp: Math.floor(Date.now() / 1000) + 3600,
       });
-      vi.stubEnv("OKOU_TOKEN", zeroToken);
+      vi.stubEnv("OKOU_TOKEN", okouToken);
 
       await runWhoami();
 

@@ -46,7 +46,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
+import { generateOkouToken, verifyOkouToken } from "../../auth/tokens";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -7085,7 +7085,7 @@ describe("RUN-01: zero run authorization and session boundaries", () => {
     expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
     const zeroDenied = await api.requestCancelRunAs(
-      `Bearer ${api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+      `Bearer ${api.okouTokenForRunWithCapabilities(actor, run.runId, [
         "agent-run:read",
       ])}`,
       run.runId,
@@ -7702,7 +7702,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
       'okou recognize --file <image-path> --prompt "<instruction>"',
     );
-    expect(verifyZeroToken(unsupportedToken)?.capabilities).toContain(
+    expect(verifyOkouToken(unsupportedToken)?.capabilities).toContain(
       "image-recognition:write",
     );
     await api.requestCancelRun(actor, unsupported.runId, [200]);
@@ -7715,7 +7715,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(supported.claim.appendSystemPrompt ?? "").not.toContain(
       "okou recognize",
     );
-    expect(verifyZeroToken(supportedToken)?.capabilities).not.toContain(
+    expect(verifyOkouToken(supportedToken)?.capabilities).not.toContain(
       "image-recognition:write",
     );
     await api.requestCancelRun(actor, supported.runId, [200]);
@@ -7728,7 +7728,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(unknown.claim.appendSystemPrompt ?? "").not.toContain(
       "okou recognize",
     );
-    expect(verifyZeroToken(unknownToken)?.capabilities).not.toContain(
+    expect(verifyOkouToken(unknownToken)?.capabilities).not.toContain(
       "image-recognition:write",
     );
     await api.requestCancelRun(actor, unknown.runId, [200]);
@@ -14488,7 +14488,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     });
     expect(legacyCompose.composeId).toBe(agentId);
 
-    const historicalZeroToken = generateZeroToken(
+    const historicalOkouToken = generateOkouToken(
       actor.userId,
       "historical-context-fixture",
       actor.orgId,
@@ -14498,7 +14498,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       prompt: "consume an immutable legacy Zero context",
       modelProviderType: "anthropic-api-key",
       vars: { ZERO_AGENT_ID: agentId },
-      secrets: { ZERO_TOKEN: historicalZeroToken },
+      secrets: { ZERO_TOKEN: historicalOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const historicalClaim = await api.claimRunnerJob(historical.runId);
@@ -14508,13 +14508,13 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(historicalClaim.environment).toMatchObject({
       ZERO_AGENT_ID: agentId,
-      ZERO_TOKEN: historicalZeroToken,
+      ZERO_TOKEN: historicalOkouToken,
     });
     expect(historicalClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
-    expect(sandboxTokenPayload(historicalZeroToken)).toMatchObject({
-      scope: "zero",
+    expect(sandboxTokenPayload(historicalOkouToken)).toMatchObject({
+      scope: "okou",
     });
-    expect(historicalClaim.secretValues).toContain(historicalZeroToken);
+    expect(historicalClaim.secretValues).toContain(historicalOkouToken);
     expect(runContextSnapshotForRun(historical.runId)).not.toHaveProperty(
       "agentExecutionAuthority",
     );

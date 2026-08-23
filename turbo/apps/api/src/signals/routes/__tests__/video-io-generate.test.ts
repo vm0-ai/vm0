@@ -391,7 +391,7 @@ function readPublishedGenerationId(
   throw new Error("Expected a built-in-generation publish");
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -400,7 +400,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -742,7 +742,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -828,7 +828,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -900,7 +900,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -962,7 +962,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1054,7 +1054,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1142,7 +1142,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1199,7 +1199,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1319,7 +1319,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1771,7 +1771,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1867,7 +1867,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -2015,7 +2015,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -2298,7 +2298,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -2411,7 +2411,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,

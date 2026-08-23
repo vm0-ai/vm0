@@ -5086,14 +5086,14 @@ describe("INT-02: Telegram integration", () => {
       }),
     );
 
-    const zeroTokenList = await integrations.requestListTelegramBots(
+    const okouTokenList = await integrations.requestListTelegramBots(
       actor,
       [200],
     );
-    if (!("bots" in zeroTokenList.body)) {
+    if (!("bots" in okouTokenList.body)) {
       throw new Error("Expected Telegram bot list response");
     }
-    expect(zeroTokenList.body.bots).toContainEqual(
+    expect(okouTokenList.body.bots).toContainEqual(
       expect.objectContaining({
         id: botId,
         username: "bdd_telegram_bot",

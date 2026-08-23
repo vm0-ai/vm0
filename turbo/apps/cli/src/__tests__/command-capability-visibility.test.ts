@@ -3,7 +3,7 @@ import { Command, Help } from "commander";
 import { buildHelpText, registerCommands } from "../okou";
 import { decodeSandboxTokenPayload } from "../lib/api/sandbox-token";
 
-function buildZeroToken(payload: Record<string, unknown>): string {
+function buildOkouToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -86,7 +86,7 @@ function registeredCommandNames(prog: Command): string[] {
 
 describe("decodeSandboxTokenPayload", () => {
   it("should decode payload from a valid zero-scoped token", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       userId: "user-1",
       runId: "run-1",
       orgId: "org-1",
@@ -108,7 +108,7 @@ describe("decodeSandboxTokenPayload", () => {
   });
 
   it("should decode payload from a valid okou-scoped token", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       userId: "user-okou",
       runId: "run-okou",
       orgId: "org-okou",
@@ -136,7 +136,7 @@ describe("decodeSandboxTokenPayload", () => {
   });
 
   it("should return undefined for non-zero scope", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
     });
@@ -144,7 +144,7 @@ describe("decodeSandboxTokenPayload", () => {
   });
 
   it("should return undefined when capabilities is not an array", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: "not-an-array",
     });
@@ -173,7 +173,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["agent:read"],
     });
@@ -224,11 +224,11 @@ describe("registerCommands", () => {
   it("prefers OKOU_TOKEN when both token names are present", () => {
     vi.stubEnv(
       "OKOU_TOKEN",
-      buildZeroToken({ scope: "okou", capabilities: ["agent:read"] }),
+      buildOkouToken({ scope: "okou", capabilities: ["agent:read"] }),
     );
     vi.stubEnv(
       "ZERO_TOKEN",
-      buildZeroToken({ scope: "okou", capabilities: ["connector:read"] }),
+      buildOkouToken({ scope: "okou", capabilities: ["connector:read"] }),
     );
 
     const prog = buildProgram();
@@ -248,7 +248,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide run-only commands and keep global commands visible outside zero scope", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
     });
@@ -262,7 +262,7 @@ describe("registerCommands", () => {
   });
 
   it("should show globally enabled commands when capabilities array is empty", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -282,7 +282,7 @@ describe("registerCommands", () => {
   });
 
   it("should show scrape when scrape:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["scrape:read"],
     });
@@ -294,7 +294,7 @@ describe("registerCommands", () => {
   });
 
   it("should show web-search when web-search:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["web-search:read"],
     });
@@ -306,14 +306,14 @@ describe("registerCommands", () => {
   });
 
   it("should show social only with social:read capability", () => {
-    const hiddenToken = buildZeroToken({
+    const hiddenToken = buildOkouToken({
       scope: "okou",
       capabilities: ["web-search:read"],
     });
     vi.stubEnv("OKOU_TOKEN", hiddenToken);
     expect(hiddenCommandNames(buildProgram())).toContain("social");
 
-    const visibleToken = buildZeroToken({
+    const visibleToken = buildOkouToken({
       scope: "okou",
       capabilities: ["social:read"],
     });
@@ -322,7 +322,7 @@ describe("registerCommands", () => {
   });
 
   it("should show finance when finance:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["finance:read"],
     });
@@ -334,7 +334,7 @@ describe("registerCommands", () => {
   });
 
   it("should show seo when seo:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["seo:read"],
     });
@@ -346,14 +346,14 @@ describe("registerCommands", () => {
   });
 
   it("should show people-search only with people-search:read capability", () => {
-    const hiddenToken = buildZeroToken({
+    const hiddenToken = buildOkouToken({
       scope: "okou",
       capabilities: ["web-search:read"],
     });
     vi.stubEnv("OKOU_TOKEN", hiddenToken);
     expect(hiddenCommandNames(buildProgram())).toContain("people-search");
 
-    const visibleToken = buildZeroToken({
+    const visibleToken = buildOkouToken({
       scope: "okou",
       capabilities: ["people-search:read"],
     });
@@ -363,7 +363,7 @@ describe("registerCommands", () => {
 
   it("should show credit with either billing read or billing write capability", () => {
     for (const capability of ["billing:read", "billing:write"]) {
-      const token = buildZeroToken({
+      const token = buildOkouToken({
         scope: "okou",
         capabilities: [capability],
       });
@@ -376,7 +376,7 @@ describe("registerCommands", () => {
   });
 
   it("should show model commands even without model-provider capabilities", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -389,7 +389,7 @@ describe("registerCommands", () => {
   });
 
   it("should show slack when slack:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["slack:write"],
     });
@@ -402,7 +402,7 @@ describe("registerCommands", () => {
   });
 
   it("should show feishu when feishu:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["feishu:write"],
     });
@@ -414,7 +414,7 @@ describe("registerCommands", () => {
   });
 
   it("should show github when github:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["github:read"],
     });
@@ -427,7 +427,7 @@ describe("registerCommands", () => {
   });
 
   it("should show github when github:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["github:write"],
     });
@@ -440,7 +440,7 @@ describe("registerCommands", () => {
   });
 
   it("should show chat when chat-thread:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["chat-thread:read"],
     });
@@ -453,7 +453,7 @@ describe("registerCommands", () => {
   });
 
   it("should show chat when chat-thread:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["chat-thread:write"],
     });
@@ -466,7 +466,7 @@ describe("registerCommands", () => {
   });
 
   it("should show chat when chat-event:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["chat-event:read"],
     });
@@ -479,7 +479,7 @@ describe("registerCommands", () => {
   });
 
   it("should show chat when chat-event:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["chat-event:write"],
     });
@@ -492,7 +492,7 @@ describe("registerCommands", () => {
   });
 
   it("should show telegram when telegram:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["telegram:read"],
     });
@@ -505,7 +505,7 @@ describe("registerCommands", () => {
   });
 
   it("should show telegram when telegram:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["telegram:write"],
     });
@@ -518,7 +518,7 @@ describe("registerCommands", () => {
   });
 
   it("should show phone when phone:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["phone:read"],
     });
@@ -531,7 +531,7 @@ describe("registerCommands", () => {
   });
 
   it("should show phone when phone:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["phone:write"],
     });
@@ -544,7 +544,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide telegram when only file:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:read"],
     });
@@ -557,7 +557,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide telegram when only file:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -570,7 +570,7 @@ describe("registerCommands", () => {
   });
 
   it("should show generate when file:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -583,7 +583,7 @@ describe("registerCommands", () => {
   });
 
   it("should show host when host:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["host:write"],
     });
@@ -596,7 +596,7 @@ describe("registerCommands", () => {
   });
 
   it("should show host when host:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["host:read"],
     });
@@ -609,7 +609,7 @@ describe("registerCommands", () => {
   });
 
   it("should show generate when file capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -622,7 +622,7 @@ describe("registerCommands", () => {
   });
 
   it("should show maps when maps:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["maps:read"],
     });
@@ -635,7 +635,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide maps when maps:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -647,7 +647,7 @@ describe("registerCommands", () => {
   });
 
   it("should show weather when weather:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["weather:read"],
     });
@@ -660,7 +660,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide weather when weather:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -672,7 +672,7 @@ describe("registerCommands", () => {
   });
 
   it("should show banking when banking:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["banking:read"],
     });
@@ -685,7 +685,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide banking when banking:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -697,7 +697,7 @@ describe("registerCommands", () => {
   });
 
   it("should show goal when goal capabilities are present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [
         "goal:read",
@@ -714,7 +714,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide goal when goal capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -726,7 +726,7 @@ describe("registerCommands", () => {
   });
 
   it("should show credit when billing:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["billing:write"],
     });
@@ -739,7 +739,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide credit but keep globally enabled upgrade guidance when billing capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["agent:read"],
     });
@@ -761,7 +761,7 @@ describe("registerCommands", () => {
   });
 
   it("should expose browser when its capability is enabled", () => {
-    const enabledToken = buildZeroToken({
+    const enabledToken = buildOkouToken({
       scope: "okou",
       userId: "user-1",
       orgId: "org-1",
@@ -778,7 +778,7 @@ describe("registerCommands", () => {
     expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
     expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
 
-    const missingCapabilityToken = buildZeroToken({
+    const missingCapabilityToken = buildOkouToken({
       scope: "okou",
       userId: "user-1",
       orgId: "org-1",
@@ -787,7 +787,7 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", missingCapabilityToken);
     expect(hiddenCommandNames(buildProgram())).toContain("recognize");
 
-    const eligibleToken = buildZeroToken({
+    const eligibleToken = buildOkouToken({
       scope: "okou",
       userId: "user-1",
       orgId: "org-1",
@@ -806,7 +806,7 @@ describe("registerCommands", () => {
     expect(registeredCommandNames(noTokenProgram)).toContain("translate");
     expect(hiddenCommandNames(noTokenProgram)).toContain("translate");
 
-    const missingCapabilityToken = buildZeroToken({
+    const missingCapabilityToken = buildOkouToken({
       scope: "okou",
       userId: "user-1",
       orgId: "org-1",
@@ -815,7 +815,7 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", missingCapabilityToken);
     expect(hiddenCommandNames(buildProgram())).toContain("translate");
 
-    const capableToken = buildZeroToken({
+    const capableToken = buildOkouToken({
       scope: "okou",
       userId: "user-1",
       orgId: "org-1",
@@ -829,7 +829,7 @@ describe("registerCommands", () => {
   });
 
   it("should show billing help examples only for billing capabilities", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["billing:read", "billing:write"],
     });
@@ -840,7 +840,7 @@ describe("registerCommands", () => {
   });
 
   it("should show only credit status help for billing read capability", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["billing:read"],
     });
@@ -853,7 +853,7 @@ describe("registerCommands", () => {
   });
 
   it("should show only credit purchase help for billing write capability", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["billing:write"],
     });
@@ -864,7 +864,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide billing help examples when billing capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["agent:read"],
     });
@@ -875,7 +875,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the maps help example when maps:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["maps:read"],
     });
@@ -886,7 +886,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the maps help example when maps:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -897,7 +897,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the weather help example when weather:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["weather:read"],
     });
@@ -908,7 +908,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the weather help example when weather:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -919,7 +919,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the scrape help example when scrape:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["scrape:read"],
     });
@@ -930,7 +930,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the scrape help example when scrape:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -941,7 +941,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the finance help example when finance:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["finance:read"],
     });
@@ -952,7 +952,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the finance help example when finance:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -963,11 +963,11 @@ describe("registerCommands", () => {
   });
 
   it("should gate the SEO help example on seo:read", () => {
-    const visibleToken = buildZeroToken({
+    const visibleToken = buildOkouToken({
       scope: "okou",
       capabilities: ["seo:read"],
     });
-    const hiddenToken = buildZeroToken({
+    const hiddenToken = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -981,7 +981,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the people-search help example when people-search:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["people-search:read"],
     });
@@ -992,7 +992,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the people-search help example when people-search:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -1003,11 +1003,11 @@ describe("registerCommands", () => {
   });
 
   it("should gate the social help example on social:read", () => {
-    const visibleToken = buildZeroToken({
+    const visibleToken = buildOkouToken({
       scope: "okou",
       capabilities: ["social:read"],
     });
-    const hiddenToken = buildZeroToken({
+    const hiddenToken = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -1021,7 +1021,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the banking help example when banking:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["banking:read"],
     });
@@ -1032,7 +1032,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the banking help example when banking:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -1043,7 +1043,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the host help example when host:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["host:write"],
     });
@@ -1054,7 +1054,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the hosted site clone help example when host:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["host:read"],
     });
@@ -1068,7 +1068,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the website help example", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -1079,7 +1079,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide host when host:write capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -1091,7 +1091,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide the host help example when host:write capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["file:write"],
     });
@@ -1105,7 +1105,7 @@ describe("registerCommands", () => {
   });
 
   it("should show the model help example in sandbox help", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -1119,7 +1119,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide telegram when file read and telegram write capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["agent:read"],
     });
@@ -1133,7 +1133,7 @@ describe("registerCommands", () => {
   });
 
   it("should show teams when teams:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["teams:write"],
     });
@@ -1151,7 +1151,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide agent when agent:read capability is missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["connector:read"],
     });
@@ -1174,7 +1174,7 @@ describe("registerCommands", () => {
   });
 
   it("should show connector when connector:read capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["connector:read"],
     });
@@ -1187,14 +1187,14 @@ describe("registerCommands", () => {
   });
 
   it("should show run-only mcp only with connector:read capability", () => {
-    const readToken = buildZeroToken({
+    const readToken = buildOkouToken({
       scope: "okou",
       capabilities: ["connector:read"],
     });
     vi.stubEnv("OKOU_TOKEN", readToken);
     expect(visibleCommandNames(buildProgram())).toContain("mcp");
 
-    const writeToken = buildZeroToken({
+    const writeToken = buildOkouToken({
       scope: "okou",
       capabilities: ["connector:write"],
     });
@@ -1206,7 +1206,7 @@ describe("registerCommands", () => {
   });
 
   it("should show connector when connector:write capability is present", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["connector:write"],
     });
@@ -1216,7 +1216,7 @@ describe("registerCommands", () => {
   });
 
   it("should hide connector when connector capabilities are missing", () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: ["agent:read"],
     });
@@ -1242,7 +1242,7 @@ describe("okou generate command visibility", () => {
   }
 
   it("should show website generation", async () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       scope: "okou",
       capabilities: [],
     });
@@ -1253,7 +1253,7 @@ describe("okou generate command visibility", () => {
   });
 
   it("should show source-backed artifact generation", async () => {
-    const token = buildZeroToken({
+    const token = buildOkouToken({
       userId: "user-non-staff",
       orgId: "org-non-staff",
       scope: "okou",

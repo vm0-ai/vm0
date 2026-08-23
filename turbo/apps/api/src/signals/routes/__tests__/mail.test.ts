@@ -458,7 +458,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
 
-    const okouToken = runs.zeroTokenForRunWithCapabilities(
+    const okouToken = runs.okouTokenForRunWithCapabilities(
       fixture.actor,
       randomUUID(),
       ["connector:read"],

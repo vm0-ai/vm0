@@ -14,7 +14,7 @@ import { customConnectorCommand } from "../index";
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-function buildZeroToken(capabilities: readonly string[]): string {
+function buildOkouToken(capabilities: readonly string[]): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -116,7 +116,7 @@ describe("okou connector custom create", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(join(tmpdir(), "custom-connector-create-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["connector:write"]));
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["connector:write"]));
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
   });
 
@@ -382,7 +382,7 @@ describe("okou connector custom create", () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       return undefined as never;
     });
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken(["connector:read"]));
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken(["connector:read"]));
 
     try {
       await customConnectorCommand.parseAsync([

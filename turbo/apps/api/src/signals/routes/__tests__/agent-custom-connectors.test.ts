@@ -53,7 +53,7 @@ async function apiKeyHeaders(
   return bearerHeaders(key.token);
 }
 
-function zeroTokenFor(
+function okouTokenFor(
   actor: ApiTestUser,
   capabilities: readonly Capability[],
 ): string {
@@ -62,7 +62,7 @@ function zeroTokenFor(
   }
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: actor.userId,
     orgId: actor.orgId,
     runId: randomUUID(),
@@ -237,7 +237,7 @@ describe("GET /api/agents/:id/custom-connectors", () => {
 
   it("returns 403 for a zero token without agent:read capability", async () => {
     const actor = bdd.user();
-    const token = zeroTokenFor(actor, ["file:read"]);
+    const token = okouTokenFor(actor, ["file:read"]);
 
     const response = await accept(
       agentCustomConnectorsClient().get({
