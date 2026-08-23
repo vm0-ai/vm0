@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import {
   presentationTemplatesContract,
   type PresentationTemplateDetail,
@@ -23,34 +23,66 @@ const presentationTemplatesVersion$ = state(0);
  * `accept` would surface that as an error toast on a dialog the user opened to
  * browse built-in templates.
  */
-export const presentationTemplates$ = computed(
-  async (get): Promise<readonly PresentationTemplateSummary[]> => {
-    if (!get(presentationTemplateImportEnabled$)) {
-      return [];
-    }
-    get(presentationTemplatesVersion$);
-    const client = get(apiClient$)(presentationTemplatesContract);
-    const result = await accept(client.list(), [200]);
-    return result.body;
-  },
-);
-
 /**
- * Refetch the catalog after a mutation. Page-level consumers load and retain
- * the catalog before the picker opens so opening the dialog never swaps signed
- * cover URLs while they are visible.
+ * Refetch the catalog after a mutation or after the picker closes. Refreshing
+ * while the picker is hidden lets page-level consumers prewarm replacement
+ * signed cover URLs without swapping images in the visible dialog.
  */
-const refreshPresentationTemplates$ = command(({ get, set }) => {
+export const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
+
+function createImportedPresentationTemplates$(
+  latestCompletedRunEventId$: Computed<string | null>,
+) {
+  return computed(
+    async (get): Promise<readonly PresentationTemplateSummary[]> => {
+      if (!get(presentationTemplateImportEnabled$)) {
+        return [];
+      }
+      // The analysis run publishes an imported deck outside this browser's
+      // mutation commands. A new successful terminal event therefore refreshes
+      // the catalog before the user opens the picker again.
+      get(latestCompletedRunEventId$);
+      get(presentationTemplatesVersion$);
+      const client = get(apiClient$)(presentationTemplatesContract);
+      const result = await accept(client.list(), [200]);
+      return result.body;
+    },
+  );
+}
 
 interface ImportedPresentationTemplateHover {
   readonly templateId: string;
   readonly index: number;
 }
 
+function createImportedPresentationTemplateHoverSignals() {
+  const internalCardHover$ = state<ImportedPresentationTemplateHover | null>(
+    null,
+  );
+  const importedPresentationTemplateCardHover$ = computed((get) => {
+    return get(internalCardHover$);
+  });
+  const setImportedPresentationTemplateCardHover$ = command(
+    ({ set }, hover: ImportedPresentationTemplateHover | null) => {
+      set(internalCardHover$, hover);
+    },
+  );
+  return {
+    internalCardHover$,
+    importedPresentationTemplateCardHover$,
+    setImportedPresentationTemplateCardHover$,
+  };
+}
+
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
-export function createImportedPresentationTemplateSignals() {
+export function createImportedPresentationTemplateSignals(
+  latestCompletedRunEventId$: Computed<string | null>,
+) {
+  const importedPresentationTemplates$ = createImportedPresentationTemplates$(
+    latestCompletedRunEventId$,
+  );
   const internalRequestedTemplateId$ = state<string | null>(null);
   const internalDetailVersion$ = state(0);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -102,17 +134,11 @@ export function createImportedPresentationTemplateSignals() {
     },
   );
 
-  const internalCardHover$ = state<ImportedPresentationTemplateHover | null>(
-    null,
-  );
-  const importedPresentationTemplateCardHover$ = computed((get) => {
-    return get(internalCardHover$);
-  });
-  const setImportedPresentationTemplateCardHover$ = command(
-    ({ set }, hover: ImportedPresentationTemplateHover | null) => {
-      set(internalCardHover$, hover);
-    },
-  );
+  const {
+    internalCardHover$,
+    importedPresentationTemplateCardHover$,
+    setImportedPresentationTemplateCardHover$,
+  } = createImportedPresentationTemplateHoverSignals();
 
   const updateImportedPresentationTemplate$ = command(
     async (
@@ -169,6 +195,7 @@ export function createImportedPresentationTemplateSignals() {
   });
 
   return {
+    importedPresentationTemplates$,
     importedPresentationTemplateRequestedId$,
     importedPresentationTemplateDetail$,
     requestImportedPresentationTemplateDetail$,

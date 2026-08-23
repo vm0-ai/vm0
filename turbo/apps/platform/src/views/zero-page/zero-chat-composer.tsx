@@ -23,10 +23,9 @@ import {
   presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/zero-page/presentation-template-import.ts";
-import {
-  presentationTemplates$,
-  type PresentationTemplateDetail,
-  type PresentationTemplateSummary,
+import type {
+  PresentationTemplateDetail,
+  PresentationTemplateSummary,
 } from "../../signals/zero-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
@@ -5709,7 +5708,8 @@ function PptTemplateGrid({
   const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
-  const importedTemplates = useLastResolved(presentationTemplates$) ?? [];
+  const importedTemplates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {importEnabled ? (
@@ -5842,7 +5842,8 @@ function TemplatePickerDialog({
     presentationItems.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const importedTemplates = useLastResolved(presentationTemplates$) ?? [];
+  const importedTemplates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
   const importedPreviewSummary =
     importedTemplates.find((template) => {
       return template.id === importedPreviewId;
@@ -6602,7 +6603,8 @@ function ComposerTemplateAttachmentSync({
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates = useLastResolved(presentationTemplates$) ?? [];
+  const importedTemplates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
   const attachment = selectedComposerTemplateAttachment(
     picker?.value,
     importedTemplates,
@@ -6712,7 +6714,8 @@ function TemplatePickerButton({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates = useLastResolved(presentationTemplates$) ?? [];
+  const importedTemplates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
   const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
@@ -8129,7 +8132,8 @@ function useComposerTemplatePicker(
   const value = useGet(signals.template.generationTemplate$);
   const setValue = useSet(signals.template.setGenerationTemplate$);
   const insertTemplate = useSet(signals.template.insertTemplate$);
-  const importedTemplates = useLastResolved(presentationTemplates$) ?? [];
+  const importedTemplates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
   const notifyDraftChanged = useComposerDraftChange(signals);
   return (
     inlineComposerTemplatePicker({

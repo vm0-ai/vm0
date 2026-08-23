@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -11,7 +11,10 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
+import {
+  createImportedPresentationTemplateSignals,
+  refreshPresentationTemplates$,
+} from "./presentation-template-library.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
@@ -358,6 +361,12 @@ function createTemplatePickerDialogSignals() {
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
     set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalTemplatePickerOpen$, open);
+    if (!open) {
+      // Refresh only after the dialog disappears. The always-mounted composer
+      // consumer then prewarms the next signed covers without changing visible
+      // image URLs while the user is browsing.
+      set(refreshPresentationTemplates$);
+    }
   });
 
   const internalTemplatePickerReferenceValue$ =
@@ -869,13 +878,15 @@ function createPresentationTemplateDetailNavigationSignals(
   };
 }
 
-export function createComposerUiSignals() {
+export function createComposerUiSignals(
+  latestCompletedRunEventId$: Computed<string | null>,
+) {
   const basic = createBasicComposerUiSignals();
   const list = createTemplatePickerListSignals();
   const cards = createTemplateCardSignals();
   const detail = createTemplateDetailStateSignals();
   const importedPresentationTemplates =
-    createImportedPresentationTemplateSignals();
+    createImportedPresentationTemplateSignals(latestCompletedRunEventId$);
   const resources = createTemplatePreviewResourceSignals(list, cards, detail);
   const applySelection$ =
     createApplyPresentationTemplateDetailSelectionSignal(detail);
