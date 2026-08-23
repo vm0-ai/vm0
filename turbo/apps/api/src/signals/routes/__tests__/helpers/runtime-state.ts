@@ -695,6 +695,24 @@ export async function readThreadSessionBinding(
   return response.thread_session_binding;
 }
 
+export async function readThreadSessionConversation(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["thread_session_conversation"]>
+> {
+  const response = await postAction(context, {
+    action: "read-thread-session-conversation",
+    thread_id: threadId,
+  });
+  if (!response.thread_session_conversation) {
+    throw new Error(
+      "readThreadSessionConversation missing thread_session_conversation",
+    );
+  }
+  return response.thread_session_conversation;
+}
+
 export async function clearThreadSessionBinding(
   context: TestContext,
   threadId: string,

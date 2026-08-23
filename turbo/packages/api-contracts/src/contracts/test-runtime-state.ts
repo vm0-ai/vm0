@@ -197,6 +197,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     thread_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-thread-session-conversation"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("clear-thread-session-binding"),
     thread_id: z.uuid(),
   }),
@@ -306,6 +310,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
       agent_session_id: z.uuid().nullable(),
       agent_session_run_id: z.uuid().nullable(),
       run_session_id: z.uuid().nullable(),
+    })
+    .optional(),
+  thread_session_conversation: z
+    .object({
+      agent_session_id: z.uuid().nullable(),
+      conversation_id: z.uuid().nullable(),
+      conversation_run_id: z.uuid().nullable(),
     })
     .optional(),
   file_id: z.uuid().optional(),

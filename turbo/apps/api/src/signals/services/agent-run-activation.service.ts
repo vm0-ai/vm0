@@ -2,25 +2,32 @@ import { command } from "ccstate";
 
 import { now } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import {
-  notifyRunnerJob,
-  type RunnerJobPreActivationTiming,
-  type RunnerJobNotification,
-} from "./runner-dispatch.service";
+import { notifyRunnerJob } from "./runner-dispatch.service";
 import { recordSameThreadRunnerJobPersisted } from "./runner-job-queue-lifecycle.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
-
-export interface PendingRunActivation {
-  readonly apiStartTime: number;
-  readonly chatThreadId: string | undefined;
-  readonly runnerNotification: RunnerJobNotification;
-  readonly timing: RunnerJobPreActivationTiming;
-}
+import { waitUntil } from "../context/wait-until";
+import type { PendingRunActivation } from "./agent-run-activation.types";
+import { dispatchConfiguredPiApiFirstTurn$ } from "./pi-api-first-turn-dispatch.service";
 
 interface PendingRunActivationRequest {
   readonly activation: PendingRunActivation;
   readonly activationScheduledAt: number;
 }
+
+const startPiApiFirstTurn$ = command(function startPiApiFirstTurn(
+  { set },
+  activation: NonNullable<PendingRunActivation["piApiFirstTurn"]>,
+): void {
+  const deadlineAt =
+    activation.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
+  waitUntil(
+    set(
+      dispatchConfiguredPiApiFirstTurn$,
+      activation,
+      AbortSignal.timeout(Math.max(1, deadlineAt - now())),
+    ),
+  );
+});
 
 /** Common post-commit activation for direct and promoted pending runs. */
 export const activatePendingRun$ = command(
@@ -40,6 +47,11 @@ export const activatePendingRun$ = command(
       });
     }
     const sameThreadMarkersCompletedAt = now();
+
+    const apiFirstTurn = activation.piApiFirstTurn;
+    if (apiFirstTurn) {
+      set(startPiApiFirstTurn$, apiFirstTurn);
+    }
 
     const db = set(writeDb$);
     const databaseReadyAt = now();

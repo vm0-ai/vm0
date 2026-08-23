@@ -12,6 +12,8 @@ import {
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime/node";
 
+import { resolvePiApiFirstTurnHandoff } from "./pi-api-first-turn-handoff";
+
 const RUN_ID_ENV = "OKOU_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
 const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
@@ -62,7 +64,11 @@ export async function piSandboxAgentConfigFromEnv(
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
-  const { apiKeyEnv, ...model } = parsedModel;
+  const {
+    apiKeyEnv,
+    credentialSecretName: _credentialSecretName,
+    ...model
+  } = parsedModel;
   const apiKey = requiredEnv(env, apiKeyEnv);
   return {
     runId,
@@ -78,13 +84,20 @@ export async function runPiSandboxAgentLoop(args: {
   readonly cwd?: string;
   readonly agentDir?: string;
   readonly sessionDir?: string;
-}): Promise<never> {
+}): Promise<void> {
+  const sessionDir = args.sessionDir ?? CANONICAL_PI_SESSION_DIR;
+  const handoff = await resolvePiApiFirstTurnHandoff({
+    config: args.config.launchPayload.launchConfig.apiFirstTurn,
+    sessionDir,
+    sessionId: args.config.sessionId,
+  });
   return await runPiOfficialRpcMode({
     sessionId: args.config.sessionId,
-    sessionDir: args.sessionDir ?? CANONICAL_PI_SESSION_DIR,
+    sessionDir,
     cwd: args.cwd ?? process.cwd(),
     agentDir: args.agentDir ?? PI_AGENT_DIR,
     model: args.config.model,
     appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
+    sessionFile: handoff.sessionFile,
   });
 }

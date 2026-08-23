@@ -129,10 +129,14 @@ pub(super) struct EventDeliveryRuntime {
 }
 
 impl EventDeliveryRuntime {
-    pub(super) fn start(http: HttpClient, run_id: &str) -> Result<Self, AgentError> {
+    pub(super) fn start(
+        http: HttpClient,
+        run_id: &str,
+        first_sequence: u32,
+    ) -> Result<Self, AgentError> {
         let (tx, event_rx) = mpsc::channel(EVENT_DELIVERY_QUEUE_CAPACITY);
         let pressure = Arc::new(DeliveryPressure::default());
-        let progress = Arc::new(Mutex::new(DeliveryProgress::default()));
+        let progress = Arc::new(Mutex::new(DeliveryProgress::new(first_sequence)));
         let payload_envelope = Arc::new(events::EventPayloadEnvelope::new(run_id)?);
         let sender = EventDeliverySender {
             tx,
@@ -301,6 +305,14 @@ struct AckedEventPrefix {
 }
 
 impl AckedEventPrefix {
+    fn new(next_expected: u32) -> Self {
+        Self {
+            next_expected,
+            last_contiguous: next_expected.checked_sub(1),
+            prefix_broken: false,
+        }
+    }
+
     fn record_success(&mut self, sequence: u32) {
         if self.prefix_broken {
             return;
@@ -339,6 +351,13 @@ struct DeliveryProgress {
 }
 
 impl DeliveryProgress {
+    fn new(first_sequence: u32) -> Self {
+        Self {
+            acked_prefix: AckedEventPrefix::new(first_sequence),
+            ..Self::default()
+        }
+    }
+
     fn begin_batch(
         &mut self,
         sequences: Vec<u32>,

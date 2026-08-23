@@ -20,6 +20,7 @@ import {
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { conversations } from "@okouai/db/schema/conversation";
 import { hostedSites } from "@okouai/db/schema/hosted-site";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
@@ -520,6 +521,37 @@ async function clearThreadSessionBinding(
   if (!thread) {
     throw new Error("Expected a chat thread session binding row");
   }
+}
+
+async function readThreadSessionConversation(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<{
+  readonly agent_session_id: string | null;
+  readonly conversation_id: string | null;
+  readonly conversation_run_id: string | null;
+}> {
+  const [thread] = await db
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      conversationId: agentSessions.conversationId,
+      conversationRunId: conversations.runId,
+    })
+    .from(chatThreads)
+    .leftJoin(agentSessions, eq(chatThreads.agentSessionId, agentSessions.id))
+    .leftJoin(conversations, eq(agentSessions.conversationId, conversations.id))
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+  return {
+    agent_session_id: thread.agentSessionId,
+    conversation_id: thread.conversationId,
+    conversation_run_id: thread.conversationRunId,
+  };
 }
 
 type AutonomyBudgetFixtureAction = Extract<
@@ -1187,7 +1219,10 @@ async function timingStateActionResponse(
 type ThreadSessionStateAction = Extract<
   TestRuntimeStateActionBody,
   {
-    action: "read-thread-session-binding" | "clear-thread-session-binding";
+    action:
+      | "read-thread-session-binding"
+      | "read-thread-session-conversation"
+      | "clear-thread-session-binding";
   }
 >;
 
@@ -1196,6 +1231,7 @@ function isThreadSessionStateAction(
 ): body is ThreadSessionStateAction {
   return (
     body.action === "read-thread-session-binding" ||
+    body.action === "read-thread-session-conversation" ||
     body.action === "clear-thread-session-binding"
   );
 }
@@ -1212,6 +1248,19 @@ async function threadSessionStateActionResponse(
         body: {
           ok: true as const,
           thread_session_binding: await readThreadSessionBinding(
+            db,
+            body.thread_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "read-thread-session-conversation": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          thread_session_conversation: await readThreadSessionConversation(
             db,
             body.thread_id,
             signal,

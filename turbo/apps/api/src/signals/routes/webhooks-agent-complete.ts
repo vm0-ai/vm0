@@ -6,10 +6,8 @@ import { apiStartTime$, authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route-entry";
-import {
-  completeAgentRun$,
-  dispatchCompleteSideEffects$,
-} from "../services/agent-webhook-complete.service";
+import { completeAgentRun$ } from "../services/agent-webhook-complete.service";
+import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { tapError } from "../utils";
 import {
   getSandboxAuthForRun,

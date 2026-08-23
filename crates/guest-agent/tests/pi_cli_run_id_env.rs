@@ -84,7 +84,9 @@ fi
             &guest_contracts::env::RunPayload {
                 prompt: "verify canonical Pi run identity".to_string(),
                 append_system_prompt: "Your name is Okou.".to_string(),
-                pi_launch_config: r#"{"schemaVersion":2}"#.to_string(),
+                pi_launch_config:
+                    r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#
+                        .to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
                 ..guest_contracts::env::RunPayload::default()
@@ -124,7 +126,7 @@ fi
     .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
-    assert_eq!(result.last_event_sequence, Some(7));
+    assert_eq!(result.last_event_sequence, Some(8));
     assert_eq!(
         result.claude_result.map(|summary| summary.status),
         Some(guest_agent::cli::ClaudeResultStatus::Success)
@@ -154,7 +156,7 @@ fi
             .iter()
             .map(|event| event["sequenceNumber"].as_u64())
             .collect::<Vec<_>>(),
-        (0..8).map(Some).collect::<Vec<_>>()
+        (1..9).map(Some).collect::<Vec<_>>()
     );
     assert!(
         delivered_events

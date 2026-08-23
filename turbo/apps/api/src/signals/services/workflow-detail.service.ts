@@ -62,10 +62,12 @@ export function workflowDetail(args: {
     // see it in the file list, so exclude it from both files and fileContents.
     // A `null` volume (no backing storage, or its objects are missing) surfaces
     // as `null` files/fileContents, distinct from an empty-but-loaded volume.
-    const loadedVolume = await loadWorkflowVolumeFiles(get, {
-      orgId: args.orgId,
-      workflowId: workflow.id,
-    });
+    const loadedVolume = await get(
+      loadWorkflowVolumeFiles({
+        orgId: args.orgId,
+        workflowId: workflow.id,
+      }),
+    );
     const volumeFiles = loadedVolume?.filter((file) => {
       return file.path !== SKILL_FILENAME;
     });

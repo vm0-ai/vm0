@@ -106,8 +106,8 @@ async function findFixtureStorage(args: {
   return storage;
 }
 
-async function prepareStorageState(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+const prepareStorageState$ = command(async function prepareStorageState(
+  { set },
   db: Db,
   body: StorageStateAction<"prepare">,
   signal: AbortSignal,
@@ -135,10 +135,10 @@ async function prepareStorageState(
   return response.status === 200
     ? actionOk({ prepared: response.body })
     : response;
-}
+});
 
-async function commitStorageState(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+const commitStorageState$ = command(async function commitStorageState(
+  { set },
   db: Db,
   body: StorageStateAction<"commit">,
   signal: AbortSignal,
@@ -154,8 +154,8 @@ async function commitStorageState(
   if (!storage) {
     return notFound("Storage fixture commit target not found");
   }
-  const response = await commitFixtureStorage(
-    set,
+  const response = await set(
+    commitFixtureStorage$,
     db,
     {
       storageId: storage.id,
@@ -168,10 +168,10 @@ async function commitStorageState(
   return response.status === 200
     ? actionOk({ committed: response.body })
     : response;
-}
+});
 
-async function commitFixtureStorage(
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+const commitFixtureStorage$ = command(async function commitFixtureStorage(
+  { set },
   db: Db,
   input: {
     readonly storageId: string;
@@ -213,7 +213,7 @@ async function commitFixtureStorage(
       headVersionId: storage.headVersionId,
     },
   };
-}
+});
 
 async function listStorageState(
   db: Db,
@@ -310,10 +310,10 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   switch (bodyResult.data.action) {
     case "prepare": {
-      return await prepareStorageState(set, db, bodyResult.data, signal);
+      return await set(prepareStorageState$, db, bodyResult.data, signal);
     }
     case "commit": {
-      return await commitStorageState(set, db, bodyResult.data, signal);
+      return await set(commitStorageState$, db, bodyResult.data, signal);
     }
     case "list": {
       return await listStorageState(db, bodyResult.data, signal);

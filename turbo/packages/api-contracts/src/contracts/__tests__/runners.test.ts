@@ -172,12 +172,25 @@ describe("Pi sandbox execution contract", () => {
     piSessionId: "22222222-2222-4222-8222-222222222222",
     piLaunchConfig: {
       schemaVersion: 2 as const,
+      apiFirstTurn: {
+        schemaVersion: 1 as const,
+        resourceSnapshotDigest: "a".repeat(64),
+        manifestUrl: "https://storage.example/manifest.json",
+        sessionUrl: "https://storage.example/session.jsonl",
+        deadlineAt: 2_000_000_000_000,
+        baseSession: {
+          sessionId: "22222222-2222-4222-8222-222222222222",
+          sha256: null,
+        },
+        sandboxEventSequenceStart: 1 as const,
+      },
     },
     piModelConfig: {
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",
       model: "deepseek-v4-flash",
       apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "DEEPSEEK_API_KEY",
     },
   };
   const piRunnerContext = {
@@ -218,6 +231,38 @@ describe("Pi sandbox execution contract", () => {
     expect(jobSchema.parse(pollJob)).not.toHaveProperty("piExecutionMode");
   });
 
+  it.each([
+    {
+      name: "missing API first-turn slot",
+      launchConfig: { schemaVersion: 2 },
+    },
+    {
+      name: "old launch config",
+      launchConfig: { schemaVersion: 1 },
+    },
+    {
+      name: "missing H0 descriptor",
+      launchConfig: {
+        schemaVersion: 2,
+        apiFirstTurn: {
+          schemaVersion: 1,
+          resourceSnapshotDigest: "a".repeat(64),
+          manifestUrl: "https://storage.example/manifest.json",
+          sessionUrl: "https://storage.example/session.jsonl",
+          deadlineAt: 2_000_000_000_000,
+        },
+      },
+    },
+  ])("rejects $name without a Sandbox compatibility path", (fixture) => {
+    expect(
+      storedExecutionContextSchema.safeParse({
+        ...storedContext,
+        ...piStoredContext,
+        piLaunchConfig: fixture.launchConfig,
+      }).success,
+    ).toBe(false);
+  });
+
   it.each(["piSessionId", "piLaunchConfig", "piModelConfig"])(
     "rejects a stored Pi context without %s",
     (missingField) => {
@@ -232,6 +277,15 @@ describe("Pi sandbox execution contract", () => {
       ).toBe(false);
     },
   );
+
+  it("rejects a stored Pi framework without the entire hard-cut bundle", () => {
+    expect(storedExecutionContextSchema.safeParse(storedContext).success).toBe(
+      false,
+    );
+    expect(
+      compatibleStoredExecutionContextSchema.safeParse(storedContext).success,
+    ).toBe(false);
+  });
 
   it.each(["piLaunchConfig", "piModelConfig"] as const)(
     "rejects stored %s without piSessionId",

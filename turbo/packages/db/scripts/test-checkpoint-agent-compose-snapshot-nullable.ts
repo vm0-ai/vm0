@@ -221,7 +221,7 @@ async function validateWriterIsolation(): Promise<void> {
   }
   const checkpointFieldsStart = source.indexOf("const checkpointFields = {");
   const checkpointInsertStart = source.indexOf(
-    "const [checkpoint] = await db",
+    "const [checkpoint] = await tx",
     checkpointFieldsStart,
   );
   assert.ok(

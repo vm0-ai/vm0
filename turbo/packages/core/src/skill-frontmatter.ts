@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 export interface SkillFrontmatter {
   name?: string;
   description?: string;
+  disableModelInvocation?: boolean;
 }
 
 /**
@@ -38,5 +39,7 @@ export function parseSkillFrontmatter(content: string): SkillFrontmatter {
     name: typeof data.name === "string" ? data.name : undefined,
     description:
       typeof data.description === "string" ? data.description : undefined,
+    disableModelInvocation:
+      data["disable-model-invocation"] === true ? true : undefined,
   };
 }

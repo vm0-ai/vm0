@@ -13,7 +13,7 @@ import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
-  refreshDueSystemStoragePresignedUrls,
+  refreshDueSystemStoragePresignedUrls$,
   SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
   SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
   systemStoragePresignedUrlCacheKey,
@@ -487,10 +487,10 @@ const mutateSystemStoragePresignedUrlCacheState$ = command(
           body.storage_id,
           signal,
         );
-        const result = await refreshDueSystemStoragePresignedUrls(
+        const result = await set(
+          refreshDueSystemStoragePresignedUrls$,
           {
             db,
-            get,
             limit: SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
             pruneLimit: SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
             objectKeyPrefix: `${storage.s3Prefix}/`,

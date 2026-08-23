@@ -7,7 +7,7 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   and,
   asc,
@@ -51,8 +51,6 @@ import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service"
 import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
 
 const log = logger("api:cron:snapshot-chat-events");
-
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 interface ChatEventSnapshotStats {
   readonly snapshots: number;
@@ -397,60 +395,65 @@ type SnapshotPrefixResolution =
       readonly reason: "unreadable" | "undecodable";
     };
 
-async function readSnapshotPrefix(
-  get: ComputedGetter,
-  bucket: string,
-  chatThreadId: string,
-  source: SnapshotSource,
+function readSnapshotPrefix(
+  args: {
+    readonly bucket: string;
+    readonly chatThreadId: string;
+    readonly source: SnapshotSource;
+  },
   signal: AbortSignal,
-): Promise<SnapshotPrefixResolution> {
-  const downloaded = await settle(
-    get(downloadS3Buffer(bucket, source.objectKey)),
-    signal,
-  );
-  if (!downloaded.ok) {
-    return { kind: "skipped", reason: "unreadable" };
-  }
-  const decoded = await settle(
-    (async () => {
-      const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(
-        source.objectKey,
-      )?.[1];
-      if (digest === undefined || sha256Hex(downloaded.value) !== digest) {
-        throw new Error(
-          "Chat Event Snapshot object checksum does not match its key",
-        );
-      }
-      const decompressed = await gunzipAsync(downloaded.value);
-      const upgraded = upgradeChatEventSnapshotBody(
-        decompressed,
-        source.schemaVersion,
-        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      );
-      const rows = decodeChatEventSnapshotBody(upgraded);
-      const last = rows.at(-1);
-      if (
-        last === undefined ||
-        last.id !== source.lastEventId ||
-        last.seqId > source.lastSeqId
-      ) {
-        throw new Error("Chat Event Snapshot body does not match its cursor");
-      }
-      for (const [index, row] of rows.entries()) {
-        if (
-          row.chatThreadId !== chatThreadId ||
-          (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
-        ) {
-          throw new Error("Chat Event Snapshot body violates prefix ordering");
+): Computed<Promise<SnapshotPrefixResolution>> {
+  return computed(async (get): Promise<SnapshotPrefixResolution> => {
+    const downloaded = await settle(
+      get(downloadS3Buffer(args.bucket, args.source.objectKey)),
+      signal,
+    );
+    if (!downloaded.ok) {
+      return { kind: "skipped", reason: "unreadable" };
+    }
+    const decoded = await settle(
+      (async () => {
+        const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(
+          args.source.objectKey,
+        )?.[1];
+        if (digest === undefined || sha256Hex(downloaded.value) !== digest) {
+          throw new Error(
+            "Chat Event Snapshot object checksum does not match its key",
+          );
         }
-      }
-      return upgraded;
-    })(),
-    signal,
-  );
-  return decoded.ok
-    ? { kind: "reusable", body: decoded.value }
-    : { kind: "skipped", reason: "undecodable" };
+        const decompressed = await gunzipAsync(downloaded.value);
+        const upgraded = upgradeChatEventSnapshotBody(
+          decompressed,
+          args.source.schemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        );
+        const rows = decodeChatEventSnapshotBody(upgraded);
+        const last = rows.at(-1);
+        if (
+          last === undefined ||
+          last.id !== args.source.lastEventId ||
+          last.seqId > args.source.lastSeqId
+        ) {
+          throw new Error("Chat Event Snapshot body does not match its cursor");
+        }
+        for (const [index, row] of rows.entries()) {
+          if (
+            row.chatThreadId !== args.chatThreadId ||
+            (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
+          ) {
+            throw new Error(
+              "Chat Event Snapshot body violates prefix ordering",
+            );
+          }
+        }
+        return upgraded;
+      })(),
+      signal,
+    );
+    return decoded.ok
+      ? { kind: "reusable", body: decoded.value }
+      : { kind: "skipped", reason: "undecodable" };
+  });
 }
 
 function exactSnapshotPointer(source: SnapshotSource) {
@@ -567,36 +570,45 @@ type ArchivePrefixResolution =
     }
   | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
 
-async function resolveArchivePrefix(
-  get: ComputedGetter,
-  db: Db,
-  bucket: string,
-  candidate: SnapshotCandidate,
+function resolveArchivePrefix(
+  args: {
+    readonly db: Db;
+    readonly bucket: string;
+    readonly candidate: SnapshotCandidate;
+  },
   signal: AbortSignal,
-): Promise<ArchivePrefixResolution> {
-  const sourceResolution = await storedSnapshotSource(db, candidate);
-  signal.throwIfAborted();
-  if (sourceResolution.kind === "skipped") {
-    return sourceResolution;
-  }
-  if (sourceResolution.kind === "initial") {
-    return { kind: "reusable", source: null, prefix: null };
-  }
-  const prefixResolution = await readSnapshotPrefix(
-    get,
-    bucket,
-    candidate.chatThreadId,
-    sourceResolution.source,
-    signal,
-  );
-  if (prefixResolution.kind === "skipped") {
-    return prefixResolution;
-  }
-  return {
-    kind: "reusable",
-    source: sourceResolution.source,
-    prefix: prefixResolution.body,
-  };
+): Computed<Promise<ArchivePrefixResolution>> {
+  return computed(async (get): Promise<ArchivePrefixResolution> => {
+    const sourceResolution = await storedSnapshotSource(
+      args.db,
+      args.candidate,
+    );
+    signal.throwIfAborted();
+    if (sourceResolution.kind === "skipped") {
+      return sourceResolution;
+    }
+    if (sourceResolution.kind === "initial") {
+      return { kind: "reusable", source: null, prefix: null };
+    }
+    const prefixResolution = await get(
+      readSnapshotPrefix(
+        {
+          bucket: args.bucket,
+          chatThreadId: args.candidate.chatThreadId,
+          source: sourceResolution.source,
+        },
+        signal,
+      ),
+    );
+    if (prefixResolution.kind === "skipped") {
+      return prefixResolution;
+    }
+    return {
+      kind: "reusable",
+      source: sourceResolution.source,
+      prefix: prefixResolution.body,
+    };
+  });
 }
 
 function terminalSnapshotEventId(
@@ -610,20 +622,20 @@ function terminalSnapshotEventId(
   return lastEventId;
 }
 
-async function archiveThread(
-  get: ComputedGetter,
-  db: Db,
-  bucket: string,
-  candidate: SnapshotCandidate,
+const archiveThread$ = command(async function archiveThread(
+  { get },
+  args: {
+    readonly db: Db;
+    readonly bucket: string;
+    readonly candidate: SnapshotCandidate;
+  },
   signal: AbortSignal,
 ): Promise<ArchivedThread> {
-  const resolved = await resolveArchivePrefix(
-    get,
-    db,
-    bucket,
-    candidate,
-    signal,
+  const { db, bucket, candidate } = args;
+  const resolved = await get(
+    resolveArchivePrefix({ db, bucket, candidate }, signal),
   );
+  signal.throwIfAborted();
   if (resolved.kind === "skipped") {
     return skippedArchivedThread(candidate, resolved.reason);
   }
@@ -672,6 +684,7 @@ async function archiveThread(
     });
   }
   const compressed = await gzipAsync(prepared.body);
+  signal.throwIfAborted();
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
     targetSeqId,
@@ -692,6 +705,7 @@ async function archiveThread(
       objectKey,
     }),
   );
+  signal.throwIfAborted();
   if (!published.ok) {
     if (
       !isForeignKeyViolation(published.error) &&
@@ -710,7 +724,7 @@ async function archiveThread(
     skippedHead: null,
     normalization: prepared.normalization,
   };
-}
+});
 
 /**
  * Persist the current-version pointer on demand from an existing Snapshot plus
@@ -719,7 +733,7 @@ async function archiveThread(
  */
 export const migrateCurrentChatEventSnapshot$ = command(
   async (
-    { get, set },
+    { set },
     chatThreadId: string,
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -765,18 +779,20 @@ export const migrateCurrentChatEventSnapshot$ = command(
     if (stored === undefined) {
       return false;
     }
-    const archived = await archiveThread(
-      get,
-      db,
-      env("R2_USER_STORAGES_BUCKET_NAME"),
+    const archived = await set(
+      archiveThread$,
       {
-        chatThreadId,
-        indexedSeqId: thread.indexedSeqId,
-        headId: null,
-        headLastSeqId: null,
-        headLastEventId: null,
-        headObjectKey: null,
-        headArchiveSchemaVersion: null,
+        db,
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+        candidate: {
+          chatThreadId,
+          indexedSeqId: thread.indexedSeqId,
+          headId: null,
+          headLastSeqId: null,
+          headLastEventId: null,
+          headObjectKey: null,
+          headArchiveSchemaVersion: null,
+        },
       },
       signal,
     );
@@ -942,50 +958,134 @@ function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
   });
 }
 
-async function boundedGcObjectPages(
-  get: ComputedGetter,
+function boundedGcObjectPages(
   bucket: string,
   prefix: string,
-): Promise<readonly (readonly S3Object[])[]> {
-  const page = await get(listS3ObjectsPage(bucket, prefix, R2_GC_PAGE_SIZE));
-  if (!page.isTruncated) {
-    return [page.objects];
-  }
-  const pages: (readonly S3Object[])[] = [];
-  for (const suffix of HEX_DIGITS) {
-    const child = await get(
-      listS3ObjectsPage(bucket, `${prefix}${suffix}`, R2_GC_PAGE_SIZE),
-    );
-    if (child.isTruncated) {
-      throw new Error(
-        `chat event snapshot GC partition ${prefix}${suffix} exceeds ${R2_GC_PAGE_SIZE.toString()} objects`,
-      );
+): Computed<Promise<readonly (readonly S3Object[])[]>> {
+  return computed(async (get) => {
+    const page = await get(listS3ObjectsPage(bucket, prefix, R2_GC_PAGE_SIZE));
+    if (!page.isTruncated) {
+      return [page.objects];
     }
-    pages.push(child.objects);
-  }
-  return pages;
+    const pages: (readonly S3Object[])[] = [];
+    for (const suffix of HEX_DIGITS) {
+      const child = await get(
+        listS3ObjectsPage(bucket, `${prefix}${suffix}`, R2_GC_PAGE_SIZE),
+      );
+      if (child.isTruncated) {
+        throw new Error(
+          `chat event snapshot GC partition ${prefix}${suffix} exceeds ${R2_GC_PAGE_SIZE.toString()} objects`,
+        );
+      }
+      pages.push(child.objects);
+    }
+    return pages;
+  });
 }
 
-async function collectR2SnapshotGarbage(
-  get: ComputedGetter,
-  db: Db,
-  bucket: string,
-  options: R2GcOptions,
-  signal: AbortSignal,
-): Promise<R2GcStats> {
-  const now = nowDate();
-  const olderThan = hoursBefore(now, R2_GC_GRACE_HOURS);
-  let scanned = 0;
-  let measured = 0;
-  let deleted = 0;
-  let bytesMeasured = 0;
-  let bytesDeleted = 0;
-  let shardsScanned = 0;
-  let subpartitionedShards = 0;
-  let remainingDeleteQuota = options.deleteQuota;
-  const ownedObjectKeys = options.ownedObjectKeys;
+const collectR2SnapshotGarbage$ = command(
+  async function collectR2SnapshotGarbage(
+    { get },
+    args: {
+      readonly db: Db;
+      readonly bucket: string;
+      readonly options: R2GcOptions;
+    },
+    signal: AbortSignal,
+  ): Promise<R2GcStats> {
+    const { db, bucket, options } = args;
+    const now = nowDate();
+    const olderThan = hoursBefore(now, R2_GC_GRACE_HOURS);
+    let scanned = 0;
+    let measured = 0;
+    let deleted = 0;
+    let bytesMeasured = 0;
+    let bytesDeleted = 0;
+    let shardsScanned = 0;
+    let subpartitionedShards = 0;
+    let remainingDeleteQuota = options.deleteQuota;
+    const ownedObjectKeys = options.ownedObjectKeys;
 
-  if (remainingDeleteQuota === 0 || ownedObjectKeys?.size === 0) {
+    if (remainingDeleteQuota === 0 || ownedObjectKeys?.size === 0) {
+      return {
+        scanned,
+        measured,
+        deleted,
+        bytesMeasured,
+        bytesDeleted,
+        shardsScanned,
+        subpartitionedShards,
+      };
+    }
+
+    gcPrefixes: for (const prefix of chatEventSnapshotGcPrefixes(now)) {
+      const pages = await get(boundedGcObjectPages(bucket, prefix));
+      signal.throwIfAborted();
+      shardsScanned += 1;
+      if (pages.length > 1) {
+        subpartitionedShards += 1;
+      }
+      for (const objects of pages) {
+        const scopedObjects =
+          ownedObjectKeys === null
+            ? objects
+            : objects.filter((object) => {
+                return ownedObjectKeys.has(object.key);
+              });
+        scanned += scopedObjects.length;
+        const oldObjects = scopedObjects.filter((object) => {
+          return object.lastModified < olderThan;
+        });
+        if (oldObjects.length === 0) {
+          continue;
+        }
+        const keys = oldObjects.map((object) => {
+          return object.key;
+        });
+        const references = await db
+          .select({
+            objectKey: chatEventSnapshots.objectKey,
+          })
+          .from(chatEventSnapshots)
+          .where(inArray(chatEventSnapshots.objectKey, keys));
+        signal.throwIfAborted();
+        const referencesByKey = new Map(
+          references.map((reference) => {
+            return [reference.objectKey, reference] as const;
+          }),
+        );
+        const garbage = oldObjects.filter((object) => {
+          return referencesByKey.get(object.key) === undefined;
+        });
+        measured += garbage.length;
+        bytesMeasured += garbage.reduce((total, object) => {
+          return total + object.size;
+        }, 0);
+        if (garbage.length === 0) {
+          continue;
+        }
+
+        const deletionBatch = garbage.slice(0, remainingDeleteQuota);
+        const garbageKeys = deletionBatch.map((object) => {
+          return object.key;
+        });
+        const objectDeletion = settle(
+          get(deleteS3Objects(bucket, garbageKeys)),
+        );
+        const objectDeletionResult = await objectDeletion;
+        signal.throwIfAborted();
+        remainingDeleteQuota -= deletionBatch.length;
+        if (objectDeletionResult.ok) {
+          deleted += deletionBatch.length;
+          bytesDeleted += deletionBatch.reduce((total, object) => {
+            return total + object.size;
+          }, 0);
+        }
+        if (remainingDeleteQuota === 0) {
+          break gcPrefixes;
+        }
+      }
+    }
     return {
       scanned,
       measured,
@@ -995,84 +1095,8 @@ async function collectR2SnapshotGarbage(
       shardsScanned,
       subpartitionedShards,
     };
-  }
-
-  gcPrefixes: for (const prefix of chatEventSnapshotGcPrefixes(now)) {
-    const pages = await boundedGcObjectPages(get, bucket, prefix);
-    signal.throwIfAborted();
-    shardsScanned += 1;
-    if (pages.length > 1) {
-      subpartitionedShards += 1;
-    }
-    for (const objects of pages) {
-      const scopedObjects =
-        ownedObjectKeys === null
-          ? objects
-          : objects.filter((object) => {
-              return ownedObjectKeys.has(object.key);
-            });
-      scanned += scopedObjects.length;
-      const oldObjects = scopedObjects.filter((object) => {
-        return object.lastModified < olderThan;
-      });
-      if (oldObjects.length === 0) {
-        continue;
-      }
-      const keys = oldObjects.map((object) => {
-        return object.key;
-      });
-      const references = await db
-        .select({
-          objectKey: chatEventSnapshots.objectKey,
-        })
-        .from(chatEventSnapshots)
-        .where(inArray(chatEventSnapshots.objectKey, keys));
-      signal.throwIfAborted();
-      const referencesByKey = new Map(
-        references.map((reference) => {
-          return [reference.objectKey, reference] as const;
-        }),
-      );
-      const garbage = oldObjects.filter((object) => {
-        return referencesByKey.get(object.key) === undefined;
-      });
-      measured += garbage.length;
-      bytesMeasured += garbage.reduce((total, object) => {
-        return total + object.size;
-      }, 0);
-      if (garbage.length === 0) {
-        continue;
-      }
-
-      const deletionBatch = garbage.slice(0, remainingDeleteQuota);
-      const garbageKeys = deletionBatch.map((object) => {
-        return object.key;
-      });
-      const objectDeletion = settle(get(deleteS3Objects(bucket, garbageKeys)));
-      const objectDeletionResult = await objectDeletion;
-      signal.throwIfAborted();
-      remainingDeleteQuota -= deletionBatch.length;
-      if (objectDeletionResult.ok) {
-        deleted += deletionBatch.length;
-        bytesDeleted += deletionBatch.reduce((total, object) => {
-          return total + object.size;
-        }, 0);
-      }
-      if (remainingDeleteQuota === 0) {
-        break gcPrefixes;
-      }
-    }
-  }
-  return {
-    scanned,
-    measured,
-    deleted,
-    bytesMeasured,
-    bytesDeleted,
-    shardsScanned,
-    subpartitionedShards,
-  };
-}
+  },
+);
 
 async function loadSnapshotCandidates(
   db: Db,
@@ -1143,7 +1167,7 @@ async function loadSnapshotCandidates(
  */
 export const snapshotChatEvents$ = command(
   async (
-    { get, set },
+    { set },
     scope: ChatEventSnapshotScope,
     signal: AbortSignal,
   ): Promise<ChatEventSnapshotStats> => {
@@ -1167,7 +1191,11 @@ export const snapshotChatEvents$ = command(
     let duplicateEventIdsRemapped = 0;
     let duplicateEventReferencesRemapped = 0;
     for (const candidate of candidates) {
-      const archived = await archiveThread(get, db, bucket, candidate, signal);
+      const archived = await set(
+        archiveThread$,
+        { db, bucket, candidate },
+        signal,
+      );
       signal.throwIfAborted();
       switch (archived.skippedHead) {
         case "unreadable": {
@@ -1216,13 +1244,15 @@ export const snapshotChatEvents$ = command(
     signal.throwIfAborted();
     const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
     signal.throwIfAborted();
-    const r2Gc = await collectR2SnapshotGarbage(
-      get,
-      db,
-      bucket,
+    const r2Gc = await set(
+      collectR2SnapshotGarbage$,
       {
-        deleteQuota: SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
-        ownedObjectKeys,
+        db,
+        bucket,
+        options: {
+          deleteQuota: SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
+          ownedObjectKeys,
+        },
       },
       signal,
     );

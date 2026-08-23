@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { config, oxlint } from "@okouai/eslint-config/base";
 import { apiLintPlugin } from "@okouai/eslint-rules/api";
+import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -208,6 +209,7 @@ export default [
     files: ["src/**/*.ts"],
     plugins: {
       api: apiLintPlugin,
+      ccstate: ccstatePlugin,
     },
     rules: {
       "api/no-catch-abort": "error",
@@ -222,6 +224,7 @@ export default [
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
+      "ccstate/no-accessor-escape": "error",
     },
   },
   {
@@ -389,6 +392,10 @@ export default [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Pi resource snapshots are a byte-identical discovery contract shared
+      // with the sandbox runtime; route output cannot expose its full virtual
+      // filesystem, ignore-rule, and precedence matrix.
+      "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
@@ -515,6 +522,10 @@ export default [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Pi resource snapshots are a byte-identical discovery contract shared
+      // with the sandbox runtime; route output cannot expose its full virtual
+      // filesystem, ignore-rule, and precedence matrix.
+      "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
