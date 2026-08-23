@@ -4030,6 +4030,7 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   const packageDir = `./generated/resources/${pkg.slug}`;
+  const imageHelper = `${packageDir}/tools/presentation-images.sh`;
   // The two archive versions are authored against different workflows: the
   // previous one drives a bundled deck-JSON renderer, the current one has no
   // renderer at all and the agent writes the HTML itself. Naming the wrong
@@ -4041,9 +4042,15 @@ export function buildPresentationRunbookInstructionLines(args: {
         ]
       : [
           `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it.`,
+          `- Under ${packageDir}, batch independent package reads: read design-system.md, color-systems/${colorSystemToken}.css, layouts/_shell.html, and decoration/PLACEMENT.md together; once layouts are selected, read all selected layout files together. Do not reopen unchanged package files.`,
           `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.`,
           `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          "- Generate deck images if needed (images from the supplied material come first) with `okou generate image --provider built-in --model seedream4`, at most 3 in flight (more return HTTP 429), and embed the returned `Embed this URL in HTML` value, which serves AVIF/WebP through the CDN image transform.",
+          `- Images from the supplied material come first. If 1-4 generated images are still needed, write one manifest outside the hosted output as \`asset-id<TAB>raw prompt[<TAB>size]\`, using only 1024x1024, 1536x1024, or 1024x1536.`,
+          `- Start the complete image batch exactly once with \`bash ${imageHelper} start <manifest.tsv> <state-dir>\`, then immediately author the complete index.html while it runs. The helper uses seedream4 PNG at low quality, keeps at most 3 generations in flight, queues the fourth, and retries one transient failure per job. Do not call \`okou generate image\` directly or serially.`,
+          `- Before local verification, join the batch exactly once with \`bash ${imageHelper} wait <state-dir>\` and embed the asset-id-to-URL results from \`<state-dir>/results.tsv\`. Keep the manifest, state, prompts, and logs outside the hosted output.`,
+          `- Treat ${packageDir}/tools/run.sh and its check helpers as opaque executables. Run the SKILL-documented gate against the final local HTML after images settle; do not open or reverse-engineer gate source.`,
+          "- If the local gate fails, inspect only the named pages, elements, or advisory samples, batch the fixes, and rerun only after the HTML changes. Do not perform an unconditional all-slide screenshot, contact-sheet, or per-image recognition pass.",
+          "- A passing local gate is the stopping condition: publish immediately and exactly once. Do not rerun the gate or visual review on the hosted URL unless hosting changed the artifact or the URL failed.",
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,

@@ -110,6 +110,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
     expect(result.prompt).not.toContain("okou generate presentation");
+    expect(result.prompt).not.toContain("presentation-images.sh");
   });
 
   it("switches the built-in presentation package to direct-HTML authoring and seedream4 images", () => {
@@ -140,9 +141,24 @@ describe("buildGenerationTemplatePrompt", () => {
       "./generated/resources/playful-launch/color-systems/carnival.css",
     );
     expect(result.prompt).toContain('data-color-system="carnival"');
-    expect(result.prompt).toContain("--model seedream4");
-    expect(result.prompt).toContain("at most 3 in flight");
-    expect(result.prompt).toContain("Embed this URL in HTML");
+    expect(result.prompt).toContain("read all selected layout files together");
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/tools/presentation-images.sh start <manifest.tsv> <state-dir>",
+    );
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
+    );
+    expect(result.prompt).toContain("seedream4 PNG at low quality");
+    expect(result.prompt).toContain("at most 3 generations in flight");
+    expect(result.prompt).toContain("<state-dir>/results.tsv");
+    expect(result.prompt).toContain("opaque executables");
+    expect(result.prompt).toContain(
+      "A passing local gate is the stopping condition",
+    );
+    expect(result.prompt).toContain("publish immediately and exactly once");
+    expect(result.prompt).toContain(
+      "Do not perform an unconditional all-slide screenshot",
+    );
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not
     // exist in the archive it just downloaded.

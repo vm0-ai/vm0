@@ -190,6 +190,7 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain("User request: create a 15-slide launch deck");
     expect(stdout).not.toContain("Selected design system:");
     expect(stdout).not.toContain("design-system:");
+    expect(stdout).not.toContain("presentation-images.sh");
   });
 
   it("resolves --template to direct-HTML instructions when the run carries the latest archives", async () => {
@@ -213,7 +214,16 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain(
       "./generated/resources/playful-launch/color-systems/carnival.css",
     );
-    expect(stdout).toContain("--model seedream4");
+    expect(stdout).toContain("read all selected layout files together");
+    expect(stdout).toContain(
+      "./generated/resources/playful-launch/tools/presentation-images.sh start <manifest.tsv> <state-dir>",
+    );
+    expect(stdout).toContain(
+      "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
+    );
+    expect(stdout).toContain("at most 3 generations in flight");
+    expect(stdout).toContain("A passing local gate is the stopping condition");
+    expect(stdout).toContain("publish immediately and exactly once");
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
   });
