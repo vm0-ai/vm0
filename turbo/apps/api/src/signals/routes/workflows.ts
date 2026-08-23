@@ -1186,7 +1186,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       publicBrand: get(publicBrand$),
       preloadedAgent: agent,
       timing,
-      zeroPreCreateSource: "workflow_slash_command",
+      agentRunPreCreateSource: "workflow_slash_command",
     },
     signal,
   );

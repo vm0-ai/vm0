@@ -217,8 +217,8 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(null, [401])).body,
       (await api.requestCancelRun(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
-      (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
-      (await reads.requestZeroRunNetworkLogs(null, missingId, {}, [401])).body,
+      (await reads.requestAgentRunAgentEvents(null, missingId, {}, [401])).body,
+      (await reads.requestAgentRunNetworkLogs(null, missingId, {}, [401])).body,
       (await reads.requestListLogs(null, {}, [401])).body,
       (await reads.requestReadLogById(null, missingId, [401])).body,
     ];
@@ -231,9 +231,9 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(orgless, [401])).body,
       (await api.requestCancelRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
-      (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
+      (await reads.requestAgentRunAgentEvents(orgless, missingId, {}, [401]))
         .body,
-      (await reads.requestZeroRunNetworkLogs(orgless, missingId, {}, [401]))
+      (await reads.requestAgentRunNetworkLogs(orgless, missingId, {}, [401]))
         .body,
     ];
     for (const body of orglessUnauthorized) {
@@ -691,12 +691,12 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     const emptyQueue = await api.readRunQueue(actor);
     expect(emptyQueue.body.estimatedTimePerRun).toBeNull();
 
-    const zeroRun = await api.createDirectRun(actor, {
+    const agentRun = await api.createDirectRun(actor, {
       agentId: compose.composeId,
       prompt: "zero duration estimate",
     });
-    await api.claimRunnerJob(zeroRun.runId);
-    await completeRunAfter(actor, zeroRun.runId, 0);
+    await api.claimRunnerJob(agentRun.runId);
+    await completeRunAfter(actor, agentRun.runId, 0);
     const zeroQueue = await api.readRunQueue(actor);
     expect(zeroQueue.body.estimatedTimePerRun).toBe(0);
 
@@ -2036,7 +2036,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const firstPage = await reads.requestZeroRunAgentEvents(
+    const firstPage = await reads.requestAgentRunAgentEvents(
       actor,
       run.runId,
       { limit: 1, order: "asc" },
@@ -2065,7 +2065,7 @@ describe("RUN-04: agent run telemetry families", () => {
         "Expected the first Activity event page to have a cursor",
       );
     }
-    const secondPage = await reads.requestZeroRunAgentEvents(
+    const secondPage = await reads.requestAgentRunAgentEvents(
       actor,
       run.runId,
       { cursor, limit: 1, order: "asc" },
@@ -2085,7 +2085,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(secondPage.body.status).toBe("completed");
     expect(secondPage.body.lastEventSequence).toBe(1);
 
-    const memberPage = await reads.requestZeroRunAgentEvents(
+    const memberPage = await reads.requestAgentRunAgentEvents(
       member,
       run.runId,
       { limit: 1, order: "asc" },
@@ -2109,20 +2109,20 @@ describe("RUN-04: agent run telemetry families", () => {
   it("hardens network log rows in the zero read API", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");
-    const zeroRun = await api.createDirectRun(actor, {
+    const agentRun = await api.createDirectRun(actor, {
       agentId: compose.composeId,
       prompt: "zero network hardening",
     });
 
     dispatchAxiomQueries({
-      [zeroRun.runId]: {
-        network: networkHardeningRows(zeroRun.runId, actor.userId),
+      [agentRun.runId]: {
+        network: networkHardeningRows(agentRun.runId, actor.userId),
       },
     });
 
-    const zeroNetwork = await reads.requestZeroRunNetworkLogs(
+    const zeroNetwork = await reads.requestAgentRunNetworkLogs(
       actor,
-      zeroRun.runId,
+      agentRun.runId,
       { limit: 4, order: "asc" },
       [200],
     );
@@ -2263,7 +2263,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     );
 
-    const firstPage = await reads.requestZeroRunNetworkLogs(
+    const firstPage = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { limit: 1, order: "asc" },
@@ -2289,7 +2289,7 @@ describe("RUN-04: agent run telemetry families", () => {
       );
     }
 
-    const secondPage = await reads.requestZeroRunNetworkLogs(
+    const secondPage = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { cursor, limit: 1, order: "asc" },
@@ -2371,7 +2371,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     );
 
-    const descFirst = await reads.requestZeroRunNetworkLogs(
+    const descFirst = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { limit: 1, order: "desc" },
@@ -2396,7 +2396,7 @@ describe("RUN-04: agent run telemetry families", () => {
       );
     }
 
-    const descSecond = await reads.requestZeroRunNetworkLogs(
+    const descSecond = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { cursor: descCursor, limit: 1, order: "desc" },
@@ -2601,20 +2601,20 @@ describe("RUN-04: agent run telemetry families", () => {
       visibility: "private",
     });
 
-    const zeroRun = await api.createRun(actor, {
+    const agentRun = await api.createRun(actor, {
       agentId: agent.agentId,
       prompt: "zero run detail",
       modelProvider: "anthropic-api-key",
     });
-    const claim = await api.claimRunnerJob(zeroRun.runId);
+    const claim = await api.claimRunnerJob(agentRun.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
     await webhooks.requestAgentCheckpoint(
       {
-        runId: zeroRun.runId,
+        runId: agentRun.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${zeroRun.runId}`,
+        cliAgentSessionId: `bdd-cli-${agentRun.runId}`,
         cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd zero detail ${zeroRun.runId}`)
+          .update(`bdd zero detail ${agentRun.runId}`)
           .digest("hex"),
       },
       headers,
@@ -2622,7 +2622,7 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     await webhooks.requestAgentComplete(
       {
-        runId: zeroRun.runId,
+        runId: agentRun.runId,
         exitCode: 0,
         sandboxReuseResult: "reused",
         workspaceReuseResult: "sandboxReused",
@@ -2637,7 +2637,7 @@ describe("RUN-04: agent run telemetry families", () => {
       modelProvider: "anthropic-api-key",
     });
 
-    const runId = zeroRun.runId;
+    const runId = agentRun.runId;
     dispatchAxiomQueries({
       [runId]: {
         network: [
@@ -3050,7 +3050,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const network = await reads.requestZeroRunNetworkLogs(
+    const network = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       {},
@@ -3111,7 +3111,7 @@ describe("RUN-04: agent run telemetry families", () => {
     });
 
     const sinceMs = Date.parse("2026-06-10T10:59:00Z");
-    const pagedNetwork = await reads.requestZeroRunNetworkLogs(
+    const pagedNetwork = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { limit: 2, since: sinceMs },
@@ -3128,7 +3128,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const networkApl = axiomCallAt(axiomCallCount() - 1)[0];
     expect(networkApl).toContain(new Date(sinceMs).toISOString());
 
-    const wrongNetworkCursorKind = await reads.requestZeroRunNetworkLogs(
+    const wrongNetworkCursorKind = await reads.requestAgentRunNetworkLogs(
       actor,
       runId,
       { cursor: "sequence:asc:1", limit: 1, order: "asc" },
@@ -3136,7 +3136,7 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     expectApiError(wrongNetworkCursorKind.body);
 
-    const emptyNetwork = await reads.requestZeroRunNetworkLogs(
+    const emptyNetwork = await reads.requestAgentRunNetworkLogs(
       actor,
       bareRun.runId,
       {},
@@ -3150,7 +3150,7 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: false,
     });
 
-    const memberNetwork = await reads.requestZeroRunNetworkLogs(
+    const memberNetwork = await reads.requestAgentRunNetworkLogs(
       member,
       runId,
       {},

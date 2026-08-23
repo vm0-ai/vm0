@@ -370,7 +370,7 @@ interface TelegramRunSnapshot {
   readonly sessionId: string | null;
 }
 
-interface TelegramZeroRunSnapshot {
+interface TelegramAgentRunSnapshot {
   readonly id: string;
   readonly triggerSource: string | null;
   readonly chatThreadId: string | null;
@@ -388,7 +388,7 @@ interface TelegramCallbackSnapshot {
 
 interface TelegramPostRunState {
   readonly run: TelegramRunSnapshot | null;
-  readonly zeroRun: TelegramZeroRunSnapshot | null;
+  readonly agentRun: TelegramAgentRunSnapshot | null;
   readonly callbacks: readonly TelegramCallbackSnapshot[];
   readonly jobExists: boolean;
 }
@@ -412,7 +412,7 @@ function runSnapshot(value: unknown): TelegramRunSnapshot | null {
   };
 }
 
-function zeroRunSnapshot(value: unknown): TelegramZeroRunSnapshot | null {
+function agentRunSnapshot(value: unknown): TelegramAgentRunSnapshot | null {
   const record = stateRecord(value);
   if (!record) {
     return null;
@@ -453,7 +453,7 @@ async function telegramPostRunState(
 
   return {
     run: runSnapshot(response.run),
-    zeroRun: zeroRunSnapshot(response.zero_run),
+    agentRun: agentRunSnapshot(response.zero_run),
     callbacks: stateRecords(response.callbacks).map(callbackSnapshot),
     jobExists: response.job_exists === true,
   };
@@ -540,7 +540,7 @@ async function completeWebContinuation(args: {
   }
   const webState = await telegramPostRunState(args.fixture, args.prompt);
   expect(webState.run?.sessionId).toBe(args.applicationSessionId);
-  expect(webState.zeroRun?.chatThreadId).toBe(args.chatThreadId);
+  expect(webState.agentRun?.chatThreadId).toBe(args.chatThreadId);
   const webClaim = await claimTelegramRun(web.body.runId, args.runnerGroup);
   expect(webClaim.resumeSession?.sessionId).toBe(args.resumeCliAgentSessionId);
   return await completeCanonicalChatRun({
@@ -580,10 +580,10 @@ async function runForFixturePrompt(
   return (await telegramPostRunState(fixture, prompt)).run;
 }
 
-async function latestZeroRunForFixture(
+async function latestAgentRunForFixture(
   fixture: TelegramPostFixture,
-): Promise<TelegramZeroRunSnapshot | null> {
-  return (await telegramPostRunState(fixture)).zeroRun;
+): Promise<TelegramAgentRunSnapshot | null> {
+  return (await telegramPostRunState(fixture)).agentRun;
 }
 
 function mentionEntity(username: string) {
@@ -1236,15 +1236,15 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
     const runState = await telegramPostRunState(fixture);
-    expect(runState.zeroRun?.triggerSource).toBe("telegram");
-    expect(runState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
+    expect(runState.agentRun?.triggerSource).toBe("telegram");
+    expect(runState.agentRun?.chatThreadId).toStrictEqual(expect.any(String));
     expect(
       stateRecords((await readTelegramState(fixture.telegramBotId)).routes),
     ).toContainEqual(
       expect.objectContaining({
         chatId: "77001",
         rootMessageId: "dm",
-        chatThreadId: runState.zeroRun?.chatThreadId,
+        chatThreadId: runState.agentRun?.chatThreadId,
       }),
     );
     expect(runState.callbacks[0]).toMatchObject({
@@ -1266,7 +1266,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
           op_type: "api_dispatch_pre_create_agent_run",
           span_kind: "top_level",
           trigger_source: "telegram",
-          zero_run_origin: "zero_run",
+          agent_run_origin: "direct",
         }),
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
@@ -1333,7 +1333,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const state = await telegramPostRunState(fixture, prompt);
     const runId = state.run?.id;
-    const threadId = state.zeroRun?.chatThreadId;
+    const threadId = state.agentRun?.chatThreadId;
     if (!runId || !threadId) {
       throw new Error("Expected a thread-bound Telegram run");
     }
@@ -1561,7 +1561,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const firstState = await telegramPostRunState(fixture, firstPrompt);
     expect(firstState.run?.id).toStrictEqual(expect.any(String));
-    expect(firstState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
+    expect(firstState.agentRun?.chatThreadId).toStrictEqual(expect.any(String));
     const firstClaim = await claimTelegramRun(firstState.run!.id, runnerGroup);
     const cliAgentSessionId = await completeCanonicalChatRun({
       runId: firstState.run!.id,
@@ -1580,14 +1580,14 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
     expect(completedRun.run).toMatchObject({
       session_id: firstState.run?.sessionId,
-      chat_thread_id: firstState.zeroRun?.chatThreadId,
+      chat_thread_id: firstState.agentRun?.chatThreadId,
       chat_thread_agent_session_id: firstState.run?.sessionId,
       chat_thread_agent_session_run_id: firstState.run?.id,
     });
 
     const admittedEvents = await chatApi.listThreadEvents(
       actorForFixture(fixture),
-      firstState.zeroRun!.chatThreadId!,
+      firstState.agentRun!.chatThreadId!,
     );
     expect(admittedEvents.events).toContainEqual(
       expect.objectContaining({
@@ -1606,7 +1606,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const webCliAgentSessionId = await completeWebContinuation({
       fixture,
       runnerGroup,
-      chatThreadId: firstState.zeroRun!.chatThreadId!,
+      chatThreadId: firstState.agentRun!.chatThreadId!,
       applicationSessionId: firstState.run?.sessionId ?? null,
       resumeCliAgentSessionId: cliAgentSessionId,
       prompt: "canonical web continuation",
@@ -1640,8 +1640,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     }
 
     const secondState = await telegramPostRunState(fixture, secondPrompt);
-    expect(secondState.zeroRun?.chatThreadId).toBe(
-      firstState.zeroRun?.chatThreadId,
+    expect(secondState.agentRun?.chatThreadId).toBe(
+      firstState.agentRun?.chatThreadId,
     );
     expect(sandboxOperationEventsForRun(secondState.run!.id)).toContainEqual(
       expect.objectContaining({
@@ -1669,7 +1669,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       expect.objectContaining({
         chatId: String(chatId),
         rootMessageId: "dm",
-        chatThreadId: firstState.zeroRun?.chatThreadId,
+        chatThreadId: firstState.agentRun?.chatThreadId,
       }),
     );
   });
@@ -1716,7 +1716,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
 
     const firstState = await telegramPostRunState(fixture, firstPrompt);
-    expect(firstState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
+    expect(firstState.agentRun?.chatThreadId).toStrictEqual(expect.any(String));
     const admittedForum = await findTelegramChatEventByPromptFixture({
       userId: fixture.userId,
       prompt: firstPrompt,
@@ -1772,7 +1772,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       expect.objectContaining({
         chatId: String(chatId),
         rootMessageId: "700",
-        chatThreadId: firstState.zeroRun?.chatThreadId,
+        chatThreadId: firstState.agentRun?.chatThreadId,
       }),
     );
     await webhooksApi.requestAgentComplete(
@@ -1872,8 +1872,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         followUpThreadContext,
       ].join("\n"),
     );
-    expect(followUpState.zeroRun?.chatThreadId).toBe(
-      firstState.zeroRun?.chatThreadId,
+    expect(followUpState.agentRun?.chatThreadId).toBe(
+      firstState.agentRun?.chatThreadId,
     );
     const followUpClaim = await claimTelegramRun(
       followUpState.run!.id,
@@ -1902,7 +1902,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       expect.objectContaining({
         chatId: String(chatId),
         rootMessageId: "701",
-        chatThreadId: firstState.zeroRun?.chatThreadId,
+        chatThreadId: firstState.agentRun?.chatThreadId,
       }),
     ]);
 
@@ -1934,9 +1934,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
 
     const freshState = await telegramPostRunState(fixture, freshPrompt);
-    expect(freshState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
-    expect(freshState.zeroRun?.chatThreadId).not.toBe(
-      firstState.zeroRun?.chatThreadId,
+    expect(freshState.agentRun?.chatThreadId).toStrictEqual(expect.any(String));
+    expect(freshState.agentRun?.chatThreadId).not.toBe(
+      firstState.agentRun?.chatThreadId,
     );
     expect(
       stateRecords((await readTelegramState(fixture.telegramBotId)).routes),
@@ -2180,7 +2180,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramSenderUsername: "@bob",
       telegramSenderLanguage: "en",
     });
-    await expect(latestZeroRunForFixture(fixture)).resolves.toMatchObject({
+    await expect(latestAgentRunForFixture(fixture)).resolves.toMatchObject({
       triggerSource: "telegram",
     });
   });
@@ -2454,7 +2454,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         rootMessageId: "dm",
       }),
     ).resolves.toMatchObject({
-      chatThreadId: initialState.zeroRun?.chatThreadId,
+      chatThreadId: initialState.agentRun?.chatThreadId,
     });
 
     const group = await postWebhook({
@@ -2485,7 +2485,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         rootMessageId: "dm",
       }),
     ).resolves.toMatchObject({
-      chatThreadId: initialState.zeroRun?.chatThreadId,
+      chatThreadId: initialState.agentRun?.chatThreadId,
     });
 
     const dm = await postWebhook({
@@ -2782,9 +2782,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(route).toMatchObject({
       telegramUserLinkId: null,
       telegramOfficialUserLinkId: expect.any(String),
-      chatThreadId: canonicalState.zeroRun?.chatThreadId,
+      chatThreadId: canonicalState.agentRun?.chatThreadId,
     });
-    await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
+    await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         selectedModel: "claude-opus-4-8",
       }),
@@ -2836,7 +2836,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.prompt).toBe("provider changed telegram session");
     expect(run?.continuedFromSessionId).toBeNull();
     expect(run?.sessionId).not.toBe(previousSessionId);
-    await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
+    await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
         selectedModel: "claude-sonnet-5",
@@ -2889,7 +2889,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.prompt).toBe("default provider changed telegram session");
     expect(run?.continuedFromSessionId).toBeNull();
     expect(run?.sessionId).not.toBe(previousSessionId);
-    await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
+    await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
         selectedModel: "claude-sonnet-5",

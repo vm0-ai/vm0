@@ -315,7 +315,7 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 
 /**
  * Mint a zero run token directly, the same auth boundary production crosses
- * when zero-runs-create issues a token whose chat thread granted a
+ * when agent-runs-create issues a token whose chat thread granted a
  * computer-use host (`generateZeroToken`). Precedent: `zeroCapabilityToken`
  * in api-bdd-github.ts. Returns the runId so audit events created by the
  * token's commands can be read back through the audit-events list API.

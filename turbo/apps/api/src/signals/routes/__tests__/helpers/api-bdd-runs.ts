@@ -82,7 +82,7 @@ import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
+type AgentRunRequest = z.infer<typeof runCreateBodySchema>;
 type DirectRunRequest = DirectRunFixtureRequest;
 interface RunsListQuery {
   readonly status?: string;
@@ -311,7 +311,7 @@ export function createRunsApi(context: TestContext) {
   }
 
   return {
-    async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
+    async requestRemovedAgentRunCreation(actor: ApiTestUser): Promise<number> {
       const { authorization } = authenticate(context, actor);
       const app = createAppWithRoutes({
         signal: context.signal,
@@ -472,7 +472,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(
       actor: ApiTestUser,
-      body: ZeroRunRequest,
+      body: AgentRunRequest,
       publicBrand: PublicBrand = "vm0",
     ) {
       const response = await accept(
@@ -1008,7 +1008,7 @@ export function createRunsApi(context: TestContext) {
 
     async requestCreateRun(
       actor: ApiTestUser | null,
-      body: ZeroRunRequest,
+      body: AgentRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
@@ -1032,7 +1032,7 @@ export function createRunsApi(context: TestContext) {
       return await accept(
         runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
-          body: body as ZeroRunRequest,
+          body: body as AgentRunRequest,
         }),
         statuses,
       );

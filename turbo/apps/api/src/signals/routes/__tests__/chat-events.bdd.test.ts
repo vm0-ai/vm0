@@ -138,7 +138,7 @@ import { createDeferredPromise } from "../../utils";
 import { verifyZeroToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
-  createUnassociatedThreadBoundZeroRunFixture,
+  createUnassociatedThreadBoundAgentRunsServiceFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
   acquireBddVm0ApiKey,
@@ -1046,7 +1046,9 @@ function chatThreadConnectorSelectionsClient() {
 
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
-    await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
+    await expect(
+      createUnassociatedThreadBoundAgentRunsServiceFixture(),
+    ).rejects.toThrow(
       "Thread-bound Zero run requires a queue-first association",
     );
 
@@ -1055,7 +1057,7 @@ describe("CHAT-02: thread run admission invariant", () => {
     ).rejects.toThrow("Thread-bound run requires a queue-first association");
 
     await expect(
-      createUnassociatedThreadBoundZeroRunFixture(""),
+      createUnassociatedThreadBoundAgentRunsServiceFixture(""),
     ).rejects.toThrow(
       "Thread-bound Zero run requires a queue-first association",
     );

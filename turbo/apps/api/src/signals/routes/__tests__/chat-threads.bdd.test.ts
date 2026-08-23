@@ -2500,17 +2500,17 @@ describe("CHAT-03 run usage events", () => {
       "Zero usage message agent",
     );
 
-    const zeroRun = await sendChatRun(actor, {
+    const agentRun = await sendChatRun(actor, {
       agentId,
       prompt: "record zero-credit usage",
     });
     const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
       runnerGroup,
-      zeroRun.runId,
+      agentRun.runId,
     );
     await webhooks.requestAgentUsageEvent(
       {
-        runId: zeroRun.runId,
+        runId: agentRun.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
@@ -2524,13 +2524,13 @@ describe("CHAT-03 run usage events", () => {
       zeroSandboxHeaders,
       [200],
     );
-    await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
+    await completeChatRunOk(agentRun.runId, zeroSandboxHeaders);
     await flushWaitUntilForTest();
 
     const [zeroUsageEvent] = await usageEventsForRun(
       actor,
-      zeroRun.threadId,
-      zeroRun.runId,
+      agentRun.threadId,
+      agentRun.runId,
     );
     expect(zeroUsageEvent?.usage).toMatchObject({
       version: 1,

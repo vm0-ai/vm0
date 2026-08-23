@@ -553,7 +553,7 @@ interface PreparedAdditionalVolumes {
   readonly sources: AdditionalVolumeSources;
 }
 
-interface ZeroRunMetadata {
+interface AgentRunMetadata {
   // Run provenance for workflow schedule automations.
   readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
@@ -798,7 +798,7 @@ type FailedLaunchCommitResult =
     }
   | QueueFirstRunClaimLost;
 
-export interface ZeroRunModelPin {
+export interface AgentRunModelPin {
   readonly modelProvider: string | null;
   readonly modelProviderId: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -992,12 +992,12 @@ export interface CreateAgentRunArgs {
   };
   readonly connectorScope: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
-  readonly zeroRunMetadata?: ZeroRunMetadata;
+  readonly agentRunMetadata?: AgentRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
-  readonly zeroRunModelPin?: ZeroRunModelPin;
+  readonly agentRunModelPin?: AgentRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -6169,7 +6169,7 @@ function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
     : args.body;
 }
 
-function zeroRunModelProviderValues(
+function agentRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): Pick<
   RunMetadataValues,
@@ -6279,12 +6279,12 @@ interface LaunchRunRowsArgs {
   readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
-  readonly zeroRunModelPin: ZeroRunModelPin | undefined;
+  readonly agentRunModelPin: AgentRunModelPin | undefined;
   readonly selectedVideoModel: string;
   readonly selectedImageModel: ImageModel | null;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
-  readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+  readonly agentRunMetadata: AgentRunMetadata | undefined;
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
   readonly launchSnapshot: AgentRunLaunchSnapshot;
@@ -6357,7 +6357,7 @@ function vm0LaunchMetadataValues(
   };
 }
 
-function zeroRunLaunchMetadataInput(metadata: ZeroRunMetadata): {
+function agentRunLaunchMetadataInput(metadata: AgentRunMetadata): {
   readonly autonomyBudget: number | undefined;
   readonly workflowAutomationId: string | null;
   readonly goalId: string | null;
@@ -6374,12 +6374,12 @@ function zeroRunLaunchMetadataInput(metadata: ZeroRunMetadata): {
 }
 
 function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
-  const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
+  const metadata: AgentRunMetadata = args.agentRunMetadata ?? {};
   const modelPin =
-    args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
+    args.agentRunModelPin ?? agentRunModelProviderValues(args.modelProvider);
   return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
-    ...zeroRunLaunchMetadataInput(metadata),
+    ...agentRunLaunchMetadataInput(metadata),
     modelProvider: modelPin.modelProvider,
     modelProviderId: modelPin.modelProviderId,
     modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
@@ -7230,12 +7230,12 @@ function preparedLaunchRowsArgs(args: {
     runStorageMounts: args.commit.launch.runStorageMounts,
     sessionStorageMounts: args.commit.launch.sessionStorageMounts,
     modelProvider: args.commit.context.modelProvider,
-    zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
+    agentRunModelPin: args.commit.createArgs.agentRunModelPin,
     selectedVideoModel: args.commit.context.selectedVideoModel,
     selectedImageModel: args.commit.context.selectedImageModel,
     callbackRows: args.commit.callbackRows,
     chatThreadId: args.commit.createArgs.chatThreadId,
-    zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
+    agentRunMetadata: args.commit.createArgs.agentRunMetadata,
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
     launchSnapshot: args.commit.context.launchSnapshot,
@@ -7617,14 +7617,14 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!args.admission) {
     throw new Error("Queue-first claim requires resolved thread admission");
   }
-  if (!args.createArgs.zeroRunModelPin) {
+  if (!args.createArgs.agentRunModelPin) {
     throw new Error("Queue-first claim requires a run model pin");
   }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
     admission: args.admission,
     runId: args.identity.runId,
-    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
+    selectedModel: args.createArgs.agentRunModelPin.selectedModel,
     ...(args.createArgs.codexServiceTier === "fast"
       ? { serviceTier: "priority" as const }
       : {}),
@@ -7674,12 +7674,12 @@ async function commitFailedLaunch(args: {
         runStorageMounts: undefined,
         sessionStorageMounts: undefined,
         modelProvider: args.context.modelProvider,
-        zeroRunModelPin: args.createArgs.zeroRunModelPin,
+        agentRunModelPin: args.createArgs.agentRunModelPin,
         selectedVideoModel: args.context.selectedVideoModel,
         selectedImageModel: args.context.selectedImageModel,
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
-        zeroRunMetadata: args.createArgs.zeroRunMetadata,
+        agentRunMetadata: args.createArgs.agentRunMetadata,
         apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         launchSnapshot: args.context.launchSnapshot,

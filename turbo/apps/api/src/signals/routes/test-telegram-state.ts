@@ -1152,7 +1152,7 @@ async function getTelegramPostRunStateForAction(
     });
   }
 
-  const [[zeroRun], callbacks, [job]] = await Promise.all([
+  const [[agentRun], callbacks, [job]] = await Promise.all([
     db
       .select({
         id: agentRuns.id,
@@ -1187,7 +1187,7 @@ async function getTelegramPostRunStateForAction(
 
   return actionOk({
     run,
-    zero_run: zeroRun ?? null,
+    zero_run: agentRun ?? null,
     callbacks: callbacks.map((callback) => {
       return {
         id: callback.id,

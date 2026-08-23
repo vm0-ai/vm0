@@ -23,7 +23,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
-import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
@@ -131,7 +131,7 @@ interface WorkflowAutomationRunInput {
   readonly prompt: string;
   readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
-  readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
+  readonly agentRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
 
 type ComputerUseHostGrant = Awaited<
@@ -502,7 +502,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
           args.computerUseHostGrant,
         ),
         callbacks: args.command.callbacks,
-        zeroRunMetadata: workflowAutomationRunMetadata(
+        agentRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
           args.command.autonomyBudget,
@@ -642,7 +642,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       now(),
     );
     const result = await set(
-      createQueueFirstZeroRun$,
+      createQueueFirstAgentRun$,
       {
         auth: {
           orgId: automation.orgId,
@@ -673,7 +673,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
-        zeroRunMetadata: runInput.zeroRunMetadata,
+        agentRunMetadata: runInput.agentRunMetadata,
         queueFirstAssociation: {
           kind: "automation_event",
           threadId: chatThreadId,
@@ -681,7 +681,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           prompt: runInput.prompt,
           automationId: automation.id,
         },
-        zeroRunModelPin: {
+        agentRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,
           modelProviderId: modelPin.modelProviderId,
           modelProviderCredentialScope: modelPin.modelProviderCredentialScope,

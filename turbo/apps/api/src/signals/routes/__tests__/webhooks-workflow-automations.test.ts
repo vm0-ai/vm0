@@ -207,7 +207,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
           op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
           automation_event_source: "webhook",
           trigger_source: "automation-event",
-          zero_run_origin: "workflow_automation",
+          agent_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
