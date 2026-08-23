@@ -9,7 +9,7 @@ import {
   insertChatSearchProjectionCoverageFixture,
   insertSearchablePromptFixture,
   removeChatSearchSourceEventsFixture,
-  renameChatSearchAgentComposeFixture,
+  renameChatSearchAgentFixture,
   updateChatSearchSourceThreadFixture,
 } from "../../../test-fixtures/chat-event-search";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -153,8 +153,8 @@ describe("GET /api/okou/chat/search durable reader", () => {
     await projectChatSearchMessages([primary.threadId]);
 
     const currentAgentName = `current-${randomUUID().slice(0, 8)}`;
-    await renameChatSearchAgentComposeFixture({
-      agentComposeId: primary.agentId,
+    await renameChatSearchAgentFixture({
+      agentId: primary.agentId,
       name: currentAgentName,
     });
     await updateChatSearchSourceThreadFixture({
