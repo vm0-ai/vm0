@@ -361,10 +361,10 @@ function createTemplatePickerDialogSignals() {
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
     set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalTemplatePickerOpen$, open);
-    if (!open) {
-      // Refresh only after the dialog disappears. The always-mounted composer
-      // consumer then prewarms the next signed covers without changing visible
-      // image URLs while the user is browsing.
+    if (open) {
+      // The always-mounted composer has already prefetched the catalog. This
+      // revalidates external mutations and expiring signed URLs while
+      // useLastResolved keeps that prefetched result on screen.
       set(refreshPresentationTemplates$);
     }
   });

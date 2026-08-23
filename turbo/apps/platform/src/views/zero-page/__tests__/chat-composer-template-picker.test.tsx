@@ -3448,6 +3448,71 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("revalidates a prefetched uploaded deck on its first picker open", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const prefetchedCatalogLoaded = context.mocks.deferred<void>();
+    const revalidatedCatalogLoaded = context.mocks.deferred<void>();
+    const templateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
+    const prefetchedTemplate = {
+      id: templateId,
+      title: "Draft deck",
+      sourceFilename: "brand-system.pptx",
+      coverUrl: "https://example.com/old-signed-cover.png",
+      pageCount: 6,
+      visibility: "public" as const,
+      canManage: false,
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    const revalidatedTemplate = {
+      ...prefetchedTemplate,
+      title: "Current deck",
+      coverUrl: "https://example.com/current-signed-cover.png",
+      updatedAt: "2026-08-23T03:14:00.000Z",
+    };
+    let catalog = [prefetchedTemplate];
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      if (catalog[0]?.title === prefetchedTemplate.title) {
+        prefetchedCatalogLoaded.resolve();
+      } else {
+        revalidatedCatalogLoaded.resolve();
+      }
+      return respond(200, catalog);
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await prefetchedCatalogLoaded.promise;
+    catalog = [revalidatedTemplate];
+    await user.click(screen.getByLabelText("Template"));
+    await revalidatedCatalogLoaded.promise;
+
+    const dialog = screen.getByRole("dialog");
+    const card = await waitFor(() => {
+      const found = dialog.querySelector(
+        `[data-imported-presentation-template="${templateId}"]`,
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Revalidated template card not found");
+      }
+      return found;
+    });
+    expect(within(card).getByText("Current deck")).toBeInTheDocument();
+    expect(within(card).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/current-signed-cover.png",
+    );
+    expect(within(dialog).queryByText("Draft deck")).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Select template Current deck"));
+    await expectInlineTemplateInComposer("Current deck");
+  });
+
   it("makes a template published after navigating away usable in the other thread", async () => {
     const user = userEvent.setup({ delay: null });
     const analysisCatalogLoaded = context.mocks.deferred<void>();

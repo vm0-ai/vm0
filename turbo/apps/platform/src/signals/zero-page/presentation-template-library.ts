@@ -25,9 +25,9 @@ const presentationTemplatesVersion$ = state(0);
  * browse built-in templates.
  */
 /**
- * Refetch the catalog after a mutation or after the picker closes. Refreshing
- * while the picker is hidden lets page-level consumers prewarm replacement
- * signed cover URLs without swapping images in the visible dialog.
+ * Refetch the catalog after a mutation or as the picker opens. Page-level
+ * consumers load it while the picker is hidden, and `useLastResolved` keeps
+ * that prefetched result visible during this authoritative revalidation.
  */
 export const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
@@ -51,6 +51,7 @@ export const subscribePresentationTemplatesChanged$ = command(
       {
         topic: "presentationTemplatesChanged",
         loopCommand$: refreshPresentationTemplatesFromRealtime$,
+        options: { runOnSubscribe: true },
       },
       signal,
     );
