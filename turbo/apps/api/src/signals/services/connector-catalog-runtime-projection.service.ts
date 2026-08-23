@@ -226,7 +226,7 @@ export async function connectorCatalogRuntimeProjectionSchemaAvailable(
     .limit(1);
   const available = state?.available ?? false;
   // DB/API rollout can expose new code before the base projection migration
-  // 0963 or the attested-payload migration 0971. Cache only success so a warm
+  // 0963 or the attested-payload migration 0972. Cache only success so a warm
   // instance sees migration arrival. Remove this probe and its rollout test
   // after both migrations leave the production rollback window; tracked by
   // #28275.

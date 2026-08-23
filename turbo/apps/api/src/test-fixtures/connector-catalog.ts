@@ -615,6 +615,7 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionDigest(
 
 export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
   connectorSlug: string,
+  connectorPayload: Buffer | null = Buffer.from("{}", "utf8"),
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
@@ -623,13 +624,16 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
       db,
       identity,
     );
-  const connectorPayload = Buffer.from("{}", "utf8");
   const updated = await db
     .update(connectorCatalogRuntimeProjections)
-    .set({
-      connectorDigest: sha256Digest(connectorPayload),
-      connectorPayload,
-    })
+    .set(
+      connectorPayload === null
+        ? { connectorPayload: null }
+        : {
+            connectorDigest: sha256Digest(connectorPayload),
+            connectorPayload,
+          },
+    )
     .where(
       and(
         eq(
