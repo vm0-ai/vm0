@@ -113,7 +113,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("presentation-images.sh");
   });
 
-  it("switches the built-in presentation package to direct-HTML authoring and seedream4 images", () => {
+  it("switches the built-in presentation package to direct-HTML authoring and the async image helper", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt(
@@ -148,16 +148,34 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
     );
-    expect(result.prompt).toContain("seedream4 PNG at low quality");
-    expect(result.prompt).toContain("at most 3 generations in flight");
+    expect(result.prompt).toContain("Before authoring slide markup");
+    expect(result.prompt).toContain(
+      "If no generated images are needed, skip both helper commands",
+    );
+    expect(result.prompt).toContain(
+      "The helper owns provider, model, quality, concurrency, queueing, and retry behavior",
+    );
+    expect(result.prompt).toContain(
+      "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
+    );
     expect(result.prompt).toContain("<state-dir>/results.tsv");
     expect(result.prompt).toContain("opaque executables");
+    expect(result.prompt).toContain("before the final local gate");
     expect(result.prompt).toContain(
       "A passing local gate is the stopping condition",
     );
     expect(result.prompt).toContain("publish immediately and exactly once");
     expect(result.prompt).toContain(
       "Do not perform an unconditional all-slide screenshot",
+    );
+    expect(
+      result.prompt.indexOf(
+        "tools/presentation-images.sh start <manifest.tsv>",
+      ),
+    ).toBeLessThan(
+      result.prompt.indexOf(
+        "Author the finished deck directly as semantic HTML",
+      ),
     );
     // The package this side pulls carries no renderer, so naming the previous
     // entrypoint or its deck JSON would send the run down a path that does not

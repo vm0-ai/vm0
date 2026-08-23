@@ -221,9 +221,20 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain(
       "./generated/resources/playful-launch/tools/presentation-images.sh wait <state-dir>",
     );
-    expect(stdout).toContain("at most 3 generations in flight");
+    expect(stdout).toContain("Before authoring slide markup");
+    expect(stdout).toContain(
+      "If no generated images are needed, skip both helper commands",
+    );
+    expect(stdout).toContain(
+      "follow the orchestration below even if SKILL.md contains broader review or delivery wording",
+    );
     expect(stdout).toContain("A passing local gate is the stopping condition");
     expect(stdout).toContain("publish immediately and exactly once");
+    expect(
+      stdout.indexOf("tools/presentation-images.sh start <manifest.tsv>"),
+    ).toBeLessThan(
+      stdout.indexOf("Author the finished deck directly as semantic HTML"),
+    );
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
   });
