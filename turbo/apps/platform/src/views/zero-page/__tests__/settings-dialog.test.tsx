@@ -1054,9 +1054,11 @@ describe("settings dialog", () => {
 
   it("keeps Debug settings usable while managed model diagnostics are unavailable", async () => {
     const releaseDiagnostics = context.mocks.deferred<void>();
+    let requestCount = 0;
     context.mocks.api(
       modelProviderCooldownDiagnosticsContract.get,
       async ({ respond }) => {
+        requestCount += 1;
         await releaseDiagnostics.promise;
         return respond(404, {
           error: {
@@ -1088,6 +1090,19 @@ describe("settings dialog", () => {
       ),
     ).resolves.toBeInTheDocument();
     expect(diagnostics.querySelector("summary")).toBeNull();
+
+    const refreshButton = queryAllByRoleFast("button", diagnostics).find(
+      (button) => {
+        return button.textContent?.trim() === "Refresh";
+      },
+    );
+    if (!refreshButton) {
+      throw new Error("Managed model cooldown refresh button not found");
+    }
+    click(refreshButton);
+    await waitFor(() => {
+      expect(requestCount).toBe(2);
+    });
   });
 
   it("shows connector catalog diagnostics in Debug settings", async () => {

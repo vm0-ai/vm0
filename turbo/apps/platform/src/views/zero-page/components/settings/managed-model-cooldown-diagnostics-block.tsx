@@ -195,6 +195,7 @@ function CooldownDiagnosticsContent({
 
 export function ManagedModelCooldownDiagnosticsBlock() {
   const { t } = useTranslation();
+  const reloadDiagnostics = useSet(reloadManagedModelCooldownDiagnostics$);
   const diagnosticsLoadable = useLoadable(managedModelCooldownDiagnostics$);
   const loading = diagnosticsLoadable.state === "loading";
   const diagnostics =
@@ -228,16 +229,35 @@ export function ManagedModelCooldownDiagnosticsBlock() {
                 return $.settings.preferences.debug.managedModelCooldown.title;
               })}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {loading
-                ? t(($) => {
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-muted-foreground">
+                {loading
+                  ? t(($) => {
+                      return $.settings.preferences.debug.managedModelCooldown
+                        .loading;
+                    })
+                  : t(($) => {
+                      return $.settings.preferences.debug.managedModelCooldown
+                        .unavailable;
+                    })}
+              </div>
+              {!loading && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => {
+                    reloadDiagnostics();
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t(($) => {
                     return $.settings.preferences.debug.managedModelCooldown
-                      .loading;
-                  })
-                : t(($) => {
-                    return $.settings.preferences.debug.managedModelCooldown
-                      .unavailable;
+                      .refresh;
                   })}
+                </Button>
+              )}
             </div>
           </div>
         </div>
