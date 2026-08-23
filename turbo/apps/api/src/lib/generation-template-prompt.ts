@@ -24,6 +24,10 @@ import {
   readAvatarTemplateOptions,
   type AvatarTemplateOptions,
 } from "@okouai/core/avatar-template";
+import {
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+  PRESENTATION_STATIC_HTML_INSTRUCTION,
+} from "@okouai/core/presentation-generation-instructions";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -288,13 +292,14 @@ function buildUserPresentationTemplatePrompt(
       `Selected presentation template: the user's own imported deck, mounted at ./${userPresentationTemplateDirectory(rowId)}.`,
       "",
       "To produce the presentation:",
-      `- Read ./${userPresentationTemplateDirectory(rowId)}/SKILL.md and ./${userPresentationTemplateDirectory(rowId)}/design-system.md before authoring anything. Consult the package's colour CSS and assets only as that guidance calls for them.`,
+      `- Read ./${userPresentationTemplateDirectory(rowId)}/SKILL.md fully and follow only the files and assets it names.`,
       "- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.",
       "- Do not produce slide JSON, read a `tokens.json`, call a layout-id API, or run a template-specific JSON-to-HTML renderer first. None of those exist for this package; the guidance describes a visual language, not a renderer.",
       "- Lay out live rows, columns, and text flow with CSS Grid or Flexbox. Absolute positioning is for backgrounds, fixed chrome, decoration, and intentional overlays.",
       "- Background images from the package are optional visual material. New text, charts, tables, labels, and diagrams stay live HTML or SVG so they reflow and stay legible.",
       "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-      "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
+      PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+      PRESENTATION_STATIC_HTML_INSTRUCTION,
       "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
       "- Return only the generated HTML deck as the final deliverable.",
     ].join("\n"),

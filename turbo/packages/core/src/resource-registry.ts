@@ -3,6 +3,10 @@ import {
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
 } from "./website-template-items";
+import {
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+  PRESENTATION_STATIC_HTML_INSTRUCTION,
+} from "./presentation-generation-instructions";
 
 export type GenerationTarget =
   | "image"
@@ -4030,20 +4034,15 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   const packageDir = `./generated/resources/${pkg.slug}`;
-  // The two archive versions are authored against different workflows: the
-  // previous one drives a bundled deck-JSON renderer, the current one has no
-  // renderer at all and the agent writes the HTML itself. Naming the wrong
-  // entrypoint costs a whole run, so the instructions switch with the archive.
+  // Previous archives use deck JSON; latest archives require direct HTML.
   const packageLines =
     args.archiveVersion === "previous"
       ? [
           `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
         ]
       : [
-          `- Read ${packageDir}/SKILL.md completely before authoring anything, and follow it.`,
-          `- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.`,
-          `- Inline ${packageDir}/color-systems/${colorSystemToken}.css into the deck and set data-color-system="${colorSystemToken}" on the root element. Load exactly one color-system file.`,
-          "- Generate deck images if needed (images from the supplied material come first) with `okou generate image --provider built-in --model seedream4`, at most 3 in flight (more return HTTP 429), and embed the returned `Embed this URL in HTML` value, which serves AVIF/WebP through the CDN image transform.",
+          `- Read ${packageDir}/SKILL.md fully and follow its template, authoring, and verification instructions.`,
+          PRESENTATION_IMAGE_BATCH_INSTRUCTION,
         ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
@@ -4052,11 +4051,10 @@ export function buildPresentationRunbookInstructionLines(args: {
     "To produce the presentation:",
     `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
     ...packageLines,
-    "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-    "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
-    "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
+    "- Use the requested slide count; default to 8.",
+    PRESENTATION_STATIC_HTML_INSTRUCTION,
     "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
-    "- Return only the generated HTML deck as the final deliverable.",
+    "- Return only the HTML deck.",
   ];
 }
 

@@ -61,9 +61,12 @@ describe("okou generate presentation command", () => {
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
     expect(stdout).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
-    expect(stdout).toContain("Do not store slide content in JavaScript data");
+    expect(stdout).toContain(
+      "okou generate image-batch start <manifest.tsv> <state-dir>",
+    );
+    expect(stdout).toContain("okou generate image-batch wait <state-dir>");
     expect(stdout).toContain("Produce exactly the requested slide count");
     expect(stdout).toContain("make an internal slide plan");
     expect(stdout).toContain(
@@ -184,12 +187,12 @@ describe("okou generate presentation command", () => {
     );
     expect(stdout).toContain('"colorSystem": "carnival"');
     expect(stdout).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
-    expect(stdout).toContain("Do not store slide content in JavaScript data");
     expect(stdout).toContain("User request: create a 15-slide launch deck");
     expect(stdout).not.toContain("Selected design system:");
     expect(stdout).not.toContain("design-system:");
+    expect(stdout).not.toContain("presentation-images.sh");
   });
 
   it("resolves --template to direct-HTML instructions when the run carries the latest archives", async () => {
@@ -210,12 +213,37 @@ describe("okou generate presentation command", () => {
       "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(stdout).toContain("./generated/resources/playful-launch/SKILL.md");
+    expect(stdout).toContain("Color system token: carnival");
     expect(stdout).toContain(
-      "./generated/resources/playful-launch/color-systems/carnival.css",
+      "follow its template, authoring, and verification instructions",
     );
-    expect(stdout).toContain("--model seedream4");
+    const imageWorkflowLines = stdout.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow:");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch start <manifest.tsv>"),
+    ).toBeLessThan(imageWorkflow.indexOf("author the deck while it runs"));
+    expect(imageWorkflow.indexOf("author the deck while it runs")).toBeLessThan(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
     expect(stdout).not.toContain("AGENT_RUNBOOK.md");
     expect(stdout).not.toContain('"colorSystem"');
+    expect(stdout).not.toContain("presentation-images.sh");
+    expect(stdout).not.toContain("color-systems/");
+    expect(stdout).not.toContain("data-color-system");
+    expect(stdout).not.toContain("design-system.md");
+    expect(stdout).not.toContain("layouts/_shell.html");
+    expect(stdout).not.toContain("decoration/PLACEMENT.md");
+    expect(stdout).not.toContain("tools/run.sh");
   });
 
   it("rejects an unknown presentation template id with available templates", async () => {

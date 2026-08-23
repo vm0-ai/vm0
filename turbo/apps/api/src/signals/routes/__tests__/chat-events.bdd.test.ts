@@ -9654,7 +9654,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
     }
     expect(presentationPrompt).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
