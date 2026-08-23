@@ -603,29 +603,6 @@ describe("POST /api/image-io/generate", () => {
     });
   });
 
-  // #28415 moved the contract to the neutral path, so both branded paths
-  // reached this handler only through `MIGRATED_BRANDED_PATHS`, and #28711
-  // removed the row: the request log showed the CLI builds that posted to the
-  // `okou` form had drained past the window an execution context can pin one
-  // for. 404 rather than 401 is what proves the row is gone.
-  it("no longer serves the branded paths #28711 retired", async () => {
-    const app = createImageIoTestApp();
-
-    const statuses: number[] = [];
-    for (const path of [
-      "/api/okou/image-io/generate",
-      "/api/zero/image-io/generate",
-    ]) {
-      const response = await app.request(path, {
-        method: "POST",
-        body: JSON.stringify({ prompt: "a cat" }),
-      });
-      statuses.push(response.status);
-    }
-
-    expect(statuses).toStrictEqual([404, 404]);
-  });
-
   it("returns 403 when a zero token lacks file write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,

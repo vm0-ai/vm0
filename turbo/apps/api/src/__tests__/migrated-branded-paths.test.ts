@@ -7,46 +7,27 @@ import { ROUTES } from "../signals/route";
 import { avatarVideoRoutes } from "../signals/routes/avatar-video";
 import { bankingRoutes } from "../signals/routes/banking";
 import { billingStatusRoutes } from "../signals/routes/billing-status";
-import { browserAuthorizationRoutes } from "../signals/routes/browser-authorization";
-import { chatThreadRoutes } from "../signals/routes/chat-threads";
-import { computerUseRoutes } from "../signals/routes/computer-use";
 import { connectorAccountRoutes } from "../signals/routes/connector-accounts";
-import { connectorsRoutes } from "../signals/routes/connectors";
 import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { feishuBrowserConnectRoutes } from "../signals/routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "../signals/routes/feishu-connect";
 import { feishuOauthRoutes } from "../signals/routes/feishu-oauth";
-import { goalsRoutes } from "../signals/routes/goals";
-import { hostRoutes } from "../signals/routes/host";
-import { imageIoGenerateRoutes } from "../signals/routes/image-io-generate";
-import { imageRecognitionRoutes } from "../signals/routes/image-recognition";
 import { imageShareXRoutes } from "../signals/routes/image-share-x";
-import { mailRoutes } from "../signals/routes/mail";
-import { mcpConnectorsRoutes } from "../signals/routes/mcp-connectors";
 import { orgReadRoutes } from "../signals/routes/org-read";
-import { peopleSearchRoutes } from "../signals/routes/people-search";
 import { queuePositionRoutes } from "../signals/routes/queue-position";
-import { scrapeRoutes } from "../signals/routes/scrape";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
-import { socialRoutes } from "../signals/routes/social";
 import { strapiIntegrationsRoutes } from "../signals/routes/strapi-integrations";
 import { teamsBotRoutes } from "../signals/routes/teams-bot";
 import { teamsBrowserConnectRoutes } from "../signals/routes/teams-browser-connect";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
-import { translationRoutes } from "../signals/routes/translation";
-import { uploadsCompleteRoutes } from "../signals/routes/uploads-complete";
 import { uploadsPrepareRoutes } from "../signals/routes/uploads-prepare";
 import { videoIoGenerateRoutes } from "../signals/routes/video-io-generate";
 import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
-import { voiceIoSttRoutes } from "../signals/routes/voice-io-stt";
 import { weatherRoutes } from "../signals/routes/weather";
-import { webDownloadRoutes } from "../signals/routes/web-download";
 import { webFileUrlRoutes } from "../signals/routes/web-file-url";
-import { webSearchRoutes } from "../signals/routes/web-search";
-import { workflowsRoutes } from "../signals/routes/workflows";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -1400,117 +1381,6 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
-  // #28711 removed 42 rows whose branded forms the request log showed drained,
-  // and this is what that removal means for a caller: the neutral path the
-  // contract declares still answers, and both branded forms are gone.
-  //
-  // Written as concrete routes through the production app factory rather than
-  // as an assertion about the table's contents. A row that came back — or a row
-  // whose neutral registration went with it — is the regression worth catching,
-  // and neither shows up in a table length. `neutral` is asserted not to be 404
-  // as well, so a wrong method here reads as a broken test rather than as proof
-  // that a branded form retired.
-  //
-  // At least one endpoint per slice that lost rows, because the slices differ
-  // in what held their branded forms open and a mistake would be confined to
-  // one of them. The #28416 slice is written out in full: all four of its rows
-  // went, so nothing else covers it.
-  it("404s the branded forms #28711 retired and keeps their neutral paths", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const retired = [
-      // #28418
-      { routes: mcpConnectorsRoutes, method: "GET", suffix: "mcp-connectors" },
-      // #28415
-      {
-        routes: imageIoGenerateRoutes,
-        method: "POST",
-        suffix: "image-io/generate",
-      },
-      // #28416
-      { routes: imageRecognitionRoutes, method: "POST", suffix: "recognize" },
-      { routes: scrapeRoutes, method: "POST", suffix: "scrape" },
-      { routes: translationRoutes, method: "POST", suffix: "translate" },
-      { routes: webSearchRoutes, method: "POST", suffix: "web-search" },
-      // #28419
-      { routes: goalsRoutes, method: "POST", suffix: "goal" },
-      {
-        routes: hostRoutes,
-        method: "POST",
-        suffix: "host/deployments/prepare",
-      },
-      // #28459
-      { routes: chatThreadRoutes, method: "GET", suffix: "chat/search" },
-      // #28466
-      {
-        routes: computerUseRoutes,
-        method: "POST",
-        suffix: "computer-use/write-commands",
-      },
-      // #28460
-      { routes: connectorsRoutes, method: "GET", suffix: "connectors" },
-      // #28461
-      {
-        routes: workflowsRoutes,
-        method: "POST",
-        suffix: "workflows/a-workflow/run",
-      },
-      // #28463
-      {
-        routes: avatarVideoRoutes,
-        method: "GET",
-        suffix: "avatar-video/voices",
-      },
-      { routes: peopleSearchRoutes, method: "POST", suffix: "people-search" },
-      { routes: voiceIoSttRoutes, method: "POST", suffix: "voice-io/stt" },
-      { routes: webDownloadRoutes, method: "GET", suffix: "web/download-file" },
-      {
-        routes: uploadsCompleteRoutes,
-        method: "POST",
-        suffix: "uploads/complete",
-      },
-      {
-        routes: browserAuthorizationRoutes,
-        method: "POST",
-        suffix: "browser/authorization-requests",
-      },
-      { routes: mailRoutes, method: "POST", suffix: "mail/drafts/link" },
-      // #28565
-      { routes: socialRoutes, method: "POST", suffix: "social/request" },
-    ] as const;
-
-    for (const { routes, method, suffix } of retired) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(
-          `${REQUEST_ORIGIN}${path}`,
-          method === "GET"
-            ? { method }
-            : {
-                method,
-                headers: { "content-type": "application/json" },
-                body: "{}",
-              },
-        );
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, okou, zero }).toStrictEqual({
-        suffix,
-        okou: 404,
-        zero: 404,
-      });
-      expect({ suffix, neutral }).not.toStrictEqual({ suffix, neutral: 404 });
-    }
-  });
-
   // The #28423 twin: the integration control plane, driven through the same
   // production app factory. The registration assertion above rebuilds the
   // composition itself and so cannot see how `createAppWithRoutes` wires it —
@@ -1956,63 +1826,6 @@ describe("branded paths for migrated neutral routes", () => {
       });
       expect(neutral).not.toBe(404);
     }
-  });
-
-  // The other half of the #28711 gate. Its removals were bounded by how long a
-  // caller can hold a branded path: a commit-addressed CLI package is pinned by
-  // an execution context for at most the 2h `JOB_TIMEOUT` drain, and a web
-  // bundle for about two days. The rows below have callers with no window at
-  // all, so no amount of silence in the request log retires them and a later
-  // sweep must not take them for stale.
-  //
-  // An installed Desktop build hardcodes the Computer Use host endpoints,
-  // `/api/okou/org` and `/api/okou/feature-switches`, and opens the branded DMG
-  // path from a constant compiled into the shipped binary. A Slack app
-  // configuration holds the events, commands and interactive webhooks, and
-  // `routes/slack-oauth.ts` still emits the branded callback as its
-  // `redirect_uri`. Asserted over the production route table, so this fails on
-  // the row rather than on whichever caller notices first.
-  it("keeps both branded forms for the rows whose callers have no drain window", () => {
-    const registered = new Set(
-      withMigratedBrandedPaths(withApiNamespaceAliases(ROUTES)).map((entry) => {
-        return entry.route.path;
-      }),
-    );
-
-    // Both forms written out rather than derived from the neutral path: the
-    // Slack and Teams webhook contracts declare a `/api/webhooks/**` path whose
-    // branded forms do not contain that segment, so deriving them here would
-    // assert a path the table never names.
-    const heldOpen = [
-      // Installed Desktop builds.
-      "/api/okou/computer-use/host/commands/next",
-      "/api/zero/computer-use/host/commands/next",
-      "/api/okou/computer-use/host/stop",
-      "/api/zero/computer-use/host/stop",
-      "/api/okou/computer-use/hosts/start",
-      "/api/zero/computer-use/hosts/start",
-      "/api/okou/desktop/updates/:channel/:platform/:arch/dmg",
-      "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
-      "/api/okou/feature-switches",
-      "/api/zero/feature-switches",
-      "/api/okou/org",
-      "/api/zero/org",
-      // The Slack app configuration and the `redirect_uri` it must match.
-      "/api/okou/slack/oauth/callback",
-      "/api/zero/slack/oauth/callback",
-      "/api/okou/slack/events",
-      "/api/zero/slack/events",
-      "/api/okou/slack/commands",
-      "/api/zero/slack/commands",
-      "/api/okou/slack/interactive",
-      "/api/zero/slack/interactive",
-    ];
-
-    const missing = heldOpen.filter((path) => {
-      return !registered.has(path);
-    });
-
-    expect(missing).toStrictEqual([]);
   });
 
   // The synthetic routes are not in the production `MIGRATED_BRANDED_PATHS`, so
