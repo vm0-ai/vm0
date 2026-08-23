@@ -128,7 +128,7 @@ async function setupAuthenticatedXActor() {
   return { ...actor, orgId: actor.orgId };
 }
 
-describe("POST /api/zero/image-share/x", () => {
+describe("POST /api/image-share/x", () => {
   it("preserves an explicit caption for an Okou request and records connector usage billing", async () => {
     const billing = createBillingMediaApi(context);
     const actor = await setupAuthenticatedXActor();

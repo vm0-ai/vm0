@@ -112,7 +112,7 @@ function rawVideoModelRequest(
   return setupRawAppRequest({
     context,
     routes: chatThreadVideoModelRoutes,
-  })(`/api/okou/chat-threads/${threadId}/video-model`, {
+  })(`/api/chat-threads/${threadId}/video-model`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
@@ -149,7 +149,7 @@ async function readVideoModelEvents(token: string) {
   });
 }
 
-describe("POST /api/okou/chat-threads/:id/video-model", () => {
+describe("POST /api/chat-threads/:id/video-model", () => {
   it("pins a video model and records one event", async () => {
     const fixture = await seedChatThread("Product launch clip");
     const token = okouToken({

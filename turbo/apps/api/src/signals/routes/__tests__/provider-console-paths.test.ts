@@ -33,14 +33,16 @@ interface ResponseSnapshot {
 // on the neutral path from #28278, so the assertion is that all three produce
 // the same response rather than merely that the neutral path is routed.
 //
-// Every endpoint here now declares its neutral path and gains both branded
-// forms from `MIGRATED_BRANDED_PATHS` — the Teams OAuth callback in #28545, the
-// Feishu OAuth callback in #28544, and the four Slack routes in #28600, which
-// emptied and deleted `FINAL_PROVIDER_CONSOLE_PATHS`. Which mechanism produces
-// which registration is deliberately not asserted; what a caller can reach is
-// the same either way, and that is the property this file exists to pin. A
-// dropped row on either side shows up here as one of the three forms answering
-// differently.
+// Every endpoint using this helper declares its neutral path and gains both
+// branded forms from `MIGRATED_BRANDED_PATHS` — the Teams OAuth callback in
+// #28545 and the four Slack routes in #28600, which emptied and deleted
+// `FINAL_PROVIDER_CONSOLE_PATHS`. Which mechanism produces which registration
+// is deliberately not asserted; what a caller can reach is the same either way,
+// and that is the property this file exists to pin. A dropped row on either
+// side shows up here as one of the three forms answering differently.
+//
+// The Feishu OAuth callback is the exception below: #28709 retired its row, so
+// only the neutral path it declares is exercised.
 function namespacePaths(
   brandedSuffix: string,
   finalPath: string,
@@ -219,33 +221,27 @@ describe("provider console paths", () => {
     });
   });
 
-  // Like the Teams callback above, this one is no longer console-held: #28544
-  // moved the contract to the neutral path, so the two branded forms below
-  // depend on a `MIGRATED_BRANDED_PATHS` row rather than on a contract
-  // declaration. Kept here because the property being pinned — all three forms
-  // produce the same response — is unchanged.
+  // The one endpoint in this file that no longer has branded forms. #28544
+  // moved the contract to the neutral path and gave it a
+  // `MIGRATED_BRANDED_PATHS` row; #28709 removed that row, because the only
+  // thing holding the branded form was an already-loaded platform tab
+  // forwarding a code, a window that closed well before the retained request
+  // log begins. The case stays because the callback is still reached from a
+  // Feishu console flow, narrowed to the path that serves it.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
-    const paths = namespacePaths(
-      "/feishu/oauth/callback",
-      "/api/integrations/feishu/oauth/callback",
-    );
-
-    it("rejects a callback without connect state identically", async () => {
+    it("rejects a callback without connect state", async () => {
       const snapshots = await snapshotEachPath(
-        paths,
+        ["/api/integrations/feishu/oauth/callback"],
         getRequest(feishuOauthRoutes),
       );
 
-      expect(snapshots).toStrictEqual(
-        repeated(
-          {
-            status: 400,
-            location: null,
-            body: jsonBody({ error: "Invalid or expired connect state" }),
-          },
-          paths,
-        ),
-      );
+      expect(snapshots).toStrictEqual([
+        {
+          status: 400,
+          location: null,
+          body: jsonBody({ error: "Invalid or expired connect state" }),
+        },
+      ]);
     });
   });
 
