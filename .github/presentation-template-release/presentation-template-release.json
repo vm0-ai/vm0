@@ -1,0 +1,239 @@
+{
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "71ff2fbfca3fbb8c66070504af9656ce73501f71",
+    "directory": "Template-Presentation-v3"
+  },
+  "templates": [
+    {
+      "slug": "bloom",
+      "resourceId": "template:html-ppt-bloom-pitch-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "7e505c00-a899-43c2-b5d1-dc235345955b",
+      "oldVersionId": "e3e73784c35c1bcd60f40c69201843ffce1c9e4f50a88aec40ff087f347f9e56",
+      "oldSha256": "ef31c52bd6ee8de97ab165589b3a5883f0f1c40d389bf65843dc289c72b262df",
+      "newVersionId": "87f6d32b9dea192efc9367940f03e89987a5e8819461379115946f4f76aa9a2f",
+      "newSha256": "78b25da48ce0a9658e70c975ac3630f5a793e1e12e1e0e9f3fcc48ce3e1b9f1c"
+    },
+    {
+      "slug": "blueprint-academy",
+      "resourceId": "template:html-ppt-blueprint-academy-runbook",
+      "defaultColorSystem": "forest_editorial",
+      "storageId": "b8ef50ca-8ee4-415b-a71e-941668916400",
+      "oldVersionId": "ec0defd87a4e9afe838507188a5505a4d7c8c1d12dab97ac6c6d84748cffcb64",
+      "oldSha256": "2b35352f92047c7bcec9efe3d09a1fe510943f444fab2ca01db63768539d540f",
+      "newVersionId": "3e5944eeefc0ecb2a61bab44cfdcaa4a16a00a6c3b2e2ea26cab9d1bdae14768",
+      "newSha256": "9ca169e49def41e486db9f04d51641dc3d0b611a3741c05d55c097571015fdeb"
+    },
+    {
+      "slug": "botane-organic",
+      "resourceId": "template:html-ppt-botane-organic-runbook",
+      "defaultColorSystem": "mauve_dusk",
+      "storageId": "d8c53e2d-f429-4c1d-82c1-7aa31b5eed78",
+      "oldVersionId": "f12e570aca218108b8b47732654dd48e12ecbd91eb5fd4636bc23620649f3b74",
+      "oldSha256": "f60613a657f47fb6592ecf1baed71c57493a25ef3b8b02034aeb1e3589b6a1bd",
+      "newVersionId": "3945e36b2a14d567237619b61b52f2c9c5ad5790463549c800866e5b8fe1e3ff",
+      "newSha256": "0848c35df394c9a0e861a6ee7bd0b6ed36e82c2ed7bf054812e174efbdb33c19"
+    },
+    {
+      "slug": "business-data",
+      "resourceId": "template:html-ppt-business-data-runbook",
+      "defaultColorSystem": "berry_pop",
+      "storageId": "ed178a00-ce55-4ed2-a0fc-1cfc023b4360",
+      "oldVersionId": "32e271a536714f57112245425306dd03ae3e0f99f5a300836a607e364fb14558",
+      "oldSha256": "77f827beee2450ff2d82d941bbe2e5af4b823adf7782365459872d053c534114",
+      "newVersionId": "701dbbde657a27f6dd12b8cb243deb39b98c5b095820c0695d1aa1e4536995c4",
+      "newSha256": "d617bd4a0bf25b36864bc89556282450439cd22e3b04d88bb636596f1bc27744"
+    },
+    {
+      "slug": "crayon",
+      "resourceId": "template:html-ppt-crayon-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "df8e31db-5778-436e-a213-f85842afd88b",
+      "oldVersionId": "0e059390f386568e8926b860aabf039a2236bc6a848ab09c772865581b6134df",
+      "oldSha256": "7ef279bc8055886c18c94a9de63249ada745349021f07f5fadb444a0de12d32a",
+      "newVersionId": "f8492f4e40c67f28d6c85472c0725ca80b4a8eef3b8532a77fce1a3c438ef5a7",
+      "newSha256": "ea812a2006b5f041d10602e03ee402a6f48ecceeb4dc073b133418e33dd0a804"
+    },
+    {
+      "slug": "creative-agency",
+      "resourceId": "template:html-ppt-creative-agency-runbook",
+      "defaultColorSystem": "coral_studio",
+      "storageId": "de8affca-d175-4ad3-bbf3-9b8bb657ad6a",
+      "oldVersionId": "bb78a6cb923eba78baf0e5df7d578e662cc5759177d2c719b15f31c9ba1e5a19",
+      "oldSha256": "fcc63e524d4f7b019c74920b88c925e9b3398bb1305f7ec83d4588f5f27549b3",
+      "newVersionId": "8466da9315fed34f8c505aee4d8af4fa1d0f24caf7a50adab3532896eb3ea4bf",
+      "newSha256": "aceb5c0d50741189f7d29ad71492564e5b7b942ecae915ceb118355bca514d9f"
+    },
+    {
+      "slug": "data-report",
+      "resourceId": "template:html-ppt-data-report-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "34447e8f-84c3-4fa4-9e51-2a4d4e35715d",
+      "oldVersionId": "4b0c27627f0f2678629e8c80161689751d1694c461e361604868412b62ee1c71",
+      "oldSha256": "d61a14aca5f9e5af5b5bfe37f9820c6f6a36ba9542f96a035fb8b6167fcf9be9",
+      "newVersionId": "bcdd7334479702ff580f8e83cf320bc819728587837766b841c1e3d0183298d6",
+      "newSha256": "951a5029fe1ad143a9743216b616c8f8c0fee4e210510c085578ba660a959f35"
+    },
+    {
+      "slug": "editorial-magazine",
+      "resourceId": "template:html-ppt-editorial-magazine-runbook",
+      "defaultColorSystem": "warm_sand",
+      "storageId": "b408d1e4-050f-4c41-b391-68b96ee20ee2",
+      "oldVersionId": "ee0ae3079ede81b27ee93f75d4b1955515812079f7ac003d57796a69767d0e0e",
+      "oldSha256": "7d75ab72f71549b6c28f05fa8ae9d7d2e229a0c5add0f5faa231d10a38c1380a",
+      "newVersionId": "8441203e1ae71d99aeae1ba8359632793336b916188937e8ae5578c7dfcef758",
+      "newSha256": "6049cb913083974544d105ef9193c85152b3a254eeda5a9d780cf396345327d2"
+    },
+    {
+      "slug": "landing-consulting",
+      "resourceId": "template:html-ppt-landing-consulting-runbook",
+      "defaultColorSystem": "pop_art",
+      "storageId": "ee578871-08bb-42b1-9165-de793b7264d3",
+      "oldVersionId": "288e486d84b74f283169008a809c45810e25e9bcf1eb5cfc3160378010aac132",
+      "oldSha256": "427ea1989014fb9d8b84de448946ec08ed8702dd354c5df6d9a16f347b3fdfe7",
+      "newVersionId": "bb0fb8a579bfdcfecd4120a95abdbd337b2e0b5e237eab00b9cb70bacae4bff7",
+      "newSha256": "8e0e39b3bf2cef62ac851543ea337629f8c7b4ad43695aa475e62ce2b3d05e6b"
+    },
+    {
+      "slug": "lumina",
+      "resourceId": "template:html-ppt-lumina-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "6f399d30-86a2-4139-b809-1607c667dda7",
+      "oldVersionId": "fef2381cdab885d4342f78709147687fdb740d874fbb17cabd61ad67144206b0",
+      "oldSha256": "07e85e975b682db41757248910c02d31fd36d1e36d9187f69510c3620634d91b",
+      "newVersionId": "92de3f798c62c72fbf9f6e46763c5aeaefeb6d634070928a201ba6eb895f227d",
+      "newSha256": "929aca31b768f10d608e3b5ce781446cc6410812d949594907bdddd0319f82c7"
+    },
+    {
+      "slug": "meridian",
+      "resourceId": "template:html-ppt-meridian-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "257bef44-6470-4dc2-92a9-0a0ed55a180a",
+      "oldVersionId": "e488f9271b5a21ff96af939eb036e9ed3a5f813a46b7d3dc3893c5db624b095f",
+      "oldSha256": "e9551141f9f421ead54f310a36ede1d44adb477e4893ae98edbfd68052fdebf9",
+      "newVersionId": "4e1650c983f9a4bd90ddaca55ccb6f3708454d27bf75c01292504be7ef82a0b5",
+      "newSha256": "4d102cea089238d720ce5dddb93a4c79ca100885d2f4c059277841f221c48546"
+    },
+    {
+      "slug": "mosaic-geometric",
+      "resourceId": "template:html-ppt-mosaic-geometric-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "b416a10f-20d4-4ccd-80e4-ef89718cc0c9",
+      "oldVersionId": "d26dffa248cdded1c67ceb2f0caeeff0d47e121b7f0b5e5ec42bfb57c744c7c8",
+      "oldSha256": "468a795111ed2999ed007e7ac1b3775bb64a855cbd2245f0f679bad7ec782a8c",
+      "newVersionId": "b3578054dbc030ed8d66e1446e8e2d221169ace5b04fd6ad989a728f9993a39e",
+      "newSha256": "d6c220434cb99ced6e59dfb7243b3f49757bc31dd76e85672ce3941c81a24a57"
+    },
+    {
+      "slug": "neo-brutalism",
+      "resourceId": "template:html-ppt-neo-brutalism-runbook",
+      "defaultColorSystem": "mono_ink",
+      "storageId": "7f2a6e3d-76b2-4fa3-b1f0-ac4f774855b2",
+      "oldVersionId": "459e32c6b21149e23d2a1f5c1d0baa775f8d80d7a1ecca9b589b248d18c5c2cd",
+      "oldSha256": "9f4175199f9beac85f1abaf693356c2a93dad9a2d2eaa44b6e3e5ffab466965a",
+      "newVersionId": "4a5bc5d12efaeff2495d50607057bade34a10f89ed651991cc567856e5c9466b",
+      "newSha256": "b47099663859eaa3ed685da8c693852366afbe77401442771960489d8a03f1d8"
+    },
+    {
+      "slug": "nocturne",
+      "resourceId": "template:html-ppt-nocturne-runbook",
+      "defaultColorSystem": "midnight_mono",
+      "storageId": "b8bf385b-f134-4d74-943b-38d66d3592ec",
+      "oldVersionId": "fb49f224f5a9bb79bf58deff53cb410d3cfef42a7d236e2e74ada5326cb0627b",
+      "oldSha256": "105f8e51960a1a5fa7f89907ac382e6525c4653335b891f1d32e2de47857fa4f",
+      "newVersionId": "02fb8a6cc1b1dc075e55874f648c262814460b417b3f636f34f772283a66f818",
+      "newSha256": "b89485d9dfd0ca8ad710d34008bd498c8fc50c0ff4d725fd70dc9a97197cc1a0"
+    },
+    {
+      "slug": "pixel-glitch",
+      "resourceId": "template:html-ppt-pixel-glitch-runbook",
+      "defaultColorSystem": "bauhaus_primary",
+      "storageId": "4133f8ac-50d9-4048-a240-3562a79978a1",
+      "oldVersionId": "d3178a3d4254084a8e01fdb9c5acaef2483718e8dd4ea527123c5b14026f5922",
+      "oldSha256": "6feb03e7ef19b7ec9d7cff34929e283212e64fe8cb4b3ed50b35f36232ccda5b",
+      "newVersionId": "80c599e07a1ef2d74a2a412726ee4150512e4f3125cc24b726244d19c59f1bf4",
+      "newSha256": "5246518e9ce280728854510f502c5db0a3f2b57177628d91543b81f1760d0b0d"
+    },
+    {
+      "slug": "playful-launch",
+      "resourceId": "template:html-ppt-playful-launch-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "029cd47b-7d5b-4189-a4e5-03f3056ec45e",
+      "oldVersionId": "820847365300c3f5e9b06ec6107961d44eed467a7ed64a3fa84ff0f99383580c",
+      "oldSha256": "9139508877acbbf3d2f2bb2c3670758997aa83283912aa2f22fc56eadb42cde3",
+      "newVersionId": "584fc6f75a8021fd47ac8cfea5c607f21b62556447f87ed40ce9cc302927eded",
+      "newSha256": "799d7cc18c5929557f860bb43271c79d0d1d6d9ec86caa40e37ba032c357e187"
+    },
+    {
+      "slug": "playful-pop",
+      "resourceId": "template:html-ppt-playful-pop-runbook",
+      "defaultColorSystem": "pop_art",
+      "storageId": "a2e89563-3a8c-460a-8e42-036f0d5799b4",
+      "oldVersionId": "739d574be1d370e433cefdb160c982d64de474e7bb1afc6619e5b30e81e5f639",
+      "oldSha256": "5d5127437813f60ba72bb3eb7d8f4ce157a53ed74110e85deb6211aa96febd21",
+      "newVersionId": "21f1c3140717d620832a0fa60e2f1ecc1cb4b8fd640749650308c25d29ef27ac",
+      "newSha256": "c621b3ed592886049965b6b7a05be8abe2a04a7ad97c2b6f347e6aea78f226a6"
+    },
+    {
+      "slug": "prospectus",
+      "resourceId": "template:html-ppt-prospectus-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "39bd1f3e-70c3-4f86-8900-00597874ee57",
+      "oldVersionId": "5763cb85870664d6d4c1b63f3e38d841f86717e2361e9d2eebc47a4aa0944b55",
+      "oldSha256": "27d3140989dc019dd2fd6fce39356ac16e1c5eb74bcf0ccccce6f7c6c3ef605c",
+      "newVersionId": "8bc03c78a7785e7da1df40302eec37128097d8c6a2b0f12f70f19b3e364b901b",
+      "newSha256": "7d6cb8ea55a0a884484aedbf34cf9ce82bc84839cf5f75555d96f3888d15f3b0"
+    },
+    {
+      "slug": "schoolhouse",
+      "resourceId": "template:html-ppt-schoolhouse-runbook",
+      "defaultColorSystem": "bauhaus_primary",
+      "storageId": "ed26bc87-163b-47cc-8a23-66e5cd25fad6",
+      "oldVersionId": "c32e817ea80e696aaf288d3a4076e6ab59bc9e3f3364f56d3e5f704aac1811df",
+      "oldSha256": "08f9bd0c2be156c44ced76ebd582a25742be83663f13cc3b60000d1d6a78a620",
+      "newVersionId": "d55a22c0d37e506a06c2ead90fac3ee9bdc520f866d958c507fa6bce11592f6d",
+      "newSha256": "dcffcf12b3fc735922a3868b4279dd13989b6514ab54e4a24e0581a3cff9fc23"
+    },
+    {
+      "slug": "sticker-scrapbook",
+      "resourceId": "template:html-ppt-sticker-scrapbook-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "ff93c4c2-7a50-4da2-8dce-ed62502b3082",
+      "oldVersionId": "261cfe145a278ded8214e7c201e1cf2ae7bb547ad1b258a739b842dad18a4fe4",
+      "oldSha256": "9385a404ac1c81fd3d1529dfb10953c0251b421df044444516bb210c8b242d58",
+      "newVersionId": "9107e7ab4ecd2d85e5b04e68847431046ba0469cc06e473bfb4f8676cbb295e0",
+      "newSha256": "b46861798d82f3952e030d5b3a2525468fcb5c94c53bce56baa6fb39404178dc"
+    },
+    {
+      "slug": "strata",
+      "resourceId": "template:html-ppt-strata-runbook",
+      "defaultColorSystem": "mono_ink",
+      "storageId": "5e6ef9a6-5d0f-447f-bda3-e0cd199660b9",
+      "oldVersionId": "98e339feef68f251d2813c81e37278ea7ba5a40814d8241f7876adf850e1e8c1",
+      "oldSha256": "b0a3794293753b1f333c76e000e60fb7b03aa6b90f84951a429053c2e632b3b2",
+      "newVersionId": "200f41138e40c8d971e55d02bd09c14767b1ab4dfb58db9a6ab0f89f4239da5f",
+      "newSha256": "aa17a1177fb1fcb426e966f388c534957cdb73cfeac98adbb2bd45992041277d"
+    },
+    {
+      "slug": "taped-consulting",
+      "resourceId": "template:html-ppt-taped-consulting-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "e4a6e0cf-df85-45a3-b946-cb1159bd8890",
+      "oldVersionId": "335e24b12868f5807a4a7a04b370720ee8b4298a43d331e308dda8e2b731b571",
+      "oldSha256": "b490a6a04f44c2b3ee3f119c0618dc5b30da3b1c855594bcd967609426a7baf3",
+      "newVersionId": "7ccefc7895eb91c999c1a8975f8340a0854344baf81508b984b9d50e62761432",
+      "newSha256": "74324f0edd1245bc0c8863d79d503da1a74bff5785888e36e1e8755d9a0ec958"
+    },
+    {
+      "slug": "vantage",
+      "resourceId": "template:html-ppt-vantage-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "641241f9-290b-4484-a9ef-33fb16aa7b7b",
+      "oldVersionId": "432a6c78831a3d007669f0e505f6a33de03e38273ae6bb17dd92702cfcb99011",
+      "oldSha256": "55c852c1e91246bcb917bfd2b0a72210fa0fef3d6561276d86d76c81b05dd1bc",
+      "newVersionId": "ecdf9af80ee3988ae5eca5cdb852db5bc08abd73bba60ef713295c64a59fac9a",
+      "newSha256": "25e0cd60c7b23432c6ec412ee961ddc5dc85229377a53d4d5aa55241b8732577"
+    }
+  ]
+}
