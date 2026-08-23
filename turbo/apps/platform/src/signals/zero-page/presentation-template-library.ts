@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   presentationTemplatesContract,
   type PresentationTemplateDetail,
@@ -8,6 +8,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -32,18 +33,36 @@ export const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 
-function createImportedPresentationTemplates$(
-  latestCompletedRunEventId$: Computed<string | null>,
-) {
+const refreshPresentationTemplatesFromRealtime$ = command(({ set }) => {
+  set(refreshPresentationTemplates$);
+  return false;
+});
+
+/**
+ * A template is published by the analysis runner, outside any composer or
+ * browser mutation. Subscribe once at the authenticated workspace boundary so
+ * navigation cannot strand a newly published deck in the thread that started
+ * the analysis.
+ */
+export const subscribePresentationTemplatesChanged$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "presentationTemplatesChanged",
+        loopCommand$: refreshPresentationTemplatesFromRealtime$,
+      },
+      signal,
+    );
+  },
+);
+
+function createImportedPresentationTemplates$() {
   return computed(
     async (get): Promise<readonly PresentationTemplateSummary[]> => {
       if (!get(presentationTemplateImportEnabled$)) {
         return [];
       }
-      // The analysis run publishes an imported deck outside this browser's
-      // mutation commands. A new successful terminal event therefore refreshes
-      // the catalog before the user opens the picker again.
-      get(latestCompletedRunEventId$);
       get(presentationTemplatesVersion$);
       const client = get(apiClient$)(presentationTemplatesContract);
       const result = await accept(client.list(), [200]);
@@ -77,12 +96,8 @@ function createImportedPresentationTemplateHoverSignals() {
 }
 
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
-export function createImportedPresentationTemplateSignals(
-  latestCompletedRunEventId$: Computed<string | null>,
-) {
-  const importedPresentationTemplates$ = createImportedPresentationTemplates$(
-    latestCompletedRunEventId$,
-  );
+export function createImportedPresentationTemplateSignals() {
+  const importedPresentationTemplates$ = createImportedPresentationTemplates$();
   const internalRequestedTemplateId$ = state<string | null>(null);
   const internalDetailVersion$ = state(0);
   const importedPresentationTemplateRequestedId$ = computed((get) => {

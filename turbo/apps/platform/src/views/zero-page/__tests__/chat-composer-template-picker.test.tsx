@@ -37,6 +37,8 @@ import {
   context,
   AGENT_ID,
   THREAD_ID,
+  SUGGESTED_THREAD_ID,
+  linkByText,
   tabByText,
   presentationTemplateGridScrollContainer,
   mockActiveTemplateThread,
@@ -3446,9 +3448,11 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("makes a template published by a completed analysis run usable without reloading", async () => {
+  it("makes a template published after navigating away usable in the other thread", async () => {
     const user = userEvent.setup({ delay: null });
-    const initialCatalogLoaded = context.mocks.deferred<void>();
+    const analysisCatalogLoaded = context.mocks.deferred<void>();
+    const otherThreadCatalogLoaded = context.mocks.deferred<void>();
+    const publishedCatalogLoaded = context.mocks.deferred<void>();
     const publishedTemplate = {
       id: "9a6d0b2f-7a8e-4c3d-9f1a-2b3c4d5e6f70",
       title: "Fresh deck",
@@ -3461,15 +3465,37 @@ describe("chat composer templates", () => {
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
     let catalog: (typeof publishedTemplate)[] = [];
-    let initialCatalogPending = true;
+    let viewingOtherThread = false;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
-      if (initialCatalogPending) {
-        initialCatalogPending = false;
-        initialCatalogLoaded.resolve();
+      if (catalog.length > 0 && !publishedCatalogLoaded.settled()) {
+        publishedCatalogLoaded.resolve();
+      }
+      if (viewingOtherThread) {
+        if (!otherThreadCatalogLoaded.settled()) {
+          otherThreadCatalogLoaded.resolve();
+        }
+      } else if (!analysisCatalogLoaded.settled()) {
+        analysisCatalogLoaded.resolve();
       }
       return respond(200, catalog);
     });
     const lifecycle = mockChatLifecycle(context, { threadId: THREAD_ID });
+    lifecycle.setThreadList([
+      {
+        id: THREAD_ID,
+        title: "Template analysis",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-23T02:58:00.000Z",
+        updatedAt: "2026-08-23T03:00:00.000Z",
+      },
+      {
+        id: SUGGESTED_THREAD_ID,
+        title: "Other deck work",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-23T02:57:00.000Z",
+        updatedAt: "2026-08-23T02:59:00.000Z",
+      },
+    ]);
 
     detachedSetupPage({
       context,
@@ -3477,16 +3503,37 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await initialCatalogLoaded.promise;
+    await analysisCatalogLoaded.promise;
     await appendAndSend(user, "Analyze my uploaded deck");
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
+    viewingOtherThread = true;
+    await user.click(linkByText("Other deck work"));
+    const otherThreadContainer = await waitFor(() => {
+      expect(document.title).toBe("Other deck work | VM0");
+      const container = document.querySelector(
+        `[data-chat-thread-container-id="${SUGGESTED_THREAD_ID}"]`,
+      );
+      if (!(container instanceof HTMLElement)) {
+        throw new Error("Other thread container not found");
+      }
+      return container;
+    });
+    await otherThreadCatalogLoaded.promise;
+
     catalog = [publishedTemplate];
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("presentationTemplatesChanged"),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("presentationTemplatesChanged");
+    await publishedCatalogLoaded.promise;
     lifecycle.completeRun("Template published");
 
-    click(await screen.findByLabelText("Template"));
+    click(within(otherThreadContainer).getByLabelText("Template"));
     await expect(screen.findByText("Fresh deck")).resolves.toBeInTheDocument();
     await user.click(screen.getByLabelText("Select template Fresh deck"));
     await expectInlineTemplateInComposer("Fresh deck");

@@ -505,7 +505,7 @@ export function createComposerSignals(
     feedback,
     quoteOnlyFeedbackEnabled$,
   );
-  const ui = createComposerUiSignals(eventSignals.latestCompletedRunEventId$);
+  const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
@@ -637,16 +637,6 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     );
     return Promise.resolve(running && !lastAssistantCancelled);
   });
-  const latestCompletedRunEventId$ = computed((get): string | null => {
-    const events = get(chatEvents$);
-    for (let index = events.length - 1; index >= 0; index--) {
-      const event = events[index];
-      if (event?.eventType === "run.completed") {
-        return event.id;
-      }
-    }
-    return null;
-  });
   const actionsLoading$ = computed(async (get): Promise<boolean> => {
     await get(hasEvents$);
     return false;
@@ -682,7 +672,6 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,
-    latestCompletedRunEventId$,
   };
 }
 

@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -878,15 +878,13 @@ function createPresentationTemplateDetailNavigationSignals(
   };
 }
 
-export function createComposerUiSignals(
-  latestCompletedRunEventId$: Computed<string | null>,
-) {
+export function createComposerUiSignals() {
   const basic = createBasicComposerUiSignals();
   const list = createTemplatePickerListSignals();
   const cards = createTemplateCardSignals();
   const detail = createTemplateDetailStateSignals();
   const importedPresentationTemplates =
-    createImportedPresentationTemplateSignals(latestCompletedRunEventId$);
+    createImportedPresentationTemplateSignals();
   const resources = createTemplatePreviewResourceSignals(list, cards, detail);
   const applySelection$ =
     createApplyPresentationTemplateDetailSelectionSignal(detail);
