@@ -60,6 +60,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   clearFeishuConnectorOwnership,
+  readConnectorOAuthAccountMutation,
   readCustomConnectorCredentialStorageParent,
   readFeishuMemberConnectorState,
   seedConnectorStorageRow,
@@ -1003,6 +1004,11 @@ describe("Feishu integration", () => {
       authorizationUrl.searchParams.get("state"),
       "Expected Feishu OAuth state",
     );
+    await expect(
+      readConnectorOAuthAccountMutation(context, state),
+    ).resolves.toMatchObject({
+      account_mutation: { intent: "single-account" },
+    });
     oauthUserOpenId = openId;
     const oauthApp = createAppWithRoutes({
       signal: context.signal,
@@ -2355,6 +2361,11 @@ describe("Feishu integration", () => {
     if (!state) {
       throw new Error("Expected Feishu authorization URL to include state");
     }
+    await expect(
+      readConnectorOAuthAccountMutation(context, state),
+    ).resolves.toMatchObject({
+      account_mutation: { intent: "single-account" },
+    });
 
     const handoffResponse = await oauthApp.request(
       `${feishuOauthContract.callback.path}?${new URLSearchParams({

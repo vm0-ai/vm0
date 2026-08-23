@@ -57,10 +57,8 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
   parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
-  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -824,7 +822,7 @@ async function createExternalCodeSession(
     readonly authorizeAgent: true | undefined;
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
     readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
@@ -846,7 +844,7 @@ async function createExternalCodeSession(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
       allowSiblings: args.allowSiblings,
     });
     signal.throwIfAborted();
@@ -873,7 +871,7 @@ async function createExternalCodeSession(
         status: "pending",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        ...storedConnectorAccountMutationWrite(args.account),
+        accountMutation: args.account,
         authorizationUrl: args.authorizationUrl,
         createdAt: args.now,
         updatedAt: args.now,
@@ -897,7 +895,7 @@ export const startConnectorExternalCodeSession$ = command(
       readonly authorizeAgent: true | undefined;
       readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ) => {

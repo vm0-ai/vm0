@@ -653,6 +653,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       connectorId,
       redirectUri: oauthRedirectUri(query.callbackTarget),
       publicBrand: state.publicBrand,
+      account: { intent: "single-account" },
       feishuContext: {
         installationId: state.installationId,
       },
