@@ -7,8 +7,18 @@
  * requesting the pre-cutover digest long after the switch flips, and the R2
  * objects behind both are immutable.
  *
- * Remove this module with the switch, once no run context still requests the
- * previous digest.
+ * Rollout fallback. Surface: existing runner/sandbox, up to 2 hours. A run
+ * whose execution context pinned a `CLI_PKG_URL` from before this change
+ * carries a CLI whose bundled registry only knows the pre-cutover digest, and
+ * it keeps asking for that digest for the queue lifetime plus a claimed run —
+ * bounded by `JOB_TIMEOUT = Duration::from_secs(7200)` in
+ * `crates/runner/src/executor/mod.rs`. See the "Commit-addressed CLI artifacts"
+ * section of `docs/deployment-compatibility.md`.
+ *
+ * Removable once the switch is terminal and 2 hours have passed since every
+ * new execution context carries the post-cutover CLI. Remove this module, the
+ * switch, and the disabled branch's tests together; follow-up
+ * vm0-ai/vm0#28672.
  */
 
 const CURRENT_PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS = {

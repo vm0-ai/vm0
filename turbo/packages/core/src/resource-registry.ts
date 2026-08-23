@@ -3401,8 +3401,10 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
 // The disabled side of LatestPresentationTemplates deliberately keeps the
 // runbook package ids on their pre-cutover immutable R2 versions, whose
 // archives carry a deck-JSON renderer instead of the direct-HTML guidance.
-// Remove this map with the switch; historical R2 objects stay immutable and
-// must not be deleted.
+// This is the switch's off branch, not a compatibility fallback: it is the
+// behavior every run has today. Remove it with the switch under
+// vm0-ai/vm0#28672; historical R2 objects stay immutable and must not be
+// deleted.
 const PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
