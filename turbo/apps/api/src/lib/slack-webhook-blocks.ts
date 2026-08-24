@@ -10,6 +10,12 @@ import type {
 } from "../signals/external/slack-block-kit";
 
 import { env } from "./env";
+import {
+  OFFICIAL_SLACK_APP_NAME,
+  OFFICIAL_SLACK_LEGACY_COMMAND,
+  OFFICIAL_SLACK_PRIMARY_COMMAND,
+  officialSlackBotMention,
+} from "./slack-official-app";
 
 type SlackBlocks = SlackAnyBlock[];
 
@@ -44,6 +50,7 @@ interface AppHomeOptions {
   readonly isOverrideActive?: boolean;
   readonly canSwitch?: boolean;
   readonly loginUrl?: string;
+  readonly botUserId: string;
 }
 
 function appUrl(publicBrand: PublicBrand): string {
@@ -72,13 +79,13 @@ function buildAppHomeHeaderBlocks(publicBrand: PublicBrand): SlackBlocks {
 }
 
 function buildAppHomeNotInstalledBlocks(publicBrand: PublicBrand): SlackBlocks {
-  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = publicBrandPresentation(publicBrand);
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:warning: *${assistantName} is not installed for this workspace*\nAsk a workspace admin to install ${assistantName} from the platform.`,
+        text: `:warning: *${OFFICIAL_SLACK_APP_NAME} is not installed for this workspace*\nAsk a workspace admin to install ${OFFICIAL_SLACK_APP_NAME} from the platform.`,
       },
     },
     {
@@ -193,8 +200,10 @@ function buildAppHomeAgentBlocks(options: AppHomeOptions): SlackBlocks {
   return blocks;
 }
 
-function buildAppHomeUsageBlocks(publicBrand: PublicBrand): SlackBlocks {
+function buildAppHomeUsageBlocks(options: AppHomeOptions): SlackBlocks {
+  const publicBrand = options.publicBrand;
   const { assistantName } = publicBrandPresentation(publicBrand);
+  const botMention = officialSlackBotMention(options.botUserId);
   return [
     {
       type: "section",
@@ -207,14 +216,14 @@ function buildAppHomeUsageBlocks(publicBrand: PublicBrand): SlackBlocks {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to ${assistantName}\n\u2022 \`/zero disconnect\` - Disconnect from ${assistantName}`,
+        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_LEGACY_COMMAND}\` - Legacy alias`,
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Usage*\nSend a DM or `@Zero` in any channel to chat with your agents",
+        text: `*Usage*\nSend a DM or mention ${botMention} in any channel to chat with your agents`,
       },
     },
     { type: "divider" },
@@ -274,7 +283,7 @@ export function buildAppHomeView(options: AppHomeOptions): SlackView {
       { type: "divider" },
       ...buildAppHomeAgentBlocks(options),
       { type: "divider" },
-      ...buildAppHomeUsageBlocks(options.publicBrand),
+      ...buildAppHomeUsageBlocks(options),
     ],
   };
 }
@@ -321,33 +330,44 @@ export function buildHelpMessage(
   opts?: {
     readonly canSwitch?: boolean;
     readonly canModel?: boolean;
+    readonly botUserId?: string;
   },
 ): SlackBlocks {
   const { assistantName } = publicBrandPresentation(publicBrand);
+  const botMention = opts?.botUserId
+    ? officialSlackBotMention(opts.botUserId)
+    : undefined;
   const switchLine = opts?.canSwitch
-    ? "\n\u2022 `/zero switch` - Choose which agent responds to your messages"
+    ? `\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} switch\` - Choose which agent responds to your messages`
     : "";
   const modelLine = opts?.canModel
-    ? "\n\u2022 `/zero model` - Choose your model"
+    ? `\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} model\` - Choose your model`
     : "";
   return [
     {
       type: "section",
-      text: { type: "mrkdwn", text: `*${assistantName} Slack Bot Help*` },
+      text: {
+        type: "mrkdwn",
+        text: botMention
+          ? `*${botMention} Slack Bot Help*`
+          : "*Slack Bot Help*",
+      },
     },
     { type: "divider" },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to ${assistantName}${switchLine}${modelLine}\n\u2022 \`/zero disconnect\` - Disconnect from ${assistantName}`,
+        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}${switchLine}${modelLine}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_LEGACY_COMMAND}\` - Legacy alias`,
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Usage*\n\u2022 `@Zero <message>` - Send a message to your agent",
+        text: botMention
+          ? `*Usage*\n\u2022 ${botMention} <message> - Send a message to your agent`
+          : "*Usage*\n\u2022 Send a DM to this bot or mention it in a channel to message your agent",
       },
     },
   ];
@@ -363,16 +383,16 @@ export function buildSuccessMessage(message: string): SlackBlocks {
 }
 
 export function buildWelcomeMessage(
-  publicBrand: PublicBrand,
+  botUserId: string,
   agentName?: string,
 ): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const botMention = officialSlackBotMention(botUserId);
   const blocks: SlackBlocks = [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:wave: *Hi! I'm ${assistantName}.*\n\nI can connect you to AI agents to help with your tasks.`,
+        text: `:wave: *Hi! I'm ${botMention}.*\n\nI can connect you to AI agents to help with your tasks.`,
       },
     },
     { type: "divider" },
