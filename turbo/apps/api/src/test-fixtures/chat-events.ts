@@ -10,7 +10,6 @@ import type {
 } from "@okouai/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@okouai/db/jsonb-contracts/chat-teams-context";
 import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
