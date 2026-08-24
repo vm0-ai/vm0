@@ -587,6 +587,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
     const usageEventId = await store.set(
       insertUsageEvent$,
       {

@@ -2646,7 +2646,7 @@
         "invalidDescription": "यह पेज Microsoft Teams कनेक्ट लिंक से खोला जाना है।",
         "open": "टीमें खोलें",
         "providerName": "Microsoft Teams",
-        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @Zero का उल्लेख करें।",
+        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @{{botName}} का उल्लेख करें।",
         "successTitle": "Microsoft Teams से जुड़ा"
       },
       "telegram": {
