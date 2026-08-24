@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.102](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.101...vsock-guest-v0.19.102) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+
 ## [0.19.101](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.100...vsock-guest-v0.19.101) (2026-08-24)
 
 ## [0.19.100](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.99...vsock-guest-v0.19.100) (2026-08-24)
