@@ -2993,7 +2993,7 @@
         "moreOptions": "Plus d'options pour {{bot}}",
         "newBotToken": "Nouveau token de bot",
         "notConnected": "Non connecté",
-        "officialBot": "Bot officiel de {{assistantName}}",
+        "officialBot": "Bot Telegram officiel",
         "officialDescription": "Bot officiel fourni par {{brandName}}.",
         "officialMissing": "La configuration du bot officiel est manquante.",
         "pageDescription": "Gérer le routage du bot pour cet espace de travail",

@@ -4781,7 +4781,7 @@ describe("INT-02: Telegram integration", () => {
     expect(noContentMessage.body).toBe("OK");
   });
 
-  it("keeps official Telegram missing-agent guidance on the persisted Okou brand", async () => {
+  it("keeps official Telegram missing-agent guidance on the webhook Host brand", async () => {
     const officialToken = "123456:bdd-official-okou-token";
     const officialUsername = "bdd_official_okou_bot";
     mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", officialToken);
@@ -4847,6 +4847,7 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
       [200],
+      "okou",
     );
     expect(inbound.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5068,6 +5069,7 @@ describe("INT-02: Telegram integration", () => {
         "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
       },
       [200],
+      "okou",
     );
     expect(customConnectPrompt.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5404,6 +5406,7 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": webhookSecret },
       [200],
+      "okou",
     );
     expect(inbound.body).toBe("OK");
 

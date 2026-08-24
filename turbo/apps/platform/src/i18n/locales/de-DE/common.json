@@ -2943,7 +2943,7 @@
         "moreOptions": "Weitere Optionen für {{bot}}",
         "newBotToken": "Neuer Bot-Token",
         "notConnected": "Nicht verbunden",
-        "officialBot": "Offizieller {{assistantName}}-Bot",
+        "officialBot": "Offizieller Telegram-Bot",
         "officialDescription": "Offizieller Bot bereitgestellt von {{brandName}}.",
         "officialMissing": "Die offizielle Bot-Konfiguration fehlt.",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
