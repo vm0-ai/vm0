@@ -254,12 +254,14 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
-    if {"vm0_addon_ready_path", "vm0_usage_state_id"} & updated:
-        ready_path = ctx.options.vm0_addon_ready_path
-        usage_state_id = ctx.options.vm0_usage_state_id
-        if ready_path and usage_state_id:
-            runner_flush_lifecycle.start_runner_jsonl_flush_worker()
-            Path(ready_path).write_text(usage_state_id, encoding="utf-8")
+
+
+def running() -> None:
+    ready_path = ctx.options.vm0_addon_ready_path
+    usage_state_id = ctx.options.vm0_usage_state_id
+    if ready_path and usage_state_id:
+        runner_flush_lifecycle.start_runner_jsonl_flush_worker()
+        Path(ready_path).write_text(usage_state_id, encoding="utf-8")
 
 
 def get_api_url() -> str:

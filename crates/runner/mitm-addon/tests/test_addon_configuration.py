@@ -165,7 +165,7 @@ class TestAddonConfiguration:
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "runner-usage-state-id"
 
-    def test_configure_starts_jsonl_watcher_before_addon_ready(self, tmp_path):
+    def test_running_starts_jsonl_watcher_before_addon_ready(self, tmp_path):
         ready_path = tmp_path / "addon-ready"
         log_path = tmp_path / "network.jsonl"
         (tmp_path / "jsonl-flush-request").write_text(
@@ -191,7 +191,8 @@ class TestAddonConfiguration:
             patch.object(logging_utils, "flush_log_path", return_value=True) as flush_log_path,
         ):
             mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
-            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            assert not ready_path.exists()
+            mitm_addon.running()
             runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
 
         assert ready_path.read_text(encoding="utf-8") == "runner-usage-state-id"
@@ -204,7 +205,7 @@ class TestAddonConfiguration:
             timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
 
-    def test_configure_does_not_publish_ready_when_jsonl_watcher_fails_to_start(self, tmp_path):
+    def test_running_does_not_publish_ready_when_jsonl_watcher_fails_to_start(self, tmp_path):
         ready_path = tmp_path / "addon-ready"
         startup_error = RuntimeError("can't start new thread")
         real_thread_start = runner_flush_lifecycle.threading.Thread.start
@@ -231,6 +232,8 @@ class TestAddonConfiguration:
                 create=True,
             ),
         ):
+            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            assert not ready_path.exists()
             with (
                 patch.object(
                     runner_flush_lifecycle.threading.Thread,
@@ -239,7 +242,7 @@ class TestAddonConfiguration:
                 ),
                 pytest.raises(RuntimeError) as raised,
             ):
-                mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+                mitm_addon.running()
 
             assert raised.value is startup_error
             assert not ready_path.exists()
@@ -250,7 +253,7 @@ class TestAddonConfiguration:
                     "start",
                     new=start_before_ready,
                 ):
-                    mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+                    mitm_addon.running()
 
                 assert worker_started
                 assert ready_path.read_text(encoding="utf-8") == "runner-usage-state-id"
