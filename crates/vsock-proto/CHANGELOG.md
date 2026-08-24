@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.34](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.33...vsock-proto-v0.18.34) (2026-08-24)
+
+
+### Bug Fixes
+
+* **rust:** make payload-too-large diagnostics unit-accurate ([#28806](https://github.com/vm0-ai/vm0/issues/28806)) ([d2c2ab3](https://github.com/vm0-ai/vm0/commit/d2c2ab316045c28a3b8726847c3b5c9a14831d09))
+
 ## [0.18.33](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.32...vsock-proto-v0.18.33) (2026-08-24)
 
 

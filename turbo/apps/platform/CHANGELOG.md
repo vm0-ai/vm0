@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.784.4](https://github.com/vm0-ai/vm0/compare/app-v0.784.3...app-v0.784.4) (2026-08-24)
+
+
+### Refactoring
+
+* **platform:** rename the zero-page directories ([#28847](https://github.com/vm0-ai/vm0/issues/28847)) ([0f0ded9](https://github.com/vm0-ai/vm0/commit/0f0ded9b208cbeb41998c04f43db70ac1cf11d22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.2
+    * @okouai/core bumped to 8.585.0
+
 ## [0.784.3](https://github.com/vm0-ai/vm0/compare/app-v0.784.2...app-v0.784.3) (2026-08-24)
 
 
