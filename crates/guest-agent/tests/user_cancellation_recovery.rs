@@ -174,60 +174,58 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         read_response(&mut stream)
     });
 
-    let guest_agent = async {
-        common::command_output_with_timeout(
-            Command::new(env!("CARGO_BIN_EXE_guest-agent"))
-                .env_clear()
-                .env(
-                    "PATH",
-                    std::env::var("PATH")
-                        .unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".to_string()),
-                )
-                .env("SHELL", "/bin/sh")
-                .env("HOME", &home)
-                .env(guest_contracts::env::API_URL_ENV, server.base_url())
-                .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
-                .env(guest_contracts::env::RUN_ID_ENV, scenario.run_id)
-                .env(
-                    guest_contracts::env::SANDBOX_ID_ENV,
-                    "00000000-0000-4000-8000-000000000abc",
-                )
-                .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
-                .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
-                .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
-                .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
-                .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
-                .env(
-                    guest_contracts::env::RESUME_SESSION_ID_ENV,
-                    scenario.thread_id,
-                )
-                .env(
-                    "MOCK_CODEX_APP_SERVER_SCENARIO",
-                    "runtime-turn-started-before-steer",
-                )
-                .env(
-                    guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                    "1",
-                )
-                .env(
-                    guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                    "1",
-                )
-                .env(
-                    guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
-                    &run_payload_file,
-                )
-                .env(
-                    guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                    &runtime_dir,
-                )
-                .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint)
-                .env("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
-            Duration::from_secs(20),
-            "guest-agent did not finish within its finalization budget",
-        )
-        .await
-    };
+    let mut guest_agent_command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    let guest_agent = common::command_output_with_timeout(
+        guest_agent_command
+            .env_clear()
+            .env(
+                "PATH",
+                std::env::var("PATH")
+                    .unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".to_string()),
+            )
+            .env("SHELL", "/bin/sh")
+            .env("HOME", &home)
+            .env(guest_contracts::env::API_URL_ENV, server.base_url())
+            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(guest_contracts::env::RUN_ID_ENV, scenario.run_id)
+            .env(
+                guest_contracts::env::SANDBOX_ID_ENV,
+                "00000000-0000-4000-8000-000000000abc",
+            )
+            .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+            .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
+            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
+            .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
+            .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
+            .env(
+                guest_contracts::env::RESUME_SESSION_ID_ENV,
+                scenario.thread_id,
+            )
+            .env(
+                "MOCK_CODEX_APP_SERVER_SCENARIO",
+                "runtime-turn-started-before-steer",
+            )
+            .env(
+                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                "1",
+            )
+            .env(
+                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                "1",
+            )
+            .env(
+                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                &run_payload_file,
+            )
+            .env(
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                &runtime_dir,
+            )
+            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint)
+            .env("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
+        Duration::from_secs(20),
+        "guest-agent did not finish within its finalization budget",
+    );
     let cancellation_ready = async {
         common::wait_for_file_contains(
             &session_id_file,
