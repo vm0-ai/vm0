@@ -616,7 +616,7 @@
       "illustration": "イラストレーション",
       "illustrationPreview": "{{title}} イラストのプレビュー",
       "importDeck": "自分のデッキをインポート",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",

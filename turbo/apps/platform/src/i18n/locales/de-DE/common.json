@@ -616,7 +616,7 @@
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} Illustrationsvorschau",
       "importDeck": "Eigenes Deck importieren",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
       "multiAccent": "Multi-Akzent",
