@@ -54,9 +54,14 @@ Tests for missing authentication should leave every token name unset and assert
 the resulting guidance.
 
 Do not write a test that asserts a legacy token name still reaches the Okou
-path. No such fallback exists, so the test fails. Cover the retirement with
-negative assertions instead. `src/lib/api/__tests__/config.test.ts` holds the
-pattern to follow:
+path. No such fallback exists, so the test fails.
+
+Token acceptance is a fail-closed credential boundary, so rejecting a legacy
+token name is the product behavior and negative assertions belong here. This is
+the narrow exception in [Fallbacks to Avoid](../fallback.md) §1; do not
+generalize it. Everywhere else, a test that only asserts removed behavior stays
+removed is a tombstone and should not be written.
+`src/lib/api/__tests__/config.test.ts` holds the pattern for this boundary:
 
 ```typescript
 it("ignores ZERO_TOKEN when OKOU_TOKEN is present", async () => {

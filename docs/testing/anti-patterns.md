@@ -149,7 +149,7 @@ Here's the mock hierarchy:
 | ------------------ | -------------------------------------- | --------- |
 | Third-party SaaS   | `@clerk/backend`, `@aws-sdk/client-s3` | Yes       |
 | Node.js built-ins  | `child_process`                        | Sometimes |
-| Database           | `db$` and `writeDb$`                   | Never     |
+| Database           | `globalThis.services.db`               | Never     |
 | Internal services  | `../../lib/*`                          | Never     |
 | Internal utilities | `../../utils/*`                        | Never     |
 
@@ -432,7 +432,7 @@ When reviewing tests, watch for these patterns:
 **Mocking Issues**:
 
 - [ ] Mocking internal services (`../../lib/*`)
-- [ ] Mocking the database signals `db$` and `writeDb$`
+- [ ] Mocking `globalThis.services.db`
 - [ ] Direct fetch mocking (use MSW instead)
 - [ ] Filesystem mocking (use temp directories)
 - [ ] Partial mocks with `vi.importActual()`
