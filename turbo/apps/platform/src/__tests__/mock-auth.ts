@@ -46,11 +46,13 @@ export interface MockedMembership {
 }
 
 export interface MockedClientSession {
+  currentTask?: { readonly key: string };
   id: string;
   status?: string;
   user?: {
     fullName?: string | null;
     imageUrl?: string;
+    organizationMemberships?: MockedMembership[];
     primaryEmailAddress?: { emailAddress: string } | null;
   };
 }
@@ -304,6 +306,9 @@ export function mockUser(
         user: {
           fullName: user.fullName,
           imageUrl: user.imageUrl,
+          get organizationMemberships() {
+            return internalMockedMemberships;
+          },
           primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
         },
       },
@@ -852,9 +857,14 @@ interface MockedSetActiveParams {
   session?: string | null;
   navigate?: (params: {
     session: {
+      readonly id: string;
+      readonly status: string;
       currentTask?: {
-        key: "choose-organization" | "reset-password" | "setup-mfa";
+        key: string;
       };
+      readonly user: {
+        readonly organizationMemberships: MockedMembership[];
+      } | null;
     };
     decorateUrl: (url: string) => string;
   }) => void | Promise<unknown>;
@@ -864,8 +874,30 @@ async function defaultSetActiveImpl(
   params: MockedSetActiveParams,
 ): Promise<void> {
   let navigatedTo: string | null = params.redirectUrl ?? null;
+  const selectedSession = internalMockedClientSessions.find((session) => {
+    return session.id === params.session;
+  });
+  const activeSession = internalMockedClientSessions.find((session) => {
+    return session.status === "pending" || session.status === "active";
+  });
+  const sourceSession = selectedSession ?? activeSession;
+  const session = {
+    id: sourceSession?.id ?? params.session ?? "test-session-id",
+    ...(!params.organization && sourceSession?.currentTask
+      ? { currentTask: sourceSession.currentTask }
+      : {}),
+    status: params.organization
+      ? "active"
+      : (sourceSession?.status ?? "active"),
+    user: {
+      organizationMemberships:
+        sourceSession?.user?.organizationMemberships ??
+        internalMockedUser?.organizationMemberships ??
+        [],
+    },
+  };
   await params.navigate?.({
-    session: {},
+    session,
     decorateUrl: (url) => {
       navigatedTo = defaultBuildUrlWithAuthImpl(url);
       return navigatedTo;
@@ -903,6 +935,19 @@ export const mockedClerk = {
     }
     if (internalMockedClerkSessionSignedOut) {
       return null;
+    }
+    const recoverableSession = internalMockedClientSessions.find((session) => {
+      return session.status === "pending";
+    });
+    if (recoverableSession) {
+      return {
+        ...recoverableSession,
+        get lastActiveOrganizationId() {
+          return internalMockedOrganization?.id ?? null;
+        },
+        getToken: sessionGetToken,
+        touch: sessionTouch,
+      };
     }
     return {
       id: "test-session-id",

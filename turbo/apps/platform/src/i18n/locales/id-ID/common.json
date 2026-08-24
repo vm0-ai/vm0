@@ -1043,6 +1043,24 @@
     },
     "toggleTheme": "Beralih tema",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
+        "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
+        "chooseOrganizationTitle": "Pilih organisasi",
+        "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
+        "completeTitle": "Proses masuk selesai",
+        "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
+        "loadingTitle": "Menyelesaikan proses masuk",
+        "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
+        "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "recoveryAction": "Mulai lagi",
+        "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "unsupportedTitle": "Langkah masuk tidak tersedia"
+      },
       "signIn": {
         "action": "Gunakan proses masuk saat ini",
         "title": "Masuk ke {{brandName}}"

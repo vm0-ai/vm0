@@ -124,7 +124,7 @@ describe("auth v2 sign-up flow", () => {
 
     const signUpCard = await screen.findByTestId("app-auth-v2");
     expect(within(signUpCard).getByRole("status")).toHaveTextContent(
-      "Loading authentication",
+      "Checking what your account needs next.",
     );
 
     await act(async () => {
@@ -235,7 +235,7 @@ describe("auth v2 sign-up flow", () => {
     });
   });
 
-  it("recovers a completed Google callback through the existing activation seam exactly once", async () => {
+  it("hands a completed Google callback to continuation exactly once", async () => {
     const path = "/v2/sign-up/sso-callback?gclid=click-123&utm_campaign=summer";
     setupSignUpPage(
       {
@@ -252,11 +252,11 @@ describe("auth v2 sign-up flow", () => {
     });
     expect(mockedClerk.handleRedirectCallback).not.toHaveBeenCalled();
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: expect.stringContaining("/onboarding"),
+      navigate: expect.any(Function),
       session: "session_google_sign_up",
     });
-    const activation = mockedClerk.setActive.mock.calls[0]?.[0];
-    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    const redirectUrl = new URL(location.href);
+    expect(redirectUrl.pathname).toBe("/onboarding");
     expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
   });
@@ -292,11 +292,11 @@ describe("auth v2 sign-up flow", () => {
       transfer: true,
     });
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: expect.stringContaining("/onboarding"),
+      navigate: expect.any(Function),
       session: "session_existing_google",
     });
-    const activation = mockedClerk.setActive.mock.calls[0]?.[0];
-    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    const redirectUrl = new URL(location.href);
+    expect(redirectUrl.pathname).toBe("/onboarding");
     expect(redirectUrl.searchParams.get("gclid")).toBe("existing-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("transfer");
   });
@@ -329,9 +329,11 @@ describe("auth v2 sign-up flow", () => {
     });
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: "https://app.vm0.ai",
+      navigate: expect.any(Function),
       session: "session_recovered_transfer",
     });
+    expect(location.origin).toBe("https://app.vm0.ai");
+    expect(location.pathname).toBe("/");
   });
 
   it("replaces an unrelated sign-in resource before transferring an existing Google identity", async () => {
@@ -370,7 +372,7 @@ describe("auth v2 sign-up flow", () => {
         transfer: true,
       });
       expect(mockedClerk.setActive).toHaveBeenCalledWith({
-        redirectUrl: "https://app.vm0.ai",
+        navigate: expect.any(Function),
         session: "session_existing_google",
       });
     });
@@ -594,8 +596,11 @@ describe("auth v2 sign-up flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
     const activation = mockedClerk.setActive.mock.calls[0]?.[0];
-    expect(activation?.session).toBe("session_sign_up");
-    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    expect(activation).toStrictEqual({
+      navigate: expect.any(Function),
+      session: "session_sign_up",
+    });
+    const redirectUrl = new URL(location.href);
     expect(redirectUrl.pathname).toBe("/onboarding");
     expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
     expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");

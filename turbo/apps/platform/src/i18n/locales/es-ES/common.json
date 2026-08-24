@@ -1063,6 +1063,24 @@
     },
     "toggleTheme": "Cambiar tema",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "No pudimos completar el inicio de sesión. Vuelve a empezar e inténtalo de nuevo.",
+        "activationErrorTitle": "No se pudo completar el inicio de sesión",
+        "chooseOrganizationDescription": "Elige una organización para continuar a {{brandName}}.",
+        "chooseOrganizationTitle": "Elige una organización",
+        "completeDescription": "Te estamos llevando a {{brandName}}.",
+        "completeTitle": "Inicio de sesión completado",
+        "loadingDescription": "Estamos comprobando qué necesita tu cuenta a continuación.",
+        "loadingTitle": "Finalizando el inicio de sesión",
+        "noOrganizationsDescription": "Esta cuenta no tiene ninguna organización disponible. Pide acceso a un administrador de la organización y vuelve a empezar.",
+        "noOrganizationsTitle": "No hay ninguna organización disponible",
+        "recoveryAction": "Volver a empezar",
+        "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
+        "secondFactorTitle": "Se requiere verificación adicional",
+        "selectOrganization": "Continuar con {{organizationName}}",
+        "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
+        "unsupportedTitle": "Paso de inicio de sesión no disponible"
+      },
       "signIn": {
         "action": "Usar el inicio de sesión actual",
         "title": "Iniciar sesión en {{brandName}}"

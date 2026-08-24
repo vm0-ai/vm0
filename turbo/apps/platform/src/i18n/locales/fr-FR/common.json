@@ -1063,6 +1063,24 @@
     },
     "toggleTheme": "Changer de thème",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "Nous n'avons pas pu terminer la connexion. Recommencez et réessayez.",
+        "activationErrorTitle": "La connexion n'a pas pu être terminée",
+        "chooseOrganizationDescription": "Choisissez une organisation pour continuer vers {{brandName}}.",
+        "chooseOrganizationTitle": "Choisir une organisation",
+        "completeDescription": "Redirection vers {{brandName}}.",
+        "completeTitle": "Connexion terminée",
+        "loadingDescription": "Vérification de la prochaine étape requise pour votre compte.",
+        "loadingTitle": "Finalisation de la connexion",
+        "noOrganizationsDescription": "Aucune organisation n'est disponible pour ce compte. Demandez l'accès à un administrateur de l'organisation, puis recommencez.",
+        "noOrganizationsTitle": "Aucune organisation disponible",
+        "recoveryAction": "Recommencer",
+        "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
+        "secondFactorTitle": "Vérification supplémentaire requise",
+        "selectOrganization": "Continuer avec {{organizationName}}",
+        "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
+        "unsupportedTitle": "Étape de connexion indisponible"
+      },
       "signIn": {
         "action": "Utiliser la connexion actuelle",
         "title": "Se connecter à {{brandName}}"

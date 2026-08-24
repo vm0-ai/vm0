@@ -1,11 +1,14 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  type MockedMembership,
+  mockedClerk,
+} from "../../../__tests__/mock-auth.ts";
 import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
@@ -38,6 +41,47 @@ function authV2ActionLink(name: string): HTMLAnchorElement {
     throw new Error("Auth v2 action link not found");
   }
   return link;
+}
+
+function authV2Button(name: string): HTMLButtonElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Auth v2 button not found");
+  }
+  return button;
+}
+
+function setupChooseOrganizationPage(
+  path: string,
+  organization: { readonly id: string; readonly name: string },
+): void {
+  const membership: MockedMembership = {
+    id: `membership_${organization.id}`,
+    organization,
+    role: "org:member",
+  };
+  detachedSetupPage({
+    context,
+    org: { activeOrg: null, memberships: [membership] },
+    path,
+    user: {
+      clientSessions: [
+        {
+          currentTask: { key: "choose-organization" },
+          id: "session_pending",
+          status: "pending",
+          user: {
+            fullName: "Test User",
+            organizationMemberships: [membership],
+          },
+        },
+      ],
+      fullName: "Test User",
+      id: "test-user-123",
+    },
+  });
 }
 
 function disableUrlCanParse(): void {
@@ -376,13 +420,6 @@ describe("app auth pages", () => {
       path: "/v2/sign-in",
     },
     {
-      action: "Use current sign-in",
-      documentTitle: "Sign in | VM0",
-      heading: "Sign in to VM0",
-      legacyPath: "/sign-in",
-      path: "/v2/sign-in/tasks/choose-organization",
-    },
-    {
       action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
       heading: "Create your VM0 account",
@@ -401,10 +438,10 @@ describe("app auth pages", () => {
 
     detachedSetupPage({ context, path: routeCase.path });
 
-    await expect(screen.findByTestId("app-auth-v2")).resolves.toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: routeCase.heading }),
-    ).toBeVisible();
+    await expect(
+      screen.findByRole("region", { name: routeCase.heading }),
+    ).resolves.toBeVisible();
+    expect(screen.getByTestId("app-auth-v2")).toBeVisible();
     const actionLink = authV2ActionLink(routeCase.action);
     expect(actionLink).toHaveTextContent(routeCase.action);
     expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
@@ -417,22 +454,45 @@ describe("app auth pages", () => {
     expect(document.title).toBe(routeCase.documentTitle);
   });
 
-  it("preserves branded auth intent when leaving the v2 scaffold", async () => {
+  it("recovers forced organization selection on a nested v2 task route", async () => {
+    const path = "/v2/sign-in/tasks/choose-organization";
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    setupChooseOrganizationPage(path, {
+      id: "org_route",
+      name: "Route Organization",
+    });
+
+    await expect(
+      screen.findByRole("region", { name: "Choose an organization" }),
+    ).resolves.toBeVisible();
+    expect(authV2Button("Continue with Route Organization")).toBeVisible();
+    expect(
+      queryAllByRoleFast("link").some((candidate) => {
+        return candidate.textContent?.trim() === "Use current sign-in";
+      }),
+    ).toBeFalsy();
+    expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(document.title).toBe("Sign in | VM0");
+  });
+
+  it("preserves branded auth intent through v2 continuation", async () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
     const hash = "#/?step=identifier";
     const path = `/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
-    detachedSetupPage({ context, path });
+    setupChooseOrganizationPage(path, {
+      id: "org_okou",
+      name: "Okou Organization",
+    });
 
-    await expect(screen.findByTestId("app-auth-v2")).resolves.toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "Sign in to Okou" }),
-    ).toBeVisible();
-    const continueLink = authV2ActionLink("Use current sign-in");
-    expect(continueLink).toHaveAttribute(
-      "href",
-      `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`,
+    await expect(
+      screen.findByRole("region", { name: "Choose an organization" }),
+    ).resolves.toBeVisible();
+    expect(document.body).toHaveTextContent(
+      "Choose an organization to continue to Okou.",
     );
     expect(document.title).toBe("Sign in | Okou");
     expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
@@ -440,6 +500,12 @@ describe("app auth pages", () => {
       "data-clerk-sign-in-start-title",
       "Sign in to Okou",
     );
+
+    fireEvent.click(authV2Button("Continue with Okou Organization"));
+
+    await waitFor(() => {
+      expect(location.href).toBe(redirectUrl);
+    });
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {

@@ -6,6 +6,10 @@ import {
   type AuthV2PageMode,
 } from "../views/auth-v2/auth-v2-page.tsx";
 import { hideAppSkeleton$ } from "./app-skeleton.ts";
+import {
+  createAuthV2ContinuationSignals,
+  isAuthV2ContinuationLocation,
+} from "./auth-v2/continuation.ts";
 import { resolveAuthV2PlatformContext } from "./auth-v2/platform-context.ts";
 import {
   createAuthV2SignInSignals,
@@ -22,12 +26,21 @@ import { updatePage$ } from "./react-router.ts";
 import { ROUTES } from "./route-paths.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
-  return command(async ({ set }, signal: AbortSignal) => {
+  return command(async ({ get, set }, signal: AbortSignal) => {
     const platformContext = resolveAuthV2PlatformContext(mode);
+    const continuationSignals = createAuthV2ContinuationSignals({
+      isContinuationRoute: isAuthV2ContinuationLocation(
+        location.pathname,
+        location.hash,
+      ),
+      mode,
+      navigation: platformContext.navigation,
+    });
     let signInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
       signInSignals = createAuthV2SignInSignals({
+        continuation: continuationSignals,
         isBaseRoute: location.pathname === ROUTES.signInV2,
         isOAuthCallbackRoute:
           location.pathname ===
@@ -38,24 +51,24 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
         updatePage$,
         createElement(AuthV2Page, {
           mode,
+          continuationSignals,
           platformContext,
           signInSignals,
         }),
       );
     } else {
       signUpSignals = createAuthV2SignUpSignals({
+        continuation: continuationSignals,
         isOAuthCallbackRoute:
           location.pathname ===
           `${ROUTES.signUpV2}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`,
         navigation: platformContext.navigation,
-        resolveRedirectUrl: () => {
-          return platformContext.navigation.completionRedirectUrl;
-        },
       });
       set(
         updatePage$,
         createElement(AuthV2Page, {
           mode,
+          continuationSignals,
           platformContext,
           signUpSignals,
         }),
@@ -74,6 +87,11 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     );
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
+    await set(continuationSignals.initialize$, signal);
+    signal.throwIfAborted();
+    if (get(continuationSignals.state$).status !== "inactive") {
+      return;
+    }
     if (signInSignals) {
       await set(signInSignals.initialize$, signal);
     } else if (signUpSignals) {

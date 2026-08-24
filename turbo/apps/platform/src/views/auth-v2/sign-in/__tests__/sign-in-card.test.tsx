@@ -154,7 +154,9 @@ describe("auth v2 sign-in flow", () => {
 
     const signInCard = await screen.findByTestId("app-auth-v2");
     const loadingState = within(signInCard).getByRole("status");
-    expect(loadingState).toHaveTextContent("Loading authentication");
+    expect(loadingState).toHaveTextContent(
+      "Checking what your account needs next.",
+    );
 
     await act(async () => {
       clerkLoad.resolve(undefined);
@@ -210,7 +212,7 @@ describe("auth v2 sign-in flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: "https://app.vm0.ai",
+      navigate: expect.any(Function),
       session: "session_password",
     });
   });
@@ -460,10 +462,20 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
-  it("selects an existing Clerk account once and can fall back to a new sign-in", async () => {
+  it("selects an existing Clerk account once", async () => {
     const activation = createDeferredPromise<void>(context.signal);
-    mockedClerk.setActive.mockImplementation(() => {
-      return activation.promise;
+    mockedClerk.setActive.mockImplementation(async (params) => {
+      await activation.promise;
+      await params.navigate?.({
+        decorateUrl: (url) => {
+          return url;
+        },
+        session: {
+          id: "session_ada",
+          status: "active",
+          user: { organizationMemberships: [] },
+        },
+      });
     });
     setupSignInPage(
       { status: "needs_identifier" },
@@ -510,7 +522,7 @@ describe("auth v2 sign-in flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: "https://app.vm0.ai",
+      navigate: expect.any(Function),
       session: "session_ada",
     });
 
@@ -518,6 +530,30 @@ describe("auth v2 sign-in flow", () => {
       activation.resolve(undefined);
       await activation.promise;
     });
+  });
+
+  it("can fall back from existing Clerk accounts to a new sign-in", async () => {
+    setupSignInPage(
+      { status: "needs_identifier" },
+      {
+        user: {
+          clientSessions: [
+            {
+              id: "session_ada",
+              status: "active",
+              user: {
+                fullName: "Ada Lovelace",
+                primaryEmailAddress: { emailAddress: "ada@example.com" },
+              },
+            },
+          ],
+          email: "ada@example.com",
+          fullName: "Ada Lovelace",
+          id: "user_ada",
+        },
+      },
+    );
+
     fireEvent.click(await waitForRoleElement("button", "Add account"));
 
     await expect(
@@ -790,10 +826,6 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it.each([
-    {
-      name: "an unsupported Clerk status",
-      state: { status: "needs_second_factor" },
-    },
     {
       name: "an unsupported factor set",
       state: {

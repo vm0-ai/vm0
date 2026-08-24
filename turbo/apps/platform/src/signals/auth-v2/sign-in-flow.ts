@@ -1,4 +1,3 @@
-import type { Clerk } from "@clerk/clerk-js";
 import type {
   PrepareFirstFactorParams,
   SignInFirstFactor,
@@ -24,6 +23,7 @@ import {
   requestGoogleOneTapCredential,
   startAuthV2GoogleOAuth,
 } from "./sign-in-external-strategies.ts";
+import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 
 export type AuthV2SignInFactor =
@@ -63,7 +63,6 @@ export type AuthV2SignInStep =
   | "new-password";
 
 export type AuthV2SignInUnknownReason =
-  | "activation-failed"
   | "missing-session"
   | "unsupported-factor"
   | "unsupported-status";
@@ -112,6 +111,7 @@ interface SignInResourceSnapshot {
 }
 
 export interface AuthV2SignInFlowDependencies {
+  readonly continuation: AuthV2ContinuationFlowHandoff;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
   readonly navigation: AuthV2Navigation;
@@ -165,11 +165,7 @@ interface SignInFlowAtoms {
 }
 
 interface SignInFlowRuntime {
-  readonly activatedSessionId$: State<string | null>;
-  readonly activation$: State<{
-    readonly promise: Promise<void>;
-    readonly sessionId: string;
-  } | null>;
+  readonly handledSessionId$: State<string | null>;
   readonly inFlight$: State<ReadonlyMap<CoalescedOperation, Promise<void>>>;
   readonly preparedFactorId$: State<string | null>;
 }
@@ -515,11 +511,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
 
 function createSignInFlowRuntime(): SignInFlowRuntime {
   return {
-    activatedSessionId$: state<string | null>(null),
-    activation$: state<{
-      readonly promise: Promise<void>;
-      readonly sessionId: string;
-    } | null>(null),
+    handledSessionId$: state<string | null>(null),
     inFlight$: state<ReadonlyMap<CoalescedOperation, Promise<void>>>(new Map()),
     preparedFactorId$: state<string | null>(null),
   };
@@ -530,61 +522,9 @@ function createResourceCommands(
   runtime: SignInFlowRuntime,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
-  readonly activateSession$: Command<Promise<void>, [string, AbortSignal]>;
   readonly applyResource$: ApplySignInResourceCommand;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
 } {
-  const performActivation$ = command(
-    async (
-      { set },
-      clerk: Clerk,
-      sessionId: string,
-      redirectUrl: string,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      await clerk.setActive({ redirectUrl, session: sessionId });
-      signal.throwIfAborted();
-      set(runtime.activatedSessionId$, sessionId);
-    },
-  );
-  const activateSession$ = command(
-    async (
-      { get, set },
-      sessionId: string,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (get(runtime.activatedSessionId$) === sessionId) {
-        return;
-      }
-      const activeActivation = get(runtime.activation$);
-      if (activeActivation) {
-        await activeActivation.promise;
-        signal.throwIfAborted();
-        if (get(runtime.activatedSessionId$) === sessionId) {
-          return;
-        }
-      }
-
-      const clerk = await get(clerk$);
-      signal.throwIfAborted();
-      const activationPromise = set(
-        performActivation$,
-        clerk,
-        sessionId,
-        dependencies.navigation.completionRedirectUrl,
-        signal,
-      );
-      const trackedActivation = withCleanup(activationPromise, () => {
-        set(runtime.activation$, (current) => {
-          return current?.sessionId === sessionId ? null : current;
-        });
-      });
-      set(runtime.activation$, { promise: trackedActivation, sessionId });
-      await trackedActivation;
-      signal.throwIfAborted();
-    },
-  );
-
   const applyResource$ = command(
     async (
       { get, set },
@@ -597,6 +537,10 @@ function createResourceCommands(
       );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
+      if (snapshot.clerkStatus === "needs_second_factor") {
+        set(dependencies.continuation.failClosed$, "second-factor");
+        return;
+      }
       if (
         snapshot.transferable ||
         snapshot.clerkStatus !== "complete" ||
@@ -604,17 +548,16 @@ function createResourceCommands(
       ) {
         return;
       }
-      const activation = await settle(
-        set(activateSession$, snapshot.createdSessionId, signal),
+      if (get(runtime.handledSessionId$) === snapshot.createdSessionId) {
+        return;
+      }
+      await set(
+        dependencies.continuation.completeSession$,
+        snapshot.createdSessionId,
         signal,
       );
-      if (!activation.ok) {
-        set(atoms.fatalState$, {
-          clerkStatus: snapshot.clerkStatus,
-          reason: "activation-failed",
-          status: "unknown",
-        });
-      }
+      signal.throwIfAborted();
+      set(runtime.handledSessionId$, snapshot.createdSessionId);
     },
   );
 
@@ -638,9 +581,11 @@ function createResourceCommands(
           set(atoms.error$, normalizeClerkError(recovery.error, "general"));
         } else if (recovery.value) {
           // handleRedirectCallback activates completed OAuth sessions itself.
-          // Remember that ownership boundary so applyResource$ cannot activate
-          // the same session a second time after the callback reload.
-          set(runtime.activatedSessionId$, recovery.value);
+          // Remember that ownership boundary so applyResource$ cannot hand the
+          // same session to the continuation controller a second time.
+          set(runtime.handledSessionId$, recovery.value);
+          await set(dependencies.continuation.recover$, signal);
+          signal.throwIfAborted();
         }
       }
 
@@ -650,7 +595,7 @@ function createResourceCommands(
       signal.throwIfAborted();
     },
   );
-  return { activateSession$, applyResource$, initialize$ };
+  return { applyResource$, initialize$ };
 }
 
 function createCoalescedOperation$<Key extends CoalescedOperation>(
@@ -892,7 +837,7 @@ function createFactorSelectionCommand(
 function createSessionSelectionCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
-  activateSession$: Command<Promise<void>, [string, AbortSignal]>,
+  completeSession$: Command<Promise<void>, [string, AbortSignal]>,
 ): Command<Promise<void>, [string, AbortSignal]> {
   const selectSessionOperation$ = command(
     async (
@@ -914,7 +859,7 @@ function createSessionSelectionCommand(
 
       set(atoms.error$, null);
       const activation = await settle(
-        set(activateSession$, account.sessionId, signal),
+        set(completeSession$, account.sessionId, signal),
         signal,
       );
       if (!activation.ok) {
@@ -1155,8 +1100,11 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
-  const { activateSession$, applyResource$, initialize$ } =
-    createResourceCommands(atoms, runtime, dependencies);
+  const { applyResource$, initialize$ } = createResourceCommands(
+    atoms,
+    runtime,
+    dependencies,
+  );
   const submitOperation$ = createSubmitOperation$(
     atoms,
     runtime,
@@ -1217,7 +1165,7 @@ export function createAuthV2SignInSignals(
     selectSession$: createSessionSelectionCommand(
       atoms,
       runtime,
-      activateSession$,
+      dependencies.continuation.completeSession$,
     ),
     state$: atoms.state$,
     submit$: createCoalescedOperation$(runtime, "resource", submitOperation$),

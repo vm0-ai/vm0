@@ -1,4 +1,3 @@
-import type { Clerk } from "@clerk/clerk-js";
 import type {
   PasswordValidation,
   SignUpCreateParams,
@@ -19,6 +18,7 @@ import { clerk$ } from "../auth.ts";
 import { locale$ } from "../locale.ts";
 import { logger } from "../log.ts";
 import { createDeferredPromise, onRef, settle, withCleanup } from "../utils.ts";
+import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import {
   discoverAuthV2SignUpExternalCapabilities,
@@ -70,7 +70,6 @@ export type AuthV2SignUpCaptchaState =
   | "loading";
 
 export type AuthV2SignUpUnknownReason =
-  | "activation-failed"
   | "missing-legal-configuration"
   | "missing-session"
   | "unsupported-field"
@@ -117,9 +116,12 @@ export interface AuthV2SignUpError {
 }
 
 export interface AuthV2SignUpFlowDependencies {
+  readonly continuation: Pick<
+    AuthV2ContinuationFlowHandoff,
+    "completeSession$"
+  >;
   readonly isOAuthCallbackRoute: boolean;
   readonly navigation: AuthV2Navigation;
-  readonly resolveRedirectUrl: () => string;
 }
 
 export interface AuthV2SignUpSignals {
@@ -201,11 +203,6 @@ interface SignUpFlowAtoms {
 }
 
 interface SignUpFlowRuntime {
-  readonly activatedSessionId$: State<string | null>;
-  readonly activation$: State<{
-    readonly promise: Promise<void>;
-    readonly sessionId: string;
-  } | null>;
   readonly automaticPreparationAttempted$: State<boolean>;
   readonly cooldownTimer$: State<number | null>;
   readonly expiryTimer$: State<number | null>;
@@ -216,10 +213,6 @@ type ApplySignUpResourceCommand = Command<
   Promise<void>,
   [SignUpResource, AbortSignal]
 >;
-type CompleteSignUpSessionCommand = Command<
-  Promise<void>,
-  [string, string | null, AbortSignal]
->;
 type PrepareEmailVerificationCommand = Command<
   Promise<void>,
   [SignUpResource, boolean, AbortSignal]
@@ -227,7 +220,6 @@ type PrepareEmailVerificationCommand = Command<
 
 interface SignUpResourceCommands {
   readonly applyResource$: ApplySignUpResourceCommand;
-  readonly completeSession$: CompleteSignUpSessionCommand;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly prepareEmailVerification$: PrepareEmailVerificationCommand;
 }
@@ -570,11 +562,6 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
 
 function createSignUpFlowRuntime(): SignUpFlowRuntime {
   return {
-    activatedSessionId$: state<string | null>(null),
-    activation$: state<{
-      readonly promise: Promise<void>;
-      readonly sessionId: string;
-    } | null>(null),
     automaticPreparationAttempted$: state(false),
     cooldownTimer$: state<number | null>(null),
     expiryTimer$: state<number | null>(null),
@@ -688,96 +675,10 @@ function createStartCooldownCommand(
   });
 }
 
-function createActivateSessionCommand(
-  runtime: SignUpFlowRuntime,
-  dependencies: AuthV2SignUpFlowDependencies,
-): Command<Promise<void>, [string, AbortSignal]> {
-  const performActivation$ = command(
-    async (
-      { set },
-      clerk: Clerk,
-      sessionId: string,
-      redirectUrl: string,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      await clerk.setActive({ redirectUrl, session: sessionId });
-      signal.throwIfAborted();
-      set(runtime.activatedSessionId$, sessionId);
-    },
-  );
-  return command(
-    async (
-      { get, set },
-      sessionId: string,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (get(runtime.activatedSessionId$) === sessionId) {
-        return;
-      }
-      const activeActivation = get(runtime.activation$);
-      if (activeActivation) {
-        await activeActivation.promise;
-        signal.throwIfAborted();
-        if (get(runtime.activatedSessionId$) === sessionId) {
-          return;
-        }
-      }
-
-      const clerk = await get(clerk$);
-      signal.throwIfAborted();
-      const activationPromise = set(
-        performActivation$,
-        clerk,
-        sessionId,
-        dependencies.resolveRedirectUrl(),
-        signal,
-      );
-      const trackedActivation = withCleanup(activationPromise, () => {
-        set(runtime.activation$, (current) => {
-          return current?.sessionId === sessionId ? null : current;
-        });
-      });
-      set(runtime.activation$, { promise: trackedActivation, sessionId });
-      await trackedActivation;
-      signal.throwIfAborted();
-    },
-  );
-}
-
-function createCompleteSessionCommand(
-  atoms: SignUpFlowAtoms,
-  runtime: SignUpFlowRuntime,
-  dependencies: AuthV2SignUpFlowDependencies,
-): CompleteSignUpSessionCommand {
-  const activateSession$ = createActivateSessionCommand(runtime, dependencies);
-  return command(
-    async (
-      { set },
-      sessionId: string,
-      clerkStatus: string | null,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const activation = await settle(
-        set(activateSession$, sessionId, signal),
-        signal,
-      );
-      if (!activation.ok) {
-        L.error("Auth v2 sign-up activation failed", clerkStatus);
-        set(atoms.fatalState$, {
-          clerkStatus,
-          reason: "activation-failed",
-          status: "unknown",
-        });
-      }
-    },
-  );
-}
-
 function createInitializeCommand(
   atoms: SignUpFlowAtoms,
   dependencies: AuthV2SignUpFlowDependencies,
   applyResource$: ApplySignUpResourceCommand,
-  completeSession$: CompleteSignUpSessionCommand,
   prepareEmailVerification$: PrepareEmailVerificationCommand,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -836,7 +737,11 @@ function createInitializeCommand(
     set(atoms.lastName$, resource.lastName ?? "");
     set(atoms.legalAccepted$, resource.legalAcceptedAt !== null);
     if (recoveredSessionId) {
-      await set(completeSession$, recoveredSessionId, "complete", signal);
+      await set(
+        dependencies.continuation.completeSession$,
+        recoveredSessionId,
+        signal,
+      );
       signal.throwIfAborted();
       return;
     }
@@ -854,11 +759,6 @@ function createResourceCommands(
 ): SignUpResourceCommands {
   const scheduleExpiry$ = createScheduleExpiryCommand(atoms, runtime);
   const startCooldown$ = createStartCooldownCommand(atoms, runtime);
-  const completeSession$ = createCompleteSessionCommand(
-    atoms,
-    runtime,
-    dependencies,
-  );
 
   const applyResource$ = command(
     async (
@@ -880,9 +780,8 @@ function createResourceCommands(
         return;
       }
       await set(
-        completeSession$,
+        dependencies.continuation.completeSession$,
         snapshot.createdSessionId,
-        snapshot.clerkStatus,
         signal,
       );
       signal.throwIfAborted();
@@ -941,13 +840,11 @@ function createResourceCommands(
     atoms,
     dependencies,
     applyResource$,
-    completeSession$,
     prepareEmailVerification$,
   );
 
   return {
     applyResource$,
-    completeSession$,
     initialize$,
     prepareEmailVerification$,
   };

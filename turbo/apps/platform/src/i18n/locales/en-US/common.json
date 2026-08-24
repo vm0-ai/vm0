@@ -1044,6 +1044,24 @@
     },
     "toggleTheme": "Toggle theme",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "We couldn't finish signing you in. Start over and try again.",
+        "activationErrorTitle": "Sign-in couldn't be completed",
+        "chooseOrganizationDescription": "Choose an organization to continue to {{brandName}}.",
+        "chooseOrganizationTitle": "Choose an organization",
+        "completeDescription": "Taking you to {{brandName}}.",
+        "completeTitle": "Sign-in complete",
+        "loadingDescription": "Checking what your account needs next.",
+        "loadingTitle": "Finishing sign-in",
+        "noOrganizationsDescription": "This account doesn't have an organization available. Ask an organization administrator for access, then start over.",
+        "noOrganizationsTitle": "No organization available",
+        "recoveryAction": "Start over",
+        "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
+        "secondFactorTitle": "Additional verification required",
+        "selectOrganization": "Continue with {{organizationName}}",
+        "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
+        "unsupportedTitle": "Sign-in step unavailable"
+      },
       "signIn": {
         "action": "Use current sign-in",
         "title": "Sign in to {{brandName}}"
