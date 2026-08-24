@@ -872,6 +872,85 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     },
   );
 
+  it("preserves Okou branding when queued GitHub chat dispatch fails", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const { actor, agentId, workflowId } = await setupFixture();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped GitHub dispatch-failure actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.OkouDebug]: true },
+    );
+    const installed = await gh.installGithubApp(actor, agentId);
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: githubPullRequestMergedAutomationBody(),
+      }),
+      [201],
+    );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+
+    const blocking = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId: installed.remoteInstallationId,
+      }),
+    });
+    expect(blocking).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+    await runsApi.heartbeatRunner();
+    const admittedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const admittedRunId = admittedRuns.runs[0]?.id;
+    if (!admittedRunId || admittedRuns.runs.length !== 1) {
+      throw new Error("Expected one admitted workflow run");
+    }
+    const admittedClaim = await runsApi.claimRunnerJob(admittedRunId);
+
+    await enqueueGitHubChatEventFixture({
+      threadId: created.body.chatThreadId,
+      userId: actor.userId,
+      remoteInstallationId: installed.remoteInstallationId,
+      repo: "vm0-ai/vm0",
+      subjectNumber: 83_001,
+      subjectKind: "issue",
+      messageText: "queued Okou request before dispatch failure",
+      publicBrand: "okou",
+    });
+
+    const postedComments: string[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (typeof body.body === "string") {
+            postedComments.push(body.body);
+          }
+          return HttpResponse.json({ id: 1 });
+        },
+      ),
+    );
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    await completeClaimedRunOk(admittedRunId, admittedClaim.sandboxToken);
+    await flushWaitUntilForTest();
+
+    expect(postedComments).toHaveLength(1);
+    expect(postedComments[0]).toMatch(
+      /https:\/\/app\.okou\.ai\/activities\/[0-9a-f-]+/u,
+    );
+    expect(postedComments[0]).not.toContain("https://app.vm0.ai/activities/");
+  });
+
   it("delivers a pre-brand nested GitHub callback with installation metadata", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, agentId, workflowId } = await setupFixture();
