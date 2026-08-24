@@ -19,6 +19,9 @@ const feishuOAuthStateSchema = z.object({
   userId: z.string().min(1),
   callbackTarget: z.literal("app").optional(),
   oauthRedirectTarget: z.literal("app").optional(),
+  // A supported rollback can still omit publicBrand for VM0. Remove this
+  // default after the explicit writer deploys, its 10-minute max age drains,
+  // and every supported rollback target emits publicBrand (#27660).
   publicBrand: publicBrandSchema.default("vm0"),
   timestamp: z.number().int(),
 });
@@ -40,11 +43,9 @@ function createFeishuOAuthState(args: {
   readonly publicBrand: PublicBrand;
   readonly timestamp?: number;
 }): string {
-  const { publicBrand, ...stateArgs } = args;
   const encodedPayload = Buffer.from(
     JSON.stringify({
-      ...stateArgs,
-      ...(publicBrand === "okou" ? { publicBrand } : {}),
+      ...args,
       timestamp: args.timestamp ?? Math.floor(now() / 1000),
     }),
   ).toString("base64url");

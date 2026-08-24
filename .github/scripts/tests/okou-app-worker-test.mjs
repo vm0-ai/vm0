@@ -519,20 +519,13 @@ assert.equal(
   "https://static.vm0.io/web/og-image.png",
 );
 
-const oldApiSharedOnOkouHost = await requestSharedPage({
+const missingBrandSharedPage = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
   metaResponse() {
-    return Response.json({ title: "Pre-brand conversation" });
+    return Response.json({ title: "Missing-brand conversation" });
   },
 });
-assert.equal(oldApiSharedOnOkouHost.response.status, 200);
-const oldApiSharedHtml = await oldApiSharedOnOkouHost.response.text();
-assert.equal(documentTitle(oldApiSharedHtml), "Pre-brand conversation | VM0");
-assert.equal(htmlAttribute(oldApiSharedHtml, "data-app-brand-name"), "VM0");
-assert.equal(
-  metaContent(oldApiSharedHtml, "property", "og:url"),
-  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
-);
+assert.equal(missingBrandSharedPage.response.status, 502);
 
 const missing = await requestSharedPage({
   appOrigin: "https://app.vm0.ai",

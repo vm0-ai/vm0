@@ -2325,7 +2325,7 @@ describe("Feishu integration", () => {
     const [vm0EncodedState] = vm0SignedState.split(".");
     expect(
       JSON.parse(Buffer.from(vm0EncodedState ?? "", "base64url").toString()),
-    ).not.toHaveProperty("publicBrand");
+    ).toMatchObject({ publicBrand: "vm0" });
     expect(new URL(connectUrl).origin).toBe("https://api.vm0.test");
 
     context.mocks.clerk.authenticateRequest.mockResolvedValue({

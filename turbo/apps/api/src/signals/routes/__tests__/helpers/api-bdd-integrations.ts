@@ -1063,13 +1063,10 @@ export function createBddIntegrationApi(context: TestContext) {
         client.callback({
           query: {
             code: `bdd-install-${teamId}`,
-            state: actor
-              ? JSON.stringify({
-                  orgId: actor.orgId,
-                  userId: actor.userId,
-                  publicBrand: options.publicBrand ?? "vm0",
-                })
-              : undefined,
+            state: JSON.stringify({
+              ...(actor ? { orgId: actor.orgId, userId: actor.userId } : {}),
+              publicBrand: options.publicBrand ?? "vm0",
+            }),
           },
         }),
         [307],
