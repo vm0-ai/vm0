@@ -52,10 +52,7 @@ import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
-import {
-  validateAgentRunBuiltInModelKeyContractSchema,
-  validateAgentRunBuiltInModelKeyExpansionMigration,
-} from "./test-agent-run-built-in-model-key-bridge";
+import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import {
   validateCheckpointAgentComposeSnapshotNullableMigration,
   validateCheckpointAgentComposeSnapshotNullableSchema,
@@ -11859,7 +11856,6 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
-    await validateAgentRunBuiltInModelKeyExpansionMigration();
     await validateCheckpointAgentComposeSnapshotNullableMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
@@ -11886,7 +11882,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
-    await validateAgentRunBuiltInModelKeyContractSchema(dbUrl1);
+    await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validateFreshAgentComposeProvenanceSchema(dbUrl1);
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
@@ -11913,7 +11909,7 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
-    await validateAgentRunBuiltInModelKeyContractSchema(dbUrl2);
+    await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl2);
@@ -11952,9 +11948,7 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
-      console.log(
-        "   ✅ Agent-run model-key expansion, backfill, contract, and canonical schemas match",
-      );
+      console.log("   ✅ Agent-run model-key canonical schemas match");
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",
