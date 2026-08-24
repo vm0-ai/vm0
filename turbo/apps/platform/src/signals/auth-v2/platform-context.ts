@@ -28,10 +28,15 @@ export function resolveAuthV2PlatformContext(
   const authSearch = location.search;
   const authHash = location.hash;
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
+  const signUpCompletionRedirectUrl = buildSignupRedirectUrl(
+    authSearch,
+    allowedRedirectOrigins,
+    authHash,
+  );
   const completionRedirectUrl =
     mode === "sign-in"
       ? buildSignInRedirectUrl(authSearch, allowedRedirectOrigins, authHash)
-      : buildSignupRedirectUrl(authSearch, allowedRedirectOrigins, authHash);
+      : signUpCompletionRedirectUrl;
 
   return {
     authBrand: resolveAuthBrandContext(
@@ -39,11 +44,13 @@ export function resolveAuthV2PlatformContext(
       authHash,
       allowedRedirectOrigins,
     ),
-    navigation: createAuthV2Navigation(
-      completionRedirectUrl,
-      authSearch,
+    navigation: createAuthV2Navigation({
       authHash,
-    ),
+      authSearch,
+      completionRedirectUrl,
+      mode,
+      signUpCompletionRedirectUrl,
+    }),
     satelliteConfig: resolveClerkSatelliteConfig(),
   };
 }

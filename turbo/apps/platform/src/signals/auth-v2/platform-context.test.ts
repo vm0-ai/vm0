@@ -100,6 +100,42 @@ describe("Auth v2 platform context", () => {
     ).toBe(completionUrl.toString());
   });
 
+  it("preserves campaign onboarding when switching from sign-in to sign-up", () => {
+    setBrowserUrl(
+      "https://app.vm0.ai/v2/sign-in?gclid=click-123&utm_campaign=summer#/factor-one?step=code",
+    );
+
+    const signInContext = resolveAuthV2PlatformContext("sign-in");
+    expect(signInContext.navigation.completionRedirectUrl).toBe(
+      "https://app.vm0.ai",
+    );
+
+    const nestedSignInUrl = absoluteNavigationUrl(
+      signInContext.navigation.href("sign-in", "/factor-one"),
+    );
+    expect(nestedSignInUrl.searchParams.get("redirect_url")).toBeNull();
+    expect(nestedSignInUrl.searchParams.get("gclid")).toBe("click-123");
+
+    setBrowserUrl(nestedSignInUrl.toString());
+    const signUpUrl = absoluteNavigationUrl(
+      resolveAuthV2PlatformContext("sign-in").navigation.href("sign-up"),
+    );
+    const signUpRedirectUrlValue = signUpUrl.searchParams.get("redirect_url");
+    if (!signUpRedirectUrlValue) {
+      throw new Error("Sign-up navigation is missing its completion redirect");
+    }
+    const signUpRedirectUrl = new URL(signUpRedirectUrlValue);
+
+    expect(signUpRedirectUrl.pathname).toBe("/onboarding");
+    expect(signUpRedirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(signUpRedirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+
+    setBrowserUrl(signUpUrl.toString());
+    expect(
+      resolveAuthV2PlatformContext("sign-up").navigation.completionRedirectUrl,
+    ).toBe(signUpRedirectUrl.toString());
+  });
+
   it("keeps an explicit allowed sign-up redirect ahead of campaign fallback", () => {
     const redirectUrl = "https://www.vm0.ai/connector/success";
     setBrowserUrl(

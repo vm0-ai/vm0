@@ -11,6 +11,14 @@ export interface AuthV2Navigation {
   ) => string;
 }
 
+interface CreateAuthV2NavigationOptions {
+  readonly authHash: string;
+  readonly authSearch: string;
+  readonly completionRedirectUrl: string;
+  readonly mode: AuthV2RouteMode;
+  readonly signUpCompletionRedirectUrl: string;
+}
+
 const AUTH_V2_ROUTE_BY_MODE = {
   "sign-in": ROUTES.signInV2,
   "sign-up": ROUTES.signUpV2,
@@ -18,7 +26,7 @@ const AUTH_V2_ROUTE_BY_MODE = {
 
 function preserveHashWithRedirect(
   authHash: string,
-  completionRedirectUrl: string,
+  completionRedirectUrl: string | null,
 ): string {
   const hashQueryIndex = authHash.indexOf("?");
   if (hashQueryIndex === -1) {
@@ -30,23 +38,52 @@ function preserveHashWithRedirect(
     return authHash;
   }
 
-  hashParams.set("redirect_url", completionRedirectUrl);
-  return `${authHash.slice(0, hashQueryIndex + 1)}${hashParams.toString()}`;
+  if (completionRedirectUrl === null) {
+    hashParams.delete("redirect_url");
+  } else {
+    hashParams.set("redirect_url", completionRedirectUrl);
+  }
+
+  const hashSearch = hashParams.toString();
+  const hashPath = authHash.slice(0, hashQueryIndex);
+  return hashSearch ? `${hashPath}?${hashSearch}` : hashPath;
+}
+
+function resolveNavigationRedirectUrl(
+  options: CreateAuthV2NavigationOptions,
+  targetMode: AuthV2RouteMode,
+): string | null {
+  if (options.mode === "sign-up" || targetMode === "sign-up") {
+    return options.signUpCompletionRedirectUrl;
+  }
+
+  return options.completionRedirectUrl === options.signUpCompletionRedirectUrl
+    ? options.completionRedirectUrl
+    : null;
 }
 
 export function createAuthV2Navigation(
-  completionRedirectUrl: string,
-  authSearch: string,
-  authHash: string,
+  options: CreateAuthV2NavigationOptions,
 ): AuthV2Navigation {
-  const searchParams = new URLSearchParams(authSearch);
-  searchParams.set("redirect_url", completionRedirectUrl);
-  const search = searchParams.toString();
-  const hash = preserveHashWithRedirect(authHash, completionRedirectUrl);
-
   return {
-    completionRedirectUrl,
+    completionRedirectUrl: options.completionRedirectUrl,
     href: (targetMode: AuthV2RouteMode, stepPath?: AuthV2StepPath): string => {
+      const navigationRedirectUrl = resolveNavigationRedirectUrl(
+        options,
+        targetMode,
+      );
+      const searchParams = new URLSearchParams(options.authSearch);
+      if (navigationRedirectUrl === null) {
+        searchParams.delete("redirect_url");
+      } else {
+        searchParams.set("redirect_url", navigationRedirectUrl);
+      }
+
+      const search = searchParams.toString();
+      const hash = preserveHashWithRedirect(
+        options.authHash,
+        navigationRedirectUrl,
+      );
       const pathname = `${AUTH_V2_ROUTE_BY_MODE[targetMode]}${stepPath ?? ""}`;
       return `${pathname}?${search}${hash}`;
     },
