@@ -379,7 +379,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    // Scoped to the maintainer rather than the whole staff org while the
+    // flatten and two-file send are still unexercised outside tests.
+    enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
     maintainer: "bingjie@vm0.ai",
