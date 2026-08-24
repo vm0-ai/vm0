@@ -5,8 +5,8 @@
 //! caller owns provider completion and the final sandbox lifecycle decision.
 //!
 //! The fresh path starts and prepares a new Firecracker VM and can notify the
-//! caller once the VM is ready to run the job. The reuse path runs in a
-//! kept-alive idle VM.
+//! caller once the sandbox is ready to run the job. The reuse path runs in a
+//! kept-alive idle sandbox.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
 //! buffer. When `ExecuteOutcome::sandbox` is `Some`, the executor transfers
@@ -204,7 +204,7 @@ pub struct ExecutorConfig {
     pub workspace_cache: Option<WorkspaceImageCache>,
 }
 
-/// Per-job VM parameters resolved from the profile config.
+/// Per-job sandbox parameters resolved from the profile config.
 pub struct JobParams {
     pub profile_name: String,
     pub vcpu: u32,
@@ -667,7 +667,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     (outcome, telemetry)
 }
 
-/// Execute a single job inside a **reused** (kept-alive) VM.
+/// Execute a single job inside a **reused** (kept-alive) sandbox.
 ///
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
 /// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
@@ -931,8 +931,8 @@ fn workspace_promotion_identity_failure(
     ))
 }
 
-/// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
-/// and the categorized reason no idle VM was reused. The id is selected in job
+/// Dispatch inputs for the fresh-create path. Holds the UUID for the new sandbox
+/// and the categorized reason no idle sandbox was reused. The id is selected in job
 /// discovery after the reuse decision, then forwarded by `job_spawn`; it becomes
 /// the sandbox's identity, and the reuse result is forwarded to the guest for
 /// /complete metadata.

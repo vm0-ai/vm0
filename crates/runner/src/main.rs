@@ -126,9 +126,9 @@ enum Command {
     Build(cmd::BuildArgs),
     /// Generate runner.yaml from a pre-built image hash
     Config(cmd::ConfigArgs),
-    /// Run a single bash command in a VM for benchmarking
+    /// Run a single bash command in a sandbox for benchmarking
     Benchmark(cmd::BenchmarkArgs),
-    /// Execute a command inside a running VM for debugging
+    /// Execute a command inside a running sandbox for debugging
     Exec(cmd::ExecArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
     Start(Box<cmd::StartArgs>),

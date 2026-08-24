@@ -248,7 +248,7 @@ pub(super) async fn gc_workspace_orphans(
 
     // Discover active workspaces after initial candidate selection. This
     // protects orphaned Firecrackers whose parent runner already died but
-    // whose VM is still running.
+    // whose sandbox is still running.
     let discovered = crate::process::discover_all_with_status().await;
     if !discovered.proc_scan_complete {
         warn!(

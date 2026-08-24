@@ -607,7 +607,7 @@ mod tests {
     fn sandbox_op_omits_optional_fields_without_session_history() {
         let op = SandboxOp {
             ts: "2026-01-15T10:00:00+00:00".to_string(),
-            action_type: "vm_create".to_string(),
+            action_type: "sandbox_create".to_string(),
             duration_ms: 1500,
             success: true,
             error: None,
@@ -623,7 +623,7 @@ mod tests {
             json,
             serde_json::json!({
                 "ts": "2026-01-15T10:00:00+00:00",
-                "action_type": "vm_create",
+                "action_type": "sandbox_create",
                 "duration_ms": 1500,
                 "success": true,
             })
@@ -819,7 +819,7 @@ mod tests {
             "test-runner".to_string(),
         );
 
-        telemetry.record("vm_create", Duration::from_millis(500), true, None);
+        telemetry.record("sandbox_create", Duration::from_millis(500), true, None);
         telemetry.record(
             "agent_execute",
             Duration::from_secs(10),
@@ -828,7 +828,7 @@ mod tests {
         );
 
         assert_eq!(telemetry.pending_ops.len(), 2);
-        assert_eq!(telemetry.pending_ops[0].action_type, "vm_create");
+        assert_eq!(telemetry.pending_ops[0].action_type, "sandbox_create");
         assert_eq!(telemetry.pending_ops[0].duration_ms, 500);
         assert!(telemetry.pending_ops[0].success);
         assert!(telemetry.pending_ops[0].error.is_none());

@@ -705,7 +705,7 @@ async fn acquire_fallback_resource(
                 info!(
                     run_id = %run_id,
                     profile = %retiring.profile_name(),
-                    "evicting idle VM for finalizing fallback"
+                    "evicting idle sandbox for finalizing fallback"
                 );
                 retiring_leases.push(retiring.into_budget_lease());
                 ctx.reuse_state_notify.notify_one();
