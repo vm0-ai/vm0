@@ -62,29 +62,13 @@ pub struct IdleSandbox {
     pub sandbox_id: SandboxId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct RunnerStatus {
     mode: RunnerMode,
     max_concurrent: usize,
     active_runs: Vec<ActiveRun>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     idle_sandboxes: Vec<IdleSandbox>,
-    proxy_port: Option<u16>,
-    dns_port: Option<u16>,
-    started_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-
-#[derive(Serialize)]
-struct RunnerStatusWire<'a> {
-    mode: RunnerMode,
-    max_concurrent: usize,
-    active_runs: &'a [ActiveRun],
-    #[serde(skip_serializing_if = "borrowed_slice_is_empty")]
-    idle_sandboxes: &'a [IdleSandbox],
-    // Compatibility for previous runner tools during rollout. Remove after
-    // the collector and rollback gates recorded in #28926 are satisfied.
-    #[serde(rename = "idle_vms", skip_serializing_if = "borrowed_slice_is_empty")]
-    legacy_idle_sandboxes: &'a [IdleSandbox],
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,22 +77,6 @@ struct RunnerStatusWire<'a> {
     started_at: DateTime<Utc>,
     #[serde(serialize_with = "serialize_iso")]
     updated_at: DateTime<Utc>,
-}
-
-impl RunnerStatus {
-    fn wire(&self) -> RunnerStatusWire<'_> {
-        RunnerStatusWire {
-            mode: self.mode,
-            max_concurrent: self.max_concurrent,
-            active_runs: &self.active_runs,
-            idle_sandboxes: &self.idle_sandboxes,
-            legacy_idle_sandboxes: &self.idle_sandboxes,
-            proxy_port: self.proxy_port,
-            dns_port: self.dns_port,
-            started_at: self.started_at,
-            updated_at: self.updated_at,
-        }
-    }
 }
 
 struct StatusSnapshot {
@@ -130,10 +98,6 @@ struct StatusWriteGate {
 /// Serialize as ISO 8601 with millisecond precision, matching JS `Date.toISOString()`.
 fn serialize_iso<S: serde::Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
-}
-
-fn borrowed_slice_is_empty<T>(value: &&[T]) -> bool {
-    value.is_empty()
 }
 
 /// Thread-safe status tracker that persists state to a JSON file atomically.
@@ -444,7 +408,7 @@ impl StatusTracker {
 
     /// Publish an owned snapshot through same-directory atomic replacement.
     async fn persist_snapshot(&self, snapshot: StatusSnapshot) {
-        let json = match serde_json::to_string_pretty(&snapshot.status.wire()) {
+        let json = match serde_json::to_string_pretty(&snapshot.status) {
             Ok(j) => j,
             Err(e) => {
                 warn!(error = %e, "failed to serialize status");
@@ -897,7 +861,7 @@ mod tests {
         );
 
         let status = read_status(&path);
-        assert_eq!(status["idle_sandboxes"], status["idle_vms"]);
+        assert!(status.get("idle_vms").is_none());
         let sandboxes = status["idle_sandboxes"].as_array().unwrap();
         assert_eq!(sandboxes.len(), 2);
         assert_eq!(sandboxes[0]["reuse_key"], "sess-1");
@@ -1093,10 +1057,6 @@ mod tests {
         assert!(
             status.get("idle_sandboxes").is_none(),
             "empty idle_sandboxes should be omitted from JSON"
-        );
-        assert!(
-            status.get("idle_vms").is_none(),
-            "empty legacy idle_vms should be omitted from JSON"
         );
     }
 }

@@ -143,10 +143,6 @@ test_aggregates_current_legacy_and_future_statuses() {
   "idle_sandboxes": [
     {"sandbox_id": "$uuid_a", "reuse_key": "overlap"},
     {"sandbox_id": "$uuid_d", "reuse_key": "idle"}
-  ],
-  "idle_vms": [
-    {"sandbox_id": "$uuid_a", "reuse_key": "overlap"},
-    {"sandbox_id": "$uuid_d", "reuse_key": "idle"}
   ]
 }
 EOF
