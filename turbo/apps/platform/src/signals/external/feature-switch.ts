@@ -113,7 +113,7 @@ export const reloadFeatureSwitch$ = command(
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
-      enabled: combined[FeatureSwitchKey.ZeroDebug],
+      enabled: combined[FeatureSwitchKey.OkouDebug],
     });
   },
 );

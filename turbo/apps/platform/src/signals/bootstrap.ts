@@ -465,7 +465,7 @@ export const bootstrap$ = command(
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
-      enabled: get(featureSwitch$)[FeatureSwitchKey.ZeroDebug] ?? false,
+      enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
     render();

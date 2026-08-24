@@ -312,7 +312,7 @@ function InspectNetworkTab({ data }: { data: InspectLogData }) {
 function InspectLogContent({ data }: { data: InspectLogData }) {
   const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
-  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showDebugTabs = features?.[FeatureSwitchKey.OkouDebug] ?? false;
 
   const params = useGet(searchParams$);
   const updateParams = useSet(updateSearchParams$);

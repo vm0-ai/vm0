@@ -35,7 +35,7 @@ export enum FeatureSwitchKey {
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
   SpotifyConnector = "spotifyConnector",
-  ZeroDebug = "zeroDebug",
+  OkouDebug = "okouDebug",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",

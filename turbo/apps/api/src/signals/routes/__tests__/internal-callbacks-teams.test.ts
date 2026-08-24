@@ -366,7 +366,7 @@ async function connectTeamsFixture(
 async function setupConnectedTeamsActor(
   options: {
     readonly publicBrand?: "vm0" | "okou";
-    readonly zeroDebug?: boolean;
+    readonly okouDebug?: boolean;
   } = {},
 ): Promise<ConnectedTeamsActor> {
   if (options.publicBrand === "okou") {
@@ -394,7 +394,7 @@ async function setupConnectedTeamsActor(
   });
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
-  if (options.zeroDebug) {
+  if (options.okouDebug) {
     await updateFeatureSwitchesForUser(
       context,
       {
@@ -403,7 +403,7 @@ async function setupConnectedTeamsActor(
         orgRole: "org:admin",
       },
       {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     );
   }
@@ -1032,7 +1032,7 @@ describe("Teams chat callbacks", () => {
   it("posts completed run replies and persists canonical Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({
       publicBrand: "okou",
-      zeroDebug: true,
+      okouDebug: true,
     });
     const teamsApi = teamsApiMocks({ fixture: teams.fixture });
     mockOptionalEnv("OPENROUTER_API_KEY", "teams-summary-key");

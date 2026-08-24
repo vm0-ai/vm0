@@ -67,6 +67,7 @@ import { validateConnectorAccountExpansion } from "./test-connector-account-expa
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
+import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -11898,6 +11899,7 @@ async function main(): Promise<void> {
     await validateFeishuMemberConnectorReconciliation();
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();
+    await validateOkouDebugFeatureSwitchKeyRename();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

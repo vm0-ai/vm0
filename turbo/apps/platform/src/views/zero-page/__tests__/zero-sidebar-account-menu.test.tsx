@@ -335,7 +335,7 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     const accountName = await screen.findByText("Alex Rivera");
@@ -1251,7 +1251,7 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await waitFor(() => {
@@ -1376,7 +1376,7 @@ describe("zero sidebar account menu", () => {
     );
   });
 
-  it("hides debug settings when ZeroDebug is disabled", async () => {
+  it("hides debug settings when OkouDebug is disabled", async () => {
     prepareDefaultAgent();
 
     detachedSetupPage({

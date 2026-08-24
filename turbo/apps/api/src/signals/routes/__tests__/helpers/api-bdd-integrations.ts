@@ -1272,7 +1272,7 @@ export function createBddIntegrationApi(context: TestContext) {
           zeroFeatureSwitchesContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
-          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+          body: { switches: { [FeatureSwitchKey.OkouDebug]: true } },
         }),
         [200],
       );

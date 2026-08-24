@@ -25,7 +25,7 @@ function setupDiagnosticsPage(): void {
     context,
     path: "/?settings=debug",
     featureSwitches: {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     },
   });
 }
@@ -58,8 +58,8 @@ describe("connection diagnostics settings", () => {
       featureSwitchRequestStarted.resolve();
       await releaseFeatureSwitchResponse.promise;
       return respond(200, {
-        switches: { [FeatureSwitchKey.ZeroDebug]: true },
-        effectiveSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+        switches: { [FeatureSwitchKey.OkouDebug]: true },
+        effectiveSwitches: { [FeatureSwitchKey.OkouDebug]: true },
       });
     });
 
@@ -67,7 +67,7 @@ describe("connection diagnostics settings", () => {
       context,
       path: "/?settings=debug",
       cachedFeatureSwitches: {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     });
 

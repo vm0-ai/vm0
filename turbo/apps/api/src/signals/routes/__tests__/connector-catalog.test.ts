@@ -420,7 +420,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
-  it("returns 403 for diagnostics when ZeroDebug is disabled", async () => {
+  it("returns 403 for diagnostics when OkouDebug is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
@@ -440,11 +440,11 @@ describe("GET /api/connector-catalog", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
-  it("returns sanitized DB diagnostics when ZeroDebug is enabled", async () => {
+  it("returns sanitized DB diagnostics when OkouDebug is enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     mocks.clerk.session(userId, orgId);
 

@@ -521,7 +521,7 @@ async function resolveTeamsAdmissionFailurePresentation(
       }`,
     );
   }
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities`
     : undefined;
   return {

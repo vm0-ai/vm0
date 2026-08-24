@@ -269,7 +269,7 @@ async function buildGitHubDeliveryComment(
     args.run.userId,
   );
   signal.throwIfAborted();
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
     : undefined;
   const footerText = await resolveGithubAgentReplyFooterText({

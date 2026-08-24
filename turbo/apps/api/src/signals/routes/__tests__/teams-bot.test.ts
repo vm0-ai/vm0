@@ -2574,7 +2574,7 @@ describe("POST /api/zero/teams/bot", () => {
         orgRole: "org:admin",
       },
       {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     );
     botFrameworkHandlers();

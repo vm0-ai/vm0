@@ -28,7 +28,7 @@ import {
   setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
 import { selectSharedDatabaseMode$ } from "../../signals/shared-database-mode.ts";
-import { zeroDebugRealtimeIndicator$ } from "../../signals/zero-page/realtime-status.ts";
+import { okouDebugRealtimeIndicator$ } from "../../signals/zero-page/realtime-status.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -228,11 +228,11 @@ describe("shared database direct Platform bridge", () => {
     context.store.set(selectSharedDatabaseMode$, true);
     context.store.set(setSharedDatabaseConnectionStatus$, "connected");
 
-    expect(context.store.get(zeroDebugRealtimeIndicator$)).toBeNull();
+    expect(context.store.get(okouDebugRealtimeIndicator$)).toBeNull();
     context.store.set(setSharedDatabaseConnectionStatus$, "connecting");
-    expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("reconnecting");
+    expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("reconnecting");
     context.store.set(setSharedDatabaseConnectionStatus$, "disconnected");
-    expect(context.store.get(zeroDebugRealtimeIndicator$)).toBe("disconnected");
+    expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("disconnected");
   });
 
   it("runs immediate and interval heartbeats through the isolated worker store", async () => {
