@@ -57,7 +57,9 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::{ExecutorConfig, SessionHistoryCpuPool, SessionHistoryProbe};
+use crate::executor::{
+    ExecutorConfig, RunnerPreSpawnConcurrency, SessionHistoryCpuPool, SessionHistoryProbe,
+};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -1734,6 +1736,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
         active_runs: active_runs.clone(),
+        pre_spawn_concurrency: RunnerPreSpawnConcurrency::default(),
         budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),

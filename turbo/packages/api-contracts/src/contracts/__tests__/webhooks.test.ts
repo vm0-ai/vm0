@@ -369,6 +369,53 @@ describe("webhook telemetry contract", () => {
     ).toBe(false);
   });
 
+  it("accepts bounded runner pre-spawn concurrency and keeps it optional", () => {
+    const buckets = ["1", "2", "3_4", "5_8", "9_plus"] as const;
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        ...buckets.map((bucket) => {
+          return {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_pre_spawn_concurrency_bucket: bucket,
+          };
+        }),
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "agent_execute",
+          duration_ms: 20,
+          success: true,
+        },
+      ],
+    });
+
+    expect(
+      result.sandboxOperations?.slice(0, buckets.length).map((operation) => {
+        return operation.runner_pre_spawn_concurrency_bucket;
+      }),
+    ).toStrictEqual(buckets);
+    expect(result.sandboxOperations?.at(-1)).not.toHaveProperty(
+      "runner_pre_spawn_concurrency_bucket",
+    );
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_pre_spawn_concurrency_bucket: "10_plus",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts known session history download sources", () => {
     const result = webhookTelemetryContract.send.body.safeParse({
       runId: "00000000-0000-4000-8000-000000000000",

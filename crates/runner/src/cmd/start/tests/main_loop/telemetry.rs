@@ -25,6 +25,7 @@ async fn telemetry_flush_includes_start_loop_claim_phase_spans() {
                 .body_includes("runner_claim_active_status_publish")
                 .body_includes("runner_claim_spawn_job_setup")
                 .body_includes("runner_claim_task_schedule_wait")
+                .body_includes(r#""runner_pre_spawn_concurrency_bucket":"1""#)
                 .body_includes("runner_host_finalization_started")
                 .body_includes("runner_host_reuse_preparation")
                 .body_includes("runner_host_physical_park")

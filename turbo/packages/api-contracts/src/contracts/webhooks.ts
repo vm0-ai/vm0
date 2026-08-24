@@ -847,6 +847,18 @@ export const runnerStartupPathSchema = z.enum(["sandbox", "workspace", "cold"]);
 
 export type RunnerStartupPath = z.infer<typeof runnerStartupPathSchema>;
 
+const runnerPreSpawnConcurrencyBucketSchema = z.enum([
+  "1",
+  "2",
+  "3_4",
+  "5_8",
+  "9_plus",
+]);
+
+export type RunnerPreSpawnConcurrencyBucket = z.infer<
+  typeof runnerPreSpawnConcurrencyBucketSchema
+>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -860,6 +872,8 @@ const sandboxOperationSchema = z.object({
   reason: z.string().max(64).optional(),
   runner_startup_path: runnerStartupPathSchema.optional(),
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
+  runner_pre_spawn_concurrency_bucket:
+    runnerPreSpawnConcurrencyBucketSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:
