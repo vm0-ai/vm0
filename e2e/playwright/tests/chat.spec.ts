@@ -1251,10 +1251,10 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const sevenModels = await openModelPickerAndReadGeometry(page);
   expect(sevenModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 288,
     optionCount: 7,
     rowStep: 36,
-    scrollHeight: 300,
+    scrollHeight: 288,
   });
 
   boundary.showEightModels();
@@ -1262,10 +1262,10 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 288,
     optionCount: 8,
     rowStep: 36,
-    scrollHeight: 336,
+    scrollHeight: 324,
   });
   expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
     eightModels.rowStep,
