@@ -261,14 +261,14 @@ export function createBillingMediaApi(context: TestContext) {
   }
 
   function configureBillingPrices(): void {
-    mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
-    mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
-    mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", "price_bdd_custom_credit_unit");
+    mockEnv("OKOU_PRICE_PRO", "price_bdd_pro");
+    mockEnv("OKOU_PRICE_TEAM", "price_bdd_team");
+    mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", "price_bdd_custom_credit_unit");
   }
 
   function configureCampaign(): void {
     mockEnv(
-      "ZERO_ONE_TIME_CAMPAIGN",
+      "OKOU_ONE_TIME_CAMPAIGN",
       JSON.stringify({
         ZERO100: {
           priceId: "price_bdd_campaign",

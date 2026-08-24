@@ -364,10 +364,10 @@ export function createRunsApi(context: TestContext) {
       readonly invoiceId: string;
     }> {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-      mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
-      mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
+      mockEnv("OKOU_PRICE_PRO", "price_bdd_pro");
+      mockEnv("OKOU_PRICE_TEAM", "price_bdd_team");
       mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
-      mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
+      mockEnv("OKOU_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 

@@ -97,10 +97,10 @@ function usagePackForPriceId(priceId: string): {
 
 function configureUsagePackEnvironment(): void {
   mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-  mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-  mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_PLAN_PRO);
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_PLAN_TEAM);
+  mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+  mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_PLAN_PRO);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_PLAN_TEAM);
   mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_PACK_20);
   mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_PACK_50);
   mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_PACK_100);

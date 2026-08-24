@@ -166,16 +166,16 @@ interface SubscriptionFixture extends BillingOrgFixture {
   readonly subscriptionId: string;
 }
 
-function setZeroPrice(): void {
-  mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-  mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
-  mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", TEST_PRICE_CUSTOM_CREDIT_UNIT);
-  mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
+function setTierPrices(): void {
+  mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+  mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", TEST_PRICE_CUSTOM_CREDIT_UNIT);
+  mockEnv("OKOU_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
 }
 
 function setUsagePackPrices(): void {
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PLAN_PRO);
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_PLAN_TEAM);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PLAN_PRO);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_PLAN_TEAM);
   mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
   mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_USAGE_PACK_50);
   mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_USAGE_PACK_100);
@@ -879,7 +879,7 @@ async function seedMemberRole(args: {
 describe("POST /api/billing/checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
   });
 
@@ -1051,7 +1051,6 @@ describe("POST /api/billing/checkout", () => {
   it("returns checkout URL on success", async () => {
     const okouPricePro = "price_okou_pro";
     mockEnv("OKOU_PRICE_PRO", okouPricePro);
-    mockEnv("ZERO_PRICE_PRO", "price_ignored_zero_pro");
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -2261,9 +2260,9 @@ describe("POST /api/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    // Override the beforeEach setZeroPrice() so activePriceId(tier) returns
+    // Override the beforeEach setTierPrices() so activePriceId(tier) returns
     // undefined and the route falls into the "Price not configured" branch.
-    mockEnv("ZERO_PRICE_PRO", undefined);
+    mockEnv("OKOU_PRICE_PRO", undefined);
 
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
       billingCheckoutContract,
@@ -2293,7 +2292,7 @@ describe("POST /api/billing/checkout", () => {
 describe("POST /api/billing/usage-pack-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
   });
@@ -5088,7 +5087,7 @@ describe("legacy subscription usage pack migration", () => {
 
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
@@ -7013,7 +7012,7 @@ describe("usage pack allocation management", () => {
 
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
@@ -14816,7 +14815,7 @@ describe("usage pack allocation management", () => {
 
 describe("POST /api/billing/checkout/complete", () => {
   beforeEach(() => {
-    setZeroPrice();
+    setTierPrices();
   });
 
   async function trackedSeed(values?: {
@@ -15135,7 +15134,7 @@ describe("POST /api/billing/checkout/complete", () => {
 describe("POST /api/billing/concurrency-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
   });
 
   async function trackedSeed(
@@ -19039,7 +19038,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
   it("returns 400 when concurrency price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("ZERO_PRICE_CONCURRENCY", undefined);
+    mockEnv("OKOU_PRICE_CONCURRENCY", undefined);
 
     const client = setupApp({
       context,
@@ -20037,7 +20036,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
 
 describe("POST /api/billing/credit-checkout", () => {
   beforeEach(() => {
-    setZeroPrice();
+    setTierPrices();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
       discount: null,
@@ -21147,7 +21146,7 @@ describe("POST /api/billing/credit-checkout", () => {
   it("returns 400 when credit price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", undefined);
+    mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", undefined);
 
     const client = setupApp({
       context,
