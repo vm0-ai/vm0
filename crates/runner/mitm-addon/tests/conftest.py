@@ -204,7 +204,7 @@ class _StubTLSClient:
         client_id: str | None,
     ) -> None:
         self.id = client_id or str(uuid.uuid4())
-        self.peername: object = peername
+        self.peername = peername
         self.sni = sni
         self.timestamp_end: float | None = None
 

@@ -1,6 +1,7 @@
 """Tests for upstream destination binding in server_connect()."""
 
 import uuid
+from typing import cast
 
 import pytest
 from mitmproxy import connection
@@ -64,7 +65,7 @@ class _Client:
         sockname: tuple[str, int] = ("127.0.0.1", 8080),
     ) -> None:
         self.id = str(uuid.uuid4())
-        self.peername: object = (client_ip, 12345)
+        self.peername: tuple[str, int] = (client_ip, 12345)
         self.sockname = sockname
         self.sni = sni
 
@@ -482,7 +483,7 @@ def test_server_connect_ignores_unregistered_vm(registry_file, mitm_ctx):
 def test_server_connect_ignores_non_string_client_peer_host(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     client = _Client()
-    client.peername = (10, 12345)
+    client.peername = cast(tuple[str, int], (10, 12345))
     data = _ServerConnectData(client=client, server=_Server())
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):

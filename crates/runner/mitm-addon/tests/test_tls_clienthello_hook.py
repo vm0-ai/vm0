@@ -1,6 +1,7 @@
 """Tests for TLS clienthello connection hooks."""
 
 import json
+from typing import cast
 
 import mitm_addon
 import registry
@@ -51,7 +52,7 @@ class TestTlsClienthello:
             sni="pr-test-api.vm6.ai",
             client_sni="",
         )
-        data.context.client.peername = ["10.200.0.1", 12345]
+        data.context.client.peername = cast(tuple[str, int], ["10.200.0.1", 12345])
 
         with mitm_ctx(
             registry_path=str(registry_file),
