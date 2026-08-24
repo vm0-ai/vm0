@@ -586,20 +586,6 @@ async function disableIneligibleWorkflowWebhooksForOrgs(
   }
 }
 
-function logStripeSubscriptionSweep(
-  sweep: StripeSubscriptionSweepResult,
-): void {
-  if (sweep.attempted > 0) {
-    L.warn("Stripe subscription snapshots reconciled", {
-      attempted: sweep.attempted,
-      reconciled: sweep.reconciled,
-      failed: sweep.failed,
-      paidInvoices: sweep.paidInvoices,
-      orgs: sweep.changedOrgIds.length,
-    });
-  }
-}
-
 function paidInvoiceBelongsToCurrentEnvironment(
   invoice: StripeInvoice,
 ): boolean {
@@ -1823,7 +1809,6 @@ const reconcileBillingEntitlementsForScope$ = command(
     }
     logUsagePackSubscriptionReconciliation(usagePackReconciliation);
     logUsagePackMigrationReconciliation(usagePackMigrationReconciliation);
-    logStripeSubscriptionSweep(stripeSubscriptionSweep);
     if (invitationPurchasesReconciled > 0) {
       L.warn("usage pack invitation purchases reconciled", {
         count: invitationPurchasesReconciled,
