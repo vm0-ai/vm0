@@ -154,6 +154,9 @@ fn is_sha256(value: &str) -> bool {
 fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Result<(), String> {
     let launch: PiLaunchConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi launch config v2 is invalid: {error}"))?;
+    if value.pointer("/apiFirstTurn/baseSession/sha256").is_none() {
+        return Err("Pi H0 sha256 must be present".to_string());
+    }
     if launch.schema_version != 2 {
         return Err("Pi launch config schemaVersion must be 2".to_string());
     }

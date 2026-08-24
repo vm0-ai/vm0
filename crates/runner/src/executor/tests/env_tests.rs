@@ -1376,6 +1376,24 @@ fn pi_execution_context_rejects_mismatched_h0_before_sandbox() {
 }
 
 #[test]
+fn pi_execution_context_rejects_missing_required_base_hash_before_sandbox() {
+    let mut context = pi_context_for_test();
+    context
+        .pi_launch_config
+        .as_mut()
+        .unwrap()
+        .pointer_mut("/apiFirstTurn/baseSession")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("sha256");
+
+    let error = validate_context_for_test(&context).unwrap_err();
+
+    assert!(error.contains("H0 sha256 must be present"));
+}
+
+#[test]
 fn pi_execution_context_rejects_invalid_launch_fields_before_sandbox() {
     let cases = [
         ("/schemaVersion", json!(3), "schemaVersion must be 2"),

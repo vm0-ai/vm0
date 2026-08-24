@@ -179,7 +179,7 @@ export const rustTypeBindings = [
         rustDoc: ["Pi session checkpoint used as the first-turn base."],
         fields: {
           sessionId: ["Pi session identifier."],
-          sha256: ["Optional lowercase SHA-256 of the base session JSONL."],
+          sha256: ["Nullable lowercase SHA-256 of the base session JSONL."],
         },
       },
     ],

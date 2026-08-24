@@ -43,7 +43,7 @@ pub mod runners {
         pub struct PiLaunchConfigApiFirstTurnBaseSession {
             /// Pi session identifier.
             pub session_id: String,
-            /// Optional lowercase SHA-256 of the base session JSONL.
+            /// Nullable lowercase SHA-256 of the base session JSONL.
             pub sha256: Option<String>,
         }
 
