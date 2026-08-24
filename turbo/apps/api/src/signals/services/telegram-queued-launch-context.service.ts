@@ -39,6 +39,7 @@ type TelegramLaunchContextRow = Pick<
   | "threadContext"
   | "rootMessageId"
   | "thinkingMessageId"
+  | "publicBrand"
   | "userLinkId"
   | "userLinkKind"
   | "chatType"
@@ -106,6 +107,7 @@ async function loadTelegramLaunchContext(
       threadContext: chatTelegramContext.threadContext,
       rootMessageId: chatTelegramContext.rootMessageId,
       thinkingMessageId: chatTelegramContext.thinkingMessageId,
+      publicBrand: chatTelegramContext.publicBrand,
       userLinkId: chatTelegramContext.userLinkId,
       userLinkKind: chatTelegramContext.userLinkKind,
       chatType: chatTelegramContext.chatType,
@@ -208,11 +210,18 @@ export async function loadTelegramQueuedLaunchMaterial(
     return null;
   }
   const officialBotConfig = getOfficialTelegramBotConfig();
-  const installationId =
+  const deliveryInstallationId =
     context.userLinkKind === "custom"
       ? context.customInstallationId
       : OFFICIAL_TELEGRAM_BOT_ID;
-  if (installationId === null) {
+  if (deliveryInstallationId === null) {
+    return null;
+  }
+  const providerBotId =
+    context.userLinkKind === "custom"
+      ? context.customInstallationId
+      : officialBotConfig.botId;
+  if (providerBotId === null) {
     return null;
   }
   const botUsername =
@@ -220,9 +229,10 @@ export async function loadTelegramQueuedLaunchMaterial(
       ? context.customBotUsername
       : officialBotConfig.botUsername;
   const publicBrand =
-    context.userLinkKind === "custom"
+    context.publicBrand ??
+    (context.userLinkKind === "custom"
       ? context.customPublicBrand
-      : context.officialPublicBrand;
+      : context.officialPublicBrand);
   if (!publicBrand) {
     return null;
   }
@@ -230,7 +240,7 @@ export async function loadTelegramQueuedLaunchMaterial(
     prompt: context.messageText,
     appendSystemPrompt: buildTelegramPrompt(
       {
-        botId: installationId,
+        botId: providerBotId,
         botUsername,
         chatId: context.chatId,
         chatType: context.chatType,
@@ -242,7 +252,7 @@ export async function loadTelegramQueuedLaunchMaterial(
     ),
     publicBrand,
     telegramDelivery: telegramDeliveryTargetSchema.parse({
-      installationId,
+      installationId: deliveryInstallationId,
       chatId: context.chatId,
       messageId: context.messageId,
       rootMessageId: context.rootMessageId,

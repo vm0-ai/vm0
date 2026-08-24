@@ -544,7 +544,7 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
-      publicBrand: binding.publicBrand,
+      publicBrand: payload.publicBrand ?? binding.publicBrand,
     },
     signal,
   );

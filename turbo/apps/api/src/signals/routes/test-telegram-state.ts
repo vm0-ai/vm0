@@ -90,6 +90,7 @@ async function loadInstallation(db: ReadonlyDb, botId: string) {
       orgId: telegramInstallations.orgId,
       ownerUserId: telegramInstallations.ownerUserId,
       defaultAgentId: telegramInstallations.defaultAgentId,
+      publicBrand: telegramInstallations.publicBrand,
       createdAt: telegramInstallations.createdAt,
     })
     .from(telegramInstallations)

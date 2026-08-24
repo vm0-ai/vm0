@@ -1198,6 +1198,13 @@
       "when": 1787547905480,
       "tag": "0978_remove_retired_agent_compose_plane",
       "breakpoints": true
+    },
+    {
+      "idx": 979,
+      "version": "7",
+      "when": 1787562352367,
+      "tag": "0979_light_gideon",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -79,6 +80,7 @@ const telegramConnectSignatureSchema = z.object({
   telegramDisplayName: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
+  publicBrand: publicBrandSchema.optional(),
 });
 
 const telegramAuthSchema = z.object({
@@ -129,7 +131,7 @@ const telegramWebhookPathParamsSchema = z.object({
  * Covers all Telegram integration endpoints.
  *
  * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/okou/)
- * because they are served by the platform app directly, not the Zero sub-application.
+ * because they are served by the platform app directly, not a product sub-application.
  * This is intentional and matches the real server routing.
  */
 export const integrationsTelegramContract = c.router({
@@ -224,10 +226,15 @@ export const integrationsTelegramContract = c.router({
   authCallback: {
     method: "GET",
     path: "/api/integrations/telegram/auth-callback",
+    query: z.object({ targetOrigin: z.string().optional() }),
     responses: {
       200: c.otherResponse({
         contentType: "text/html",
         body: z.unknown(),
+      }),
+      400: c.otherResponse({
+        contentType: "text/plain",
+        body: z.string(),
       }),
     },
     summary: "Return the Telegram auth callback bridge page",
@@ -245,7 +252,7 @@ export const integrationsTelegramContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Link the authenticated VM0 user to a Telegram user",
+    summary: "Link the authenticated product user to a Telegram user",
   },
   register: {
     method: "POST",
@@ -263,7 +270,7 @@ export const integrationsTelegramContract = c.router({
       500: apiErrorSchema,
       502: apiErrorSchema,
     },
-    summary: "Register a Telegram bot with VM0",
+    summary: "Register a Telegram bot integration",
   },
   setupStatus: {
     method: "POST",

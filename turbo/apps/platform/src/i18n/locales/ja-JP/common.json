@@ -2864,7 +2864,7 @@
         "moreOptions": "{{bot}} のその他のオプション",
         "newBotToken": "新しいボットトークン",
         "notConnected": "接続されていません",
-        "officialBot": "{{assistantName}} 公式ボット",
+        "officialBot": "Telegram 公式ボット",
         "officialDescription": "{{brandName}} が提供する公式 bot。",
         "officialMissing": "公式ボット設定がありません。",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",

@@ -2864,7 +2864,7 @@
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "newBotToken": "Token bot baru",
         "notConnected": "Tidak terhubung",
-        "officialBot": "Bot resmi {{assistantName}}",
+        "officialBot": "Bot Telegram resmi",
         "officialDescription": "Bot resmi yang disediakan oleh {{brandName}}.",
         "officialMissing": "Konfigurasi bot resmi tidak ada.",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",

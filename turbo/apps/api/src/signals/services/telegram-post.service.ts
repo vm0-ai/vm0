@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
+  apiUrlForPublicBrand,
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
@@ -36,7 +37,7 @@ import { escapeHtml } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -324,8 +325,11 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildTelegramWebhookUrl(telegramBotId: string): string {
-  return `${env("VM0_WEB_URL")}/api/telegram/webhook/${telegramBotId}`;
+function buildTelegramWebhookUrl(
+  telegramBotId: string,
+  publicBrand: PublicBrand,
+): string {
+  return `${apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand)}/api/telegram/webhook/${telegramBotId}`;
 }
 
 function normalizeTelegramUsername(
@@ -433,12 +437,13 @@ async function configureTelegramBot(args: {
   readonly telegramBotId: string;
   readonly webhookSecret: string;
   readonly agentName: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<ReturnType<typeof badGateway> | undefined> {
   const webhookConfigured = await tapError(
     (async () => {
       await setWebhook(
         args.botToken,
-        buildTelegramWebhookUrl(args.telegramBotId),
+        buildTelegramWebhookUrl(args.telegramBotId, args.publicBrand),
         args.webhookSecret,
       );
       return true;
@@ -480,6 +485,7 @@ function buildStatusResponse(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly botId: string;
+  readonly publicBrand: PublicBrand;
 }) {
   return computed(async (get) => {
     const status = await get(
@@ -487,6 +493,7 @@ function buildStatusResponse(args: {
         orgId: args.orgId,
         userId: args.userId,
         botId: args.botId,
+        publicBrand: args.publicBrand,
       }),
     );
     return status
@@ -557,6 +564,7 @@ const handleExistingInstallation$ = command(
       telegramBotId: args.existing.telegramBotId,
       webhookSecret,
       agentName,
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
     if (configureError) {
@@ -594,6 +602,7 @@ const handleExistingInstallation$ = command(
         orgId: args.auth.orgId,
         userId: args.auth.userId,
         botId: updated?.telegramBotId ?? args.existing.telegramBotId,
+        publicBrand: args.publicBrand,
       }),
     );
   },
@@ -717,6 +726,7 @@ export const registerTelegramBot$ = command(
       telegramBotId: installation.telegramBotId,
       webhookSecret,
       agentName,
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
     if (configureError) {
@@ -737,6 +747,7 @@ export const registerTelegramBot$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         botId: installation.telegramBotId,
+        publicBrand: args.publicBrand,
       }),
     );
     signal.throwIfAborted();
@@ -747,17 +758,27 @@ export const registerTelegramBot$ = command(
   },
 );
 
-function resolveProbeOrigin(origin: string | undefined): string {
+function resolveProbeOrigin(
+  origin: string | undefined,
+  publicBrand: PublicBrand,
+): string {
+  const brandedOrigin = new URL(
+    appUrlForPublicBrand(env("APP_URL"), publicBrand),
+  ).origin;
   if (!origin) {
-    return env("APP_URL");
+    return brandedOrigin;
   }
 
   const parsed = safeUrlParse(origin);
-  if (parsed && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
+  if (
+    parsed &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    parsed.origin === brandedOrigin
+  ) {
     return parsed.origin;
   }
 
-  return env("APP_URL");
+  return brandedOrigin;
 }
 
 function isInvalidTelegramTokenError(error: unknown): boolean {
@@ -769,7 +790,14 @@ function isInvalidTelegramTokenError(error: unknown): boolean {
 }
 
 export const setupTelegramStatus$ = command(
-  async ({ get, set }, auth: OrganizationAuth, signal: AbortSignal) => {
+  async (
+    { get, set },
+    args: {
+      readonly auth: OrganizationAuth;
+      readonly publicBrand: PublicBrand;
+    },
+    signal: AbortSignal,
+  ) => {
     const bodyResult = await get(
       bodyResultOf(integrationsTelegramContract.setupStatus),
     );
@@ -804,7 +832,7 @@ export const setupTelegramStatus$ = command(
 
     if (existing) {
       return conflict(
-        existing.orgId === auth.orgId
+        existing.orgId === args.auth.orgId
           ? `This bot is already installed. Use /connect in Telegram (@${
               existing.botUsername ?? botId
             }) to link your account.`
@@ -814,7 +842,7 @@ export const setupTelegramStatus$ = command(
 
     const domainConfigured = await checkTelegramDomain(
       botId,
-      resolveProbeOrigin(bodyResult.data.origin),
+      resolveProbeOrigin(bodyResult.data.origin, args.publicBrand),
     );
     signal.throwIfAborted();
 
@@ -1093,19 +1121,23 @@ function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
-function isTelegramReplyToBotUsername(
+function isTelegramReplyToBot(
   message: TelegramMessage,
+  botId: string,
   botUsername: string | null | undefined,
 ): boolean {
-  const username = normalizedBotUsername(botUsername).toLowerCase();
-  if (!username) {
-    return false;
-  }
   const replyFrom = message.reply_to_message?.from;
   if (replyFrom?.is_bot !== true) {
     return false;
   }
-  return normalizedBotUsername(replyFrom.username).toLowerCase() === username;
+  if (String(replyFrom.id) === botId) {
+    return true;
+  }
+  const username = normalizedBotUsername(botUsername).toLowerCase();
+  return (
+    username !== "" &&
+    normalizedBotUsername(replyFrom.username).toLowerCase() === username
+  );
 }
 
 function parseBotCommand(
@@ -1183,6 +1215,7 @@ function signConnectParams(args: {
   readonly botToken: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
+  readonly publicBrand?: PublicBrand;
 }): string {
   const username = normalizeTelegramUsername(args.telegramUsername);
   const displayName = normalizeTelegramDisplayName(args.telegramDisplayName);
@@ -1192,6 +1225,9 @@ function signConnectParams(args: {
   }
   if (displayName) {
     data += `:${displayName}`;
+  }
+  if (args.publicBrand) {
+    data += `:${args.publicBrand}`;
   }
   return createHmac("sha256", args.botToken).update(data).digest("hex");
 }
@@ -1210,6 +1246,7 @@ function buildConnectUrl(args: {
     tgUser: args.telegramUserId,
     ts: String(timestamp),
     sig: signConnectParams({ ...args, timestamp }),
+    brand: args.publicBrand,
   });
   const username = normalizeTelegramUsername(args.telegramUsername);
   const displayName = normalizeTelegramDisplayName(args.telegramDisplayName);
@@ -1275,12 +1312,15 @@ function formatTelegramHelpMessage(
 ): string {
   const username = normalizedBotUsername(botUsername);
   const label = escapeHtml(agentName);
+  const botLabel = username
+    ? `@${escapeHtml(username)} Telegram Bot Help`
+    : "Telegram Bot Help";
   const groupUsage = username
     ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to ${label}\n`
     : "";
 
   return [
-    `<b>${label} Telegram Bot Help</b>`,
+    `<b>${botLabel}</b>`,
     "",
     "<b>Commands</b>",
     `• <code>/connect</code> - Connect to ${label}`,
@@ -1644,12 +1684,13 @@ function agentMessageScope(args: {
 function rootMessageIdForAgentMessage(args: {
   readonly isDM: boolean;
   readonly message: TelegramMessage;
+  readonly botId: string;
   readonly botUsername: string | null;
 }): string | undefined {
   if (args.isDM) {
     return "dm";
   }
-  return isTelegramReplyToBotUsername(args.message, args.botUsername)
+  return isTelegramReplyToBot(args.message, args.botId, args.botUsername)
     ? String(args.message.reply_to_message?.message_id)
     : undefined;
 }
@@ -1739,6 +1780,7 @@ function telegramLaunchContext(args: {
     threadContext: args.context,
     rootMessageId: args.rootMessageId ?? null,
     thinkingMessageId: null,
+    publicBrand: args.source.publicBrand,
     userLinkId: args.source.userLink.id,
     userLinkKind: args.source.userLinkKind,
     chatType: args.source.message.chat.type,
@@ -2241,6 +2283,7 @@ interface CustomCommandArgs {
   readonly botToken: string;
   readonly command: string;
   readonly message: TelegramMessage;
+  readonly publicBrand: PublicBrand;
 }
 
 const handleCustomCommand$ = command(
@@ -2293,6 +2336,7 @@ const handleCustomCommand$ = command(
         displayName,
         fromUserId,
         agentName,
+        publicBrand: args.publicBrand,
         replyToMessageId,
       });
     };
@@ -2418,6 +2462,7 @@ const handleOfficialCommand$ = command(
       readonly botUsername: string | null;
       readonly command: string;
       readonly message: TelegramMessage;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -2439,9 +2484,8 @@ const handleOfficialCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const assistantName = userLink
-      ? publicBrandPresentation(userLink.publicBrand).assistantName
-      : "Zero";
+    const presentation = publicBrandPresentation(args.publicBrand);
+    const assistantName = presentation.assistantName;
     const reply = async (text: string, sig: AbortSignal): Promise<void> => {
       await postTelegramMessage({
         botToken: args.botToken,
@@ -2463,7 +2507,7 @@ const handleOfficialCommand$ = command(
         telegramUsername: args.message.from?.username ?? null,
         telegramDisplayName: displayName,
         agentName: assistantName,
-        publicBrand: userLink?.publicBrand ?? "vm0",
+        publicBrand: args.publicBrand,
         replyToMessageId,
       });
     };
@@ -2505,7 +2549,7 @@ const handleOfficialCommand$ = command(
       signal.throwIfAborted();
       await reply(
         formatTelegramCommandSuccess(
-          `You have been disconnected from the official ${assistantName} bot.`,
+          `Your ${presentation.brandName} account has been disconnected from this Telegram bot.`,
         ),
         signal,
       );
@@ -2547,6 +2591,7 @@ interface CustomWebhookContext {
   readonly botToken: string;
   readonly message: TelegramMessage;
   readonly apiStartTime: number;
+  readonly publicBrand: PublicBrand;
 }
 
 const resolveCustomMessageUserLink$ = command(
@@ -2590,6 +2635,7 @@ async function sendCustomConnectPrompt(args: {
   readonly displayName: string | null;
   readonly fromUserId: string;
   readonly agentName?: string;
+  readonly publicBrand: PublicBrand;
   readonly replyToMessageId?: number;
 }): Promise<void> {
   const agentName =
@@ -2608,7 +2654,7 @@ async function sendCustomConnectPrompt(args: {
     telegramUsername: args.message.from?.username ?? null,
     telegramDisplayName: args.displayName,
     agentName,
-    publicBrand: args.installation.publicBrand,
+    publicBrand: args.publicBrand,
     replyToMessageId: args.replyToMessageId,
   });
 }
@@ -2644,7 +2690,7 @@ const handleCustomPrivateWebhookMessage$ = command(
         orgId: args.installation.orgId,
         userLink: resolved.userLink,
         userLinkKind: "custom",
-        publicBrand: args.installation.publicBrand,
+        publicBrand: args.publicBrand,
         composeId: args.installation.defaultAgentId,
         message: args.message,
         isDM: true,
@@ -2657,11 +2703,12 @@ const handleCustomPrivateWebhookMessage$ = command(
 
 function isCustomGroupAddressed(
   message: TelegramMessage,
+  botId: string,
   botUsername: string | null,
 ): boolean {
   return (
     hasBotMention(message, botUsername) ||
-    isTelegramReplyToBotUsername(message, botUsername)
+    isTelegramReplyToBot(message, botId, botUsername)
   );
 }
 
@@ -2701,7 +2748,7 @@ const handleCustomAddressedGroupWebhookMessage$ = command(
         orgId: args.installation.orgId,
         userLink: resolved.userLink,
         userLinkKind: "custom",
-        publicBrand: args.installation.publicBrand,
+        publicBrand: args.publicBrand,
         composeId: args.installation.defaultAgentId,
         message: args.message,
         isDM: false,
@@ -2719,6 +2766,7 @@ const processCustomWebhookMessage$ = command(
       readonly telegramBotId: string;
       readonly message: TelegramMessage;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -2767,6 +2815,7 @@ const processCustomWebhookMessage$ = command(
           botToken,
           command: commandName,
           message: args.message,
+          publicBrand: args.publicBrand,
         },
         signal,
       );
@@ -2783,13 +2832,20 @@ const processCustomWebhookMessage$ = command(
           botToken,
           message: args.message,
           apiStartTime: args.apiStartTime,
+          publicBrand: args.publicBrand,
         },
         signal,
       );
       return;
     }
 
-    if (isCustomGroupAddressed(args.message, installation.botUsername)) {
+    if (
+      isCustomGroupAddressed(
+        args.message,
+        installation.telegramBotId,
+        installation.botUsername,
+      )
+    ) {
       await set(
         handleCustomAddressedGroupWebhookMessage$,
         {
@@ -2798,6 +2854,7 @@ const processCustomWebhookMessage$ = command(
           botToken,
           message: args.message,
           apiStartTime: args.apiStartTime,
+          publicBrand: args.publicBrand,
         },
         signal,
       );
@@ -2844,14 +2901,26 @@ async function storeUnaddressedOfficialMessage(
   signal.throwIfAborted();
 }
 
+function getRunnableOfficialTelegramBotConfig() {
+  const config = getOfficialTelegramBotConfig();
+  if (!config.botToken || !config.botId) {
+    return null;
+  }
+  return { ...config, botToken: config.botToken, botId: config.botId };
+}
+
 const processOfficialWebhookMessage$ = command(
   async (
     { set },
-    args: { readonly message: TelegramMessage; readonly apiStartTime: number },
+    args: {
+      readonly message: TelegramMessage;
+      readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    const config = getOfficialTelegramBotConfig();
-    if (!config.botToken) {
+    const config = getRunnableOfficialTelegramBotConfig();
+    if (!config) {
       return;
     }
     const db = set(writeDb$);
@@ -2868,6 +2937,7 @@ const processOfficialWebhookMessage$ = command(
           botUsername: config.botUsername,
           command: commandName,
           message: args.message,
+          publicBrand: args.publicBrand,
         },
         signal,
       );
@@ -2892,7 +2962,7 @@ const processOfficialWebhookMessage$ = command(
     const isAddressed =
       isPrivateChat ||
       hasBotMention(args.message, config.botUsername) ||
-      isTelegramReplyToBotUsername(args.message, config.botUsername);
+      isTelegramReplyToBot(args.message, config.botId, config.botUsername);
     if (!isAddressed) {
       await storeUnaddressedOfficialMessage(
         {
@@ -2916,8 +2986,8 @@ const processOfficialWebhookMessage$ = command(
         fromUserId: String(args.message.from?.id ?? 0),
         telegramUsername: args.message.from?.username ?? null,
         telegramDisplayName: displayName,
-        agentName: "Zero",
-        publicBrand: "vm0",
+        agentName: publicBrandPresentation(args.publicBrand).assistantName,
+        publicBrand: args.publicBrand,
         replyToMessageId:
           args.message.chat.type === "private"
             ? undefined
@@ -2933,7 +3003,7 @@ const processOfficialWebhookMessage$ = command(
       await postTelegramMessage({
         botToken: config.botToken,
         chatId,
-        text: `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(userLink.publicBrand).brandName} first.`,
+        text: `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(args.publicBrand).brandName} first.`,
         replyToMessageId:
           args.message.chat.type === "private"
             ? undefined
@@ -2948,12 +3018,12 @@ const processOfficialWebhookMessage$ = command(
       {
         db,
         botToken: config.botToken,
-        botId: OFFICIAL_TELEGRAM_BOT_ID,
+        botId: config.botId,
         botUsername: config.botUsername,
         orgId: userLink.orgId,
         userLink,
         userLinkKind: "official",
-        publicBrand: userLink.publicBrand,
+        publicBrand: args.publicBrand,
         composeId,
         message: args.message,
         isDM: args.message.chat.type === "private",
@@ -2968,6 +3038,7 @@ export const telegramWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const apiStartTime = now();
     const request = get(request$).raw;
+    const publicBrand = get(publicBrand$);
     const { telegramBotId } = get(
       pathParamsOf(integrationsTelegramContract.webhook),
     );
@@ -2993,7 +3064,7 @@ export const telegramWebhook$ = command(
         tapError(
           set(
             processOfficialWebhookMessage$,
-            { message, apiStartTime },
+            { message, apiStartTime, publicBrand },
             signal,
           ),
           (error) => {
@@ -3036,7 +3107,7 @@ export const telegramWebhook$ = command(
       tapError(
         set(
           processCustomWebhookMessage$,
-          { telegramBotId, message, apiStartTime },
+          { telegramBotId, message, apiStartTime, publicBrand },
           signal,
         ),
         (error) => {

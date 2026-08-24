@@ -2864,7 +2864,7 @@
         "moreOptions": "{{bot}}에 대한 추가 옵션",
         "newBotToken": "새 봇 토큰",
         "notConnected": "연결되지 않음",
-        "officialBot": "{{assistantName}} 공식 봇",
+        "officialBot": "공식 Telegram 봇",
         "officialDescription": "{{brandName}}에서 제공하는 공식 봇입니다.",
         "officialMissing": "공식 봇 구성이 없습니다.",
         "pageDescription": "이 워크스페이스의 봇 라우팅 관리",
