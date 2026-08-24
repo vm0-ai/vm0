@@ -32,8 +32,6 @@ export function AuthShell({
         "relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background",
         v2 ? "zero-app p-4 sm:p-6" : "p-6",
       )}
-      data-auth-brand={authBrand.brandName.toLowerCase()}
-      data-auth-version={variant}
       data-testid="app-auth-layout"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />

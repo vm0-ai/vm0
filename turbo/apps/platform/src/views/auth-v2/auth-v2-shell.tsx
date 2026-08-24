@@ -1,12 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader } from "@okouai/ui";
+import { useSet } from "ccstate-react";
 import type { ReactNode } from "react";
+
+import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
 
 const AUTH_V2_TITLE_ID = "auth-v2-title";
 const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
-
-function focusAuthHeading(heading: HTMLHeadingElement | null): void {
-  heading?.focus();
-}
 
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
@@ -23,6 +22,8 @@ export function AuthV2Shell({
   focusKey,
   title,
 }: AuthV2ShellProps) {
+  const focusHeading = useSet(focusAuthV2HeadingRef$);
+
   return (
     <Card
       aria-describedby={AUTH_V2_DESCRIPTION_ID}
@@ -36,7 +37,7 @@ export function AuthV2Shell({
           className="text-lg font-medium text-foreground outline-none"
           id={AUTH_V2_TITLE_ID}
           key={focusKey}
-          ref={focusAuthHeading}
+          ref={focusHeading}
           tabIndex={-1}
         >
           {title}

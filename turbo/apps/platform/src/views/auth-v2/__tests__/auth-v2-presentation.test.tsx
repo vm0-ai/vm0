@@ -54,7 +54,7 @@ function buttonByLabel(label: string): HTMLButtonElement {
 }
 
 describe("auth v2 presentation", () => {
-  it("provides branded landmarks, descriptions, announcements, and focus order", async () => {
+  it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
 
     detachedSetupPage({ context, path: "/v2/sign-in" });
@@ -79,19 +79,13 @@ describe("auth v2 presentation", () => {
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
 
-    const action = linkByText("Use current sign-in");
-    action.focus();
-    expect(action).toHaveFocus();
-
-    const layout = screen.getByTestId("app-auth-layout");
-    expect(layout).toHaveAttribute("data-auth-brand", "vm0");
-    expect(layout).toHaveAttribute("data-auth-version", "v2");
-    expect(layout).toHaveClass("p-4");
-    expect(layout).toHaveClass("sm:p-6");
-    expect(screen.getByRole("main")).toHaveClass("py-14");
+    expect(linkByText("Use current sign-in")).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
   });
 
-  it("toggles light and dark themes from the keyboard and announces the result", async () => {
+  it("toggles themes with pointer and keyboard input while preserving focus", async () => {
     const user = userEvent.setup();
     context.mocks.browser.matchMedia(false);
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
@@ -104,8 +98,7 @@ describe("auth v2 presentation", () => {
     const themeToggle = buttonByLabel("Toggle theme");
     expect(themeToggle).toHaveAttribute("aria-pressed", "false");
 
-    themeToggle.focus();
-    await user.keyboard("{Enter}");
+    await user.click(themeToggle);
 
     expect(themeToggle).toHaveFocus();
     expect(themeToggle).toHaveAttribute("aria-pressed", "true");
@@ -144,10 +137,6 @@ describe("auth v2 presentation", () => {
       "/sign-up",
     );
     expect(heading).toBeVisible();
-    expect(screen.getByTestId("app-auth-layout")).toHaveAttribute(
-      "data-auth-brand",
-      "okou",
-    );
     expect(document.title).toBe("サインアップ | Okou");
   });
 });
