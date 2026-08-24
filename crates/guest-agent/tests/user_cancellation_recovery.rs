@@ -61,8 +61,9 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let server = MockServer::start();
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");
+    let codex_home = home.join(".codex");
     let runtime_dir = tmp.path().join("runtime");
-    std::fs::create_dir_all(&home)?;
+    std::fs::create_dir_all(&codex_home)?;
     let mock_codex = common::build_and_locate_mock_codex()?;
     let run_payload_file = common::write_run_payload_file_for_test(
         &runtime_dir,
@@ -153,9 +154,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let listener = bind_abstract_listener(&endpoint)?;
     let control_paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir.clone());
     let session_id_file = PathBuf::from(control_paths.session_id_file());
-    let session_history_ready_file = home
-        .join(".codex")
-        .join(common::MOCK_CODEX_SESSION_HISTORY_READY_FILE);
+    let session_history_ready_file = codex_home.join(common::MOCK_CODEX_SESSION_HISTORY_READY_FILE);
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let control = tokio::task::spawn_blocking(move || {
         let mut stream = accept_with_timeout(&listener, Duration::from_secs(5))?;
@@ -194,7 +193,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             )
             .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
-            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
+            .env("VM0_TEST_CODEX_HOME_DIR", &codex_home)
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
             .env(
@@ -227,18 +226,18 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         "guest-agent did not finish within its finalization budget",
     );
     let cancellation_ready = async {
-        common::wait_for_file_contains(
-            &session_id_file,
-            scenario.thread_id,
-            Duration::from_secs(5),
-        )
-        .await?;
-        common::wait_for_file_contains(
-            &session_history_ready_file,
-            common::MOCK_CODEX_SESSION_HISTORY_READY_EVENT,
-            Duration::from_secs(5),
-        )
-        .await?;
+        tokio::try_join!(
+            common::wait_for_file_contains(
+                &session_id_file,
+                scenario.thread_id,
+                Duration::from_secs(5),
+            ),
+            common::wait_for_file_contains(
+                &session_history_ready_file,
+                common::MOCK_CODEX_SESSION_HISTORY_READY_EVENT,
+                Duration::from_secs(5),
+            ),
+        )?;
         cancel_tx
             .send(())
             .map_err(|()| std::io::Error::other("process control task ended before cancellation"))
