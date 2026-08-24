@@ -74,7 +74,7 @@ interface ProviderAccount {
   readonly repairRequired: boolean;
 }
 
-export type BankingWebhookResult =
+type BankingWebhookResult =
   | { readonly kind: "ok" }
   | { readonly kind: "bad_request" }
   | { readonly kind: "processing_failed" };
@@ -408,7 +408,8 @@ export const bankingAccessRequestStatus$ = command(
 function connectSessionBody(args: {
   readonly connection: BankingConnectionRow;
   readonly session: BankingConnectSessionRow;
-  readonly origin: string;
+  readonly redirectOrigin: string;
+  readonly webhookOrigin: string;
 }): Record<string, unknown> | UserErrorResponse {
   const partnerId = env("FINICITY_PARTNER_ID");
   if (!partnerId) {
@@ -426,8 +427,11 @@ function connectSessionBody(args: {
     partnerId,
     customerId: args.connection.providerCustomerId,
     language: "en",
-    redirectUri: new URL("/api/banking/connect/return", args.origin).toString(),
-    webhook: new URL("/api/webhooks/finicity", args.origin).toString(),
+    redirectUri: new URL(
+      "/banking/connect/return",
+      args.redirectOrigin,
+    ).toString(),
+    webhook: new URL("/api/webhooks/finicity", args.webhookOrigin).toString(),
     webhookContentType: "application/json",
     webhookData,
     singleUseUrl: true,
@@ -443,7 +447,8 @@ export const startBankingConnectSession$ = command(
     args: {
       readonly owner: BankingOwner;
       readonly body: BankingConnectSessionRequest;
-      readonly origin: string;
+      readonly redirectOrigin: string;
+      readonly webhookOrigin: string;
     },
     signal: AbortSignal,
   ) => {
@@ -526,7 +531,8 @@ export const startBankingConnectSession$ = command(
     const providerBody = connectSessionBody({
       connection,
       session,
-      origin: args.origin,
+      redirectOrigin: args.redirectOrigin,
+      webhookOrigin: args.webhookOrigin,
     });
     if (isUserErrorResponse(providerBody)) {
       await db

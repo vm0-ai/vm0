@@ -11,6 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  cn,
 } from "@okouai/ui";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
@@ -342,7 +343,7 @@ function BankingActionCardLoading() {
   return (
     <div
       data-testid="banking-action-card-loading"
-      className="flex min-h-[112px] w-full items-center justify-center rounded-lg border border-border/70 bg-background/85 p-4"
+      className="flex min-h-[88px] w-full items-center justify-center rounded-lg border border-border/70 bg-background/85 p-3 shadow-sm"
     >
       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
     </div>
@@ -355,7 +356,7 @@ function BankingActionCardError({ signals }: { signals: BankingSignals }) {
   return (
     <div
       data-testid="banking-action-card-error"
-      className="flex min-h-[112px] w-full items-center gap-3 rounded-lg border border-border/70 bg-background/85 p-4"
+      className="flex min-h-[88px] w-full items-center gap-3 rounded-lg border border-border/70 bg-background/85 p-3 shadow-sm"
     >
       <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1 text-sm text-muted-foreground">
@@ -380,10 +381,17 @@ function LoadedBankingActionCard({
   readonly status: BankingAccessRequestStatusResponse;
 }) {
   const controller = useBankingCardController(signals, status);
+  const compact =
+    controller.ui.localError === null &&
+    (controller.pending || controller.status.connection === null);
   return (
     <div
       data-testid="banking-action-card"
-      className="w-full rounded-lg border border-border/70 bg-background/85 p-4 text-left shadow-sm"
+      className={cn(
+        "w-full rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm",
+        compact &&
+          "flex min-h-[88px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+      )}
     >
       {controller.pending ? (
         <span ref={controller.pendingSessionPollerRef} hidden />
@@ -393,7 +401,7 @@ function LoadedBankingActionCard({
         reason={signals.reason}
       />
       <BankingCardErrorMessage message={controller.ui.localError} />
-      <BankingCardContent controller={controller} />
+      <BankingCardContent controller={controller} compact={compact} />
     </div>
   );
 }
@@ -407,23 +415,22 @@ function BankingCardHeader({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
         <Landmark className="h-5 w-5 text-foreground" />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[0.9375rem] font-medium text-foreground">
+      <div className="min-w-0">
+        <div className="truncate text-[0.9375rem] font-medium text-foreground">
           {t(($) => {
             return $.chat.banking.title;
           })}
         </div>
-        <div className="mt-0.5 truncate text-xs font-medium text-foreground/80">
-          {agentName}
+        <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground/80">{agentName}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{reason}</span>
         </div>
-        <div className="mt-1 text-sm leading-5 text-muted-foreground">
-          {reason}
-        </div>
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5" />
           {t(($) => {
             return $.chat.banking.readOnly;
@@ -449,11 +456,13 @@ function BankingCardErrorMessage({
 
 function BankingCardContent({
   controller,
+  compact,
 }: {
   readonly controller: BankingCardController;
+  readonly compact: boolean;
 }) {
   if (controller.pending) {
-    return <BankingPendingNotice controller={controller} />;
+    return <BankingPendingNotice controller={controller} compact={compact} />;
   }
   const connection = controller.status.connection;
   if (!connection) {
@@ -462,6 +471,7 @@ function BankingCardContent({
         busy={controller.ui.busy !== null}
         connecting={controller.ui.busy === "connect"}
         openConnect={controller.openConnect}
+        compact={compact}
       />
     );
   }
@@ -486,13 +496,20 @@ function BankingCardContent({
 
 function BankingPendingNotice({
   controller,
+  compact,
 }: {
   readonly controller: BankingCardController;
+  readonly compact: boolean;
 }) {
   const { t } = useTranslation();
   const session = controller.status.session;
   return (
-    <div className="mt-4 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+    <div
+      className={cn(
+        "flex w-full shrink-0 items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground sm:w-auto",
+        !compact && "mt-4",
+      )}
+    >
       <Loader2 className="h-4 w-4 animate-spin" />
       <span className="min-w-0 flex-1">
         {t(($) => {
@@ -503,6 +520,7 @@ function BankingPendingNotice({
         <Button
           size="sm"
           variant="outline"
+          className="h-9"
           disabled={controller.ui.busy !== null}
           onClick={() => {
             controller.openConnect(
@@ -524,16 +542,25 @@ function ConnectBankButton({
   busy,
   connecting,
   openConnect,
+  compact,
 }: {
   readonly busy: boolean;
   readonly connecting: boolean;
   readonly openConnect: OpenBankingConnect;
+  readonly compact: boolean;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mt-4 flex justify-end">
+    <div
+      className={cn(
+        "flex w-full shrink-0 justify-end sm:w-auto",
+        !compact && "mt-4",
+      )}
+    >
       <Button
         size="sm"
+        variant="outline"
+        className="h-9 w-full sm:w-auto"
         disabled={busy}
         onClick={() => {
           openConnect("connect");

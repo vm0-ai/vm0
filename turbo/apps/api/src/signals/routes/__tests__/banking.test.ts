@@ -715,6 +715,11 @@ describe("banking access request lifecycle", () => {
   });
 
   it("completes only after signed added and done webhooks", async () => {
+    mockEnv("APP_URL", "https://local-app.example.test");
+    mockEnv(
+      "FINICITY_WEBHOOK_BASE_URL",
+      "https://public-api-tunnel.example.test",
+    );
     const fixture = await seedBankingFixture();
     let generatedBody: Record<string, unknown> | undefined;
     server.use(
@@ -767,11 +772,11 @@ describe("banking access request lifecycle", () => {
         uniqueRequestId: started.body.sessionId,
       },
     });
-    expect(new URL(String(generatedBody?.webhook)).pathname).toBe(
-      "/api/webhooks/finicity",
+    expect(String(generatedBody?.webhook)).toBe(
+      "https://public-api-tunnel.example.test/api/webhooks/finicity",
     );
-    expect(new URL(String(generatedBody?.redirectUri)).pathname).toBe(
-      "/api/banking/connect/return",
+    expect(String(generatedBody?.redirectUri)).toBe(
+      "https://local-app.example.test/banking/connect/return",
     );
 
     const addedEvent = {
@@ -876,5 +881,19 @@ describe("banking access request lifecycle", () => {
       body: JSON.stringify({ eventType: "ping" }),
     });
     expect(response.status).toBe(401);
+  });
+
+  it("serves the Finicity browser return from the API", async () => {
+    const response = await createApp({
+      signal: context.signal,
+      routes: bankingRoutes,
+    }).request(
+      "/api/banking/connect/return?reason=complete&code=200&reportData=null",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "text/html; charset=utf-8",
+    );
   });
 });

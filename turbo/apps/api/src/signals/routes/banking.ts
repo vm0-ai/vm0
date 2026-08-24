@@ -173,13 +173,17 @@ const createConnectSessionInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const origin = new URL(env("APP_URL")).origin;
+    const redirectOrigin = new URL(env("APP_URL")).origin;
+    const webhookOrigin = new URL(
+      env("FINICITY_WEBHOOK_BASE_URL") ?? redirectOrigin,
+    ).origin;
     return await set(
       startBankingConnectSession$,
       {
         owner: { orgId: auth.orgId, userId: auth.userId },
         body: body.data,
-        origin,
+        redirectOrigin,
+        webhookOrigin,
       },
       signal,
     );

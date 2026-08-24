@@ -1,4 +1,8 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import {
+  bankingUserContract,
+  type BankingAccessRequestStatusResponse,
+} from "@okouai/api-contracts/contracts/banking";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorManualGrantContract,
@@ -360,6 +364,49 @@ function selectMailText(element: HTMLElement): void {
 }
 
 describe("chat event action cards", () => {
+  it("renders an unconnected banking request with the compact action card layout", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000005";
+    const reason = "Review recent expenses";
+    const bankingUrl = `${window.location.origin}/agents/${AGENT_ID}/banking?reason=${encodeURIComponent(reason)}&threadId=${threadId}&callbackPrompt=Continue+the+expense+review`;
+    const status: BankingAccessRequestStatusResponse = {
+      agent: { id: AGENT_ID, name: "Zero" },
+      connection: null,
+      session: null,
+      grant: null,
+    };
+    context.mocks.api(
+      bankingUserContract.accessRequestStatus,
+      ({ respond }) => {
+        return respond(200, status);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Banking access",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: bankingUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.Banking]: true },
+    });
+
+    const card = await screen.findByTestId("banking-action-card");
+    expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
+    expect(card).toHaveTextContent("Banking access request");
+    expect(card).toHaveTextContent(`Zero · ${reason}`);
+    expect(buttonByText("Connect a bank", card)).toHaveClass("h-9");
+  });
+
   it("keeps connector action card height stable while catalog metadata loads", async () => {
     const threadId = "e4000000-0000-4000-a000-000000000002";
     const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
