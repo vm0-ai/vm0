@@ -3,9 +3,9 @@ import {
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/team";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
@@ -120,7 +120,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/agents/:id/custom-connectors
-  mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
+  mockApi(agentCustomConnectorsContract.get, ({ params, respond }) => {
     const grants = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
     return respond(200, { grants });
   }),
@@ -139,19 +139,16 @@ export const apiAgentsHandlers = [
   }),
 
   // PUT /api/agents/:id/custom-connectors
-  mockApi(
-    zeroAgentCustomConnectorsContract.update,
-    ({ body, params, respond }) => {
-      const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
-      const grants = mockCustomConnectorGrantUpdateResponse(
-        current,
-        body.grants,
-        body.operation,
-      );
-      mockCustomConnectorGrantsByAgent.set(params.id, grants);
-      return respond(200, { grants });
-    },
-  ),
+  mockApi(agentCustomConnectorsContract.update, ({ body, params, respond }) => {
+    const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+    const grants = mockCustomConnectorGrantUpdateResponse(
+      current,
+      body.grants,
+      body.operation,
+    );
+    mockCustomConnectorGrantsByAgent.set(params.id, grants);
+    return respond(200, { grants });
+  }),
 
   // GET /api/agents/:id
   mockApi(agentsByIdContract.get, ({ respond }) => {

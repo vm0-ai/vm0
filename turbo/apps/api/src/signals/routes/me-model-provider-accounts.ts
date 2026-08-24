@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroPersonalModelProviderAccountsByIdContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProviderAccountsByIdContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -32,7 +32,7 @@ const activateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Resource not found");
   }
   const params = get(
-    pathParamsOf(zeroPersonalModelProviderAccountsByIdContract.activate),
+    pathParamsOf(personalModelProviderAccountsByIdContract.activate),
   );
   const result = await activatePersonalModelProviderAccount({
     db: set(writeDb$),
@@ -61,7 +61,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Resource not found");
   }
   const params = get(
-    pathParamsOf(zeroPersonalModelProviderAccountsByIdContract.delete),
+    pathParamsOf(personalModelProviderAccountsByIdContract.delete),
   );
   const result = await deletePersonalModelProviderAccount({
     db: set(writeDb$),
@@ -91,12 +91,12 @@ const resetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const params = get(
     pathParamsOf(
-      zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+      personalModelProviderAccountsByIdContract.resetSubscriptionUsage,
     ),
   );
   const body = await get(
     bodyResultOf(
-      zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+      personalModelProviderAccountsByIdContract.resetSubscriptionUsage,
     ),
   );
   signal.throwIfAborted();
@@ -136,15 +136,15 @@ const auth = {
 
 export const meModelProviderAccountRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPersonalModelProviderAccountsByIdContract.activate,
+    route: personalModelProviderAccountsByIdContract.activate,
     handler: authRoute(auth, activateInner$),
   },
   {
-    route: zeroPersonalModelProviderAccountsByIdContract.delete,
+    route: personalModelProviderAccountsByIdContract.delete,
     handler: authRoute(auth, deleteInner$),
   },
   {
-    route: zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+    route: personalModelProviderAccountsByIdContract.resetSubscriptionUsage,
     handler: authRoute(auth, resetInner$),
   },
 ];

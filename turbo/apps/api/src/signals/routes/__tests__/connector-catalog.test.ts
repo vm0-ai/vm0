@@ -5,7 +5,7 @@ import {
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -44,7 +44,7 @@ async function enableFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.update({
@@ -61,7 +61,7 @@ async function deleteFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.delete({ headers: { authorization: "Bearer clerk-session" } }),

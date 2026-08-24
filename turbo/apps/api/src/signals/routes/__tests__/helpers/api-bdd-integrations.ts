@@ -39,7 +39,7 @@ import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-sla
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -1266,7 +1266,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
       await accept(
         setupApp({ context, routes: featureSwitchesRoutes })(
-          zeroFeatureSwitchesContract,
+          featureSwitchesContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
           body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },

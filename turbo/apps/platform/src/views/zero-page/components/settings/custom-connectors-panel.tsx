@@ -17,7 +17,7 @@ import {
 import {
   isIntegrationManagedCustomConnector,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,

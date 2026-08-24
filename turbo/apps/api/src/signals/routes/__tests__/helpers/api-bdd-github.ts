@@ -7,7 +7,7 @@ import {
   type GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
 import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -405,7 +405,7 @@ export function createGithubBddApi(context: TestContext) {
 
     async enableAuditLink(actor: ApiTestUser): Promise<void> {
       const client = setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       );
       await accept(
         client.update({

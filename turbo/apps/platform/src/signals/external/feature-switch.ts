@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
@@ -16,7 +16,7 @@ import {
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
 const apiFeatureSwitchClient$ = computed((get) => {
-  return createAuthedContractClient(zeroFeatureSwitchesContract, {
+  return createAuthedContractClient(featureSwitchesContract, {
     baseUrl: resolveApiBaseForTarget("api"),
     getAuthRecovery: () => {
       return get(authRecovery$);

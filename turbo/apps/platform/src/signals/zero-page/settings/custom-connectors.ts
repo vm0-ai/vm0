@@ -1,22 +1,22 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorOAuth2Contract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -69,7 +69,7 @@ export const customConnectors$ = computed(
   async (get): Promise<CustomConnectorResponse[]> => {
     get(internalReload$);
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorsContract);
+    const client = createClient(customConnectorsContract);
     const result = await accept(client.list(), [200]);
     return customConnectorListResponseSchema.parse(result.body).connectors;
   },
@@ -89,7 +89,7 @@ export const customConnectorAgentAuthorizations$ = computed(
     }
 
     const allAgents = await get(agents$);
-    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(agentCustomConnectorsContract);
     const rows = await Promise.all(
       allAgents.map(async (agent) => {
         const result = await accept(
@@ -141,7 +141,7 @@ export const setCustomConnectorAgentAuthorization$ = command(
     if (args.authorized && args.permissionBundleRef) {
       return false;
     }
-    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(agentCustomConnectorsContract);
     await withCleanup(
       accept(
         client.update({
@@ -213,7 +213,7 @@ const authorizeCustomConnectorForTarget$ = command(
             return agent.id;
           });
     signal.throwIfAborted();
-    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(agentCustomConnectorsContract);
     await withCleanup(
       Promise.all(
         agentIds.map(async (agentId) => {
@@ -255,7 +255,7 @@ const isCustomConnectorAuthorizedForTarget$ = command(
     if (args.target.kind === "visible-agents") {
       return false;
     }
-    const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
+    const client = get(apiClient$)(agentCustomConnectorsContract);
     const result = await accept(
       client.get({
         params: { id: args.target.agentId },
@@ -285,7 +285,7 @@ export const createCustomConnector$ = command(
     _signal: AbortSignal,
   ): Promise<CustomConnectorResponse> => {
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorsContract);
+    const client = createClient(customConnectorsContract);
     const result = await accept(
       client.create({
         body,
@@ -317,7 +317,7 @@ export const updateCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorResponse> => {
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorByIdContract);
+    const client = createClient(customConnectorByIdContract);
     const result = await accept(
       client.update({
         params: { id: args.id },
@@ -344,7 +344,7 @@ export const updateCustomConnector$ = command(
 export const deleteCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorByIdContract);
+    const client = createClient(customConnectorByIdContract);
     await accept(
       client.delete({
         params: { id },
@@ -372,7 +372,7 @@ const setCustomConnectorValuesForTarget$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     const createClient = get(apiClient$);
-    const client = createClient(zeroCustomConnectorValuesContract);
+    const client = createClient(customConnectorValuesContract);
     const result = await accept(
       client.set({
         params: { id: args.id },
@@ -505,7 +505,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
-        const client = createClient(zeroCustomConnectorOAuth2Contract, {
+        const client = createClient(customConnectorOAuth2Contract, {
           apiBase: "api",
         });
         const result = await accept(

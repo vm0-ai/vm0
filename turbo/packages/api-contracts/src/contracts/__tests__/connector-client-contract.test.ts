@@ -22,7 +22,7 @@ import { zeroConnectorsSearchContract } from "../zero-connectors";
 import {
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
-} from "../zero-custom-connectors";
+} from "../custom-connectors";
 import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,

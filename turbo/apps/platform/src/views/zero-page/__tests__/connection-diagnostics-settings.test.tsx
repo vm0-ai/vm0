@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,7 +54,7 @@ describe("connection diagnostics settings", () => {
     const user = userEvent.setup();
     const featureSwitchRequestStarted = context.mocks.deferred<void>();
     const releaseFeatureSwitchResponse = context.mocks.deferred<void>();
-    context.mocks.api(zeroFeatureSwitchesContract.get, async ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
       featureSwitchRequestStarted.resolve();
       await releaseFeatureSwitchResponse.promise;
       return respond(200, {

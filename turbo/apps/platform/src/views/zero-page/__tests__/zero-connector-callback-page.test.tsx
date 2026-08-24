@@ -1,5 +1,5 @@
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
@@ -25,7 +25,7 @@ describe("connector callback page", () => {
   it("completes a custom connector callback through the API", async () => {
     let observedQuery: Readonly<Record<string, string | undefined>> = {};
     context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.callback,
+      customConnectorOAuth2Contract.callback,
       ({ query, respond }) => {
         observedQuery = query;
         return respond(200, {

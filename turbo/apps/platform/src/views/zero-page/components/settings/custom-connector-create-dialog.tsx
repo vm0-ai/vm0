@@ -5,7 +5,7 @@ import type {
   CreateCustomConnectorBody,
   CustomConnectorResponse,
   UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   Button,
   CopyButton,

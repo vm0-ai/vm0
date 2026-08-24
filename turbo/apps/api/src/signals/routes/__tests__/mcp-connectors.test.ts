@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 

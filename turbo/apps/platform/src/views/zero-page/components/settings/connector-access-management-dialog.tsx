@@ -22,7 +22,7 @@ import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-id
 import type {
   CustomConnectorResponse,
   CustomConnectorPermissionBundleResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";

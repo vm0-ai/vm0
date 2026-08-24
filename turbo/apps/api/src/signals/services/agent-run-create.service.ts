@@ -20,8 +20,8 @@ import {
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
+import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,

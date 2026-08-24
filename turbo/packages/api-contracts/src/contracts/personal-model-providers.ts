@@ -26,7 +26,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
 >;
 
 /**
- * Zero personal (user-level) model providers main contract for /api/me/model-providers
+ * Personal (user-level) model providers main contract for /api/me/model-providers
  *
  * Personal-tier per Epic #11868: providers scoped to the authenticated user
  * within an org, no admin gate. List/upsert are gated on model-first provider
@@ -35,7 +35,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
  * GET: List the requesting user's personal model providers
  * POST: Create or update a personal model provider for the requesting user
  */
-export const zeroPersonalModelProvidersMainContract = c.router({
+export const personalModelProvidersMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/me/model-providers",
@@ -66,15 +66,15 @@ export const zeroPersonalModelProvidersMainContract = c.router({
   },
 });
 
-export type ZeroPersonalModelProvidersMainContract =
-  typeof zeroPersonalModelProvidersMainContract;
+export type PersonalModelProvidersMainContract =
+  typeof personalModelProvidersMainContract;
 
 /**
- * Zero personal model providers by type contract for /api/me/model-providers/:type
+ * Personal model providers by type contract for /api/me/model-providers/:type
  *
  * DELETE: Delete one of the requesting user's personal model providers
  */
-export const zeroPersonalModelProvidersByTypeContract = c.router({
+export const personalModelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
     path: "/api/me/model-providers/:type",
@@ -109,11 +109,11 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
   },
 });
 
-export type ZeroPersonalModelProvidersByTypeContract =
-  typeof zeroPersonalModelProvidersByTypeContract;
+export type PersonalModelProvidersByTypeContract =
+  typeof personalModelProvidersByTypeContract;
 
 /** Concrete personal subscription account mutations. */
-export const zeroPersonalModelProviderAccountsByIdContract = c.router({
+export const personalModelProviderAccountsByIdContract = c.router({
   activate: {
     method: "POST",
     path: "/api/me/model-provider-accounts/:id/activate",
@@ -158,5 +158,5 @@ export const zeroPersonalModelProviderAccountsByIdContract = c.router({
   },
 });
 
-export type ZeroPersonalModelProviderAccountsByIdContract =
-  typeof zeroPersonalModelProviderAccountsByIdContract;
+export type PersonalModelProviderAccountsByIdContract =
+  typeof personalModelProviderAccountsByIdContract;

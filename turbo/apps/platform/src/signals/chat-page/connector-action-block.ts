@@ -7,7 +7,7 @@ import {
   customConnectorSlugSchema,
   type CustomConnectorResponse,
   type CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 import {

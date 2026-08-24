@@ -12,7 +12,7 @@ import {
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
   type CustomConnectorOAuthProviderAdapter,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   isOAuthProviderHttpError,

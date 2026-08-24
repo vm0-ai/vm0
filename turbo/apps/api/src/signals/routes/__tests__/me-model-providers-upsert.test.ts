@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 
 import {
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersByTypeContract,
+  personalModelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -18,12 +18,12 @@ import { meModelProvidersListRoutes } from "../me-model-providers-list";
 import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-reset-subscription";
 import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 
-const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+const personalModelProvidersMainTestRoutes = Object.freeze([
   ...meModelProvidersListRoutes,
   ...meModelProvidersUpsertRoutes,
 ]);
 
-const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+const personalModelProvidersByTypeTestRoutes = Object.freeze([
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersResetSubscriptionRoutes,
 ]);
@@ -104,8 +104,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -120,8 +120,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -138,8 +138,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
@@ -174,8 +174,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "first" },
@@ -199,8 +199,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token" },
@@ -217,8 +217,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
@@ -240,8 +240,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "vm0", secret: "any-value" },
@@ -258,8 +258,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: { type: "vm0" },
@@ -276,8 +276,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -328,8 +328,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -413,8 +413,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const mainClient = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     await accept(
       mainClient.upsert({
         body: {
@@ -429,8 +429,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const byTypeClient = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await accept(
       byTypeClient.resetSubscriptionUsage({
         params: { type: "codex-oauth-token" },
@@ -449,8 +449,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -482,8 +482,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -506,8 +506,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {
@@ -530,8 +530,8 @@ describe("POST /api/me/model-providers (upsert)", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     const response = await accept(
       client.upsert({
         body: {

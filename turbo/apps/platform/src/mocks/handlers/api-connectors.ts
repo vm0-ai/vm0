@@ -25,7 +25,7 @@ import {
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
-import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch-state.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -341,7 +341,7 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(zeroCustomConnectorsContract.list, ({ respond }) => {
+  mockApi(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [] });
   }),
 

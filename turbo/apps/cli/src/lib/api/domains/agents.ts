@@ -14,9 +14,9 @@ import {
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type UserPermissionGrant = UserPermissionGrantResponse;
@@ -90,7 +90,7 @@ export async function getAgentCustomConnectorGrants(
   id: string,
 ): Promise<AgentCustomConnectorGrant[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentCustomConnectorsContract, config);
+  const client = initClient(agentCustomConnectorsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body.grants;
   handleError(

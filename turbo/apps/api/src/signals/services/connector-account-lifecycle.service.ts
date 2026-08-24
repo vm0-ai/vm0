@@ -10,7 +10,7 @@ import {
   connectorReconnectReasonSchema,
   type ConnectorReconnectReason,
 } from "@okouai/api-contracts/contracts/connector-schemas";
-import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";

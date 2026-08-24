@@ -18,15 +18,15 @@ import {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
@@ -3065,7 +3065,7 @@ describe("chat event action cards", () => {
     }[] = [];
     const connector = mcpCustomConnector();
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
@@ -3078,7 +3078,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, respond }) => {
         submittedValues = body.values;
         connected = true;
@@ -3090,11 +3090,11 @@ describe("chat event action cards", () => {
         });
       },
     );
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { grants });
     });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, respond }) => {
         grants = body.grants;
         return respond(200, { grants });
@@ -3166,7 +3166,7 @@ describe("chat event action cards", () => {
       permissionBundleRef: "builtin:feishu@1",
     });
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
@@ -3179,7 +3179,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, respond }) => {
         submittedValues = body.values;
         connected = true;
@@ -3191,7 +3191,7 @@ describe("chat event action cards", () => {
         });
       },
     );
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         grants: [
           {
@@ -3201,20 +3201,17 @@ describe("chat event action cards", () => {
         ],
       });
     });
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        authorizationUpdates += 1;
-        return respond(200, {
-          grants: [
-            {
-              customConnectorId: connector.id,
-              permissionNames: ["messages:send-as-user"],
-            },
-          ],
-        });
-      },
-    );
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      authorizationUpdates += 1;
+      return respond(200, {
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+      });
+    });
 
     mockChatLifecycle(context, {
       threadId: "e4000000-0000-4000-a000-000000000118",
@@ -3267,7 +3264,7 @@ describe("chat event action cards", () => {
       permissionBundleRef: "builtin:feishu@1",
     });
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
@@ -3279,7 +3276,7 @@ describe("chat event action cards", () => {
         ],
       });
     });
-    context.mocks.api(zeroCustomConnectorValuesContract.set, ({ respond }) => {
+    context.mocks.api(customConnectorValuesContract.set, ({ respond }) => {
       connected = true;
       return respond(200, {
         ...connector,
@@ -3288,16 +3285,13 @@ describe("chat event action cards", () => {
         configuredFieldKeys: ["secret"],
       });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { grants: [] });
     });
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        authorizationUpdates += 1;
-        return respond(200, { grants: [] });
-      },
-    );
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      authorizationUpdates += 1;
+      return respond(200, { grants: [] });
+    });
     mockChatLifecycle(context, {
       threadId: "e4000000-0000-4000-a000-000000000218",
       threadTitle: "New permissioned custom connector card",
@@ -3353,13 +3347,13 @@ describe("chat event action cards", () => {
       permissionBundleRef: "builtin:feishu@1",
     });
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { grants: [] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.update, () => {
+    context.mocks.api(agentCustomConnectorsContract.update, () => {
       throw new Error(
         "A permissioned custom connector requires an explicit selection",
       );

@@ -2,9 +2,9 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
@@ -145,7 +145,7 @@ function createAgentCustomConnectorAuthorizationRequestBroker(): AgentCustomConn
       }
 
       const load = async (): Promise<readonly AgentCustomConnectorGrant[]> => {
-        const client = params.createClient(zeroAgentCustomConnectorsContract);
+        const client = params.createClient(agentCustomConnectorsContract);
         const result = await accept(
           client.get({ params: { id: params.agentId } }),
           [200],
@@ -259,7 +259,7 @@ function createCustomConnectorAuthorizationCommand(
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
-      const client = get(apiClient$)(zeroAgentCustomConnectorsContract);
+      const client = get(apiClient$)(agentCustomConnectorsContract);
       await withCleanup(
         accept(
           client.update({

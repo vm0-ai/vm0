@@ -847,7 +847,7 @@ export {
   updateFeatureSwitchesRequestSchema,
   type FeatureSwitchesResponse,
   type UpdateFeatureSwitchesRequest,
-} from "./zero-feature-switches";
+} from "./feature-switches";
 export {
   orgRoleSchema,
   orgMemberSchema,
@@ -1136,26 +1136,26 @@ export {
   type ModelProvidersByTypeContract,
 } from "./model-provider-routes";
 export {
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProviderAccountsByIdContract,
-  type ZeroPersonalModelProvidersMainContract,
-  type ZeroPersonalModelProvidersByTypeContract,
-  type ZeroPersonalModelProviderAccountsByIdContract,
-} from "./zero-personal-model-providers";
+  personalModelProvidersMainContract,
+  personalModelProvidersByTypeContract,
+  personalModelProviderAccountsByIdContract,
+  type PersonalModelProvidersMainContract,
+  type PersonalModelProvidersByTypeContract,
+  type PersonalModelProviderAccountsByIdContract,
+} from "./personal-model-providers";
 export {
   userPreferencesContract,
   type UserPreferencesContract,
 } from "./user-preferences";
 export {
-  zeroFeatureSwitchesContract,
-  type ZeroFeatureSwitchesContract,
-} from "./zero-feature-switches";
+  featureSwitchesContract,
+  type FeatureSwitchesContract,
+} from "./feature-switches";
 export {
-  zeroCustomConnectorsContract,
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorOAuth2Contract,
+  customConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
@@ -1168,10 +1168,10 @@ export {
   INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS,
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
-  type ZeroCustomConnectorsContract,
-  type ZeroCustomConnectorByIdContract,
-  type ZeroCustomConnectorValuesContract,
-  type ZeroCustomConnectorOAuth2Contract,
+  type CustomConnectorsContract,
+  type CustomConnectorByIdContract,
+  type CustomConnectorValuesContract,
+  type CustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
   type CustomConnectorAuthMode,
   type CustomConnectorOAuthProviderAdapter,
@@ -1181,17 +1181,17 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-} from "./zero-custom-connectors";
+} from "./custom-connectors";
 export {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   agentCustomConnectorGrantSchema,
   agentCustomConnectorGrantsSchema,
   agentCustomConnectorUpdateSchema,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
-  type ZeroAgentCustomConnectorsContract,
-} from "./zero-agent-custom-connectors";
+  type AgentCustomConnectorsContract,
+} from "./agent-custom-connectors";
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,

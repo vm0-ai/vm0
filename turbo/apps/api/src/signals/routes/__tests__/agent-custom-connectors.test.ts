@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -29,7 +29,7 @@ function currentSecond(): number {
 
 function agentCustomConnectorsClient() {
   return setupApp({ context, routes: agentsRoutes })(
-    zeroAgentCustomConnectorsContract,
+    agentCustomConnectorsContract,
   );
 }
 

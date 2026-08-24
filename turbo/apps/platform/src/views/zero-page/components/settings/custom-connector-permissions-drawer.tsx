@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { CustomConnectorPermissionBundleResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorPermissionBundleResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   Button,
   Sheet,

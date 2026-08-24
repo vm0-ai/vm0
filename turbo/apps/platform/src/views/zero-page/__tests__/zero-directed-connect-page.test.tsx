@@ -7,16 +7,16 @@ import {
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorOAuth2Contract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
@@ -392,7 +392,7 @@ describe("directed connector connect page", () => {
       readonly value: string;
     }[] = [];
     const connector = mcpCustomConnector();
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
@@ -405,7 +405,7 @@ describe("directed connector connect page", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         submittedValues = body.values;
@@ -419,7 +419,7 @@ describe("directed connector connect page", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         grants = body.grants;
@@ -479,13 +479,13 @@ describe("directed connector connect page", () => {
         authorizationParams: {},
       },
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.start,
+      customConnectorOAuth2Contract.start,
       ({ params, respond }) => {
         expect(params.id).toBe(connector.id);
         connected = true;
@@ -495,7 +495,7 @@ describe("directed connector connect page", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         grants = body.grants;
@@ -561,13 +561,13 @@ describe("directed connector connect page", () => {
         authorizationParams: {},
       },
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.start,
+      customConnectorOAuth2Contract.start,
       ({ params, respond }) => {
         expect(params.id).toBe(connector.id);
         connected = true;
@@ -577,7 +577,7 @@ describe("directed connector connect page", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       async ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         authorizationRequested.resolve();
@@ -591,13 +591,10 @@ describe("directed connector connect page", () => {
         return respond(200, { grants });
       },
     );
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        authorizationUpdates += 1;
-        return respond(200, { grants: [] });
-      },
-    );
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      authorizationUpdates += 1;
+      return respond(200, { grants: [] });
+    });
     const authWindow = context.mocks.browser.authWindow();
     authWindow.closed = true;
     Object.defineProperty(authWindow, "location", {

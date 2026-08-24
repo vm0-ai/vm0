@@ -15,13 +15,13 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorProposalContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+  customConnectorByIdContract,
+  customConnectorOAuth2Contract,
+  customConnectorProposalContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
+} from "@okouai/api-contracts/contracts/custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { feishuConnectContract } from "@okouai/api-contracts/contracts/feishu-connect";
 import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -82,7 +82,7 @@ import { customConnectorsUpdateRoutes } from "../custom-connectors-update";
 import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { feishuConnectRoutes } from "../feishu-connect";
 
-const zeroCustomConnectorByIdTestRoutes = Object.freeze([
+const customConnectorByIdTestRoutes = Object.freeze([
   ...customConnectorsDeleteRoutes,
   ...customConnectorsGetRoutes,
   ...customConnectorsUpdateRoutes,
@@ -1622,7 +1622,7 @@ describe("Feishu integration", () => {
     const customConnectorClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const connectorsAfterFailure = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -1746,7 +1746,7 @@ describe("Feishu integration", () => {
     const customConnectorClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const connectorBeforeRemoval = requireValue(
       (
         await accept(
@@ -1822,7 +1822,7 @@ describe("Feishu integration", () => {
     const customConnectorClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const initialList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2047,7 +2047,7 @@ describe("Feishu integration", () => {
     const customConnectorClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2109,8 +2109,8 @@ describe("Feishu integration", () => {
     expect(skillMarkdown).not.toContain("Okou Feishu");
     expect(skillMarkdown).not.toContain(managedConnector.id);
     const permissionBundle = await accept(
-      setupApp({ context, routes: zeroCustomConnectorByIdTestRoutes })(
-        zeroCustomConnectorByIdContract,
+      setupApp({ context, routes: customConnectorByIdTestRoutes })(
+        customConnectorByIdContract,
       ).permissions({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
@@ -2134,7 +2134,7 @@ describe("Feishu integration", () => {
     const customConnectorOAuthClient = setupApp({
       context,
       routes: customConnectorOAuth2Routes,
-    })(zeroCustomConnectorOAuth2Contract);
+    })(customConnectorOAuth2Contract);
     const managedOAuthStart = await accept(
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
@@ -2174,8 +2174,8 @@ describe("Feishu integration", () => {
 
     const customConnectorByIdClient = setupApp({
       context,
-      routes: zeroCustomConnectorByIdTestRoutes,
-    })(zeroCustomConnectorByIdContract);
+      routes: customConnectorByIdTestRoutes,
+    })(customConnectorByIdContract);
     const managedUpdate = await accept(
       customConnectorByIdClient.update({
         headers: { authorization: "Bearer clerk-session" },
@@ -2206,7 +2206,7 @@ describe("Feishu integration", () => {
 
     const managedValues = await accept(
       setupApp({ context, routes: customConnectorsValuesSetRoutes })(
-        zeroCustomConnectorValuesContract,
+        customConnectorValuesContract,
       ).set({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
@@ -2223,7 +2223,7 @@ describe("Feishu integration", () => {
 
     const managedProposal = await accept(
       setupApp({ context, routes: customConnectorProposalRoutes })(
-        zeroCustomConnectorProposalContract,
+        customConnectorProposalContract,
       ).save({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -2978,7 +2978,7 @@ describe("Feishu integration", () => {
       "Expected managed Feishu custom connector",
     );
     const agentAccessClient = setupApp({ context, routes: agentsRoutes })(
-      zeroAgentCustomConnectorsContract,
+      agentCustomConnectorsContract,
     );
     const selectedPermissions = ["messages:send-as-user"];
     await accept(
@@ -3253,7 +3253,7 @@ describe("Feishu integration", () => {
     const customConnectorClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -3270,7 +3270,7 @@ describe("Feishu integration", () => {
     });
     const customConnectorGrants = await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       ).get({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: defaultAgentId },
@@ -3403,7 +3403,7 @@ describe("Feishu integration", () => {
     });
     const permissionGrant = await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       ).update({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: defaultAgentId },
@@ -3605,7 +3605,7 @@ describe("Feishu integration", () => {
     );
     const customConnectors = await accept(
       setupApp({ context, routes: customConnectorsRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       ).list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );

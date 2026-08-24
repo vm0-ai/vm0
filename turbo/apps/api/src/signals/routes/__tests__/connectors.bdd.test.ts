@@ -12,9 +12,9 @@ import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
-  zeroCustomConnectorsContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
 import { describe, expect, it } from "vitest";
@@ -3493,7 +3493,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const connectorsClient = setupApp({
       context,
       routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
+    })(customConnectorsContract);
     const body = {
       displayName: "BDD Agent Created",
       prefixTemplates: ["https://agent-created.example.test/v1/"],

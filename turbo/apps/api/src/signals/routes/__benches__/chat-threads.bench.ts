@@ -27,7 +27,7 @@ import {
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
-import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 import { executeRawRows } from "../../../lib/db-raw-rows";
@@ -62,7 +62,7 @@ import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 import { orgReadRoutes } from "../org-read";
 import { userPreferencesRoutes } from "../user-preferences";
 
-const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+const personalModelProvidersMainTestRoutes = Object.freeze([
   ...meModelProvidersListRoutes,
   ...meModelProvidersUpsertRoutes,
 ]);
@@ -117,8 +117,8 @@ const billingStatusClient = setupApp({
 const orgClient = setupApp({ context, routes: orgReadRoutes })(orgContract);
 const personalModelProvidersClient = setupApp({
   context,
-  routes: zeroPersonalModelProvidersMainTestRoutes,
-})(zeroPersonalModelProvidersMainContract);
+  routes: personalModelProvidersMainTestRoutes,
+})(personalModelProvidersMainContract);
 
 interface BenchChatThreadFixture {
   readonly userId: string;

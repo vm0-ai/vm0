@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroPersonalModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -17,9 +17,7 @@ const resetSubscriptionUsageInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(
-        zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
-      ),
+      pathParamsOf(personalModelProvidersByTypeContract.resetSubscriptionUsage),
     );
     signal.throwIfAborted();
 
@@ -28,9 +26,7 @@ const resetSubscriptionUsageInner$ = command(
     }
 
     const bodyResult = await get(
-      bodyResultOf(
-        zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
-      ),
+      bodyResultOf(personalModelProvidersByTypeContract.resetSubscriptionUsage),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -79,7 +75,7 @@ const resetSubscriptionUsageInner$ = command(
 
 export const meModelProvidersResetSubscriptionRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+    route: personalModelProvidersByTypeContract.resetSubscriptionUsage,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       resetSubscriptionUsageInner$,
