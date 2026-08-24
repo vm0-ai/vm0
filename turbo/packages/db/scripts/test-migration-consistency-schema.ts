@@ -67,10 +67,6 @@ import { validateConnectorAccountExpansion } from "./test-connector-account-expa
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
-import {
-  AgentComposeProvenanceSchemaUnavailableError,
-  deleteClerkAgentLifecycleData,
-} from "../../../apps/api/src/signals/services/agent-compose-provenance-lifecycle.service";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -10791,30 +10787,6 @@ async function seedPreviousAgentComposeProvenanceSchema(
   );
 }
 
-async function validateIncomingLifecycleOnPreviousProvenanceSchema(
-  client: Client,
-): Promise<void> {
-  const fixture = AGENT_COMPOSE_PROVENANCE_FIXTURE;
-  const previousApiDatabase = drizzle(client);
-  for (const scope of [
-    { kind: "organization", orgId: "provenance-org" },
-    { kind: "user", userId: fixture.sourceUserId },
-  ] as const) {
-    await assert.rejects(
-      deleteClerkAgentLifecycleData(previousApiDatabase, scope),
-      (error: unknown) => {
-        return error instanceof AgentComposeProvenanceSchemaUnavailableError;
-      },
-    );
-  }
-  const retained = await client.query<{ composes: number; versions: number }>(`
-    SELECT
-      (SELECT count(*)::integer FROM "agent_composes") AS "composes",
-      (SELECT count(*)::integer FROM "agent_compose_versions") AS "versions"
-  `);
-  assert.deepEqual(retained.rows, [{ composes: 2, versions: 2 }]);
-}
-
 async function readAgentComposeVersionRelationIdentity(
   client: Client,
 ): Promise<readonly { readonly relfilenode: string }[]> {
@@ -11364,7 +11336,6 @@ async function validateAgentComposeProvenanceMigration(): Promise<void> {
     await client.connect();
     try {
       await seedPreviousAgentComposeProvenanceSchema(client);
-      await validateIncomingLifecycleOnPreviousProvenanceSchema(client);
 
       const relationBefore =
         await readAgentComposeVersionRelationIdentity(client);
@@ -11397,9 +11368,6 @@ async function validateAgentComposeProvenanceMigration(): Promise<void> {
 
       console.log(
         "   ✅ nullable columns and SET NULL FK preserve row identity",
-      );
-      console.log(
-        "   ✅ incoming user/org lifecycle DML fails closed on canonical 0930",
       );
       console.log("   ✅ catalog-only DDL does not rewrite the version table");
       console.log("   ✅ complete old/new writers pass and NULL inserts fail");

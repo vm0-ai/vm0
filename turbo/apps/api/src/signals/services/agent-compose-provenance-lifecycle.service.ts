@@ -1,64 +1,82 @@
 import { agents } from "@okouai/db/schema/agent";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import type { Tx } from "../../lib/db-types";
+import { isUndefinedTable } from "../../lib/pg-errors";
 import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 
 export const AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT = "100ms";
 
-export class AgentComposeProvenanceSchemaUnavailableError extends Error {
-  constructor() {
-    super("Agent Compose provenance retention schema is not available");
-    this.name = "AgentComposeProvenanceSchemaUnavailableError";
-  }
-}
-
-export function isAgentComposeProvenanceSchemaUnavailable(
-  error: unknown,
-): error is AgentComposeProvenanceSchemaUnavailableError {
-  return error instanceof AgentComposeProvenanceSchemaUnavailableError;
-}
-
-export async function assertAgentComposeProvenanceSchemaAvailable(
-  db: Pick<NodePgDatabase, "select">,
+async function withLegacyAgentPrivacyTeardownSavepoint(
+  tx: Tx,
+  cleanup: (legacyTx: Tx) => Promise<void>,
 ): Promise<void> {
-  // DB/API rollout fallback: a staged incoming API can execute against 0930,
-  // whose Compose FK still cascades. Fail closed until the exact 0931 nullable
-  // columns and SET NULL FK are visible. Remove this probe with the lifecycle
-  // call sites in Stage 8 of #26938, after the observed ~102-minute rollout
-  // window, rollback drain, and failed deletion-event replay are complete.
-  const [state] = await db
-    .select({
-      available: sql`
-        (
-          SELECT count(*) = 2
-          FROM pg_catalog.pg_attribute
-          WHERE attrelid = to_regclass('public.agent_compose_versions')
-            AND attname IN ('compose_id', 'created_by')
-            AND NOT attisdropped
-            AND NOT attnotnull
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_constraint
-          WHERE conname =
-            'agent_compose_versions_compose_id_agent_composes_id_fk'
-            AND conrelid = to_regclass('public.agent_compose_versions')
-            AND confrelid = to_regclass('public.agent_composes')
-            AND contype = 'f'
-            AND confdeltype = 'n'
-        )
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  if (!state?.available) {
-    throw new AgentComposeProvenanceSchemaUnavailableError();
+  // #28742 PR 1 DB/API rolling boundary, sized for the observed ~102-minute
+  // exposure: the nested transaction is a savepoint, so an undefined retired
+  // relation rolls back only the legacy statement and cannot abort canonical
+  // work. A direct statement also lets relation locking decide a concurrent
+  // drop without a check/query gap. Delete this boundary in #28742 PR 2 only
+  // after the controller releases PR 1, drains its predecessor revision, and
+  // accepts production behavior.
+  const [result] = await Promise.allSettled([
+    tx.transaction(async (legacyTx) => {
+      await cleanup(legacyTx);
+    }),
+  ]);
+  if (result.status === "fulfilled" || isUndefinedTable(result.reason)) {
+    return;
   }
+  throw result.reason;
+}
+
+export async function deleteLegacyAgentIdentitiesInTransaction(
+  tx: Tx,
+  args:
+    | {
+        readonly kind: "organization";
+        readonly orgId: string;
+        readonly agentIds: readonly string[];
+      }
+    | {
+        readonly kind: "user";
+        readonly userId: string;
+        readonly agentIds: readonly string[];
+      },
+): Promise<void> {
+  if (args.agentIds.length === 0) {
+    return;
+  }
+  await withLegacyAgentPrivacyTeardownSavepoint(tx, async (legacyTx) => {
+    await legacyTx
+      .delete(agentComposes)
+      .where(
+        and(
+          args.kind === "organization"
+            ? eq(agentComposes.orgId, args.orgId)
+            : eq(agentComposes.userId, args.userId),
+          inArray(agentComposes.id, args.agentIds),
+        ),
+      );
+  });
+}
+
+export async function scrubLegacyAgentComposeVersionCreatorInTransaction(
+  tx: Tx,
+  userId: string,
+): Promise<void> {
+  await withLegacyAgentPrivacyTeardownSavepoint(tx, async (legacyTx) => {
+    await legacyTx
+      .update(agentComposeVersions)
+      .set({ createdBy: null })
+      .where(eq(agentComposeVersions.createdBy, userId));
+  });
 }
 
 export async function deleteClerkAgentLifecycleData(
@@ -71,7 +89,6 @@ export async function deleteClerkAgentLifecycleData(
     await tx.execute(
       sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await assertAgentComposeProvenanceSchemaAvailable(tx);
     const ownedAgents = await tx
       .select({ id: agents.id, name: agents.name, orgId: agents.orgId })
       .from(agents)
@@ -99,15 +116,10 @@ export async function deleteClerkAgentLifecycleData(
         .where(
           and(eq(agents.orgId, scope.orgId), inArray(agents.id, agentIds)),
         );
-      // Bounded compatibility teardown for those exact canonical Agent IDs.
-      await tx
-        .delete(agentComposes)
-        .where(
-          and(
-            eq(agentComposes.orgId, scope.orgId),
-            inArray(agentComposes.id, agentIds),
-          ),
-        );
+      await deleteLegacyAgentIdentitiesInTransaction(tx, {
+        ...scope,
+        agentIds,
+      });
       return;
     }
     await tx.delete(agentRuns).where(eq(agentRuns.userId, scope.userId));
@@ -126,14 +138,9 @@ export async function deleteClerkAgentLifecycleData(
     await tx
       .delete(agents)
       .where(and(eq(agents.owner, scope.userId), inArray(agents.id, agentIds)));
-    // Bounded compatibility teardown for those exact canonical Agent IDs.
-    await tx
-      .delete(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.userId, scope.userId),
-          inArray(agentComposes.id, agentIds),
-        ),
-      );
+    await deleteLegacyAgentIdentitiesInTransaction(tx, {
+      ...scope,
+      agentIds,
+    });
   });
 }
