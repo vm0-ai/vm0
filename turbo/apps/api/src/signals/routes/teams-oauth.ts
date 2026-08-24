@@ -148,17 +148,16 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   }
 
   const record = parsed as Record<string, unknown>;
+  const publicBrand = record.publicBrand;
   const redirectUri = optionalString(record.redirectUri);
-  if (!redirectUri) {
+  if ((publicBrand !== "vm0" && publicBrand !== "okou") || !redirectUri) {
     return null;
   }
   return {
     orgId: optionalString(record.orgId),
     userId: optionalString(record.userId),
     prompt: optionalString(record.prompt),
-    // Old web/app OAuth state can omit publicBrand for about two days.
-    // Remove this VM0 default in #27660 after legacy states have drained.
-    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
+    publicBrand,
     redirectUri,
   };
 }

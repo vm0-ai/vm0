@@ -103,38 +103,26 @@ function optionalBoolean(value: unknown): boolean {
 
 function parseOAuthState(state: string | undefined): OAuthState | null {
   if (!state) {
-    return {
-      orgId: null,
-      userId: null,
-      flow: "install",
-      reinstall: false,
-      prompt: null,
-      publicBrand: "vm0",
-    };
+    return null;
   }
 
   const parsed = safeJsonParse(state);
   if (typeof parsed !== "object" || parsed === null) {
-    return {
-      orgId: null,
-      userId: null,
-      flow: "install",
-      reinstall: false,
-      prompt: null,
-      publicBrand: "vm0",
-    };
+    return null;
   }
 
   const record = parsed as Record<string, unknown>;
+  const publicBrand = record.publicBrand;
+  if (publicBrand !== "vm0" && publicBrand !== "okou") {
+    return null;
+  }
   return {
     orgId: optionalString(record.orgId),
     userId: optionalString(record.userId),
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
-    // Old web/app OAuth state can omit publicBrand for about two days.
-    // Remove this VM0 default in #27660 after legacy states have drained.
-    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
+    publicBrand,
   };
 }
 
