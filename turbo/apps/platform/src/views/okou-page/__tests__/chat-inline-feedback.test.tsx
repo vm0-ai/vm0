@@ -2262,7 +2262,7 @@ describe("chat inline feedback", () => {
       ),
     );
     click(await screen.findByLabelText("Select style Award night"));
-    click(await screen.findByLabelText(`Select template ${template.title}`));
+    click(buttonByText("Use this template"));
     await waitFor(() => {
       expect(findInlineTemplate()).toHaveTextContent(templateChipLabel);
     });
