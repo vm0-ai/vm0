@@ -1,4 +1,4 @@
-const DESKTOP_SMOKE_TEST_ENV = "VM0_DESKTOP_SMOKE_TEST";
+const DESKTOP_SMOKE_TEST_ENV = "OKOU_DESKTOP_SMOKE_TEST";
 
 export const DESKTOP_SMOKE_TEST_READY_MARKER =
   "[smoke-test] desktop main ready";
