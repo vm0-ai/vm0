@@ -108,11 +108,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.JoggAiBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: true,
-  },
   [FeatureSwitchKey.ManagedSocialKit]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable vm0-managed SocialKit data and analysis operations",
@@ -346,12 +341,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview purchases with saved billing and confirm them in the app.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

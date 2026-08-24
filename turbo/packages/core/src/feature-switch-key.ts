@@ -18,7 +18,6 @@ export enum FeatureSwitchKey {
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
-  JoggAiBuiltIn = "joggAiBuiltIn",
   ManagedSocialKit = "managedSocialKit",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
@@ -52,7 +51,6 @@ export enum FeatureSwitchKey {
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
-  SavedBillingCreditPurchase = "savedBillingCreditPurchase",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

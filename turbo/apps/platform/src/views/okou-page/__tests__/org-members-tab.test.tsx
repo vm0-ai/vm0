@@ -626,7 +626,6 @@ describe("organization members settings", () => {
       path: "/?settings=people",
       featureSwitches: {
         [FeatureSwitchKey.UsagePackPlans]: true,
-        [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
       },
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
