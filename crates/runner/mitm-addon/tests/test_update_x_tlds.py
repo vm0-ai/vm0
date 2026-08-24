@@ -631,6 +631,28 @@ def test_check_cli_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch, capsy
     assert captured.err == ""
 
 
+def test_check_cli_reports_noncanonical_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "x_tlds.py"
+    noncanonical = "# manually edited\n" + update_x_tlds.render_module("111", ("aaa",))
+    output.write_text(noncanonical, encoding="utf-8")
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--check"])
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith(f"{output} is not canonical\n")
+    assert f"--- {output}\n" in captured.err
+    assert f"+++ {output} (expected)\n" in captured.err
+    assert "-# manually edited\n" in captured.err
+    assert output.read_text(encoding="utf-8") == noncanonical
+
+
 def test_compare_snapshot_to_source_accepts_version_only_drift():
     source_version = "9999999999"
 
