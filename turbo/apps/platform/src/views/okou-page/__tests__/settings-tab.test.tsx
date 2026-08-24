@@ -77,7 +77,6 @@ function prepareAgentProfile(avatarUrl = "preset:0"): void {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
@@ -88,7 +87,6 @@ function prepareAgentProfile(avatarUrl = "preset:0"): void {
       sound: detail.sound,
       avatarUrl: detail.avatarUrl,
       visibility: "public",
-      headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
@@ -141,7 +139,6 @@ function prepareMatchingAgentProfiles(): void {
       sound: "professional",
       avatarUrl: "preset:0",
       visibility: "public",
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
@@ -152,7 +149,6 @@ function prepareMatchingAgentProfiles(): void {
       sound: "professional",
       avatarUrl: "preset:0",
       visibility: "public",
-      headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);

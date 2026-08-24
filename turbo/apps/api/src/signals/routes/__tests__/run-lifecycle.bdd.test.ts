@@ -303,7 +303,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_run_callbacks",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
-  "api_dispatch_prepare_context_resolve_compose",
+  "api_dispatch_prepare_context_resolve_agent_execution",
   "api_dispatch_prepare_context_load_persisted_environment",
   "api_dispatch_prepare_context_build_resolved_body",
   "api_dispatch_prepare_context_resolve_framework",

@@ -2438,137 +2438,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
-  // Temporary #26938 Stage 0 transition objects. Remove only in Stage 8
-  // after the ~102-minute mixed-revision window and rollback drain close.
-  {
-    definition:
-      "CREATE TRIGGER agent_composes_delete_lock_timeout_transition BEFORE DELETE ON public.agent_composes FOR EACH STATEMENT EXECUTE FUNCTION set_agent_compose_delete_lock_timeout_transition()",
-    schemaName: "public",
-    tableName: "agent_composes",
-    triggerName: "agent_composes_delete_lock_timeout_transition",
-  },
-  {
-    definition:
-      "CREATE TRIGGER agent_compose_versions_delete_veto BEFORE DELETE ON public.agent_compose_versions FOR EACH STATEMENT EXECUTE FUNCTION veto_agent_compose_version_delete_transition()",
-    schemaName: "public",
-    tableName: "agent_compose_versions",
-    triggerName: "agent_compose_versions_delete_veto",
-  },
-  {
-    definition:
-      "CREATE TRIGGER agent_compose_versions_write_provenance BEFORE INSERT OR UPDATE OF created_by ON public.agent_compose_versions FOR EACH ROW EXECUTE FUNCTION enforce_agent_compose_version_write_transition()",
-    schemaName: "public",
-    tableName: "agent_compose_versions",
-    triggerName: "agent_compose_versions_write_provenance",
-  },
-  {
-    definition:
-      "CREATE TRIGGER users_clerk_cleanup_transition_guard BEFORE DELETE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION guard_clerk_user_cleanup_transition()",
-    schemaName: "public",
-    tableName: "users",
-    triggerName: "users_clerk_cleanup_transition_guard",
-  },
-  // Additive #26938 Stage 5 bridges. Both identity triggers point from the
-  // legacy sources to agents; every reference trigger points from the legacy
-  // column to its nullable final sibling. No trigger is installed on agents.
-  {
-    definition:
-      "CREATE TRIGGER bridge_agent_composes_to_agents_0966 AFTER INSERT OR DELETE OR UPDATE OF id, user_id, name, org_id, created_at, updated_at ON public.agent_composes FOR EACH ROW EXECUTE FUNCTION bridge_legacy_agent_to_agents_0966()",
-    schemaName: "public",
-    tableName: "agent_composes",
-    triggerName: "bridge_agent_composes_to_agents_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_agent_sessions_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.agent_sessions FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "agent_sessions",
-    triggerName: "bridge_agent_sessions_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_agentphone_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.agentphone_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "agentphone_user_agent_preferences",
-    triggerName: "bridge_agentphone_preferences_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_chat_event_search_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_event_search_messages FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "chat_event_search_messages",
-    triggerName: "bridge_chat_event_search_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_chat_thread_events_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "chat_thread_events",
-    triggerName: "bridge_chat_thread_events_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_chat_threads_agent_reference_0966 BEFORE INSERT OR UPDATE OF agent_compose_id ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION bridge_agent_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "chat_threads",
-    triggerName: "bridge_chat_threads_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_feishu_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.feishu_org_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "feishu_org_installations",
-    triggerName: "bridge_feishu_installations_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_feishu_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.feishu_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "feishu_user_agent_preferences",
-    triggerName: "bridge_feishu_preferences_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_github_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.github_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "github_installations",
-    triggerName: "bridge_github_installations_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_slack_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.slack_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "slack_user_agent_preferences",
-    triggerName: "bridge_slack_preferences_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_teams_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.teams_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "teams_user_agent_preferences",
-    triggerName: "bridge_teams_preferences_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_telegram_installations_agent_reference_0966 BEFORE INSERT OR UPDATE OF default_compose_id ON public.telegram_installations FOR EACH ROW EXECUTE FUNCTION bridge_default_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "telegram_installations",
-    triggerName: "bridge_telegram_installations_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_telegram_preferences_agent_reference_0966 BEFORE INSERT OR UPDATE OF selected_compose_id ON public.telegram_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION bridge_selected_compose_reference_0966()",
-    schemaName: "public",
-    tableName: "telegram_user_agent_preferences",
-    triggerName: "bridge_telegram_preferences_agent_reference_0966",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_zero_agents_to_agents_0966 AFTER INSERT OR DELETE OR UPDATE OF id, org_id, owner, name, visibility, display_name, description, sound, avatar_url, model_provider_id, selected_model, prefer_personal_provider, created_at, updated_at ON public.zero_agents FOR EACH ROW EXECUTE FUNCTION bridge_legacy_agent_to_agents_0966()",
-    schemaName: "public",
-    tableName: "zero_agents",
-    triggerName: "bridge_zero_agents_to_agents_0966",
-  },
   // DB/API rollout bridge for #28304. Remove in #28372 after all pre-0954
   // pending snapshots and Checkout Sessions have drained or reconciled.
   {
@@ -2577,16 +2446,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "usage_pack_subscriptions",
     triggerName: "sync_usage_pack_pending_snapshot_guard_0954",
-  },
-  // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
-  // Previous API revisions explicitly insert NULL for omitted avatars. Remove
-  // in #27356 after those writers and their rollback window drain.
-  {
-    definition:
-      "CREATE TRIGGER bridge_zero_agent_default_avatar_0927 BEFORE INSERT ON public.zero_agents FOR EACH ROW EXECUTE FUNCTION bridge_zero_agent_default_avatar_0927()",
-    schemaName: "public",
-    tableName: "zero_agents",
-    triggerName: "bridge_zero_agent_default_avatar_0927",
   },
 ] as const satisfies readonly PermanentTrigger[];
 
@@ -2602,42 +2461,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "82656a52c2c6b88f01dab744d3702b20",
-    functionName: "bridge_agent_compose_reference_0966",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "64e4b60096ffc27ade9ce8e6876ed2c2",
-    functionName: "bridge_default_compose_reference_0966",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "2873b7ec290bc73019295ab6ca3244d5",
-    functionName: "bridge_legacy_agent_to_agents_0966",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "762ce350c41e31a840f320068675359b",
-    functionName: "bridge_selected_compose_reference_0966",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  // Same DB/API rollout fallback and #27356 removal gate as its trigger.
-  {
-    bodyHash: "b93914b9cf86141a4b0b4b803a3bfe6f",
-    functionName: "bridge_zero_agent_default_avatar_0927",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -2691,36 +2514,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  // Temporary #26938 Stage 0 transition functions. Their paired triggers and
-  // the concrete Stage 8 removal gate are inventoried above.
-  {
-    bodyHash: "7acddca0ae85d270f257cb5518ff3bda",
-    functionName: "enforce_agent_compose_version_write_transition",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "c801cd71b6f37934943027f281cabc51",
-    functionName: "guard_clerk_user_cleanup_transition",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "b3f0552e3f7bbb14443665ea8e312427",
-    functionName: "set_agent_compose_delete_lock_timeout_transition",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "186bcd97e887d8c241cfba4c810a47d5",
-    functionName: "veto_agent_compose_version_delete_transition",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -2753,13 +2546,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "41bc0a816897c6677dcf39babfb75e86",
-    functionName: "sync_agent_from_legacy_0966",
-    identityArguments: "p_agent_id uuid",
     kind: "f",
     schemaName: "public",
   },
@@ -2882,7 +2668,7 @@ async function validatePermanentArtifactTriggerBehavior(
   await client.connect();
 
   const fixture = {
-    composeId: "00000000-0000-4000-8000-000000246701",
+    agentId: "00000000-0000-4000-8000-000000246701",
     sessionId: "00000000-0000-4000-8000-000000246702",
     firstRunId: "00000000-0000-4000-8000-000000246703",
     secondRunId: "00000000-0000-4000-8000-000000246704",
@@ -2912,16 +2698,16 @@ async function validatePermanentArtifactTriggerBehavior(
 
   try {
     await client.query(
-      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-       VALUES ($1, $2, 'permanent-artifact-trigger-test', $3)`,
-      [fixture.composeId, fixture.userId, fixture.orgId],
+      `INSERT INTO "agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, $2, $3, 'permanent-artifact-trigger-test')`,
+      [fixture.agentId, fixture.orgId, fixture.userId],
     );
     await client.query(
       `INSERT INTO "agent_sessions" (
-         "id", "user_id", "org_id", "agent_compose_id"
+         "id", "user_id", "org_id", "agent_id"
        )
        VALUES ($1, $2, $3, $4)`,
-      [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      [fixture.sessionId, fixture.userId, fixture.orgId, fixture.agentId],
     );
     await client.query(
       `INSERT INTO "agent_runs" (
@@ -2940,7 +2726,7 @@ async function validatePermanentArtifactTriggerBehavior(
     );
     await client.query(
       `INSERT INTO "chat_threads" (
-         "id", "user_id", "agent_compose_id", "title"
+         "id", "user_id", "agent_id", "title"
        )
        VALUES
          ($1, $3, $4, 'First permanent artifact trigger chat'),
@@ -2949,7 +2735,7 @@ async function validatePermanentArtifactTriggerBehavior(
         fixture.firstThreadId,
         fixture.secondThreadId,
         fixture.userId,
-        fixture.composeId,
+        fixture.agentId,
         fixture.otherUserId,
       ],
     );
@@ -3141,8 +2927,8 @@ async function validatePermanentArtifactTriggerBehavior(
       `DELETE FROM "run_uploaded_files" WHERE "user_id" = $1`,
       [fixture.userId],
     );
-    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
-      fixture.composeId,
+    await client.query(`DELETE FROM "agents" WHERE "id" = $1`, [
+      fixture.agentId,
     ]);
     await client.end();
   }
@@ -3157,7 +2943,7 @@ async function validatePermanentAgentRunMetadataState(
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
   const fixture = {
-    composeId: "00000000-0000-4000-8000-000000270951",
+    agentId: "00000000-0000-4000-8000-000000270951",
     lifecycleRunId: "00000000-0000-4000-8000-000000270953",
     outOfRangeRunId: "00000000-0000-4000-8000-000000270955",
     partialRunId: "00000000-0000-4000-8000-000000270954",
@@ -3356,15 +3142,15 @@ async function validatePermanentAgentRunMetadataState(
     }
 
     await client.query(
-      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-       VALUES ($1, $2, 'permanent-agent-run-metadata', $3)`,
-      [fixture.composeId, fixture.userId, fixture.orgId],
+      `INSERT INTO "agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, $2, $3, 'permanent-agent-run-metadata')`,
+      [fixture.agentId, fixture.orgId, fixture.userId],
     );
     await client.query(
       `INSERT INTO "agent_sessions" (
-         "id", "user_id", "org_id", "agent_compose_id"
+         "id", "user_id", "org_id", "agent_id"
        ) VALUES ($1, $2, $3, $4)`,
-      [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      [fixture.sessionId, fixture.userId, fixture.orgId, fixture.agentId],
     );
     await client.query(
       `INSERT INTO "agent_runs" (
@@ -3459,8 +3245,8 @@ async function validatePermanentAgentRunMetadataState(
       "   ✅ nullable two-state metadata, range, permanent readers, and physical zero_runs removal are enforced\n",
     );
   } finally {
-    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
-      fixture.composeId,
+    await client.query(`DELETE FROM "agents" WHERE "id" = $1`, [
+      fixture.agentId,
     ]);
     await client.end();
   }
