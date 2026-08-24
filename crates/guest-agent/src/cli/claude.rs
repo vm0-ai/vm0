@@ -290,14 +290,14 @@ mod tests {
         fill_stuck_tool_tracker(&mut tracker);
 
         assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
-        assert!(tracker.contains_key("tool-0"));
-        assert!(tracker.contains_key(&format!("tool-{}", MAX_TRACKED_STUCK_TOOLS - 1)));
 
         track_tool_use(&mut tracker, "overflow", "WebSearch");
 
         assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
         assert!(!tracker.contains_key("overflow"));
-        assert!(tracker.contains_key("tool-0"));
+        for index in 0..MAX_TRACKED_STUCK_TOOLS {
+            assert!(tracker.contains_key(&format!("tool-{index}")));
+        }
 
         track_tool_result(&mut tracker, "tool-0");
 
