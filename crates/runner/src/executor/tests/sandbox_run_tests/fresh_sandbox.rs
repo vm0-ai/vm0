@@ -63,44 +63,35 @@ impl SandboxFactory for CreateGateFactory {
 #[tokio::test]
 async fn fresh_pre_spawn_admission_cancels_before_factory_create() {
     let dir = tempfile::tempdir().unwrap();
-    let config = Arc::new(test_executor_config(dir.path()).await);
+    let config = test_executor_config(dir.path()).await;
     let holder_cancel = CancellationToken::new();
     let holder = config
         .pre_spawn_admission
         .acquire(2, &holder_cancel)
         .await
         .unwrap();
-    let factory = Arc::new(CreateGateFactory::new());
+    let factory = CreateGateFactory::new();
     let cancel = CancellationToken::new();
-    let task = tokio::spawn({
-        let config = Arc::clone(&config);
-        let factory = Arc::clone(&factory);
-        let cancel = cancel.clone();
-        async move {
-            let context = minimal_context();
-            let mut telemetry = test_telemetry(&config, &context);
-            let result = execute_new_sandbox(
-                factory.as_ref(),
-                &context,
-                NewSandboxDispatch {
-                    id: SandboxId::new_v4(),
-                    reuse_result: SandboxReuseResult::PoolMiss,
-                },
-                &config,
-                &default_params(),
-                &mut telemetry,
-                cancel,
-            )
-            .await;
-            (result, telemetry)
-        }
-    });
+    let context = minimal_context();
+    let params = default_params();
+    let mut telemetry = test_telemetry(&config, &context);
+    let mut task = Box::pin(execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        cancel.clone(),
+    ));
 
-    tokio::task::yield_now().await;
+    assert_future_pending(task.as_mut());
     cancel.cancel();
-    let (result, telemetry) = tokio::time::timeout(Duration::from_secs(2), task)
+    let result = tokio::time::timeout(Duration::from_secs(2), task)
         .await
-        .unwrap()
         .unwrap();
 
     assert!(matches!(result, Err(RunnerError::Cancelled)));
