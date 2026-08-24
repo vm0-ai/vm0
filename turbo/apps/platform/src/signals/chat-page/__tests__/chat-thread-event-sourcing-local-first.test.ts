@@ -17,7 +17,7 @@ import {
   currentChatThreadListIds$,
   setChatAgentId$,
 } from "../../agent-chat.ts";
-import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
+import { renameDialogInput$ } from "../../okou-page/sidebar-state.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";

@@ -1,7 +1,7 @@
 import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import { billingStatusAsync$ } from "../../signals/okou-page/billing.ts";
 import {
   completeOnboarding$,
   prepareOnboardingVideoRun$,

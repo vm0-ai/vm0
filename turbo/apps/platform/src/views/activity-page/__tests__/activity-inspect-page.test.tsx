@@ -15,7 +15,7 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import type {
   AgentEvent,
   LogDetail,
-} from "../../../signals/zero-page/log-types.ts";
+} from "../../../signals/okou-page/log-types.ts";
 
 const context = testContext();
 const user = userEvent.setup();

@@ -2,7 +2,7 @@ import {
   chatEventCompatibilityRole,
   isChatEventContentTextType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import { messageDocumentToDisplayText } from "../zero-page/user-message-document-codec.ts";
+import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import {
   isFollowupsEvent,
   isGoalMarkerEvent,

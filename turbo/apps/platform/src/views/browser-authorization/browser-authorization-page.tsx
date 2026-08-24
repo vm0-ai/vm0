@@ -11,7 +11,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { locale$ } from "../../signals/locale.ts";
-import { ProductBrandMarkLink } from "../zero-page/zero-directed-shared.tsx";
+import { ProductBrandMarkLink } from "../okou-page/directed-shared.tsx";
 
 function formatTime(value: string, locale: string): string {
   return new Date(value).toLocaleString(locale, {

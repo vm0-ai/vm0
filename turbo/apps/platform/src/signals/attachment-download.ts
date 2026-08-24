@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
-} from "../views/zero-page/zero-attachment-url.ts";
+} from "../views/okou-page/attachment-url.ts";
 import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 type AttachmentDownload = {

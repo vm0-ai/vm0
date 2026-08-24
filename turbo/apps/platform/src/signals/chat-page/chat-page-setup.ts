@@ -1,9 +1,9 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
+import { ZeroChatThreadPage } from "../../views/okou-page/chat-thread-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,

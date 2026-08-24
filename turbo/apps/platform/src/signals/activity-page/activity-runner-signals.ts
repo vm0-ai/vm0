@@ -7,7 +7,7 @@ import type {
 import { apiClient$ } from "../api-client.ts";
 import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
-import type { LogStatus } from "../zero-page/log-types.ts";
+import type { LogStatus } from "../okou-page/log-types.ts";
 
 interface ZeroActivityRunner {
   runId: string;

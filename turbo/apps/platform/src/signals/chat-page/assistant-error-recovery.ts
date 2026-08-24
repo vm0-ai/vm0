@@ -11,8 +11,8 @@ import {
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { personalModelProviders$ } from "../external/personal-model-providers.ts";
-import { resetPersonalCodexSubscriptionUsage$ } from "../zero-page/settings/personal-model-providers.ts";
-import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
+import { resetPersonalCodexSubscriptionUsage$ } from "../okou-page/settings/personal-model-providers.ts";
+import { textToMessageDocument } from "../okou-page/user-message-document-codec.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import type { ChatEventSignals } from "./chat-event-signals.ts";
 import { threadMeta } from "./chat-thread-event-sourcing.ts";

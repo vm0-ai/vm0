@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import type { ArtifactDetail } from "@okouai/api-contracts/contracts/artifact-catalog";
 
-import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { downloadAttachment$ } from "../attachment-download.ts";
 import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import {
@@ -13,7 +13,7 @@ import {
   openDocumentLightbox$,
   openImageLightbox$,
   openVideoLightbox$,
-} from "../zero-page/zero-attachment-chips.ts";
+} from "../okou-page/attachment-chips.ts";
 import { createArtifactCatalogSignals } from "./create-artifact-catalog-signals.ts";
 
 /**

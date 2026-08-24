@@ -14,7 +14,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEvent,
   LogDetail,
-} from "../../../signals/zero-page/log-types.ts";
+} from "../../../signals/okou-page/log-types.ts";
 
 const context = testContext();
 

@@ -6,7 +6,7 @@ import { ArtifactCatalogPage } from "../../views/artifacts-page/artifact-catalog
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import {
   reloadArtifactCatalog$,
   setArtifactCatalogKind$,

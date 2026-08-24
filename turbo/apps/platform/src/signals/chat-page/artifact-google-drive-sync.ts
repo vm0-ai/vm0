@@ -11,7 +11,7 @@ import { setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   isAgentConnectorAuthorized,
   reloadAgentConnectorAuthorizations$,
-} from "../zero-page/agent-connector-authorizations.ts";
+} from "../okou-page/agent-connector-authorizations.ts";
 import { settle, withCleanup } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {

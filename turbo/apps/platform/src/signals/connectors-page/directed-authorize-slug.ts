@@ -12,7 +12,7 @@ import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
-} from "../zero-page/agent-connector-authorizations.ts";
+} from "../okou-page/agent-connector-authorizations.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/authorize` route params.

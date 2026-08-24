@@ -8,7 +8,7 @@
  * /logs/<id> URL.
  */
 
-import type { LogDetail, AgentEvent } from "../signals/zero-page/log-types.ts";
+import type { LogDetail, AgentEvent } from "../signals/okou-page/log-types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

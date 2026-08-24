@@ -45,7 +45,7 @@ import {
   capturePaidOnboardingAppHandoff$,
   capturePaidOnboardingStepViewed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
-import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { zeroOnboardingStatus$ } from "../okou-page/onboarding.ts";
 
 interface OnboardingPageConfig {
   readonly step: OnboardingRouteStep;

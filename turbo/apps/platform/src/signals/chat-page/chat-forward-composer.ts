@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { createForwardAgentComposerSignals } from "../zero-page/agent-composer-signals.ts";
+import { createForwardAgentComposerSignals } from "../okou-page/agent-composer-signals.ts";
 import { onRef } from "../utils.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type {

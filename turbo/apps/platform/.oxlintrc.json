@@ -123,7 +123,7 @@
     {
       "files": [
         "src/signals/zero-page/zero-chat.ts",
-        "src/signals/zero-page/chat-draft.ts",
+        "src/signals/okou-page/chat-draft.ts",
         "src/signals/voice-io/voice-io-tts.ts",
         "src/signals/voice-io/voice-io-stt.ts"
       ],

@@ -36,10 +36,10 @@ import {
   openConcurrencyPurchaseReview$,
   startCheckout$,
   startConcurrencyCheckout$,
-} from "../../signals/zero-page/billing.ts";
+} from "../../signals/okou-page/billing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../signals/okou-page/org-plan-capabilities.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
+import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 

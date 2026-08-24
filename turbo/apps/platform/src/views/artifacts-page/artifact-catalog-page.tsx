@@ -29,14 +29,14 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
-import { ArtifactThumbnailImage } from "../zero-page/zero-artifact-thumbnail.tsx";
-import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
+import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
+import { AttachmentLightbox } from "../okou-page/attachment-chips.tsx";
+import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
+import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
-} from "../zero-page/zero-file-preview-icon.tsx";
+} from "../okou-page/file-preview-icon.tsx";
 
 // Distance from the bottom of the scroll container at which the next page is
 // requested. The signal layer deduplicates repeated requests for one cursor.

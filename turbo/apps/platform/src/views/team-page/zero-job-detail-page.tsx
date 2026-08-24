@@ -39,10 +39,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@okouai/ui";
-import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
-import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
-import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
-import { agentDetail$ } from "../../signals/zero-page/job-detail/detail";
+import { ZeroInstructionsTab } from "../okou-page/instructions-tab.tsx";
+import { ZeroSettingsTab } from "../okou-page/settings-tab.tsx";
+import { TONE_OPTIONS, type Tone } from "../okou-page/tone-constants.ts";
+import { agentDetail$ } from "../../signals/okou-page/job-detail/detail";
 import {
   agentInstructions$,
   agentEditedContent$,
@@ -50,20 +50,20 @@ import {
   setAgentEditedContent$,
   discardAgentEdit$,
   buildAgentInstructions$,
-} from "../../signals/zero-page/job-detail/instructions";
-import { updateAgentSettings$ } from "../../signals/zero-page/job-detail/settings";
-import { deleteAgent$ } from "../../signals/zero-page/job-detail/delete";
+} from "../../signals/okou-page/job-detail/instructions";
+import { updateAgentSettings$ } from "../../signals/okou-page/job-detail/settings";
+import { deleteAgent$ } from "../../signals/okou-page/job-detail/delete";
 import {
   agentAuthorizedConnectors$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
-} from "../../signals/zero-page/job-detail/connectors";
+} from "../../signals/okou-page/job-detail/connectors";
 import {
   agentActiveTab$,
   setAgentActiveTab$,
-} from "../../signals/zero-page/job-detail/agent-name";
-import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
+} from "../../signals/okou-page/job-detail/agent-name";
+import { zeroOnboardingStatus$ } from "../../signals/okou-page/onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
@@ -72,8 +72,8 @@ import {
   onDomEventFn,
   Reason,
 } from "../../signals/utils.ts";
-import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
-import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
+import { AgentAvatarImg } from "../okou-page/sidebar-shared.tsx";
+import { openAvatarMaker$ } from "../../signals/okou-page/settings/avatar-maker.ts";
 import {
   agents$,
   currentAgent$,
@@ -81,18 +81,18 @@ import {
 } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
-import { ConnectorCard } from "../zero-page/components/settings/connector-card.tsx";
-import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
-import type { PermissionDraftIntent } from "../../signals/zero-page/settings/permission-draft-intent.ts";
-import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
-import { noConnectorImg } from "../zero-page/platform-assets.ts";
+import { ZeroNoPermissionIllustration } from "../okou-page/components/no-permission-illustration.tsx";
+import { ConnectorCard } from "../okou-page/components/settings/connector-card.tsx";
+import { PermissionsDrawer } from "../okou-page/components/settings/permissions-dialog.tsx";
+import type { PermissionDraftIntent } from "../../signals/okou-page/settings/permission-draft-intent.ts";
+import { savePermissionDraftPolicies } from "../../signals/okou-page/settings/permission-grant-save.ts";
+import { noConnectorImg } from "../okou-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import {
   applyUserPermissionGrants$,
   currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { matchesConnectorSearch } from "../../signals/zero-page/settings/connectors.ts";
+import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import {
   currentAgentVisibleWorkflows$,
@@ -109,7 +109,7 @@ import {
   setPermSearchActive$,
   permSavingConnectorSlug$,
   setPermSavingConnectorSlug$,
-} from "../../signals/zero-page/zero-job-detail-page.ts";
+} from "../../signals/okou-page/job-detail-page.ts";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import type {
   PlatformConnectorCatalogStatusItem,

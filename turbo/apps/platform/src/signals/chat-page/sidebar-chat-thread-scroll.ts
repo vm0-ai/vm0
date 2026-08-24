@@ -6,7 +6,7 @@ import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
   type ChatThreadVirtualListScrollAlign,
-} from "../zero-page/zero-sidebar-state.ts";
+} from "../okou-page/sidebar-state.ts";
 import {
   chatThreads$,
   currentChatThreadId$,

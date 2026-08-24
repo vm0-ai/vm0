@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@okouai/ui";
-import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
+import { createSubagent$ } from "../../signals/okou-page/agents.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -39,10 +39,7 @@ import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import {
-  AgentAvatarImg,
-  AvatarFromUrl,
-} from "../zero-page/zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 import {
   jobsDialogOpen$,
   setJobsDialogOpen$,
@@ -55,9 +52,9 @@ import {
   jobsActiveTab$,
   setJobsActiveTab$,
   resetJobsDialog$,
-} from "../../signals/zero-page/zero-jobs-page.ts";
-import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
-import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
+} from "../../signals/okou-page/jobs-page.ts";
+import { serializeAvatarSvgConfig } from "../okou-page/avatar-svg-utils.ts";
+import { AvatarMaker } from "../okou-page/avatar-maker.tsx";
 import { platformEmptyPrivateAgentsImg } from "../../lib/static-assets.ts";
 
 const MAX_PUBLIC_AGENTS = 7;

@@ -2,7 +2,7 @@ import type { Root } from "hast";
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { navigateToChat$ } from "../okou-page/nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,

@@ -12,7 +12,7 @@ import {
 } from "./chat-event-storage-signals.ts";
 import { nowDate } from "../../lib/time.ts";
 import { apiClient$ } from "../api-client.ts";
-import { reloadBillingStatus$ } from "../zero-page/billing.ts";
+import { reloadBillingStatus$ } from "../okou-page/billing.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
 import {
   optimisticChatThreadCreateUnsettled,

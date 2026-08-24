@@ -37,8 +37,8 @@ import { isActiveUserPermissionGrant } from "../../signals/user-permission-grant
 import { detach, Reason } from "../../signals/utils.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
-import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
+import { AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 import {
   routeChatActionCallback$,
   runChatActionCallback$,
