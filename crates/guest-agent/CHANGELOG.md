@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.75.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.4...guest-agent-v0.75.5) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
 ## [0.75.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.3...guest-agent-v0.75.4) (2026-08-24)
 
 
