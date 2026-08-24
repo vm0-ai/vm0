@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   ManagedModelProviderFallback = "managedModelProviderFallback",
   ChatForward = "chatForward",
-  ChatMarkUnread = "chatMarkUnread",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   HomeStartCards = "homeStartCards",
   HomeGrowthEntry = "homeGrowthEntry",
