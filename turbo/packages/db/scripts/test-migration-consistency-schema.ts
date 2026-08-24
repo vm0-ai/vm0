@@ -457,32 +457,29 @@ async function validateChatEventSourcesAreAppendOnly(
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
-  let agentComposeId: string | undefined;
+  const agentId = "00000000-0000-4000-8000-000000074401";
   let threadId: string | undefined;
   let messageId: string | undefined;
 
   try {
-    const agentCompose = await client.query<{ id: string }>(`
-      INSERT INTO "agent_composes" ("user_id", "name", "org_id")
-      VALUES ('append-only-test-user', 'append-only-migration-test', 'append-only-test-org')
-      RETURNING "id"
-    `);
-    agentComposeId = agentCompose.rows[0]?.id;
-    if (!agentComposeId) {
-      throw new Error("Failed to create append-only agent compose fixture");
-    }
+    await client.query(
+      `INSERT INTO "agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, 'append-only-test-org', 'append-only-test-user',
+         'append-only-migration-test')`,
+      [agentId],
+    );
 
     const thread = await client.query<{ id: string }>(
       `
         INSERT INTO "chat_threads" (
           "user_id",
-          "agent_compose_id",
+          "agent_id",
           "title"
         )
         VALUES ('append-only-test-user', $1, 'append-only migration test')
         RETURNING "id"
       `,
-      [agentComposeId],
+      [agentId],
     );
     threadId = thread.rows[0]?.id;
     if (!threadId) {
@@ -500,7 +497,7 @@ async function validateChatEventSourcesAreAppendOnly(
           "org_id",
           "chat_thread_id",
           "kind",
-          "agent_compose_id",
+          "agent_id",
           "title"
         )
         VALUES (
@@ -513,7 +510,7 @@ async function validateChatEventSourcesAreAppendOnly(
         )
         RETURNING "id", "seq_id" AS "seqId"
       `,
-      [threadId, agentComposeId],
+      [threadId, agentId],
     );
     const eventId = event.rows[0]?.id;
     if (!eventId) {
@@ -539,7 +536,7 @@ async function validateChatEventSourcesAreAppendOnly(
           "org_id",
           "chat_thread_id",
           "kind",
-          "agent_compose_id",
+          "agent_id",
           "title"
         )
         VALUES (
@@ -552,7 +549,7 @@ async function validateChatEventSourcesAreAppendOnly(
         )
         RETURNING "id", "seq_id" AS "seqId"
       `,
-      [threadId, agentComposeId],
+      [threadId, agentId],
     );
     const nextEventId = nextEvent.rows[0]?.id;
     if (!nextEventId) {
@@ -615,11 +612,7 @@ async function validateChatEventSourcesAreAppendOnly(
           AND "org_id" = 'append-only-test-org'
       `,
     );
-    if (agentComposeId) {
-      await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
-        agentComposeId,
-      ]);
-    }
+    await client.query(`DELETE FROM "agents" WHERE "id" = $1`, [agentId]);
     await client.end();
   }
 }
@@ -631,23 +624,24 @@ async function validateChatEventContextPointerConstraints(
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
-  const agentComposeId = "00000000-0000-4000-8000-000000074501";
+  const agentId = "00000000-0000-4000-8000-000000074501";
   const threadId = "00000000-0000-4000-8000-000000074502";
 
   try {
     await client.query(
       `
-        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-        VALUES ($1, 'context-pointer-test-user', 'context-pointer-test', 'context-pointer-test-org')
+        INSERT INTO "agents" ("id", "org_id", "owner", "name")
+        VALUES ($1, 'context-pointer-test-org', 'context-pointer-test-user',
+          'context-pointer-test')
       `,
-      [agentComposeId],
+      [agentId],
     );
     await client.query(
       `
         INSERT INTO "chat_threads" (
           "id",
           "user_id",
-          "agent_compose_id",
+          "agent_id",
           "last_chat_event_seq_id",
           "title"
         )
@@ -659,7 +653,7 @@ async function validateChatEventContextPointerConstraints(
           'context pointer test'
         )
       `,
-      [threadId, agentComposeId],
+      [threadId, agentId],
     );
 
     const accepted = await client.query<{
@@ -803,9 +797,7 @@ async function validateChatEventContextPointerConstraints(
       "   ✅ Chat event contexts require input discriminators while allowing context-less rejected inputs\n",
     );
   } finally {
-    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
-      agentComposeId,
-    ]);
+    await client.query(`DELETE FROM "agents" WHERE "id" = $1`, [agentId]);
     await client.end();
   }
 }
