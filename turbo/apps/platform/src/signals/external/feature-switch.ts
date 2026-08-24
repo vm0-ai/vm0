@@ -69,6 +69,10 @@ export const composerSubmitDomReconcileEnabled$ = computed((get): boolean => {
   );
 });
 
+export const composerImageAnnotationEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

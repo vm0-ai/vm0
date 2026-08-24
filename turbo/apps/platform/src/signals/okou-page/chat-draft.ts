@@ -19,6 +19,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
+  ImageAnnotation,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -220,6 +221,112 @@ async function uploadPartWithRetry(
   throw new Error("Multipart upload retry loop ended unexpectedly");
 }
 
+/**
+ * Presigns, transfers and finalizes one file, returning its canonical info.
+ *
+ * Extracted from the draft attachment closure so the send path can push a
+ * flattened annotated copy through exactly the same route rather than growing
+ * a second, subtly different uploader. The file body never travels through the
+ * app runtime in either case.
+ */
+export const uploadFileToStorage$ = command(
+  async ({ get, set }, file: File, signal: AbortSignal): Promise<FileInfo> => {
+    const createClient = get(apiClient$);
+    const client = createClient(uploadsContract);
+    const contentType = inferUploadContentType(file);
+
+    // Step 1: ask the server to sign either one PUT URL or retryable R2
+    // multipart URLs. The file body never travels through the app runtime.
+    const prepared = await accept(
+      client.prepare({
+        body: {
+          filename: file.name,
+          contentType,
+          size: file.size,
+          ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
+            ? { multipart: true as const }
+            : {}),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    if ("multipart" in prepared.body) {
+      const multipart = prepared.body.multipart;
+      let completionStarted = false;
+      return await onRejection(
+        (async () => {
+          signal.throwIfAborted();
+          for (const part of multipart.parts) {
+            const start = (part.partNumber - 1) * multipart.partSize;
+            const end = Math.min(start + multipart.partSize, file.size);
+            await uploadPartWithRetry(
+              part.uploadUrl,
+              file.slice(start, end, prepared.body.contentType),
+              prepared.body.contentType,
+              signal,
+            );
+          }
+
+          signal.throwIfAborted();
+          completionStarted = true;
+          const completed = await accept(
+            client.completeMultipart({
+              body: {
+                id: prepared.body.id,
+                filename: prepared.body.filename,
+                uploadId: multipart.uploadId,
+                partCount: multipart.parts.length,
+              },
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+          signal.throwIfAborted();
+          return uploadFileInfo(completed.body, prepared.body.contentType);
+        })(),
+        async () => {
+          // Aborting after completion starts can remove the upload while R2
+          // is still finalizing it, so only clean up pre-completion failures.
+          if (completionStarted) {
+            return;
+          }
+          const cleanupSignal = AbortSignal.timeout(MULTIPART_ABORT_TIMEOUT_MS);
+          await set(
+            abortMultipartUpload$,
+            {
+              id: prepared.body.id,
+              filename: prepared.body.filename,
+              uploadId: multipart.uploadId,
+            },
+            cleanupSignal,
+          );
+        },
+      );
+    }
+
+    signal.throwIfAborted();
+    const putRes = await fetch(prepared.body.uploadUrl, {
+      method: "PUT",
+      body: file,
+      headers: {
+        "content-type": prepared.body.contentType,
+        ...prepared.body.uploadHeaders,
+      },
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!putRes.ok) {
+      throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
+    }
+
+    return uploadFileInfo(prepared.body, prepared.body.contentType);
+  },
+);
+
 export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
@@ -234,10 +341,26 @@ export interface ZeroChatAttachment {
   cancel$: Command<void, []>;
   /** Start the upload and publish its fileInfo$ promise for later send-time resolution. */
   upload$: Command<Promise<void>, [AbortSignal]>;
+  /**
+   * Marks drawn on this image but not sent yet. They live beside the file
+   * rather than inside it: the uploaded bytes are never rewritten, so the
+   * editor can reopen fully editable and the original stays downloadable.
+   */
+  annotation$: Computed<ImageAnnotation | null>;
+  setAnnotation$: Command<void, [ImageAnnotation | null]>;
 }
 
 function createChatAttachment(file: File): ZeroChatAttachment {
   const contentType = inferUploadContentType(file);
+  const internalAnnotation$ = state<ImageAnnotation | null>(null);
+  const annotation$ = computed((get) => {
+    return get(internalAnnotation$);
+  });
+  const setAnnotation$ = command(
+    ({ set }, annotation: ImageAnnotation | null): void => {
+      set(internalAnnotation$, annotation);
+    },
+  );
   const imageLoad = createImageLoadSignals();
   const resetSignal$ = resetSignal();
   const internalUpload$ = state<AttachmentUploadState>({
@@ -262,109 +385,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     set(resetSignal$);
   });
 
-  const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
-    const createClient = get(apiClient$);
-    const client = createClient(uploadsContract);
+  const upload$ = command(async ({ set }, parentSignal: AbortSignal) => {
     const signal = set(resetSignal$, parentSignal);
-
-    const promise = (async () => {
-      // Step 1: ask the server to sign either one PUT URL or retryable R2
-      // multipart URLs. The file body never travels through the app runtime.
-      const prepared = await accept(
-        client.prepare({
-          body: {
-            filename: file.name,
-            contentType,
-            size: file.size,
-            ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
-              ? { multipart: true as const }
-              : {}),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-
-      if ("multipart" in prepared.body) {
-        const multipart = prepared.body.multipart;
-        let completionStarted = false;
-        return await onRejection(
-          (async () => {
-            signal.throwIfAborted();
-            for (const part of multipart.parts) {
-              const start = (part.partNumber - 1) * multipart.partSize;
-              const end = Math.min(start + multipart.partSize, file.size);
-              await uploadPartWithRetry(
-                part.uploadUrl,
-                file.slice(start, end, prepared.body.contentType),
-                prepared.body.contentType,
-                signal,
-              );
-            }
-
-            signal.throwIfAborted();
-            completionStarted = true;
-            const completed = await accept(
-              client.completeMultipart({
-                body: {
-                  id: prepared.body.id,
-                  filename: prepared.body.filename,
-                  uploadId: multipart.uploadId,
-                  partCount: multipart.parts.length,
-                },
-                fetchOptions: { signal },
-              }),
-              [200],
-            );
-            signal.throwIfAborted();
-            return uploadFileInfo(completed.body, prepared.body.contentType);
-          })(),
-          async () => {
-            // Aborting after completion starts can remove the upload while R2
-            // is still finalizing it, so only clean up pre-completion failures.
-            if (completionStarted) {
-              return;
-            }
-            const cleanupSignal = AbortSignal.timeout(
-              MULTIPART_ABORT_TIMEOUT_MS,
-            );
-            await set(
-              abortMultipartUpload$,
-              {
-                id: prepared.body.id,
-                filename: prepared.body.filename,
-                uploadId: multipart.uploadId,
-              },
-              cleanupSignal,
-            );
-          },
-        );
-      }
-
-      signal.throwIfAborted();
-      const putRes = await fetch(prepared.body.uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "content-type": prepared.body.contentType,
-          ...prepared.body.uploadHeaders,
-        },
-        signal,
-      });
-      signal.throwIfAborted();
-
-      if (!putRes.ok) {
-        throw new Error(
-          `storage returned ${putRes.status} ${putRes.statusText}`,
-        );
-      }
-
-      return uploadFileInfo(prepared.body, prepared.body.contentType);
-    })();
-
+    const promise = set(uploadFileToStorage$, file, signal);
     set(internalUpload$, { status: "pending", promise });
-
     const fileInfo = await promise;
+    signal.throwIfAborted();
     set(internalUpload$, { status: "uploaded", fileInfo });
   });
 
@@ -377,6 +403,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     uploadPending$,
     cancel$,
     upload$,
+    annotation$,
+    setAnnotation$,
   };
 }
 
@@ -431,6 +459,17 @@ export interface DraftInputSyncTarget {
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
 ): ZeroChatAttachment {
+  const internalAnnotation$ = state<ImageAnnotation | null>(
+    persisted.annotation ?? null,
+  );
+  const annotation$ = computed((get) => {
+    return get(internalAnnotation$);
+  });
+  const setAnnotation$ = command(
+    ({ set }, annotation: ImageAnnotation | null): void => {
+      set(internalAnnotation$, annotation);
+    },
+  );
   const fileInfo$ = computed((): Promise<FileInfo | null> => {
     return Promise.resolve({
       id: persisted.id,
@@ -457,6 +496,8 @@ export function createRestoredAttachment(
     uploadPending$: noUploadPending$,
     cancel$,
     upload$,
+    annotation$,
+    setAnnotation$,
   };
 }
 

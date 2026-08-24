@@ -489,6 +489,27 @@
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट"
     },
+    "annotation": {
+      "attach": "चिह्न संलग्न करें",
+      "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
+      "open": "टिप्पणी करें",
+      "redo": "फिर से करें",
+      "removeMark": "चिह्न हटाएँ",
+      "subtitle_one": "{{count}} चिह्न",
+      "subtitle_other": "{{count}} चिह्न",
+      "tools": {
+        "arrow": "तीर",
+        "box": "बॉक्स",
+        "crop": "काटें",
+        "highlight": "हाइलाइट",
+        "pen": "बनाएँ",
+        "redact": "छिपाएँ",
+        "select": "चुनें",
+        "text": "टेक्स्ट"
+      },
+      "undo": "पूर्ववत करें"
+    },
     "attachments": {
       "cancelUpload": "अपलोड {{filename}} रद्द करें",
       "download": "{{filename}} डाउनलोड करें",

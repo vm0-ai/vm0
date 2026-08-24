@@ -17,6 +17,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  Pencil,
   RotateCcw,
   X,
 } from "lucide-react";
@@ -60,6 +61,12 @@ import {
   artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
 } from "./attachment-url.ts";
+import {
+  annotationMarkCount,
+  DEFAULT_ANNOTATION_INK,
+  openAnnotationEditor$,
+} from "../../signals/okou-page/image-annotation.ts";
+import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
@@ -1241,6 +1248,9 @@ function ArtifactPreviewDialogActions({
   );
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
+  const openAnnotationEditor = useSet(openAnnotationEditor$);
+  const annotationTarget =
+    preview.kind === "image" ? preview.annotationTarget : undefined;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -1261,6 +1271,25 @@ function ArtifactPreviewDialogActions({
   };
   return (
     <div className="flex shrink-0 items-center gap-1">
+      {annotationTarget && (
+        <Button
+          type="button"
+          variant="quiet"
+          size="sm"
+          data-testid="artifact-dialog-annotate"
+          onClick={() => {
+            // The editor owns the whole surface while it is open, so the
+            // read-only viewer steps aside rather than stacking behind it.
+            openAnnotationEditor(annotationTarget);
+            closeLightboxWithDialogExit(rootSignal);
+          }}
+        >
+          <Pencil size={16} />
+          {t(($) => {
+            return $.artifacts.annotation.open;
+          })}
+        </Button>
+      )}
       {showShare && (
         <ArtifactShareButton
           ariaLabel={t(($) => {
@@ -1651,11 +1680,13 @@ function ComposerImagePreviewImage({
 function ComposerImagePreviewButton({
   filename,
   load,
+  markCount,
   openImageLightbox,
   url,
 }: {
   filename: string;
   load: ImageLoadSignals;
+  markCount: number;
   openImageLightbox: (url: string) => void;
   url: string | undefined;
 }) {
@@ -1723,6 +1754,15 @@ function ComposerImagePreviewButton({
           className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
         />
       </span>
+      {markCount > 0 && (
+        <span
+          data-testid="composer-attachment-mark-count"
+          style={{ background: DEFAULT_ANNOTATION_INK }}
+          className="absolute -bottom-0.5 -left-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border-[1.5px] border-background px-1 text-[9px] font-bold leading-none text-white"
+        >
+          {markCount}
+        </span>
+      )}
     </button>
   );
 }
@@ -1740,6 +1780,9 @@ function AttachmentChip({
   const url =
     infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const openImageLightbox = useSet(openImageLightbox$);
+  const setAnnotation = useSet(attachment.setAnnotation$);
+  const annotation = useGet(attachment.annotation$);
+  const annotationEnabled = useGet(composerImageAnnotationEnabled$);
   const isImage = attachment.contentType.startsWith("image/");
   return (
     <div
@@ -1750,10 +1793,25 @@ function AttachmentChip({
         <ComposerImagePreviewButton
           filename={attachment.filename}
           load={attachment.imageLoad}
+          markCount={annotationMarkCount(annotation)}
           openImageLightbox={(previewUrl) => {
             // A pending upload is not an artifact yet, so checking it must not
             // take over an open artifact sidebar.
-            openImageLightbox({ url: previewUrl, splitViewAvailable: false });
+            openImageLightbox({
+              url: previewUrl,
+              splitViewAvailable: false,
+              ...(annotationEnabled
+                ? {
+                    annotationTarget: {
+                      key: previewUrl,
+                      filename: attachment.filename,
+                      url: previewUrl,
+                      annotation,
+                      commit: setAnnotation,
+                    },
+                  }
+                : {}),
+            });
           }}
           url={url}
         />

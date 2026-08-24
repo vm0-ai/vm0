@@ -374,6 +374,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
   },
+  [FeatureSwitchKey.ComposerImageAnnotation]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
     maintainer: "bingjie@vm0.ai",
     description:

@@ -489,6 +489,26 @@
       "zoomIn": "Zoom 内",
       "zoomOut": "Zoom アウト"
     },
+    "annotation": {
+      "attach": "マークを添付",
+      "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "notePlaceholder": "ここをどう変えたいか書いてください",
+      "open": "注釈",
+      "redo": "やり直す",
+      "removeMark": "マークを削除",
+      "subtitle_other": "{{count}} 件のマーク",
+      "tools": {
+        "arrow": "矢印",
+        "box": "矩形",
+        "crop": "切り抜き",
+        "highlight": "ハイライト",
+        "pen": "手描き",
+        "redact": "塗りつぶし",
+        "select": "選択",
+        "text": "テキスト"
+      },
+      "undo": "元に戻す"
+    },
     "attachments": {
       "cancelUpload": "アップロードをキャンセル {{filename}}",
       "download": "{{filename}} をダウンロード",
