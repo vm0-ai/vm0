@@ -1,7 +1,7 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export const OFFICIAL_TEAMS_PUBLIC_BRAND = "okou" satisfies PublicBrand;
-export const OFFICIAL_TEAMS_BOT_NAME = "Okou";
+const OFFICIAL_TEAMS_BOT_NAME = "Okou";
 
 export function teamsBotDisplayName(
   botName: string | null | undefined,
