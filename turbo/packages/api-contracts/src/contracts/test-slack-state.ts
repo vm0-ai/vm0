@@ -30,7 +30,6 @@ export const testSlackStatePostBodySchema = z.object({
   seed_default_agent: z.boolean().optional(),
   default_agent_name: z.string().optional(),
   default_agent_display_name: z.string().nullable().optional(),
-  compose_content: z.record(z.string(), z.unknown()).optional(),
   org_name: z.string().optional(),
   seed_secret_names: z.array(z.string()).optional(),
   seed_variables: z.record(z.string(), z.string()).optional(),
@@ -133,19 +132,6 @@ export const testSlackStateResponseSchema = z.object({
       id: z.string(),
       name: z.string(),
       orgId: z.string(),
-    })
-    .nullable(),
-  default_compose: z
-    .object({
-      id: z.string(),
-      name: z.string(),
-      headVersionId: z.string().nullable(),
-    })
-    .nullable(),
-  default_compose_version: z
-    .object({
-      id: z.string(),
-      content_keys: z.array(z.string()),
     })
     .nullable(),
 });

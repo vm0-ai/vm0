@@ -698,9 +698,9 @@ class TestModelProviderJsonFallback:
         """Non-model-provider requests should not trigger usage reporting."""
         flow = real_flow(with_response=False, host="api.github.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         http_network_log.set_target(

@@ -9,7 +9,7 @@ import {
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import { useTranslation } from "react-i18next";
 
-function SectionHeader({ title }: { title: string }) {
+export function SectionHeader({ title }: { title: string }) {
   return (
     <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
   );
@@ -23,7 +23,7 @@ function CodeBlock({ value }: { value: string }) {
   );
 }
 
-function KeyValueTable({
+export function KeyValueTable({
   data,
   keyLabel,
   valueLabel,

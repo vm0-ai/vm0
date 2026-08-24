@@ -3,7 +3,6 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -26,7 +25,6 @@ import { artifactCatalogRoutes } from "../artifact-catalog";
 import { avatarVideoRoutes } from "../avatar-video";
 import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
@@ -97,7 +95,6 @@ function okouToken(args: {
 }
 
 async function seedAvatarVideoFixture(options?: {
-  readonly featureEnabled?: boolean;
   readonly withPricing?: boolean;
 }): Promise<AvatarVideoFixture> {
   const pricing = await createUsagePricingFixture(
@@ -121,11 +118,6 @@ async function seedAvatarVideoFixture(options?: {
     { ...fixture, role: "admin" },
     context.signal,
   );
-  if (options?.featureEnabled !== undefined) {
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.JoggAiBuiltIn]: options.featureEnabled,
-    });
-  }
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
 }
@@ -185,31 +177,6 @@ describe("JoggAI built-in avatar video routes", () => {
       clientId: "test-user",
       nonce: "test-nonce",
       mac: "test-mac",
-    });
-  });
-
-  it("keeps the built-in capability behind its feature switch", async () => {
-    const fixture = await seedAvatarVideoFixture({ featureEnabled: false });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const response = await createAvatarVideoTestApp(
-      fixture.usagePricingResolution,
-    ).request("/api/avatar-video/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        avatarId: 81,
-        voiceId: "en-US-ChristopherNeural",
-        script: "Hello",
-      }),
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message:
-          "Built-in JoggAI avatar video generation is not enabled for this workspace.",
-        code: "FEATURE_DISABLED",
-      },
     });
   });
 

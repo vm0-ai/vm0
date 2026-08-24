@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.481.1](https://github.com/vm0-ai/vm0/compare/api-v1.481.0...api-v1.481.1) (2026-08-24)
+
+
+### Refactoring
+
+* remove joggai built-in feature switch ([#28896](https://github.com/vm0-ai/vm0/issues/28896)) ([80a87fe](https://github.com/vm0-ai/vm0/commit/80a87fe81391786adb8448ea7c80bc4a13477c27))
+* remove retired agent compose persistence plane ([#28880](https://github.com/vm0-ai/vm0/issues/28880)) ([7d91b6b](https://github.com/vm0-ai/vm0/commit/7d91b6bb470128e2a4598218a636692040a03f4e))
+* remove saved billing credit purchase switch ([#28897](https://github.com/vm0-ai/vm0/issues/28897)) ([aba35fb](https://github.com/vm0-ai/vm0/commit/aba35fb74906723713fc01665389adf49681038c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.1
+    * @okouai/core bumped to 8.586.1
+    * @okouai/db bumped to 1.218.10
+
+## [1.481.0](https://github.com/vm0-ai/vm0/compare/api-v1.480.0...api-v1.481.0) (2026-08-24)
+
+
+### Features
+
+* show runtime model routes in activity diagnostics ([#28866](https://github.com/vm0-ai/vm0/issues/28866)) ([f9e7acc](https://github.com/vm0-ai/vm0/commit/f9e7acc8a26b9bcf7fc13fd094a3acf05562015d))
+
+
+### Bug Fixes
+
+* **api:** refresh codex token before reset credit ([#28856](https://github.com/vm0-ai/vm0/issues/28856)) ([1367deb](https://github.com/vm0-ai/vm0/commit/1367deb14cffd2953625045b512cfd426eaf7543))
+* **api:** restrict connector resolution warnings ([#28863](https://github.com/vm0-ai/vm0/issues/28863)) ([b54cf0b](https://github.com/vm0-ai/vm0/commit/b54cf0bf1bd4f52bc3925b5bbbe9cfd57a130279))
+
+
+### Refactoring
+
+* **contracts:** neutralize permission grant and connector contract naming ([#28200](https://github.com/vm0-ai/vm0/issues/28200)) ([5e3518c](https://github.com/vm0-ai/vm0/commit/5e3518c53373cae28513d5565f91eca9d12c11b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.0
+    * @okouai/core bumped to 8.586.0
+    * @okouai/db bumped to 1.218.9
+
 ## [1.480.0](https://github.com/vm0-ai/vm0/compare/api-v1.479.3...api-v1.480.0) (2026-08-24)
 
 

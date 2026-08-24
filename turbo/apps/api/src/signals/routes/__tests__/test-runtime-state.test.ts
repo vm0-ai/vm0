@@ -10,6 +10,7 @@ import { withMockNowForTest } from "../../../lib/time";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   resolveVm0ManagedModelRouteFixture,
@@ -23,6 +24,7 @@ const context = testContext();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const runs = createRunsApi(context);
+const reads = createRunReadsApi(context);
 
 interface ClaimedVm0Run {
   readonly actor: ReturnType<typeof bdd.user>;
@@ -171,6 +173,13 @@ describe("POST /api/test/runtime-state/action", () => {
           apply_patch_tool_type: null,
         }),
       ]);
+      const detail = await reads.requestReadLogById(actor, runId, [200]);
+      expect(detail.body).toMatchObject({
+        modelProvider: "vm0",
+        selectedModel,
+        modelRuntimeProvider: fallback.provider_type,
+        modelRuntimeModel: fallback.upstream_model,
+      });
     },
   );
 

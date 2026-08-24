@@ -60,8 +60,8 @@ def _make_flow(
     )
     flow.metadata.update(
         {
-            metadata_keys.VM_RUN_ID: "run-model-failure",
-            metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
+            metadata_keys.SANDBOX_RUN_ID: "run-model-failure",
+            metadata_keys.SANDBOX_PROXY_LOG_PATH: str(proxy_log_path),
             metadata_keys.ORIGINAL_URL: f"https://api.openai.com{request_path}",
             metadata_keys.FIREWALL_NAME: firewall_name,
             metadata_keys.FIREWALL_BILLABLE: True,
@@ -87,7 +87,7 @@ def _reported_payloads(model_provider_failure_api) -> list[dict[str, object]]:
 
 
 def _suppressed_failure_entries(flow: http.HTTPFlow) -> list[dict[str, object]]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [
@@ -137,6 +137,23 @@ def _report_omissions(proxy_log_path: Path) -> list[dict[str, object]]:
         for entry in read_jsonl_entries_after_flush(proxy_log_path)
         if entry.get("type") == "model_provider_failure" and entry.get("disposition") == "omitted"
     ]
+
+
+def _assert_queued_reports_cancelled(
+    proxy_log_path: Path,
+    flows: list[http.HTTPFlow],
+) -> None:
+    shutdown_entries = [
+        entry for entry in _report_omissions(proxy_log_path) if entry.get("reason") == "shutdown"
+    ]
+    assert len(shutdown_entries) == _REPORT_CAPACITY - _REPORT_WORKERS
+    assert len({entry["flow_id"] for entry in shutdown_entries}) == len(shutdown_entries)
+    flow_ids = {flow.id for flow in flows}
+    for entry in shutdown_entries:
+        flow_id = entry["flow_id"]
+        assert isinstance(flow_id, str)
+        assert flow_id in flow_ids
+        _assert_report_omission_entry(entry, flow_id=flow_id, reason="shutdown")
 
 
 def _assert_report_omission_entry(
@@ -528,22 +545,87 @@ def test_shutdown_cancels_queued_reports(
         shutdown_thread.join(timeout=3)
 
     assert model_provider_failure_api.request_count == _REPORT_WORKERS
-    shutdown_entries = [
-        entry for entry in _report_omissions(proxy_log_path) if entry.get("reason") == "shutdown"
-    ]
-    assert len(shutdown_entries) == _REPORT_CAPACITY - _REPORT_WORKERS
-    assert len({entry["flow_id"] for entry in shutdown_entries}) == len(shutdown_entries)
-    flow_ids = {flow.id for flow in flows}
-    for entry in shutdown_entries:
-        flow_id = entry["flow_id"]
-        assert isinstance(flow_id, str)
-        assert flow_id in flow_ids
-        _assert_report_omission_entry(entry, flow_id=flow_id, reason="shutdown")
+    _assert_queued_reports_cancelled(proxy_log_path, flows)
 
     _restart_reporter_after_callbacks(model_provider_failure_api)
     _assert_full_report_capacity(
         real_flow,
         tmp_path / "shutdown-recovery.jsonl",
+        model_provider_failure_api,
+    )
+
+
+def test_shutdown_timeout_returns_with_running_reports_blocked(
+    tmp_path,
+    real_flow,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "shutdown-timeout.jsonl"
+    rejected_log_path = tmp_path / "shutdown-timeout-rejected.jsonl"
+    release_delivery = threading.Event()
+    executor_shutdown_started = threading.Event()
+    continue_shutdown = threading.Event()
+    for _ in range(_REPORT_WORKERS):
+        model_provider_failure_api.queue_response(204, release_event=release_delivery)
+    flows = [
+        _enqueue_provider_unavailable(real_flow, proxy_log_path) for _ in range(_REPORT_CAPACITY)
+    ]
+
+    assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
+
+    original_shutdown = ThreadPoolExecutor.shutdown
+
+    def pause_after_executor_shutdown(
+        executor: ThreadPoolExecutor,
+        wait: bool = True,
+        *,
+        cancel_futures: bool = False,
+    ) -> None:
+        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        executor_shutdown_started.set()
+        if not continue_shutdown.wait(timeout=1):
+            raise AssertionError("failure reporter shutdown test did not release executor shutdown")
+
+    shutdown_thread = ThreadUnderTest(target=model_provider_failure.shutdown)
+    try:
+        with (
+            patch.object(model_provider_failure, "_REPORT_TIMEOUT_SECONDS", 0.01),
+            patch.object(ThreadPoolExecutor, "shutdown", pause_after_executor_shutdown),
+        ):
+            shutdown_thread.start()
+            wait_for_event(
+                executor_shutdown_started,
+                timeout=1,
+                threads=(shutdown_thread,),
+                message="failure reporter did not begin executor shutdown",
+            )
+            assert shutdown_thread.is_alive()
+
+            rejected_flow = _enqueue_provider_unavailable(real_flow, rejected_log_path)
+            assert model_provider_failure_api.request_count == _REPORT_WORKERS
+            _assert_single_report_omission(
+                rejected_log_path,
+                flow_id=rejected_flow.id,
+                reason="reporting_not_configured",
+            )
+
+            continue_shutdown.set()
+            shutdown_thread.join_and_raise(timeout=1)
+
+        assert not release_delivery.is_set()
+    finally:
+        continue_shutdown.set()
+        release_delivery.set()
+        shutdown_thread.join(timeout=1)
+        model_provider_failure.drain_reports_for_tests()
+
+    assert model_provider_failure_api.request_count == _REPORT_WORKERS
+    _assert_queued_reports_cancelled(proxy_log_path, flows)
+
+    _restart_reporter_after_callbacks(model_provider_failure_api)
+    _assert_full_report_capacity(
+        real_flow,
+        tmp_path / "shutdown-timeout-recovery.jsonl",
         model_provider_failure_api,
     )
 

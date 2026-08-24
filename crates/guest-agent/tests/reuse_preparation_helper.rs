@@ -888,16 +888,16 @@ fn run_helper_with_bind_mount(
             "/vm0-exec/exec-current/workload",
         )
         .env("VM0_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
-        .env("VM0_MOUNT_SOURCE", mount_source)
-        .env("VM0_MOUNT_TARGET", mount_target)
-        .env("VM0_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
+        .env("OKOU_MOUNT_SOURCE", mount_source)
+        .env("OKOU_MOUNT_TARGET", mount_target)
+        .env("OKOU_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
         .args([
             "--user",
             "--map-root-user",
             "--mount",
             "/bin/sh",
             "-c",
-            "/usr/bin/mount --bind \"$VM0_MOUNT_SOURCE\" \"$VM0_MOUNT_TARGET\" && exec \"$VM0_HELPER\" prepare-for-reuse",
+            "/usr/bin/mount --bind \"$OKOU_MOUNT_SOURCE\" \"$OKOU_MOUNT_TARGET\" && exec \"$OKOU_HELPER\" prepare-for-reuse",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

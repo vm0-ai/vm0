@@ -37,13 +37,18 @@
       "environmentMapping": "Pemetaan Lingkungan",
       "featureFlags": "Flag Fitur",
       "firewalls": "Firewall",
+      "modelProvider": "Penyedia Model",
+      "modelRoute": "Rute Model",
       "mountPath": "Jalur mount",
       "name": "Nama",
       "networkPolicies": "Kebijakan Jaringan",
       "none": "Tidak ada",
       "prompt": "Prompt",
       "runId": "ID Run",
+      "runtimeModel": "Model Runtime",
+      "runtimeProvider": "Penyedia Runtime",
       "secrets": "Rahasia",
+      "selectedModel": "Model Terpilih",
       "session": "Sesi",
       "storageName": "Nama Penyimpanan",
       "systemPrompt": "Prompt sistem",
@@ -616,7 +621,7 @@
       "illustration": "Ilustrasi",
       "illustrationPreview": "pratinjau ilustrasi {{title}}",
       "importDeck": "Impor dek Anda sendiri",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
@@ -1011,7 +1016,12 @@
       "signUp": "Daftar"
     },
     "loading": "Memuat autentikasi",
-    "toggleTheme": "Beralih tema"
+    "toggleTheme": "Beralih tema",
+    "v2": {
+      "continueToSignIn": "Lanjutkan untuk masuk",
+      "continueToSignUp": "Lanjutkan untuk mendaftar",
+      "unavailable": "Pengalaman autentikasi baru belum tersedia."
+    }
   },
   "authorization": {
     "browser": {
@@ -1552,6 +1562,8 @@
       "loadingFile": "Memuat {{filename}}",
       "previewFile": "Pratinjau {{filename}}",
       "title": "Lampiran",
+      "unavailable": "{{filename}} tidak lagi tersedia. Unggah ulang untuk mengirimnya.",
+      "unavailableCount_other": "{{count}} lampiran tidak lagi tersedia. Unggah ulang untuk mengirimnya.",
       "uploadFailed": "Gagal mengunggah {{filename}}",
       "uploadFailedRetry": "Gagal mengunggah {{filename}}. Coba lagi.",
       "uploadsFailed": "Beberapa lampiran gagal diunggah. Coba lagi."

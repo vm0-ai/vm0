@@ -4,6 +4,8 @@ import {
   activeInputDeliveryReserveResponseSchema,
   activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
+  piLaunchConfigSchema,
+  piModelConfigSchema,
   runnersModelProviderFailuresContract,
   storageMountEntrySchema,
 } from "../contracts/runners";
@@ -135,6 +137,93 @@ export const rustTypeBindings = [
           modelCatalog: [
             "Optional opaque Codex model catalog supplied by the API.",
           ],
+        },
+      },
+    ],
+  },
+  {
+    schema: piLaunchConfigSchema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiLaunchConfig",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "PiLaunchConfig",
+        rustDoc: [
+          "API-owned launch configuration forwarded to Pi in the sandbox.",
+        ],
+        fields: {
+          schemaVersion: ["Pi launch contract version."],
+          apiFirstTurn: ["Configuration for the API-mediated first turn."],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigApiFirstTurn",
+        rustDoc: ["API-mediated first-turn configuration for Pi."],
+        fields: {
+          schemaVersion: ["Pi API first-turn contract version."],
+          resourceSnapshotDigest: [
+            "Digest identifying the runtime resource snapshot.",
+          ],
+          manifestUrl: ["URL of the first-turn resource manifest."],
+          sessionUrl: ["URL of the first-turn session JSONL."],
+          deadlineAt: ["Unix timestamp in milliseconds for first-turn expiry."],
+          baseSession: ["Checkpoint used as the base Pi session."],
+          sandboxEventSequenceStart: [
+            "First sandbox event sequence number for the resumed session.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigApiFirstTurnBaseSession",
+        rustDoc: ["Pi session checkpoint used as the first-turn base."],
+        fields: {
+          sessionId: ["Pi session identifier."],
+          sha256: ["Nullable lowercase SHA-256 of the base session JSONL."],
+        },
+      },
+    ],
+  },
+  {
+    schema: piModelConfigSchema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfig",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "PiModelConfig",
+        rustDoc: ["API-owned non-secret Pi model configuration."],
+        fields: {
+          provider: ["Model provider selected for the Pi runtime."],
+          baseUrl: ["Base URL used for model requests."],
+          model: ["Provider model identifier."],
+          apiKeyEnv: ["Environment variable containing the provider key."],
+          credentialSecretName: [
+            "API-owned credential secret backing the environment entry.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigProvider",
+        rustDoc: ["Model providers supported by the Pi runtime contract."],
+        variants: {
+          deepseek: ["DeepSeek provider."],
+          moonshotai: ["Moonshot AI provider."],
+          openai: ["OpenAI provider."],
+          openrouter: ["OpenRouter provider."],
+          "vercel-ai-gateway": ["Vercel AI Gateway provider."],
+          codex: ["Codex provider."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigApiKeyEnv",
+        rustDoc: [
+          "Environment variables supported for Pi provider credentials.",
+        ],
+        variants: {
+          ANTHROPIC_AUTH_TOKEN: ["Anthropic authentication token."],
+          OPENAI_API_KEY: ["OpenAI-compatible API key."],
+          CHATGPT_ACCESS_TOKEN: ["ChatGPT access token."],
         },
       },
     ],

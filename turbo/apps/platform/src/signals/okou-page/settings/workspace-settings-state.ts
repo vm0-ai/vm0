@@ -572,21 +572,14 @@ export const inviteMember$ = command(
     const createClient = get(apiClient$);
     const client = createClient(orgInviteContract);
     if (usagePackUsd !== null) {
-      const supportsInAppPreview =
-        get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
-        false;
       const result = await accept(
         client.previewPurchase({
           body: {
             email,
             role,
             usagePackUsd,
-            ...(supportsInAppPreview
-              ? {
-                  supportsInAppPreview: true,
-                  returnUrl: window.location.href,
-                }
-              : {}),
+            supportsInAppPreview: true,
+            returnUrl: window.location.href,
           },
           fetchOptions: { signal },
         }),

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.75.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.4...guest-agent-v0.75.5) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
+## [0.75.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.3...guest-agent-v0.75.4) (2026-08-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+* **rust:** bound generic codex completed-item fields ([#28876](https://github.com/vm0-ai/vm0/issues/28876)) ([b13d3d2](https://github.com/vm0-ai/vm0/commit/b13d3d21e2630ac4472083988f4ca2766fa1b3e1))
+
 ## [0.75.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.2...guest-agent-v0.75.3) (2026-08-24)
 
 

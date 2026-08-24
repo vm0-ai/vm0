@@ -37,13 +37,18 @@
       "environmentMapping": "環境マッピング",
       "featureFlags": "機能フラグ",
       "firewalls": "ファイアウォール",
+      "modelProvider": "モデルプロバイダー",
+      "modelRoute": "モデルルート",
       "mountPath": "マウントパス",
       "name": "名前",
       "networkPolicies": "ネットワークポリシー",
       "none": "なし",
       "prompt": "プロンプト",
       "runId": "実行ID",
+      "runtimeModel": "ランタイムモデル",
+      "runtimeProvider": "ランタイムプロバイダー",
       "secrets": "シークレット",
+      "selectedModel": "選択されたモデル",
       "session": "セッション",
       "storageName": "ストレージ名",
       "systemPrompt": "システムプロンプト",
@@ -616,7 +621,7 @@
       "illustration": "イラストレーション",
       "illustrationPreview": "{{title}} イラストのプレビュー",
       "importDeck": "自分のデッキをインポート",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",
@@ -1011,7 +1016,12 @@
       "signUp": "サインアップ"
     },
     "loading": "認証を読み込み中",
-    "toggleTheme": "テーマの切り替え"
+    "toggleTheme": "テーマの切り替え",
+    "v2": {
+      "continueToSignIn": "現在のサインインに進む",
+      "continueToSignUp": "現在のサインアップに進む",
+      "unavailable": "新しい認証画面はまだ利用できません。"
+    }
   },
   "authorization": {
     "browser": {
@@ -1552,6 +1562,8 @@
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
       "title": "添付ファイル",
+      "unavailable": "{{filename}} は利用できなくなりました。送信するにはもう一度アップロードしてください。",
+      "unavailableCount_other": "{{count}} 件の添付ファイルは利用できなくなりました。送信するにはもう一度アップロードしてください。",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"

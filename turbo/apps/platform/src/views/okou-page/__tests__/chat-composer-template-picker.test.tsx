@@ -253,7 +253,6 @@ async function openAvatarPicker(
 ): Promise<HTMLElement> {
   detachedSetupPage({
     context,
-    featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
     path: `/chats/${THREAD_ID}`,
   });
 
@@ -4021,6 +4020,65 @@ describe("chat composer templates", () => {
           type: "file",
           fileId: "upload-deck",
           filenameSnapshot: "brand-system.pptx",
+        }),
+      );
+    });
+  });
+
+  it("imports a legacy binary .ppt deck", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    let sentMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        sentPrompt = body.prompt;
+        sentMessage = body.userMessage;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-deck",
+      filename: "brand-system.ppt",
+      contentType: "application/vnd.ms-powerpoint",
+      size: 2048,
+      url: "https://cdn.vm7.io/artifacts/test/upload-deck/brand-system.ppt",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const importInput = await waitFor(() => {
+      return screen.getByLabelText("Import your own deck");
+    });
+    // A deck saved in the legacy format is not filtered out of the file
+    // picker.
+    expect(importInput).toHaveAttribute(
+      "accept",
+      expect.stringContaining(".ppt,"),
+    );
+
+    await user.upload(
+      importInput,
+      new File(["deck"], "brand-system.ppt", {
+        type: "application/vnd.ms-powerpoint",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("reusable presentation template");
+      expect(sentMessage?.parts).toContainEqual(
+        expect.objectContaining({
+          type: "file",
+          fileId: "upload-deck",
+          filenameSnapshot: "brand-system.ppt",
         }),
       );
     });

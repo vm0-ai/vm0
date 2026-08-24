@@ -87,17 +87,50 @@ pub enum RemoteKillResult {
     RefusedIdle,
 }
 
-/// Errors from sandbox control operations.
+/// Errors returned when a sandbox control operation cannot complete.
+///
+/// The variants identify the control boundary at which the operation failed:
+/// [`NotFound`](Self::NotFound) and [`Ambiguous`](Self::Ambiguous) describe
+/// sandbox identity resolution, [`Remote`](Self::Remote) describes a failure
+/// returned by the remote control operation, [`Connection`](Self::Connection)
+/// describes endpoint discovery or control transport failures, and
+/// [`Io`](Self::Io) describes a local I/O or input-validation failure.
+///
+/// Callers should match the variant when their recovery or presentation policy
+/// depends on that boundary. The payloads provide diagnostic information and do
+/// not change the error category.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxControlError {
+    /// The requested sandbox identity does not resolve to an available control
+    /// target.
+    ///
+    /// This is an identity-resolution failure, rather than an operation-level
+    /// failure returned by a control endpoint.
     #[error("sandbox not found: {0}")]
     NotFound(String),
+    /// The supplied sandbox identity resolves to more than one control target.
+    ///
+    /// The caller must disambiguate the identity before the control operation
+    /// can proceed.
     #[error("ambiguous sandbox id: {0}")]
     Ambiguous(String),
+    /// The remote control operation failed or was rejected after the control
+    /// boundary was reached.
+    ///
+    /// Callers can present this separately from failures to discover or reach
+    /// the control endpoint.
     #[error("remote error: {0}")]
     Remote(String),
+    /// The control endpoint could not be discovered or its transport could not
+    /// be established or used.
+    ///
+    /// This category does not describe a remote operation rejection.
     #[error("connection failed: {0}")]
     Connection(String),
+    /// A local I/O or input-validation failure prevented the control request
+    /// from being prepared or issued.
+    ///
+    /// The wrapped [`std::io::Error`] contains the local failure details.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }

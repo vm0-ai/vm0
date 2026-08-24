@@ -152,12 +152,19 @@ const loadDraft$ = command(
       const restoredAttachments = restoredDraft.attachments.map(
         createRestoredAttachment,
       );
-      set(thread.composer.draft.seed$, {
-        content: restoredDraft.content,
-        userMessage: restoredDraft.userMessage,
-        generationTemplate: undefined,
-        attachments: restoredAttachments,
-      });
+      const removedUnavailableAttachments = await set(
+        thread.composer.draft.seed$,
+        {
+          content: restoredDraft.content,
+          userMessage: restoredDraft.userMessage,
+          generationTemplate: undefined,
+          attachments: restoredAttachments,
+        },
+        signal,
+      );
+      if (removedUnavailableAttachments) {
+        await set(thread.composer.draft.save$, signal);
+      }
     }
   },
 );

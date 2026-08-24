@@ -16,10 +16,6 @@ import { and, asc, desc, eq, or } from "drizzle-orm";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
-import {
-  buildZeroAgentComposeContent,
-  computeComposeVersionId,
-} from "./agent-compose-content";
 
 export function agentResponse(
   row: {
@@ -255,9 +251,6 @@ export function teamComposeList(
         sound: row.sound,
         avatarUrl: row.avatarUrl,
         visibility: row.visibility,
-        headVersionId: computeComposeVersionId(
-          buildZeroAgentComposeContent(row.name),
-        ),
         updatedAt: row.updatedAt.toISOString(),
       };
     });

@@ -977,12 +977,7 @@ export const storedExecutionContextSchema =
  * Tolerant reader for execution contexts already persisted in a database or
  * encrypted queue payload. The optional baseline is derived performance data,
  * so malformed or future versions must remain an independent cache miss rather
- * than invalidating the complete queued execution context. During the Stage 4
- * API rollout, contexts queued by the previous API may also carry the retired
- * Compose-version key; Zod's default unknown-key stripping normalizes it out.
- * Surface: existing runner queue, up to two hours. Remove the Stage 4-specific
- * comment and fixture after pre-cutover contexts expire; follow-up #26938
- * Stage 8. The general tolerant reader remains for its existing purpose.
+ * than invalidating the complete queued execution context.
  */
 export const compatibleStoredExecutionContextSchema =
   storedExecutionContextObjectSchema

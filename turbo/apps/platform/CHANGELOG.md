@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.785.1](https://github.com/vm0-ai/vm0/compare/app-v0.785.0...app-v0.785.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **platform:** flatten the model picker category switch and tighten its header ([#28874](https://github.com/vm0-ai/vm0/issues/28874)) ([db4e11b](https://github.com/vm0-ai/vm0/commit/db4e11beb0b5c940370c5be93e81dbb2ef13536a))
+
+
+### Refactoring
+
+* **platform:** use setLoop for template URL refresh ([#28903](https://github.com/vm0-ai/vm0/issues/28903)) ([3cb549e](https://github.com/vm0-ai/vm0/commit/3cb549e3ebf297ffc2f8f3cecdd20962eb62a901))
+* remove chat mark unread feature switch ([#28898](https://github.com/vm0-ai/vm0/issues/28898)) ([ea8fa6e](https://github.com/vm0-ai/vm0/commit/ea8fa6ee98f3bd1d0eb02959542bcbe1ae7fa31c))
+* remove joggai built-in feature switch ([#28896](https://github.com/vm0-ai/vm0/issues/28896)) ([80a87fe](https://github.com/vm0-ai/vm0/commit/80a87fe81391786adb8448ea7c80bc4a13477c27))
+* remove retired agent compose persistence plane ([#28880](https://github.com/vm0-ai/vm0/issues/28880)) ([7d91b6b](https://github.com/vm0-ai/vm0/commit/7d91b6bb470128e2a4598218a636692040a03f4e))
+* remove saved billing credit purchase switch ([#28897](https://github.com/vm0-ai/vm0/issues/28897)) ([aba35fb](https://github.com/vm0-ai/vm0/commit/aba35fb74906723713fc01665389adf49681038c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.1
+    * @okouai/core bumped to 8.586.1
+
+## [0.785.0](https://github.com/vm0-ai/vm0/compare/app-v0.784.4...app-v0.785.0) (2026-08-24)
+
+
+### Features
+
+* accept legacy .ppt decks in template import ([#28870](https://github.com/vm0-ai/vm0/issues/28870)) ([f3cd82c](https://github.com/vm0-ai/vm0/commit/f3cd82c62633caa58f018aa6ee3cc68ab9a7349f))
+* show runtime model routes in activity diagnostics ([#28866](https://github.com/vm0-ai/vm0/issues/28866)) ([f9e7acc](https://github.com/vm0-ai/vm0/commit/f9e7acc8a26b9bcf7fc13fd094a3acf05562015d))
+
+
+### Refactoring
+
+* **contracts:** neutralize permission grant and connector contract naming ([#28200](https://github.com/vm0-ai/vm0/issues/28200)) ([5e3518c](https://github.com/vm0-ai/vm0/commit/5e3518c53373cae28513d5565f91eca9d12c11b9))
+* remove chatQuoteOnlyFeedback feature switch ([#28845](https://github.com/vm0-ai/vm0/issues/28845)) ([f35dd1d](https://github.com/vm0-ai/vm0/commit/f35dd1d89dd0274ec0b098de16cc91a1576714f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.0
+    * @okouai/core bumped to 8.586.0
+
 ## [0.784.4](https://github.com/vm0-ai/vm0/compare/app-v0.784.3...app-v0.784.4) (2026-08-24)
 
 

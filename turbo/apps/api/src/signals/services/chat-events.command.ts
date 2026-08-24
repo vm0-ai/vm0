@@ -1230,9 +1230,9 @@ async function maybePersistExplicitCodexServiceTier(params: {
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1240,7 +1240,7 @@ async function maybePersistExplicitCodexServiceTier(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
       createdAt: updatedAt,
     });
@@ -1281,9 +1281,9 @@ async function updateThreadComputerAccess(params: {
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1291,7 +1291,7 @@ async function updateThreadComputerAccess(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: params.hostId,
       cloudBrowserEnabled: params.cloudBrowserEnabled,
       createdAt: updatedAt,
@@ -1458,7 +1458,7 @@ async function createChatThread(
           userId: args.userId,
           orgId: args.orgId,
           chatThreadId: thread.id,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           eventId: args.chatThreadEventId,
           title: null,
           selectedModel: args.pin.selectedModel,
@@ -1511,7 +1511,7 @@ async function createChatThread(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       eventId: args.chatThreadEventId,
       title: null,
       selectedModel: args.pin.selectedModel,
@@ -1555,7 +1555,7 @@ function loadTimedExistingThreadSnapshot(params: {
           computerUseHostId: chatThreads.computerUseHostId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
           ...persistedChatThreadModelSnapshotColumns(),
-          agentComposeId: agents.id,
+          agentId: agents.id,
         })
         .from(chatThreads)
         .innerJoin(agents, eq(agents.id, chatThreads.agentId))
@@ -1623,7 +1623,7 @@ async function resolveThread(params: {
     threadId: params.existingThreadId,
     timing: params.timing,
   });
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
 

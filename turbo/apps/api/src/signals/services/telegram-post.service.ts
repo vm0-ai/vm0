@@ -1797,7 +1797,7 @@ async function persistTelegramChatMessage(
   const threadArgs = {
     userId: args.source.userLink.userId,
     orgId: args.source.orgId,
-    agentComposeId: args.source.composeId,
+    agentId: args.source.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
     serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,

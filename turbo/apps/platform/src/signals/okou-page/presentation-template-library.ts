@@ -12,7 +12,7 @@ import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { apiClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { onRef } from "../utils.ts";
+import { onRef, setLoop } from "../utils.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -184,23 +184,32 @@ function createImportedPresentationTemplateUrlRefreshSignals(
         _element: HTMLSpanElement,
         signal: AbortSignal,
       ): Promise<void> => {
-        while (!signal.aborted) {
-          const catalog = await get(catalog$);
-          signal.throwIfAborted();
-          const loadedOrRequestedAtMs = freshAtMs(
-            catalog.loadedAtMs,
-            get(internalRequestedAtMs$),
-          );
-          await delay(
-            Math.max(
-              0,
-              PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
-                (now() - loadedOrRequestedAtMs),
-            ),
-            { signal },
-          );
-          await set(refreshImportedPresentationTemplateUrlsIfStale$, signal);
-        }
+        await setLoop(
+          async (loopSignal) => {
+            const catalog = await get(catalog$);
+            loopSignal.throwIfAborted();
+            const loadedOrRequestedAtMs = freshAtMs(
+              catalog.loadedAtMs,
+              get(internalRequestedAtMs$),
+            );
+            await delay(
+              Math.max(
+                0,
+                PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
+                  (now() - loadedOrRequestedAtMs),
+              ),
+              { signal: loopSignal },
+            );
+            await set(
+              refreshImportedPresentationTemplateUrlsIfStale$,
+              loopSignal,
+            );
+            return false;
+          },
+          0,
+          signal,
+          { retryTransientErrors: false },
+        );
       },
     ),
   );

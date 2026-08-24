@@ -3221,15 +3221,26 @@ mod tests {
         let first = provider.discover().await.unwrap();
         assert!(provider.claim(first).await.is_none());
         let overflow = provider.try_discover_ready().await.unwrap();
+        let claim_started_at = tokio::time::Instant::now();
         let (claim, events) = capture_api_provider_events(provider.claim(overflow)).await;
+        let claim_finished_at = tokio::time::Instant::now();
         assert!(claim.is_none());
         let event = captured_event(&events, "claim failed, candidate cooldown capacity reached");
         assert_eq!(event_field(event, "retry_scope"), "provider");
         assert_eq!(event_field(event, "retry_after_ms"), "5000");
         assert_eq!(event_field(event, "active_cooldowns"), "1");
+        let deferred_poll_at = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_at
+            .expect("saturation should defer HTTP polling");
         assert!(
-            wakeups.snapshot().await.deferred_poll_at.is_some(),
-            "saturation should defer HTTP polling"
+            deferred_poll_at >= claim_started_at + POLL_FAST,
+            "deferred polling should use at least the fast fallback from claim start"
+        );
+        assert!(
+            deferred_poll_at <= claim_finished_at + POLL_FAST,
+            "deferred polling should use at most the fast fallback from claim completion"
         );
 
         push_direct_candidate_for_test(
@@ -3715,7 +3726,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_decode_path_uses_current_codex_and_pi_schema_fields() {
+    async fn api_client_claim_decode_path_uses_current_codex_schema_fields() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let codex_error = claim_decode_error(
@@ -3743,34 +3754,6 @@ mod tests {
             "unexpected Codex decode error: {codex_error}"
         );
         assert!(!codex_error.contains("claim-sandbox-token"));
-
-        let pi_error = claim_decode_error(
-            &server,
-            run_id,
-            serde_json::json!({
-                "runId": run_id,
-                "prompt": "hello",
-                "sandboxToken": "claim-sandbox-token",
-                "cliAgentType": "pi",
-                "connectorRuntimeTargets": [],
-                "piLaunchConfig": {
-                    "schemaVersion": 2
-                },
-                "piSessionId": "00000000-0000-0000-0000-000000000001",
-                "piModelConfig": {
-                    "provider": "openai",
-                    "baseUrl": "https://api.example.com",
-                    "model": "gpt-5",
-                    "apiKeyEnv": 123
-                }
-            }),
-        )
-        .await;
-        assert!(
-            pi_error.contains("failed at piModelConfig.apiKeyEnv"),
-            "unexpected Pi decode error: {pi_error}"
-        );
-        assert!(!pi_error.contains("claim-sandbox-token"));
     }
 
     #[tokio::test]

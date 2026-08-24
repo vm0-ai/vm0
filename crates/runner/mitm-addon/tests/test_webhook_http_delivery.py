@@ -48,7 +48,7 @@ def test_does_not_follow_redirects(tmp_path, real_flow, sync_usage_executor, usa
 
     assert [request.path for request in webhook.requests] == ["/api/webhooks/agent/usage-event"]
     log_entries = read_jsonl_entries_after_flush(
-        Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     )
     assert any("permanent HTTP error" in entry["message"] for entry in log_entries)
 
@@ -179,7 +179,7 @@ def test_succeeds_on_first_attempt(tmp_path, real_flow, sync_usage_executor, usa
 
     payload_bytes = len(json.dumps(body).encode())
     log_entries = read_jsonl_entries_after_flush(
-        Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     )
     webhook_entries = [entry for entry in log_entries if entry["type"] == "usage_event"]
     assert len(webhook_entries) == 2
@@ -380,7 +380,7 @@ def test_retries_on_failure(tmp_path, real_flow, sync_usage_executor, usage_webh
 
 def test_gives_up_after_retry_budget(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
     with (
         usage_webhook_api() as webhook,
@@ -504,7 +504,7 @@ def test_http_408_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_w
 
 def test_http_429_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
     with (
         usage_webhook_api() as webhook,
@@ -599,7 +599,7 @@ def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
 
 def test_http_400_is_permanent(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
     with usage_webhook_api() as webhook:
         webhook.queue_response(400)

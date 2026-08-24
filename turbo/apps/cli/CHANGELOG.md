@@ -1,5 +1,30 @@
 # Changelog
 
+## [9.281.5](https://github.com/vm0-ai/vm0/compare/cli-v9.281.4...cli-v9.281.5) (2026-08-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.357.1
+    * @okouai/core bumped to 8.586.1
+
+## [9.281.4](https://github.com/vm0-ai/vm0/compare/cli-v9.281.3...cli-v9.281.4) (2026-08-24)
+
+
+### Refactoring
+
+* **contracts:** neutralize permission grant and connector contract naming ([#28200](https://github.com/vm0-ai/vm0/issues/28200)) ([5e3518c](https://github.com/vm0-ai/vm0/commit/5e3518c53373cae28513d5565f91eca9d12c11b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.357.0
+    * @okouai/core bumped to 8.586.0
+
 ## [9.281.3](https://github.com/vm0-ai/vm0/compare/cli-v9.281.2...cli-v9.281.3) (2026-08-24)
 
 

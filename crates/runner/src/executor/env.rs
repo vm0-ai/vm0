@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use api_contracts::generated::types::runners::runs::{
+    CodexRuntimeConfig, PiLaunchConfig, PiModelConfig,
+};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
-use serde::Deserialize;
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -139,32 +140,6 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     Ok(prepared_run_payload)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiLaunchConfigV2 {
-    schema_version: u8,
-    api_first_turn: PiApiFirstTurnConfigV1,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiApiFirstTurnConfigV1 {
-    schema_version: u8,
-    resource_snapshot_digest: String,
-    manifest_url: String,
-    session_url: String,
-    deadline_at: u64,
-    base_session: PiBaseSession,
-    sandbox_event_sequence_start: u8,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiBaseSession {
-    session_id: String,
-    sha256: serde_json::Value,
-}
-
 fn is_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -172,9 +147,16 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+// Generated enums and explicit versions intentionally fail closed. A future
+// enum value or schema version must reach runners before the API emits it;
+// unknown additive object fields remain safe because the original JSON is
+// forwarded after this validation view is discarded.
 fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Result<(), String> {
-    let launch: PiLaunchConfigV2 = serde_json::from_value(value.clone())
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi launch config v2 is invalid: {error}"))?;
+    if value.pointer("/apiFirstTurn/baseSession/sha256").is_none() {
+        return Err("Pi H0 sha256 must be present".to_string());
+    }
     if launch.schema_version != 2 {
         return Err("Pi launch config schemaVersion must be 2".to_string());
     }
@@ -195,7 +177,7 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
             return Err(format!("Pi API first-turn {name} must use HTTP or HTTPS"));
         }
     }
-    if slot.deadline_at == 0 {
+    if slot.deadline_at <= 0 {
         return Err("Pi API first-turn deadlineAt must be positive".to_string());
     }
     if slot.sandbox_event_sequence_start != 1 {
@@ -204,10 +186,30 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());
     }
-    match slot.base_session.sha256 {
-        serde_json::Value::Null => {}
-        serde_json::Value::String(hash) if is_sha256(&hash) => {}
-        _ => return Err("Pi H0 sha256 must be null or a lowercase SHA-256".to_string()),
+    if let Some(hash) = slot.base_session.sha256
+        && !is_sha256(&hash)
+    {
+        return Err("Pi H0 sha256 must be null or a lowercase SHA-256".to_string());
+    }
+    Ok(())
+}
+
+fn is_pi_credential_secret_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(b'A'..=b'Z' | b'_'))
+        && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfig = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config is invalid: {error}"))?;
+    url::Url::parse(&model.base_url)
+        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
+    if model.model.is_empty() {
+        return Err("Pi model config model must not be empty".to_string());
+    }
+    if !is_pi_credential_secret_name(&model.credential_secret_name) {
+        return Err("Pi model config credentialSecretName is invalid".to_string());
     }
     Ok(())
 }
@@ -228,9 +230,11 @@ fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), Strin
         .as_ref()
         .ok_or_else(|| "Pi execution context is missing pi_launch_config".to_string())?;
     validate_pi_launch_config(launch_config, session_id)?;
-    if context.pi_model_config.is_none() {
-        return Err("Pi execution context is missing pi_model_config".to_string());
-    }
+    let model_config = context
+        .pi_model_config
+        .as_ref()
+        .ok_or_else(|| "Pi execution context is missing pi_model_config".to_string())?;
+    validate_pi_model_config(model_config)?;
     if let Some(resume) = &context.resume_session
         && resume.cli_agent_session_id != session_id
     {

@@ -37,13 +37,18 @@
       "environmentMapping": "पर्यावरण मानचित्रण",
       "featureFlags": "फ़ीचर झंडे",
       "firewalls": "फ़ायरवाल",
+      "modelProvider": "मॉडल प्रदाता",
+      "modelRoute": "मॉडल रूट",
       "mountPath": "पर्वत पथ",
       "name": "नाम",
       "networkPolicies": "नेटवर्क नीतियाँ",
       "none": "कोई नहीं",
       "prompt": "प्रॉम्प्ट",
       "runId": "ID चलाएँ",
+      "runtimeModel": "रनटाइम मॉडल",
+      "runtimeProvider": "रनटाइम प्रदाता",
       "secrets": "रहस्य",
+      "selectedModel": "चयनित मॉडल",
       "session": "सत्र",
       "storageName": "भंडारण का नाम",
       "systemPrompt": "सिस्टम प्रॉम्प्ट",
@@ -616,7 +621,7 @@
       "illustration": "चित्रण",
       "illustrationPreview": "{{title}} चित्रण पूर्वावलोकन",
       "importDeck": "अपना डेक इंपोर्ट करें",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
       "multiAccent": "बहु-उच्चारण",
@@ -1011,7 +1016,12 @@
       "signUp": "साइन अप करें"
     },
     "loading": "प्रमाणीकरण लोड हो रहा है",
-    "toggleTheme": "थीम टॉगल करें"
+    "toggleTheme": "थीम टॉगल करें",
+    "v2": {
+      "continueToSignIn": "साइन इन जारी रखें",
+      "continueToSignUp": "साइन अप जारी रखें",
+      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+    }
   },
   "authorization": {
     "browser": {
@@ -1552,6 +1562,9 @@
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
       "title": "संलग्नक",
+      "unavailable": "{{filename}} अब उपलब्ध नहीं है। भेजने के लिए इसे दोबारा अपलोड करें।",
+      "unavailableCount_one": "{{count}} अटैचमेंट अब उपलब्ध नहीं है। भेजने के लिए उसे दोबारा अपलोड करें।",
+      "unavailableCount_other": "{{count}} अटैचमेंट अब उपलब्ध नहीं हैं। भेजने के लिए उन्हें दोबारा अपलोड करें।",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"

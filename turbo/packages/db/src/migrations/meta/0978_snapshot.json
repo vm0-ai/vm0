@@ -1,5 +1,5 @@
 {
-  "id": "7d9f4a35-8b80-45fd-bf9b-c3789aa89c71",
+  "id": "bbaa8977-ae1c-4b6d-94a6-afe8e1c9e5dc",
   "prevId": "07a06d32-9ab0-4146-93d6-552f20af3f7d",
   "version": "7",
   "dialect": "postgresql",
@@ -225,176 +225,6 @@
           "value": "\"active_input_delivery_items\".\"disposition\" IS NULL OR \"active_input_delivery_items\".\"disposition\" IN ('delivered', 'released', 'expired')"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.agent_compose_versions": {
-      "name": "agent_compose_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(64)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "compose_id": {
-          "name": "compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_agent_compose_versions_compose_id": {
-          "name": "idx_agent_compose_versions_compose_id",
-          "columns": [
-            {
-              "expression": "compose_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "agent_compose_versions_compose_id_agent_composes_id_fk": {
-          "name": "agent_compose_versions_compose_id_agent_composes_id_fk",
-          "tableFrom": "agent_compose_versions",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.agent_composes": {
-      "name": "agent_composes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "head_version_id": {
-          "name": "head_version_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_agent_composes_org": {
-          "name": "idx_agent_composes_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_agent_composes_org_name": {
-          "name": "idx_agent_composes_org_name",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.zero_agent_drafts": {
@@ -774,12 +604,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "agent_compose_version_id": {
-          "name": "agent_compose_version_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
         },
         "continued_from_session_id": {
           "name": "continued_from_session_id",
@@ -1214,19 +1038,6 @@
         }
       },
       "foreignKeys": {
-        "agent_runs_agent_compose_version_id_agent_compose_versions_id_fk": {
-          "name": "agent_runs_agent_compose_version_id_agent_compose_versions_id_fk",
-          "tableFrom": "agent_runs",
-          "tableTo": "agent_compose_versions",
-          "columnsFrom": [
-            "agent_compose_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "agent_runs_session_id_agent_sessions_id_fk": {
           "name": "agent_runs_session_id_agent_sessions_id_fk",
           "tableFrom": "agent_runs",
@@ -1322,12 +1133,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "agent_compose_id": {
-          "name": "agent_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "agent_id": {
           "name": "agent_id",
           "type": "uuid",
@@ -1362,27 +1167,6 @@
         }
       },
       "indexes": {
-        "idx_agent_sessions_user_compose": {
-          "name": "idx_agent_sessions_user_compose",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_compose_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_agent_sessions_user_agent": {
           "name": "idx_agent_sessions_user_agent",
           "columns": [
@@ -1421,19 +1205,6 @@
         }
       },
       "foreignKeys": {
-        "agent_sessions_agent_compose_id_agent_composes_id_fk": {
-          "name": "agent_sessions_agent_compose_id_agent_composes_id_fk",
-          "tableFrom": "agent_sessions",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "agent_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "agent_sessions_agent_id_agents_id_fk": {
           "name": "agent_sessions_agent_id_agents_id_fk",
           "tableFrom": "agent_sessions",
@@ -1464,12 +1235,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "agent_sessions_agent_reference_match": {
-          "name": "agent_sessions_agent_reference_match",
-          "value": "\"agent_sessions\".\"agent_id\" IS NULL OR \"agent_sessions\".\"agent_compose_id\" IS NULL OR \"agent_sessions\".\"agent_id\" IS NOT DISTINCT FROM \"agent_sessions\".\"agent_compose_id\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.conversations": {
@@ -2043,12 +1809,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "selected_compose_id": {
-          "name": "selected_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "selected_agent_id": {
           "name": "selected_agent_id",
           "type": "uuid",
@@ -2072,19 +1832,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "agentphone_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "agentphone_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "agentphone_user_agent_preferences",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "selected_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "agentphone_user_agent_preferences_selected_agent_id_agents_id_fk": {
           "name": "agentphone_user_agent_preferences_selected_agent_id_agents_id_fk",
           "tableFrom": "agentphone_user_agent_preferences",
@@ -2110,12 +1857,7 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "agentphone_user_agent_preferences_agent_reference_match": {
-          "name": "agentphone_user_agent_preferences_agent_reference_match",
-          "value": "\"agentphone_user_agent_preferences\".\"selected_agent_id\" IS NULL OR \"agentphone_user_agent_preferences\".\"selected_compose_id\" IS NULL OR \"agentphone_user_agent_preferences\".\"selected_agent_id\" IS NOT DISTINCT FROM \"agentphone_user_agent_preferences\".\"selected_compose_id\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.agentphone_user_links": {
@@ -5168,12 +4910,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "agent_compose_id": {
-          "name": "agent_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "agent_id": {
           "name": "agent_id",
           "type": "uuid",
@@ -5227,39 +4963,6 @@
             },
             {
               "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "chat_event_search_messages_user_org_agent_created_idx": {
-          "name": "chat_event_search_messages_user_org_agent_created_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_compose_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5351,12 +5054,7 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chat_event_search_messages_agent_reference_match": {
-          "name": "chat_event_search_messages_agent_reference_match",
-          "value": "\"chat_event_search_messages\".\"agent_id\" IS NULL OR \"chat_event_search_messages\".\"agent_compose_id\" IS NULL OR \"chat_event_search_messages\".\"agent_id\" IS NOT DISTINCT FROM \"chat_event_search_messages\".\"agent_compose_id\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.chat_event_snapshots": {
@@ -6146,13 +5844,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "public_brand": {
-          "name": "public_brand",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
-        },
         "conversation_context": {
           "name": "conversation_context",
           "type": "text",
@@ -6780,12 +6471,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "agent_compose_id": {
-          "name": "agent_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "agent_id": {
           "name": "agent_id",
           "type": "uuid",
@@ -6940,10 +6625,6 @@
         "chat_thread_events_computer_access_check": {
           "name": "chat_thread_events_computer_access_check",
           "value": "NOT (\"chat_thread_events\".\"cloud_browser_enabled\" AND \"chat_thread_events\".\"computer_use_host_id\" IS NOT NULL)"
-        },
-        "chat_thread_events_agent_reference_match": {
-          "name": "chat_thread_events_agent_reference_match",
-          "value": "\"chat_thread_events\".\"agent_id\" IS NULL OR \"chat_thread_events\".\"agent_compose_id\" IS NULL OR \"chat_thread_events\".\"agent_id\" IS NOT DISTINCT FROM \"chat_thread_events\".\"agent_compose_id\""
         }
       },
       "isRLSEnabled": false
@@ -7030,12 +6711,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "agent_compose_id": {
-          "name": "agent_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "agent_id": {
           "name": "agent_id",
@@ -7182,33 +6857,6 @@
         }
       },
       "indexes": {
-        "idx_chat_threads_user_compose_updated": {
-          "name": "idx_chat_threads_user_compose_updated",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_compose_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_chat_threads_user_agent_updated": {
           "name": "idx_chat_threads_user_agent_updated",
           "columns": [
@@ -7257,28 +6905,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chat_threads_user_compose_pinned": {
-          "name": "idx_chat_threads_user_compose_pinned",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_compose_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"chat_threads\".\"pinned_at\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_chat_threads_user_agent_pinned": {
           "name": "idx_chat_threads_user_agent_pinned",
           "columns": [
@@ -7297,33 +6923,6 @@
           ],
           "isUnique": false,
           "where": "\"chat_threads\".\"pinned_at\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_chat_threads_user_compose_last_message": {
-          "name": "idx_chat_threads_user_compose_last_message",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_compose_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_message_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -7357,19 +6956,6 @@
         }
       },
       "foreignKeys": {
-        "chat_threads_agent_compose_id_agent_composes_id_fk": {
-          "name": "chat_threads_agent_compose_id_agent_composes_id_fk",
-          "tableFrom": "chat_threads",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "agent_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "chat_threads_agent_id_agents_id_fk": {
           "name": "chat_threads_agent_id_agents_id_fk",
           "tableFrom": "chat_threads",
@@ -7434,10 +7020,6 @@
         "chat_threads_draft_user_message_check": {
           "name": "chat_threads_draft_user_message_check",
           "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb"
-        },
-        "chat_threads_agent_reference_match": {
-          "name": "chat_threads_agent_reference_match",
-          "value": "\"chat_threads\".\"agent_id\" IS NULL OR \"chat_threads\".\"agent_compose_id\" IS NULL OR \"chat_threads\".\"agent_id\" IS NOT DISTINCT FROM \"chat_threads\".\"agent_compose_id\""
         }
       },
       "isRLSEnabled": false
@@ -7464,12 +7046,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "agent_compose_snapshot": {
-          "name": "agent_compose_snapshot",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "storage_mounts": {
           "name": "storage_mounts",
@@ -11198,12 +10774,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "default_compose_id": {
-          "name": "default_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "default_agent_id": {
           "name": "default_agent_id",
           "type": "uuid",
@@ -11330,19 +10900,6 @@
         }
       },
       "foreignKeys": {
-        "feishu_org_installations_default_compose_id_agent_composes_id_fk": {
-          "name": "feishu_org_installations_default_compose_id_agent_composes_id_fk",
-          "tableFrom": "feishu_org_installations",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "default_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "feishu_org_installations_default_agent_id_agents_id_fk": {
           "name": "feishu_org_installations_default_agent_id_agents_id_fk",
           "tableFrom": "feishu_org_installations",
@@ -11375,12 +10932,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "feishu_org_installations_agent_reference_match": {
-          "name": "feishu_org_installations_agent_reference_match",
-          "value": "\"feishu_org_installations\".\"default_agent_id\" IS NOT NULL OR \"feishu_org_installations\".\"default_compose_id\" IS NOT NULL"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.feishu_user_agent_preferences": {
@@ -11398,12 +10950,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "selected_compose_id": {
-          "name": "selected_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "selected_agent_id": {
           "name": "selected_agent_id",
@@ -11428,19 +10974,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "feishu_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "feishu_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "feishu_user_agent_preferences",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "selected_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "feishu_user_agent_preferences_selected_agent_id_agents_id_fk": {
           "name": "feishu_user_agent_preferences_selected_agent_id_agents_id_fk",
           "tableFrom": "feishu_user_agent_preferences",
@@ -11660,12 +11193,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "default_compose_id": {
-          "name": "default_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "default_agent_id": {
           "name": "default_agent_id",
           "type": "uuid",
@@ -11727,19 +11254,6 @@
         }
       },
       "foreignKeys": {
-        "github_installations_default_compose_id_agent_composes_id_fk": {
-          "name": "github_installations_default_compose_id_agent_composes_id_fk",
-          "tableFrom": "github_installations",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "default_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "github_installations_default_agent_id_agents_id_fk": {
           "name": "github_installations_default_agent_id_agents_id_fk",
           "tableFrom": "github_installations",
@@ -11757,12 +11271,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "github_installations_agent_reference_match": {
-          "name": "github_installations_agent_reference_match",
-          "value": "\"github_installations\".\"default_agent_id\" IS NULL OR \"github_installations\".\"default_compose_id\" IS NULL OR \"github_installations\".\"default_agent_id\" IS NOT DISTINCT FROM \"github_installations\".\"default_compose_id\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.github_user_links": {
@@ -20032,13 +19541,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "public_brand": {
-          "name": "public_brand",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
-        },
         "status": {
           "name": "status",
           "type": "varchar(16)",
@@ -20414,7 +19916,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'okou'"
+          "default": "'vm0'"
         },
         "created_at": {
           "name": "created_at",
@@ -20487,12 +19989,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "selected_compose_id": {
-          "name": "selected_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "selected_agent_id": {
           "name": "selected_agent_id",
           "type": "uuid",
@@ -20516,19 +20012,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "slack_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "slack_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "slack_user_agent_preferences",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "selected_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "slack_user_agent_preferences_selected_agent_id_agents_id_fk": {
           "name": "slack_user_agent_preferences_selected_agent_id_agents_id_fk",
           "tableFrom": "slack_user_agent_preferences",
@@ -22379,12 +21862,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "selected_compose_id": {
-          "name": "selected_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "selected_agent_id": {
           "name": "selected_agent_id",
           "type": "uuid",
@@ -22408,19 +21885,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "teams_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "teams_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "teams_user_agent_preferences",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "selected_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "teams_user_agent_preferences_selected_agent_id_agents_id_fk": {
           "name": "teams_user_agent_preferences_selected_agent_id_agents_id_fk",
           "tableFrom": "teams_user_agent_preferences",
@@ -22668,12 +22132,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "default_compose_id": {
-          "name": "default_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "default_agent_id": {
           "name": "default_agent_id",
           "type": "uuid",
@@ -22747,19 +22205,6 @@
         }
       },
       "foreignKeys": {
-        "telegram_installations_default_compose_id_agent_composes_id_fk": {
-          "name": "telegram_installations_default_compose_id_agent_composes_id_fk",
-          "tableFrom": "telegram_installations",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "default_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "telegram_installations_default_agent_id_agents_id_fk": {
           "name": "telegram_installations_default_agent_id_agents_id_fk",
           "tableFrom": "telegram_installations",
@@ -22777,12 +22222,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "telegram_installations_agent_reference_match": {
-          "name": "telegram_installations_agent_reference_match",
-          "value": "\"telegram_installations\".\"default_agent_id\" IS NOT NULL OR \"telegram_installations\".\"default_compose_id\" IS NOT NULL"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.telegram_messages": {
@@ -23221,12 +22661,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "selected_compose_id": {
-          "name": "selected_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "selected_agent_id": {
           "name": "selected_agent_id",
           "type": "uuid",
@@ -23250,19 +22684,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "telegram_user_agent_preferences_selected_compose_id_agent_composes_id_fk": {
-          "name": "telegram_user_agent_preferences_selected_compose_id_agent_composes_id_fk",
-          "tableFrom": "telegram_user_agent_preferences",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "selected_compose_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "telegram_user_agent_preferences_selected_agent_id_agents_id_fk": {
           "name": "telegram_user_agent_preferences_selected_agent_id_agents_id_fk",
           "tableFrom": "telegram_user_agent_preferences",
@@ -28421,171 +27842,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.zero_agents": {
-      "name": "zero_agents",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner": {
-          "name": "owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'public'"
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sound": {
-          "name": "sound",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "avatar_url": {
-          "name": "avatar_url",
-          "type": "varchar(1024)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "model_provider_id": {
-          "name": "model_provider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "selected_model": {
-          "name": "selected_model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "prefer_personal_provider": {
-          "name": "prefer_personal_provider",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_zero_agents_org_name": {
-          "name": "idx_zero_agents_org_name",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_zero_agents_org": {
-          "name": "idx_zero_agents_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "zero_agents_id_agent_composes_id_fk": {
-          "name": "zero_agents_id_agent_composes_id_fk",
-          "tableFrom": "zero_agents",
-          "tableTo": "agent_composes",
-          "columnsFrom": [
-            "id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "zero_agents_model_provider_id_model_providers_id_fk": {
-          "name": "zero_agents_model_provider_id_model_providers_id_fk",
-          "tableFrom": "zero_agents",
-          "tableTo": "model_providers",
-          "columnsFrom": [
-            "model_provider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

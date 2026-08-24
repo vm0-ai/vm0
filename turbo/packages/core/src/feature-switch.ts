@@ -108,11 +108,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.JoggAiBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: true,
-  },
   [FeatureSwitchKey.ManagedSocialKit]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable vm0-managed SocialKit data and analysis operations",
@@ -344,13 +339,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview purchases with saved billing and confirm them in the app.",
     enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
@@ -392,16 +380,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Validate restored composer attachments against the current account, remove unavailable references, and show a warning.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatMarkUnread]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Show the Mark unread action in the chat thread sidebar menu.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

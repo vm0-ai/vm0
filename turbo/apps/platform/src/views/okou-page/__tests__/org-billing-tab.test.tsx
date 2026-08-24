@@ -33,6 +33,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
+const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function queryButtonByText(
   text: string,
@@ -271,7 +272,11 @@ async function openBillingTab(
   path = "/?settings=billing",
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
-  detachedSetupPage({ context, path, featureSwitches });
+  detachedSetupPage({
+    context,
+    path,
+    featureSwitches: { ...LEGACY_PRICING, ...featureSwitches },
+  });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -347,6 +352,7 @@ describe("organization billing settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing",
+      featureSwitches: LEGACY_PRICING,
     });
 
     await waitFor(() => {
@@ -4281,9 +4287,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     const locationBeforePurchase = window.location.href;
     click(screen.getByText("Upgrade"));
     await screen.findByText("Compare plans");
@@ -4370,9 +4374,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     click(screen.getByText("Upgrade"));
     await screen.findByText("Compare plans");
     click(buttonByText("Upgrade to Team"));
@@ -4456,9 +4458,7 @@ describe("organization billing settings", () => {
       },
     );
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     const locationBeforePurchase = window.location.href;
     const quickBuyButton = buttonByText("Quick buy $20.00");
     click(quickBuyButton);
@@ -4539,9 +4539,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     click(buttonByText("Quick buy $20.00"));
 
     const firstDialog = await screen.findByRole("dialog", {
@@ -4574,9 +4572,7 @@ describe("organization billing settings", () => {
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
     const billingStory = mockBillingStory();
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: false,
-    });
+    await openBillingTab("/?settings=billing");
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();

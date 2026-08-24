@@ -27,7 +27,7 @@ import {
   slackOrgInstallation,
   slackOrgStatus,
 } from "../services/slack-data.service";
-import { userConfiguredAgentEnvironmentRequirements } from "../services/agent-compose-content";
+import { userConfiguredAgentEnvironmentRequirements } from "../services/agent-execution-config";
 import { publishSlackAdminSignal$ } from "../services/slack-connect.service";
 import { getFileInfo, isSlackApiClientError } from "../../lib/slack-client";
 import {

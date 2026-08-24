@@ -16,7 +16,7 @@ Place route tests under the API route test directory:
 
 ```text
 turbo/apps/api/src/signals/routes/__tests__/
-+-- zero-runs-runner.test.ts
++-- agents.test.ts
 ```
 
 ## Route Test Structure
@@ -176,7 +176,7 @@ pre-existing shared state to make an assertion pass.
 Run route-focused tests from `turbo`:
 
 ```shell
-pnpm -F api exec vitest run src/signals/routes/__tests__/zero-runs-runner.test.ts
+pnpm -F api exec vitest run src/signals/routes/__tests__/agents.test.ts
 pnpm -F api lint
 pnpm -F api check-types
 ```

@@ -13,7 +13,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.BoxConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
   });
 
@@ -104,8 +103,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -127,9 +128,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -139,8 +137,10 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -161,19 +161,19 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
   });
 
-  it("should enable composer submit DOM reconciliation only for Bingjie", () => {
+  it("should enable Bingjie-only composer switches only for Bingjie", () => {
     const bingjieStates = getAllFeatureStates({
       email: "bingjie@vm0.ai",
     });
     expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       true,
     );
+    expect(
+      bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(true);
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -182,6 +182,9 @@ describe("getAllFeatureStates", () => {
     expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

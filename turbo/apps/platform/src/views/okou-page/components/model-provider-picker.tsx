@@ -1086,15 +1086,18 @@ function ModelPickerListHeader({
 }) {
   return (
     // Pinned so switching category never means scrolling back up for the
-    // switch. The negative margins bleed the row over the list's own `p-1`
-    // inset so rows scroll under an opaque surface rather than beside it.
+    // switch. The negative side and top margins bleed the row over the list's
+    // own `p-1` inset so rows scroll under an opaque surface rather than
+    // beside it.
     //
-    // `py-2` matches `pr-2`: the switch is a 28px control tucked into the
-    // popover's top-right corner, and 4px above it against 8px beside it read
-    // as a mistake rather than as a tighter grid.
+    // The 28px switch is what sets this row's height, so its padding is what
+    // sets the label's distance from the first option: `py-2` left the label
+    // floating in a band nearly four times its own ink. `py-1` seats the
+    // switch on the same 4px inset the rows sit on, and `-mb-1` takes back the
+    // list's `gap-1` so the header's own padding is the whole distance.
     <div
       data-model-picker-header
-      className="sticky top-0 z-10 -mx-1 -mt-1 flex items-center gap-2 bg-card py-2 pl-3 pr-2"
+      className="sticky top-0 z-10 -mx-1 -mt-1 -mb-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2"
     >
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {label}
@@ -1111,13 +1114,12 @@ const MEDIA_MODEL_CATEGORY_ICONS = {
 
 const CHAT_CATEGORY_VALUE = "chat";
 
-// Icon-only, and trackless: three glyphs sitting straight on the popover
-// surface. A filled track was the darkest thing in a popover otherwise made of
-// quiet rows, and the labels it carried repeated the group label beside it.
-// The selected glyph takes the shared selected layer, which reads on any
-// surface and reverses in dark, in place of the raised segment fill.
-const MEDIA_MODEL_CATEGORY_SEGMENT_CLASS =
-  "w-7 px-0 data-checked:bg-state-selected data-checked:shadow-none";
+// Icon-only: three glyphs sitting straight on the popover surface. A filled
+// track was the darkest thing in a popover otherwise made of quiet rows, and
+// the labels it carried repeated the group label beside it. The `plain`
+// variant is what drops the track and, with it, the raised fill and shadow the
+// selected glyph used to carry; only the square footprint is set here.
+const MEDIA_MODEL_CATEGORY_SEGMENT_CLASS = "w-7 px-0";
 
 /**
  * Category switch for the popover. It used to live in the composer as a filled
@@ -1132,7 +1134,8 @@ function MediaModelCategorySwitch({ panel }: { panel: MediaModelPanelState }) {
   return (
     <SegmentControl
       size="xs"
-      className="shrink-0 gap-0.5 bg-transparent p-0"
+      variant="plain"
+      className="shrink-0"
       aria-label={t(($) => {
         return $.settings.models.picker.models;
       })}
@@ -1211,13 +1214,14 @@ function ModelFirstModelPickerContentLayout({
         // a name beside a badge again.
         "min-w-[260px]",
         mediaModelPanel
-          ? // The 302px bordered cap leaves a 300px scroll viewport: enough for
+          ? // The 290px bordered cap leaves a 288px scroll viewport: enough for
             // the header and seven model rows, while an eighth adds one 32px
             // row plus its 4px gap. The image category is the one that runs
-            // past it today, and scrolls by that single row. The cap grew with
-            // the header when it went from `py-1` to `py-2`; both numbers move
-            // together or seven rows stop fitting.
-            "max-h-[302px]"
+            // past it today, and scrolls by that single row. The cap tracks the
+            // header's height -- it lost 12px when the header went to `py-1`
+            // and dropped the gap beneath it; both numbers move together or
+            // seven rows stop fitting.
+            "max-h-[290px]"
           : "max-h-[280px]",
       )}
     >

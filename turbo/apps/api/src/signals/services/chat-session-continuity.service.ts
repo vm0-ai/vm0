@@ -143,7 +143,7 @@ async function latestHistoricalThreadSession(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }): Promise<HistoricalThreadSession | null> {
   const [row] = await args.db
     .select({
@@ -167,7 +167,7 @@ async function latestHistoricalThreadSession(args: {
         isNotNull(agentRuns.triggerSource),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
-        eq(agentSessions.agentId, args.agentComposeId),
+        eq(agentSessions.agentId, args.agentId),
         eq(
           sql`${agentRuns.result}->>'agentSessionId'`,
           sql`${agentSessions.id}::text`,
@@ -371,7 +371,7 @@ export async function resolveChatThreadSession(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly route: ChatThreadSessionRoute;
 }): Promise<ChatThreadSessionResolution> {
   const [thread] = await args.db
@@ -401,7 +401,7 @@ export async function resolveChatThreadSession(args: {
         eq(agentSessions.id, chatThreads.agentSessionId),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
-        eq(agentSessions.agentId, args.agentComposeId),
+        eq(agentSessions.agentId, args.agentId),
       ),
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
@@ -410,7 +410,7 @@ export async function resolveChatThreadSession(args: {
       and(
         eq(chatThreads.id, args.threadId),
         eq(chatThreads.userId, args.userId),
-        eq(chatThreads.agentId, args.agentComposeId),
+        eq(chatThreads.agentId, args.agentId),
       ),
     )
     .limit(1);

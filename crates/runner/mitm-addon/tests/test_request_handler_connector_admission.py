@@ -12,7 +12,7 @@ import mitm_addon
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -28,7 +28,7 @@ def _write_test_oauth_registry(tmp_path):
     return _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={

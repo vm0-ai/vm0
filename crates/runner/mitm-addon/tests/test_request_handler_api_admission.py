@@ -11,7 +11,7 @@ import platform_api
 import registry
 import request_classification
 import upstream_destination_binding
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.upstream_connection_helpers import (
     bind_flow_upstream,
     mark_connected_tls_upstream,
@@ -371,7 +371,7 @@ async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="alternate-api-port",
             api_entry={
@@ -415,7 +415,7 @@ async def test_vm0_api_wrong_scheme_uses_matching_firewall_deny_policy(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="plaintext-api-port",
             api_entry={
@@ -462,7 +462,7 @@ async def test_vm0_api_wrong_port_uses_normal_connector_auth(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="alternate-api-port",
             api_entry={
@@ -527,7 +527,7 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
     }
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "registry_unavailable"
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
 
 async def test_unknown_cached_classification_does_not_bypass_registry_gate(
@@ -579,7 +579,7 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.1",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-test-oauth",
             sandbox_marker="tok-test",
@@ -633,7 +633,7 @@ async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.1",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-platform-api",
             sandbox_marker="tok-platform",

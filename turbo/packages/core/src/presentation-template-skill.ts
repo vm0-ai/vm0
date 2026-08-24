@@ -26,7 +26,7 @@ const PRESENTATION_TEMPLATE_SKILL_PATH = "reverse-template";
  */
 export function presentationTemplateSkillInstruction(): string {
   return [
-    `Turning an uploaded deck (.pptx or .pdf) into a reusable presentation template follows the ${PRESENTATION_TEMPLATE_SKILL_PATH} guide, which is not mounted as a skill.`,
+    `Turning an uploaded deck (.pptx, .ppt, or .pdf) into a reusable presentation template follows the ${PRESENTATION_TEMPLATE_SKILL_PATH} guide, which is not mounted as a skill.`,
     `Clone it first with \`gh repo clone ${PRESENTATION_TEMPLATE_SKILL_REPO} <dir> -- --depth 1 -b ${PRESENTATION_TEMPLATE_SKILL_BRANCH}\`, read \`<dir>/${PRESENTATION_TEMPLATE_SKILL_PATH}/SKILL.md\`, and follow it exactly, including its page-rendering and publish steps.`,
   ].join(" ");
 }

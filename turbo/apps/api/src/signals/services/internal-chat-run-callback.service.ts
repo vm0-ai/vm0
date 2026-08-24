@@ -2702,7 +2702,7 @@ function loadQueuedMessageSessionState(
         threadId: args.threadId,
         userId: args.userId,
         orgId: args.agent.orgId,
-        agentComposeId: args.agent.id,
+        agentId: args.agent.id,
         route: {
           selectedModel: modelRoute.modelPin.selectedModel,
           modelProvider: modelRoute.effectiveModelProvider ?? null,

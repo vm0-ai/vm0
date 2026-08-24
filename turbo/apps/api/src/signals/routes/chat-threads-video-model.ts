@@ -41,9 +41,9 @@ const updateVideoModelInner$ = command(
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread?.agentComposeId) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -51,7 +51,7 @@ const updateVideoModelInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         selectedVideoModel,
         createdAt: updatedAt,

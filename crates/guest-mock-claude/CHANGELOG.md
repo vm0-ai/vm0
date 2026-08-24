@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.78](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.77...guest-mock-claude-v0.21.78) (2026-08-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+
 ## [0.21.77](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.76...guest-mock-claude-v0.21.77) (2026-08-24)
 
 

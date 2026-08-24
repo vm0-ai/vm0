@@ -13,7 +13,7 @@ from tests.registry_builtin_helpers import (
     first_firewall_core,
     write_catalog_cache,
 )
-from tests.registry_helpers import builtin_vm, inline_vm, write_multi_vm_registry
+from tests.registry_helpers import builtin_sandbox, inline_sandbox, write_multi_sandbox_registry
 
 
 def _catalog_snapshot(
@@ -57,11 +57,11 @@ class TestRegistryBuiltinSnapshot:
                 )
             },
         )
-        vm = builtin_vm("run-removal", "missing")
-        vm["firewalls"].append({"kind": "builtin", "name": "retained"})
+        sandbox = builtin_sandbox("run-removal", "missing")
+        sandbox["firewalls"].append({"kind": "builtin", "name": "retained"})
 
         resolved = registry_firewalls.resolve_firewall_entries(
-            vm,
+            sandbox,
             builtin_firewall_catalog_snapshot=snapshot,
         )
 
@@ -105,9 +105,9 @@ class TestRegistryBuiltinSnapshot:
             assert missing_state.reason == "stat_failed"
             assert catalog_file_key.call_count == 0
 
-            write_multi_vm_registry(
+            write_multi_sandbox_registry(
                 registry_path,
-                {"10.200.0.1": inline_vm("run-inline")},
+                {"10.200.0.1": inline_sandbox("run-inline")},
             )
             os.utime(
                 registry_path,
@@ -118,12 +118,12 @@ class TestRegistryBuiltinSnapshot:
 
             assert not isinstance(inline_state, registry.RegistryUnavailable)
             assert cached_inline_state is inline_state
-            assert inline_state.vms["10.200.0.1"]["runId"] == "run-inline"
+            assert inline_state.sandboxes["10.200.0.1"]["runId"] == "run-inline"
             assert catalog_file_key.call_count == 0
 
-            write_multi_vm_registry(
+            write_multi_sandbox_registry(
                 registry_path,
-                {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+                {"10.200.0.1": builtin_sandbox("run-cache-only", "cache-only")},
             )
             os.utime(
                 registry_path,
@@ -133,7 +133,7 @@ class TestRegistryBuiltinSnapshot:
 
             assert not isinstance(builtin_state, registry.RegistryUnavailable)
             assert (
-                builtin_state.vms["10.200.0.1"]["firewalls"][0]["apis"][0]["base"]
+                builtin_state.sandboxes["10.200.0.1"]["firewalls"][0]["apis"][0]["base"]
                 == "https://cache.example.com"
             )
             assert catalog_file_key.call_count == 0
@@ -195,9 +195,9 @@ class TestRegistryBuiltinSnapshot:
     ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-racy-cache", "racy-cache")},
+            {"10.200.0.1": builtin_sandbox("run-racy-cache", "racy-cache")},
         )
         write_catalog_cache(
             cache_path,
@@ -226,38 +226,38 @@ class TestRegistryBuiltinSnapshot:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             assert context is not None
-            vm_info, compiled_firewalls, _ = context
+            sandbox_info, compiled_firewalls, _ = context
             assert compiled_firewalls is not None
-            assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+            assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
 
             cache_path.unlink()
 
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             state = registry.load_registry_state(str(registry_path))
 
         assert context is None
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert state.invalid_sandboxes["10.200.0.1"].reason == "invalid_firewalls"
         assert (
             "catalog cache unavailable: cache_file_missing"
-            in state.invalid_vms["10.200.0.1"].message
+            in state.invalid_sandboxes["10.200.0.1"].message
         )
 
     def test_builtin_registry_reload_when_catalog_cache_appears(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-late-cache", "late-cache")},
+            {"10.200.0.1": builtin_sandbox("run-late-cache", "late-cache")},
         )
 
         with mitm_ctx(
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             write_catalog_cache(
                 cache_path,
                 digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -269,27 +269,27 @@ class TestRegistryBuiltinSnapshot:
                     )
                 },
             )
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert first_context is None
         assert second_context is not None
-        second_vm_info, second_compiled, _ = second_context
+        second_sandbox_info, second_compiled, _ = second_context
         assert second_compiled is not None
-        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+        assert second_sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
 
     def test_unknown_builtin_registry_reload_when_catalog_cache_appears(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+            {"10.200.0.1": builtin_sandbox("run-cache-only", "cache-only")},
         )
 
         with mitm_ctx(
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             first_state = registry.load_registry_state(str(registry_path))
             write_catalog_cache(
                 cache_path,
@@ -302,22 +302,22 @@ class TestRegistryBuiltinSnapshot:
                     )
                 },
             )
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert first_context is None
         assert not isinstance(first_state, registry.RegistryUnavailable)
-        assert first_state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert first_state.invalid_sandboxes["10.200.0.1"].reason == "invalid_firewalls"
         assert second_context is not None
-        second_vm_info, second_compiled, _ = second_context
+        second_sandbox_info, second_compiled, _ = second_context
         assert second_compiled is not None
-        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+        assert second_sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
 
     def test_registry_reload_pins_one_catalog_snapshot_for_builtin_entries(
         self, tmp_path, monkeypatch, mitm_ctx
     ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
             {
                 "10.200.0.1": {
@@ -367,21 +367,21 @@ class TestRegistryBuiltinSnapshot:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        bases = [api["base"] for firewall in vm_info["firewalls"] for api in firewall["apis"]]
+        bases = [api["base"] for firewall in sandbox_info["firewalls"] for api in firewall["apis"]]
         assert bases == ["https://alpha-a.example.com", "https://beta-a.example.com"]
         assert load_calls == [str(cache_path)]
 
     def test_runner_catalog_cache_change_invalidates_registry_snapshot(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-mutable", "mutable")},
+            {"10.200.0.1": builtin_sandbox("run-mutable", "mutable")},
         )
         write_catalog_cache(
             cache_path,
@@ -395,7 +395,7 @@ class TestRegistryBuiltinSnapshot:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             write_catalog_cache(
                 cache_path,
                 digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -403,16 +403,16 @@ class TestRegistryBuiltinSnapshot:
                 firewalls={"mutable": cache_firewall("mutable", "https://cache-b.example.com")},
             )
             os.utime(cache_path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert first_context is not None
         assert second_context is not None
-        first_vm_info, first_compiled, _ = first_context
-        second_vm_info, second_compiled, _ = second_context
+        first_sandbox_info, first_compiled, _ = first_context
+        second_sandbox_info, second_compiled, _ = second_context
         assert first_compiled is not None
         assert second_compiled is not None
-        first_api = first_vm_info["firewalls"][0]["apis"][0]
-        second_api = second_vm_info["firewalls"][0]["apis"][0]
+        first_api = first_sandbox_info["firewalls"][0]["apis"][0]
+        second_api = second_sandbox_info["firewalls"][0]["apis"][0]
         assert first_api["base"] == "https://cache-a.example.com"
         assert second_api["base"] == "https://cache-b.example.com"
         first_runtime_policy = first_api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER]
@@ -428,12 +428,14 @@ class TestRegistryBuiltinSnapshot:
         assert first_runtime_policy is not second_runtime_policy
         assert first_firewall_core(first_compiled) is not first_firewall_core(second_compiled)
 
-    def test_catalog_removal_keeps_vm_valid_after_registry_cache_reset(self, tmp_path, mitm_ctx):
+    def test_catalog_removal_keeps_sandbox_valid_after_registry_cache_reset(
+        self, tmp_path, mitm_ctx
+    ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        vm = builtin_vm("run-removal", "removed")
-        vm["firewalls"].append({"kind": "builtin", "name": "retained"})
-        write_multi_vm_registry(registry_path, {"10.200.0.1": vm})
+        sandbox = builtin_sandbox("run-removal", "removed")
+        sandbox["firewalls"].append({"kind": "builtin", "name": "retained"})
+        write_multi_sandbox_registry(registry_path, {"10.200.0.1": sandbox})
         write_catalog_cache(
             cache_path,
             digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -449,7 +451,7 @@ class TestRegistryBuiltinSnapshot:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             write_catalog_cache(
                 cache_path,
                 digest=("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -461,22 +463,22 @@ class TestRegistryBuiltinSnapshot:
                 ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001),
             )
             registry.reset_cache_for_tests()
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             second_state = registry.load_registry_state(str(registry_path))
 
         assert first_context is not None
-        first_vm_info, first_compiled, _ = first_context
+        first_sandbox_info, first_compiled, _ = first_context
         assert first_compiled is not None
-        assert [firewall["name"] for firewall in first_vm_info["firewalls"]] == [
+        assert [firewall["name"] for firewall in first_sandbox_info["firewalls"]] == [
             "removed",
             "retained",
         ]
         assert second_context is not None
-        second_vm_info, second_compiled, _ = second_context
+        second_sandbox_info, second_compiled, _ = second_context
         assert second_compiled is not None
-        assert [firewall["name"] for firewall in second_vm_info["firewalls"]] == ["retained"]
+        assert [firewall["name"] for firewall in second_sandbox_info["firewalls"]] == ["retained"]
         assert not isinstance(second_state, registry.RegistryUnavailable)
-        assert second_state.invalid_vms == {}
+        assert second_state.invalid_sandboxes == {}
         assert second_state.omitted_builtin_firewalls == {"10.200.0.1": frozenset({"removed"})}
 
     def test_runner_catalog_cache_change_recompiles_core_when_metadata_is_unchanged(
@@ -484,11 +486,11 @@ class TestRegistryBuiltinSnapshot:
     ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
             {
                 "10.200.0.1": {
-                    **builtin_vm("run-mutable", "mutable"),
+                    **builtin_sandbox("run-mutable", "mutable"),
                     "networkPolicies": {
                         "mutable": {
                             "allow": ["read"],
@@ -519,7 +521,7 @@ class TestRegistryBuiltinSnapshot:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             write_catalog_cache(
                 cache_path,
                 digest=digest,
@@ -533,12 +535,12 @@ class TestRegistryBuiltinSnapshot:
                 },
             )
             os.utime(cache_path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert first_context is not None
         assert second_context is not None
-        _first_vm_info, first_compiled, first_policies = first_context
-        _second_vm_info, second_compiled, second_policies = second_context
+        _first_sandbox_info, first_compiled, first_policies = first_context
+        _second_sandbox_info, second_compiled, second_policies = second_context
         assert first_compiled is not None
         assert second_compiled is not None
         assert first_firewall_core(first_compiled) is not first_firewall_core(second_compiled)

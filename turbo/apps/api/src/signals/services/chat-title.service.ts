@@ -302,9 +302,9 @@ async function updateChatThreadTitle(
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -312,7 +312,7 @@ async function updateChatThreadTitle(
       userId,
       orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       title,
     });
     return true;
