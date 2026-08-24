@@ -15,6 +15,16 @@ import {
 
 import { clerk$ } from "../auth.ts";
 import { settle, withCleanup } from "../utils.ts";
+import {
+  discoverAuthV2ExistingAccounts,
+  discoverAuthV2ExternalCapabilities,
+  type AuthV2ExistingAccount,
+  type AuthV2ExternalCapabilities,
+  recoverAuthV2GoogleOAuth,
+  requestGoogleOneTapCredential,
+  startAuthV2GoogleOAuth,
+} from "./sign-in-external-strategies.ts";
+import type { AuthV2Navigation } from "./navigation.ts";
 
 export type AuthV2SignInFactor =
   | {
@@ -32,9 +42,19 @@ export type AuthV2SignInFactor =
       readonly id: string;
       readonly kind: "password-reset";
       readonly safeIdentifier: string;
+    }
+  | {
+      readonly id: "oauth:oauth_google";
+      readonly kind: "oauth";
+      readonly strategy: "oauth_google";
+    }
+  | {
+      readonly id: "passkey";
+      readonly kind: "passkey";
     };
 
 export type AuthV2SignInStep =
+  | "choose-session"
   | "identifier"
   | "choose-factor"
   | "password"
@@ -51,6 +71,7 @@ export type AuthV2SignInUnknownReason =
 export type AuthV2SignInState =
   | { readonly status: "loading" }
   | {
+      readonly accounts: readonly AuthV2ExistingAccount[];
       readonly factors: readonly AuthV2SignInFactor[];
       readonly selectedFactor: AuthV2SignInFactor | null;
       readonly status: "incomplete";
@@ -72,7 +93,12 @@ export type AuthV2SignInErrorField =
   | "password";
 
 export interface AuthV2SignInError {
-  readonly code: "clerk" | "password-mismatch" | "unknown";
+  readonly code:
+    | "clerk"
+    | "passkey-cancelled"
+    | "passkey-unavailable"
+    | "password-mismatch"
+    | "unknown";
   readonly field: AuthV2SignInErrorField;
   readonly message?: string;
 }
@@ -82,10 +108,13 @@ interface SignInResourceSnapshot {
   readonly createdSessionId: string | null;
   readonly factors: readonly AuthV2SignInFactor[];
   readonly transferable: boolean;
+  readonly unknownFactorStrategies: readonly string[];
 }
 
 export interface AuthV2SignInFlowDependencies {
-  readonly resolveRedirectUrl: () => string;
+  readonly isBaseRoute: boolean;
+  readonly isOAuthCallbackRoute: boolean;
+  readonly navigation: AuthV2Navigation;
 }
 
 export interface AuthV2SignInSignals {
@@ -101,6 +130,7 @@ export interface AuthV2SignInSignals {
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
   readonly restart$: Command<void, []>;
   readonly selectFactor$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly selectSession$: Command<Promise<void>, [string, AbortSignal]>;
   readonly setCode$: Command<void, [string]>;
   readonly setConfirmPassword$: Command<void, [string]>;
   readonly setIdentifier$: Command<void, [string]>;
@@ -108,15 +138,18 @@ export interface AuthV2SignInSignals {
   readonly setPassword$: Command<void, [string]>;
   readonly state$: Computed<AuthV2SignInState>;
   readonly submit$: Command<Promise<void>, [AbortSignal]>;
+  readonly useAnotherAccount$: Command<void, []>;
 }
 
-type CoalescedOperation = "resource";
+type CoalescedOperation = "one-tap" | "resource";
 type AuthV2SignInUnknownState = Extract<
   AuthV2SignInState,
   { status: "unknown" }
 >;
 
 interface SignInFlowAtoms {
+  readonly accounts$: State<readonly AuthV2ExistingAccount[]>;
+  readonly capabilities$: State<AuthV2ExternalCapabilities>;
   readonly code$: State<string>;
   readonly confirmPassword$: State<string>;
   readonly editIdentifier$: State<boolean>;
@@ -128,6 +161,7 @@ interface SignInFlowAtoms {
   readonly selectedFactor$: State<AuthV2SignInFactor | null>;
   readonly snapshot$: State<SignInResourceSnapshot | null>;
   readonly state$: Computed<AuthV2SignInState>;
+  readonly useAnotherAccount$: State<boolean>;
 }
 
 interface SignInFlowRuntime {
@@ -145,52 +179,95 @@ type ApplySignInResourceCommand = Command<
   [SignInResource, AbortSignal]
 >;
 
+function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
+  return {
+    googleOAuth: false,
+    googleOneTapClientId: null,
+    passkey: false,
+  };
+}
+
+interface FactorDiscovery {
+  readonly factors: readonly AuthV2SignInFactor[];
+  readonly unknownStrategies: readonly string[];
+}
+
 function discoverFactors(
   factors: readonly SignInFirstFactor[] | null,
-): readonly AuthV2SignInFactor[] {
+): FactorDiscovery {
   if (!factors) {
-    return [];
+    return { factors: [], unknownStrategies: [] };
   }
 
-  return factors.flatMap((factor): AuthV2SignInFactor[] => {
+  const discovered: AuthV2SignInFactor[] = [];
+  const unknownStrategies: string[] = [];
+  for (const factor of factors) {
     if (factor.strategy === "password") {
-      return [{ id: "password", kind: "password" }];
+      discovered.push({ id: "password", kind: "password" });
+    } else if (factor.strategy === "email_code") {
+      discovered.push({
+        emailAddressId: factor.emailAddressId,
+        id: `email-code:${factor.emailAddressId}`,
+        kind: "email-code",
+        safeIdentifier: factor.safeIdentifier,
+      });
+    } else if (factor.strategy === "reset_password_email_code") {
+      discovered.push({
+        emailAddressId: factor.emailAddressId,
+        id: `password-reset:${factor.emailAddressId}`,
+        kind: "password-reset",
+        safeIdentifier: factor.safeIdentifier,
+      });
+    } else if (factor.strategy === "oauth_google") {
+      discovered.push({
+        id: "oauth:oauth_google",
+        kind: "oauth",
+        strategy: "oauth_google",
+      });
+    } else if (factor.strategy === "passkey") {
+      discovered.push({ id: "passkey", kind: "passkey" });
+    } else {
+      unknownStrategies.push(factor.strategy);
     }
-    if (factor.strategy === "email_code") {
-      return [
-        {
-          emailAddressId: factor.emailAddressId,
-          id: `email-code:${factor.emailAddressId}`,
-          kind: "email-code",
-          safeIdentifier: factor.safeIdentifier,
-        },
-      ];
-    }
-    if (factor.strategy === "reset_password_email_code") {
-      return [
-        {
-          emailAddressId: factor.emailAddressId,
-          id: `password-reset:${factor.emailAddressId}`,
-          kind: "password-reset",
-          safeIdentifier: factor.safeIdentifier,
-        },
-      ];
-    }
-    return [];
-  });
+  }
+  return { factors: discovered, unknownStrategies };
+}
+
+function entryFactors(
+  capabilities: AuthV2ExternalCapabilities,
+): readonly AuthV2SignInFactor[] {
+  const factors: AuthV2SignInFactor[] = [];
+  if (capabilities.googleOAuth) {
+    factors.push({
+      id: "oauth:oauth_google",
+      kind: "oauth",
+      strategy: "oauth_google",
+    });
+  }
+  if (capabilities.passkey) {
+    factors.push({ id: "passkey", kind: "passkey" });
+  }
+  return factors;
 }
 
 function snapshotSignInResource(
   resource: SignInResource,
+  capabilities: AuthV2ExternalCapabilities,
 ): SignInResourceSnapshot {
   // The legacy resource is the stable low-level API used by this app. Clerk
   // exposes transferability on its future view, so keep that SDK detail
   // isolated in this adapter rather than leaking it into the flow or view.
+  const discovered = discoverFactors(resource.supportedFirstFactors);
+  const factors =
+    resource.status === "needs_identifier" || resource.status === null
+      ? entryFactors(capabilities)
+      : discovered.factors;
   return {
     clerkStatus: resource.status,
     createdSessionId: resource.createdSessionId,
-    factors: discoverFactors(resource.supportedFirstFactors),
+    factors,
     transferable: resource.__internal_future.isTransferable,
+    unknownFactorStrategies: discovered.unknownStrategies,
   };
 }
 
@@ -230,20 +307,33 @@ function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInError {
-  if (isRecord(error) && Array.isArray(error.errors)) {
-    const firstError = error.errors.find(isRecord);
-    if (firstError) {
-      const message =
-        stringProperty(firstError, "longMessage") ??
-        stringProperty(firstError, "message");
-      return {
-        code: "clerk",
-        field: clerkErrorField(firstError, fallbackField),
-        ...(message ? { message } : {}),
-      };
-    }
+  if (!isRecord(error)) {
+    return { code: "unknown", field: fallbackField };
   }
-  return { code: "unknown", field: fallbackField };
+  const apiError = Array.isArray(error.errors)
+    ? error.errors.find(isRecord)
+    : null;
+  const normalizedError = apiError ?? error;
+  const clerkCode = stringProperty(normalizedError, "code");
+  if (!apiError && !clerkCode) {
+    return { code: "unknown", field: fallbackField };
+  }
+  const message =
+    stringProperty(normalizedError, "longMessage") ??
+    stringProperty(normalizedError, "message");
+  const code =
+    clerkCode === "passkey_retrieval_cancelled" ||
+    clerkCode === "passkey_operation_aborted"
+      ? "passkey-cancelled"
+      : clerkCode === "passkey_not_supported" ||
+          clerkCode === "passkey_pa_not_supported"
+        ? "passkey-unavailable"
+        : "clerk";
+  return {
+    code,
+    field: clerkErrorField(normalizedError, fallbackField),
+    ...(message ? { message } : {}),
+  };
 }
 
 function selectedFactorForSnapshot(
@@ -270,10 +360,12 @@ export const clerkSignInResource$ = computed(async (get) => {
 
 function incompleteState(
   snapshot: SignInResourceSnapshot,
+  accounts: readonly AuthV2ExistingAccount[],
   step: AuthV2SignInStep,
   selectedFactor: AuthV2SignInFactor | null = null,
 ): AuthV2SignInState {
   return {
+    accounts,
     factors: snapshot.factors,
     selectedFactor,
     status: "incomplete",
@@ -281,14 +373,35 @@ function incompleteState(
   };
 }
 
+interface DeriveSignInFlowOptions {
+  readonly accounts: readonly AuthV2ExistingAccount[];
+  readonly editIdentifier: boolean;
+  readonly fatalState: AuthV2SignInUnknownState | null;
+  readonly selectedFactor: AuthV2SignInFactor | null;
+  readonly useAnotherAccount: boolean;
+}
+
+function stepForSelectedFactor(
+  factor: AuthV2SignInFactor | null,
+): AuthV2SignInStep {
+  if (factor?.kind === "password") {
+    return "password";
+  }
+  if (factor?.kind === "email-code") {
+    return "email-code";
+  }
+  if (factor?.kind === "password-reset") {
+    return "password-reset-code";
+  }
+  return "choose-factor";
+}
+
 function deriveSignInFlowState(
   snapshot: SignInResourceSnapshot | null,
-  selectedFactor: AuthV2SignInFactor | null,
-  editIdentifier: boolean,
-  fatalState: AuthV2SignInUnknownState | null,
+  options: DeriveSignInFlowOptions,
 ): AuthV2SignInState {
-  if (fatalState) {
-    return fatalState;
+  if (options.fatalState) {
+    return options.fatalState;
   }
   if (!snapshot) {
     return { status: "loading" };
@@ -297,33 +410,49 @@ function deriveSignInFlowState(
     return { status: "transfer" };
   }
   if (
-    editIdentifier ||
+    options.editIdentifier ||
     snapshot.clerkStatus === "needs_identifier" ||
     snapshot.clerkStatus === null
   ) {
-    return incompleteState(snapshot, "identifier");
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      !options.editIdentifier &&
+        !options.useAnotherAccount &&
+        options.accounts.length > 0
+        ? "choose-session"
+        : "identifier",
+    );
   }
   if (snapshot.clerkStatus === "needs_first_factor") {
-    if (snapshot.factors.length === 0) {
+    if (
+      snapshot.factors.length === 0 ||
+      snapshot.unknownFactorStrategies.length > 0
+    ) {
       return {
         clerkStatus: snapshot.clerkStatus,
         reason: "unsupported-factor",
         status: "unknown",
       };
     }
-    const currentFactor = selectedFactorForSnapshot(snapshot, selectedFactor);
-    const step =
-      currentFactor?.kind === "password"
-        ? "password"
-        : currentFactor?.kind === "email-code"
-          ? "email-code"
-          : currentFactor?.kind === "password-reset"
-            ? "password-reset-code"
-            : "choose-factor";
-    return incompleteState(snapshot, step, currentFactor);
+    const currentFactor = selectedFactorForSnapshot(
+      snapshot,
+      options.selectedFactor,
+    );
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      stepForSelectedFactor(currentFactor),
+      currentFactor,
+    );
   }
   if (snapshot.clerkStatus === "needs_new_password") {
-    return incompleteState(snapshot, "new-password", selectedFactor);
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "new-password",
+      options.selectedFactor,
+    );
   }
   if (snapshot.clerkStatus === "complete") {
     return snapshot.createdSessionId
@@ -342,6 +471,10 @@ function deriveSignInFlowState(
 }
 
 function createSignInFlowAtoms(): SignInFlowAtoms {
+  const accounts$ = state<readonly AuthV2ExistingAccount[]>([]);
+  const capabilities$ = state<AuthV2ExternalCapabilities>(
+    emptyExternalCapabilities(),
+  );
   const snapshot$ = state<SignInResourceSnapshot | null>(null);
   const selectedFactor$ = state<AuthV2SignInFactor | null>(null);
   const editIdentifier$ = state(false);
@@ -352,15 +485,19 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const code$ = state("");
   const newPassword$ = state("");
   const confirmPassword$ = state("");
+  const useAnotherAccount$ = state(false);
   const state$ = computed((get) => {
-    return deriveSignInFlowState(
-      get(snapshot$),
-      get(selectedFactor$),
-      get(editIdentifier$),
-      get(fatalState$),
-    );
+    return deriveSignInFlowState(get(snapshot$), {
+      accounts: get(accounts$),
+      editIdentifier: get(editIdentifier$),
+      fatalState: get(fatalState$),
+      selectedFactor: get(selectedFactor$),
+      useAnotherAccount: get(useAnotherAccount$),
+    });
   });
   return {
+    accounts$,
+    capabilities$,
     code$,
     confirmPassword$,
     editIdentifier$,
@@ -372,6 +509,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     selectedFactor$,
     snapshot$,
     state$,
+    useAnotherAccount$,
   };
 }
 
@@ -392,6 +530,7 @@ function createResourceCommands(
   runtime: SignInFlowRuntime,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
+  readonly activateSession$: Command<Promise<void>, [string, AbortSignal]>;
   readonly applyResource$: ApplySignInResourceCommand;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
 } {
@@ -432,7 +571,7 @@ function createResourceCommands(
         performActivation$,
         clerk,
         sessionId,
-        dependencies.resolveRedirectUrl(),
+        dependencies.navigation.completionRedirectUrl,
         signal,
       );
       const trackedActivation = withCleanup(activationPromise, () => {
@@ -448,11 +587,14 @@ function createResourceCommands(
 
   const applyResource$ = command(
     async (
-      { set },
+      { get, set },
       resource: SignInResource,
       signal: AbortSignal,
     ): Promise<void> => {
-      const snapshot = snapshotSignInResource(resource);
+      const snapshot = snapshotSignInResource(
+        resource,
+        get(atoms.capabilities$),
+      );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
       if (
@@ -478,13 +620,37 @@ function createResourceCommands(
 
   const initialize$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const resource = await get(clerkSignInResource$);
+      const clerk = await get(clerk$);
       signal.throwIfAborted();
-      await set(applyResource$, resource, signal);
+      if (!clerk.client) {
+        throw new Error(
+          "Loaded Clerk instance did not provide a client resource",
+        );
+      }
+      set(atoms.capabilities$, discoverAuthV2ExternalCapabilities(clerk));
+
+      if (dependencies.isOAuthCallbackRoute) {
+        const recovery = await settle(
+          recoverAuthV2GoogleOAuth(clerk, dependencies.navigation),
+          signal,
+        );
+        if (!recovery.ok) {
+          set(atoms.error$, normalizeClerkError(recovery.error, "general"));
+        } else if (recovery.value) {
+          // handleRedirectCallback activates completed OAuth sessions itself.
+          // Remember that ownership boundary so applyResource$ cannot activate
+          // the same session a second time after the callback reload.
+          set(runtime.activatedSessionId$, recovery.value);
+        }
+      }
+
+      signal.throwIfAborted();
+      set(atoms.accounts$, discoverAuthV2ExistingAccounts(clerk));
+      await set(applyResource$, clerk.client.signIn, signal);
       signal.throwIfAborted();
     },
   );
-  return { applyResource$, initialize$ };
+  return { activateSession$, applyResource$, initialize$ };
 }
 
 function createCoalescedOperation$<Key extends CoalescedOperation>(
@@ -601,7 +767,10 @@ function createSubmitOperation$(
 }
 
 function factorPreparation(
-  factor: Exclude<AuthV2SignInFactor, { kind: "password" }>,
+  factor: Extract<
+    AuthV2SignInFactor,
+    { kind: "email-code" | "password-reset" }
+  >,
 ): PrepareFirstFactorParams {
   return {
     emailAddressId: factor.emailAddressId,
@@ -614,6 +783,7 @@ function createFactorSelectionCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
+  dependencies: AuthV2SignInFlowDependencies,
 ): Command<Promise<void>, [string, AbortSignal]> {
   const prepareFactorOperation$ = command(
     async (
@@ -636,16 +806,43 @@ function createFactorSelectionCommand(
 
       set(atoms.error$, null);
       set(atoms.code$, "");
-      if (
-        factor.kind === "password" ||
-        get(runtime.preparedFactorId$) === factor.id
-      ) {
+      if (factor.kind === "password") {
         set(atoms.selectedFactor$, factor);
         return;
       }
 
       const resource = await get(clerkSignInResource$);
       signal.throwIfAborted();
+      if (factor.kind === "oauth") {
+        const redirect = await settle(
+          startAuthV2GoogleOAuth(resource, dependencies.navigation),
+          signal,
+        );
+        if (!redirect.ok) {
+          set(atoms.error$, normalizeClerkError(redirect.error, "general"));
+        }
+        return;
+      }
+      if (factor.kind === "passkey") {
+        const authentication = await settle(
+          resource.authenticateWithPasskey({ flow: "discoverable" }),
+          signal,
+        );
+        if (!authentication.ok) {
+          set(
+            atoms.error$,
+            normalizeClerkError(authentication.error, "general"),
+          );
+          return;
+        }
+        await set(applyResource$, authentication.value, signal);
+        signal.throwIfAborted();
+        return;
+      }
+      if (get(runtime.preparedFactorId$) === factor.id) {
+        set(atoms.selectedFactor$, factor);
+        return;
+      }
       const prepared = await settle(
         resource.prepareFirstFactor(factorPreparation(factor)),
         signal,
@@ -692,6 +889,161 @@ function createFactorSelectionCommand(
   );
 }
 
+function createSessionSelectionCommand(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+  activateSession$: Command<Promise<void>, [string, AbortSignal]>,
+): Command<Promise<void>, [string, AbortSignal]> {
+  const selectSessionOperation$ = command(
+    async (
+      { get, set },
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const account = get(atoms.accounts$).find((candidate) => {
+        return candidate.sessionId === sessionId;
+      });
+      if (!account) {
+        set(atoms.fatalState$, {
+          clerkStatus: get(atoms.snapshot$)?.clerkStatus ?? null,
+          reason: "missing-session",
+          status: "unknown",
+        });
+        return;
+      }
+
+      set(atoms.error$, null);
+      const activation = await settle(
+        set(activateSession$, account.sessionId, signal),
+        signal,
+      );
+      if (!activation.ok) {
+        set(atoms.error$, normalizeClerkError(activation.error, "general"));
+      }
+    },
+  );
+
+  return command(
+    async (
+      { get, set },
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(runtime.inFlight$).get("resource");
+      if (current) {
+        await current;
+        signal.throwIfAborted();
+        return;
+      }
+      const operation = set(selectSessionOperation$, sessionId, signal);
+      set(runtime.inFlight$, (operations) => {
+        return new Map(operations).set("resource", operation);
+      });
+      await withCleanup(operation, () => {
+        set(runtime.inFlight$, (operations) => {
+          if (operations.get("resource") !== operation) {
+            return operations;
+          }
+          const remaining = new Map(operations);
+          remaining.delete("resource");
+          return remaining;
+        });
+      });
+      signal.throwIfAborted();
+    },
+  );
+}
+
+function createGoogleOneTapCommand(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+  applyResource$: ApplySignInResourceCommand,
+  dependencies: AuthV2SignInFlowDependencies,
+): Command<Promise<void>, [AbortSignal]> {
+  const exchangeCredentialOperation$ = command(
+    async (
+      { get, set },
+      credential: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const resource = await get(clerkSignInResource$);
+      signal.throwIfAborted();
+      set(atoms.error$, null);
+      const exchange = await settle(
+        resource.create({
+          signUpIfMissing: false,
+          strategy: "google_one_tap",
+          token: credential,
+        }),
+        signal,
+      );
+      if (!exchange.ok) {
+        set(atoms.error$, normalizeClerkError(exchange.error, "general"));
+        return;
+      }
+      await set(applyResource$, exchange.value, signal);
+      signal.throwIfAborted();
+    },
+  );
+  const exchangeCredential$ = command(
+    async (
+      { get, set },
+      credential: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(runtime.inFlight$).get("resource");
+      if (current) {
+        await current;
+        signal.throwIfAborted();
+        return;
+      }
+      const operation = set(exchangeCredentialOperation$, credential, signal);
+      set(runtime.inFlight$, (operations) => {
+        return new Map(operations).set("resource", operation);
+      });
+      await withCleanup(operation, () => {
+        set(runtime.inFlight$, (operations) => {
+          if (operations.get("resource") !== operation) {
+            return operations;
+          }
+          const remaining = new Map(operations);
+          remaining.delete("resource");
+          return remaining;
+        });
+      });
+      signal.throwIfAborted();
+    },
+  );
+  const promptOperation$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (!dependencies.isBaseRoute) {
+        return;
+      }
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      const clientId =
+        discoverAuthV2ExternalCapabilities(clerk).googleOneTapClientId;
+      if (!clientId) {
+        return;
+      }
+      const credential = await settle(
+        requestGoogleOneTapCredential(clientId, signal),
+        signal,
+      );
+      if (!credential.ok) {
+        set(atoms.error$, normalizeClerkError(credential.error, "general"));
+        return;
+      }
+      if (!credential.value) {
+        return;
+      }
+      await set(exchangeCredential$, credential.value, signal);
+      signal.throwIfAborted();
+    },
+  );
+  return createCoalescedOperation$(runtime, "one-tap", promptOperation$);
+}
+
 function createResendCodeOperation$(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
@@ -699,7 +1051,10 @@ function createResendCodeOperation$(
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const factor = get(atoms.selectedFactor$);
-    if (!factor || factor.kind === "password") {
+    if (
+      !factor ||
+      (factor.kind !== "email-code" && factor.kind !== "password-reset")
+    ) {
       return;
     }
 
@@ -732,18 +1087,20 @@ function createFormCommands(
   });
   const backToIdentifier$ = command(({ set }) => {
     set(atoms.editIdentifier$, true);
+    set(atoms.useAnotherAccount$, true);
     set(atoms.selectedFactor$, null);
     set(atoms.code$, "");
     set(atoms.password$, "");
     set(atoms.error$, null);
   });
-  const restart$ = command(({ set }) => {
+  const restart$ = command(({ get, set }) => {
     set(runtime.preparedFactorId$, null);
     set(atoms.snapshot$, {
       clerkStatus: "needs_identifier",
       createdSessionId: null,
-      factors: [],
+      factors: entryFactors(get(atoms.capabilities$)),
       transferable: false,
+      unknownFactorStrategies: [],
     });
     set(atoms.selectedFactor$, null);
     set(atoms.editIdentifier$, false);
@@ -754,6 +1111,11 @@ function createFormCommands(
     set(atoms.code$, "");
     set(atoms.newPassword$, "");
     set(atoms.confirmPassword$, "");
+    set(atoms.useAnotherAccount$, true);
+  });
+  const useAnotherAccount$ = command(({ set }) => {
+    set(atoms.useAnotherAccount$, true);
+    set(atoms.error$, null);
   });
   const setIdentifier$ = command(({ set }, value: string) => {
     set(atoms.identifier$, value);
@@ -784,6 +1146,7 @@ function createFormCommands(
     setIdentifier$,
     setNewPassword$,
     setPassword$,
+    useAnotherAccount$,
   };
 }
 
@@ -792,11 +1155,8 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
-  const { applyResource$, initialize$ } = createResourceCommands(
-    atoms,
-    runtime,
-    dependencies,
-  );
+  const { activateSession$, applyResource$, initialize$ } =
+    createResourceCommands(atoms, runtime, dependencies);
   const submitOperation$ = createSubmitOperation$(
     atoms,
     runtime,
@@ -808,6 +1168,20 @@ export function createAuthV2SignInSignals(
     applyResource$,
   );
   const formCommands = createFormCommands(atoms, runtime);
+  const runGoogleOneTap$ = createGoogleOneTapCommand(
+    atoms,
+    runtime,
+    applyResource$,
+    dependencies,
+  );
+  const initializeWithExternalStrategies$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(initialize$, signal);
+      signal.throwIfAborted();
+      await set(runGoogleOneTap$, signal);
+      signal.throwIfAborted();
+    },
+  );
   return {
     ...formCommands,
     code$: computed((get) => {
@@ -822,7 +1196,7 @@ export function createAuthV2SignInSignals(
     identifier$: computed((get) => {
       return get(atoms.identifier$);
     }),
-    initialize$,
+    initialize$: initializeWithExternalStrategies$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
     }),
@@ -834,7 +1208,17 @@ export function createAuthV2SignInSignals(
       "resource",
       resendCodeOperation$,
     ),
-    selectFactor$: createFactorSelectionCommand(atoms, runtime, applyResource$),
+    selectFactor$: createFactorSelectionCommand(
+      atoms,
+      runtime,
+      applyResource$,
+      dependencies,
+    ),
+    selectSession$: createSessionSelectionCommand(
+      atoms,
+      runtime,
+      activateSession$,
+    ),
     state$: atoms.state$,
     submit$: createCoalescedOperation$(runtime, "resource", submitOperation$),
   };
