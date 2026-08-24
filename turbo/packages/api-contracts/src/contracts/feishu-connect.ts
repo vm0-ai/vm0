@@ -51,8 +51,8 @@ const feishuInstallationStatusSchema = z.object({
   id: z.string().uuid(),
   /**
    * #27750 rollout fallback for new app clients reading the previous API.
-   * Make required after that API is outside rollback and the ~2d old-client
-   * window has elapsed.
+   * Make required after that API is no longer serving or retained for
+   * rollback.
    */
   publicBrand: publicBrandSchema.optional(),
   isConnected: z.boolean(),
@@ -77,7 +77,7 @@ const feishuConnectStatusSchema = z.object({
   /**
    * Product brand of the Host that initiated this status flow. Optional only
    * for the #27750 new-app-to-previous-API rollout; make required after that
-   * API is outside rollback and the ~2d old-client window has elapsed.
+   * API is no longer serving or retained for rollback.
    */
   publicBrand: publicBrandSchema.optional(),
   isInstalled: z.boolean(),
