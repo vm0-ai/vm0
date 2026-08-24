@@ -713,6 +713,72 @@ class TestHandleFirewallRequest:
         assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
         assert "Credential=AKIDEXAMPLE/" in flow.request.headers["authorization"]
 
+    async def test_requestheaders_auth_application_failure_restores_probe_state(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        flow.request.headers["X-Client"] = "original"
+        flow.metadata["preexisting"] = "keep"
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(headers={"Authorization": "Bearer managed-token"})
+        token_meta["query"] = {"api_key": "managed-query"}
+        get_firewall_headers = AsyncMock(return_value=token_meta)
+        revalidation_count = 0
+        mutation_observed = False
+        set_query = flow.request._set_query
+
+        def revalidate() -> bool:
+            nonlocal revalidation_count
+            revalidation_count += 1
+            return True
+
+        def set_query_then_fail(query: list[tuple[str, str]]) -> None:
+            nonlocal mutation_observed
+            set_query(query)
+            assert flow.request.headers["Authorization"] == "Bearer managed-token"
+            assert flow.request.query["api_key"] == "managed-query"
+            assert flow.request.url != original_url
+            assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+            mutation_observed = True
+            raise RuntimeError("query setter failed after mutation")
+
+        with (
+            patch.object(auth, "get_firewall_headers", get_firewall_headers),
+            patch.object(flow.request, "_set_query", set_query_then_fail),
+            mitm_ctx(),
+        ):
+            result = await _run_firewall_auth_phase(
+                "requestheaders",
+                flow,
+                allow,
+                vm_info,
+                revalidate=revalidate,
+            )
+
+        get_firewall_headers.assert_awaited_once()
+        assert revalidation_count == 1
+        assert mutation_observed is True
+        assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+        assert flow.metadata == original_metadata
+        assert flow.request.url == original_url
+        assert flow.request.headers.fields == original_headers
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
+
     @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_unexpected_resolved_auth_base_fails_closed_in_both_phases(
         self,
