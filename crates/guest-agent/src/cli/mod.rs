@@ -1702,9 +1702,8 @@ async fn execute_cli_inner(
         }
     };
 
-    // `tokio::fs::File` may still own an in-flight blocking write after
-    // `write_all` returns. Wait for it before callers observe the completed
-    // execution and read the run log.
+    // Publish buffered transcript bytes and finish any in-flight file write
+    // before callers observe the completed execution and read the run log.
     agent_log.flush().await;
 
     active_input_controller.close_terminal();
