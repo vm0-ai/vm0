@@ -86,9 +86,11 @@ impl GuestRuntime {
 }
 
 /// Resolve Stage 1 compatibility between an existing runner or sandbox and a
-/// new guest reader. #28914 owns the later writer-cutover and reader-removal
-/// issues; remove the legacy branch only after the reader floor, sandbox drain,
-/// rollback window, and legacy-read-zero gates are complete.
+/// new guest reader. Existing instances can expose the legacy writer for the
+/// two-hour guest runtime budget plus bounded finalization. #28914 owns the
+/// later writer-cutover and reader-removal issues; remove the legacy branch
+/// only after the reader floor, sandbox drain, rollback window, and
+/// legacy-read-zero gates are complete.
 fn process_control_endpoint_from_process_env() -> Result<ProcessControlEnvResolution, String> {
     let canonical = process_control_env_value(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)?;
     let legacy = process_control_env_value(process_control_ipc::BOOTSTRAP_ENV)?;
