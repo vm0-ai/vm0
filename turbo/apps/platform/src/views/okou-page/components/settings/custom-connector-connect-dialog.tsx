@@ -76,10 +76,12 @@ function declaredValuesFromForm(
 
 function CredentialFields({
   connector,
+  configuredFieldKeys,
   values,
   setField,
 }: {
   readonly connector: CustomConnectorResponse;
+  readonly configuredFieldKeys: readonly string[];
   readonly values: Readonly<Record<string, string>>;
   readonly setField: (args: {
     readonly key: string;
@@ -87,7 +89,7 @@ function CredentialFields({
   }) => void;
 }) {
   const { t } = useTranslation();
-  const configuredKeys = new Set(connector.configuredFieldKeys);
+  const configuredKeys = new Set(configuredFieldKeys);
   return connector.fields.map((field, index) => {
     const inputId = `cc-connect-field-${index}`;
     const statusId = `${inputId}-status`;
@@ -340,6 +342,7 @@ function CustomConnectorConnectForm({
       ) : (
         <CredentialFields
           connector={connector}
+          configuredFieldKeys={accountMode ? [] : connector.configuredFieldKeys}
           values={values}
           setField={setField}
         />
@@ -379,15 +382,18 @@ export function CustomConnectorConnectDialog({
       return value.key;
     }),
   );
-  const hasMissingRequiredValues = connector.missingRequiredFields.every(
-    (key) => {
-      return submittedKeys.has(key);
-    },
-  );
+  const requiredFieldKeys = accountMode
+    ? connector.fields.flatMap((field) => {
+        return field.required ? [field.key] : [];
+      })
+    : connector.missingRequiredFields;
+  const hasRequiredValues = requiredFieldKeys.every((key) => {
+    return submittedKeys.has(key);
+  });
   const canSubmit =
     !submitting &&
     (accountMode?.kind !== "add" || accountLabel.trim().length > 0) &&
-    (oauth || (values.length > 0 && hasMissingRequiredValues));
+    (oauth || (values.length > 0 && hasRequiredValues));
   const showSecretDescription =
     !oauth &&
     connector.fields.length === 1 &&
