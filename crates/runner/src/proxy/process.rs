@@ -934,46 +934,34 @@ PY
         assert!(source.contains(&format!("RUNNER_AUTH_ENV = \"{RUNNER_TOKEN_ENV}\"")));
     }
 
-    fn write_forking_listening_mitmdump(path: &Path) {
+    fn write_forking_ready_mitmdump(path: &Path) {
         std::fs::write(
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
-port=""
 ready_path=""
 usage_state_id=""
-prev=""
 for arg in "$@"; do
-  if [ "$prev" = "--listen-port" ]; then
-    port="$arg"
-  fi
   case "$arg" in
     vm0_addon_ready_path=*) ready_path="${arg#vm0_addon_ready_path=}" ;;
     vm0_usage_state_id=*) usage_state_id="${arg#vm0_usage_state_id=}" ;;
   esac
-  prev="$arg"
 done
-python3 - "$port" "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
+python3 - "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
 import os
 import signal
-import socket
 import sys
 from pathlib import Path
 
 for handled in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(handled, signal.SIG_IGN)
-Path(sys.argv[4]).write_text(str(os.getpid()), encoding="utf-8")
-ready_path = Path(sys.argv[2])
-sock = socket.socket()
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(("127.0.0.1", int(sys.argv[1])))
-sock.listen(1)
+Path(sys.argv[3]).write_text(str(os.getpid()), encoding="utf-8")
+ready_path = Path(sys.argv[1])
 ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(sys.argv[3], encoding="utf-8")
+ready_path.write_text(sys.argv[2], encoding="utf-8")
 while True:
-    conn, _ = sock.accept()
-    conn.close()
+    signal.pause()
 PY
 wait "$!"
 "#,
@@ -1824,10 +1812,13 @@ exit 42
         let home = HomePaths::with_root(dir.path().join("home"));
         crate::ca::ensure(&home).await.unwrap();
         let fake_mitmdump = dir.path().join("forking-mitmdump");
-        write_forking_listening_mitmdump(&fake_mitmdump);
+        write_forking_ready_mitmdump(&fake_mitmdump);
         let config = test_proxy_config(dir.path(), &home, fake_mitmdump.clone());
         let runtime_dir = config.runtime_dir.clone();
+        let readiness_listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let readiness_port = readiness_listener.local_addr().unwrap().port();
         let (mut proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+        proxy.port = readiness_port;
         proxy.start().await.unwrap();
 
         let descendant_path = fake_mitmdump.with_extension("descendant");
