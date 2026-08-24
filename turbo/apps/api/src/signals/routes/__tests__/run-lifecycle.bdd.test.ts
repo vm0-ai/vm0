@@ -6897,6 +6897,35 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    const promotionTimingEvents = [
+      "api_dispatch_queue_promotion_lock_wait",
+      "api_dispatch_queue_promotion_lock_held",
+    ].flatMap((actionType) => {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toStrictEqual([
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          dispatch_path: "direct",
+          span_kind: "nested",
+          activation_origin: "promotion",
+        }),
+      ]);
+      expect(Number(events[0]?.duration_ms)).toBeGreaterThanOrEqual(0);
+      return events;
+    });
+    expectApiDispatchTimingEventsNotToLeak(promotionTimingEvents, [
+      "queued run three",
+      agentId,
+    ]);
     const promotedStorageState = await readRunnerJobStorageState(
       context,
       third.runId,

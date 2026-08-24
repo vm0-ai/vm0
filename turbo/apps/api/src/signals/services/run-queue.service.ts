@@ -41,6 +41,7 @@ import {
   refreshPiApiFirstTurnDeadline,
   requirePiApiFirstTurnExecutionContext,
 } from "./pi-api-first-turn-config";
+import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const L = logger("RunQueue");
 
@@ -106,12 +107,19 @@ type PromotionResult =
   | PromotedQueuedCandidateTransactionResult
   | PromoteQueuedCandidateNonPromotedResult;
 
+interface PromoteQueuedCandidateArgs {
+  readonly orgId: string;
+  readonly row: QueueCandidate;
+  readonly payload: QueuedRunnerJobPayload | null;
+}
+
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
       readonly pendingActivation: PreparedPendingRunActivation;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
       readonly transactionReturnedAt: number;
+      readonly timing: ApiDispatchTimingCollector;
     }
   | PromoteQueuedCandidateNonPromotedResult;
 
@@ -249,135 +257,156 @@ async function loadDrainCandidates(
 
 async function promoteQueuedCandidate(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly row: QueueCandidate;
-    readonly payload: QueuedRunnerJobPayload | null;
-  },
+  args: PromoteQueuedCandidateArgs,
 ): Promise<PromoteQueuedCandidateResult> {
-  const result = await db.transaction(async (tx): Promise<PromotionResult> => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-    );
-
-    const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
-    if (concurrency.activeRunCount >= concurrency.limit) {
-      return { status: "full" };
-    }
-
-    const [lockedRun] = await tx
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, args.row.runId))
-      .for("update");
-    if (!lockedRun) {
-      await tx
-        .delete(agentRunQueue)
-        .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
-    }
-    if (lockedRun.status !== "queued") {
-      await tx
-        .delete(agentRunQueue)
-        .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
-    }
-    if (args.row.runStatus !== "queued") {
-      return { status: "lost" };
-    }
-
-    const [queueRow] = await tx
-      .select({ runId: agentRunQueue.runId })
-      .from(agentRunQueue)
-      .where(
-        and(
-          eq(agentRunQueue.runId, args.row.runId),
-          eq(agentRunQueue.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
-    if (!queueRow) {
-      return { status: "lost" };
-    }
-
-    if (args.payload === null) {
-      throw new Error(
-        `Queued run "${args.row.runId}" is missing its runner job payload`,
-      );
-    }
-    const payload = args.payload;
-    const runValues = {
-      status: "pending",
-      lastHeartbeatAt: nowDate(),
-      runnerGroup: payload.runnerGroup,
-    };
-    const [updated] = await tx
-      .update(agentRuns)
-      .set(runValues)
-      .where(
-        and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
-      )
-      .returning({ id: agentRuns.id });
-    if (!updated) {
-      return { status: "lost" };
-    }
-
-    await tx
-      .delete(agentRunQueue)
-      .where(eq(agentRunQueue.runId, args.row.runId));
-
-    const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
-      runId: args.row.runId,
-      userId: args.row.userId,
-    });
-
-    const runnerJob = await insertPromotedRunnerJob(tx, {
-      orgId: args.orgId,
-      runId: args.row.runId,
-      queuedAt: args.row.createdAt,
-      payload,
-    });
-    return {
-      status: "promoted",
-      queueMarkerNotification,
-      pendingActivation: {
-        apiStartTime: runnerJob.apiStartedAt,
-        chatThreadId: args.row.chatThreadId ?? undefined,
-        runnerNotification: {
-          runId: args.row.runId,
-          runnerGroup: payload.runnerGroup,
-          profile: runnerJob.profile,
-          reuseKey: payload.reuseKey,
-          cliAgentSessionId: payload.cliAgentSessionId,
-          historyGenerationRunId: payload.historyGenerationRunId,
-          createdAt: runnerJob.createdAt,
-        },
-        ...(runnerJob.executionContext.piLaunchConfig &&
-        args.row.prompt !== null
-          ? {
-              piApiFirstTurn: {
-                runId: args.row.runId,
-                runnerGroup: payload.runnerGroup,
-                userId: args.row.userId,
-                orgId: args.orgId,
-                prompt: args.row.prompt,
-                appendSystemPrompt: args.row.appendSystemPrompt,
-                executionContext: requirePiApiFirstTurnExecutionContext(
-                  runnerJob.executionContext,
-                ),
-              },
-            }
-          : {}),
+  // Promotion can happen after the original create-run collector was flushed.
+  // Buffer its lock timings locally and carry them past the durable boundary.
+  const timing = new ApiDispatchTimingCollector();
+  const committed = await db.transaction(async (tx) => {
+    await timing.measure(
+      "api_dispatch_queue_promotion_lock_wait",
+      "nested",
+      async () => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+        );
       },
+    );
+    const admissionLockHeldStartedAt = now();
+    return {
+      result: await promoteQueuedCandidateUnderLock(tx, args),
+      admissionLockHeldStartedAt,
     };
   });
   const transactionReturnedAt = now();
+  timing.recordElapsed(
+    "api_dispatch_queue_promotion_lock_held",
+    "nested",
+    committed.admissionLockHeldStartedAt,
+    transactionReturnedAt,
+  );
+  const result = committed.result;
   if (result.status !== "promoted") {
     return result;
   }
   return {
     ...result,
     transactionReturnedAt,
+    timing,
+  };
+}
+
+async function promoteQueuedCandidateUnderLock(
+  tx: DbTransaction,
+  args: PromoteQueuedCandidateArgs,
+): Promise<PromotionResult> {
+  // The caller owns the organization advisory lock for this complete boundary.
+  const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
+  if (concurrency.activeRunCount >= concurrency.limit) {
+    return { status: "full" };
+  }
+
+  const [lockedRun] = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, args.row.runId))
+    .for("update");
+  if (!lockedRun) {
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+    return { status: "removed-stale" };
+  }
+  if (lockedRun.status !== "queued") {
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+    return { status: "removed-stale" };
+  }
+  if (args.row.runStatus !== "queued") {
+    return { status: "lost" };
+  }
+
+  const [queueRow] = await tx
+    .select({ runId: agentRunQueue.runId })
+    .from(agentRunQueue)
+    .where(
+      and(
+        eq(agentRunQueue.runId, args.row.runId),
+        eq(agentRunQueue.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (!queueRow) {
+    return { status: "lost" };
+  }
+
+  if (args.payload === null) {
+    throw new Error(
+      `Queued run "${args.row.runId}" is missing its runner job payload`,
+    );
+  }
+  const payload = args.payload;
+  const runValues = {
+    status: "pending",
+    lastHeartbeatAt: nowDate(),
+    runnerGroup: payload.runnerGroup,
+  };
+  const [updated] = await tx
+    .update(agentRuns)
+    .set(runValues)
+    .where(
+      and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
+    )
+    .returning({ id: agentRuns.id });
+  if (!updated) {
+    return { status: "lost" };
+  }
+
+  await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.row.runId));
+
+  const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
+    runId: args.row.runId,
+    userId: args.row.userId,
+  });
+
+  const runnerJob = await insertPromotedRunnerJob(tx, {
+    orgId: args.orgId,
+    runId: args.row.runId,
+    queuedAt: args.row.createdAt,
+    payload,
+  });
+  return {
+    status: "promoted",
+    queueMarkerNotification,
+    pendingActivation: {
+      apiStartTime: runnerJob.apiStartedAt,
+      chatThreadId: args.row.chatThreadId ?? undefined,
+      runnerNotification: {
+        runId: args.row.runId,
+        runnerGroup: payload.runnerGroup,
+        profile: runnerJob.profile,
+        reuseKey: payload.reuseKey,
+        cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
+        createdAt: runnerJob.createdAt,
+      },
+      ...(runnerJob.executionContext.piLaunchConfig && args.row.prompt !== null
+        ? {
+            piApiFirstTurn: {
+              runId: args.row.runId,
+              runnerGroup: payload.runnerGroup,
+              userId: args.row.userId,
+              orgId: args.orgId,
+              prompt: args.row.prompt,
+              appendSystemPrompt: args.row.appendSystemPrompt,
+              executionContext: requirePiApiFirstTurnExecutionContext(
+                runnerJob.executionContext,
+              ),
+            },
+          }
+        : {}),
+    },
   };
 }
 
@@ -395,11 +424,7 @@ async function publishPromotedQueueSideEffects(args: {
 
 async function promoteQueuedCandidateWithSideEffects(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly row: QueueCandidate;
-    readonly payload: QueuedRunnerJobPayload | null;
-  },
+  args: PromoteQueuedCandidateArgs,
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
   if (result.status === "removed-stale") {
@@ -419,6 +444,15 @@ async function promoteQueuedCandidateWithSideEffects(
     queueMarkerNotification: result.queueMarkerNotification,
   });
   const promotionSideEffectsRegisteredAt = now();
+  const runnerNotification = result.pendingActivation.runnerNotification;
+  // Keep optional telemetry submission outside the existing side-effect metric.
+  result.timing.flush({
+    runId: runnerNotification.runId,
+    runnerGroup: runnerNotification.runnerGroup,
+    profile: runnerNotification.profile,
+    dispatchPath: "direct",
+    dimensions: { activation_origin: "promotion" },
+  });
   return {
     status: "drained",
     pendingActivation: {
