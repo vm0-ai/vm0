@@ -1,6 +1,6 @@
 {
-  "id": "7e88727e-99a0-4130-94f9-d6e21c6ae97c",
-  "prevId": "16a06867-9325-4c16-a9d2-711997a1aefe",
+  "id": "87e3c639-71c1-4dc9-a28b-8d6dc38bf2d9",
+  "prevId": "99e84620-8c40-4fc3-8be8-051ff0efaf3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5133,6 +5133,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
+        },
         "event_payload": {
           "name": "event_payload",
           "type": "jsonb",
@@ -6056,6 +6063,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
         },
         "created_at": {
           "name": "created_at",
@@ -11511,6 +11525,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "app_id": {
+          "name": "app_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_slug": {
+          "name": "app_slug",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "encrypted_access_token": {
           "name": "encrypted_access_token",
           "type": "text",
@@ -11529,6 +11555,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'okou'"
         },
         "target_type": {
           "name": "target_type",

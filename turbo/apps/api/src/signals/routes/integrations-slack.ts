@@ -42,6 +42,7 @@ import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
+import { OFFICIAL_SLACK_APP_NAME } from "../../lib/slack-official-app";
 import type { RouteEntry } from "../route-entry";
 import { bestEffort, settle } from "../utils";
 
@@ -257,7 +258,7 @@ function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:warning: *${assistantName} is not installed for this workspace*\nAsk a workspace admin to install ${assistantName} from the platform.`,
+          text: `:warning: *${OFFICIAL_SLACK_APP_NAME} is not installed for this workspace*\nAsk a workspace admin to install ${OFFICIAL_SLACK_APP_NAME} from the platform.`,
         },
       },
       {
@@ -300,6 +301,7 @@ const uninstallSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -339,7 +341,7 @@ const uninstallSlackIntegration$ = command(
           }),
         ),
       );
-      const view = buildUninstalledAppHomeView(installation.publicBrand);
+      const view = buildUninstalledAppHomeView(args.publicBrand);
       await Promise.allSettled(
         connections.map((connection) => {
           return client.publishAppHome(connection.slackUserId, view);
@@ -396,6 +398,7 @@ const disconnectSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -460,7 +463,7 @@ const disconnectSlackIntegration$ = command(
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
           slackUserId: connection.slackUserId,
-          publicBrand: installation.publicBrand,
+          publicBrand: args.publicBrand,
         }),
       ),
     );
@@ -476,6 +479,7 @@ const disconnectSlackIntegration$ = command(
 const deleteSlackIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const query = get(deleteSlackIntegrationQuery$);
     const db = set(writeDb$);
 
@@ -486,14 +490,14 @@ const deleteSlackIntegration$ = command(
 
       return await set(
         uninstallSlackIntegration$,
-        { db, orgId: auth.orgId, userId: auth.userId },
+        { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
         signal,
       );
     }
 
     return await set(
       disconnectSlackIntegration$,
-      { db, orgId: auth.orgId, userId: auth.userId },
+      { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
       signal,
     );
   },
