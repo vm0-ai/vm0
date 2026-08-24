@@ -85,9 +85,11 @@ const CLERK_CSS = `
    fields that Clerk renders without a wrapper div. The :not([class*="ShowPassword"])
    excludes the eye-toggle button/icon, whose class name also contains
    "formFieldInput" (cl-formFieldInputShowPasswordButton) - applying input height,
-   border, and transition to it causes the icon to flicker/jump on click. */
-.cl-formFieldInput,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
+   border, and transition to it causes the icon to flicker/jump on click. The
+   [type="checkbox"] exclusion preserves Clerk's native checkbox dimensions and
+   checked surface. */
+.cl-formFieldInput:not([type="checkbox"]),
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):not(:has([class*="formFieldInput"])),
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
@@ -105,8 +107,8 @@ const CLERK_CSS = `
 /* Dark mode: --border (gray-200 = #2F2F32) and --input (gray-200) are nearly
    identical to the card background (gray-100 = #252527) - borders are invisible.
    Use --gray-400 (#434550, labelled "stronger border" in the design system). */
-[data-theme="dark"] .cl-formFieldInput,
-[data-theme="dark"] .cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
+[data-theme="dark"] .cl-formFieldInput:not([type="checkbox"]),
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):not(:has([class*="formFieldInput"])),
 [data-theme="dark"] .cl-card input[type="text"],
 [data-theme="dark"] .cl-card input[type="email"],
 [data-theme="dark"] .cl-card input[type="password"] {
@@ -126,11 +128,11 @@ const CLERK_CSS = `
 /* Input focus state. Exclude ShowPassword button - its class matches
    [class*="formFieldInput"] but focusing it on click would draw a primary-color
    border that transitions in/out, producing the flicker reported in #10462. */
-.cl-formFieldInput:focus,
-.cl-formFieldInput input:not([data-input-otp]):focus,
-.cl-card input:not([data-input-otp]):focus,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):focus,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]) input:not([data-input-otp]):focus {
+.cl-formFieldInput:not([type="checkbox"]):focus,
+.cl-formFieldInput input:not([data-input-otp]):not([type="checkbox"]):focus,
+.cl-card input:not([data-input-otp]):not([type="checkbox"]):focus,
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):focus,
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]) input:not([data-input-otp]):not([type="checkbox"]):focus {
   border: 1px solid hsl(var(--primary)) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
   outline: none !important;
