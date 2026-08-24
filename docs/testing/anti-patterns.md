@@ -149,7 +149,7 @@ Here's the mock hierarchy:
 | ------------------ | -------------------------------------- | --------- |
 | Third-party SaaS   | `@clerk/backend`, `@aws-sdk/client-s3` | Yes       |
 | Node.js built-ins  | `child_process`                        | Sometimes |
-| Database           | `globalThis.services.db`               | Never     |
+| Database           | `db$` and `writeDb$`                   | Never     |
 | Internal services  | `../../lib/*`                          | Never     |
 | Internal utilities | `../../utils/*`                        | Never     |
 
@@ -376,15 +376,17 @@ When an API route wraps a service function, test through the route — not the s
 
 ```typescript
 // ❌ Bad — testing service function directly
-import { upsertOrgModelProvider } from "../../../lib/zero/model-provider/org-model-provider";
+import { createStore } from "ccstate";
+
+import { upsertOrgModelProvider$ } from "../../services/model-provider.service";
 
 it("should create a provider", async () => {
-  const result = await upsertOrgModelProvider(
-    orgId,
-    "anthropic-api-key",
-    "sk-test",
+  const result = await createStore().set(
+    upsertOrgModelProvider$,
+    { orgId, type: "anthropic-api-key", secret: "sk-test" },
+    signal,
   );
-  expect(result.type).toBe("anthropic-api-key");
+  expect(result.provider.type).toBe("anthropic-api-key");
 });
 ```
 
@@ -392,10 +394,14 @@ it("should create a provider", async () => {
 // ✅ Good — testing through the API endpoint
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { modelProvidersRoutes } from "../model-providers";
 
 const context = testContext();
-const client = setupApp({ context })(modelProvidersMainContract);
+const client = setupApp({ context, routes: modelProvidersRoutes })(
+  modelProvidersMainContract,
+);
 
 it("should create a provider", async () => {
   context.mocks.clerk.session(userId, orgId);
@@ -426,7 +432,7 @@ When reviewing tests, watch for these patterns:
 **Mocking Issues**:
 
 - [ ] Mocking internal services (`../../lib/*`)
-- [ ] Mocking `globalThis.services.db`
+- [ ] Mocking the database signals `db$` and `writeDb$`
 - [ ] Direct fetch mocking (use MSW instead)
 - [ ] Filesystem mocking (use temp directories)
 - [ ] Partial mocks with `vi.importActual()`

@@ -29,9 +29,14 @@ src/commands/
 
 ## Authentication and routing
 
-Product CLI requests prefer `OKOU_TOKEN` and retain `ZERO_TOKEN` as a
-protocol fallback. Tests should set the canonical token explicitly together
-with the API URL unless they are covering that fallback:
+Product CLI requests read `OKOU_TOKEN` and nothing else. `getToken()` in
+`src/lib/api/config.ts` delegates to `getOkouToken()` in `src/lib/okou-env.ts`,
+which reads only `OKOU_TOKEN`. The retired `ZERO_TOKEN` and `VM0_TOKEN` names
+are not honored, and there is no fallback to them when `OKOU_TOKEN` is unset or
+empty. Routing is the one place a legacy name survives: `getApiUrl()` prefers
+`OKOU_API_BACKEND_URL` and falls back to `VM0_API_BACKEND_URL`.
+
+Set the canonical token explicitly together with the API URL:
 
 ```typescript
 beforeEach(() => {
@@ -45,9 +50,38 @@ afterEach(() => {
 ```
 
 Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
-Tests for missing authentication should leave both token names unset and assert
-the resulting guidance. Keep focused protocol coverage that sets only
-`ZERO_TOKEN` and proves the fallback still reaches the canonical Okou path.
+Tests for missing authentication should leave every token name unset and assert
+the resulting guidance.
+
+Do not write a test that asserts a legacy token name still reaches the Okou
+path. No such fallback exists, so the test fails. Cover the retirement with
+negative assertions instead. `src/lib/api/__tests__/config.test.ts` holds the
+pattern to follow:
+
+```typescript
+it("ignores ZERO_TOKEN when OKOU_TOKEN is present", async () => {
+  vi.stubEnv("OKOU_TOKEN", "okou-token-value");
+  vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+
+  await expect(getToken()).resolves.toBe("okou-token-value");
+  await expect(getActiveToken()).resolves.toBe("okou-token-value");
+});
+
+it("does not fall back to ZERO_TOKEN when OKOU_TOKEN is empty", async () => {
+  vi.stubEnv("OKOU_TOKEN", "");
+  vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+
+  await expect(getToken()).resolves.toBeUndefined();
+  await expect(getActiveToken()).resolves.toBeUndefined();
+});
+
+it("does not fall back to VM0_TOKEN", async () => {
+  vi.stubEnv("VM0_TOKEN", "legacy-token-value");
+
+  await expect(getToken()).resolves.toBeUndefined();
+  await expect(getActiveToken()).resolves.toBeUndefined();
+});
+```
 
 ## Command integration pattern
 
