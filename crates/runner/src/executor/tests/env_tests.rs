@@ -1318,13 +1318,22 @@ fn non_pi_execution_contexts_do_not_require_pi_resources() {
 }
 
 #[test]
-fn build_run_payload_for_run_preserves_pi_resources() {
+fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     let mut ctx = pi_context_for_test();
     ctx.pi_launch_config.as_mut().unwrap()["futureLaunchField"] = json!("launch-root");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
-    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let sandbox_id = SandboxId::new_v4().to_string();
+    let payload = validate_execution_context_before_sandbox(
+        &ctx,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+    .unwrap()
+    .into_run_payload(&ctx)
+    .unwrap();
 
     assert_eq!(
         payload.pi_session_id,
