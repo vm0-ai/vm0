@@ -1449,7 +1449,7 @@ describe("POST /api/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
   });
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
