@@ -4,7 +4,7 @@ use tokio::process::Command;
 use tracing::warn;
 
 use crate::bounded_command::{
-    BoundedCommandError, BoundedCommandOutcome, CommandOutputCapture, run_output_bounded,
+    BoundedCommandError, BoundedCommandOutcome, CommandOutputPolicy, run_output_bounded,
 };
 
 const HOST_OOM_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -29,7 +29,7 @@ async fn check_host_oom_command(pid: u32, command: Command, timeout: Duration) -
     match run_output_bounded(
         command,
         "dmesg",
-        CommandOutputCapture::StdoutAndStderr,
+        CommandOutputPolicy::semantic_stdout(),
         timeout,
     )
     .await
@@ -51,6 +51,10 @@ async fn check_host_oom_command(pid: u32, command: Command, timeout: Duration) -
         }
         Err(BoundedCommandError::Lifecycle(error)) => {
             warn!(pid, error = %error, "failed to run dmesg for OOM check");
+            false
+        }
+        Err(BoundedCommandError::OutputTooLarge { stream, limit }) => {
+            warn!(pid, stream, limit, "failed to run dmesg for OOM check");
             false
         }
     }
