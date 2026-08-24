@@ -347,7 +347,11 @@ def test_fetch_source_rejects_cross_origin_redirect_without_requesting_target(mo
             return None
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+
+    def serve_forever() -> None:
+        server.serve_forever(poll_interval=0.01)
+
+    thread = threading.Thread(target=serve_forever, daemon=True)
     thread.start()
     try:
         monkeypatch.setattr(
