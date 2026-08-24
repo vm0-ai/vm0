@@ -7,14 +7,32 @@ import {
 } from "../views/auth-v2/auth-v2-page.tsx";
 import { hideAppSkeleton$ } from "./app-skeleton.ts";
 import { resolveAuthBrandContext } from "./auth.ts";
-import { authV2SignInSignals$ } from "./auth-v2/sign-in-flow.ts";
+import {
+  createAuthV2SignInSignals,
+  type AuthV2SignInSignals,
+} from "./auth-v2/sign-in-flow.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 
+// Redirect, brand, and attribution policy intentionally live outside the
+// flow. The parallel redirect track can replace this resolver without changing
+// Clerk operations or activation ownership.
+function resolveAuthV2SignInRedirectUrl(): string {
+  return "/";
+}
+
 function setupAuthV2Page(mode: AuthV2PageMode) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
+  return command(async ({ set }, signal: AbortSignal) => {
     const authBrand = resolveAuthBrandContext();
-    set(updatePage$, createElement(AuthV2Page, { mode }));
+    let signInSignals: AuthV2SignInSignals | null = null;
+    if (mode === "sign-in") {
+      signInSignals = createAuthV2SignInSignals({
+        resolveRedirectUrl: resolveAuthV2SignInRedirectUrl,
+      });
+      set(updatePage$, createElement(AuthV2Page, { mode, signInSignals }));
+    } else {
+      set(updatePage$, createElement(AuthV2Page, { mode }));
+    }
     set(
       updateDocumentTitle$,
       mode === "sign-in"
@@ -28,8 +46,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     );
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
-    if (mode === "sign-in") {
-      const signInSignals = get(authV2SignInSignals$);
+    if (signInSignals) {
       await set(signInSignals.initialize$, signal);
     }
   });

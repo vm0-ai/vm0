@@ -1,5 +1,6 @@
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import type { AuthV2SignInSignals } from "../../signals/auth-v2/sign-in-flow.ts";
 import { resolveAuthBrandContext } from "../../signals/auth.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { AuthShell } from "../auth/auth-shell.tsx";
@@ -9,14 +10,16 @@ import { AuthV2SignInCard } from "./sign-in/sign-in-card.tsx";
 
 export type AuthV2PageMode = "sign-in" | "sign-up";
 
-interface AuthV2PageProps {
-  mode: AuthV2PageMode;
-}
+type AuthV2PageProps =
+  | {
+      readonly mode: "sign-in";
+      readonly signInSignals: AuthV2SignInSignals;
+    }
+  | { readonly mode: "sign-up" };
 
-export function AuthV2Page({ mode }: AuthV2PageProps) {
+export function AuthV2Page(props: AuthV2PageProps) {
   const { t } = useTranslation();
   const authBrand = resolveAuthBrandContext();
-  const signIn = mode === "sign-in";
   const title = t(
     ($) => {
       return $.auth.v2.signUp.title;
@@ -32,10 +35,14 @@ export function AuthV2Page({ mode }: AuthV2PageProps) {
 
   return (
     <AuthShell authBrand={authBrand} variant="v2">
-      {signIn ? (
-        <AuthV2SignInCard />
+      {props.mode === "sign-in" ? (
+        <AuthV2SignInCard signals={props.signInSignals} />
       ) : (
-        <AuthV2Shell description={description} focusKey={mode} title={title}>
+        <AuthV2Shell
+          description={description}
+          focusKey={props.mode}
+          title={title}
+        >
           <Button
             asChild
             className="h-9 w-full bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed"

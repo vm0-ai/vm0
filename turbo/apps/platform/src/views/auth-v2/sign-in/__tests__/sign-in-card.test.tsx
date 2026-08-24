@@ -314,6 +314,31 @@ describe("auth v2 sign-in flow", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("releases credential drafts when the sign-in route is left", async () => {
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [passwordFactor()]);
+
+    fireEvent.click(
+      await waitForRoleElement("button", "Sign in with your password"),
+    );
+    const passwordInput = await screen.findByLabelText("Password");
+    fireEvent.change(passwordInput, { target: { value: "route-secret" } });
+
+    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    await expect(
+      screen.findByTestId("clerk-sign-in"),
+    ).resolves.toBeInTheDocument();
+
+    act(() => {
+      window.history.back();
+    });
+    fireEvent.click(
+      await waitForRoleElement("button", "Sign in with your password"),
+    );
+
+    await expect(screen.findByLabelText("Password")).resolves.toHaveValue("");
+  });
+
   it("runs the password-reset code and new-password sequence", async () => {
     const factors = [passwordFactor(), passwordResetFactor()];
     mockedClerk.signInPrepareFirstFactor.mockResolvedValue(

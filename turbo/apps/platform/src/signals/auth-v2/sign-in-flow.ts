@@ -839,16 +839,3 @@ export function createAuthV2SignInSignals(
     submit$: createCoalescedOperation$(runtime, "resource", submitOperation$),
   };
 }
-
-const authV2SignInSignals = createAuthV2SignInSignals({
-  // Redirect, brand, and attribution policy intentionally live outside the
-  // flow. The parallel redirect track can replace this resolver without
-  // changing Clerk operations or activation ownership.
-  resolveRedirectUrl: () => {
-    return "/";
-  },
-});
-
-export const authV2SignInSignals$ = computed(() => {
-  return authV2SignInSignals;
-});
