@@ -42,7 +42,6 @@ pub(super) enum Scenario {
     ThreadStartInvalidThreadId,
     UnexpectedThreadOutputItemStarted,
     UnexpectedTurnOutputItemStarted,
-    UnexpectedThreadTurnCompleted,
     SecondaryThreadNotifications,
 }
 
@@ -102,7 +101,6 @@ impl Scenario {
                     Ok(Self::UnexpectedThreadOutputItemStarted)
                 }
                 "unexpected-turn-output-item-started" => Ok(Self::UnexpectedTurnOutputItemStarted),
-                "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 "secondary-thread-notifications" => Ok(Self::SecondaryThreadNotifications),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
