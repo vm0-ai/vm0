@@ -34,6 +34,7 @@ describe("zero Teams connect page", () => {
         tenantId: "tenant-123",
         teamsUserId: "29:user-123",
         teamName: "Core Team",
+        botName: "Tenant Helper",
       }),
     );
 
@@ -45,6 +46,7 @@ describe("zero Teams connect page", () => {
     expect(
       screen.getByText(/You are connected to Core Team/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/@Tenant Helper/)).toBeInTheDocument();
     expect(screen.getByText("Open Teams")).toBeInTheDocument();
     expect(screen.getByTestId("teams-connect-logo")).toBeInTheDocument();
     expect(screen.getByText("Back to settings")).toBeInTheDocument();
@@ -61,6 +63,7 @@ describe("zero Teams connect page", () => {
         tenantName: "Acme Tenant",
         teamId: "team-123",
         teamName: "Core Team",
+        botName: "Acme Assistant",
         defaultAgentName: null,
       });
     });
@@ -93,6 +96,7 @@ describe("zero Teams connect page", () => {
         teamsUserPrincipalName: "ada@example.com",
         teamId: "team-123",
         teamName: "Core Team",
+        botName: "Acme Assistant",
         conversationType: "personal",
       }),
     );
@@ -110,6 +114,7 @@ describe("zero Teams connect page", () => {
     expect(
       screen.getByText(/You are connected to Core Team/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/@Acme Assistant/)).toBeInTheDocument();
     expect(window.open).toHaveBeenCalledWith(TEAMS_CLIENT_URL, "_self");
   });
 });

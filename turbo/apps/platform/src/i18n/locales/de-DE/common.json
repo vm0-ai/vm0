@@ -2646,7 +2646,7 @@
         "invalidDescription": "Diese Seite soll über einen Microsoft Teams-Verbindungslink geöffnet werden.",
         "open": "Offene Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Sie sind mit {{team}} verbunden. Erwähnen Sie @Zero in Teams, um mit dem Chatten zu beginnen.",
+        "successDescription": "Sie sind mit {{team}} verbunden. Erwähnen Sie @{{botName}} in Teams, um mit dem Chatten zu beginnen.",
         "successTitle": "Verbunden mit Microsoft Teams"
       },
       "telegram": {

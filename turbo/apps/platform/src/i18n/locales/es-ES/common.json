@@ -2697,7 +2697,7 @@
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Microsoft Teams.",
         "open": "Abrir Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Tienes conexión con {{team}}. Menciona a @Zero en Teams para empezar a chatear.",
+        "successDescription": "Tienes conexión con {{team}}. Menciona a @{{botName}} en Teams para empezar a chatear.",
         "successTitle": "Conectado a Microsoft Teams"
       },
       "telegram": {

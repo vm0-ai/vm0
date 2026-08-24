@@ -398,6 +398,10 @@ export default [
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
+      // Preview job-ref aliases are process environment state, and both Stripe
+      // metadata entry points must share one value-free resolution matrix that
+      // cannot be observed completely through a single production API route.
+      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
@@ -526,6 +530,10 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
+      // Preview job-ref aliases are process environment state, and both Stripe
+      // metadata entry points must share one value-free resolution matrix that
+      // cannot be observed completely through a single production API route.
+      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.

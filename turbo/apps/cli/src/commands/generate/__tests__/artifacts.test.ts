@@ -191,6 +191,9 @@ describe("okou generate source-backed artifact commands", () => {
     expect(posterSkillIds).toContain("skill:article-magazine");
     expect(posterSkillIds).toContain("skill:algorithmic-art");
     expect(presentationSkillIds).toContain("skill:slides");
+    expect(presentationSkillIds).not.toContain(
+      "skill:presentation-reverse-template",
+    );
     expect(imageSkillIds).toContain("skill:algorithmic-art");
     expect(videoSkillIds).toContain("skill:video-hyperframes");
     expect(videoSkillIds).toContain("skill:8-bit-orbit-video-template");
