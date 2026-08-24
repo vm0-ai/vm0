@@ -1336,31 +1336,42 @@ test("model picker category switch keeps its measurement row hidden", async ({
   // hides that row: fading it printed the model name over the header for the
   // whole fade. The click and the read share one evaluate because a round trip
   // between them can outlast the fade and miss the row while it is lit.
-  const measurementRowOpacity = await imageCategory.evaluate(
-    async (segment) => {
-      if (!(segment instanceof HTMLElement)) {
-        throw new Error("Model picker category segment is not an HTML element");
-      }
-      segment.click();
-      // The fade starts once the swapped list has laid out, so let one frame
-      // carry the resize and read on the next.
-      await new Promise<void>((resolve) => {
+  const swap = await imageCategory.evaluate(async (segment) => {
+    if (!(segment instanceof HTMLElement)) {
+      throw new Error("Model picker category segment is not an HTML element");
+    }
+    segment.click();
+    // The fade starts once the swapped list has laid out, so let one frame
+    // carry the resize and read on the next.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve();
-          });
+          resolve();
         });
       });
-      const measurementRow = document.querySelector(
-        '[data-slot="select-list"] [data-slot="select-item"][aria-hidden="true"]',
-      );
-      if (measurementRow === null) {
-        throw new Error("Model picker has no measurement row");
-      }
-      return getComputedStyle(measurementRow).opacity;
-    },
-  );
-  expect(measurementRowOpacity).toBe("0");
+    });
+    const list = document.querySelector('[data-slot="select-list"]');
+    if (list === null) {
+      throw new Error("Model picker has no list");
+    }
+    const measurementRow = list.querySelector(
+      '[data-slot="select-item"][aria-hidden="true"]',
+    );
+    const modelRows = list.querySelector('[data-slot="select-group"]');
+    if (measurementRow === null || modelRows === null) {
+      throw new Error("Model picker list has no measurement row or model rows");
+    }
+    return {
+      measurementRowOpacity: getComputedStyle(measurementRow).opacity,
+      modelRowsOpacity: getComputedStyle(modelRows).opacity,
+    };
+  });
+  expect(swap.measurementRowOpacity).toBe("0");
+  // The rows the swap brings in are mid-fade at that same instant. Asserting
+  // that keeps the swap covered from both sides: the fade the picker still
+  // owes its rows, and proof that the sample landed inside the fade rather
+  // than after it, where a hidden row reads as transparent either way.
+  expect(Number(swap.modelRowsOpacity)).toBeLessThan(1);
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
