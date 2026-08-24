@@ -1,6 +1,9 @@
 import { command, computed, state } from "ccstate";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { ConnectorAccountConnection } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 
 import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
 import {
@@ -14,6 +17,20 @@ export type ConnectorAccountConnectMode =
       readonly kind: "reconnect";
       readonly account: ConnectorAccountConnection;
     };
+
+export function connectorAccountMutationFor(
+  mode: ConnectorAccountConnectMode | undefined,
+  accountLabel: string,
+): ConnectorAccountMutationIntent | undefined {
+  if (!mode) {
+    return undefined;
+  }
+  if (mode.kind === "reconnect") {
+    return { intent: "reconnect", connectionId: mode.account.id };
+  }
+  const displayName = accountLabel.trim();
+  return displayName ? { intent: "add", displayName } : { intent: "add" };
+}
 
 interface BuiltinAccountConnectDialog {
   readonly connector: PlatformConnectorCatalogStatusItem;

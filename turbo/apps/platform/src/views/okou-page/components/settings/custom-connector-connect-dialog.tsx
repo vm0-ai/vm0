@@ -35,6 +35,7 @@ import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import {
+  connectorAccountMutationFor as accountMutationFor,
   connectorAccountLabel$,
   setConnectorAccountLabel$,
   type ConnectorAccountConnectMode,
@@ -266,18 +267,6 @@ interface CustomConnectorConnectDialogProps {
   readonly onClose?: () => void;
   readonly onSuccess?: () => void | Promise<void>;
   readonly accountMode?: ConnectorAccountConnectMode;
-}
-
-function accountMutationFor(
-  accountMode: ConnectorAccountConnectMode | undefined,
-  accountLabel: string,
-): ConnectorAccountMutationIntent | undefined {
-  if (accountMode?.kind === "reconnect") {
-    return { intent: "reconnect", connectionId: accountMode.account.id };
-  }
-  return accountMode?.kind === "add"
-    ? { intent: "add", displayName: accountLabel.trim() }
-    : undefined;
 }
 
 function CustomConnectorConnectForm({
