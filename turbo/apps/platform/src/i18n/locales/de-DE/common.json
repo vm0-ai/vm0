@@ -1037,7 +1037,12 @@
       "signUp": "Registrieren"
     },
     "loading": "Authentifizierung wird geladen",
-    "toggleTheme": "Design wechseln"
+    "toggleTheme": "Design wechseln",
+    "v2": {
+      "continueToSignIn": "Weiter zur Anmeldung",
+      "continueToSignUp": "Weiter zur Registrierung",
+      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+    }
   },
   "authorization": {
     "browser": {
@@ -1578,6 +1583,9 @@
       "loadingFile": "{{filename}} wird geladen",
       "previewFile": "Vorschau von {{filename}}",
       "title": "Anhänge",
+      "unavailable": "{{filename}} ist nicht mehr verfügbar. Laden Sie die Datei erneut hoch, um sie zu senden.",
+      "unavailableCount_one": "{{count}} Anhang ist nicht mehr verfügbar. Laden Sie ihn erneut hoch, um ihn zu senden.",
+      "unavailableCount_other": "{{count}} Anhänge sind nicht mehr verfügbar. Laden Sie sie erneut hoch, um sie zu senden.",
       "uploadFailed": "Hochladen von {{filename}} fehlgeschlagen",
       "uploadFailedRetry": "Fehler beim Hochladen von {{filename}}. Versuchen Sie es erneut.",
       "uploadsFailed": "Einige Anhänge konnten nicht hochgeladen werden. Versuchen Sie es erneut."

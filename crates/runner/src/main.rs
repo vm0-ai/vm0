@@ -39,6 +39,7 @@ mod object_download_policy;
 mod org_name;
 mod parent_death;
 mod paths;
+mod pre_spawn_admission;
 mod prefetch;
 mod private_fs;
 mod process;
@@ -53,6 +54,7 @@ mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runner_process_identity;
+mod runner_token;
 mod runtime_overrides;
 mod state_file;
 mod status;
@@ -86,6 +88,34 @@ const RUNNER_FMT_MAX_LEVEL: LevelFilter = LevelFilter::INFO;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+impl Cli {
+    fn parse_with_runner_token_aliases() -> Self {
+        Self::try_parse_with_runner_token_aliases_from(std::env::args_os())
+            .unwrap_or_else(|error| error.exit())
+    }
+
+    fn try_parse_with_runner_token_aliases_from<I, T>(args: I) -> Result<Self, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        let cli = <Self as Parser>::try_parse_from(args)?;
+        if matches!(&cli.command, Command::Config(_) | Command::Start(_))
+            && runner_token::environment_aliases_conflict()
+        {
+            return Err(<Self as clap::CommandFactory>::command().error(
+                clap::error::ErrorKind::ArgumentConflict,
+                format!(
+                    "{} and {} cannot both be set",
+                    runner_token::CANONICAL_ENV,
+                    runner_token::LEGACY_ENV
+                ),
+            ));
+        }
+        Ok(cli)
+    }
 }
 
 #[derive(Subcommand)]
@@ -243,7 +273,7 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let cli = Cli::parse();
+    let cli = Cli::parse_with_runner_token_aliases();
 
     // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
     // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
@@ -325,9 +355,64 @@ mod tests {
     };
     use clap::CommandFactory;
 
-    const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "VM0_RUNNER_HELP_TOKEN_CHILD_SCENARIO";
+    const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "RUNNER_HELP_TOKEN_CHILD_SCENARIO";
     const HELP_TOKEN_CHILD_TEST: &str = "tests::runner_help_hides_token_environment_values_child";
-    const HELP_TOKEN_SENTINEL: &str = "sentinel-runner-token";
+    const TOKEN_ALIAS_CHILD_SCENARIO_ENV: &str = "RUNNER_TOKEN_ALIAS_CHILD_SCENARIO";
+    const TOKEN_ALIAS_CHILD_TEST: &str = "tests::runner_token_environment_aliases_child";
+    const CANONICAL_TOKEN_SENTINEL: &str = "canonical-sentinel-runner-token";
+    const LEGACY_TOKEN_SENTINEL: &str = "legacy-sentinel-runner-token";
+    const FLAG_TOKEN_SENTINEL: &str = "flag-sentinel-runner-token";
+
+    fn token_alias_child_env(case: &str) -> Vec<(&'static str, Option<&'static str>)> {
+        match case.strip_prefix("flag-").unwrap_or(case) {
+            "canonical" => vec![
+                (runner_token::CANONICAL_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+                (runner_token::LEGACY_ENV, None),
+            ],
+            "legacy" => vec![
+                (runner_token::CANONICAL_ENV, None),
+                (runner_token::LEGACY_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+            ],
+            "conflict" => vec![
+                (runner_token::CANONICAL_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+                (runner_token::LEGACY_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+            ],
+            "config-file" => vec![
+                (runner_token::CANONICAL_ENV, None),
+                (runner_token::LEGACY_ENV, None),
+            ],
+            unexpected => panic!("unexpected runner token alias case: {unexpected}"),
+        }
+    }
+
+    fn runner_token_cli_args(subcommand: &str, case: &str) -> Vec<&'static str> {
+        let mut args = match subcommand {
+            "config" => vec![
+                "runner",
+                "config",
+                "--profile",
+                "vm0/default",
+                "--rootfs-hash",
+                "rootfs-hash",
+                "--snapshot-hash",
+                "snapshot-hash",
+                "--name",
+                "runner-test",
+                "--group",
+                "vm0/test",
+                "--runner-dirname",
+                "runner-test",
+                "--api-url",
+                "https://api.example.test",
+            ],
+            "start" => vec!["runner", "start", "--config", "/tmp/runner.yaml"],
+            unexpected => panic!("unexpected runner token subcommand: {unexpected}"),
+        };
+        if case.starts_with("flag-") {
+            args.extend(["--token", FLAG_TOKEN_SENTINEL]);
+        }
+        args
+    }
 
     #[test]
     fn sanitize_name_passthrough() {
@@ -393,32 +478,43 @@ mod tests {
     #[tokio::test]
     async fn runner_help_hides_token_environment_values() {
         for subcommand in ["config", "start"] {
-            run_ignored_child_test(
-                HELP_TOKEN_CHILD_TEST,
-                (HELP_TOKEN_CHILD_SCENARIO_ENV, subcommand),
-                &[("VM0_RUNNER_TOKEN", Some(HELP_TOKEN_SENTINEL))],
-                Duration::from_secs(5),
-            )
-            .await;
+            for case in ["canonical", "legacy", "conflict"] {
+                let scenario = format!("{subcommand}:{case}");
+                let child_env = token_alias_child_env(case);
+                run_ignored_child_test(
+                    HELP_TOKEN_CHILD_TEST,
+                    (HELP_TOKEN_CHILD_SCENARIO_ENV, &scenario),
+                    &child_env,
+                    Duration::from_secs(5),
+                )
+                .await;
+            }
         }
     }
 
     #[test]
     #[ignore = "spawned by runner_help_hides_token_environment_values"]
     fn runner_help_hides_token_environment_values_child() {
-        let Ok(subcommand) = std::env::var(HELP_TOKEN_CHILD_SCENARIO_ENV) else {
+        let Ok(scenario) = std::env::var(HELP_TOKEN_CHILD_SCENARIO_ENV) else {
             return;
         };
-        if !ignored_child_test_env_guard_enabled((HELP_TOKEN_CHILD_SCENARIO_ENV, &subcommand)) {
+        if !ignored_child_test_env_guard_enabled((HELP_TOKEN_CHILD_SCENARIO_ENV, &scenario)) {
             return;
         }
-        let subcommand = match subcommand.as_str() {
+        let (subcommand, case) = scenario
+            .split_once(':')
+            .expect("runner help token scenario must contain subcommand and alias case");
+        let subcommand = match subcommand {
             "config" => "config",
             "start" => "start",
             unexpected => panic!("unexpected runner help token scenario: {unexpected}"),
         };
+        assert!(
+            matches!(case, "canonical" | "legacy" | "conflict"),
+            "unexpected runner help token alias case: {case}"
+        );
 
-        let error = Cli::try_parse_from(["runner", subcommand, "--help"])
+        let error = Cli::try_parse_with_runner_token_aliases_from(["runner", subcommand, "--help"])
             .err()
             .expect("runner subcommand help should exit through clap");
         assert_eq!(
@@ -428,13 +524,92 @@ mod tests {
         );
         let help = error.to_string();
         assert!(
-            help.contains("VM0_RUNNER_TOKEN"),
-            "{subcommand} help should identify the token environment variable"
+            help.contains(runner_token::CANONICAL_ENV),
+            "{subcommand} help should identify the canonical token environment variable"
         );
         assert!(
-            !help.contains(HELP_TOKEN_SENTINEL),
-            "{subcommand} help should hide the token environment value"
+            help.contains(runner_token::LEGACY_ENV),
+            "{subcommand} help should identify the legacy token environment variable"
         );
+        assert!(
+            !help.contains(CANONICAL_TOKEN_SENTINEL) && !help.contains(LEGACY_TOKEN_SENTINEL),
+            "{subcommand} help should hide both token environment values"
+        );
+    }
+
+    #[tokio::test]
+    async fn runner_config_and_start_resolve_token_environment_aliases() {
+        for subcommand in ["config", "start"] {
+            for case in [
+                "canonical",
+                "legacy",
+                "flag-canonical",
+                "flag-legacy",
+                "conflict",
+                "config-file",
+            ] {
+                if subcommand == "config" && case == "config-file" {
+                    continue;
+                }
+                let scenario = format!("{subcommand}:{case}");
+                let child_env = token_alias_child_env(case);
+                run_ignored_child_test(
+                    TOKEN_ALIAS_CHILD_TEST,
+                    (TOKEN_ALIAS_CHILD_SCENARIO_ENV, &scenario),
+                    &child_env,
+                    Duration::from_secs(5),
+                )
+                .await;
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "spawned by runner_config_and_start_resolve_token_environment_aliases"]
+    fn runner_token_environment_aliases_child() {
+        let Ok(scenario) = std::env::var(TOKEN_ALIAS_CHILD_SCENARIO_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((TOKEN_ALIAS_CHILD_SCENARIO_ENV, &scenario)) {
+            return;
+        }
+        let (subcommand, case) = scenario
+            .split_once(':')
+            .expect("runner token scenario must contain subcommand and alias case");
+        let parsed =
+            Cli::try_parse_with_runner_token_aliases_from(runner_token_cli_args(subcommand, case));
+
+        if case == "conflict" {
+            let error = parsed
+                .err()
+                .expect("both runner token environment aliases must conflict");
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+            let output = error.to_string();
+            assert!(output.contains(runner_token::CANONICAL_ENV));
+            assert!(output.contains(runner_token::LEGACY_ENV));
+            assert!(
+                !output.contains(CANONICAL_TOKEN_SENTINEL)
+                    && !output.contains(LEGACY_TOKEN_SENTINEL)
+                    && !output.contains(FLAG_TOKEN_SENTINEL),
+                "runner token alias conflict must not expose token values: {output}"
+            );
+            return;
+        }
+
+        let cli = parsed.unwrap_or_else(|error| panic!("parse runner {scenario}: {error}"));
+        let token = match &cli.command {
+            Command::Config(args) => Some(args.token_for_test()),
+            Command::Start(args) => args.token_for_test(),
+            _ => panic!("runner token scenario parsed an unexpected subcommand: {scenario}"),
+        };
+        let expected = match case {
+            "canonical" => Some(CANONICAL_TOKEN_SENTINEL),
+            "legacy" => Some(LEGACY_TOKEN_SENTINEL),
+            "flag-canonical" | "flag-legacy" => Some(FLAG_TOKEN_SENTINEL),
+            "config-file" => None,
+            unexpected => panic!("unexpected runner token scenario case: {unexpected}"),
+        };
+        assert_eq!(token, expected, "unexpected token source for {scenario}");
     }
 
     #[test]

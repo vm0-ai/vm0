@@ -1,7 +1,14 @@
 use std::collections::BTreeMap;
 
 use api_contracts::generated::types::{
-    runners::{runs::CodexRuntimeConfig, storage as runner_storage},
+    runners::{
+        runs::{
+            CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
+            PiLaunchConfigApiFirstTurnBaseSession, PiModelConfig, PiModelConfigApiKeyEnv,
+            PiModelConfigProvider,
+        },
+        storage as runner_storage,
+    },
     webhooks::agent::{
         checkpoints,
         storages::{FileEntryWithHash, commit, prepare},
@@ -94,6 +101,119 @@ fn generated_codex_runtime_config_omits_absent_options_and_accepts_legacy_null()
     .unwrap();
     assert_eq!(legacy.model_catalog, None);
     assert_eq!(serde_json::to_value(legacy).unwrap(), canonical);
+}
+
+#[test]
+fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
+    let session_id = "22222222-2222-4222-8222-222222222222";
+    let launch = PiLaunchConfig {
+        schema_version: 2,
+        api_first_turn: PiLaunchConfigApiFirstTurn {
+            schema_version: 1,
+            resource_snapshot_digest: "a".repeat(64),
+            manifest_url: "https://storage.example/manifest.json".to_string(),
+            session_url: "https://storage.example/session.jsonl".to_string(),
+            deadline_at: 2_000_000_000_000,
+            base_session: PiLaunchConfigApiFirstTurnBaseSession {
+                session_id: session_id.to_string(),
+                sha256: Some("b".repeat(64)),
+            },
+            sandbox_event_sequence_start: 1,
+        },
+    };
+    let model = PiModelConfig {
+        provider: PiModelConfigProvider::Deepseek,
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: PiModelConfigApiKeyEnv::OPENAIAPIKEY,
+        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
+    };
+
+    let launch_value = serde_json::to_value(&launch).unwrap();
+    assert_eq!(
+        launch_value,
+        json!({
+            "schemaVersion": 2,
+            "apiFirstTurn": {
+                "schemaVersion": 1,
+                "resourceSnapshotDigest": "a".repeat(64),
+                "manifestUrl": "https://storage.example/manifest.json",
+                "sessionUrl": "https://storage.example/session.jsonl",
+                "deadlineAt": 2_000_000_000_000_i64,
+                "baseSession": {
+                    "sessionId": session_id,
+                    "sha256": "b".repeat(64),
+                },
+                "sandboxEventSequenceStart": 1,
+            },
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<PiLaunchConfig>(launch_value).unwrap(),
+        launch
+    );
+
+    let model_value = serde_json::to_value(&model).unwrap();
+    assert_eq!(
+        model_value,
+        json!({
+            "provider": "deepseek",
+            "baseUrl": "https://api.deepseek.com/",
+            "model": "deepseek-v4-flash",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "credentialSecretName": "DEEPSEEK_API_KEY",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<PiModelConfig>(model_value).unwrap(),
+        model
+    );
+}
+
+#[test]
+fn generated_pi_launch_config_round_trips_null_base_hash() {
+    let value = json!({
+        "schemaVersion": 2,
+        "apiFirstTurn": {
+            "schemaVersion": 1,
+            "resourceSnapshotDigest": "a".repeat(64),
+            "manifestUrl": "https://storage.example/manifest.json",
+            "sessionUrl": "https://storage.example/session.jsonl",
+            "deadlineAt": 2_000_000_000_000_i64,
+            "baseSession": {
+                "sessionId": "22222222-2222-4222-8222-222222222222",
+                "sha256": null,
+            },
+            "sandboxEventSequenceStart": 1,
+        },
+    });
+
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone()).unwrap();
+
+    assert_eq!(launch.api_first_turn.base_session.sha256, None);
+    assert_eq!(serde_json::to_value(launch).unwrap(), value);
+}
+
+#[test]
+fn generated_pi_model_config_rejects_unknown_enums() {
+    for (field, value) in [
+        ("provider", "future-provider"),
+        ("apiKeyEnv", "FUTURE_API_KEY"),
+    ] {
+        let mut config = json!({
+            "provider": "deepseek",
+            "baseUrl": "https://api.deepseek.com/",
+            "model": "deepseek-v4-flash",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "credentialSecretName": "DEEPSEEK_API_KEY",
+        });
+        config[field] = json!(value);
+
+        assert!(
+            serde_json::from_value::<PiModelConfig>(config).is_err(),
+            "{field} should reject {value}"
+        );
+    }
 }
 
 #[test]

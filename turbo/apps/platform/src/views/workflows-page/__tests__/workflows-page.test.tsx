@@ -672,7 +672,6 @@ function agent(id: string, displayName: string): TeamComposeItem {
     sound: null,
     avatarUrl: null,
     visibility: "public",
-    headVersionId: "version_2",
     updatedAt: "2026-06-01T00:00:00Z",
   };
 }

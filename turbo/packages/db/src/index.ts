@@ -2,7 +2,6 @@ import * as userSchema from "./schema/user";
 import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
-import * as agentComposeSchema from "./schema/agent-compose";
 import * as agentSchema from "./schema/agent";
 import * as agentRunSchema from "./schema/agent-run";
 import * as conversationSchema from "./schema/conversation";
@@ -88,7 +87,6 @@ import * as exportJobSchema from "./schema/export-job";
 import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
-import * as zeroAgentSchema from "./schema/zero-agent";
 import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as threadGoalSchema from "./schema/thread-goal";
@@ -135,7 +133,6 @@ export const schema = {
   ...deviceCodesSchema,
   ...cliTokensSchema,
   ...desktopAuthHandoffCodeSchema,
-  ...agentComposeSchema,
   ...agentSchema,
   ...agentRunSchema,
   ...conversationSchema,
@@ -221,7 +218,6 @@ export const schema = {
   ...emailSuppressionSchema,
   ...skillSchema,
   ...usagePricingSchema,
-  ...zeroAgentSchema,
   ...agentDraftSchema,
   ...userPermissionGrantSchema,
   ...threadGoalSchema,

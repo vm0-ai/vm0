@@ -36,7 +36,7 @@ from tests.buffered_auth_body_framing_cases import (
 )
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.firewall_helpers import cancel_pending_task
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     await_requestheaders_result,
@@ -114,7 +114,7 @@ def _write_aws_registry(
     return _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="aws",
             api_entry=api_entry,
@@ -124,7 +124,7 @@ def _write_aws_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": capture_body},
+            sandbox_fields={"captureNetworkBodies": capture_body},
         ),
     )
 
@@ -663,7 +663,7 @@ async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
         registry_payload = json.loads(registry_path.read_text())
-        policy = registry_payload["vms"][_CLIENT_IP]["networkPolicies"]["aws"]
+        policy = registry_payload["sandboxes"][_CLIENT_IP]["networkPolicies"]["aws"]
         policy["allow"] = []
         policy["deny"] = [_AWS_PERMISSION]
         registry_payload["updatedAt"] = 1

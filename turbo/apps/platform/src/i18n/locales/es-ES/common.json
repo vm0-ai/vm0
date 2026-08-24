@@ -1056,7 +1056,12 @@
       "signUp": "Crear una cuenta"
     },
     "loading": "Cargando autenticación",
-    "toggleTheme": "Cambiar tema"
+    "toggleTheme": "Cambiar tema",
+    "v2": {
+      "continueToSignIn": "Continuar para iniciar sesión",
+      "continueToSignUp": "Continuar para crear una cuenta",
+      "unavailable": "La nueva experiencia de autenticación aún no está disponible."
+    }
   },
   "authorization": {
     "browser": {
@@ -1603,6 +1608,10 @@
       "loadingFile": "Cargando {{filename}}",
       "previewFile": "Vista previa de {{filename}}",
       "title": "Archivos adjuntos",
+      "unavailable": "{{filename}} ya no está disponible. Vuelve a subirlo para enviarlo.",
+      "unavailableCount_one": "{{count}} archivo adjunto ya no está disponible. Vuelve a subirlo para enviarlo.",
+      "unavailableCount_many": "{{count}} archivos adjuntos ya no están disponibles. Vuelve a subirlos para enviarlos.",
+      "unavailableCount_other": "{{count}} archivos adjuntos ya no están disponibles. Vuelve a subirlos para enviarlos.",
       "uploadFailed": "No se pudo subir {{filename}}",
       "uploadFailedRetry": "No se pudo subir {{filename}}. Inténtalo de nuevo.",
       "uploadsFailed": "Algunos archivos adjuntos no se han subido. Inténtalo de nuevo."

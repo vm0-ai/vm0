@@ -24,7 +24,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_text_after_flush,
 )
 from tests.request_handler_helpers import (
-    _vm_without_firewalls,
+    _sandbox_without_firewalls,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -58,9 +58,9 @@ def test_calculates_latency_and_logs(registry_file, tmp_path, real_flow, mitm_ct
     log_path = str(tmp_path / "network.jsonl")
 
     # Simulate request handler setting metadata
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
 
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/"
     http_network_log.set_target(
@@ -107,8 +107,8 @@ def test_logs_request_time_network_log_target(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="request.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://original.example.com/"
     flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
@@ -132,8 +132,8 @@ def test_response_log_includes_firewall_auth_metadata(tmp_path, real_flow, mitm_
     log_path = str(tmp_path / "network.jsonl")
     flow.metadata.update(
         {
-            metadata_keys.VM_RUN_ID: "run-abc-123",
-            metadata_keys.VM_NETWORK_LOG_PATH: log_path,
+            metadata_keys.SANDBOX_RUN_ID: "run-abc-123",
+            metadata_keys.SANDBOX_NETWORK_LOG_PATH: log_path,
             metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
             metadata_keys.FIREWALL_ACTION: "ALLOW",
             metadata_keys.FIREWALL_BASE: "https://api.example.com",
@@ -200,8 +200,8 @@ def test_response_log_serializes_common_metadata_independent_of_firewall_context
     log_path = str(tmp_path / "network.jsonl")
     flow.metadata.update(
         {
-            metadata_keys.VM_RUN_ID: "run-abc-123",
-            metadata_keys.VM_NETWORK_LOG_PATH: log_path,
+            metadata_keys.SANDBOX_RUN_ID: "run-abc-123",
+            metadata_keys.SANDBOX_NETWORK_LOG_PATH: log_path,
             metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
             metadata_keys.FIREWALL_ACTION: "DENY",
             metadata_keys.FIREWALL_ERROR: "ambiguous_connector_route",
@@ -289,8 +289,8 @@ def test_network_log_target_url_preserves_query_and_fragment_but_redacts_userinf
     flow = real_flow(with_response=False, host="request.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
@@ -315,8 +315,8 @@ def test_network_log_preserves_large_url_without_caching_runtime_url(tmp_path, r
     raw_url = f"https://target.example.com/path?payload={'x' * 200_000}#fragment"
     flow = real_flow(with_response=False, host="target.example.com")
     log_path = str(tmp_path / "network.jsonl")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     http_network_log.set_target(
@@ -350,8 +350,8 @@ def test_network_log_omits_url_above_processing_limit(tmp_path, real_flow, mitm_
     raw_url = f"https://{secret_userinfo}@target.example.com/path?payload={'x' * 1_000_000}"
     flow = real_flow(with_response=False, host="target.example.com")
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     http_network_log.set_target(
@@ -394,8 +394,8 @@ def test_capture_headers_preserve_in_budget_sanitization(tmp_path, real_flow, mi
         ),
     )
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
@@ -437,8 +437,8 @@ def test_capture_headers_bound_both_sides_and_final_row(tmp_path, real_flow, mit
         response_body=body,
     )
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
@@ -525,8 +525,8 @@ def test_body_capture_bounds_dependency_headers_and_writes_final_row(
         set_response_stream_buffer(flow, b"response body", truncated=True)
 
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
@@ -565,8 +565,8 @@ def test_body_capture_preserves_bounded_valid_dependency_headers(tmp_path, real_
         response_body=b"response body",
     )
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
@@ -597,8 +597,8 @@ def test_body_capture_decompresses_buffered_response_with_bounded_headers(
         response_body=gzip.compress(b"response body"),
     )
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
@@ -625,9 +625,9 @@ def test_proxy_log_discards_large_suffix_before_url_processing(
     raw_url = f"{retained_url}{delimiter}payload={'x' * 1_000_000}"
     proxy_log_path = tmp_path / "proxy.jsonl"
     flow = real_flow(with_response=False, host="target.example.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.response = tutils.tresp(status_code=500, headers=http.Headers())
@@ -670,9 +670,9 @@ def test_proxy_log_retains_query_free_url_at_processing_limit(
     raw_url = f"{retained_url}{discarded_suffix}"
     proxy_log_path = tmp_path / "proxy.jsonl"
     flow = real_flow(with_response=False, host="target.example.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.response = tutils.tresp(status_code=500, headers=http.Headers())
@@ -695,9 +695,9 @@ def test_proxy_log_omits_retained_url_above_processing_limit(tmp_path, real_flow
     )
     proxy_log_path = tmp_path / "proxy.jsonl"
     flow = real_flow(with_response=False, host="target.example.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
     flow.response = tutils.tresp(status_code=500, headers=http.Headers())
@@ -733,8 +733,8 @@ def test_logs_typed_target_port(tmp_path, real_flow, mitm_ctx, original_url, exp
     flow = real_flow(with_response=False, host="request.example.com", port=9443)
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
     http_network_log.set_target(
@@ -758,8 +758,8 @@ def test_missing_network_log_target_fails_response(tmp_path, real_flow, mitm_ctx
     flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         "https://invalid.example.com:bad/path?secret=value#frag"
@@ -782,8 +782,8 @@ def test_response_size_tracks_streamed_bytes(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -814,8 +814,8 @@ def test_response_size_tracks_large_stream_without_body_buffer(tmp_path, real_fl
     log_path = str(tmp_path / "network.jsonl")
     body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -853,8 +853,8 @@ def test_request_size_tracks_streamed_bytes_and_captures_stream_body(tmp_path, r
     log_path = str(tmp_path / "network.jsonl")
     body = b"x" * (STREAM_BUFFER_LIMIT + 17)
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -893,7 +893,7 @@ async def test_firewalled_streamed_request_logs_size_and_capture_body(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -941,7 +941,7 @@ async def test_firewalled_partial_streamed_request_marks_capture_truncated(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -983,7 +983,7 @@ async def test_firewalled_empty_incomplete_streamed_request_marks_capture_trunca
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1026,7 +1026,9 @@ async def test_unknown_length_get_without_body_logs_zero_request_size(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -1059,7 +1061,9 @@ async def test_unknown_length_get_without_body_logs_zero_request_size(
 async def test_early_response_makes_late_request_hook_noop(tmp_path, real_flow, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -1103,8 +1107,8 @@ def test_response_size_uses_content_length_without_stream_state(
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1129,8 +1133,8 @@ def test_response_size_accepts_max_safe_content_length(tmp_path, real_flow, mitm
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1157,8 +1161,8 @@ def test_response_size_is_zero_without_stream_state_or_content_length(
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1192,8 +1196,8 @@ def test_response_size_is_zero_for_invalid_content_length(
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1218,8 +1222,8 @@ def test_response_size_accepts_matching_repeated_content_length(tmp_path, real_f
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1245,8 +1249,8 @@ def test_response_size_rejects_conflicting_repeated_content_length(tmp_path, rea
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1272,8 +1276,8 @@ def test_response_size_keeps_zero_streamed_bytes(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="api.example.com")
     log_path = str(tmp_path / "network.jsonl")
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1302,8 +1306,8 @@ def test_response_size_tracks_large_unbounded_stream_without_length(tmp_path, re
     log_path = str(tmp_path / "network.jsonl")
     body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -1333,11 +1337,11 @@ def test_response_size_tracks_large_unbounded_stream_without_length(tmp_path, re
 def test_error_status_logs_warning(tmp_path, real_flow, headers):
     """Response with status >= 400 writes to per-job proxy log."""
     flow = real_flow(with_response=False, host="api.example.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
 
     proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         "https://user:pass@api.example.com/fail?api_key=secret#frag"

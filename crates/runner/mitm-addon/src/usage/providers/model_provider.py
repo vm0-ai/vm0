@@ -156,7 +156,7 @@ def report_model_provider_usage(
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
-    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+    - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     Returns whether usage was accepted into the reporting path. When provided,
     the caller-owned set accumulates source payload keys accepted by the
@@ -207,7 +207,7 @@ def report_model_provider_usage_observation(
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
-    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+    - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
     expected to report observations without reporting billable usage events.

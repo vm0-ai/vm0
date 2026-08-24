@@ -38,14 +38,14 @@ from tests.mitmproxy_http_framing_helpers import (
     start_http2_request,
     start_http_layer,
 )
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 
 def _write_auth_base_firewall_registry(tmp_path: Path) -> Path:
     return _write_registry(
         tmp_path,
         client_ip=CLIENT_IP,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -74,7 +74,7 @@ def _write_aws_sigv4_firewall_registry(tmp_path: Path) -> Path:
     return _write_registry(
         tmp_path,
         client_ip=CLIENT_IP,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="aws",
             api_entry=api_entry,

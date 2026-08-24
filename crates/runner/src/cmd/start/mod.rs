@@ -69,6 +69,7 @@ use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::pre_spawn_admission::PreSpawnAdmission;
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
@@ -262,12 +263,23 @@ pub struct StartArgs {
     /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config)
-    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
+    #[arg(
+        long,
+        env = crate::runner_token::clap_environment_name(),
+        hide_env_values = true
+    )]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
+}
+
+#[cfg(test)]
+impl StartArgs {
+    pub(crate) fn token_for_test(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
 }
 
 struct LiveRunnerPublishResources<'a> {
@@ -398,7 +410,7 @@ async fn run_start_with_home(
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
         ));
     }
 
@@ -565,6 +577,8 @@ async fn run_start_with_home(
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
+    let pre_spawn_vcpu_tokens = host::pre_spawn_cpu_capacity()?;
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
         host_memory_mb as u32,
@@ -582,6 +596,11 @@ async fn run_start_with_home(
         effective_memory_mb = budget.effective_memory_mb(),
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
+    );
+    info!(
+        pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+        host_logical_cpus = host_cpus,
+        "pre-spawn admission initialized"
     );
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
@@ -773,6 +792,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill,
+        pre_spawn_admission,
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),

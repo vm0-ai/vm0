@@ -26,7 +26,7 @@ async def test_registered_non_model_websocket_trim_uses_real_event_loop_schedule
     mitm_ctx, real_flow
 ):
     flow = real_flow(with_response=False, host="example.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
     old_client = append_websocket_message(flow, from_client=True, content=b"client-old")
     old_server = append_websocket_message(flow, from_client=False, content=b"server-old")
     latest_server = append_websocket_message(
@@ -90,8 +90,8 @@ async def test_tcp_message_drain_uses_real_event_loop_scheduler(
     messages = [client_message, server_message]
     flow = real_tcp_flow(messages=messages)
     log_path = tmp_path / "network.jsonl"
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
     flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
 
     with mitm_ctx():

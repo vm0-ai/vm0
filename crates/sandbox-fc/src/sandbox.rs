@@ -1612,7 +1612,7 @@ fn monitor_process_with_log_readers_and_exit_notifier(
             ProcessMonitorExit::NaturalPreReap => {
                 let prev = publish_process_monitor_exit(&context);
                 if prev == SandboxState::Running {
-                    kill_process_group(&child);
+                    let _ = kill_process_group(&child);
                 }
                 (prev, child.wait().await)
             }
@@ -1670,7 +1670,7 @@ async fn wait_after_process_termination_request(
     request: Option<control::ProcessTerminationRequest>,
 ) -> io::Result<std::process::ExitStatus> {
     if let Some(request) = request {
-        kill_process_group(child);
+        let _ = kill_process_group(child);
         request.acknowledge();
         kill_rx.close();
         // Closed receivers can still observe sends that already reserved

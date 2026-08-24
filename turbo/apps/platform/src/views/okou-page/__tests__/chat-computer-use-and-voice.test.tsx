@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -27,6 +28,8 @@ import {
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
 import { billingStatus } from "./chat-composer-test-helpers.ts";
+
+const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -1444,7 +1447,11 @@ describe("chat lifecycle", () => {
       );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: LEGACY_PRICING,
+    });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -1494,7 +1501,11 @@ describe("chat lifecycle", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: LEGACY_PRICING,
+    });
 
     const voiceInput = await screen.findByLabelText("Voice input");
     expect(voiceInput).toBeEnabled();
@@ -1555,7 +1566,11 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, { threadId });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: LEGACY_PRICING,
+    });
 
     await user.click(await screen.findByLabelText("Voice input"));
 
@@ -1653,7 +1668,11 @@ describe("chat lifecycle", () => {
       );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: LEGACY_PRICING,
+    });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();

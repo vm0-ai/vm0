@@ -62,7 +62,7 @@ async def test_over_budget_http1_host_is_rejected_in_both_hooks_without_string_a
 ) -> None:
     registry_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     oversized_host = (b"a." * 2048) + b"a"
     assert len(oversized_host) == 4097
@@ -167,7 +167,7 @@ async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
     registry_path = _write_github_firewall_registry(
         tmp_path,
         base=f"https://{PLACEHOLDER_HOST}",
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
 
     with (
@@ -260,7 +260,7 @@ async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwardi
     registry_path = _write_github_firewall_registry(
         tmp_path,
         base=firewall_base,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
 
     with (
@@ -324,7 +324,7 @@ async def test_matching_http1_absolute_form_authority_is_forwardable_with_auth(
     registry_path = _write_github_firewall_registry(
         tmp_path,
         base="https://api.github.com",
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
 
     with (

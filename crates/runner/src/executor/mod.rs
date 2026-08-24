@@ -199,6 +199,7 @@ pub struct ExecutorConfig {
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub(crate) background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator,
+    pub(crate) pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission,
     pub home: HomePaths,
     pub workspace_cache: Option<WorkspaceImageCache>,
 }

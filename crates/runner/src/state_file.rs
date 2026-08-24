@@ -243,7 +243,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    const FIFO_READ_CHILD_PATH_ENV: &str = "VM0_RUN_STATE_FILE_FIFO_READ_CHILD_PATH";
+    const FIFO_READ_CHILD_PATH_ENV: &str = "OKOU_RUN_STATE_FILE_FIFO_READ_CHILD_PATH";
 
     #[tokio::test]
     async fn read_to_string_rejects_symlink_without_reading_target() {

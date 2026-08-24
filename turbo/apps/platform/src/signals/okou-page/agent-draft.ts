@@ -196,10 +196,10 @@ export const loadAgentDraft$ = command(
   async (
     { get, set },
     agentId: string,
-    draft: DraftSignals,
-    isNew: boolean,
+    agentDraft: EnsuredAgentDraft,
     signal: AbortSignal,
   ) => {
+    const { draft, isNew } = agentDraft;
     if (!isNew) {
       return;
     }
@@ -245,12 +245,19 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    set(draft.seed$, {
-      content: restoredDraft.content,
-      userMessage: restoredDraft.userMessage,
-      generationTemplate: undefined,
-      attachments: restoredDraft.attachments.map(createRestoredAttachment),
-    });
+    const removedUnavailableAttachments = await set(
+      draft.seed$,
+      {
+        content: restoredDraft.content,
+        userMessage: restoredDraft.userMessage,
+        generationTemplate: undefined,
+        attachments: restoredDraft.attachments.map(createRestoredAttachment),
+      },
+      signal,
+    );
+    if (removedUnavailableAttachments) {
+      await set(agentDraft.queueDraftSync$, signal);
+    }
   },
 );
 

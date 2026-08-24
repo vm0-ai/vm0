@@ -3,10 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -28,7 +32,6 @@ function mockAgentChatPage(): void {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
@@ -54,7 +57,7 @@ function mockAgentChatPage(): void {
  * matters for the ownership model: the marks have to come back off the stored
  * draft, not off a rendered copy, and the file itself is untouched.
  */
-function mockDraftWithImage(marks: unknown[] | null): void {
+function mockDraftWithImage(marks: ImageAnnotationMark[] | null): void {
   context.mocks.api(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftUserMessage: {
@@ -82,13 +85,15 @@ function mockDraftWithImage(marks: unknown[] | null): void {
   });
 }
 
-const BOX_MARK = {
-  id: "mark-1",
-  shape: "box",
-  rect: { x: 0.1, y: 0.1, width: 0.3, height: 0.2 },
-  ink: "#5E6AD2",
-  note: "Tighten this spacing",
-};
+function boxMark(): ImageAnnotationMark {
+  return {
+    id: "mark-1",
+    shape: "box",
+    rect: { x: 0.1, y: 0.1, width: 0.3, height: 0.2 },
+    ink: "#5E6AD2",
+    note: "Tighten this spacing",
+  };
+}
 
 function setup(featureEnabled: boolean): void {
   detachedSetupPage({
@@ -98,6 +103,16 @@ function setup(featureEnabled: boolean): void {
       [FeatureSwitchKey.ComposerImageAnnotation]: featureEnabled,
     },
   });
+}
+
+function attachMarksButton(): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === "Attach marks";
+  });
+  if (!button) {
+    throw new Error("Attach marks button not found");
+  }
+  return button;
 }
 
 /** Drags a rectangle across the drawing surface. */
@@ -129,7 +144,7 @@ describe("composer image annotation", () => {
   it("restores marks stored on the draft and shows the count on the chip", async () => {
     mockChatLifecycle(context);
     mockAgentChatPage();
-    mockDraftWithImage([BOX_MARK]);
+    mockDraftWithImage([boxMark()]);
 
     setup(true);
 
@@ -189,7 +204,7 @@ describe("composer image annotation", () => {
       expect(screen.getByText("1 mark")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Attach marks" }));
+    await user.click(attachMarksButton());
 
     // Committing closes the editor and leaves the count on the one chip —
     // annotating must never produce a second attachment.
@@ -218,7 +233,7 @@ describe("composer image annotation", () => {
     await user.click(chip);
     await user.click(await screen.findByTestId("artifact-dialog-annotate"));
     await screen.findByTestId("image-annotation-editor");
-    await user.click(screen.getByRole("button", { name: "Attach marks" }));
+    await user.click(attachMarksButton());
 
     await waitFor(() => {
       expect(screen.queryByTestId("image-annotation-editor")).toBeNull();

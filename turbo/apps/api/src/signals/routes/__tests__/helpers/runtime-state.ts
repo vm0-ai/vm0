@@ -372,20 +372,6 @@ export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
 }
 
-/**
- * Versionless Agent composes are partial historical state that current public
- * APIs cannot create. Keep this test-only mutation scoped to the owned Agent.
- */
-export async function setAgentComposeVersionlessFixture(
-  context: TestContext,
-  agentId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-agent-compose-versionless",
-    agent_id: agentId,
-  });
-}
-
 export async function mutateRunnerJobSecretValueEnvironmentKeys(
   context: TestContext,
   runId: string,

@@ -222,7 +222,7 @@ async function refreshSlackAppHome(args: {
   let isOverrideActive = false;
   let canSwitch = false;
   if (args.installation.orgId) {
-    const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+    const [effectiveComposeId, overrideComposeId, defaultAgentId] =
       await Promise.all([
         resolveEffectiveComposeId(
           args.db,
@@ -241,9 +241,9 @@ async function refreshSlackAppHome(args: {
       agentName = await getWorkspaceAgentName(args.db, effectiveComposeId);
     }
     isOverrideActive = Boolean(
-      overrideComposeId && overrideComposeId !== defaultComposeId,
+      overrideComposeId && overrideComposeId !== defaultAgentId,
     );
-    canSwitch = Boolean(defaultComposeId);
+    canSwitch = Boolean(defaultAgentId);
   }
 
   await args.client.publishAppHome(
@@ -487,10 +487,10 @@ export const notifySlackConnect$ = command(
         await get(userFeatureSwitchContext(args.orgId, args.userId)),
       ),
     );
-    const defaultComposeId = await resolveDefaultComposeId(writeDb, args.orgId);
+    const defaultAgentId = await resolveDefaultComposeId(writeDb, args.orgId);
     signal.throwIfAborted();
-    const agentName = defaultComposeId
-      ? await getWorkspaceAgentName(writeDb, defaultComposeId)
+    const agentName = defaultAgentId
+      ? await getWorkspaceAgentName(writeDb, defaultAgentId)
       : undefined;
     signal.throwIfAborted();
     const { assistantName } = publicBrandPresentation(

@@ -124,7 +124,6 @@ function prepareDefaultAgent(): void {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
@@ -455,6 +454,7 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: false },
     });
 
     await waitFor(() => {

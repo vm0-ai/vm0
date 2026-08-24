@@ -72,15 +72,13 @@ import {
   loadStoredConnectorRuntimeSnapshot,
 } from "./connector-data.service";
 import {
-  AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT,
+  AGENT_LIFECYCLE_LOCK_TIMEOUT,
   deleteClerkAgentLifecycleData,
-  scrubLegacyAgentComposeVersionCreatorInTransaction,
-} from "./agent-compose-provenance-lifecycle.service";
+} from "./agent-lifecycle.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
-const CLERK_USER_CLEANUP_REVISION = "stage0_nullable_provenance";
 
 async function publishCancelBestEffort(
   runnerGroup: string | null,
@@ -837,9 +835,8 @@ async function deleteUserData(
 
   await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+      sql`SELECT set_config('lock_timeout', ${AGENT_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await scrubLegacyAgentComposeVersionCreatorInTransaction(tx, userId);
   });
 
   await db
@@ -891,18 +888,8 @@ async function deleteUserData(
   await db.delete(userCache).where(eq(userCache.userId, userId));
   await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+      sql`SELECT set_config('lock_timeout', ${AGENT_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await tx.execute(
-      sql`SELECT set_config('vm0.clerk_user_cleanup_revision', ${CLERK_USER_CLEANUP_REVISION}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT set_config('vm0.clerk_deleted_user_id', ${userId}, true)`,
-    );
-    // The marker, exact scrub, database invariant, and final identity DELETE
-    // must stay on this transaction's connection. The statement guard also
-    // serializes creator writes before it verifies the scrub postcondition.
-    await scrubLegacyAgentComposeVersionCreatorInTransaction(tx, userId);
     await tx.delete(users).where(eq(users.id, userId));
   });
 }

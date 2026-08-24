@@ -170,7 +170,6 @@ function buildBotAgentOptions(
       description: null,
       sound: null,
       avatarUrl: null,
-      headVersionId: null,
       updatedAt: "",
     },
   ];

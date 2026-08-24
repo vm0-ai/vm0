@@ -900,6 +900,10 @@ const storedExecutionContextObjectSchema = z.object({
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
+  // Old API/stored payload -> new API: previous contexts omit this field. Keep
+  // it optional until prior API rollback targets retire and no supported
+  // resumable context predates it; #28914 tracks that gate.
+  platformEnvironment: z.record(z.string(), z.string()).optional(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
   // order/repetition follows secret-map values.
@@ -977,12 +981,7 @@ export const storedExecutionContextSchema =
  * Tolerant reader for execution contexts already persisted in a database or
  * encrypted queue payload. The optional baseline is derived performance data,
  * so malformed or future versions must remain an independent cache miss rather
- * than invalidating the complete queued execution context. During the Stage 4
- * API rollout, contexts queued by the previous API may also carry the retired
- * Compose-version key; Zod's default unknown-key stripping normalizes it out.
- * Surface: existing runner queue, up to two hours. Remove the Stage 4-specific
- * comment and fixture after pre-cutover contexts expire; follow-up #26938
- * Stage 8. The general tolerant reader remains for its existing purpose.
+ * than invalidating the complete queued execution context.
  */
 export const compatibleStoredExecutionContextSchema =
   storedExecutionContextObjectSchema
@@ -1007,6 +1006,10 @@ const executionContextObjectSchema = z.object({
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
+  // Old API -> new runner: previous claims omit this field. Keep it optional
+  // until prior API rollback targets and supported pre-field claims are gone;
+  // #28914 tracks that gate. Old runners ignore it and use legacy environment.
+  platformEnvironment: z.record(z.string(), z.string()).optional(),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
   // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.

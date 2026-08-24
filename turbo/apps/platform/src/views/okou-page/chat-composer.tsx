@@ -8497,6 +8497,7 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const visualAttachmentUnsupported =
     useComposerVisualAttachmentUnsupported(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
+  const pageSignal = useGet(pageSignal$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
@@ -8516,7 +8517,20 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
         visualAttachmentUnsupported,
         insertPromptMarkdown,
         insertUserMessage,
-        restoreAttachments,
+        restoreAttachments: (attachments) => {
+          detach(
+            (async () => {
+              const removedUnavailableAttachments = await restoreAttachments(
+                attachments,
+                pageSignal,
+              );
+              if (removedUnavailableAttachments) {
+                notifyDraftChanged();
+              }
+            })(),
+            Reason.DomCallback,
+          );
+        },
         onDraftChange: notifyDraftChanged,
       })
     ) {

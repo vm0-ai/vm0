@@ -176,6 +176,7 @@ function mockUsageStory(): void {
 }
 
 const NEW_PRICING = { [FeatureSwitchKey.UsagePackPlans]: true } as const;
+const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 async function openCreditBalance(): Promise<void> {
   detachedSetupPage({
@@ -346,7 +347,11 @@ describe("organization usage settings", () => {
 
   it("keeps the usage records inside credit balance without the new pricing", async () => {
     mockUsageStory();
-    detachedSetupPage({ context, path: "/?settings=usage" });
+    detachedSetupPage({
+      context,
+      path: "/?settings=usage",
+      featureSwitches: LEGACY_PRICING,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("3,750 / 5,000 credits")).toBeInTheDocument();
@@ -370,7 +375,11 @@ describe("organization usage settings", () => {
 
   it("falls back from the usage records deep link without the new pricing", async () => {
     mockUsageStory();
-    detachedSetupPage({ context, path: "/?settings=usage-records" });
+    detachedSetupPage({
+      context,
+      path: "/?settings=usage-records",
+      featureSwitches: LEGACY_PRICING,
+    });
 
     const heading = await screen.findByRole("heading", { name: "Preference" });
     expect(heading).toBeInTheDocument();

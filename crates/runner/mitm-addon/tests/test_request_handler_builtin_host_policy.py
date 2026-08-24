@@ -14,7 +14,7 @@ import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
 from tests.registry_helpers import write_trusted_catalog_cache_text
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     await_requestheaders_result,
@@ -38,7 +38,7 @@ def _write_host_policy_registry(
     base: str,
     host_policy: dict[str, object],
     marked_builtin: bool = True,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ):
     api_entry: dict[str, object] = {
         "base": base,
@@ -51,7 +51,7 @@ def _write_host_policy_registry(
     return _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=firewall_name,
             api_entry=api_entry,
@@ -61,7 +61,7 @@ def _write_host_policy_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -76,7 +76,7 @@ def _write_resolved_host_policy_registry(
     registry_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info={
+        sandbox_info={
             "runId": "run-resolved-host-policy",
             "billableFirewalls": [],
             "cliAgentType": "claude-code",
@@ -429,7 +429,7 @@ async def test_runtime_host_policy_blocks_requestheaders_credential_injection(
         firewall_name="jira",
         base="https://attacker.example.com",
         host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -479,7 +479,7 @@ async def test_runtime_host_policy_allows_requestheaders_credential_injection(
         firewall_name="jira",
         base="https://acme.atlassian.net",
         host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -544,11 +544,11 @@ async def test_resolved_host_policy_reuses_compiled_policy_across_requests(
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
-        context = registry.get_vm_context("10.200.0.5", str(reg_path))
+        context = registry.get_sandbox_context("10.200.0.5", str(reg_path))
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        api = vm_info["firewalls"][0]["apis"][0]
+        api = sandbox_info["firewalls"][0]["apis"][0]
         assert isinstance(
             api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
             builtin_host_policy.CompiledBuiltinHostPolicy,
@@ -590,11 +590,11 @@ async def test_resolved_public_destination_host_policy_uses_compiled_policy(
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
     ):
-        context = registry.get_vm_context("10.200.0.5", str(reg_path))
+        context = registry.get_sandbox_context("10.200.0.5", str(reg_path))
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        api = vm_info["firewalls"][0]["apis"][0]
+        api = sandbox_info["firewalls"][0]["apis"][0]
         assert isinstance(
             api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
             builtin_host_policy.CompiledBuiltinHostPolicy,
@@ -621,7 +621,7 @@ async def test_runtime_host_policy_rejects_invalid_runtime_marker(
         host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
     )
     registry_data = json.loads(reg_path.read_text())
-    api = registry_data["vms"]["10.200.0.5"]["firewalls"][0]["firewall"]["apis"][0]
+    api = registry_data["sandboxes"]["10.200.0.5"]["firewalls"][0]["firewall"]["apis"][0]
     api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] = "invalid"
     reg_path.write_text(json.dumps(registry_data))
     flow = real_flow(

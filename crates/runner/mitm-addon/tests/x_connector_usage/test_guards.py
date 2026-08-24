@@ -46,7 +46,7 @@ def test_skips_webhook_without_sandbox_token(x_usage, tmp_path, real_flow):
     flow = x_usage.make_flow(
         real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
     )
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
     assert x_usage.call_and_get_billing(flow) == []
 
     proxy_log = tmp_path / "proxy.jsonl"
@@ -75,7 +75,7 @@ def test_zero_count_without_sandbox_token_does_not_log_underbilling(x_usage, tmp
         body=body,
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
 
     assert x_usage.call_and_get_billing(flow) == []
     assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
@@ -92,7 +92,7 @@ def test_unparseable_no_hints_without_sandbox_token_logs_only_visibility_loss(
         body=b"not json",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
 
     assert x_usage.call_and_get_billing(flow) == []
 

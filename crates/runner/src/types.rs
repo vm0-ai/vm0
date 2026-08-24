@@ -86,6 +86,11 @@ pub struct ExecutionContext {
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
+    /// Trusted API-authored agent environment. Old API/stored claims omit it;
+    /// keep the default until prior API rollback targets and supported pre-field
+    /// contexts are gone. #28914 tracks that gate.
+    #[serde(default)]
+    pub platform_environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
     // Plain secret values used only for redaction. These are values, not names.
@@ -139,26 +144,16 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-    /// Schema-v2 Pi launch config marker. Runtime resources are discovered from
-    /// Pi's canonical filesystem locations by the official loader.
+    /// Raw Pi launch config retained so additive API fields survive forwarding
+    /// through a draining older runner.
     #[serde(default)]
     pub pi_launch_config: Option<serde_json::Value>,
-    /// Non-secret model metadata for the Pi Sandbox runtime.
+    /// Raw non-secret Pi model config retained for the same rollout boundary.
     #[serde(default)]
-    pub pi_model_config: Option<PiModelConfig>,
+    pub pi_model_config: Option<serde_json::Value>,
     /// Chat Thread id used as Pi's official JSONL session id.
     #[serde(default)]
     pub pi_session_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PiModelConfig {
-    pub provider: String,
-    pub base_url: String,
-    pub model: String,
-    pub api_key_env: String,
-    pub credential_secret_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1825,6 +1820,31 @@ mod tests {
     }
 
     #[test]
+    fn execution_context_accepts_optional_platform_environment() {
+        let previous_api_response = json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": []
+        });
+        let previous_context: ExecutionContext =
+            serde_json::from_value(previous_api_response.clone()).unwrap();
+        assert!(previous_context.platform_environment.is_none());
+
+        let mut current_api_response = previous_api_response;
+        current_api_response["platformEnvironment"] = json!({
+            "OKOU_AGENT_ID": "trusted-agent-id"
+        });
+        let current_context: ExecutionContext =
+            serde_json::from_value(current_api_response).unwrap();
+        assert_eq!(
+            current_context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
+            "trusted-agent-id"
+        );
+    }
+
+    #[test]
     fn execution_context_deserializes_pi_sandbox_resources() {
         let json = serde_json::json!({
             "runId": "11111111-1111-4111-8111-111111111111",
@@ -1874,7 +1894,7 @@ mod tests {
             context
                 .pi_model_config
                 .as_ref()
-                .map(|config| config.model.as_str()),
+                .and_then(|config| config["model"].as_str()),
             Some("deepseek-v4-flash")
         );
     }

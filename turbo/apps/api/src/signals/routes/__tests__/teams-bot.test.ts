@@ -58,13 +58,11 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
     await removeTeamsForTest(context.signal, fixture);
   },
 );
-const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
-// The branded paths plus the final Microsoft console path from #28278.
-const TEAMS_BOT_URLS = [
-  "http://api.test/api/okou/teams/bot",
-  TEAMS_BOT_PATH,
-  "http://api.test/api/webhooks/teams/bot",
-] as const;
+// The final Microsoft console path from #28278. #28917 retired this route's
+// `MIGRATED_BRANDED_PATHS` row — the Azure Bot messaging endpoint was already
+// repointed here before #28545 landed — so the branded forms this file used to
+// replay are no longer registered.
+const TEAMS_BOT_PATH = "http://api.test/api/webhooks/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -712,11 +710,6 @@ function teamsBotInstallationAddedActivity(
   };
 }
 
-interface TeamsBotRawResponse {
-  readonly status: number;
-  readonly body: string;
-}
-
 async function postTeamsActivity(
   args: {
     readonly activity: Record<string, unknown>;
@@ -919,7 +912,7 @@ async function setupConnectedTeamsBotActor(): Promise<{
   return { fixture, actor, runnerGroup, outboundRequests };
 }
 
-describe("POST /api/zero/teams/bot", () => {
+describe("POST /api/webhooks/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
@@ -950,40 +943,13 @@ describe("POST /api/zero/teams/bot", () => {
     botFrameworkHandlers();
     const fixture = botFixture();
     const activity = teamsMessageActivity(fixture, { type: "typing" });
-    const token = teamsToken();
 
-    const results: TeamsBotRawResponse[] = [];
-    for (const url of TEAMS_BOT_URLS) {
-      const response = await postTeamsActivity({ activity, token, url });
-      results.push({
-        status: response.status,
-        body: await response.text(),
-      });
-    }
+    const response = await postTeamsActivity({
+      activity,
+      token: teamsToken(),
+    });
 
-    const [okou, zero, final] = results;
-    expect(okou?.status).toBe(200);
-    expect(zero).toStrictEqual(okou);
-    expect(final).toStrictEqual(okou);
-  });
-
-  it("rejects an unauthorized activity on every namespace", async () => {
-    const fixture = botFixture();
-    const activity = teamsMessageActivity(fixture);
-
-    const results: TeamsBotRawResponse[] = [];
-    for (const url of TEAMS_BOT_URLS) {
-      const response = await postTeamsActivity({ activity, url });
-      results.push({
-        status: response.status,
-        body: await response.text(),
-      });
-    }
-
-    const [okou, zero, final] = results;
-    expect(okou?.status).toBe(401);
-    expect(zero).toStrictEqual(okou);
-    expect(final).toStrictEqual(okou);
+    expect(response.status).toBe(200);
   });
 
   it("rejects a Teams activity without a stable identifier", async () => {
@@ -2033,7 +1999,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          selectedAgentId: switchAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2045,7 +2011,7 @@ describe("POST /api/zero/teams/bot", () => {
       activity: {
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          selectedAgentId: switchAgent.agentId,
         },
       },
     });
@@ -2113,7 +2079,7 @@ describe("POST /api/zero/teams/bot", () => {
             body: expect.arrayContaining([
               expect.objectContaining({
                 type: "Input.ChoiceSet",
-                id: "selectedComposeId",
+                id: "selectedAgentId",
                 choices: expect.arrayContaining([
                   expect.objectContaining({
                     title: expect.stringContaining("Use org default"),
@@ -2319,7 +2285,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2597,7 +2563,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),

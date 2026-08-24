@@ -48,7 +48,7 @@ import {
   type RunConnectorCatalogSelection,
   type AgentRunModelPin,
 } from "./agent-run-create.service";
-import { buildZeroAgentComposeContent } from "./agent-compose-content";
+import { buildAgentExecutionConfig } from "./agent-execution-config";
 import {
   resolveChatThreadSession,
   type ChatThreadSessionResolution,
@@ -539,7 +539,7 @@ async function loadZeroAgent(
   return agent ?? null;
 }
 
-function buildAgentRunExtraEnvironment(args: {
+function buildAgentRunPlatformEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
@@ -847,7 +847,7 @@ function buildZeroCreateAgentRunArgs(args: {
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
   const productAgentExecutionPlan = {
-    content: buildZeroAgentComposeContent(args.agent.name),
+    content: buildAgentExecutionConfig(args.agent.name),
   };
   return {
     userId: command.auth.userId,
@@ -888,7 +888,7 @@ function buildZeroCreateAgentRunArgs(args: {
     ...(args.threadSessionResolution
       ? { threadSessionResolution: args.threadSessionResolution }
       : {}),
-    extraEnvironment: buildAgentRunExtraEnvironment({
+    platformEnvironment: buildAgentRunPlatformEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
@@ -969,7 +969,7 @@ async function resolveThreadSessionForAgentRun(
         threadId,
         userId: input.command.auth.userId,
         orgId: input.command.auth.orgId,
-        agentComposeId: input.agent.id,
+        agentId: input.agent.id,
         route: threadSessionRoute,
       });
     },

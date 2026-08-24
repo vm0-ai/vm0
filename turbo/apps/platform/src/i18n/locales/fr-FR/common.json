@@ -1056,7 +1056,12 @@
       "signUp": "S'inscrire"
     },
     "loading": "Chargement de l'authentification",
-    "toggleTheme": "Changer de thème"
+    "toggleTheme": "Changer de thème",
+    "v2": {
+      "continueToSignIn": "Continuer vers la connexion",
+      "continueToSignUp": "Continuer vers l'inscription",
+      "unavailable": "La nouvelle expérience d'authentification n'est pas encore disponible."
+    }
   },
   "authorization": {
     "browser": {
@@ -1603,6 +1608,10 @@
       "loadingFile": "Chargement de {{filename}}",
       "previewFile": "Aperçu de {{filename}}",
       "title": "Pièces jointes",
+      "unavailable": "{{filename}} n'est plus disponible. Importez-le à nouveau pour l'envoyer.",
+      "unavailableCount_one": "{{count}} pièce jointe n'est plus disponible. Importez-la à nouveau pour l'envoyer.",
+      "unavailableCount_many": "{{count}} pièces jointes ne sont plus disponibles. Importez-les à nouveau pour les envoyer.",
+      "unavailableCount_other": "{{count}} pièces jointes ne sont plus disponibles. Importez-les à nouveau pour les envoyer.",
       "uploadFailed": "Échec du téléchargement de {{filename}}",
       "uploadFailedRetry": "Échec du téléchargement de {{filename}}. Réessayez.",
       "uploadsFailed": "Certaines pièces jointes n'ont pas pu être téléchargées. Réessayez."

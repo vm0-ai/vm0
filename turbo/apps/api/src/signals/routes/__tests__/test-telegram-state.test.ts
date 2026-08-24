@@ -368,8 +368,6 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.recent_runs).toStrictEqual([]);
     expect(body.org_metadata).toBeNull();
     expect(body.default_agent).toBeNull();
-    expect(body.default_compose).toBeNull();
-    expect(body.default_compose_version).toBeNull();
   });
 
   it("returns seeded Telegram diagnostic state", async () => {
@@ -395,7 +393,7 @@ describe("GET /api/test/telegram-state", () => {
     expect(body.installation).toMatchObject({
       telegramBotId: fixture.botId,
       orgId: fixture.orgId,
-      defaultComposeId: fixture.defaultAgentId,
+      defaultAgentId: fixture.defaultAgentId,
     });
     expect(body.links).toHaveLength(1);
     expect(body.links[0]).toMatchObject({
@@ -420,13 +418,6 @@ describe("GET /api/test/telegram-state", () => {
       id: fixture.defaultAgentId,
       name: "e2e-slack-agent",
       orgId: fixture.orgId,
-    });
-    expect(body.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-slack-agent",
-    });
-    expect(body.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 });
@@ -505,7 +496,7 @@ describe("POST /api/test/telegram-state", () => {
       telegramBotId: botId,
       botUsername: "custom_test_bot",
       orgId,
-      defaultComposeId: body.default_agent_id,
+      defaultAgentId: body.default_agent_id,
       ownerUserId: userId,
     });
     expect(state.links).toHaveLength(1);
