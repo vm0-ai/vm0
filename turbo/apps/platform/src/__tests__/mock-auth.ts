@@ -1,4 +1,4 @@
-import type { PasswordValidation } from "@clerk/react/types";
+import type { ClerkAPIError, PasswordValidation } from "@clerk/react/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -73,6 +73,7 @@ export type MockedSignInFactor =
 
 export interface MockedSignInResourceState {
   readonly createdSessionId?: string | null;
+  readonly identifier?: string | null;
   readonly isTransferable?: boolean;
   readonly status: string | null;
   readonly supportedFirstFactors?: readonly MockedSignInFactor[] | null;
@@ -81,6 +82,8 @@ export interface MockedSignInResourceState {
 export interface MockedSignUpResourceState {
   readonly createdSessionId?: string | null;
   readonly emailAddress?: string | null;
+  readonly externalAccountError?: ClerkAPIError | null;
+  readonly externalAccountStatus?: string | null;
   readonly emailVerificationExpireAt?: Date | null;
   readonly emailVerificationStatus?: string | null;
   readonly emailVerificationStrategy?: string | null;
@@ -145,6 +148,7 @@ let internalMockedClerkSessionTransitioning = false;
 let internalMockedClerkSessionSignedOut = false;
 let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
   createdSessionId: null,
+  identifier: null,
   isTransferable: false,
   status: "needs_identifier",
   supportedFirstFactors: null,
@@ -152,6 +156,8 @@ let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
 let internalMockedSignUpResourceState: Required<MockedSignUpResourceState> = {
   createdSessionId: null,
   emailAddress: null,
+  externalAccountError: null,
+  externalAccountStatus: null,
   emailVerificationExpireAt: null,
   emailVerificationStatus: null,
   emailVerificationStrategy: null,
@@ -180,6 +186,7 @@ let internalMockedPasswordValidation: PasswordValidation = {
 export function mockSignInResource(state: MockedSignInResourceState): void {
   internalMockedSignInResourceState = {
     createdSessionId: state.createdSessionId ?? null,
+    identifier: state.identifier ?? null,
     isTransferable: state.isTransferable ?? false,
     status: state.status,
     supportedFirstFactors: state.supportedFirstFactors ?? null,
@@ -190,6 +197,8 @@ export function mockSignUpResource(state: MockedSignUpResourceState): void {
   internalMockedSignUpResourceState = {
     createdSessionId: state.createdSessionId ?? null,
     emailAddress: state.emailAddress ?? null,
+    externalAccountError: state.externalAccountError ?? null,
+    externalAccountStatus: state.externalAccountStatus ?? null,
     emailVerificationExpireAt: state.emailVerificationExpireAt ?? null,
     emailVerificationStatus: state.emailVerificationStatus ?? null,
     emailVerificationStrategy: state.emailVerificationStrategy ?? null,
@@ -485,6 +494,14 @@ function clearMockedAuth() {
   mockedClerk.signUpFutureReset.mockImplementation(
     defaultSignUpFutureResetImpl,
   );
+  mockedClerk.signUpReload.mockReset();
+  mockedClerk.signUpReload.mockImplementation(
+    defaultSignUpResourceOperationImpl,
+  );
+  mockedClerk.signUpAuthenticateWithRedirect.mockReset();
+  mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(
+    defaultSignUpAuthenticateWithRedirectImpl,
+  );
   mockedClerk.signInAuthenticateWithPasskey.mockReset();
   mockedClerk.signInAuthenticateWithPasskey.mockImplementation(
     defaultSignInResourceOperationImpl,
@@ -537,6 +554,7 @@ interface MockedSignInCreateParams {
   readonly strategy?: string;
   readonly ticket?: string;
   readonly token?: string;
+  readonly transfer?: boolean;
 }
 
 function defaultClientSignInCreateImpl(params: MockedSignInCreateParams) {
@@ -594,6 +612,8 @@ interface MockedHandleRedirectCallbackParams {
   readonly signInFallbackRedirectUrl?: string | null;
   readonly signInForceRedirectUrl?: string | null;
   readonly signInUrl?: string;
+  readonly signUpFallbackRedirectUrl?: string | null;
+  readonly signUpForceRedirectUrl?: string | null;
   readonly signUpUrl?: string;
   readonly transferable?: boolean;
   readonly verifyEmailAddressUrl?: string | null;
@@ -622,6 +642,9 @@ const signInFutureReset = vi.fn<typeof defaultSignInFutureResetImpl>(
 );
 
 const mockedClientSignIn = {
+  get identifier() {
+    return internalMockedSignInResourceState.identifier;
+  },
   get status() {
     return internalMockedSignInResourceState.status;
   },
@@ -661,6 +684,9 @@ const signUpPrepareEmailAddressVerification = vi.fn<
 const signUpAttemptEmailAddressVerification = vi.fn<
   typeof defaultSignUpResourceOperationImpl
 >(defaultSignUpResourceOperationImpl);
+const signUpReload = vi.fn<typeof defaultSignUpResourceOperationImpl>(
+  defaultSignUpResourceOperationImpl,
+);
 
 interface MockedPasswordValidationCallbacks {
   readonly onValidation?: (validation: PasswordValidation) => void;
@@ -686,7 +712,27 @@ const signUpFutureReset = vi.fn<typeof defaultSignUpFutureResetImpl>(
   defaultSignUpFutureResetImpl,
 );
 
+interface MockedSignUpAuthenticateWithRedirectParams {
+  readonly continueSignIn?: boolean;
+  readonly continueSignUp?: boolean;
+  readonly legalAccepted?: boolean;
+  readonly redirectUrl: string;
+  readonly redirectUrlComplete: string;
+  readonly strategy: string;
+}
+
+function defaultSignUpAuthenticateWithRedirectImpl(
+  _params: MockedSignUpAuthenticateWithRedirectParams,
+) {
+  return Promise.resolve();
+}
+
+const signUpAuthenticateWithRedirect = vi.fn<
+  typeof defaultSignUpAuthenticateWithRedirectImpl
+>(defaultSignUpAuthenticateWithRedirectImpl);
+
 const mockedClientSignUp = {
+  reload: signUpReload,
   get status() {
     return internalMockedSignUpResourceState.status;
   },
@@ -724,6 +770,7 @@ const mockedClientSignUp = {
   update: signUpUpdate,
   prepareEmailAddressVerification: signUpPrepareEmailAddressVerification,
   attemptEmailAddressVerification: signUpAttemptEmailAddressVerification,
+  authenticateWithRedirect: signUpAuthenticateWithRedirect,
   validatePassword: signUpValidatePassword,
   verifications: {
     emailAddress: {
@@ -735,6 +782,14 @@ const mockedClientSignUp = {
       },
       get expireAt() {
         return internalMockedSignUpResourceState.emailVerificationExpireAt;
+      },
+    },
+    externalAccount: {
+      get error() {
+        return internalMockedSignUpResourceState.externalAccountError;
+      },
+      get status() {
+        return internalMockedSignUpResourceState.externalAccountStatus;
       },
     },
   },
@@ -873,6 +928,8 @@ export const mockedClerk = {
   signUpAttemptEmailAddressVerification,
   signUpValidatePassword,
   signUpFutureReset,
+  signUpReload,
+  signUpAuthenticateWithRedirect,
   client: {
     get sessions() {
       return internalMockedClientSessions;

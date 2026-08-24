@@ -13,6 +13,8 @@ import { getClerkLocalization } from "../../auth/clerk-localization.ts";
 
 type ClerkLocalization = ReturnType<typeof getClerkLocalization>;
 
+const CLERK_PROVIDER = "{{provider|titleize}}";
+
 export interface AuthV2SignUpCopy {
   readonly alreadyHaveAccount: string;
   readonly back: string;
@@ -32,6 +34,7 @@ export interface AuthV2SignUpCopy {
   readonly emailCodeSubtitle: string;
   readonly emailCodeTitle: string;
   readonly firstNameLabel: string;
+  readonly googleMethod: string;
   readonly lastNameLabel: string;
   readonly legacySignUp: string;
   readonly legalPrivacyOnly: string;
@@ -113,6 +116,15 @@ function startCopy(localization: ClerkLocalization) {
     ),
     description: localizedString(start?.subtitle, fallback?.subtitle),
     signIn: localizedString(start?.actionLink, fallback?.actionLink),
+  };
+}
+
+function externalMethodCopy(localization: ClerkLocalization) {
+  return {
+    googleMethod: localizedString(
+      localization.socialButtonsBlockButton,
+      enUS.socialButtonsBlockButton,
+    ).replaceAll(CLERK_PROVIDER, "Google"),
   };
 }
 
@@ -228,6 +240,7 @@ export function useAuthV2SignUpCopy(
   return {
     ...formCopy(localization),
     ...startCopy(localization),
+    ...externalMethodCopy(localization),
     ...emailCodeCopy(localization),
     ...legalCopy(localization),
     ...captchaCopy(localization),

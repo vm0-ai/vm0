@@ -15,7 +15,9 @@ import {
   queryAllByRoleFast,
 } from "../../../../__tests__/page-helper.ts";
 import {
+  mockAuthV2Capabilities,
   mockedClerk,
+  mockSignInResource,
   mockSignUpConfiguration,
   mockSignUpPasswordValidation,
   mockSignUpResource,
@@ -133,6 +135,313 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
+  });
+
+  it("hides Google when the current Clerk environment does not support it", async () => {
+    setupSignUpPage({ status: null });
+
+    await screen.findByLabelText("Email address");
+    expect(roleElement("button", "Continue with Google")).toBeUndefined();
+    expect(
+      document.querySelector("script[data-auth-v2-google-one-tap]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows supported Google sign-up without starting One Tap", async () => {
+    mockAuthV2Capabilities({ googleOAuth: true });
+    setupSignUpPage({ status: null });
+
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toBeVisible();
+    expect(
+      document.querySelector("script[data-auth-v2-google-one-tap]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("coalesces Google handoff and preserves safe campaign attribution", async () => {
+    const redirect = createDeferredPromise<void>(context.signal);
+    mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
+      return redirect.promise;
+    });
+    mockAuthV2Capabilities({ googleOAuth: true });
+    const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
+    const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
+    setupSignUpPage(
+      { status: null },
+      {
+        path,
+        url: `https://app.vm0.ai${path}`,
+      },
+    );
+
+    const google = await waitForRoleElement("button", "Continue with Google");
+    fireEvent.click(google);
+    fireEvent.click(google);
+
+    await waitFor(() => {
+      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+    const handoff =
+      mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
+    expect(handoff).toMatchObject({
+      continueSignIn: false,
+      continueSignUp: false,
+      strategy: "oauth_google",
+    });
+    const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
+    const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
+    expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
+    expect(callbackUrl.searchParams.get("redirect_url")).toBe(
+      completionUrl.toString(),
+    );
+    expect(callbackUrl.hash).toBe("#/start?step=oauth");
+    expect(completionUrl.origin).toBe("https://app.vm0.ai");
+    expect(completionUrl.pathname).toBe("/onboarding");
+    expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
+    expect(completionUrl.toString()).not.toContain("evil.example");
+
+    await act(async () => {
+      redirect.resolve(undefined);
+      await redirect.promise;
+    });
+  });
+
+  it("requires legal consent before Google handoff and forwards acceptance", async () => {
+    const user = userEvent.setup();
+    mockAuthV2Capabilities({ googleOAuth: true });
+    setupSignUpPage({
+      missingFields: ["email_address", "password", "legal_accepted"],
+      requiredFields: ["email_address", "password", "legal_accepted"],
+      status: null,
+    });
+
+    const google = await waitForRoleElement("button", "Continue with Google");
+    await user.click(google);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Please read and accept the terms to continue",
+    );
+    expect(mockedClerk.signUpAuthenticateWithRedirect).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(google);
+    await waitFor(() => {
+      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({ legalAccepted: true }),
+      );
+    });
+  });
+
+  it("recovers a completed Google callback through the existing activation seam exactly once", async () => {
+    const path = "/v2/sign-up/sso-callback?gclid=click-123&utm_campaign=summer";
+    setupSignUpPage(
+      {
+        createdSessionId: "session_google_sign_up",
+        externalAccountStatus: "verified",
+        status: "complete",
+      },
+      { path, url: `https://app.vm0.ai${path}` },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.signUpReload).toHaveBeenCalledTimes(1);
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.handleRedirectCallback).not.toHaveBeenCalled();
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      redirectUrl: expect.stringContaining("/onboarding"),
+      session: "session_google_sign_up",
+    });
+    const activation = mockedClerk.setActive.mock.calls[0]?.[0];
+    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+  });
+
+  it("transfers an existing Google identity and activates it once through the same completion seam", async () => {
+    mockedClerk.clientSignInCreate.mockImplementation(() => {
+      mockSignInResource({
+        createdSessionId: "session_existing_google",
+        status: "complete",
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+    const path =
+      "/v2/sign-up/sso-callback?gclid=existing-123&utm_campaign=transfer";
+    setupSignUpPage(
+      {
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
+      },
+      { path, url: `https://app.vm0.ai${path}` },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledTimes(1);
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+      transfer: true,
+    });
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      redirectUrl: expect.stringContaining("/onboarding"),
+      session: "session_existing_google",
+    });
+    const activation = mockedClerk.setActive.mock.calls[0]?.[0];
+    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("existing-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("transfer");
+  });
+
+  it("reuses an in-progress transfer on callback reload without another transfer operation", async () => {
+    mockSignInResource({
+      createdSessionId: "session_recovered_transfer",
+      identifier: "person@example.com",
+      status: "complete",
+    });
+    setupSignUpPage(
+      {
+        emailAddress: "person@example.com",
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
+      },
+      {
+        path: "/v2/sign-up/sso-callback",
+        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+      },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      redirectUrl: "https://app.vm0.ai",
+      session: "session_recovered_transfer",
+    });
+  });
+
+  it("replaces an unrelated sign-in resource before transferring an existing Google identity", async () => {
+    mockSignInResource({
+      createdSessionId: "session_unrelated",
+      identifier: "other@example.com",
+      status: "complete",
+    });
+    mockedClerk.clientSignInCreate.mockImplementation(() => {
+      mockSignInResource({
+        createdSessionId: "session_existing_google",
+        identifier: "person@example.com",
+        status: "complete",
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+    setupSignUpPage(
+      {
+        emailAddress: "person@example.com",
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
+      },
+      {
+        path: "/v2/sign-up/sso-callback",
+        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+      },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+        transfer: true,
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledWith({
+        redirectUrl: "https://app.vm0.ai",
+        session: "session_existing_google",
+      });
+    });
+    expect(mockedClerk.setActive).not.toHaveBeenCalledWith(
+      expect.objectContaining({ session: "session_unrelated" }),
+    );
+  });
+
+  it("hands an incomplete existing-identity transfer to the attributed v2 sign-in step", async () => {
+    const assigned = context.mocks.browser.locationAssign();
+    mockedClerk.clientSignInCreate.mockImplementation(() => {
+      mockSignInResource({
+        status: "needs_first_factor",
+        supportedFirstFactors: [{ strategy: "password" }],
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+    const redirectUrl = "https://app.okou.ai/onboarding?source=transfer";
+    const path = `/v2/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(redirectUrl)}#/callback?attempt=1`;
+    setupSignUpPage(
+      {
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
+      },
+      { path, url: `https://app.vm0.ai${path}` },
+    );
+
+    await waitFor(() => {
+      expect(assigned.calls).toHaveLength(1);
+    });
+    const destination = new URL(assigned.calls[0] ?? "", location.origin);
+    expect(destination.pathname).toBe("/v2/sign-in/factor-one");
+    expect(destination.searchParams.get("redirect_url")).toBe(redirectUrl);
+    expect(destination.searchParams.get("utm_campaign")).toBe("transfer");
+    expect(destination.hash).toBe("#/callback?attempt=1");
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a cancelled Google callback and leaves sign-up retryable", async () => {
+    mockAuthV2Capabilities({ googleOAuth: true });
+    setupSignUpPage(
+      {
+        externalAccountError: {
+          code: "oauth_callback_error",
+          longMessage: "Google sign-up was cancelled.",
+          message: "OAuth callback failed",
+        },
+        externalAccountStatus: "failed",
+        status: null,
+      },
+      {
+        path: "/v2/sign-up/sso-callback",
+        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+      },
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Google sign-up was cancelled.",
+    );
+    fireEvent.click(await waitForRoleElement("button", "Continue with Google"));
+    await waitFor(() => {
+      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
   });
 
   it("recovers a prepared progressive sign-up on a nested refresh without sending another code", async () => {
