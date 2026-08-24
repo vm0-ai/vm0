@@ -390,6 +390,23 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn service_wait_running_help_describes_stdout_contract() {
+        let error = Cli::try_parse_from(["runner", "service", "wait-running", "--help"])
+            .err()
+            .expect("service wait-running --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let normalized_help = error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(normalized_help.contains(
+            "Wait until a runner service is active and job-admitting. On success, emit the resolved max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go to stderr."
+        ));
+    }
+
     #[tokio::test]
     async fn runner_help_hides_token_environment_values() {
         for subcommand in ["config", "start"] {
