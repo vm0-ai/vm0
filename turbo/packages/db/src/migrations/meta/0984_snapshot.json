@@ -1,6 +1,6 @@
 {
-  "id": "be4bb8c4-4a2d-404d-a9ec-3fcf64d3e0b9",
-  "prevId": "0520ea35-af81-4621-ac51-8a9b566020c7",
+  "id": "16a06867-9325-4c16-a9d2-711997a1aefe",
+  "prevId": "fc7d887f-463d-4711-86a4-469ce060d90a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6387,8 +6387,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": true
         },
         "sender_user_id": {
           "name": "sender_user_id",
