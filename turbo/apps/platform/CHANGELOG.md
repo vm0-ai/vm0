@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.790.0](https://github.com/vm0-ai/vm0/compare/app-v0.789.0...app-v0.790.0) (2026-08-24)
+
+
+### Features
+
+* add auth v2 organization continuation ([#29110](https://github.com/vm0-ai/vm0/issues/29110)) ([9c62e8c](https://github.com/vm0-ai/vm0/commit/9c62e8c601dddf1e17a28a20447310f746b72a6b))
+* **auth:** add v2 google sign-up ([#29109](https://github.com/vm0-ai/vm0/issues/29109)) ([e3682a7](https://github.com/vm0-ai/vm0/commit/e3682a7a1832c7dd82b265b7aaeb782d43375dc0))
+
 ## [0.789.0](https://github.com/vm0-ai/vm0/compare/app-v0.788.0...app-v0.789.0) (2026-08-24)
 
 
