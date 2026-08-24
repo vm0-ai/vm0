@@ -70,6 +70,7 @@ import {
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/okou-page/attachment-chips.ts";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
+import { BankingActionCard } from "./banking-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 
 type ChatImagePreviewLinkProps = {
@@ -287,6 +288,9 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
     }
     case "permission-action": {
       return <PermissionActionCard signals={card.signals} />;
+    }
+    case "banking-action": {
+      return <BankingActionCard signals={card.signals} />;
     }
     case "unavailable-action": {
       return <UnavailableActionCard />;
