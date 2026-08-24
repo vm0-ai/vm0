@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.171.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.5...runner-rs-v0.171.6) (2026-08-24)
+
+
+### Documentation
+
+* **python:** distinguish expired firewall auth entries from eviction ([#28867](https://github.com/vm0-ai/vm0/issues/28867)) ([5d67c3c](https://github.com/vm0-ai/vm0/commit/5d67c3ce28a43d15f13b20c37ba0c27238a1a93b))
+
+
+### Refactoring
+
+* **python:** centralize client peer validation ([#28868](https://github.com/vm0-ai/vm0/issues/28868)) ([038fa22](https://github.com/vm0-ai/vm0/commit/038fa226f3e035d75dec571e98656e37ad7754ec))
+
+
+### Performance Improvements
+
+* **python:** reduce x tld redirect test shutdown latency ([#28865](https://github.com/vm0-ai/vm0/issues/28865)) ([b18d95a](https://github.com/vm0-ai/vm0/commit/b18d95ac8f2a043d9cc8a38ea419824ba93876b5))
+
 ## [0.171.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.4...runner-rs-v0.171.5) (2026-08-24)
 
 
