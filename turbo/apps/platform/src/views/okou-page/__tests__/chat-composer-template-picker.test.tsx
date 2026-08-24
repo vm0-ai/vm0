@@ -253,7 +253,6 @@ async function openAvatarPicker(
 ): Promise<HTMLElement> {
   detachedSetupPage({
     context,
-    featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
     path: `/chats/${THREAD_ID}`,
   });
 

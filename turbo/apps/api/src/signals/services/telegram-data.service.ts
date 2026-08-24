@@ -28,7 +28,7 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
-import { userConfiguredAgentEnvironmentRequirements } from "./agent-compose-content";
+import { userConfiguredAgentEnvironmentRequirements } from "./agent-execution-config";
 
 type TelegramBotListItem = TelegramBot;
 type TelegramInstallationRow = typeof telegramInstallations.$inferSelect;

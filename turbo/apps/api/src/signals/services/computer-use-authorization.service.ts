@@ -219,7 +219,7 @@ async function loadTeamsChatThread(args: {
   const [thread] = await args.db
     .select({
       id: chatThreads.id,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
       computerUseHostId: chatThreads.computerUseHostId,
     })
     .from(teamsChatThreadRoutes)
@@ -328,9 +328,9 @@ async function applyChatAuthorizationScope(args: {
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -338,7 +338,7 @@ async function applyChatAuthorizationScope(args: {
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: false,
       createdAt: args.now,
@@ -397,9 +397,9 @@ async function applyTeamsAuthorizationScope(args: {
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -407,7 +407,7 @@ async function applyTeamsAuthorizationScope(args: {
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: false,
       createdAt: args.now,

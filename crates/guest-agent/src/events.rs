@@ -64,6 +64,16 @@ pub async fn send_event_for_config(
     post_event(http, &payload).await
 }
 
+/// Prepare one event for delivery in a `runId` envelope.
+///
+/// Event-controlled content is masked before the system-owned
+/// `sequenceNumber` is added. The sequence number is added only when the event
+/// is a JSON object. The returned payload contains exactly one event under the
+/// supplied `run_id`.
+///
+/// This helper only prepares the payload; it does not capture session metadata
+/// or perform network I/O. Use [`send_event_for_config`] for the normal path
+/// that captures metadata, prepares the payload, and posts the event.
 pub fn prepare_event_payload_for_run_id(
     event: Value,
     seq: u32,
@@ -343,6 +353,14 @@ fn truncate_diagnostic_message(message: &str) -> String {
     format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
+/// Post an already-prepared event payload to the configured events endpoint.
+///
+/// The payload is serialized and sent using the existing
+/// `HTTP_MAX_ATTEMPTS` retry policy. This function does not mask payload
+/// content or capture session metadata, and successful HTTP responses are
+/// accepted without parsing their response bodies. Use
+/// [`send_event_for_config`] for the normal path that captures metadata,
+/// masks the event, prepares the envelope, and posts it.
 pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
     let url = http.events_url()?;
     let payload = Bytes::from(serde_json::to_vec(payload)?);

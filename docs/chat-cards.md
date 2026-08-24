@@ -157,12 +157,15 @@ registry and resource model.
 
 ### 5. Render the matching React component
 
-`BodyRenderBlockView` selects the component by the block's discriminated
-`type` and passes the signals object directly:
+`MarkdownCardView` in
+`turbo/apps/platform/src/views/okou-page/chat-body-cards.tsx` is the single
+dispatch the markdown renderer uses for `data.card` nodes. It selects the
+component by the card's discriminated `kind` and passes the signals object
+directly:
 
 ```tsx
 case "permission-action": {
-  return <PermissionActionCard signals={block.signals} />;
+  return <PermissionActionCard signals={card.signals} />;
 }
 ```
 
@@ -390,6 +393,7 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/platform-action-url.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/plan-upgrade-block.ts`
-- `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`
-- `turbo/apps/platform/src/views/zero-page/browser-session-card.tsx`
+- `turbo/apps/platform/src/views/okou-page/chat-thread-page.tsx`
+- `turbo/apps/platform/src/views/okou-page/browser-session-card.tsx`
+- `turbo/apps/platform/src/views/okou-page/chat-body-cards.tsx`
 - `turbo/apps/platform/src/views/browser-session/browser-session-page.tsx`

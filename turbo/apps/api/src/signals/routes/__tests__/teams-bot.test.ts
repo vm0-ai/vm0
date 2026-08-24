@@ -2033,7 +2033,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          selectedAgentId: switchAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2045,7 +2045,7 @@ describe("POST /api/zero/teams/bot", () => {
       activity: {
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          selectedAgentId: switchAgent.agentId,
         },
       },
     });
@@ -2113,7 +2113,7 @@ describe("POST /api/zero/teams/bot", () => {
             body: expect.arrayContaining([
               expect.objectContaining({
                 type: "Input.ChoiceSet",
-                id: "selectedComposeId",
+                id: "selectedAgentId",
                 choices: expect.arrayContaining([
                   expect.objectContaining({
                     title: expect.stringContaining("Use org default"),
@@ -2319,7 +2319,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2597,7 +2597,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),

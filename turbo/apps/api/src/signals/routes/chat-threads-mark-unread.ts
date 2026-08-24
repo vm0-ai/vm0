@@ -28,16 +28,16 @@ const markUnreadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         isNotNull(chatThreads.agentId),
       ),
     )
-    .returning({ agentComposeId: chatThreads.agentId });
+    .returning({ agentId: chatThreads.agentId });
   signal.throwIfAborted();
 
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
 
   await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
     threadId: params.id,
-    agentId: thread.agentComposeId,
+    agentId: thread.agentId,
     lastReadAt: null,
   });
   signal.throwIfAborted();
@@ -45,7 +45,7 @@ const markUnreadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const unreads = await get(
     chatThreadUnreads({
       userId: auth.userId,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
     }),
   );
   signal.throwIfAborted();

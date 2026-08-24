@@ -1,15 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
-import {
-  and,
-  count,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  sql,
-} from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getVm0Vendor,
@@ -18,10 +9,6 @@ import {
   testTelegramStateContract,
   type TestTelegramStateActionBody,
 } from "@okouai/api-contracts/contracts/test-telegram-state";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -40,7 +27,6 @@ import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-u
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -68,8 +54,6 @@ const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
-const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
-const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 const TELEGRAM_E2E_FIXTURES = {
   botUsername: "vm0_e2e_bot",
   botToken: "123456:e2e-test-bot-token",
@@ -84,16 +68,7 @@ interface SeedDefaultAgentInput {
   readonly name: string;
 }
 
-interface ComposeVersionInput {
-  readonly composeId: string;
-  readonly userId: string;
-  readonly name: string;
-  readonly headVersionId: string | null;
-}
-
 interface DefaultAgentSeed {
-  readonly composeId: string;
-  readonly versionId: string;
   readonly agentId: string;
 }
 
@@ -115,7 +90,6 @@ async function loadInstallation(db: ReadonlyDb, botId: string) {
       orgId: telegramInstallations.orgId,
       ownerUserId: telegramInstallations.ownerUserId,
       defaultAgentId: telegramInstallations.defaultAgentId,
-      defaultComposeId: telegramInstallations.defaultComposeId,
       createdAt: telegramInstallations.createdAt,
     })
     .from(telegramInstallations)
@@ -193,43 +167,6 @@ async function loadDefaultAgent(
     })
     .from(agents)
     .where(eq(agents.id, defaultAgentId))
-    .limit(1);
-  return row ?? null;
-}
-
-async function loadCompose(
-  db: ReadonlyDb,
-  defaultComposeId: string | undefined,
-) {
-  if (!defaultComposeId) {
-    return null;
-  }
-  const [row] = await db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, defaultComposeId))
-    .limit(1);
-  return row ?? null;
-}
-
-async function loadComposeVersion(
-  db: ReadonlyDb,
-  headVersionId: string | null | undefined,
-) {
-  if (!headVersionId) {
-    return null;
-  }
-  const [row] = await db
-    .select({
-      id: agentComposeVersions.id,
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, headVersionId))
     .limit(1);
   return row ?? null;
 }
@@ -448,34 +385,26 @@ function requiredActionStrings(
   return values;
 }
 
-async function seedTelegramCompose(
+async function seedTelegramAgent(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly composeId?: string;
-    readonly composeName?: string;
+    readonly agentId?: string;
     readonly agentName?: string;
   },
 ): Promise<string> {
-  const composeId = args.composeId ?? randomUUID();
-  const composeName = args.composeName ?? `agent-${composeId.slice(0, 8)}`;
-  const agentName = args.agentName ?? composeName;
+  const agentId = args.agentId ?? randomUUID();
+  const agentName = args.agentName ?? `agent-${agentId.slice(0, 8)}`;
 
-  await db.insert(agentComposes).values({
-    id: composeId,
-    userId: args.userId,
-    orgId: args.orgId,
-    name: composeName,
-  });
-  await db.insert(zeroAgents).values({
-    id: composeId,
+  await db.insert(agents).values({
+    id: agentId,
     orgId: args.orgId,
     owner: args.userId,
     name: agentName,
     displayName: agentName,
   });
-  return composeId;
+  return agentId;
 }
 
 async function seedTelegramInstallationForAction(
@@ -497,18 +426,17 @@ async function seedTelegramInstallationForAction(
   const ownerUserId = required.owner_user_id!;
   const telegramBotId = required.telegram_bot_id!;
   const skipCompose = body.skip_compose === true;
-  const defaultComposeId = readActionOptionalString(body, "default_compose_id");
-  if (skipCompose && !defaultComposeId) {
-    return actionBadRequest("default_compose_id is required with skip_compose");
+  const defaultAgentId = readActionOptionalString(body, "default_agent_id");
+  if (skipCompose && !defaultAgentId) {
+    return actionBadRequest("default_agent_id is required with skip_compose");
   }
-  const composeId = skipCompose
-    ? defaultComposeId!
-    : await seedTelegramCompose(db, {
+  const agentId = skipCompose
+    ? defaultAgentId!
+    : await seedTelegramAgent(db, {
         orgId,
         userId:
           readActionOptionalString(body, "compose_user_id") ?? ownerUserId,
-        composeId: defaultComposeId,
-        composeName: readActionOptionalString(body, "compose_name"),
+        agentId: defaultAgentId,
         agentName: readActionOptionalString(body, "agent_name"),
       });
   signal.throwIfAborted();
@@ -526,13 +454,13 @@ async function seedTelegramInstallationForAction(
     encryptedBotToken,
     webhookSecret:
       readActionOptionalString(body, "webhook_secret") ?? `whs_${randomUUID()}`,
-    defaultComposeId: composeId,
+    defaultAgentId: agentId,
     ownerUserId,
     orgId,
   });
   signal.throwIfAborted();
 
-  return actionOk({ compose_id: composeId, telegram_bot_id: telegramBotId });
+  return actionOk({ compose_id: agentId, telegram_bot_id: telegramBotId });
 }
 
 async function seedOrgDefaultAgentForAction(
@@ -546,10 +474,9 @@ async function seedOrgDefaultAgentForAction(
   }
   const orgId = required.org_id!;
   const userId = required.user_id!;
-  const composeId = await seedTelegramCompose(db, {
+  const agentId = await seedTelegramAgent(db, {
     orgId,
     userId,
-    composeName: readActionOptionalString(body, "compose_name"),
     agentName: readActionOptionalString(body, "agent_name"),
   });
   signal.throwIfAborted();
@@ -558,17 +485,17 @@ async function seedOrgDefaultAgentForAction(
     .insert(orgMetadata)
     .values({
       orgId,
-      defaultAgentId: composeId,
+      defaultAgentId: agentId,
       tier: "free",
       credits: 10_000,
     })
     .onConflictDoUpdate({
       target: orgMetadata.orgId,
-      set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
+      set: { defaultAgentId: agentId, tier: "free", credits: 10_000 },
     });
   signal.throwIfAborted();
 
-  return actionOk({ compose_id: composeId });
+  return actionOk({ compose_id: agentId });
 }
 
 async function seedOfficialUserLinkForAction(
@@ -653,14 +580,14 @@ async function seedUserAgentPreferenceForAction(
     .values({
       orgId: required.org_id!,
       userId: required.user_id!,
-      selectedComposeId: required.compose_id!,
+      selectedAgentId: required.compose_id!,
     })
     .onConflictDoUpdate({
       target: [
         telegramUserAgentPreferences.userId,
         telegramUserAgentPreferences.orgId,
       ],
-      set: { selectedComposeId: required.compose_id! },
+      set: { selectedAgentId: required.compose_id! },
     });
   signal.throwIfAborted();
   return actionOk();
@@ -802,9 +729,7 @@ async function deleteTelegramFixtureForAction(
   }
 
   if (composeIds.length > 0) {
-    await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-    signal.throwIfAborted();
-    await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
+    await db.delete(agents).where(inArray(agents.id, composeIds));
     signal.throwIfAborted();
   }
 
@@ -816,37 +741,10 @@ async function seedTelegramPostAgent(
   seed: TelegramPostFixtureSeed,
   signal: AbortSignal,
 ): Promise<void> {
-  await db.insert(agentComposes).values({
+  await db.insert(agents).values({
     id: seed.composeId,
-    userId: seed.userId,
-    orgId: seed.orgId,
-    name: seed.name,
-  });
-  signal.throwIfAborted();
-  await db.insert(agentComposeVersions).values({
-    id: seed.versionId,
-    composeId: seed.composeId,
-    content: {
-      version: "1.0",
-      agents: {
-        telegram: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "test-key" },
-        },
-      },
-    },
-    createdBy: seed.userId,
-  });
-  signal.throwIfAborted();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: seed.versionId })
-    .where(eq(agentComposes.id, seed.composeId));
-  signal.throwIfAborted();
-  await db.insert(zeroAgents).values({
-    id: seed.composeId,
-    orgId: seed.orgId,
     owner: seed.userId,
+    orgId: seed.orgId,
     name: seed.name,
     displayName: "Telegram Agent",
     visibility: "public",
@@ -918,7 +816,7 @@ async function seedTelegramPostInstallation(
     botUsername: `bot_${seed.telegramBotId}`,
     encryptedBotToken,
     webhookSecret: seed.webhookSecret,
-    defaultComposeId: seed.composeId,
+    defaultAgentId: seed.composeId,
     ownerUserId: seed.userId,
     orgId: seed.orgId,
   });
@@ -1100,9 +998,7 @@ async function deleteTelegramPostFixtureForAction(
   signal.throwIfAborted();
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
-  await db.delete(zeroAgents).where(eq(zeroAgents.id, composeId));
-  signal.throwIfAborted();
-  await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
+  await db.delete(agents).where(eq(agents.id, composeId));
   signal.throwIfAborted();
   return actionOk();
 }
@@ -1299,7 +1195,7 @@ async function insertAgentSessionForAction(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly composeId: string;
+    readonly agentId: string;
   },
   signal: AbortSignal,
 ): Promise<string | null> {
@@ -1308,7 +1204,7 @@ async function insertAgentSessionForAction(
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      agentComposeId: args.composeId,
+      agentId: args.agentId,
     })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
@@ -1336,7 +1232,7 @@ async function seedRunningRunForAction(
     {
       orgId: required.org_id!,
       userId: required.user_id!,
-      composeId: required.compose_id!,
+      agentId: required.compose_id!,
     },
     signal,
   );
@@ -1348,7 +1244,6 @@ async function seedRunningRunForAction(
   await db.insert(agentRuns).values({
     userId: required.user_id!,
     orgId: required.org_id!,
-    agentComposeVersionId: required.version_id!,
     sessionId,
     status: "running",
     prompt: "existing running telegram run",
@@ -1382,7 +1277,7 @@ async function seedCompletedRunForAction(
     {
       orgId: required.org_id!,
       userId: required.user_id!,
-      composeId: required.compose_id!,
+      agentId: required.compose_id!,
     },
     signal,
   );
@@ -1399,7 +1294,6 @@ async function seedCompletedRunForAction(
     .values({
       userId: required.user_id!,
       orgId: required.org_id!,
-      agentComposeVersionId: required.version_id!,
       sessionId,
       status: "completed",
       prompt: "previous telegram session",
@@ -1634,41 +1528,23 @@ async function ensureStarterCreditGrant(
   signal.throwIfAborted();
 }
 
-function defaultAgentContent(name: string) {
-  return {
-    version: "1.0",
-    agents: {
-      [name]: {
-        framework: "claude-code",
-        environment: {
-          ANTHROPIC_API_KEY: "",
-          ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
-          ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
-        },
-      },
-    },
-  };
-}
-
-async function getOrInsertCompose(
+async function getOrInsertAgent(
   db: Db,
   input: SeedDefaultAgentInput,
   signal: AbortSignal,
-): Promise<{ readonly id: string; readonly headVersionId: string | null }> {
+): Promise<{ readonly id: string }> {
   const [inserted] = await db
-    .insert(agentComposes)
+    .insert(agents)
     .values({
-      userId: input.userId,
+      id: randomUUID(),
+      owner: input.userId,
       orgId: input.orgId,
       name: input.name,
     })
     .onConflictDoNothing({
-      target: [agentComposes.orgId, agentComposes.name],
+      target: [agents.orgId, agents.name],
     })
-    .returning({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    });
+    .returning({ id: agents.id });
   signal.throwIfAborted();
 
   if (inserted) {
@@ -1676,77 +1552,16 @@ async function getOrInsertCompose(
   }
 
   const [existing] = await db
-    .select({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, input.orgId),
-        eq(agentComposes.name, input.name),
-      ),
-    )
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.orgId, input.orgId), eq(agents.name, input.name)))
     .limit(1);
   signal.throwIfAborted();
 
   if (!existing) {
-    throw new Error("Failed to resolve agent compose after conflict");
+    throw new Error("Failed to resolve Agent after conflict");
   }
   return existing;
-}
-
-async function ensureComposeVersion(
-  db: Db,
-  input: ComposeVersionInput,
-  signal: AbortSignal,
-): Promise<string> {
-  if (input.headVersionId) {
-    return input.headVersionId;
-  }
-
-  const content = defaultAgentContent(input.name);
-  const versionId = createHash("sha256")
-    .update(JSON.stringify(content) + input.composeId)
-    .digest("hex");
-
-  await db
-    .insert(agentComposeVersions)
-    .values({
-      id: versionId,
-      composeId: input.composeId,
-      content,
-      createdBy: input.userId,
-    })
-    .onConflictDoNothing();
-  signal.throwIfAborted();
-
-  const [updated] = await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId, updatedAt: nowDate() })
-    .where(
-      and(
-        eq(agentComposes.id, input.composeId),
-        isNull(agentComposes.headVersionId),
-      ),
-    )
-    .returning({ headVersionId: agentComposes.headVersionId });
-  signal.throwIfAborted();
-  if (updated?.headVersionId) {
-    return updated.headVersionId;
-  }
-
-  const [compose] = await db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, input.composeId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (compose?.headVersionId) {
-    return compose.headVersionId;
-  }
-
-  throw new Error("Failed to resolve agent compose head version");
 }
 
 async function seedDefaultAgent(
@@ -1754,30 +1569,7 @@ async function seedDefaultAgent(
   input: SeedDefaultAgentInput,
   signal: AbortSignal,
 ): Promise<DefaultAgentSeed> {
-  const compose = await getOrInsertCompose(db, input, signal);
-  signal.throwIfAborted();
-  const composeId = compose.id;
-  const versionId = await ensureComposeVersion(
-    db,
-    {
-      composeId,
-      userId: input.userId,
-      name: input.name,
-      headVersionId: compose.headVersionId,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  await db
-    .insert(zeroAgents)
-    .values({
-      id: composeId,
-      orgId: input.orgId,
-      owner: input.userId,
-      name: input.name,
-    })
-    .onConflictDoNothing();
+  const agent = await getOrInsertAgent(db, input, signal);
   signal.throwIfAborted();
 
   await db.transaction(async (tx) => {
@@ -1785,10 +1577,10 @@ async function seedDefaultAgent(
     signal.throwIfAborted();
     await tx
       .insert(orgMetadata)
-      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .values({ orgId: input.orgId, defaultAgentId: agent.id })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, updatedAt: nowDate() },
+        set: { defaultAgentId: agent.id, updatedAt: nowDate() },
       });
     signal.throwIfAborted();
   });
@@ -1804,7 +1596,7 @@ async function seedDefaultAgent(
     signal,
   );
 
-  return { composeId, versionId, agentId: composeId };
+  return { agentId: agent.id };
 }
 
 const getTestTelegramState$ = computed(async (get) => {
@@ -1828,7 +1620,6 @@ const getTestTelegramState$ = computed(async (get) => {
     recentRuns,
     orgMeta,
     defaultAgent,
-    compose,
     messageCount,
     messages,
     officialMessages,
@@ -1838,14 +1629,11 @@ const getTestTelegramState$ = computed(async (get) => {
     loadRecentRuns(db, installation?.orgId),
     loadOrgMeta(db, installation?.orgId),
     loadDefaultAgent(db, installation?.defaultAgentId ?? undefined),
-    loadCompose(db, installation?.defaultComposeId ?? undefined),
     countMessages(db, query.bot_id),
     loadMessages(db, query.bot_id),
     loadOfficialMessages(db, installation?.orgId),
     loadChatThreadRoutes(db, query.bot_id),
   ]);
-  const composeVersion = await loadComposeVersion(db, compose?.headVersionId);
-
   return {
     status: 200 as const,
     body: {
@@ -1855,15 +1643,6 @@ const getTestTelegramState$ = computed(async (get) => {
       recent_runs: recentRuns,
       org_metadata: orgMeta,
       default_agent: defaultAgent,
-      default_compose: compose,
-      default_compose_version: composeVersion
-        ? {
-            id: composeVersion.id,
-            content_keys: Object.keys(
-              (composeVersion.content ?? {}) as Record<string, unknown>,
-            ),
-          }
-        : null,
       messages,
       official_messages: officialMessages,
       routes,
@@ -1924,7 +1703,7 @@ const postTestTelegramState$ = command(
         webhookSecret:
           readOptionalString(body.webhook_secret) ??
           TELEGRAM_E2E_FIXTURES.webhookSecret,
-        defaultComposeId: defaultAgent.composeId,
+        defaultAgentId: defaultAgent.agentId,
         ownerUserId: userId,
         orgId,
       })
@@ -1938,7 +1717,7 @@ const postTestTelegramState$ = command(
           webhookSecret:
             readOptionalString(body.webhook_secret) ??
             TELEGRAM_E2E_FIXTURES.webhookSecret,
-          defaultComposeId: defaultAgent.composeId,
+          defaultAgentId: defaultAgent.agentId,
           ownerUserId: userId,
           orgId,
           updatedAt: nowDate(),
@@ -1968,7 +1747,7 @@ const postTestTelegramState$ = command(
         org_id: orgId,
         user_id: userId,
         user_link_id: linkId,
-        default_agent_id: defaultAgent.composeId,
+        default_agent_id: defaultAgent.agentId,
       },
     };
   },

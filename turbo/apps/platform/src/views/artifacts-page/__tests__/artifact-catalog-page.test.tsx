@@ -34,7 +34,6 @@ function artifact(overrides: Partial<ArtifactSummary> = {}): ArtifactSummary {
 
 function setupArtifactCatalogPage(
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {
-    [FeatureSwitchKey.JoggAiBuiltIn]: true,
     [FeatureSwitchKey.SharedThreadSharing]: true,
   },
 ): void {
@@ -272,26 +271,6 @@ describe("artifact catalog page", () => {
     await findCard("launch-deck");
   });
 
-  it("hides avatars when the JoggAI switch is disabled", async () => {
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      return respond(200, {
-        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
-        nextCursor: null,
-      });
-    });
-
-    setupArtifactCatalogPage({
-      [FeatureSwitchKey.JoggAiBuiltIn]: false,
-      [FeatureSwitchKey.SharedThreadSharing]: true,
-    });
-    await findCard("launch-deck");
-
-    expect(buttonByLabel("Show avatar artifacts")).toBeUndefined();
-    expect(
-      buttonByLabel("Show shared conversation artifacts"),
-    ).toBeInTheDocument();
-  });
-
   it("hides shared conversations when sharing is disabled", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {
@@ -301,7 +280,6 @@ describe("artifact catalog page", () => {
     });
 
     setupArtifactCatalogPage({
-      [FeatureSwitchKey.JoggAiBuiltIn]: true,
       [FeatureSwitchKey.SharedThreadSharing]: false,
     });
     await findCard("launch-deck");

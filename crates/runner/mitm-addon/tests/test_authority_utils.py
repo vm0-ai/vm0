@@ -6,6 +6,51 @@ import authority_utils
 
 
 @pytest.mark.parametrize(
+    ("host", "syntax_chars", "expected"),
+    [
+        pytest.param(
+            "api.example.com",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api.example.com", False, False),
+            id="unencoded-host",
+        ),
+        pytest.param(
+            "api%2Eexample.com",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api.example.com", False, False),
+            id="decoded-without-configured-syntax",
+        ),
+        pytest.param(
+            "api%2Fexample.com",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api/example.com", False, True),
+            id="decoded-configured-syntax",
+        ),
+        pytest.param(
+            "api/example.com",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api/example.com", False, False),
+            id="raw-configured-syntax",
+        ),
+        pytest.param(
+            "api%2",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api%2", True, False),
+            id="malformed-percent-escape",
+        ),
+        pytest.param(
+            "api%FF",
+            frozenset(("/", ":")),
+            authority_utils.PercentDecodedHost("api%FF", True, False),
+            id="invalid-utf8",
+        ),
+    ],
+)
+def test_percent_decode_host_contract(host, syntax_chars, expected):
+    assert authority_utils.percent_decode_host(host, syntax_chars=syntax_chars) == expected
+
+
+@pytest.mark.parametrize(
     ("netloc", "expected"),
     [
         pytest.param("", False, id="malformed-empty"),

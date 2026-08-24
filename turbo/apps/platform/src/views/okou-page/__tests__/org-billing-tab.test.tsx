@@ -4281,9 +4281,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     const locationBeforePurchase = window.location.href;
     click(screen.getByText("Upgrade"));
     await screen.findByText("Compare plans");
@@ -4370,9 +4368,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     click(screen.getByText("Upgrade"));
     await screen.findByText("Compare plans");
     click(buttonByText("Upgrade to Team"));
@@ -4456,9 +4452,7 @@ describe("organization billing settings", () => {
       },
     );
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     const locationBeforePurchase = window.location.href;
     const quickBuyButton = buttonByText("Quick buy $20.00");
     click(quickBuyButton);
@@ -4539,9 +4533,7 @@ describe("organization billing settings", () => {
       });
     });
 
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-    });
+    await openBillingTab("/?settings=billing");
     click(buttonByText("Quick buy $20.00"));
 
     const firstDialog = await screen.findByRole("dialog", {
@@ -4574,9 +4566,7 @@ describe("organization billing settings", () => {
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
     const billingStory = mockBillingStory();
-    await openBillingTab("/?settings=billing", {
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: false,
-    });
+    await openBillingTab("/?settings=billing");
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();

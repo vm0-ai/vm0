@@ -51,10 +51,6 @@ export const imageRecognitionAvailable$ = computed((): boolean => {
   return true;
 });
 
-export const avatarTemplatesEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false;
-});
-
 export const homeStartCardsEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.HomeStartCards] ?? false;
 });

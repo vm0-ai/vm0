@@ -29,7 +29,6 @@ function createDefaultAgent(): TeamComposeItem {
     sound: null,
     avatarUrl: null,
     visibility: "public",
-    headVersionId: "version_1",
     updatedAt: "2024-01-01T00:00:00Z",
   };
 }
@@ -139,7 +138,6 @@ function mockAgentDetailStory(): string {
       sound: "professional",
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_4",
       updatedAt: "2026-03-10T00:00:00Z",
     },
   ]);
@@ -165,7 +163,6 @@ describe("zero jobs page", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_2",
         updatedAt: "2024-01-02T00:00:00Z",
       },
       {
@@ -176,7 +173,6 @@ describe("zero jobs page", () => {
         sound: null,
         avatarUrl: null,
         visibility: "private",
-        headVersionId: "version_3",
         updatedAt: "2024-01-03T00:00:00Z",
       },
     ]);
@@ -225,7 +221,6 @@ describe("zero jobs page", () => {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         visibility: body.visibility ?? "public",
-        headVersionId: "version_created",
         updatedAt: "2026-03-10T00:00:00Z",
       };
       team = [...team, agent];
@@ -392,7 +387,6 @@ describe("zero jobs page", () => {
         sound: "professional",
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_pt",
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ];
@@ -413,7 +407,6 @@ describe("zero jobs page", () => {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         visibility: body.visibility ?? "public",
-        headVersionId: "version_created_pt",
         updatedAt: "2026-03-10T00:00:00Z",
       };
       team = [...team, agent];

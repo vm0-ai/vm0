@@ -4,7 +4,6 @@ import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { materializeAgentLegacyVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
 import { overrideCanonicalAgentAuthorityFixture } from "../../../test-fixtures/canonical-agent-authority";
 import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
@@ -114,7 +113,7 @@ describe("GET /api/agents", () => {
     expect(response.body).toStrictEqual([]);
   });
 
-  it("uses canonical owner, product state, and updated-at ordering when legacy rows differ", async () => {
+  it("uses canonical owner, product state, and updated-at ordering", async () => {
     const owner = newOrgUser();
     const canonicalOwner = {
       orgId: owner.orgId,
@@ -126,7 +125,7 @@ describe("GET /api/agents", () => {
     const first = await accept(
       apiClient().create({
         headers: authHeaders(),
-        body: { displayName: "Legacy First Agent" },
+        body: { displayName: "First Agent" },
       }),
       [201],
     );
@@ -137,9 +136,7 @@ describe("GET /api/agents", () => {
       }),
       [201],
     );
-    await materializeAgentLegacyVersionFixture(first.body.agentId);
-
-    const legacy = await overrideCanonicalAgentAuthorityFixture({
+    await overrideCanonicalAgentAuthorityFixture({
       agentId: first.body.agentId,
       override: {
         owner: canonicalOwner.userId,
@@ -149,12 +146,6 @@ describe("GET /api/agents", () => {
       },
       signal: context.signal,
     });
-    expect(legacy).toStrictEqual({
-      legacyOwner: owner.userId,
-      legacyDisplayName: "Legacy First Agent",
-      legacyVisibility: "public",
-    });
-
     const ownerList = await accept(
       apiClient().list({ headers: authHeaders() }),
       [200],

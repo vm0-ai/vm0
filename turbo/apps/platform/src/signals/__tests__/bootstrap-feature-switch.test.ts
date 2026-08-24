@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
 import {
-  avatarTemplatesEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
@@ -47,23 +46,6 @@ describe("bootstrap feature switch hydration", () => {
     });
 
     expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
-  });
-
-  it("enables avatar templates from the feature switch alone", async () => {
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-      });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(avatarTemplatesEnabled$)).toBeTruthy();
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {

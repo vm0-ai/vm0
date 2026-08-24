@@ -100,9 +100,9 @@ const updateModelSelectionInner$ = command(
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread?.agentComposeId) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -110,7 +110,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
         createdAt: updatedAt,
@@ -120,7 +120,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.serviceTierEventId,
         serviceTier: chatThreadServiceTierFromCodex(
           body.data.codexServiceTier ?? null,
