@@ -1016,7 +1016,12 @@
       "signUp": "Daftar"
     },
     "loading": "Memuat autentikasi",
-    "toggleTheme": "Beralih tema"
+    "toggleTheme": "Beralih tema",
+    "v2": {
+      "continueToSignIn": "Lanjutkan untuk masuk",
+      "continueToSignUp": "Lanjutkan untuk mendaftar",
+      "unavailable": "Pengalaman autentikasi baru belum tersedia."
+    }
   },
   "authorization": {
     "browser": {

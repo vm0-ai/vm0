@@ -1016,7 +1016,12 @@
       "signUp": "Registrieren"
     },
     "loading": "Authentifizierung wird geladen",
-    "toggleTheme": "Design wechseln"
+    "toggleTheme": "Design wechseln",
+    "v2": {
+      "continueToSignIn": "Weiter zur Anmeldung",
+      "continueToSignUp": "Weiter zur Registrierung",
+      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+    }
   },
   "authorization": {
     "browser": {

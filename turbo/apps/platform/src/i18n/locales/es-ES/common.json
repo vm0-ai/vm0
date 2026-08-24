@@ -1034,7 +1034,12 @@
       "signUp": "Crear una cuenta"
     },
     "loading": "Cargando autenticación",
-    "toggleTheme": "Cambiar tema"
+    "toggleTheme": "Cambiar tema",
+    "v2": {
+      "continueToSignIn": "Continuar para iniciar sesión",
+      "continueToSignUp": "Continuar para crear una cuenta",
+      "unavailable": "La nueva experiencia de autenticación aún no está disponible."
+    }
   },
   "authorization": {
     "browser": {

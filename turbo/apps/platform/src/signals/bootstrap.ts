@@ -66,6 +66,10 @@ import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscrib
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
+import {
+  setupSignInV2Page$,
+  setupSignUpV2Page$,
+} from "./auth-v2-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
@@ -162,6 +166,22 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.signUpCatchAll,
     setup: setupSignUpPage$,
+  },
+  {
+    path: ROUTES.signInV2,
+    setup: setupSignInV2Page$,
+  },
+  {
+    path: ROUTES.signInV2CatchAll,
+    setup: setupSignInV2Page$,
+  },
+  {
+    path: ROUTES.signUpV2,
+    setup: setupSignUpV2Page$,
+  },
+  {
+    path: ROUTES.signUpV2CatchAll,
+    setup: setupSignUpV2Page$,
   },
 
   // --- New routes ---

@@ -1034,7 +1034,12 @@
       "signUp": "Iscriviti"
     },
     "loading": "Caricamento dell'autenticazione",
-    "toggleTheme": "Cambia tema"
+    "toggleTheme": "Cambia tema",
+    "v2": {
+      "continueToSignIn": "Continua per accedere",
+      "continueToSignUp": "Continua per registrarti",
+      "unavailable": "La nuova esperienza di autenticazione non è ancora disponibile."
+    }
   },
   "authorization": {
     "browser": {
