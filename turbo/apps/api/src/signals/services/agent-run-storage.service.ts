@@ -107,7 +107,7 @@ interface AgentConfig {
   readonly instructions?: unknown;
 }
 
-interface AgentComposeContent {
+interface AgentExecutionConfig {
   readonly agent?: AgentConfig;
   readonly agents?: Record<string, AgentConfig | undefined>;
   readonly volumes?: Record<string, VolumeConfig | undefined>;
@@ -115,7 +115,7 @@ interface AgentComposeContent {
 
 interface PrepareAgentRunStorageManifestArgs {
   readonly db: Db;
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly agentOrgId: string;
   readonly runtimeOrgId: string;
@@ -983,7 +983,7 @@ function instructionsFilename(framework: SupportedFramework | "pi"): string {
 }
 
 function firstAgentEntry(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
 ): { readonly name: string | undefined; readonly agent: AgentConfig } | null {
   if (content.agent) {
     return { name: undefined, agent: content.agent };
@@ -1030,7 +1030,7 @@ function expandTemplate(
 }
 
 function resolveComposeVolumes(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly volumeVersionOverrides: Record<string, string> | undefined;
   readonly framework: SupportedFramework | "pi";

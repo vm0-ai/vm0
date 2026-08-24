@@ -1,8 +1,29 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { CANONICAL_WORKING_DIR } from "./runners";
 
 const c = initContract();
+
+export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
+export function expandMountPath(mountPath: string | undefined): string {
+  if (mountPath === undefined || mountPath === MOUNT_PATH_TEMPLATE) {
+    return CANONICAL_WORKING_DIR;
+  }
+  return mountPath;
+}
+
+export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
+
+export const agentNameSchema = z
+  .string()
+  .min(3, "Agent name must be at least 3 characters")
+  .max(64, "Agent name must be 64 characters or less")
+  .regex(
+    AGENT_NAME_REGEX,
+    "Agent name must start and end with letter or number, and contain only letters, numbers, and hyphens",
+  );
 
 export const agentVisibilitySchema = z.enum(["public", "private"]);
 export type AgentVisibility = z.infer<typeof agentVisibilitySchema>;

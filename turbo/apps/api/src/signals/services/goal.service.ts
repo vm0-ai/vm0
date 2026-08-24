@@ -265,7 +265,7 @@ async function createGoalThread(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.objective,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,

@@ -29,12 +29,12 @@ export function slackSessionThreadTs(args: {
   readonly channelType: "channel" | "dm" | "group_dm";
   readonly messageTs: string;
   readonly threadTs?: string;
-  readonly agentComposeId?: string;
+  readonly agentId?: string;
   readonly selectedModel?: string | null;
   readonly serviceTier?: ChatThreadServiceTier | null;
 }): string {
-  if (args.channelType === "dm" && !args.threadTs && args.agentComposeId) {
-    const session = `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentComposeId}:${args.selectedModel ?? "default"}`;
+  if (args.channelType === "dm" && !args.threadTs && args.agentId) {
+    const session = `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentId}:${args.selectedModel ?? "default"}`;
     return args.serviceTier === "priority" ? `${session}:priority` : session;
   }
   return args.threadTs ?? args.messageTs;
@@ -94,7 +94,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
   db: Db,
   args: SlackChatThreadRouteKey & {
     readonly orgId: string;
-    readonly agentComposeId: string;
+    readonly agentId: string;
     readonly selectedModel: string | null;
     readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
@@ -114,7 +114,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentId: args.agentComposeId,
+        agentId: args.agentId,
         selectedModel: args.selectedModel,
         codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
@@ -167,7 +167,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
