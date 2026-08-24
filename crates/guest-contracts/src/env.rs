@@ -34,14 +34,27 @@ pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
 /// Sandbox identifier assigned by the runner.
 pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 
+// These four canonical aliases are reader-only during #28914 migration Stage 1.
+// Runner writers keep using the legacy constants until the deployed reader floor,
+// sandbox drain, rollback window, and legacy-read-zero gates are complete.
+// #28914 owns creation of the later writer-cutover and reader-removal issues.
+/// Canonical alias for the sandbox identifier accepted by guest readers.
+pub const CANONICAL_SANDBOX_ID_ENV: &str = "OKOU_SANDBOX_ID";
+
 /// Wire value for the runner's sandbox-reuse decision.
 ///
 /// `reused` means an idle VM was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
+/// Canonical alias for the sandbox-reuse decision accepted by guest readers.
+pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT";
+
 /// Wire value for the runner's final workspace-reuse decision.
 pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
+
+/// Canonical alias for the workspace-reuse decision accepted by guest readers.
+pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
@@ -70,6 +83,9 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 ///
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
+
+/// Canonical alias for the API start timestamp accepted by guest readers.
+pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 
 /// Maximum agent execution duration in seconds.
 ///
@@ -395,6 +411,10 @@ pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     RUN_ID_ENV,
+    CANONICAL_SANDBOX_ID_ENV,
+    CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+    CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+    CANONICAL_API_START_TIME_ENV,
     PI_SESSION_ID_ENV,
     PI_LAUNCH_CONFIG_ENV,
     PI_LAUNCH_PAYLOAD_FILE_ENV,
@@ -470,6 +490,20 @@ mod tests {
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
+        assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
+        assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
+        assert_eq!(
+            CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "OKOU_SANDBOX_REUSE_RESULT"
+        );
+        assert_eq!(WORKSPACE_REUSE_RESULT_ENV, "VM0_WORKSPACE_REUSE_RESULT");
+        assert_eq!(
+            CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            "OKOU_WORKSPACE_REUSE_RESULT"
+        );
+        assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
+        assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
         assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
         assert_eq!(PI_LAUNCH_PAYLOAD_FILE_ENV, "OKOU_PI_LAUNCH_PAYLOAD_FILE");
@@ -664,6 +698,10 @@ mod tests {
         for key in [
             API_URL_ENV,
             RUN_ID_ENV,
+            CANONICAL_SANDBOX_ID_ENV,
+            CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            CANONICAL_API_START_TIME_ENV,
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
