@@ -643,7 +643,7 @@ async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
   return fixture.selectedModel;
 }
 
-async function expectVm0RunRuntimeRoute(
+async function expectBuiltInModelRunRuntimeRoute(
   runId: string,
   selectedModel: string,
 ): Promise<void> {
@@ -652,8 +652,8 @@ async function expectVm0RunRuntimeRoute(
     selectedModel,
     modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
     modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
-    vm0ModelKeyId: expect.any(String),
-    modelKeyVendor: getVm0Vendor(selectedModel),
+    builtInModelKeyId: expect.any(String),
+    builtInModelKeyVendor: getVm0Vendor(selectedModel),
   });
 }
 
@@ -5018,8 +5018,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
       modelRuntimeProvider: null,
       modelRuntimeModel: null,
-      vm0ModelKeyId: null,
-      modelKeyVendor: null,
+      builtInModelKeyId: null,
+      builtInModelKeyVendor: null,
     });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
@@ -5151,7 +5151,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(resumedStorageManifest.storageMounts).toStrictEqual(
       initialStorageMounts,
     );
-    await expectVm0RunRuntimeRoute(resumed.runId, selectedModel);
+    await expectBuiltInModelRunRuntimeRoute(resumed.runId, selectedModel);
 
     const resumedHistory = `managed resumed history ${resumed.runId}`;
     const resumedHistoryHash = createHash("sha256")
@@ -5202,7 +5202,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(rotatedStorageManifest.storageMounts).toStrictEqual(
       initialStorageMounts,
     );
-    await expectVm0RunRuntimeRoute(rotated.runId, selectedModel);
+    await expectBuiltInModelRunRuntimeRoute(rotated.runId, selectedModel);
     await api.requestCancelRun(actor, rotated.runId, [200]);
   });
 
@@ -7551,7 +7551,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    await expectVm0RunRuntimeRoute(run.runId, selectedModel);
+    await expectBuiltInModelRunRuntimeRoute(run.runId, selectedModel);
 
     expect(
       claim.firewalls?.map((firewall) => {
@@ -7601,7 +7601,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       experimentalProfile: DEFAULT_PROFILE,
     });
     const claim = await api.claimRunnerJob(sent.body.runId);
-    await expectVm0RunRuntimeRoute(sent.body.runId, selectedModel);
+    await expectBuiltInModelRunRuntimeRoute(sent.body.runId, selectedModel);
 
     expect(claim.cliAgentType).toBe("codex");
     await expect(
@@ -7726,7 +7726,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
-      await expectVm0RunRuntimeRoute(sent.body.runId, selectedModel);
+      await expectBuiltInModelRunRuntimeRoute(sent.body.runId, selectedModel);
 
       expect(claim.cliAgentType).toBe("codex");
       expect(claim.environment).toMatchObject({

@@ -7055,8 +7055,8 @@ describe("CHAT-02: run-level model overrides", () => {
       selectedModel,
       modelRuntimeProvider: "anthropic-api-key",
       modelRuntimeModel: selectedModel,
-      vm0ModelKeyId: expect.any(String),
-      modelKeyVendor: "anthropic",
+      builtInModelKeyId: expect.any(String),
+      builtInModelKeyVendor: "anthropic",
     });
 
     const reused = await sendChatRun(actor, {
