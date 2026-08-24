@@ -825,9 +825,18 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //
   // #28917 removed five more on zero-traffic evidence: both per-token browser
   // authorization-request rows, `mail/drafts/:mailDraftId/send`, the
-  // per-template presentation read, and `uploads/multipart/abort`. What the
-  // slice still owns below is the mail draft read, the multipart completion,
-  // `uploads/prepare`, the two voice-io rows, and `web/file-url`.
+  // per-template presentation read, and `uploads/multipart/abort`.
+  //
+  // #28974 removed `uploads/prepare`. #28916 and #28917 had both excluded it
+  // under "rows with a Desktop or CLI caller stay, because installed builds
+  // have no expiry window", which misreads its callers: neither is an installed
+  // build. The CLI caller runs under the pinned `CLI_PKG_URL` described below,
+  // and the App caller is the browser bundle on its ~2 day refresh. Both had
+  // visibly crossed over in the log — every App build up to `0.779.x` called
+  // the branded form and every build from `0.780.0` called the neutral one,
+  // with no version on both sides of the split. What the slice still owns below
+  // is the mail draft read, the multipart completion, the two voice-io rows,
+  // and `web/file-url`.
   //
   // Published CLI builds hold the `okou` form directly: `domains/web.ts` builds
   // its URLs by hand rather than from the contract, so the path it carries
@@ -846,10 +855,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/uploads/multipart/complete": [
     "/api/okou/uploads/multipart/complete",
     "/api/zero/uploads/multipart/complete",
-  ],
-  "/api/uploads/prepare": [
-    "/api/okou/uploads/prepare",
-    "/api/zero/uploads/prepare",
   ],
   "/api/voice-io/quota": [
     "/api/okou/voice-io/quota",

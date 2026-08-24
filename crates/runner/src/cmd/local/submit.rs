@@ -591,6 +591,11 @@ impl SubmitPlan {
                     "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
                 )));
             }
+            if key.starts_with("OKOU_") {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': the OKOU_ environment variable namespace is platform-reserved"
+                )));
+            }
             let is_guest_agent_tuning_key =
                 guest_contracts::env::is_guest_agent_tuning_env_key(key);
             if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {

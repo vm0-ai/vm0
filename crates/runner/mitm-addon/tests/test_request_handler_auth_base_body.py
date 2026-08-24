@@ -20,7 +20,7 @@ from tests.buffered_auth_body_framing_cases import (
     buffered_auth_body_framing_rejection_cases,
 )
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -32,12 +32,12 @@ def _write_auth_base_firewall_registry(
     tmp_path,
     *,
     auth_config: dict[str, object] | None = None,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ):
     auth_config = auth_config or {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"}
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -51,7 +51,7 @@ def _write_auth_base_firewall_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -62,7 +62,7 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
     request_body = b'{"secret":"super-secret-body"}'
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -76,7 +76,7 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -127,7 +127,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
             "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
             "base": "${{ secrets.WEBHOOK_URL }}",
         },
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -175,7 +175,7 @@ async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
 ):
     reg_path = _write_auth_base_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
     flow = real_flow(
@@ -455,7 +455,7 @@ async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow,
     mitm_addon.requestheaders(flow)
 
     assert flow.response is None
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 

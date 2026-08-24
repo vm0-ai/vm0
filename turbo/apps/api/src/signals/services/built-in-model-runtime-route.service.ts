@@ -5,6 +5,7 @@ import {
   type Vm0ManagedRouteProviderType,
   type Vm0ManagedRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
+import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import { and, eq, gt, sql } from "drizzle-orm";
@@ -120,21 +121,49 @@ export async function resolveBuiltInModelRuntimeRoute(
       continue;
     }
 
-    const [candidateCooldown] = await db
-      .select({
-        unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
-      })
-      .from(managedModelCandidateCooldown)
-      .where(
-        and(
-          eq(managedModelCandidateCooldown.selectedModel, target.selectedModel),
-          eq(managedModelCandidateCooldown.providerType, target.providerType),
-          eq(managedModelCandidateCooldown.upstreamModel, target.upstreamModel),
-          gt(managedModelCandidateCooldown.unavailableUntil, timestamp),
-        ),
-      )
-      .limit(1);
-    if (candidateCooldown) {
+    const [managedCooldowns, builtInCooldowns] = await Promise.all([
+      db
+        .select({
+          unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+        })
+        .from(managedModelCandidateCooldown)
+        .where(
+          and(
+            eq(
+              managedModelCandidateCooldown.selectedModel,
+              target.selectedModel,
+            ),
+            eq(managedModelCandidateCooldown.providerType, target.providerType),
+            eq(
+              managedModelCandidateCooldown.upstreamModel,
+              target.upstreamModel,
+            ),
+            gt(managedModelCandidateCooldown.unavailableUntil, timestamp),
+          ),
+        )
+        .limit(1),
+      db
+        .select({
+          unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
+        })
+        .from(builtInModelCandidateCooldown)
+        .where(
+          and(
+            eq(
+              builtInModelCandidateCooldown.selectedModel,
+              target.selectedModel,
+            ),
+            eq(builtInModelCandidateCooldown.providerType, target.providerType),
+            eq(
+              builtInModelCandidateCooldown.upstreamModel,
+              target.upstreamModel,
+            ),
+            gt(builtInModelCandidateCooldown.unavailableUntil, timestamp),
+          ),
+        )
+        .limit(1),
+    ]);
+    if (managedCooldowns.length > 0 || builtInCooldowns.length > 0) {
       continue;
     }
 
@@ -152,31 +181,65 @@ export async function extendManagedModelCandidateCooldown(
   const unavailableUntil = new Date(
     nowDate().getTime() + args.retryAfterSeconds * 1000,
   );
-  const [cooldown] = await db
-    .insert(managedModelCandidateCooldown)
-    .values({
-      selectedModel: args.selectedModel,
-      providerType: args.providerType,
-      upstreamModel: args.upstreamModel,
-      unavailableUntil,
-    })
-    .onConflictDoUpdate({
-      target: [
-        managedModelCandidateCooldown.selectedModel,
-        managedModelCandidateCooldown.providerType,
-        managedModelCandidateCooldown.upstreamModel,
-      ],
-      set: {
-        unavailableUntil: sql`GREATEST(${managedModelCandidateCooldown.unavailableUntil}, EXCLUDED.unavailable_until)`,
-      },
-    })
-    .returning({
-      unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
-    });
-  if (!cooldown) {
-    throw new Error("Expected managed model candidate cooldown to be written");
-  }
-  return cooldown.unavailableUntil;
+  return await db.transaction(async (tx) => {
+    const [managedCooldown] = await tx
+      .insert(managedModelCandidateCooldown)
+      .values({
+        selectedModel: args.selectedModel,
+        providerType: args.providerType,
+        upstreamModel: args.upstreamModel,
+        unavailableUntil,
+      })
+      .onConflictDoUpdate({
+        target: [
+          managedModelCandidateCooldown.selectedModel,
+          managedModelCandidateCooldown.providerType,
+          managedModelCandidateCooldown.upstreamModel,
+        ],
+        set: {
+          unavailableUntil: sql`GREATEST(${managedModelCandidateCooldown.unavailableUntil}, EXCLUDED.unavailable_until)`,
+        },
+      })
+      .returning({
+        unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+      });
+    if (!managedCooldown) {
+      throw new Error(
+        "Expected managed model candidate cooldown to be written",
+      );
+    }
+
+    const [builtInCooldown] = await tx
+      .insert(builtInModelCandidateCooldown)
+      .values({
+        selectedModel: args.selectedModel,
+        providerType: args.providerType,
+        upstreamModel: args.upstreamModel,
+        unavailableUntil,
+      })
+      .onConflictDoUpdate({
+        target: [
+          builtInModelCandidateCooldown.selectedModel,
+          builtInModelCandidateCooldown.providerType,
+          builtInModelCandidateCooldown.upstreamModel,
+        ],
+        set: {
+          unavailableUntil: sql`GREATEST(${builtInModelCandidateCooldown.unavailableUntil}, EXCLUDED.unavailable_until)`,
+        },
+      })
+      .returning({
+        unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
+      });
+    if (!builtInCooldown) {
+      throw new Error(
+        "Expected built-in model candidate cooldown to be written",
+      );
+    }
+
+    return managedCooldown.unavailableUntil > builtInCooldown.unavailableUntil
+      ? managedCooldown.unavailableUntil
+      : builtInCooldown.unavailableUntil;
+  });
 }
 
 export function hasIncompatibleBuiltInModelRuntimeRoute(args: {

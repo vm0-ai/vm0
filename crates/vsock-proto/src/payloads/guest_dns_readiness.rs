@@ -1,14 +1,20 @@
+use super::process_termination::{
+    TerminationDecodeErrors, append_termination, decode_termination as decode_process_termination,
+    termination_encoded_len,
+};
 use crate::ProtocolError;
 use crate::frame::encode_into;
-use crate::read::{expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32};
+use crate::read::{expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32};
 use crate::wire::MSG_GUEST_DNS_READINESS;
 
-const TERMINATION_EXITED: u8 = 0x00;
-const TERMINATION_TIMED_OUT: u8 = 0x01;
-const TERMINATION_CANCELLED: u8 = 0x02;
-const TERMINATION_START_FAILED: u8 = 0x03;
-const TERMINATION_WAIT_FAILED: u8 = 0x04;
 const RESULT_FLAG_OUTPUT_TRUNCATED: u8 = 0x01;
+
+/// Backward-compatible name for the shared guest process terminal state.
+///
+/// For DNS readiness, `TimedOut` means the request timeout elapsed, `Cancelled`
+/// means the owning connection was cancelled, and `WaitFailed` includes process
+/// wait or cleanup failures.
+pub use super::process_termination::ExecTermination as GuestDnsReadinessTermination;
 
 /// Maximum encoded hostname length accepted by a guest DNS readiness request.
 pub const GUEST_DNS_READINESS_MAX_HOSTNAME_BYTES: usize = 253;
@@ -26,24 +32,6 @@ pub struct DecodedGuestDnsReadinessRequest<'a> {
     pub timeout_ms: u32,
     /// Hostname passed as one argument to the fixed guest resolver command.
     pub hostname: &'a str,
-}
-
-/// Terminal state of the fixed guest DNS readiness process.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GuestDnsReadinessTermination {
-    /// The process exited with the supplied exit code.
-    Exited {
-        /// Process exit code, with signals represented as `128 + signal`.
-        exit_code: i32,
-    },
-    /// The process exceeded its request timeout and was killed.
-    TimedOut,
-    /// The owning guest connection was cancelled and the process was killed.
-    Cancelled,
-    /// The process could not be started.
-    StartFailed,
-    /// Waiting for or cleaning up the process failed.
-    WaitFailed,
 }
 
 /// Decoded result of the fixed guest DNS readiness process.
@@ -275,14 +263,7 @@ fn result_payload_len(
     answer: &[u8],
     diagnostic: &str,
 ) -> usize {
-    let termination_len = match termination {
-        GuestDnsReadinessTermination::Exited { .. } => 5,
-        GuestDnsReadinessTermination::TimedOut
-        | GuestDnsReadinessTermination::Cancelled
-        | GuestDnsReadinessTermination::StartFailed
-        | GuestDnsReadinessTermination::WaitFailed => 1,
-    };
-    termination_len + 4 + 1 + 2 + answer.len() + 2 + diagnostic.len()
+    termination_encoded_len(termination) + 4 + 1 + 2 + answer.len() + 2 + diagnostic.len()
 }
 
 fn append_result_payload(
@@ -294,16 +275,7 @@ fn append_result_payload(
     diagnostic: &str,
     encoded: EncodedResultLengths,
 ) {
-    match termination {
-        GuestDnsReadinessTermination::Exited { exit_code } => {
-            payload.push(TERMINATION_EXITED);
-            payload.extend_from_slice(&exit_code.to_be_bytes());
-        }
-        GuestDnsReadinessTermination::TimedOut => payload.push(TERMINATION_TIMED_OUT),
-        GuestDnsReadinessTermination::Cancelled => payload.push(TERMINATION_CANCELLED),
-        GuestDnsReadinessTermination::StartFailed => payload.push(TERMINATION_START_FAILED),
-        GuestDnsReadinessTermination::WaitFailed => payload.push(TERMINATION_WAIT_FAILED),
-    }
+    append_termination(payload, termination);
     payload.extend_from_slice(&duration_ms.to_be_bytes());
     payload.push(u8::from(output_truncated) * RESULT_FLAG_OUTPUT_TRUNCATED);
     payload.extend_from_slice(&encoded.answer_len.to_be_bytes());
@@ -316,26 +288,15 @@ fn decode_termination(
     payload: &[u8],
     offset: &mut usize,
 ) -> Result<GuestDnsReadinessTermination, ProtocolError> {
-    match read_u8(
+    decode_process_termination(
         payload,
         offset,
-        "guest_dns_readiness_result termination truncated",
-    )? {
-        TERMINATION_EXITED => Ok(GuestDnsReadinessTermination::Exited {
-            exit_code: read_i32(
-                payload,
-                offset,
-                "guest_dns_readiness_result exit_code truncated",
-            )?,
-        }),
-        TERMINATION_TIMED_OUT => Ok(GuestDnsReadinessTermination::TimedOut),
-        TERMINATION_CANCELLED => Ok(GuestDnsReadinessTermination::Cancelled),
-        TERMINATION_START_FAILED => Ok(GuestDnsReadinessTermination::StartFailed),
-        TERMINATION_WAIT_FAILED => Ok(GuestDnsReadinessTermination::WaitFailed),
-        _ => Err(ProtocolError::InvalidPayload(
-            "guest_dns_readiness_result unknown termination",
-        )),
-    }
+        TerminationDecodeErrors {
+            termination_truncated: "guest_dns_readiness_result termination truncated",
+            exit_code_truncated: "guest_dns_readiness_result exit_code truncated",
+            invalid_tag: "guest_dns_readiness_result unknown termination",
+        },
+    )
 }
 
 #[cfg(test)]
@@ -445,7 +406,19 @@ mod tests {
 
         let mut unknown_termination = valid.clone();
         unknown_termination[0] = 0xFF;
-        assert!(decode_guest_dns_readiness_result(&unknown_termination).is_err());
+        assert!(matches!(
+            decode_guest_dns_readiness_result(&unknown_termination),
+            Err(ProtocolError::InvalidPayload(
+                "guest_dns_readiness_result unknown termination"
+            ))
+        ));
+
+        assert!(matches!(
+            decode_guest_dns_readiness_result(&[0x00, 0x00, 0x00, 0x00]),
+            Err(ProtocolError::InvalidPayload(
+                "guest_dns_readiness_result exit_code truncated"
+            ))
+        ));
 
         let mut unknown_flags = valid.clone();
         unknown_flags[9] = 0x80;

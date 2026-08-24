@@ -248,7 +248,7 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
 
-    const EARLY_SIGNAL_CHILD_ENV: &str = "VM0_RUNNER_EARLY_SIGNAL_TEST";
+    const EARLY_SIGNAL_CHILD_ENV: &str = "OKOU_RUNNER_EARLY_SIGNAL_TEST";
     const EARLY_SIGTERM_CHILD: &str =
         "cmd::start::signals::tests::early_sigterm_buffered_before_spawn_child";
     const EARLY_SIGINT_CHILD: &str =

@@ -35,6 +35,23 @@ def test_sync_usage_executor_captures_callable_exceptions(sync_usage_executor):
         sync_usage_executor.shutdown(wait=True)
 
 
+def test_sync_usage_executor_captures_base_exceptions(sync_usage_executor):
+    def fail() -> None:
+        raise SystemExit(7)
+
+    future = sync_usage_executor.submit(fail)
+
+    assert isinstance(future, Future)
+    assert future.done()
+    assert isinstance(future.exception(), SystemExit)
+    with pytest.raises(SystemExit) as result_error:
+        future.result()
+    assert result_error.value.code == 7
+    with pytest.raises(SystemExit) as shutdown_error:
+        sync_usage_executor.shutdown(wait=True)
+    assert shutdown_error.value.code == 7
+
+
 def test_sync_usage_executor_rejects_submit_after_shutdown(sync_usage_executor):
     sync_usage_executor.shutdown(wait=True)
 

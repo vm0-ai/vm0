@@ -248,7 +248,7 @@ class TestModelProviderWebSocketUsageAggregation:
         underbilling_entries = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("type") == "usage_underbilling"
         ]
@@ -327,7 +327,7 @@ class TestModelProviderWebSocketUsageAggregation:
         underbilling_entries = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("type") == "usage_underbilling"
         ]
@@ -480,7 +480,7 @@ class TestModelProviderWebSocketUsageAggregation:
         [entry] = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("type") == "usage_underbilling"
         ]

@@ -184,7 +184,7 @@ def _configure_response_inspection_stream(
     if response is None:
         return _ResponseStreamSetup(None, False)
 
-    # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
+    # Platform-billable firewall flag, sourced from sandbox_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the incremental response parsers used for connector billing payload
     # extraction. Model-provider usage reporting is gated separately.

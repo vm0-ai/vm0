@@ -349,17 +349,24 @@ async fn stop_cleanup_with_ops(
     cleanup: CleanupPolicy,
     ops: &mut impl ServiceStopOps,
 ) -> RunnerResult<()> {
-    let stop_outcome = ops.stop_bounded(unit, CLEANUP_STOP_TIMEOUT).await?;
-    let stop_needs_escalation = !matches!(&stop_outcome, BoundedSystemctlOutcome::Success);
-    match stop_outcome {
-        BoundedSystemctlOutcome::Success => {}
-        BoundedSystemctlOutcome::Failed(status) => {
+    let (stop_needs_escalation, initial_stop_error) = match ops
+        .stop_bounded(unit, CLEANUP_STOP_TIMEOUT)
+        .await
+    {
+        Ok(BoundedSystemctlOutcome::Success) => (false, None),
+        Ok(BoundedSystemctlOutcome::Failed(status)) => {
             warn!(unit = %unit.unit_name(), %status, "bounded systemctl stop failed during cleanup");
+            (true, None)
         }
-        BoundedSystemctlOutcome::TimedOut => {
+        Ok(BoundedSystemctlOutcome::TimedOut) => {
             warn!(unit = %unit.unit_name(), "bounded systemctl stop timed out during cleanup");
+            (true, None)
         }
-    }
+        Err(error) => {
+            warn!(unit = %unit.unit_name(), error = %error, "bounded systemctl stop errored during cleanup");
+            (true, Some(error))
+        }
+    };
 
     let state = match ops.cleanup_active_state(unit).await {
         Ok(state) => Some(state),
@@ -419,7 +426,9 @@ async fn stop_cleanup_with_ops(
 
     let postcondition_result =
         combine_cleanup_postcondition_results(unit, inactive_result, disabled_result);
-    combine_cleanup_transition_results(unit, drain_cleanup_result, postcondition_result)
+    let cleanup_result =
+        combine_cleanup_transition_results(unit, drain_cleanup_result, postcondition_result);
+    combine_cleanup_initial_stop_result(unit, initial_stop_error, cleanup_result)
 }
 
 async fn verify_cleanup_not_enabled(
@@ -483,6 +492,21 @@ fn combine_cleanup_transition_results(
                 unit.service_name()
             )))
         }
+    }
+}
+
+fn combine_cleanup_initial_stop_result(
+    unit: &RunnerServiceUnit,
+    initial_stop_error: Option<RunnerError>,
+    cleanup_result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    match (initial_stop_error, cleanup_result) {
+        (_, Ok(())) => Ok(()),
+        (None, Err(error)) => Err(error),
+        (Some(initial_stop_error), Err(cleanup_error)) => Err(RunnerError::Internal(format!(
+            "cleanup failed for {} after bounded systemctl stop error: {initial_stop_error}; additionally: {cleanup_error}",
+            unit.service_name()
+        ))),
     }
 }
 
@@ -1221,6 +1245,85 @@ mod tests {
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_recovers_from_bounded_stop_error() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Err(fake_error("initial stop unavailable"))]),
+            cleanup_states: VecDeque::from([
+                Err(fake_error("state unavailable")),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_preserves_bounded_stop_and_enablement_failures() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Err(fake_error("initial stop unavailable"))]),
+            enabled_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("bounded systemctl stop error"));
+        assert!(message.contains("initial stop unavailable"));
+        assert!(message.contains("left vm0-runner-test.service enabled"));
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "is_enabled",
             ]
         );
     }

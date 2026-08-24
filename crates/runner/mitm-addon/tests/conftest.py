@@ -499,7 +499,7 @@ def sync_usage_executor():
             self._futures.append(future)
             try:
                 result = fn(*args, **kwargs)
-            except Exception as error:
+            except BaseException as error:
                 future.set_exception(error)
             else:
                 future.set_result(result)
@@ -546,7 +546,7 @@ def fresh_usage_executor():
 def registry_file(tmp_path):
     """Create a sample proxy registry JSON file and return its path."""
     registry: dict[str, Any] = {
-        "vms": {
+        "sandboxes": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
                 "billableFirewalls": [],

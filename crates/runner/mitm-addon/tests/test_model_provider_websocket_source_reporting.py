@@ -44,8 +44,8 @@ class TestModelProviderWebSocketUsageSourceRelease:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url="https://api.vm0.ai"):
             feed_websocket_server_message(
@@ -82,7 +82,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
             feed_websocket_server_message(
@@ -107,8 +107,8 @@ class TestModelProviderWebSocketUsageSourceRelease:
     def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         feed_websocket_server_message(
             flow,
@@ -127,7 +127,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
             feed_websocket_server_message(
@@ -245,7 +245,7 @@ class TestModelProviderWebSocketSourceReporting:
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         model_provider_failure.admit_flow(flow)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         over_budget_frame = (
             b'{"type":"response.completed","response":{"id":"resp_partial",'
@@ -309,7 +309,7 @@ class TestModelProviderWebSocketSourceReporting:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with self._usage_webhook_api() as webhook:
             feed_websocket_server_message(

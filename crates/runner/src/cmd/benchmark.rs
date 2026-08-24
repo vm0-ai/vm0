@@ -386,7 +386,7 @@ async fn run_sandbox(
     let run_id = sandbox.id().to_string();
     let network_log_path = std::path::PathBuf::from("/dev/null");
     let proxy_log_path = std::path::PathBuf::from("/dev/null");
-    let registration = proxy::VmRegistration {
+    let registration = proxy::SandboxRegistration {
         run_id: &run_id,
         cli_agent_type: "claude-code",
         sandbox_token: "",
@@ -403,14 +403,14 @@ async fn run_sandbox(
         billable_firewalls: &[],
         model_usage_provider: None,
     };
-    if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
-        warn!(error = %e, "failed to register VM in proxy");
+    if let Err(e) = mitm.register_sandbox(&source_ip, &registration).await {
+        warn!(error = %e, "failed to register sandbox in proxy");
     }
 
     let (result, timing) = run_in_sandbox(args, env_pairs, sandbox.as_mut()).await;
 
-    if let Err(e) = mitm.unregister_vm(&source_ip).await {
-        warn!(error = %e, "failed to unregister VM from proxy");
+    if let Err(e) = mitm.unregister_sandbox(&source_ip).await {
+        warn!(error = %e, "failed to unregister sandbox from proxy");
     }
     if let Err(e) = sandbox.stop().await {
         warn!(error = %e, "sandbox stop failed");
@@ -844,7 +844,7 @@ mod tests {
         case: impl std::fmt::Debug,
         unregister_message: &str,
     ) {
-        let register = event_positions(events, "registered VM in proxy registry");
+        let register = event_positions(events, "registered sandbox in proxy registry");
         let unregister = event_positions(events, unregister_message);
         let stop = event_positions(events, "sandbox stop failed");
 
@@ -921,12 +921,12 @@ mod tests {
         assert_cleanup_event_order(
             &events_at_destroy,
             case,
-            "unregistered VM from proxy registry",
+            "unregistered sandbox from proxy registry",
         );
         assert_cleanup_event_order(
             &captured.entries(),
             case,
-            "unregistered VM from proxy registry",
+            "unregistered sandbox from proxy registry",
         );
         assert_primary_result(case, result);
     }
@@ -1008,16 +1008,16 @@ mod tests {
         assert_cleanup_event_order(
             &events_at_destroy,
             "cleanup failures",
-            "failed to unregister VM from proxy",
+            "failed to unregister sandbox from proxy",
         );
         let final_events = captured.entries();
         assert_cleanup_event_order(
             &final_events,
             "cleanup failures",
-            "failed to unregister VM from proxy",
+            "failed to unregister sandbox from proxy",
         );
         assert!(
-            event_positions(&final_events, "unregistered VM from proxy registry").is_empty(),
+            event_positions(&final_events, "unregistered sandbox from proxy registry").is_empty(),
             "events={final_events:#?}"
         );
 
