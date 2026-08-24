@@ -31,6 +31,12 @@ pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 /// environment or CLI child env.
 pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
 
+/// Canonical API token alias accepted by guest readers during migration.
+///
+/// Runner writers keep using [`API_TOKEN_ENV`] until the deployed reader floor,
+/// sandbox drain, rollback window, and legacy-read-zero gates are complete.
+pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
+
 /// Sandbox identifier assigned by the runner.
 pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 
@@ -499,6 +505,8 @@ mod tests {
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
+        assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
         assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
         assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
@@ -707,6 +715,8 @@ mod tests {
         for key in [
             API_URL_ENV,
             RUN_ID_ENV,
+            API_TOKEN_ENV,
+            CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,

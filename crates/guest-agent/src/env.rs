@@ -29,6 +29,35 @@ fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+/// Resolve the sensitive runner-to-guest API token at the single process-env
+/// capture boundary. Both aliases are reader-only during #28914 migration
+/// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
+fn api_token_env_or_empty() -> Result<String, String> {
+    let canonical_key = guest_contracts::env::CANONICAL_API_TOKEN_ENV;
+    let legacy_key = guest_contracts::env::API_TOKEN_ENV;
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting API token environment aliases: canonical_key={canonical_key} \
+                 legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "api_token_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
 #[derive(Clone, Copy)]
 enum RunMetadataEnvSource {
     CanonicalOnly,
@@ -260,7 +289,7 @@ pub struct GuestConfigRaw {
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
     ///
-    /// Returns an error when a canonical and legacy run-metadata alias pair
+    /// Returns an error when a canonical and legacy bootstrap alias pair
     /// contains conflicting values.
     pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
@@ -271,7 +300,7 @@ impl GuestConfigRaw {
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
-            api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
+            api_token: api_token_env_or_empty()?,
             sandbox_id: run_metadata_env_or_empty(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 guest_contracts::env::SANDBOX_ID_ENV,
