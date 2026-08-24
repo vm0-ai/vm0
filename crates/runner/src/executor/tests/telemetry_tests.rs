@@ -828,45 +828,58 @@ async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membersh
     let config = test_executor_config(dir.path()).await;
     let factory = ObservedMockSandboxFactory::new();
     let concurrency = RunnerPreSpawnConcurrency::default();
-    let held_timing = RunnerPreSpawnTiming::start_at(Instant::now(), None, &concurrency);
+    let mut held_timings = Vec::new();
 
-    let mut overlapping_context = minimal_context();
-    overlapping_context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let (_outcome, overlapping_telemetry) = execute_job_with_prepared_notifier(
-        &factory,
-        overlapping_context,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        RunCancellationSignals::hard_only(cancel),
-        ExecutionHooks {
-            sandbox_prepared: None,
-            active_input_source: None,
-            pre_spawn_timing: Some(pre_spawn_timing_with_phases_and_concurrency(&concurrency)),
-            session_history_restore_plan: SessionHistoryRestorePlan::Default,
-        },
-    )
-    .await;
-
-    for action in [
-        "runner_claim_to_executor_start",
-        "runner_fresh_sandbox_prepare",
-        "runner_agent_start_process",
-        "api_to_spawn",
+    for (held_count, expected_bucket) in [
+        (0, RunnerPreSpawnConcurrencyBucket::One),
+        (1, RunnerPreSpawnConcurrencyBucket::Two),
+        (2, RunnerPreSpawnConcurrencyBucket::ThreeToFour),
+        (3, RunnerPreSpawnConcurrencyBucket::ThreeToFour),
+        (4, RunnerPreSpawnConcurrencyBucket::FiveToEight),
+        (7, RunnerPreSpawnConcurrencyBucket::FiveToEight),
+        (8, RunnerPreSpawnConcurrencyBucket::NinePlus),
     ] {
-        assert_pre_spawn_concurrency_bucket(
-            &overlapping_telemetry,
-            action,
-            Some(RunnerPreSpawnConcurrencyBucket::Two),
-        );
-    }
-    assert_pre_spawn_concurrency_bucket(&overlapping_telemetry, "agent_execute", None);
+        while held_timings.len() < held_count {
+            held_timings.push(RunnerPreSpawnTiming::start_at(
+                Instant::now(),
+                None,
+                &concurrency,
+            ));
+        }
+        let mut context = minimal_context();
+        context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+            &factory,
+            context,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            RunCancellationSignals::hard_only(cancel),
+            ExecutionHooks {
+                sandbox_prepared: None,
+                active_input_source: None,
+                pre_spawn_timing: Some(pre_spawn_timing_with_phases_and_concurrency(&concurrency)),
+                session_history_restore_plan: SessionHistoryRestorePlan::Default,
+            },
+        )
+        .await;
 
-    drop(held_timing);
+        for action in [
+            "runner_claim_to_executor_start",
+            "runner_fresh_sandbox_prepare",
+            "runner_agent_start_process",
+            "api_to_spawn",
+        ] {
+            assert_pre_spawn_concurrency_bucket(&telemetry, action, Some(expected_bucket));
+        }
+        assert_pre_spawn_concurrency_bucket(&telemetry, "agent_execute", None);
+    }
+
+    drop(held_timings);
 
     let mut baseline_context = minimal_context();
     baseline_context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
