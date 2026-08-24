@@ -590,7 +590,7 @@ function logStripeSubscriptionSweep(
   sweep: StripeSubscriptionSweepResult,
 ): void {
   if (sweep.attempted > 0) {
-    L.warn("Stripe subscription snapshots reconciled", {
+    L.debug("Stripe subscription snapshots reconciled", {
       attempted: sweep.attempted,
       reconciled: sweep.reconciled,
       failed: sweep.failed,

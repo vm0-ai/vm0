@@ -287,6 +287,14 @@ describe("billing entitlement reconciliation", () => {
       [200],
     );
     expect(response.body).toStrictEqual({ success: true, downgraded: 2 });
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.objectContaining({ failed: 0 }),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
 
     const selected = await readState(selectedMarker);
     expect(statuses(selected)).toStrictEqual(RECONCILED_STATUSES);
@@ -654,6 +662,20 @@ describe("billing entitlement reconciliation", () => {
       [200],
     );
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.objectContaining({ failed: expect.any(Number) }),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Stripe subscription retrieval failed during discovery",
+      expect.objectContaining({
+        subscriptionId: retrievalPlan.stripeSubscriptionId,
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
 
     await expect(readState(retrievalMarker)).resolves.toContainEqual({
       kind: "plan-subscription",
