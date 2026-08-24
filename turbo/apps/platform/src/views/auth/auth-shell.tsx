@@ -1,3 +1,4 @@
+import { Button, cn } from "@okouai/ui";
 import { Moon, Sun } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
@@ -10,18 +11,27 @@ import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 
 interface AuthShellProps {
-  authBrand: AuthBrandContext;
-  children: ReactNode;
+  readonly authBrand: AuthBrandContext;
+  readonly children: ReactNode;
+  readonly variant?: "legacy" | "v2";
 }
 
-export function AuthShell({ authBrand, children }: AuthShellProps) {
+export function AuthShell({
+  authBrand,
+  children,
+  variant = "legacy",
+}: AuthShellProps) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
+  const v2 = variant === "v2";
 
   return (
     <div
-      className="relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
+      className={cn(
+        "relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background",
+        v2 ? "zero-app p-4 sm:p-6" : "p-6",
+      )}
       data-testid="app-auth-layout"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
@@ -30,21 +40,57 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
       <div className="pointer-events-none absolute top-1/2 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#A6DEFF]/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-40 -bottom-40 h-96 w-96 rounded-full bg-[#FFE7A2]/15 blur-3xl" />
 
-      <button
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
         onClick={() => {
-          setTheme(theme === "dark" ? "light" : "dark");
+          const nextTheme = theme === "dark" ? "light" : "dark";
+          setTheme(nextTheme);
         }}
-        className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-card-hover"
+        className={cn(
+          "fixed z-50 border-border bg-card text-foreground hover:bg-card-hover",
+          v2
+            ? "right-[calc(1rem+var(--sar))] top-[calc(1rem+var(--sat))] sm:right-[calc(1.5rem+var(--sar))] sm:top-[calc(1.5rem+var(--sat))]"
+            : "right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))]",
+        )}
         aria-label={t(($) => {
           return $.auth.toggleTheme;
         })}
+        aria-pressed={theme === "dark"}
       >
-        {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-      </button>
+        {theme === "dark" ? (
+          <Sun size={16} aria-hidden="true" />
+        ) : (
+          <Moon size={16} aria-hidden="true" />
+        )}
+      </Button>
+
+      <span
+        aria-atomic="true"
+        aria-live="polite"
+        className="sr-only"
+        role="status"
+      >
+        {t(($) => {
+          return theme === "dark"
+            ? $.auth.theme.darkEnabled
+            : $.auth.theme.lightEnabled;
+        })}
+      </span>
 
       <a
         href={authBrand.homeUrl}
-        className="absolute left-6 top-6 flex items-center gap-2"
+        aria-label={t(
+          ($) => {
+            return $.auth.homeLink;
+          },
+          { brandName: authBrand.brandName },
+        )}
+        className={cn(
+          "absolute flex items-center gap-2 transition-opacity hover:opacity-75 focus-visible:opacity-75 focus-visible:outline-none",
+          v2 ? "left-4 top-4 sm:left-6 sm:top-6" : "left-6 top-6",
+        )}
       >
         {authBrand.brandName === "Okou" ? (
           <span className="text-xl font-semibold tracking-tight">
@@ -63,9 +109,14 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
         )}
       </a>
 
-      <div className="relative z-10 m-auto flex w-full min-w-0 justify-center">
+      <main
+        className={cn(
+          "relative z-10 m-auto flex w-full min-w-0 justify-center",
+          v2 && "py-14 sm:py-16",
+        )}
+      >
         {children}
-      </div>
+      </main>
     </div>
   );
 }

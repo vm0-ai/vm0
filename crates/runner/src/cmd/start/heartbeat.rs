@@ -768,7 +768,7 @@ pub(super) fn collect_heartbeat_state(
         "Stopped is never live-heartbeated",
     );
     let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
-    // budget.allocated() includes parked (idle) VMs that hold their budget.
+    // budget.allocated() includes parked (idle) sandboxes that hold their budget.
     // Report only actively running jobs so the scheduler sees real capacity.
     let idle_count = idle_pool.len();
     let running_count = budget_running.saturating_sub(idle_count);

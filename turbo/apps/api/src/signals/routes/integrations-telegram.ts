@@ -1,10 +1,9 @@
 import { command, computed } from "ccstate";
-import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
-import { z } from "zod";
-import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
+import {
+  integrationsTelegramBotListContract,
+  integrationsTelegramDownloadFileContract,
+} from "@okouai/api-contracts/contracts/integrations";
 import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 
 import {
   organizationAuthContext$,
@@ -41,33 +40,6 @@ import { inferMimetype } from "../../lib/mimetype";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { publicBrand$ } from "../context/hono";
-
-const c = initContract();
-
-const telegramDownloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/okou/integrations/telegram/download-file",
-    headers: authHeadersSchema,
-    query: z.object({
-      file_id: z.string().min(1),
-      bot_id: z.string().min(1),
-    }),
-    responses: {
-      200: c.otherResponse({
-        contentType: "application/octet-stream",
-        body: z.unknown(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Download a Telegram file via org bot token",
-  },
-});
 
 function errorResponse(
   status: number,
@@ -206,7 +178,9 @@ const getIntegrationTelegramLinkStatusInner$ = computed(async (get) => {
 const getTelegramDownloadFileInner$ = command(
   async ({ get }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const query = get(queryOf(telegramDownloadFileContract.download));
+    const query = get(
+      queryOf(integrationsTelegramDownloadFileContract.download),
+    );
 
     let botToken: string | null | undefined;
     if (isOfficialTelegramBotId(query.bot_id)) {
@@ -545,7 +519,7 @@ export const integrationsTelegramRoutes: readonly RouteEntry[] = [
     handler: authRoute(telegramReadAuth, getTelegramBotsInner$),
   },
   {
-    route: telegramDownloadFileContract.download,
+    route: integrationsTelegramDownloadFileContract.download,
     handler: authRoute(telegramReadAuth, getTelegramDownloadFileInner$),
   },
 ];

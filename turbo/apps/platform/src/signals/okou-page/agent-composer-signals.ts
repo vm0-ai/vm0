@@ -328,8 +328,6 @@ export const setAgentComposerContext$ = command(
 );
 
 export const agentChatComposerSignals$ = computed((get) => {
-  // Recreate the editor when delayed feature-switch bootstrap changes its semantics.
-  get(featureSwitch$);
   const agentId = get(currentAgentId$);
   if (!agentId) {
     throw new Error("Chat composer requires an active agent");

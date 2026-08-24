@@ -407,7 +407,7 @@ mod tests {
                     "phase_started_at":"2026-04-13T00:00:02.000Z"
                 }
             ],
-            "idle_vms": [
+            "idle_sandboxes": [
                 {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,

@@ -320,7 +320,7 @@ async fn stop_default_with_ops(
     let svc = unit.service_name();
 
     if ops.is_active(unit).await? {
-        // Active unit: stop must succeed; otherwise the runner process and VMs
+        // Active unit: stop must succeed; otherwise the runner process and sandboxes
         // can keep running.
         ops.stop(unit).await?;
         info!(unit = %unit.unit_name(), "stopped");

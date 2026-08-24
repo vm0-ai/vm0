@@ -78,7 +78,7 @@ enum Warning {
         base_dir: PathBuf,
     },
     /// A firecracker process exists but its sandbox_id is not tracked in
-    /// either `active_runs` or `idle_vms` for this runner.
+    /// either `active_runs` or `idle_sandboxes` for this runner.
     FirecrackerNotInStatus {
         pid: u32,
         sandbox_id: String,
@@ -275,7 +275,10 @@ impl Warning {
                 match read_status(base_dir).await {
                     Some(st) => {
                         let active = st.active_runs.iter().any(|r| r.sandbox_id == *sandbox_id);
-                        let idle = st.idle_vms.iter().any(|v| v.sandbox_id == *sandbox_id);
+                        let idle = st
+                            .idle_sandboxes
+                            .iter()
+                            .any(|v| v.sandbox_id == *sandbox_id);
                         !(active || idle)
                     }
                     None => true,
@@ -381,7 +384,7 @@ struct StatusInfo {
     mode: String,
     started_at: String,
     active_runs: Vec<ActiveRun>,
-    idle_vms: Vec<IdleVm>,
+    idle_sandboxes: Vec<IdleSandbox>,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
 }
@@ -915,7 +918,7 @@ impl ActiveRun {
     }
 }
 
-struct IdleVm {
+struct IdleSandbox {
     reuse_key: String,
     sandbox_id: String,
 }
@@ -930,6 +933,14 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         .await
         .ok()
         .flatten()?;
+    let idle_sandboxes = file
+        .idle_sandboxes()
+        .iter()
+        .map(|sandbox| IdleSandbox {
+            reuse_key: sandbox.reuse_key.clone(),
+            sandbox_id: sandbox.sandbox_id.clone(),
+        })
+        .collect();
     let active_runs = file
         .active_runs
         .into_iter()
@@ -940,19 +951,11 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
             phase_started_at: run.phase_started_at,
         })
         .collect();
-    let idle_vms = file
-        .idle_vms
-        .into_iter()
-        .map(|vm| IdleVm {
-            reuse_key: vm.reuse_key,
-            sandbox_id: vm.sandbox_id,
-        })
-        .collect();
     Some(StatusInfo {
         mode: file.mode,
         started_at: file.started_at,
         active_runs,
-        idle_vms,
+        idle_sandboxes,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
     })
@@ -1083,7 +1086,7 @@ fn correlate_jobs(
             .iter()
             .any(|r| r.sandbox_id == fc.sandbox_id)
             || status
-                .idle_vms
+                .idle_sandboxes
                 .iter()
                 .any(|v| v.sandbox_id == fc.sandbox_id);
         if !known {
@@ -1368,13 +1371,13 @@ fn print_report(
             println!("    Jobs:    0 active");
         }
 
-        // Idle VMs (keep-alive)
+        // Idle sandboxes (keep-alive)
         if let Some(st) = &r.status
-            && !st.idle_vms.is_empty()
+            && !st.idle_sandboxes.is_empty()
         {
-            println!("    Idle:    {} VMs", st.idle_vms.len());
-            for vm in &st.idle_vms {
-                println!("{}", format_idle_vm_diagnostic_line(vm));
+            println!("    Idle:    {} sandboxes", st.idle_sandboxes.len());
+            for sandbox in &st.idle_sandboxes {
+                println!("{}", format_idle_sandbox_diagnostic_line(sandbox));
             }
         }
 
@@ -1411,10 +1414,10 @@ fn print_report(
     total_warnings
 }
 
-fn format_idle_vm_diagnostic_line(vm: &IdleVm) -> String {
+fn format_idle_sandbox_diagnostic_line(sandbox: &IdleSandbox) -> String {
     format!(
         "      - reuse key {} -> sandbox {}",
-        vm.reuse_key, vm.sandbox_id
+        sandbox.reuse_key, sandbox.sandbox_id
     )
 }
 
@@ -1520,7 +1523,7 @@ mod tests {
         let status = read_status(dir.path()).await.unwrap();
 
         assert!(status.active_runs.is_empty());
-        assert!(status.idle_vms.is_empty());
+        assert!(status.idle_sandboxes.is_empty());
     }
 
     #[tokio::test]
@@ -1584,14 +1587,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_status_missing_idle_vm_identifier_returns_none() {
+    async fn read_status_missing_idle_sandbox_identifier_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("status.json"),
             r#"{
                 "mode":"running",
                 "started_at":"2026-01-01T00:00:00.000Z",
-                "idle_vms":[{"reuse_key":"session-a"}]
+                "idle_sandboxes":[{"reuse_key":"session-a"}]
             }"#,
         )
         .unwrap();
@@ -1659,12 +1662,12 @@ mod tests {
             mode: "running".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_runs,
-            // Tests only need sandbox_id lookup for idle VMs; synthesize a
+            // Tests only need sandbox_id lookup for idle sandboxes; synthesize a
             // placeholder reuse key.
-            idle_vms: idle_sandboxes
+            idle_sandboxes: idle_sandboxes
                 .into_iter()
                 .enumerate()
-                .map(|(i, sbid)| IdleVm {
+                .map(|(i, sbid)| IdleSandbox {
                     reuse_key: format!("thread:test-{i}"),
                     sandbox_id: sbid.into(),
                 })
@@ -1721,8 +1724,8 @@ mod tests {
     }
 
     #[test]
-    fn correlate_idle_vm_no_warning() {
-        // Parked idle VM: no active run, sandbox_id listed in idle_vms.
+    fn correlate_idle_sandbox_no_warning() {
+        // Parked idle sandbox: no active run, sandbox_id listed in idle_sandboxes.
         // This is the exact prod-3 v0.79.12 scenario that used to
         // false-positive with 2 `FirecrackerNotInStatus` warnings.
         let status = status_info(vec![], vec!["sandbox-idle"]);
@@ -2323,7 +2326,7 @@ mod tests {
     #[tokio::test]
     async fn firecracker_not_in_status_clears_when_sandbox_becomes_idle() {
         // A FirecrackerNotInStatus warning must clear once its sandbox_id
-        // shows up in idle_vms (the VM was parked between scans).
+        // shows up in idle_sandboxes (the sandbox was parked between scans).
         let dir = tempfile::tempdir().unwrap();
         let base_dir = dir.path().to_path_buf();
         write_status_json(
@@ -2332,7 +2335,7 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [],
-                "idle_vms": [
+                "idle_sandboxes": [
                     {"reuse_key": "sess-1", "sandbox_id": "S1"}
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
@@ -2604,9 +2607,9 @@ mod tests {
     }
 
     #[test]
-    fn idle_vm_diagnostic_line_includes_reuse_key() {
+    fn idle_sandbox_diagnostic_line_includes_reuse_key() {
         let reuse_key = "thread:doctor-17975";
-        let line = format_idle_vm_diagnostic_line(&IdleVm {
+        let line = format_idle_sandbox_diagnostic_line(&IdleSandbox {
             reuse_key: reuse_key.into(),
             sandbox_id: "sandbox-123".into(),
         });

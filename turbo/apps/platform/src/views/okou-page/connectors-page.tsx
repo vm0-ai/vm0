@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
+  useLoadable,
   useLastLoadable,
   useLastResolved,
   type Loadable,
@@ -12,6 +13,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   PublicConnectorCatalogCategoryMetadata,
   PublicConnectorCatalogDiscoveryResponse,
@@ -65,7 +67,11 @@ import {
 } from "../../signals/okou-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorCard,
+  connectorAccountSummaryStatus,
+  type ConnectorAccountSummaryStatus,
+} from "./components/settings/connector-card.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
@@ -90,6 +96,21 @@ import {
   Input,
 } from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
+import {
+  connectorAccountSummaryByTarget$,
+  reloadConnectorAccountSummaries$,
+  settingsConnectorAccounts,
+} from "../../signals/okou-page/settings/connector-accounts.ts";
+import { ConnectorAccountManagerDialog } from "./components/settings/connector-account-manager-dialog.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  builtinAccountConnectDialog$,
+  builtinAccountManager$,
+  closeBuiltinAccountConnectDialog$,
+  closeBuiltinAccountManager$,
+  openBuiltinAccountConnectDialog$,
+  openBuiltinAccountManager$,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 function connectorCategoryTranslation(
   id: string,
@@ -865,6 +886,103 @@ function effectiveConnectorCatalogCount(
   return catalogStatusLoadable.data.connectors.length;
 }
 
+interface SettingsConnectorCardProps {
+  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly accountManagement: boolean;
+  readonly accountSummary: ConnectorAccountSummary | undefined;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
+  readonly connected: boolean;
+  readonly busy: boolean;
+  readonly disconnecting: boolean;
+  readonly connect: ConnectorConnectHandlers;
+  readonly onAdd: () => void;
+  readonly onManageAccounts: () => void;
+  readonly onManageAccess: () => void;
+  readonly onDisconnect: () => void;
+  readonly onReviewScopes: () => void;
+}
+
+interface ConnectorCatalogHeaderProps {
+  readonly connectorCatalogCountEnabled: boolean;
+  readonly connectorCatalogCount: number | null;
+}
+
+function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
+  const { t } = useTranslation();
+  const description =
+    props.connectorCatalogCountEnabled && props.connectorCatalogCount !== null
+      ? t(
+          ($) => {
+            return $.connectors.catalog.descriptionWithCount;
+          },
+          { value: formatLocalizedNumber(props.connectorCatalogCount) },
+        )
+      : t(($) => {
+          return $.connectors.catalog.description;
+        });
+  return (
+    <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
+      <div className="mx-auto w-full max-w-[900px]">
+        <div className="min-w-0 hidden md:block">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+            {t(($) => {
+              return $.connectors.catalog.title;
+            })}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function SettingsConnectorCard(props: SettingsConnectorCardProps) {
+  const manageAccess = (
+    <ConnectorAccessButton
+      connectorSlug={props.connector.slug}
+      connectorLabel={props.connector.label}
+      onClick={props.onManageAccess}
+    />
+  );
+  if (props.accountManagement) {
+    return (
+      <ConnectorCard
+        variant="accounts"
+        connector={props.connector}
+        summary={props.accountSummary}
+        summaryStatus={props.accountSummaryStatus}
+        busy={props.busy}
+        onAdd={props.onAdd}
+        onManage={props.onManageAccounts}
+        manageAccess={manageAccess}
+      />
+    );
+  }
+  if (!props.connected) {
+    return (
+      <ConnectorCard
+        variant="catalog"
+        connector={props.connector}
+        busy={props.busy}
+        connect={props.connect}
+      />
+    );
+  }
+  return (
+    <ConnectorCard
+      variant="connection"
+      connector={props.connector}
+      connected
+      busy={props.busy}
+      disconnecting={props.disconnecting}
+      connect={props.connect}
+      onDisconnect={props.onDisconnect}
+      manageAccess={manageAccess}
+      onReviewScopes={props.onReviewScopes}
+    />
+  );
+}
+
 export function ZeroConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
@@ -874,6 +992,22 @@ export function ZeroConnectorsPage() {
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
   const connectorCatalogCountEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
+  const connectorAccountsEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
+  const accountSummariesLoadable = useLoadable(
+    connectorAccountSummaryByTarget$,
+  );
+  const accountSummaryStatus = connectorAccountSummaryStatus(
+    accountSummariesLoadable.state,
+  );
+  const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
+  const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
+  const managedAccountConnector = useGet(builtinAccountManager$);
+  const accountConnect = useGet(builtinAccountConnectDialog$);
+  const openAccountManager = useSet(openBuiltinAccountManager$);
+  const closeAccountManager = useSet(closeBuiltinAccountManager$);
+  const openAccountConnect = useSet(openBuiltinAccountConnectDialog$);
+  const closeAccountConnect = useSet(closeBuiltinAccountConnectDialog$);
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -989,22 +1123,17 @@ export function ZeroConnectorsPage() {
       pollingAuthCodeSlug === c.slug ||
       pollingDeviceAuthSlug === c.slug ||
       connectFlowSlug === c.slug;
-    if (!isConnected) {
-      return (
-        <ConnectorCard
-          key={c.slug}
-          variant="catalog"
-          connector={c}
-          busy={isPolling}
-          connect={connectHandlers(c)}
-        />
-      );
-    }
+    const summary =
+      accountSummariesLoadable.state === "hasData"
+        ? accountSummariesLoadable.data.get(`builtin:${c.slug}`)
+        : undefined;
     return (
-      <ConnectorCard
+      <SettingsConnectorCard
         key={c.slug}
-        variant="connection"
         connector={c}
+        accountManagement={connectorAccountsEnabled}
+        accountSummary={summary}
+        accountSummaryStatus={accountSummaryStatus}
         connected={isConnected}
         busy={isPolling}
         disconnecting={disconnecting}
@@ -1012,15 +1141,15 @@ export function ZeroConnectorsPage() {
         onDisconnect={() => {
           detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
         }}
-        manageAccess={
-          <ConnectorAccessButton
-            connectorSlug={c.slug}
-            connectorLabel={c.label}
-            onClick={() => {
-              setManagedConnectorSlug(c.slug);
-            }}
-          />
-        }
+        onAdd={() => {
+          return openAccountConnect(c, { kind: "add" });
+        }}
+        onManageAccounts={() => {
+          return openAccountManager(c);
+        }}
+        onManageAccess={() => {
+          return setManagedConnectorSlug(c.slug);
+        }}
         onReviewScopes={() => {
           return setScopeReviewConnectorSlug(c.slug);
         }}
@@ -1049,33 +1178,10 @@ export function ZeroConnectorsPage() {
       ref={scrollContainerRef}
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto w-full max-w-[900px]">
-          <div className="min-w-0 hidden md:block">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              {t(($) => {
-                return $.connectors.catalog.title;
-              })}
-            </h1>
-            {connectorCatalogCountEnabled && connectorCatalogCount !== null ? (
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t(
-                  ($) => {
-                    return $.connectors.catalog.descriptionWithCount;
-                  },
-                  { value: formatLocalizedNumber(connectorCatalogCount) },
-                )}
-              </p>
-            ) : (
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t(($) => {
-                  return $.connectors.catalog.description;
-                })}
-              </p>
-            )}
-          </div>
-        </div>
-      </header>
+      <ConnectorCatalogHeader
+        connectorCatalogCountEnabled={connectorCatalogCountEnabled}
+        connectorCatalogCount={connectorCatalogCount}
+      />
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">
@@ -1148,6 +1254,44 @@ export function ZeroConnectorsPage() {
                 { connector: label },
               ),
             );
+          }}
+        />
+      )}
+
+      {accountConnect && (
+        <ConnectModal
+          item={accountConnect.connector}
+          accountMode={accountConnect.mode}
+          onClose={() => {
+            closeAccountConnect();
+          }}
+          onSuccess={() => {
+            reloadAccountSummaries();
+            reloadAccountList();
+          }}
+        />
+      )}
+
+      {managedAccountConnector && (
+        <ConnectorAccountManagerDialog
+          target={{
+            kind: "builtin",
+            connectorSlug: managedAccountConnector.slug,
+          }}
+          connectorLabel={managedAccountConnector.label}
+          icon={<ConnectorIcon icon={managedAccountConnector.icon} size={20} />}
+          connectionActionsEnabled
+          onClose={() => {
+            closeAccountManager();
+          }}
+          onAdd={() => {
+            openAccountConnect(managedAccountConnector, { kind: "add" });
+          }}
+          onReconnect={(account) => {
+            openAccountConnect(managedAccountConnector, {
+              kind: "reconnect",
+              account,
+            });
           }}
         />
       )}

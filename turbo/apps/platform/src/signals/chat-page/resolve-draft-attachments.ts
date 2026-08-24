@@ -6,6 +6,7 @@ import type {
   ZeroChatAttachment,
 } from "../okou-page/chat-draft.ts";
 import { i18n } from "../../i18n/index.ts";
+import { flattenAnnotatedAttachments$ } from "./flatten-annotated-attachments.ts";
 
 /**
  * Placeholder stored as the prompt when the user sends only files with no
@@ -137,7 +138,7 @@ function attachmentUploadFailureMessage(
  */
 export const prepareUserMessageFromDraft$ = command(
   async (
-    { get },
+    { get, set },
     draft: DraftSignals,
     prompt: string,
     options: PrepareUserMessageOptions,
@@ -177,23 +178,40 @@ export const prepareUserMessageFromDraft$ = command(
     const finalPrompt =
       trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
 
+    const flattened = await set(flattenAnnotatedAttachments$, ready, signal);
+    signal.throwIfAborted();
+
     const attachments: ResolvedAttachFile[] | undefined =
       ready.length > 0
-        ? ready.map((r) => {
-            return {
+        ? ready.flatMap((r) => {
+            const original: ResolvedAttachFile = {
               id: r.info.id,
               filename: r.attachment.filename,
               contentType: r.info.contentType,
               size: r.attachment.size,
               url: r.info.url,
             };
+            const copy = flattened.get(r.info.id)?.file;
+            // The flattened copy leads, because it is what the vision model
+            // reads; the untouched original rides behind it so the bubble can
+            // still offer it and nothing the user uploaded is lost.
+            return copy ? [copy, original] : [original];
           })
         : undefined;
 
+    const markNotes = ready.flatMap((r) => {
+      const description = flattened.get(r.info.id)?.description;
+      return description ? [description] : [];
+    });
+
+    // Notes are real text, so they displace the attachment-only placeholder
+    // rather than stacking on top of it.
+    const promptBody = markNotes.length > 0 ? trimmedPrompt : finalPrompt;
+
     return {
-      prompt: finalPrompt,
+      prompt: [promptBody, ...markNotes].filter(Boolean).join("\n\n"),
       attachments,
-      hasTextContent: trimmedPrompt.length > 0,
+      hasTextContent: trimmedPrompt.length > 0 || markNotes.length > 0,
     };
   },
 );
