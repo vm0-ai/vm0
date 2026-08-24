@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.14...guest-contracts-v0.11.15) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+
 ## [0.11.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.13...guest-contracts-v0.11.14) (2026-08-23)
 
 

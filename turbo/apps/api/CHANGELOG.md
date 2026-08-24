@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.480.0](https://github.com/vm0-ai/vm0/compare/api-v1.479.3...api-v1.480.0) (2026-08-24)
+
+
+### Features
+
+* **api:** lengthen managed provider cooldowns ([#28814](https://github.com/vm0-ai/vm0/issues/28814)) ([25eb71e](https://github.com/vm0-ai/vm0/commit/25eb71ef51473cc3f53e35b72fd2a053baf7cd9d))
+
+
+### Bug Fixes
+
+* **api:** refresh codex tokens before subscription usage ([#28828](https://github.com/vm0-ai/vm0/issues/28828)) ([46e6e2e](https://github.com/vm0-ai/vm0/commit/46e6e2e08da5d64ea83b500865e2280ab9338e60))
+
+
+### Performance Improvements
+
+* **runner:** attribute pre-spawn concurrency ([#28839](https://github.com/vm0-ai/vm0/issues/28839)) ([5e11ce3](https://github.com/vm0-ai/vm0/commit/5e11ce3b6aedbd502c94dd07ff68a5209cb4e101))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.2
+    * @okouai/core bumped to 8.585.0
+    * @okouai/db bumped to 1.218.8
+
 ## [1.479.3](https://github.com/vm0-ai/vm0/compare/api-v1.479.2...api-v1.479.3) (2026-08-24)
 
 

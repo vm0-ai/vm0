@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.585.0](https://github.com/vm0-ai/vm0/compare/core-v8.584.2...core-v8.585.0) (2026-08-24)
+
+
+### Features
+
+* roll out chat quote-only feedback to all users ([#28840](https://github.com/vm0-ai/vm0/issues/28840)) ([3408fba](https://github.com/vm0-ai/vm0/commit/3408fba40437b19dd5a9432b80627425630180bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.2
+
 ## [8.584.2](https://github.com/vm0-ai/vm0/compare/core-v8.584.1...core-v8.584.2) (2026-08-24)
 
 

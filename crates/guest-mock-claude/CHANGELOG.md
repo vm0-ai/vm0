@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.77](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.76...guest-mock-claude-v0.21.77) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+
 ## [0.21.76](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.75...guest-mock-claude-v0.21.76) (2026-08-23)
 
 ## [0.21.75](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.74...guest-mock-claude-v0.21.75) (2026-08-23)

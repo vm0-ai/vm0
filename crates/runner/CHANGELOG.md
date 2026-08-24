@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.171.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.4...runner-rs-v0.171.5) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+* **runner:** prevent pid reuse during mitmdump cleanup ([#28834](https://github.com/vm0-ai/vm0/issues/28834)) ([504690c](https://github.com/vm0-ai/vm0/commit/504690c1a68d03e074fabb20eb02db2bcdacbbc9))
+* **runner:** recover mitmdump startup port collisions ([#28846](https://github.com/vm0-ai/vm0/issues/28846)) ([9aa1984](https://github.com/vm0-ai/vm0/commit/9aa198463d2b731ce69f12b75487b9ca7a82db31))
+
+
+### Documentation
+
+* **python:** clarify model-provider failure shutdown delivery semantics ([#28843](https://github.com/vm0-ai/vm0/issues/28843)) ([8924f63](https://github.com/vm0-ai/vm0/commit/8924f63dade934b3caa6d5629013447a6c70fc3c))
+
+
+### Refactoring
+
+* **runner:** generate firewall cache contract constants ([#28842](https://github.com/vm0-ai/vm0/issues/28842)) ([04a15da](https://github.com/vm0-ai/vm0/commit/04a15daa1c14a7196038fa573ebf2be2ec49791f))
+* **rust:** enforce exec-control payload limit parity ([#28825](https://github.com/vm0-ai/vm0/issues/28825)) ([6202aee](https://github.com/vm0-ai/vm0/commit/6202aeed5db6e25b6fb845267a20dc4503dfbb79))
+
+
+### Performance Improvements
+
+* **python:** share model http response parsing ([#28822](https://github.com/vm0-ai/vm0/issues/28822)) ([242af40](https://github.com/vm0-ai/vm0/commit/242af400b657a717258692557e93d1d19aec280e))
+* **runner:** attribute pre-spawn concurrency ([#28839](https://github.com/vm0-ai/vm0/issues/28839)) ([5e11ce3](https://github.com/vm0-ai/vm0/commit/5e11ce3b6aedbd502c94dd07ff68a5209cb4e101))
+
 ## [0.171.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.3...runner-rs-v0.171.4) (2026-08-24)
 
 

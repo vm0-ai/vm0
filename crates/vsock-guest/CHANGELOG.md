@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.98](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.97...vsock-guest-v0.19.98) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** enforce exec-control payload limit parity ([#28825](https://github.com/vm0-ai/vm0/issues/28825)) ([6202aee](https://github.com/vm0-ai/vm0/commit/6202aeed5db6e25b6fb845267a20dc4503dfbb79))
+
 ## [0.19.97](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.96...vsock-guest-v0.19.97) (2026-08-24)
 
 

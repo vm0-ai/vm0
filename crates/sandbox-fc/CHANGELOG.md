@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.238](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.237...sandbox-fc-v0.37.238) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** unify runner exec capture limits ([#28812](https://github.com/vm0-ai/vm0/issues/28812)) ([25bfae0](https://github.com/vm0-ai/vm0/commit/25bfae001efedfcecc3b9d6aca5505ba5ab30263))
+
 ## [0.37.237](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.236...sandbox-fc-v0.37.237) (2026-08-24)
 
 
