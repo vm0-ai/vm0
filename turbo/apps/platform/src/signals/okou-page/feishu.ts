@@ -59,6 +59,10 @@ const internalInstallations$ = state<FeishuBotInstallation[] | null>(null);
 export const feishuInstallations$ = computed(
   async (get): Promise<FeishuBotInstallation[]> => {
     const data = await get(feishuOrgData$);
+    // #27750 rollout fallback: a newly loaded app can briefly target the
+    // previous API, whose status response omits both publicBrand fields. Remove
+    // these defaults and require the contract fields after that API is outside
+    // rollback and the ~2d old-client window has elapsed.
     if (data.installations) {
       return data.installations.map((installation) => {
         return {

@@ -27,11 +27,12 @@ export const chatFeishuContext = pgTable("chat_feishu_context", {
    * must continue to project only the explicitly required columns.
    */
   conversationHistory: text("conversation_history"),
-  /** Product brand snapshotted from the webhook ingress. */
-  publicBrand: text("public_brand")
-    .$type<PublicBrand>()
-    .default("vm0")
-    .notNull(),
+  /**
+   * Product brand snapshotted from the webhook ingress. Null is limited to
+   * rows written by the previous API during the additive #28935 rollout or
+   * retained from before this column existed; new writers always set it.
+   */
+  publicBrand: text("public_brand").$type<PublicBrand>(),
   messageText: text("message_text"),
   messageFiles: jsonb("message_files").$type<ChatFeishuMessageFiles>(),
   chatType: text("chat_type").$type<"group" | "p2p" | "topic_group">(),

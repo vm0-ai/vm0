@@ -78,6 +78,10 @@ export function buildFeishuWelcomeMessage(args: {
   readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
   const { brandName } = publicBrandPresentation(args.publicBrand);
+  // Provider bot metadata is legitimately unavailable until Feishu discovery
+  // succeeds. This neutral presentation fallback carries neither provider nor
+  // product identity and remains while botName is nullable (#27750).
+  const botName = args.botName ?? "your Feishu bot";
   const agentLine = args.agentName
     ? `\n\nYour current agent is **${args.agentName}**.`
     : "";
@@ -88,7 +92,7 @@ export function buildFeishuWelcomeMessage(args: {
     elements: [
       {
         tag: "markdown",
-        content: `👋 **Hi! I'm ${args.botName ?? "your Feishu bot"}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
+        content: `👋 **Hi! I'm ${botName}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
       },
       {
         tag: "hr",
@@ -107,11 +111,14 @@ export function buildFeishuHelpMessage(args: {
   readonly botName: string | null;
 }): FeishuOutboundMessage {
   const { brandName } = publicBrandPresentation(args.publicBrand);
+  // Keep this provider-neutral while Feishu bot metadata is legitimately
+  // nullable; it must never synthesize a VM0/Okou provider identity (#27750).
+  const botName = args.botName ?? "Feishu bot";
   return {
     msgType: "text",
     content: {
       text: [
-        `${args.botName ?? "Feishu bot"} commands`,
+        `${botName} commands`,
         "",
         "/help — Show this help",
         `/connect — Connect your ${brandName} account`,

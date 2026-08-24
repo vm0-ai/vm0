@@ -319,6 +319,9 @@ async function deliverClaimedFeishuChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  // Paired with feishuChatCallbackPayloadSchema's bounded #27750 rollout
+  // fallback; the binding brand is read only for callbacks from the previous
+  // API and is removable after those callbacks and rollback writers drain.
   const publicBrand = payload.publicBrand ?? binding.publicBrand;
 
   const [mentionerCount, featureContext] = await Promise.all([

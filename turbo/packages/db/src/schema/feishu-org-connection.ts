@@ -35,11 +35,12 @@ export const feishuOrgConnections = pgTable(
       { onDelete: "set null" },
     ),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
-    /** Product brand selected by the connect flow that created the binding. */
-    publicBrand: text("public_brand")
-      .$type<PublicBrand>()
-      .default("vm0")
-      .notNull(),
+    /**
+     * Product brand selected by the connect flow that created the binding.
+     * Null is limited to bindings created by the previous API or retained from
+     * before the additive #28935 rollout; current OAuth writers always set it.
+     */
+    publicBrand: text("public_brand").$type<PublicBrand>(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

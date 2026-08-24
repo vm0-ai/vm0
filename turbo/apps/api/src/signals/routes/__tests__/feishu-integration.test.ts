@@ -38,6 +38,7 @@ import {
   findFeishuChatEventByPromptFixture,
   findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
+  seedLegacyFeishuIngressFixture,
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
@@ -534,11 +535,16 @@ async function requestFeishuConfigurationFailure(args: {
   });
 }
 
-function v2Event(appId: string, eventType: string, event: unknown): unknown {
+function v2Event(
+  appId: string,
+  eventType: string,
+  event: unknown,
+  eventId: string = randomUUID(),
+): unknown {
   return {
     schema: "2.0",
     header: {
-      event_id: randomUUID(),
+      event_id: eventId,
       event_type: eventType,
       tenant_key: TENANT_KEY,
       app_id: appId,
@@ -555,25 +561,31 @@ function directMessage(
   options: {
     readonly chatId?: string;
     readonly messageId?: string;
+    readonly eventId?: string;
     readonly rootId?: string;
     readonly threadId?: string;
   } = {},
 ): unknown {
-  return v2Event(appId, "im.message.receive_v1", {
-    sender: {
-      sender_id: { open_id: openId },
-      sender_type: "user",
+  return v2Event(
+    appId,
+    "im.message.receive_v1",
+    {
+      sender: {
+        sender_id: { open_id: openId },
+        sender_type: "user",
+      },
+      message: {
+        message_id: options.messageId ?? `om_${randomUUID()}`,
+        root_id: options.rootId,
+        thread_id: options.threadId,
+        chat_id: options.chatId ?? "oc_feishu_dm",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text }),
+      },
     },
-    message: {
-      message_id: options.messageId ?? `om_${randomUUID()}`,
-      root_id: options.rootId,
-      thread_id: options.threadId,
-      chat_id: options.chatId ?? "oc_feishu_dm",
-      chat_type: "p2p",
-      message_type: "text",
-      content: JSON.stringify({ text }),
-    },
-  });
+    options.eventId,
+  );
 }
 
 function directFileMessage(
@@ -2955,6 +2967,63 @@ describe("Feishu integration", () => {
     expect(messageContent(delivered)).toContain('"content":"Okou"');
   });
 
+  it("reads a legacy null ingress brand from the existing installation during rollout", async () => {
+    const fixture = await setupFeishuRunFixture({
+      publicBrand: "okou",
+      useSystemDefaultIdentity: true,
+    });
+    await connectFixtureUser(fixture);
+    const eventId = `evt_legacy_brand_${randomUUID()}`;
+    const messageId = `om_legacy_brand_${randomUUID()}`;
+    const prompt = `legacy Okou ingress ${randomUUID()}`;
+    const providerEvent = directMessage(
+      fixture.appId,
+      prompt,
+      "ou_feishu_user",
+      { eventId, messageId },
+    );
+    await seedLegacyFeishuIngressFixture({
+      installationId: fixture.installationId,
+      eventId,
+      payload: JSON.stringify({
+        installationId: fixture.installationId,
+        eventId,
+        tenantKey: TENANT_KEY,
+        appId: fixture.appId,
+        messageId,
+        chatId: "oc_feishu_dm",
+        chatType: "p2p",
+        rootId: null,
+        parentId: null,
+        threadId: null,
+        openId: "ou_feishu_user",
+        text: prompt,
+        file: null,
+      }),
+    });
+
+    const retried = await postEvent(fixture.callbackUrl, providerEvent, {
+      encrypted: true,
+    });
+    expect(retried.status).toBe(200);
+    await flushWaitUntilForTest();
+    const inputEvent = requireValue(
+      await findFeishuChatEventByPromptFixture({
+        userId: fixture.actor.userId,
+        prompt,
+      }),
+      "Expected the legacy Feishu ingress to become a canonical event",
+    );
+    await expect(
+      readChatEventContextFixture(inputEvent.eventId),
+    ).resolves.toMatchObject({ feishuPublicBrand: "okou" });
+    const run = await findRun(fixture.actor, prompt);
+    await runsApi.heartbeatRunner(fixture.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.appendSystemPrompt).toContain("Your name is Okou.");
+    await runsApi.requestCancelRun(fixture.actor, run.id, [200]);
+  });
+
   it("preserves an existing custom app identity and connection on an unchanged setup retry", async () => {
     const fixture = await setupFeishuRunFixture();
     await connectFixtureUser(fixture);
@@ -3020,6 +3089,93 @@ describe("Feishu integration", () => {
         oauthConfig: expect.objectContaining({ clientId: fixture.appId }),
       }),
     ]);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("rejects replacing an existing custom app through setup", async () => {
+    const fixture = await setupFeishuRunFixture();
+    await connectFixtureUser(fixture);
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    const client = feishuConnectClient();
+    const customConnectorClient = setupApp({
+      context,
+      routes: customConnectorsRoutes,
+    })(customConnectorsContract);
+    const connectorsBefore = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const rejected = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+        body: {
+          installationId: fixture.installationId,
+          appId: `cli_replacement_${randomUUID()}`,
+          appSecret: "replacement-app-secret",
+          verificationToken: "replacement-verification-token",
+          encryptKey: "replacement-encrypt-key",
+          defaultAgentId: fixture.alternateAgentId,
+        },
+      }),
+      [409],
+    );
+    expect(rejected.body.error.message).toContain(
+      "cannot be changed to a different App ID",
+    );
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.installations?.[0]).toMatchObject({
+      id: fixture.installationId,
+      appId: fixture.appId,
+      botName: "Okou Feishu",
+      botAvatarUrl: "https://example.com/okou-feishu.png",
+      callbackUrl: fixture.callbackUrl,
+      callbackVerified: true,
+      setupCompleted: true,
+      isConnected: true,
+      tenantKey: TENANT_KEY,
+      defaultAgentId: fixture.defaultAgentId,
+    });
+    const connectorsAfter = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorsAfter.body.connectors).toStrictEqual(
+      connectorsBefore.body.connectors,
+    );
+
+    outboundMessages = [];
+    const oldProviderEvent = await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, "/help"),
+      { encrypted: true },
+    );
+    expect(oldProviderEvent.status).toBe(200);
+    await flushWaitUntilForTest();
+    expect(outboundMessages.map(messageContent).join("\n")).toContain(
+      "Okou Feishu commands",
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },

@@ -1,5 +1,5 @@
 {
-  "id": "64affc88-d299-4271-af88-33aba2471595",
+  "id": "4ec48d25-e5fc-4b33-a3b9-672d550bc0f6",
   "prevId": "bbaa8977-ae1c-4b6d-94a6-afe8e1c9e5dc",
   "version": "7",
   "dialect": "postgresql",
@@ -5552,8 +5552,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": false
         },
         "message_text": {
           "name": "message_text",
@@ -10269,8 +10268,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -10529,8 +10527,7 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'vm0'"
+          "notNull": false
         },
         "dm_welcome_sent": {
           "name": "dm_welcome_sent",

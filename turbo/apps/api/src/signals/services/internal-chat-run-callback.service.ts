@@ -883,6 +883,15 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+function requiredQueuedFeishuPublicBrand(
+  input: Pick<CreateQueuedChatRunInput, "publicBrand" | "feishuDelivery">,
+): PublicBrand {
+  if (!input.feishuDelivery || !input.publicBrand) {
+    throw new Error("Queued Feishu delivery is missing its public brand");
+  }
+  return input.publicBrand;
+}
+
 function buildQueuedCreateAgentRunArgs(
   input: CreateQueuedChatRunInput,
   admissionTime: number,
@@ -950,7 +959,7 @@ function buildQueuedCreateAgentRunArgs(
                 replyInThread: input.feishuDelivery.replyInThread,
                 files: input.feishuDelivery.files,
                 canonicalChatDelivery: true,
-                publicBrand: input.publicBrand ?? "vm0",
+                publicBrand: requiredQueuedFeishuPublicBrand(input),
               },
             },
           ]
@@ -5009,7 +5018,9 @@ function buildQueuedChatDispatchFailedCallbacks(
     const payload = {
       threadId: args.runInput.threadId,
       agentId: args.runInput.agentId,
-      publicBrand: args.runInput.publicBrand ?? "vm0",
+      publicBrand: args.runInput.feishuDelivery
+        ? requiredQueuedFeishuPublicBrand(args.runInput)
+        : args.runInput.publicBrand,
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,

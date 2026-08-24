@@ -28,7 +28,8 @@ export async function notifyFeishuConnect(
       agentName: agents.name,
       agentDisplayName: agents.displayName,
       botName: feishuOrgInstallations.botName,
-      publicBrand: feishuOrgConnections.publicBrand,
+      connectionPublicBrand: feishuOrgConnections.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgConnections)
     .innerJoin(
@@ -57,7 +58,13 @@ export async function notifyFeishuConnect(
       message: buildFeishuWelcomeMessage({
         agentName: installation.agentDisplayName ?? installation.agentName,
         botName: installation.botName,
-        publicBrand: installation.publicBrand,
+        // #27750 rollout fallback: bindings created by the previous API or
+        // retained from before #28935 have no connect-flow brand. Remove after
+        // legacy null bindings are gone and the previous API is outside the
+        // DB/API rollback window; current OAuth writers always set the field.
+        publicBrand:
+          installation.connectionPublicBrand ??
+          installation.installationPublicBrand,
       }),
       idempotencyKey: args.connectionId,
     },

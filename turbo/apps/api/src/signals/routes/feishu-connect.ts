@@ -145,6 +145,11 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.kind === "installation_not_found") {
     return notFound("Feishu integration not found");
   }
+  if (result.kind === "app_identity_mismatch") {
+    return conflict(
+      "A configured Feishu installation cannot be changed to a different App ID. Add a separate installation instead.",
+    );
+  }
   if (result.kind === "app_in_use") {
     return appIdInUse(publicBrand);
   }

@@ -41,6 +41,7 @@ type FeishuLaunchContextRow = Pick<
   readonly tenantKey: string | null;
   readonly routeThreadId: string;
   readonly feishuDisplayName: string | null;
+  readonly installationPublicBrand: PublicBrand;
   readonly connectorSourceId: string | null;
 };
 
@@ -78,6 +79,11 @@ function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
     connectionId: row.connectionId,
     connectorSourceId: row.connectorSourceId,
     installationId: row.installationId,
+    // #27750 rollout fallback: contexts written before #28935 or by the
+    // previous API during the DB/API rollout have no snapshotted Host brand.
+    // Remove after those queued contexts have drained and the previous API is
+    // outside rollback; current Feishu ingress always persists this field.
+    publicBrand: row.publicBrand ?? row.installationPublicBrand,
   };
 }
 
@@ -109,6 +115,7 @@ async function loadFeishuLaunchContext(
       routeThreadId: feishuChatThreadRoutes.threadId,
       feishuDisplayName: feishuOrgConnections.feishuUserName,
       publicBrand: chatFeishuContext.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(

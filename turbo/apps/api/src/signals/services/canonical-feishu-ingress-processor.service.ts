@@ -145,6 +145,7 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       botName: feishuOrgInstallations.botName,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
       publicBrand: feishuChatIngress.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatIngress)
     .innerJoin(
@@ -159,6 +160,17 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
     )
     .limit(1);
   return row;
+}
+
+function resolveFeishuIngressPublicBrand(
+  ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+): PublicBrand {
+  // #27750 rollout fallback: the migration is applied before API promotion,
+  // so the previous API can leave this column null during the DB/API skew or
+  // rollback window. Remove after legacy null ingress rows are drained and the
+  // previous API is outside rollback; new webhook writers always set the Host
+  // brand explicitly.
+  return ingress.publicBrand ?? ingress.installationPublicBrand;
 }
 
 function parseMatchingMessage(
@@ -412,7 +424,7 @@ async function persistCanonicalFeishuIngress(
     chatThreadId: route.chatThreadId,
     message: args.message,
     receivedAt: args.ingress.createdAt,
-    publicBrand: args.ingress.publicBrand,
+    publicBrand: args.installation.publicBrand,
   };
 }
 
@@ -517,6 +529,7 @@ async function loadFeishuIngressDispatchContext(
     throw new Error("Canonical Feishu ingress is unavailable");
   }
   const message = parseMatchingMessage(ingress);
+  const publicBrand = resolveFeishuIngressPublicBrand(ingress);
   if (ingress.defaultAgentId === null) {
     return { ingress, message, installation: null, connection: null };
   }
@@ -526,7 +539,7 @@ async function loadFeishuIngressDispatchContext(
     defaultAgentId: ingress.defaultAgentId,
     botName: ingress.botName,
     messageReceivedAt: ingress.messageReceivedAt,
-    publicBrand: ingress.publicBrand,
+    publicBrand,
   };
   await markFeishuMessageReceived({ db, installation, message }, signal);
   const connection = await loadConnection(db, ingress.orgId, message);
@@ -659,7 +672,7 @@ async function processClaimedIngress(
       reactionId,
       conversationHistory: history.text,
       files: history.files,
-      publicBrand: ingress.publicBrand,
+      publicBrand: installation.publicBrand,
     }),
   };
   return await persistCanonicalFeishuIngress(persistInput, signal);

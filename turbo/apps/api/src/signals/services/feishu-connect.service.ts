@@ -262,6 +262,7 @@ export type ConfigureFeishuResult =
     }
   | { readonly kind: "agent_not_found" }
   | { readonly kind: "installation_not_found" }
+  | { readonly kind: "app_identity_mismatch" }
   | { readonly kind: "app_in_use" }
   | { readonly kind: "installation_exists" };
 
@@ -269,7 +270,6 @@ type PreparedFeishuInstallation =
   | { readonly kind: "unchanged" }
   | {
       readonly kind: "changed";
-      readonly providerAppChanged: boolean;
       readonly connectorConfigurationChanged: boolean;
       readonly callbackConfigurationChanged: boolean;
       readonly encryptedAppSecret: string;
@@ -324,11 +324,8 @@ async function prepareFeishuInstallation(
   signal.throwIfAborted();
   return {
     kind: "changed",
-    providerAppChanged: !existing || input.appId !== existing.appId,
     connectorConfigurationChanged:
-      !existing ||
-      input.appId !== existing.appId ||
-      input.appSecret !== existing.appSecret,
+      !existing || input.appSecret !== existing.appSecret,
     callbackConfigurationChanged:
       !existing ||
       input.verificationToken !== existing.verificationToken ||
@@ -359,7 +356,6 @@ async function persistFeishuInstallation(
         defaultAgentId: args.input.defaultAgentId,
         ...(args.prepared.kind === "changed"
           ? {
-              appId: args.input.appId,
               encryptedAppSecret: args.prepared.encryptedAppSecret,
               encryptedVerificationToken:
                 args.prepared.encryptedVerificationToken,
@@ -368,20 +364,9 @@ async function persistFeishuInstallation(
               encryptedTenantAccessToken:
                 args.prepared.encryptedTenantAccessToken,
               tenantAccessTokenExpiresAt: args.prepared.tokenExpiresAt,
-              ...(args.prepared.providerAppChanged
-                ? {
-                    botOpenId: null,
-                    botName: null,
-                    botAvatarUrl: null,
-                    feishuTenantKey: null,
-                    feishuTenantName: null,
-                    callbackVerifiedAt: null,
-                    setupCompletedAt: null,
-                    messageReceivedAt: null,
-                  }
-                : args.prepared.callbackConfigurationChanged
-                  ? { callbackVerifiedAt: null }
-                  : {}),
+              ...(args.prepared.callbackConfigurationChanged
+                ? { callbackVerifiedAt: null }
+                : {}),
             }
           : {}),
         updatedAt: nowDate(),
@@ -520,6 +505,9 @@ export const configureFeishuInstallation$ = command(
       ? await loadFeishuInstallationConfig(db, preflight.installationId)
       : null;
     signal.throwIfAborted();
+    if (existing && existing.appId !== args.appId) {
+      return { kind: "app_identity_mismatch" };
+    }
     const prepared = await prepareFeishuInstallation(args, existing, signal);
     const result = await db.transaction(async (tx) => {
       await tx.execute(
@@ -529,6 +517,25 @@ export const configureFeishuInstallation$ = command(
       const target = await resolveFeishuInstallationTarget(tx, args, signal);
       if (target.kind !== "target") {
         return target;
+      }
+      if (target.installationId) {
+        const [lockedInstallation] = await tx
+          .select({ appId: feishuOrgInstallations.appId })
+          .from(feishuOrgInstallations)
+          .where(
+            and(
+              eq(feishuOrgInstallations.id, target.installationId),
+              eq(feishuOrgInstallations.orgId, args.orgId),
+            ),
+          )
+          .limit(1);
+        signal.throwIfAborted();
+        if (!lockedInstallation) {
+          return { kind: "installation_not_found" } as const;
+        }
+        if (lockedInstallation.appId !== args.appId) {
+          return { kind: "app_identity_mismatch" } as const;
+        }
       }
       if (
         prepared.kind === "unchanged" &&
