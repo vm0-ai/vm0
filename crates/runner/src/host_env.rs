@@ -15,6 +15,9 @@ pub(crate) const RUNNER_DISK_IOPS_ENV: &str = "OKOU_RUNNER_DISK_IOPS";
 pub(crate) const RUNNER_NET_RX_MIB_PER_SEC_ENV: &str = "OKOU_RUNNER_NET_RX_MIB_PER_SEC";
 pub(crate) const RUNNER_NET_TX_MIB_PER_SEC_ENV: &str = "OKOU_RUNNER_NET_TX_MIB_PER_SEC";
 
+// Deployed host.env files and retained runner rollback targets may still use VM0_*.
+// Remove these aliases only after every deployed host uses OKOU_* and every supported rollback
+// target reads those names; tracked by #28914.
 pub(crate) const LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV: &str = "VM0_RUNNER_CONCURRENCY_FACTOR";
 pub(crate) const LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV: &str =
     "VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC";
