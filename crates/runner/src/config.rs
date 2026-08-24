@@ -95,8 +95,8 @@ pub struct RunnerConfig {
     /// least one entry; each profile name is also checked for format.
     pub profiles: BTreeMap<String, ProfileConfig>,
     /// Control-plane endpoint and auth token. May be omitted in the YAML if
-    /// `--api-url` / `--token` (or the corresponding env vars) are supplied
-    /// at `start` time.
+    /// `--api-url` / `--token` (or the corresponding environment aliases) are
+    /// supplied at `start` time.
     pub server: Option<ServerConfig>,
 }
 
@@ -166,7 +166,8 @@ pub struct ServerConfig {
     /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
     /// via `--api-url` / `VM0_API_BACKEND_URL`.
     pub url: String,
-    /// Runner auth token. Overridable via `--token` / `VM0_RUNNER_TOKEN`.
+    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`, with
+    /// `VM0_RUNNER_TOKEN` retained as a temporary legacy alias.
     pub token: String,
 }
 

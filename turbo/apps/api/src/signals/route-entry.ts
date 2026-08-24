@@ -266,15 +266,15 @@ export function withApiNamespaceAliases(
  * when the row's caller both has a bounded window and would have been expected
  * to appear in the window at all. Check the call rate before reading a silence.
  *
- * #28916 then took twenty-six more, leaving 63. Its set is disjoint from
- * #28917's: those rows were silent, these were not. Each of these carried
- * branded traffic early in the same window and went to exactly zero once its
- * producer cut over, with the neutral path taking the same calls from the same
- * callers on the same day. Across the twenty-six the crossover is direct —
- * branded 10/2415/27/0/0 against neutral 0/3425/6605/13822/3810 on 08-20
- * through 08-24. An observed cutover is stronger than a silence, because it
- * names the build that stopped emitting the branded form rather than only the
- * absence of a request. Two more facts about reading this log:
+ * #28916 then took twenty-six more. Its set is disjoint from #28917's: those
+ * rows were silent, these were not. Each of these carried branded traffic early
+ * in the same window and went to exactly zero once its producer cut over, with
+ * the neutral path taking the same calls from the same callers on the same day.
+ * Across the twenty-six the crossover is direct — branded 10/2415/27/0/0
+ * against neutral 0/3425/6605/13822/3810 on 08-20 through 08-24. An observed
+ * cutover is stronger than a silence, because it names the build that stopped
+ * emitting the branded form rather than only the absence of a request. Two more
+ * facts about reading this log:
  *
  * - `x_client_type` is absent on some released callers, so it cannot be the
  *   only field a caller is classified by. The desktop Computer Use host sends
@@ -499,7 +499,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // their branded traffic came from the desktop host loop, which sends no
   // client headers and shows up as `user_agent: node` with a null
   // `x_client_type` — the same installed build this comment names, not the
-  // anonymous caller a `x_client_type`-only grouping reported. `complete` is
+  // anonymous caller an `x_client_type`-only grouping reported. `complete` is
   // worse than quiet: it is only called when a write command finishes, so its
   // silence measures how often that happened while `host/commands/next`, which
   // this table still holds for the same build, kept being polled. Removing it
@@ -821,14 +821,22 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // authorization-request rows, `mail/drafts/:mailDraftId/send`, the
   // per-template presentation read, and `uploads/multipart/abort`.
   //
+  // #28974 removed `uploads/prepare`. #28916 and #28917 had both excluded it
+  // under "rows with a Desktop or CLI caller stay, because installed builds
+  // have no expiry window", which misreads its callers: neither is an installed
+  // build. The CLI caller runs under the pinned `CLI_PKG_URL` described below,
+  // and the App caller is the browser bundle on its ~2 day refresh. Both had
+  // visibly crossed over in the log — every App build up to `0.779.x` called
+  // the branded form and every build from `0.780.0` called the neutral one,
+  // with no version on both sides of the split.
+  //
   // #28916 removed the three that were not silent — the mail draft read,
   // `uploads/multipart/complete` and `web/file-url` — on cutover evidence.
   // `web/file-url` was the largest branded producer in that removal at about
   // 2,000 requests, and the clearest crossover in it: the platform build cut
   // over on 08-22 and the neutral path took every call from the same browsers
   // from 08-23 on, which is why `domains/web.ts` no longer appears among the
-  // holders below. What the slice still owns below is `uploads/prepare` and the
-  // two voice-io rows.
+  // holders below. What the slice still owns below is the two voice-io rows.
   //
   // Published CLI builds hold the `okou` form directly: they build some URLs by
   // hand rather than from the contract, so the path they carry shipped
@@ -840,10 +848,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // the blanket expansion until these contracts moved, which has no window at
   // all. Removal therefore follows the #26701 evidence gate above rather than
   // any of those clocks.
-  "/api/uploads/prepare": [
-    "/api/okou/uploads/prepare",
-    "/api/zero/uploads/prepare",
-  ],
   "/api/voice-io/quota": [
     "/api/okou/voice-io/quota",
     "/api/zero/voice-io/quota",

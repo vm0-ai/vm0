@@ -1,10 +1,11 @@
 use tokio::fs;
 
 use super::super::fs::{
-    allocated_bytes, has_copy_headroom, sparse_copy_with_timeout,
-    workspace_cache_path_allocated_bytes,
+    allocated_bytes, fs_stats_from_statvfs, has_copy_headroom, sparse_copy_with_timeout,
+    statvfs_bytes_sync, statvfs_for_path, workspace_cache_path_allocated_bytes,
 };
 use super::super::{CacheBudget, FsStats, GIB, WorkspaceImageCache};
+use crate::error::RunnerError;
 use crate::paths::RunnerPaths;
 
 #[test]
@@ -55,6 +56,82 @@ fn fs_stats_path_falls_back_to_existing_parent_when_cache_dir_is_missing() {
         cache.workspace_image_cache_fs_stats_path(),
         paths.base_dir().to_path_buf()
     );
+}
+
+#[tokio::test]
+async fn real_fs_stats_queries_selected_existing_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    std::fs::create_dir_all(paths.base_dir()).unwrap();
+    let cache = WorkspaceImageCache::new(paths.clone());
+
+    assert!(!paths.workspace_image_cache_dir().exists());
+    assert_eq!(
+        cache.workspace_image_cache_fs_stats_path(),
+        paths.base_dir().to_path_buf()
+    );
+
+    let stats = cache.query_fs_stats().await.unwrap();
+
+    assert!(stats.total_bytes > 0);
+    assert!(stats.available_bytes <= stats.total_bytes);
+}
+
+#[test]
+fn statvfs_conversion_uses_fragment_size_and_saturates() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut stats = statvfs_for_path(dir.path()).unwrap();
+    stats.f_bsize = 11;
+    stats.f_frsize = 3;
+    stats.f_blocks = 4;
+    stats.f_bavail = 5;
+
+    assert_eq!(
+        fs_stats_from_statvfs(&stats),
+        FsStats {
+            total_bytes: 12,
+            available_bytes: 15,
+        }
+    );
+
+    stats.f_frsize = 2;
+    stats.f_blocks = u64::MAX;
+    stats.f_bavail = u64::MAX;
+
+    assert_eq!(
+        fs_stats_from_statvfs(&stats),
+        FsStats {
+            total_bytes: u64::MAX,
+            available_bytes: u64::MAX,
+        }
+    );
+}
+
+#[test]
+fn statvfs_missing_path_preserves_io_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let error = statvfs_bytes_sync(&dir.path().join("missing"))
+        .expect_err("missing path should fail statvfs");
+    let RunnerError::Io(error) = error else {
+        panic!("missing path should preserve the io error");
+    };
+
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+}
+
+#[test]
+fn statvfs_nul_path_is_rejected_without_path_contents() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let path =
+        std::path::PathBuf::from(OsString::from_vec(b"private-statvfs-path\0suffix".to_vec()));
+    let message = statvfs_bytes_sync(&path)
+        .expect_err("nul path should fail before statvfs")
+        .to_string();
+
+    assert_eq!(message, "internal error: statvfs path contains nul byte");
+    assert!(!message.contains("private-statvfs-path"));
 }
 
 #[test]

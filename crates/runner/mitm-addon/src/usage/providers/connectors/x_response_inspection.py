@@ -70,8 +70,9 @@ _X_JSON_RESULT_COUNT_FIELDS = {
 }
 
 
-def _as_non_bool_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
+def as_non_negative_response_count(value: object) -> int | None:
+    """Return an X response count only when it is a non-negative integer."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
@@ -109,11 +110,13 @@ def _parse_x_json_response_fields(extracted: JsonExtractionResult) -> dict:
     if includes:
         result["response_includes"] = dict(includes)
 
-    result_count = _as_non_bool_int(extracted.values.get(("meta", "result_count")))
+    result_count = as_non_negative_response_count(extracted.values.get(("meta", "result_count")))
     if result_count is not None:
         result["response_result_count"] = result_count
 
-    total_tweet_count = _as_non_bool_int(extracted.values.get(("meta", "total_tweet_count")))
+    total_tweet_count = as_non_negative_response_count(
+        extracted.values.get(("meta", "total_tweet_count"))
+    )
     if total_tweet_count is not None:
         result["response_total_tweet_count"] = total_tweet_count
 

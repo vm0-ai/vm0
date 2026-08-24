@@ -15,7 +15,7 @@ setup() {
     E2E_API_TOKEN="$(jq -er '.token | select(type == "string" and length > 0)' "$credentials")"
     E2E_API_URL="$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")"
     runner_e2e_require_environment
-    : "${VM0_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
+    : "${OKOU_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
     runner_e2e_setup_test
 
     local feature_switches
@@ -35,7 +35,7 @@ report_managed_model_failure() {
     local base_url token
     local -a headers
     base_url="$(runner_api_url)" || return
-    token="${VM0_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
+    token="${OKOU_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
     headers=(
         -H "Authorization: Bearer $token"
         -H "Content-Type: application/json"

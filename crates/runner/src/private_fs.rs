@@ -706,7 +706,7 @@ mod tests {
     use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
     use std::time::Duration;
 
-    const FIFO_READ_CHILD_PATH_ENV: &str = "VM0_RUN_PRIVATE_FILE_FIFO_READ_CHILD_PATH";
+    const FIFO_READ_CHILD_PATH_ENV: &str = "OKOU_RUN_PRIVATE_FILE_FIFO_READ_CHILD_PATH";
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777

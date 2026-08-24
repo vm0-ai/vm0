@@ -171,6 +171,7 @@ impl JobProvider for LocalProvider {
             sandbox_token: String::new(),
             storage_manifest: None,
             environment: environment_merge.environment,
+            platform_environment: None,
             resume_session: req
                 .session_id
                 .as_ref()
