@@ -110,7 +110,7 @@ if bash "$verify_script" "$unsafe_dir" "$commit_sha" "$desktop_version" >/dev/nu
   exit 1
 fi
 
-VM0_DESKTOP_SKIP_SIGNING=true node - "$repo_root" <<'NODE'
+OKOU_DESKTOP_SKIP_SIGNING=true node - "$repo_root" <<'NODE'
 const path = require("node:path");
 
 const repoRoot = process.argv[2];
@@ -134,7 +134,7 @@ forgeConfig.hooks
   });
 NODE
 
-VM0_DESKTOP_SKIP_SIGNING=true \
+OKOU_DESKTOP_SKIP_SIGNING=true \
 VM0_DESKTOP_PRODUCT=okou \
 VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
 node - "$repo_root" <<'NODE'
