@@ -645,7 +645,15 @@ function assertStaticBoundary(): void {
     assert.equal(productionMigrationSql.split(digest).length - 1, 2);
   }
   assert.equal(productionMigrationSql.split(productionSetDigest).length - 1, 2);
-  assert.match(productionMigrationSql, /manifest_count <> 103/u);
+  assert.match(productionMigrationSql, /manifest_count <> 86/u);
+  assert.match(
+    productionMigrationSql,
+    /d0d6ebbdcab2e8c1abf6d3997fe14bb9b9e32704ef12f10e017a9dec1e9f19c8/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /"not_null_constraint"\."contype" = 'n'/u,
+  );
   assert.match(productionMigrationSql, /canonical_fk_count <> 18/u);
   assert.match(productionMigrationSql, /canonical_index_count <> 8/u);
   assert.match(productionMigrationSql, /closure_fk_count <> 51/u);

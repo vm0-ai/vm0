@@ -58,6 +58,20 @@ BEGIN
         )
       )
       AND "dependency"."deptype" <> 'i'
+      -- PostgreSQL 18 exposes NOT NULL constraints as pg_constraint rows
+      -- with table-internal pg_depend entries; PostgreSQL 17 does not.
+      AND NOT (
+        "dependency"."classid" = 'pg_constraint'::regclass
+        AND "dependency"."refclassid" = 'pg_class'::regclass
+        AND EXISTS (
+          SELECT 1
+          FROM "pg_constraint" AS "not_null_constraint"
+          WHERE "not_null_constraint"."oid" = "dependency"."objid"
+            AND "not_null_constraint"."contype" = 'n'
+            AND "not_null_constraint"."conrelid" =
+              "dependency"."refobjid"
+        )
+      )
     UNION ALL
     SELECT
       'function|' || "namespace"."nspname" || '.' ||
@@ -105,9 +119,9 @@ BEGIN
   INTO manifest_count, manifest_digest
   FROM manifest;
 
-  IF manifest_count <> 103
+  IF manifest_count <> 86
     OR manifest_digest <>
-      '55c49d32baa7f87170f06ec9ea24260431afa95c5a67d94eed673ee231c06634'
+      'd0d6ebbdcab2e8c1abf6d3997fe14bb9b9e32704ef12f10e017a9dec1e9f19c8'
   THEN
     RAISE EXCEPTION
       'Stage 8 catalog removal manifest drift (count %, digest %)',
