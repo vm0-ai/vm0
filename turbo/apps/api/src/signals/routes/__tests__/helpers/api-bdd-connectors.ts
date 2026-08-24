@@ -729,6 +729,8 @@ export function mockGithubAppInstallProvider(
         }
         return HttpResponse.json({
           id: Number(args.installationId),
+          app_id: 123_456,
+          app_slug: GITHUB_APP_SLUG,
           account: {
             id: Number(args.targetId),
             login: args.targetLogin ?? "bdd-github-org",
