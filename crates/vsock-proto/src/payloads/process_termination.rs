@@ -12,7 +12,8 @@ const TERMINATION_WAIT_FAILED: u8 = 0x04;
 pub enum ExecTermination {
     /// Process exited with an exit status.
     Exited {
-        /// Signed process exit code reported by the guest.
+        /// Signed process exit code reported by the guest, with signals
+        /// represented as `128 + signal`.
         exit_code: i32,
     },
     /// Operation timed out before completion.

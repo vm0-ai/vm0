@@ -10,6 +10,10 @@ use crate::wire::MSG_GUEST_DNS_READINESS;
 const RESULT_FLAG_OUTPUT_TRUNCATED: u8 = 0x01;
 
 /// Backward-compatible name for the shared guest process terminal state.
+///
+/// For DNS readiness, `TimedOut` means the request timeout elapsed, `Cancelled`
+/// means the owning connection was cancelled, and `WaitFailed` includes process
+/// wait or cleanup failures.
 pub use super::process_termination::ExecTermination as GuestDnsReadinessTermination;
 
 /// Maximum encoded hostname length accepted by a guest DNS readiness request.
