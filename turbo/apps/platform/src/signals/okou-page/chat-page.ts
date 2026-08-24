@@ -7,12 +7,7 @@ import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
-import { getRandomPrompts } from "../../views/okou-page/ideation-data.ts";
-import {
-  codexFastModeEnabled$,
-  featureSwitch$,
-} from "../external/feature-switch.ts";
-import { relatedCatalogItems$ } from "./settings/connectors.ts";
+import { codexFastModeEnabled$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -23,7 +18,6 @@ import type { ModelProviderSelection } from "../../views/okou-page/components/mo
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
-import { brandName$ } from "../branding.ts";
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {
@@ -32,29 +26,6 @@ export const reloadTagline$ = command(({ set }) => {
 
 export const chatPageTaglineIndex$ = computed((get) => {
   return get(internalTaglineIndex$);
-});
-
-// ---------------------------------------------------------------------------
-// Suggested prompts — filtered by active feature switches and connector catalog
-// ---------------------------------------------------------------------------
-
-export const unfilteredSuggestedPrompts$ = computed((get) => {
-  const features = get(featureSwitch$);
-  return getRandomPrompts(2, { brandName: get(brandName$), features });
-});
-
-export const suggestedPrompts$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  const relatedCatalogItems = await get(relatedCatalogItems$);
-  return getRandomPrompts(2, {
-    brandName: get(brandName$),
-    features,
-    visibleConnectorSlugs: new Set(
-      relatedCatalogItems.map((connector) => {
-        return connector.slug;
-      }),
-    ),
-  });
 });
 
 // ---------------------------------------------------------------------------

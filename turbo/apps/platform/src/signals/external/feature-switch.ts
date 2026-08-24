@@ -51,10 +51,6 @@ export const imageRecognitionAvailable$ = computed((): boolean => {
   return true;
 });
 
-export const homeStartCardsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.HomeStartCards] ?? false;
-});
-
 export const videoModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
 });

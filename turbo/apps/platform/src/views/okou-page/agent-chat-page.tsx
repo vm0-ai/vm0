@@ -1,12 +1,10 @@
-import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ArrowUpRight, Pin } from "lucide-react";
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import { Pin } from "lucide-react";
 import {
   Button,
   Tooltip,
@@ -27,21 +25,13 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
-import { homeStartCardsEnabled$ } from "../../signals/external/feature-switch.ts";
-import { relatedCatalogItems$ } from "../../signals/okou-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
 import { annotationSessionActive$ } from "../../signals/okou-page/image-annotation.ts";
-import {
-  chatPageTaglineIndex$,
-  suggestedPrompts$,
-  unfilteredSuggestedPrompts$,
-} from "../../signals/okou-page/chat-page.ts";
+import { chatPageTaglineIndex$ } from "../../signals/okou-page/chat-page.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -51,10 +41,6 @@ import {
 } from "../../signals/view-component-state.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
-import {
-  localizeIdeationUseCase,
-  type IdeationCatalogCopy,
-} from "./ideation-localization.ts";
 
 function localizedAnonymousTaglines(t: TFunction<"common">): string[] {
   return [
@@ -347,159 +333,6 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
   );
 }
 
-interface SuggestedPrompt {
-  title: string;
-  description: string;
-  prompt: string;
-  connectorSlugs?: readonly ConnectorSlug[];
-}
-
-function SuggestedPromptButton({
-  item,
-  connectorStatusBySlug,
-  onSelectPrompt,
-}: {
-  item: SuggestedPrompt;
-  connectorStatusBySlug:
-    | ReadonlyMap<string, PlatformConnectorCatalogStatusItem>
-    | undefined;
-  onSelectPrompt: (prompt: string) => void;
-}) {
-  const connectors =
-    item.connectorSlugs?.flatMap((connectorSlug) => {
-      const connector = connectorStatusBySlug?.get(connectorSlug);
-      return connector ? [{ connectorSlug, icon: connector.icon }] : [];
-    }) ?? [];
-  return (
-    <button
-      type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
-      onClick={() => {
-        onSelectPrompt(item.prompt);
-      }}
-    >
-      <ArrowUpRight
-        size={14}
-        className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-      />
-      <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
-      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        {item.description}
-      </p>
-      {connectors.length > 0 && (
-        <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-          {connectors.map((connector) => {
-            return (
-              <span
-                key={connector.connectorSlug}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-              >
-                <ConnectorIcon icon={connector.icon} size={14} />
-              </span>
-            );
-          })}
-        </div>
-      )}
-    </button>
-  );
-}
-
-function IdeasUseCasesButton() {
-  const { t } = useTranslation("agents");
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const navigate = useSet(detachedNavigateTo$);
-
-  const handleClick = () => {
-    if (!currentChatAgentId) {
-      return;
-    }
-    navigate("/agents/:agentId/ideas", {
-      pathParams: { agentId: currentChatAgentId },
-    });
-  };
-
-  return (
-    <button
-      type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
-      onClick={handleClick}
-    >
-      <ArrowUpRight
-        size={14}
-        className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-      />
-      <p className="text-sm font-semibold text-foreground pr-5">
-        {t(($) => {
-          return $.ideation.entry.title;
-        })}
-      </p>
-      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        {t(($) => {
-          return $.ideation.entry.description;
-        })}
-      </p>
-      <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-        <span>
-          {t(($) => {
-            return $.ideation.entry.viewAll;
-          })}
-        </span>
-        <ArrowUpRight size={14} />
-      </div>
-    </button>
-  );
-}
-
-function SuggestedPromptsGrid({
-  onSelectPrompt,
-}: {
-  onSelectPrompt: (prompt: string) => void;
-}) {
-  const { t } = useTranslation("agents");
-  const relatedCatalogItems = useLastResolved(relatedCatalogItems$);
-  const connectorStatusBySlug = relatedCatalogItems
-    ? new Map(
-        relatedCatalogItems.map((connector) => {
-          return [connector.slug, connector];
-        }),
-      )
-    : undefined;
-  const unfilteredSuggestedPrompts =
-    useLastResolved(unfilteredSuggestedPrompts$) ?? [];
-  const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
-  const lastSuggestedPrompts = useLastResolved(suggestedPrompts$);
-  const suggestedPrompts =
-    suggestedPromptsLoadable.state === "hasData"
-      ? suggestedPromptsLoadable.data
-      : suggestedPromptsLoadable.state === "loading"
-        ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
-        : [];
-  const catalogCopy: IdeationCatalogCopy = t(
-    ($) => {
-      return $.ideation.catalog;
-    },
-    { returnObjects: true },
-  );
-  const localizedSuggestedPrompts = suggestedPrompts.map((item) => {
-    return localizeIdeationUseCase(item, catalogCopy);
-  });
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-      {localizedSuggestedPrompts.map((item) => {
-        return (
-          <SuggestedPromptButton
-            key={item.title}
-            item={item}
-            connectorStatusBySlug={connectorStatusBySlug}
-            onSelectPrompt={onSelectPrompt}
-          />
-        );
-      })}
-      <IdeasUseCasesButton />
-    </div>
-  );
-}
-
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
@@ -511,7 +344,6 @@ export function AgentChatPage() {
     subscribeComputerUseHostsChangedRef$,
   );
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
-  const startCardsEnabled = useGet(homeStartCardsEnabled$);
 
   const composerSignals = useGet(agentChatComposerSignals$);
   const setInput = useSet(composerSignals.draft.setDraftInput$);
@@ -553,11 +385,7 @@ export function AgentChatPage() {
 
           <ZeroChatComposer signals={composerSignals} />
 
-          {startCardsEnabled ? (
-            <StartCards onSelectPrompt={handleInputChange} />
-          ) : (
-            <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
-          )}
+          <StartCards onSelectPrompt={handleInputChange} />
         </div>
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />

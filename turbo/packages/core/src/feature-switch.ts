@@ -417,13 +417,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.HomeStartCards]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Replace the chat landing page's suggested prompts with entry cards for each thing the agent can make.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.HomeGrowthEntry]: {
     maintainer: "ming@vm0.ai",
     description:

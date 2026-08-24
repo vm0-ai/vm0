@@ -58,7 +58,6 @@ export enum FeatureSwitchKey {
   ManagedModelProviderFallback = "managedModelProviderFallback",
   ChatForward = "chatForward",
   ResponsiveFollowupCards = "responsiveFollowupCards",
-  HomeStartCards = "homeStartCards",
   HomeGrowthEntry = "homeGrowthEntry",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
