@@ -1,6 +1,5 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
