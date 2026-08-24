@@ -402,9 +402,12 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
 
-        assert!(normalized_help.contains(
-            "Wait until a runner service is active and job-admitting. On success, emit the resolved max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go to stderr."
-        ));
+        assert!(
+            normalized_help.contains(
+                "Wait until a runner service is active and job-admitting. On success, emit the resolved max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go to stderr"
+            ),
+            "unexpected help output: {normalized_help}"
+        );
     }
 
     #[tokio::test]
