@@ -182,7 +182,7 @@ fn log_job_execution_failed(
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout { .. } => {
             emit_job_execution_failed!(
-                tracing::Level::ERROR,
+                tracing::Level::INFO,
                 "runner job reached execution time limit"
             );
         }
@@ -1144,7 +1144,7 @@ mod tests {
 
         let event = capture_job_failure_log(&failure);
 
-        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event.level, Level::INFO);
         assert_eq!(
             event.fields.get("message").map(String::as_str),
             Some("runner job reached execution time limit")
@@ -1192,7 +1192,7 @@ mod tests {
         let timeout_event = capture_job_failure_log(&timeout_failure);
 
         assert_eq!(generic_event.level, Level::INFO);
-        assert_eq!(timeout_event.level, Level::ERROR);
+        assert_eq!(timeout_event.level, Level::INFO);
         assert_eq!(
             generic_event.fields.get("message").map(String::as_str),
             Some("job execution failed")
