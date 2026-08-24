@@ -150,7 +150,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   MODEL_PROVIDER_UNAVAILABLE: {
     title: "Model temporarily unavailable",
     guidance:
-      "Every managed route for this model is temporarily unavailable. Please try again later.",
+      "Every built-in model route for this model is temporarily unavailable. Please try again later.",
   },
   PROVIDER_DELETED: {
     title: "Model provider unavailable",

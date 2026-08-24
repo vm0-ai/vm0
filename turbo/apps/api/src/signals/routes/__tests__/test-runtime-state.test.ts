@@ -13,12 +13,12 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
-  deleteVm0ManagedCandidateCooldownFixture,
-  resolveVm0ManagedModelRouteFixture,
-  registerVm0ManagedCandidateCooldownCleanup,
-  seedVm0ManagedModelCandidateKeys,
-  seedVm0ManagedModelKey,
-  setVm0ManagedCandidateCooldownFixture,
+  deleteVm0BuiltInCandidateCooldownFixture,
+  resolveVm0BuiltInModelRouteFixture,
+  registerVm0BuiltInCandidateCooldownCleanup,
+  seedVm0BuiltInModelCandidateKeys,
+  seedVm0BuiltInModelKey,
+  setVm0BuiltInCandidateCooldownFixture,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -35,7 +35,7 @@ interface ClaimedVm0Run {
 }
 
 async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
-  const keyFixture = await seedVm0ManagedModelCandidateKeys(
+  const keyFixture = await seedVm0BuiltInModelCandidateKeys(
     context,
     DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   );
@@ -47,11 +47,11 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
-    displayName: "BDD managed model failure report agent",
+    displayName: "BDD built-in model failure report agent",
   });
   const run = await runs.createRun(actor, {
     agentId: agent.agentId,
-    prompt: "report a managed model provider failure",
+    prompt: "report a built-in model provider failure",
     modelProvider: "vm0",
   });
   const runnerIdentity = {
@@ -72,9 +72,9 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
 }
 
 describe("POST /api/test/runtime-state/action", () => {
-  it("keeps overlapping VM0 managed model-key fixtures independently releasable", async () => {
-    const first = await seedVm0ManagedModelKey(context, "gpt-5.6-terra");
-    const second = await seedVm0ManagedModelKey(context, "gpt-5.6-terra");
+  it("keeps overlapping VM0 built-in model-key fixtures independently releasable", async () => {
+    const first = await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    const second = await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
 
     expect(first.selectedModel).toBe("gpt-5.6-terra");
     expect(second.selectedModel).toBe("gpt-5.6-terra");
@@ -86,11 +86,11 @@ describe("POST /api/test/runtime-state/action", () => {
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
     "disables Codex apply patch for the VM0 %s OpenRouter fallback",
     async (selectedModel) => {
-      await seedVm0ManagedModelCandidateKeys(context, selectedModel);
+      await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
       const startedAt = Date.UTC(2026, 7, 23, 0, 0, 0);
       const primaryCooldownUntil = new Date(startedAt + 60 * 1000);
       const primary = await withMockNowForTest(startedAt, async () => {
-        return await resolveVm0ManagedModelRouteFixture(
+        return await resolveVm0BuiltInModelRouteFixture(
           context,
           selectedModel,
           true,
@@ -99,14 +99,14 @@ describe("POST /api/test/runtime-state/action", () => {
       if (!primary) {
         throw new Error(`Expected a primary route for ${selectedModel}`);
       }
-      await setVm0ManagedCandidateCooldownFixture(
+      await setVm0BuiltInCandidateCooldownFixture(
         context,
         selectedModel,
         primary,
         primaryCooldownUntil,
       );
       const fallback = await withMockNowForTest(startedAt, async () => {
-        return await resolveVm0ManagedModelRouteFixture(
+        return await resolveVm0BuiltInModelRouteFixture(
           context,
           selectedModel,
           true,
@@ -118,7 +118,7 @@ describe("POST /api/test/runtime-state/action", () => {
 
       const actor = bdd.user();
       if (!actor.orgId) {
-        throw new Error("Expected managed fallback actor to have an org");
+        throw new Error("Expected built-in fallback actor to have an org");
       }
       bdd.acceptAgentStorageWrites();
       runs.acceptStorageDownloads();
@@ -141,7 +141,7 @@ describe("POST /api/test/runtime-state/action", () => {
         context,
         { ...actor, orgId: actor.orgId },
         {
-          [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+          [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
         },
       );
 
@@ -184,14 +184,14 @@ describe("POST /api/test/runtime-state/action", () => {
     },
   );
 
-  it("isolates expiry-based cooldowns to exact managed routes", async () => {
-    await seedVm0ManagedModelCandidateKeys(context, "claude-fable-5");
-    await seedVm0ManagedModelCandidateKeys(context, "gpt-5.6-sol");
+  it("isolates expiry-based cooldowns to exact built-in model routes", async () => {
+    await seedVm0BuiltInModelCandidateKeys(context, "claude-fable-5");
+    await seedVm0BuiltInModelCandidateKeys(context, "gpt-5.6-sol");
     const startedAt = Date.UTC(2026, 7, 20, 0, 0, 0);
     const routeCooldownUntil = new Date(startedAt + 60 * 1000);
 
     const gptPrimary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0ManagedModelRouteFixture(
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         "gpt-5.6-sol",
         true,
@@ -205,14 +205,14 @@ describe("POST /api/test/runtime-state/action", () => {
       throw new Error("Expected a primary GPT route");
     }
 
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       "gpt-5.6-sol",
       gptPrimary,
       routeCooldownUntil,
     );
     const gptFallback = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0ManagedModelRouteFixture(
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         "gpt-5.6-sol",
         true,
@@ -223,7 +223,7 @@ describe("POST /api/test/runtime-state/action", () => {
       throw new Error("Expected a fallback GPT route");
     }
 
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       "gpt-5.6-sol",
       gptFallback,
@@ -232,18 +232,18 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", false),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", false),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", true),
       ).resolves.toBeNull();
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-terra", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra", true),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
     });
 
     const gptTerraPrimary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0ManagedModelRouteFixture(
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         "gpt-5.6-terra",
         true,
@@ -252,7 +252,7 @@ describe("POST /api/test/runtime-state/action", () => {
     if (!gptTerraPrimary) {
       throw new Error("Expected a primary GPT Terra route");
     }
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       "gpt-5.6-terra",
       gptTerraPrimary,
@@ -260,12 +260,12 @@ describe("POST /api/test/runtime-state/action", () => {
     );
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-terra", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra", true),
       ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
     });
 
     const claudePrimary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0ManagedModelRouteFixture(
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         "claude-fable-5",
         true,
@@ -275,14 +275,14 @@ describe("POST /api/test/runtime-state/action", () => {
     if (!claudePrimary) {
       throw new Error("Expected a primary Claude route");
     }
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       "claude-fable-5",
       claudePrimary,
       routeCooldownUntil,
     );
     const claudeFallback = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0ManagedModelRouteFixture(
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         "claude-fable-5",
         true,
@@ -292,7 +292,7 @@ describe("POST /api/test/runtime-state/action", () => {
     if (!claudeFallback) {
       throw new Error("Expected a fallback Claude route");
     }
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       "claude-fable-5",
       claudeFallback,
@@ -303,7 +303,7 @@ describe("POST /api/test/runtime-state/action", () => {
     bdd.acceptAgentStorageWrites();
     await runs.grantProEntitlement(actor);
     const agent = await bdd.createAgent(actor, {
-      displayName: "BDD managed fallback unavailable agent",
+      displayName: "BDD built-in fallback unavailable agent",
     });
     await runs.updateOrgModelPolicies(actor, [
       {
@@ -315,13 +315,13 @@ describe("POST /api/test/runtime-state/action", () => {
       },
     ]);
     if (!actor.orgId) {
-      throw new Error("Expected managed fallback actor to have an org");
+      throw new Error("Expected built-in fallback actor to have an org");
     }
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+        [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
       },
     );
     const rejected = await withMockNowForTest(startedAt, async () => {
@@ -329,7 +329,7 @@ describe("POST /api/test/runtime-state/action", () => {
         actor,
         {
           agentId: agent.agentId,
-          prompt: "reject before constructing a managed-model run",
+          prompt: "reject before constructing a built-in-model run",
           model: "gpt-5.6-sol",
           clientEventId: randomUUID(),
         },
@@ -340,7 +340,7 @@ describe("POST /api/test/runtime-state/action", () => {
       error: {
         code: "MODEL_PROVIDER_UNAVAILABLE",
         message:
-          "Every managed route for this model is temporarily unavailable",
+          "Every built-in model route for this model is temporarily unavailable",
       },
     });
     await expect(
@@ -352,56 +352,52 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await withMockNowForTest(routeCooldownUntil.getTime(), async () => {
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", true),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
       await expect(
-        resolveVm0ManagedModelRouteFixture(context, "claude-fable-5", true),
+        resolveVm0BuiltInModelRouteFixture(context, "claude-fable-5", true),
       ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
     });
   });
 
-  it.each(["legacy", "built-in"] as const)(
-    "reads and deletes a cooldown stored only in %s storage",
-    async (storage) => {
-      const selectedModel = "gpt-5.6-terra";
-      const startedAt = Date.UTC(2026, 7, 20, 2, 0, 0);
-      await seedVm0ManagedModelCandidateKeys(context, selectedModel);
-      const primary = await withMockNowForTest(startedAt, async () => {
-        return await resolveVm0ManagedModelRouteFixture(
-          context,
-          selectedModel,
-          true,
-        );
-      });
-      if (!primary) {
-        throw new Error("Expected a primary GPT Terra route");
-      }
-
-      await setVm0ManagedCandidateCooldownFixture(
+  it("reads and deletes a built-in candidate cooldown", async () => {
+    const selectedModel = "gpt-5.6-terra";
+    const startedAt = Date.UTC(2026, 7, 20, 2, 0, 0);
+    await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
+    const primary = await withMockNowForTest(startedAt, async () => {
+      return await resolveVm0BuiltInModelRouteFixture(
         context,
         selectedModel,
-        primary,
-        new Date(startedAt + 60_000),
-        storage,
+        true,
       );
-      await withMockNowForTest(startedAt, async () => {
-        await expect(
-          resolveVm0ManagedModelRouteFixture(context, selectedModel, true),
-        ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
-      });
+    });
+    if (!primary) {
+      throw new Error("Expected a primary GPT Terra route");
+    }
 
-      await deleteVm0ManagedCandidateCooldownFixture(
-        context,
-        selectedModel,
-        primary,
-      );
-      await withMockNowForTest(startedAt, async () => {
-        await expect(
-          resolveVm0ManagedModelRouteFixture(context, selectedModel, true),
-        ).resolves.toMatchObject({ provider_type: "openai-api-key" });
-      });
-    },
-  );
+    await setVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      primary,
+      new Date(startedAt + 60_000),
+    );
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(context, selectedModel, true),
+      ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
+    });
+
+    await deleteVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      primary,
+    );
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(context, selectedModel, true),
+      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+    });
+  });
 });
 
 describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
@@ -449,20 +445,20 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       cooldownSeconds: 120,
     },
   ] as const)(
-    "records the $caseName cooldown for only the persisted managed route",
+    "records the $caseName cooldown for only the persisted built-in model route",
     async ({ failureKind, retryAfterSeconds, cooldownSeconds }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
       await withMockNowForTest(startedAt, async () => {
         const claimed = await createClaimedVm0Run();
-        const primary = await resolveVm0ManagedModelRouteFixture(
+        const primary = await resolveVm0BuiltInModelRouteFixture(
           context,
           claimed.selectedModel,
           true,
         );
         if (!primary) {
-          throw new Error("Expected a managed model primary route");
+          throw new Error("Expected a built-in model primary route");
         }
-        registerVm0ManagedCandidateCooldownCleanup(
+        registerVm0BuiltInCandidateCooldownCleanup(
           context,
           claimed.selectedModel,
           primary,
@@ -478,7 +474,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           runs.readRun(claimed.actor, claimed.runId),
         ).resolves.toMatchObject({ status: "running" });
         await expect(
-          resolveVm0ManagedModelRouteFixture(
+          resolveVm0BuiltInModelRouteFixture(
             context,
             claimed.selectedModel,
             false,
@@ -488,7 +484,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           upstream_model: primary.upstream_model,
         });
         await expect(
-          resolveVm0ManagedModelRouteFixture(
+          resolveVm0BuiltInModelRouteFixture(
             context,
             claimed.selectedModel,
             true,
@@ -498,16 +494,16 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           upstream_model: primary.upstream_model,
         });
 
-        await seedVm0ManagedModelCandidateKeys(context, "deepseek-v4-pro");
+        await seedVm0BuiltInModelCandidateKeys(context, "deepseek-v4-pro");
         await expect(
-          resolveVm0ManagedModelRouteFixture(context, "deepseek-v4-pro", true),
+          resolveVm0BuiltInModelRouteFixture(context, "deepseek-v4-pro", true),
         ).resolves.toMatchObject({ provider_type: "deepseek" });
 
         await withMockNowForTest(
           startedAt + cooldownSeconds * 1000 - 1,
           async () => {
             await expect(
-              resolveVm0ManagedModelRouteFixture(
+              resolveVm0BuiltInModelRouteFixture(
                 context,
                 claimed.selectedModel,
                 true,
@@ -522,7 +518,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           startedAt + cooldownSeconds * 1000,
           async () => {
             await expect(
-              resolveVm0ManagedModelRouteFixture(
+              resolveVm0BuiltInModelRouteFixture(
                 context,
                 claimed.selectedModel,
                 true,
@@ -537,19 +533,19 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     },
   );
 
-  it("writes a reported cooldown to both compatibility tables", async () => {
+  it("writes a reported cooldown to the built-in table", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 30, 0);
     await withMockNowForTest(startedAt, async () => {
       const claimed = await createClaimedVm0Run();
-      const primary = await resolveVm0ManagedModelRouteFixture(
+      const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
         true,
       );
       if (!primary) {
-        throw new Error("Expected a managed model primary route");
+        throw new Error("Expected a built-in model primary route");
       }
-      registerVm0ManagedCandidateCooldownCleanup(
+      registerVm0BuiltInCandidateCooldownCleanup(
         context,
         claimed.selectedModel,
         primary,
@@ -563,33 +559,14 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       ).resolves.toStrictEqual({ outcome: "recorded" });
 
       const expiredDeadline = new Date(startedAt - 1);
-      await setVm0ManagedCandidateCooldownFixture(
+      await setVm0BuiltInCandidateCooldownFixture(
         context,
         claimed.selectedModel,
         primary,
         expiredDeadline,
-        "legacy",
       );
       await expect(
-        resolveVm0ManagedModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
-      ).resolves.not.toMatchObject({
-        provider_type: primary.provider_type,
-        upstream_model: primary.upstream_model,
-      });
-
-      await setVm0ManagedCandidateCooldownFixture(
-        context,
-        claimed.selectedModel,
-        primary,
-        expiredDeadline,
-        "built-in",
-      );
-      await expect(
-        resolveVm0ManagedModelRouteFixture(
+        resolveVm0BuiltInModelRouteFixture(
           context,
           claimed.selectedModel,
           true,
@@ -605,15 +582,15 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const startedAt = Date.UTC(2026, 7, 21, 1, 0, 0);
     await withMockNowForTest(startedAt, async () => {
       const claimed = await createClaimedVm0Run();
-      const primary = await resolveVm0ManagedModelRouteFixture(
+      const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
         true,
       );
       if (!primary) {
-        throw new Error("Expected a managed model primary route");
+        throw new Error("Expected a built-in model primary route");
       }
-      registerVm0ManagedCandidateCooldownCleanup(
+      registerVm0BuiltInCandidateCooldownCleanup(
         context,
         claimed.selectedModel,
         primary,
@@ -646,7 +623,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
       await withMockNowForTest(startedAt + 350_000, async () => {
         await expect(
-          resolveVm0ManagedModelRouteFixture(
+          resolveVm0BuiltInModelRouteFixture(
             context,
             claimed.selectedModel,
             true,
@@ -658,7 +635,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
       await withMockNowForTest(startedAt + 401_000, async () => {
         await expect(
-          resolveVm0ManagedModelRouteFixture(
+          resolveVm0BuiltInModelRouteFixture(
             context,
             claimed.selectedModel,
             true,
@@ -675,15 +652,15 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const startedAt = Date.UTC(2026, 7, 21, 2, 0, 0);
     await withMockNowForTest(startedAt, async () => {
       const claimed = await createClaimedVm0Run();
-      const primary = await resolveVm0ManagedModelRouteFixture(
+      const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
         true,
       );
       if (!primary) {
-        throw new Error("Expected a managed model primary route");
+        throw new Error("Expected a built-in model primary route");
       }
-      registerVm0ManagedCandidateCooldownCleanup(
+      registerVm0BuiltInCandidateCooldownCleanup(
         context,
         claimed.selectedModel,
         primary,
@@ -784,7 +761,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       ).resolves.toStrictEqual({ outcome: "ignored" });
 
       await expect(
-        resolveVm0ManagedModelRouteFixture(
+        resolveVm0BuiltInModelRouteFixture(
           context,
           claimed.selectedModel,
           true,

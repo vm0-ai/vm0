@@ -59,6 +59,7 @@ delete the workflow, probe, focused validator, and this entry together.
 <!-- vm0-transition-validator:#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372 -->
 <!-- vm0-transition-validator:#28911|built-in-model-candidate-cooldown-expansion|removal-owner:#28915 -->
+<!-- vm0-transition-validator:#28912|built-in-model-terminology-cutover|removal-owner:#28915 -->
 <!-- vm0-transition-validator:#28795|official-slack-installation-okou-brand-backfill|removal-owner:#28937 -->
 
 ## Migration patterns

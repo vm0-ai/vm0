@@ -4843,6 +4843,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Inspect the built-in model routes temporarily excluded from fallback selection.",
+          "disabled": "disabled",
+          "disabledExplanation": "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
+          "empty": "No built-in model routes are currently in global cooldown.",
+          "enabled": "enabled",
+          "globalActive": "global active cooldowns",
+          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while built-in model fallback is enabled here.",
+          "loading": "Loading built-in model cooldown diagnostics...",
+          "providerType": "Provider type",
+          "refresh": "Refresh",
+          "selectedModel": "Selected model",
+          "title": "Built-in model fallback",
+          "unavailable": "Built-in model cooldown diagnostics are unavailable.",
+          "unavailableUntil": "Unavailable until",
+          "upstreamModel": "Upstream model",
+          "workspaceFallback": "workspace fallback"
+        },
         "capture": {
           "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",
           "disabled": "Disabled",
@@ -4867,24 +4885,6 @@
           "recovery": "recovery",
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable"
-        },
-        "managedModelCooldown": {
-          "description": "Inspect the managed model routes temporarily excluded from fallback selection.",
-          "disabled": "disabled",
-          "disabledExplanation": "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
-          "empty": "No managed model routes are currently in global cooldown.",
-          "enabled": "enabled",
-          "globalActive": "global active cooldowns",
-          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while managed model fallback is enabled here.",
-          "loading": "Loading managed model cooldown diagnostics...",
-          "providerType": "Provider type",
-          "refresh": "Refresh",
-          "selectedModel": "Selected model",
-          "title": "Managed model fallback",
-          "unavailable": "Managed model cooldown diagnostics are unavailable.",
-          "unavailableUntil": "Unavailable until",
-          "upstreamModel": "Upstream model",
-          "workspaceFallback": "workspace fallback"
         },
         "tab": "Debug"
       },

@@ -135,8 +135,8 @@ import {
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
-  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
+  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
@@ -617,13 +617,13 @@ function findFirewallEntry(
   });
 }
 
-async function seedVm0ManagedDefaultModelKey(): Promise<string> {
-  const fixture = await seedVm0ManagedDefaultModelKeyState(context);
+async function seedVm0BuiltInDefaultModelKey(): Promise<string> {
+  const fixture = await seedVm0BuiltInDefaultModelKeyState(context);
   return fixture.selectedModel;
 }
 
-async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -5020,7 +5020,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   it("isolates direct VM0 continuation by its persisted runtime route", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const selectedModel = await seedVm0BuiltInDefaultModelKey();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -5066,7 +5066,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "reuse the same managed runtime route",
+      prompt: "reuse the same built-in model runtime route",
       modelProvider: "vm0",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
@@ -5120,7 +5120,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const rotated = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a checkpoint from another managed provider route",
+      prompt: "discard a checkpoint from another built-in model provider route",
       modelProvider: "vm0",
     });
     expect(rotated.sessionId).toBe(first.sessionId);
@@ -6607,7 +6607,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    // The suspension applies to vm0-managed runs as well.
+    // The suspension applies to vm0-built-in runs as well.
     const vm0Rejected = await api.requestCreateRun(
       actor,
       {
@@ -7274,7 +7274,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     // The credit expiry is the subscription period end plus one month, so a
     // period that ended two months ago grants credits that are already
     // expired and never settled — vm0 admission fails whether or not a
-    // managed key happens to resolve.
+    // built-in model key happens to resolve.
     const actor = bdd.user();
     await api.grantProEntitlement(actor, {
       periodEndUnix: Math.floor(now() / 1000) - 60 * 86_400,
@@ -7436,7 +7436,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       "gpt-5.6-luna",
     ] as const) {
-      await seedVm0ManagedModelKey(model);
+      await seedVm0BuiltInModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
         {
@@ -7480,7 +7480,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
-    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const selectedModel = await seedVm0BuiltInDefaultModelKey();
     const concreteProvider = getVm0ConcreteProviderType(selectedModel);
     const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
     if (!expectedFirewall) {
@@ -7530,7 +7530,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await api.updateOrgModelPolicies(actor, [
@@ -7624,7 +7624,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       { orgId: slackOrgId, userId: slackUserId },
       context.signal,
     );
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     await releaseSlackFixture();
 
     const { actor, agentId } = await entitledRunActor();
@@ -7660,7 +7660,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
-      await seedVm0ManagedModelKey(selectedModel);
+      await seedVm0BuiltInModelKey(selectedModel);
       const { actor, agentId, runnerGroup } = await entitledRunActor();
 
       await api.updateOrgModelPolicies(actor, [
@@ -16483,7 +16483,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await seedVm0ManagedDefaultModelKey();
+    await seedVm0BuiltInDefaultModelKey();
     const modelProvider = `bdd-model-pricing-${randomUUID()}`;
     onTestFinished(async () => {
       await deleteUsagePricingRows({

@@ -4843,6 +4843,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Periksa rute model bawaan yang sementara dikecualikan dari pemilihan fallback.",
+          "disabled": "dinonaktifkan",
+          "disabledExplanation": "Fallback model bawaan dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
+          "empty": "Saat ini tidak ada rute model bawaan dalam cooldown global.",
+          "enabled": "diaktifkan",
+          "globalActive": "cooldown global aktif",
+          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model bawaan diaktifkan di sini.",
+          "loading": "Memuat diagnostik cooldown model bawaan...",
+          "providerType": "Jenis penyedia",
+          "refresh": "Segarkan",
+          "selectedModel": "Model terpilih",
+          "title": "Fallback model bawaan",
+          "unavailable": "Diagnostik cooldown model bawaan tidak tersedia.",
+          "unavailableUntil": "Tidak tersedia hingga",
+          "upstreamModel": "Model upstream",
+          "workspaceFallback": "fallback workspace"
+        },
         "capture": {
           "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
@@ -4867,24 +4885,6 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "managedModelCooldown": {
-          "description": "Periksa rute model terkelola yang sementara dikecualikan dari pemilihan fallback.",
-          "disabled": "dinonaktifkan",
-          "disabledExplanation": "Fallback model terkelola dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
-          "empty": "Saat ini tidak ada rute model terkelola dalam cooldown global.",
-          "enabled": "diaktifkan",
-          "globalActive": "cooldown global aktif",
-          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model terkelola diaktifkan di sini.",
-          "loading": "Memuat diagnostik cooldown model terkelola...",
-          "providerType": "Jenis penyedia",
-          "refresh": "Segarkan",
-          "selectedModel": "Model terpilih",
-          "title": "Fallback model terkelola",
-          "unavailable": "Diagnostik cooldown model terkelola tidak tersedia.",
-          "unavailableUntil": "Tidak tersedia hingga",
-          "upstreamModel": "Model upstream",
-          "workspaceFallback": "fallback workspace"
         },
         "tab": "Debug"
       },

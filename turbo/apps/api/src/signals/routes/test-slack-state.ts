@@ -35,9 +35,9 @@ import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
-  acquireManagedModelKeyFixture,
-  releaseManagedModelKeyFixture,
-} from "../services/managed-model-key-fixture";
+  acquireBuiltInModelKeyFixture,
+  releaseBuiltInModelKeyFixture,
+} from "../services/built-in-model-key-fixture";
 import { chatEventTypeIn } from "../services/chat-event-type.service";
 import { dispatchSlackChatDeliveryOnce } from "../services/internal-slack-chat-run-callback.service";
 import {
@@ -208,16 +208,20 @@ async function seedDefaultAgent(
       });
   });
 
-  await seedVm0ManagedKeys(db, agent.id);
+  await seedVm0BuiltInModelKeys(db, agent.id);
 
   return { agentId: agent.id };
 }
 
-async function seedVm0ManagedKeys(db: Db, agentId: string): Promise<void> {
-  await acquireManagedModelKeyFixture(db, agentId, vm0ManagedKeyRows(agentId));
+async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
+  await acquireBuiltInModelKeyFixture(
+    db,
+    agentId,
+    vm0BuiltInModelKeyRows(agentId),
+  );
 }
 
-function vm0ManagedKeyRows(agentId: string) {
+function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
@@ -237,7 +241,7 @@ function vm0ManagedKeyRows(agentId: string) {
   ];
 }
 
-async function deleteVm0ManagedKeysForSeededDefaultAgent(
+async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -251,7 +255,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  await releaseManagedModelKeyFixture(db, agent.id);
+  await releaseBuiltInModelKeyFixture(db, agent.id);
 }
 
 async function ensureStarterCreditGrant(
@@ -1113,7 +1117,7 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForSlackStateDelete(installationRows, orgId);
   for (const seededOrgId of orgIds) {
-    await deleteVm0ManagedKeysForSeededDefaultAgent(db, seededOrgId);
+    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, seededOrgId);
     signal.throwIfAborted();
   }
 

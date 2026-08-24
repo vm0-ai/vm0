@@ -2683,7 +2683,7 @@ async function resolveQueuedMessageModelRoute(args: {
           ? "MODEL_PROVIDER_UNAVAILABLE"
           : "PROVIDER_UNAVAILABLE",
         message: args.fallbackEnabled
-          ? "Every managed route for this model is temporarily unavailable"
+          ? "Every built-in model route for this model is temporarily unavailable"
           : "No model provider configured: no built-in model key is configured",
       },
     };
@@ -3241,7 +3241,7 @@ async function buildCreateQueuedChatRunInput(
     contextType: args.queuedMessage.contextType,
     timing: args.timing,
     fallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ManagedModelProviderFallback,
+      FeatureSwitchKey.BuiltInModelProviderFallback,
       featureSwitchContext,
     ),
   });

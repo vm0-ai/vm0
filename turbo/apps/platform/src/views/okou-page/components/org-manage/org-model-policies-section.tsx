@@ -116,7 +116,7 @@ function isByokProviderType(type: ModelProviderType): boolean {
   return type !== "vm0" && !isOAuthMemberType(type);
 }
 
-function isAddableManagedModel(model: SupportedRunModel): boolean {
+function isAddableBuiltInModel(model: SupportedRunModel): boolean {
   const providerType = getModelIconType(model);
   return (
     providerType === "openai-api-key" ||
@@ -1757,7 +1757,7 @@ export function OrgModelPoliciesSection() {
     }),
   );
   const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
-    return isAddableManagedModel(model) && !configuredModels.has(model);
+    return isAddableBuiltInModel(model) && !configuredModels.has(model);
   });
 
   const submit = (next: UpdateOrgModelPolicy[]) => {

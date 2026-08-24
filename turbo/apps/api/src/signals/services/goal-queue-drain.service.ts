@@ -264,7 +264,7 @@ async function resolveModelContext(
   const fallbackEnabled =
     effectiveModelProvider === "vm0"
       ? isFeatureEnabled(
-          FeatureSwitchKey.ManagedModelProviderFallback,
+          FeatureSwitchKey.BuiltInModelProviderFallback,
           await loadUserFeatureSwitchContext(
             args.db,
             args.goal.orgId,
@@ -294,7 +294,7 @@ async function resolveModelContext(
                 ? "MODEL_PROVIDER_UNAVAILABLE"
                 : "PROVIDER_UNAVAILABLE",
               message: fallbackEnabled
-                ? "Every managed route for this model is temporarily unavailable"
+                ? "Every built-in model route for this model is temporarily unavailable"
                 : "No model provider configured: no built-in model key is configured",
             },
           },

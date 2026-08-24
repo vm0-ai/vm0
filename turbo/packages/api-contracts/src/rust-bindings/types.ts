@@ -74,7 +74,7 @@ export const rustTypeModuleDocs = [
   },
   {
     rustModulePath: ["runners", "runs", "model_provider_failures"],
-    rustDoc: ["DTOs for reporting bounded managed model provider failures."],
+    rustDoc: ["DTOs for reporting bounded built-in model provider failures."],
   },
   {
     rustModulePath: ["webhooks"],
@@ -304,7 +304,7 @@ export const rustTypeBindings = [
       {
         rustTypeName: "Request",
         rustDoc: [
-          "Request body for reporting a managed model provider failure.",
+          "Request body for reporting a built-in model provider failure.",
         ],
         fields: {
           failureKind: ["Normalized eligible provider failure kind."],

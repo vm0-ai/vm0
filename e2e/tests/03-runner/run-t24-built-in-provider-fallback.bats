@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 
-# Deployed VM0-managed fallback completion after a trusted exact-route cooldown.
+# Deployed VM0 built-in fallback completion after a trusted exact-route cooldown.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
-MANAGED_FALLBACK_MODEL="gpt-5.6-luna"
+BUILT_IN_FALLBACK_MODEL="gpt-5.6-luna"
 
 setup() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
@@ -15,14 +15,14 @@ setup() {
     E2E_API_TOKEN="$(jq -er '.token | select(type == "string" and length > 0)' "$credentials")"
     E2E_API_URL="$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")"
     runner_e2e_require_environment
-    : "${OKOU_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
+    : "${OKOU_MITM_RUNNER_TOKEN:?built-in fallback E2E requires trusted failure authentication}"
     runner_e2e_setup_test
 
     local feature_switches
     feature_switches="$(runner_api_curl "/api/feature-switches")"
     jq -e '
         .effectiveSwitches.realAgentInPreview == true and
-        .effectiveSwitches.managedModelProviderFallback == true
+        .effectiveSwitches.builtInModelProviderFallback == true
     ' <<<"$feature_switches" >/dev/null
 }
 
@@ -30,12 +30,12 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-report_managed_model_failure() {
+report_built_in_model_failure() {
     local run_id="$1"
     local base_url token
     local -a headers
     base_url="$(runner_api_url)" || return
-    token="${OKOU_MITM_RUNNER_TOKEN:?managed fallback E2E requires trusted failure authentication}"
+    token="${OKOU_MITM_RUNNER_TOKEN:?built-in fallback E2E requires trusted failure authentication}"
     headers=(
         -H "Authorization: Bearer $token"
         -H "Content-Type: application/json"
@@ -55,19 +55,19 @@ report_managed_model_failure() {
         "${base_url}/api/runners/runs/${run_id}/model-provider-failures"
 }
 
-@test "a later managed run completes through the OpenRouter fallback" {
-    run create_runner_agent "e2e-managed-fallback-${TEST_ID}"
+@test "a later built-in model run completes through the OpenRouter fallback" {
+    run create_runner_agent "e2e-built-in-fallback-${TEST_ID}"
     assert_success
     AGENT_ID="$output"
 
     run set_runner_agent_instructions \
         "$AGENT_ID" \
-        "Managed provider fallback completion test instructions."
+        "Built-in model fallback completion test instructions."
     assert_success
 
     run runner_api_curl "/api/model-policies"
     assert_success
-    run jq -e --arg model "$MANAGED_FALLBACK_MODEL" '
+    run jq -e --arg model "$BUILT_IN_FALLBACK_MODEL" '
         any(.policies[]?;
             .model == $model and
             .defaultProviderType == "vm0" and
@@ -85,7 +85,7 @@ report_managed_model_failure() {
         "$AGENT_ID" \
         "Reply only ${primary_expected}" \
         "" \
-        "$MANAGED_FALLBACK_MODEL"
+        "$BUILT_IN_FALLBACK_MODEL"
     assert_success
     RUN_ID="$(jq -er '.runId | select(type == "string" and length > 0)' <<<"$output")"
     THREAD_ID="$(jq -er '.threadId | select(type == "string" and length > 0)' <<<"$output")"
@@ -107,7 +107,7 @@ report_managed_model_failure() {
     run runner_api_curl "/api/runs/${RUN_ID}/context"
     assert_success
     primary_context="$output"
-    run jq -e --arg model "$MANAGED_FALLBACK_MODEL" '
+    run jq -e --arg model "$BUILT_IN_FALLBACK_MODEL" '
         .cliAgentType == "codex" and
         .environment.OPENAI_MODEL == $model and
         (.environment | has("OPENAI_BASE_URL") | not) and
@@ -118,7 +118,7 @@ report_managed_model_failure() {
     ' <<<"$primary_context"
     assert_success
 
-    run report_managed_model_failure "$RUN_ID"
+    run report_built_in_model_failure "$RUN_ID"
     assert_success
     run jq -e '. == {"outcome":"recorded"}' <<<"$output"
     assert_success
@@ -143,7 +143,7 @@ report_managed_model_failure() {
     run runner_api_curl "/api/runs/${fallback_run_id}/context"
     assert_success
     fallback_context="$output"
-    run jq -e --arg model "openai/${MANAGED_FALLBACK_MODEL}" '
+    run jq -e --arg model "openai/${BUILT_IN_FALLBACK_MODEL}" '
         .cliAgentType == "codex" and
         .environment.OPENAI_BASE_URL == "https://openrouter.ai/api/v1" and
         .environment.OPENAI_MODEL == $model and

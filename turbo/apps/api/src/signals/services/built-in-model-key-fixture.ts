@@ -6,34 +6,34 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { safeJsonParse } from "../utils";
 
-const VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
-const vm0ManagedModelKeyFixtureLabelSchema = z.object({
-  kind: z.literal(VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND),
+const VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
+const vm0BuiltInModelKeyFixtureLabelSchema = z.object({
+  kind: z.literal(VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND),
   fixtureIds: z.array(z.string().uuid()).min(1),
   preservedLabel: z.string().nullable().optional(),
 });
 
-interface Vm0ManagedModelKeyRow {
+interface Vm0BuiltInModelKeyRow {
   readonly vendor: string;
   readonly apiKey: string;
 }
 
-function vm0ManagedModelKeyFixtureLabel(
+function vm0BuiltInModelKeyFixtureLabel(
   fixtureIds: readonly string[],
   preservedLabel?: string | null,
 ): string {
   return JSON.stringify({
-    kind: VM0_MANAGED_MODEL_KEY_FIXTURE_LABEL_KIND,
+    kind: VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND,
     fixtureIds,
     ...(preservedLabel === undefined ? {} : { preservedLabel }),
   });
 }
 
-function parseVm0ManagedModelKeyFixtureLabel(label: string | null) {
+function parseVm0BuiltInModelKeyFixtureLabel(label: string | null) {
   if (!label) {
     return null;
   }
-  const parsed = vm0ManagedModelKeyFixtureLabelSchema.safeParse(
+  const parsed = vm0BuiltInModelKeyFixtureLabelSchema.safeParse(
     safeJsonParse(label),
   );
   return parsed.success ? parsed.data : null;
@@ -46,19 +46,19 @@ function parseVm0ManagedModelKeyFixtureLabel(label: string | null) {
  * different integrations share each vendor row, so every owner must be
  * recorded under the same row lock before any fixture can release it.
  */
-export async function acquireManagedModelKeyFixture(
+export async function acquireBuiltInModelKeyFixture(
   db: Db,
   fixtureId: string,
-  rows: readonly Vm0ManagedModelKeyRow[],
-): Promise<readonly Vm0ManagedModelKeyRow[]> {
-  const acquiredRows: Vm0ManagedModelKeyRow[] = [];
+  rows: readonly Vm0BuiltInModelKeyRow[],
+): Promise<readonly Vm0BuiltInModelKeyRow[]> {
+  const acquiredRows: Vm0BuiltInModelKeyRow[] = [];
   for (const value of rows) {
     const apiKey = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(builtInModelKeys)
         .values({
           ...value,
-          label: vm0ManagedModelKeyFixtureLabel([fixtureId]),
+          label: vm0BuiltInModelKeyFixtureLabel([fixtureId]),
         })
         .onConflictDoUpdate({
           target: builtInModelKeys.vendor,
@@ -73,10 +73,12 @@ export async function acquireManagedModelKeyFixture(
           label: builtInModelKeys.label,
         });
       if (!row) {
-        throw new Error(`Expected VM0 managed key for vendor: ${value.vendor}`);
+        throw new Error(
+          `Expected VM0 built-in key for vendor: ${value.vendor}`,
+        );
       }
 
-      const fixtureLabel = parseVm0ManagedModelKeyFixtureLabel(row.label);
+      const fixtureLabel = parseVm0BuiltInModelKeyFixtureLabel(row.label);
       if (fixtureLabel?.fixtureIds.includes(fixtureId)) {
         return row.apiKey;
       }
@@ -91,7 +93,7 @@ export async function acquireManagedModelKeyFixture(
       await tx
         .update(builtInModelKeys)
         .set({
-          label: vm0ManagedModelKeyFixtureLabel(fixtureIds, preservedLabel),
+          label: vm0BuiltInModelKeyFixtureLabel(fixtureIds, preservedLabel),
           updatedAt: nowDate(),
         })
         .where(eq(builtInModelKeys.id, row.id));
@@ -103,7 +105,7 @@ export async function acquireManagedModelKeyFixture(
 }
 
 /** Releases only one fixture's ownership, deleting the row at the last owner. */
-export async function releaseManagedModelKeyFixture(
+export async function releaseBuiltInModelKeyFixture(
   db: Db,
   fixtureId: string,
 ): Promise<void> {
@@ -116,7 +118,7 @@ export async function releaseManagedModelKeyFixture(
       .for("update");
 
     for (const row of rows) {
-      const fixtureLabel = parseVm0ManagedModelKeyFixtureLabel(row.label);
+      const fixtureLabel = parseVm0BuiltInModelKeyFixtureLabel(row.label);
       if (!fixtureLabel?.fixtureIds.includes(fixtureId)) {
         continue;
       }
@@ -127,7 +129,7 @@ export async function releaseManagedModelKeyFixture(
         await tx
           .update(builtInModelKeys)
           .set({
-            label: vm0ManagedModelKeyFixtureLabel(
+            label: vm0BuiltInModelKeyFixtureLabel(
               remainingFixtureIds,
               fixtureLabel.preservedLabel,
             ),

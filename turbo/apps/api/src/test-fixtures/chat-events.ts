@@ -60,9 +60,9 @@ import {
   runOwnedChatEventForRunCondition,
 } from "../signals/services/chat-event-type.service";
 import {
-  acquireManagedModelKeyFixture,
-  releaseManagedModelKeyFixture,
-} from "../signals/services/managed-model-key-fixture";
+  acquireBuiltInModelKeyFixture,
+  releaseBuiltInModelKeyFixture,
+} from "../signals/services/built-in-model-key-fixture";
 import { visibleChatEventCondition } from "../signals/services/chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
@@ -71,7 +71,7 @@ import { dispatchGitHubChatDeliveryOnce } from "../signals/services/internal-git
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
- * BDD-scoped vm0 managed key prefixes. Fixture acquisition below only accepts
+ * BDD-scoped vm0 built-in model key prefixes. Fixture acquisition below only accepts
  * keys carrying one of these prefixes.
  */
 const VM0_BDD_API_KEY_PREFIXES = [
@@ -1998,14 +1998,14 @@ export async function acquireBddVm0ApiKey(args: {
       `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
     );
   }
-  const [acquired] = await acquireManagedModelKeyFixture(db(), args.fixtureId, [
+  const [acquired] = await acquireBuiltInModelKeyFixture(db(), args.fixtureId, [
     {
       vendor: args.vendor,
       apiKey: args.apiKey,
     },
   ]);
   if (!acquired) {
-    throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
+    throw new Error(`Expected VM0 built-in key for vendor: ${args.vendor}`);
   }
   return acquired.apiKey;
 }
@@ -2014,7 +2014,7 @@ export async function acquireBddVm0ApiKey(args: {
 export async function releaseBddVm0ApiKey(args: {
   readonly fixtureId: string;
 }): Promise<void> {
-  await releaseManagedModelKeyFixture(db(), args.fixtureId);
+  await releaseBuiltInModelKeyFixture(db(), args.fixtureId);
 }
 
 /**

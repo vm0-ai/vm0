@@ -4851,6 +4851,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Prüfen Sie integrierte Modellrouten, die vorübergehend von der Fallback-Auswahl ausgeschlossen sind.",
+          "disabled": "deaktiviert",
+          "disabledExplanation": "Der Fallback für integrierte Modelle ist für diesen Workspace deaktiviert. Daher werden diese globalen Cooldowns hier derzeit ignoriert.",
+          "empty": "Derzeit befinden sich keine verwalteten Modellrouten im globalen Cooldown.",
+          "enabled": "aktiviert",
+          "globalActive": "aktive globale Cooldowns",
+          "globalExplanation": "Cooldowns sind ein globaler Betriebszustand. Sie können diesen Workspace nur beeinflussen, wenn der Fallback für integrierte Modelle hier aktiviert ist.",
+          "loading": "Cooldown-Diagnose für integrierte Modelle wird geladen...",
+          "providerType": "Anbietertyp",
+          "refresh": "Aktualisieren",
+          "selectedModel": "Ausgewähltes Modell",
+          "title": "Fallback für integrierte Modelle",
+          "unavailable": "Die Cooldown-Diagnose für integrierte Modelle ist nicht verfügbar.",
+          "unavailableUntil": "Nicht verfügbar bis",
+          "upstreamModel": "Upstream-Modell",
+          "workspaceFallback": "Workspace-Fallback"
+        },
         "capture": {
           "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
@@ -4875,24 +4893,6 @@
           "recovery": "Wiederherstellung",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar"
-        },
-        "managedModelCooldown": {
-          "description": "Prüfen Sie verwaltete Modellrouten, die vorübergehend von der Fallback-Auswahl ausgeschlossen sind.",
-          "disabled": "deaktiviert",
-          "disabledExplanation": "Der Fallback für verwaltete Modelle ist für diesen Workspace deaktiviert. Daher werden diese globalen Cooldowns hier derzeit ignoriert.",
-          "empty": "Derzeit befinden sich keine verwalteten Modellrouten im globalen Cooldown.",
-          "enabled": "aktiviert",
-          "globalActive": "aktive globale Cooldowns",
-          "globalExplanation": "Cooldowns sind ein globaler Betriebszustand. Sie können diesen Workspace nur beeinflussen, wenn der Fallback für verwaltete Modelle hier aktiviert ist.",
-          "loading": "Cooldown-Diagnose für verwaltete Modelle wird geladen...",
-          "providerType": "Anbietertyp",
-          "refresh": "Aktualisieren",
-          "selectedModel": "Ausgewähltes Modell",
-          "title": "Fallback für verwaltete Modelle",
-          "unavailable": "Die Cooldown-Diagnose für verwaltete Modelle ist nicht verfügbar.",
-          "unavailableUntil": "Nicht verfügbar bis",
-          "upstreamModel": "Upstream-Modell",
-          "workspaceFallback": "Workspace-Fallback"
         },
         "tab": "Debuggen"
       },
