@@ -130,6 +130,7 @@ describe("Auth v2 sign-up external strategy transfer", () => {
 
   it("transfers an existing identity once and reuses its state after callback reload", async () => {
     mockSignUpResource({
+      emailAddress: "person@example.com",
       externalAccountError: {
         code: "external_account_exists",
         message: "Account already exists",
@@ -141,6 +142,7 @@ describe("Auth v2 sign-up external strategy transfer", () => {
     mockedClerk.clientSignInCreate.mockImplementation(() => {
       mockSignInResource({
         createdSessionId: "session_existing_identity",
+        identifier: "person@example.com",
         status: "complete",
       });
       return Promise.resolve(mockedClerk.client.signIn);
@@ -167,6 +169,7 @@ describe("Auth v2 sign-up external strategy transfer", () => {
 describe("Auth v2 sign-up external strategy recovery", () => {
   it("returns incomplete transfer and callback error states to the flow", async () => {
     mockSignUpResource({
+      emailAddress: "person@example.com",
       externalAccountError: {
         code: "external_account_exists",
         message: "Account already exists",
@@ -177,6 +180,7 @@ describe("Auth v2 sign-up external strategy recovery", () => {
     });
     mockedClerk.clientSignInCreate.mockImplementation(() => {
       mockSignInResource({
+        identifier: "person@example.com",
         status: "needs_first_factor",
         supportedFirstFactors: [{ strategy: "password" }],
       });

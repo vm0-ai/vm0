@@ -304,10 +304,12 @@ describe("auth v2 sign-up flow", () => {
   it("reuses an in-progress transfer on callback reload without another transfer operation", async () => {
     mockSignInResource({
       createdSessionId: "session_recovered_transfer",
+      identifier: "person@example.com",
       status: "complete",
     });
     setupSignUpPage(
       {
+        emailAddress: "person@example.com",
         externalAccountError: {
           code: "external_account_exists",
           message: "Account already exists",
@@ -330,6 +332,51 @@ describe("auth v2 sign-up flow", () => {
       redirectUrl: "https://app.vm0.ai",
       session: "session_recovered_transfer",
     });
+  });
+
+  it("replaces an unrelated sign-in resource before transferring an existing Google identity", async () => {
+    mockSignInResource({
+      createdSessionId: "session_unrelated",
+      identifier: "other@example.com",
+      status: "complete",
+    });
+    mockedClerk.clientSignInCreate.mockImplementation(() => {
+      mockSignInResource({
+        createdSessionId: "session_existing_google",
+        identifier: "person@example.com",
+        status: "complete",
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+    setupSignUpPage(
+      {
+        emailAddress: "person@example.com",
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
+      },
+      {
+        path: "/v2/sign-up/sso-callback",
+        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+      },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+        transfer: true,
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledWith({
+        redirectUrl: "https://app.vm0.ai",
+        session: "session_existing_google",
+      });
+    });
+    expect(mockedClerk.setActive).not.toHaveBeenCalledWith(
+      expect.objectContaining({ session: "session_unrelated" }),
+    );
   });
 
   it("hands an incomplete existing-identity transfer to the attributed v2 sign-in step", async () => {

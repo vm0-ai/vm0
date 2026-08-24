@@ -73,6 +73,7 @@ export type MockedSignInFactor =
 
 export interface MockedSignInResourceState {
   readonly createdSessionId?: string | null;
+  readonly identifier?: string | null;
   readonly isTransferable?: boolean;
   readonly status: string | null;
   readonly supportedFirstFactors?: readonly MockedSignInFactor[] | null;
@@ -147,6 +148,7 @@ let internalMockedClerkSessionTransitioning = false;
 let internalMockedClerkSessionSignedOut = false;
 let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
   createdSessionId: null,
+  identifier: null,
   isTransferable: false,
   status: "needs_identifier",
   supportedFirstFactors: null,
@@ -184,6 +186,7 @@ let internalMockedPasswordValidation: PasswordValidation = {
 export function mockSignInResource(state: MockedSignInResourceState): void {
   internalMockedSignInResourceState = {
     createdSessionId: state.createdSessionId ?? null,
+    identifier: state.identifier ?? null,
     isTransferable: state.isTransferable ?? false,
     status: state.status,
     supportedFirstFactors: state.supportedFirstFactors ?? null,
@@ -639,6 +642,9 @@ const signInFutureReset = vi.fn<typeof defaultSignInFutureResetImpl>(
 );
 
 const mockedClientSignIn = {
+  get identifier() {
+    return internalMockedSignInResourceState.identifier;
+  },
   get status() {
     return internalMockedSignInResourceState.status;
   },

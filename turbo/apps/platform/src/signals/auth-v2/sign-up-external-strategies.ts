@@ -71,8 +71,22 @@ export function resolveAuthV2SignUpTransferState(
   };
 }
 
-function hasTransferProgress(resource: SignInResource): boolean {
-  return resource.status !== null && resource.status !== "needs_identifier";
+function normalizeEmailIdentifier(identifier: string | null): string | null {
+  const normalized = identifier?.trim().toLowerCase();
+  return normalized || null;
+}
+
+function hasMatchingTransferProgress(
+  signUp: SignUpResource,
+  signIn: SignInResource,
+): boolean {
+  const signUpIdentifier = normalizeEmailIdentifier(signUp.emailAddress);
+  return (
+    signIn.status !== null &&
+    signIn.status !== "needs_identifier" &&
+    signUpIdentifier !== null &&
+    normalizeEmailIdentifier(signIn.identifier) === signUpIdentifier
+  );
 }
 
 export function discoverAuthV2SignUpExternalCapabilities(
@@ -119,7 +133,7 @@ export async function recoverAuthV2GoogleSignUp(
     externalAccount.status === "transferable" &&
     externalAccount.error?.code === "external_account_exists"
   ) {
-    const signIn = hasTransferProgress(client.signIn)
+    const signIn = hasMatchingTransferProgress(signUp, client.signIn)
       ? client.signIn
       : await client.signIn.create({ transfer: true });
     const transfer = resolveAuthV2SignUpTransferState(signIn);
