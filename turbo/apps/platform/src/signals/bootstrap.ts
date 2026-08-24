@@ -62,6 +62,7 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callback-page-setup.ts";
+import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
@@ -208,6 +209,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.browserAuthorize,
     setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+  },
+  {
+    path: ROUTES.bankingConnectReturnResult,
+    setup: setupBankingConnectReturnPage$,
+  },
+  {
+    path: ROUTES.bankingConnectReturn,
+    setup: setupBankingConnectReturnPage$,
   },
   {
     path: ROUTES.connectorCallbackResult,

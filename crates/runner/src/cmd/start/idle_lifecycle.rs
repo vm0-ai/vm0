@@ -65,7 +65,7 @@ impl IdleDestroyTracker {
 ///
 /// A SIGUSR2 resume can reopen parking while a soft-drain destroy is still in
 /// progress, so write the current post-destroy pool snapshot rather than
-/// blindly clearing `idle_vms`.
+/// blindly clearing `idle_sandboxes`.
 ///
 /// `context` is logged alongside the destroyed count for operator clarity
 /// (e.g. "draining" vs "shutdown").
@@ -76,7 +76,7 @@ pub(super) async fn drain_idle_pool(
 ) {
     let jobs = idle_pool.lock().await.drain();
     if !jobs.is_empty() {
-        info!(count = jobs.len(), context, "destroying idle VMs");
+        info!(count = jobs.len(), context, "destroying idle sandboxes");
         destroy_idle_jobs_and_wait(jobs, context).await;
     }
     let snapshot = idle_pool.lock().await.status_snapshot();
@@ -168,7 +168,7 @@ pub(super) async fn select_idle_entry_for_pressure(
 
 pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
     let applied = status
-        .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+        .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
         .await;
     if !applied {
         info!(
@@ -189,7 +189,7 @@ pub(super) async fn add_running_run_with_idle_status_snapshot(
             run_id,
             sandbox_id,
             snapshot.revision,
-            snapshot.idle_vms,
+            snapshot.idle_sandboxes,
         )
         .await;
     if !applied {
@@ -211,7 +211,7 @@ pub(super) async fn add_preparing_run_with_idle_status_snapshot(
             run_id,
             sandbox_id,
             snapshot.revision,
-            snapshot.idle_vms,
+            snapshot.idle_sandboxes,
         )
         .await;
     if !applied {
@@ -247,7 +247,7 @@ pub(super) async fn destroy_idle_jobs_and_wait(
 ) -> bool {
     // Destroy in parallel -- each `stop_and_destroy` is ~1-3s (FC shutdown +
     // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
-    // budget-pressure recovery budgets on multi-VM cleanup.
+    // budget-pressure recovery budgets on multi-sandbox cleanup.
     let mut set = JoinSet::new();
     for job in jobs {
         set.spawn(destroy_idle_job(job, context));

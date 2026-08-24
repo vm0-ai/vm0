@@ -562,7 +562,7 @@ async function requestRawSlackDownloadFile(
     signal: context.signal,
     routes: TEST_APP_ROUTES,
   }).request(
-    `/api/okou/integrations/slack/download-file${query ? `?${query}` : ""}`,
+    `/api/integrations/slack/download-file${query ? `?${query}` : ""}`,
     {
       method: "GET",
       headers: extraHeaders(headers),

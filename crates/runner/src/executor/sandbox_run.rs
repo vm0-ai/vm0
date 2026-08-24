@@ -1086,7 +1086,7 @@ async fn create_started_sandbox(
                 false,
                 Some(SANDBOX_FACTORY_CREATE_FAILED),
             );
-            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
             return Err(SandboxPrepareError::retry_without_workspace_image(
                 e.into(),
                 true,
@@ -1095,7 +1095,12 @@ async fn create_started_sandbox(
     };
 
     if let Err(error) = sandbox.bind_run_control(&context.run_id.to_string()) {
-        telemetry.record("vm_create", t.elapsed(), false, Some(&error.to_string()));
+        telemetry.record(
+            "sandbox_create",
+            t.elapsed(),
+            false,
+            Some(&error.to_string()),
+        );
         let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(SandboxPrepareError::fatal(error.into()));
     }
@@ -1134,7 +1139,7 @@ async fn create_started_sandbox(
                 proxy_register_elapsed,
                 &e.to_string(),
             );
-            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
             let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
             return Err(SandboxPrepareError::fatal(e));
         }
@@ -1170,7 +1175,7 @@ async fn create_started_sandbox(
             false,
             Some(SANDBOX_START_FAILED),
         );
-        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+        telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
         let unregister_completed =
             match unregister_proxy_registry(config, &source_ip, context.run_id).await {
                 Ok(()) => true,
@@ -1224,7 +1229,7 @@ async fn create_started_sandbox(
         true,
         None,
     );
-    telemetry.record("vm_create", t.elapsed(), true, None);
+    telemetry.record("sandbox_create", t.elapsed(), true, None);
 
     let mut prepared_guest_runtime =
         PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(

@@ -142,15 +142,15 @@ fn idle_snapshot_contains_sandbox_id(
     sandbox_id: SandboxId,
 ) -> bool {
     idle_snapshot
-        .idle_vms
+        .idle_sandboxes
         .iter()
-        .any(|idle_vm| idle_vm.sandbox_id == sandbox_id)
+        .any(|idle_sandbox| idle_sandbox.sandbox_id == sandbox_id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::status::IdleVm;
+    use crate::status::IdleSandbox;
 
     async fn status_idle_reuse_keys_and_active_runs(
         status_path: &std::path::Path,
@@ -158,10 +158,10 @@ mod tests {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let mut reuse_keys: Vec<String> = status
-            .get("idle_vms")
+            .get("idle_sandboxes")
             .and_then(|v| v.as_array())
-            .map(|idle_vms| {
-                idle_vms
+            .map(|idle_sandboxes| {
+                idle_sandboxes
                     .iter()
                     .filter_map(|vm| {
                         vm.get("reuse_key")
@@ -190,7 +190,7 @@ mod tests {
     fn idle_snapshot(reuse_key: &str, sandbox_id: SandboxId) -> IdlePoolSnapshot {
         IdlePoolSnapshot {
             revision: 1,
-            idle_vms: vec![IdleVm {
+            idle_sandboxes: vec![IdleSandbox {
                 reuse_key: reuse_key.to_string(),
                 sandbox_id,
             }],

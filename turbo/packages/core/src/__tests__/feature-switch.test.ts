@@ -123,7 +123,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
@@ -174,6 +174,9 @@ describe("getAllFeatureStates", () => {
     expect(
       bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(true);
+    expect(bingjieStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
+      true,
+    );
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -184,6 +187,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
+    expect(
+      otherStaffStates[FeatureSwitchKey.ComposerNoteEditableIsolation],
     ).toBe(false);
   });
 

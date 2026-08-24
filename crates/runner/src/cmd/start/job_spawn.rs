@@ -1479,10 +1479,10 @@ mod tests {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let mut reuse_keys: Vec<String> = status
-            .get("idle_vms")
+            .get("idle_sandboxes")
             .and_then(|v| v.as_array())
-            .map(|idle_vms| {
-                idle_vms
+            .map(|idle_sandboxes| {
+                idle_sandboxes
                     .iter()
                     .filter_map(|vm| {
                         vm.get("reuse_key")

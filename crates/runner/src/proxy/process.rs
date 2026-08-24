@@ -14,7 +14,7 @@ use super::flush::{
 };
 use super::managed_process::ManagedMitmdump;
 use super::registry::{ProxyRegistryHandle, SandboxRegistration, write_empty_registry};
-use super::runtime::{MitmdumpRuntime, RUNTIME_MARKER_ENV};
+use super::runtime::{CANONICAL_RUNTIME_MARKER_ENV, LEGACY_RUNTIME_MARKER_ENV, MitmdumpRuntime};
 use super::stderr::log_mitmdump_stderr_line;
 use crate::error::{RunnerError, RunnerResult};
 
@@ -634,7 +634,8 @@ async fn spawn_mitmdump(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     cmd.env("TMPDIR", &launch_path)
-        .env(RUNTIME_MARKER_ENV, &launch_path)
+        .env(CANONICAL_RUNTIME_MARKER_ENV, &launch_path)
+        .env(LEGACY_RUNTIME_MARKER_ENV, &launch_path)
         .process_group(0);
     cmd.kill_on_drop(true);
 
@@ -870,14 +871,23 @@ mod tests {
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
 
+    // Mirrors the pre-#28989 reader retained by rollback runners. Keep this
+    // test-only so Stage 1 proves its dual writer remains legacy-readable.
+    fn legacy_only_runtime_marker(environ: &[u8]) -> Option<&[u8]> {
+        environ
+            .split(|byte| *byte == 0)
+            .find_map(|entry| entry.strip_prefix(b"VM0_MITMDUMP_RUNTIME_DIR="))
+    }
+
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
-printf '%s\n%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" \
-  "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
+printf '%s\n%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
+  "$VM0_MITMDUMP_RUNTIME_DIR" "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
+cp "/proc/$$/environ" "$0.environ"
 port=""
 ready_path=""
 usage_state_id=""
@@ -939,7 +949,8 @@ PY
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf '%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
+  "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
 ready_path=""
 usage_state_id=""
 for arg in "$@"; do
@@ -984,7 +995,9 @@ import time
 from pathlib import Path
 
 Path(f"{sys.argv[0]}.env").write_text(
-    f"{os.environ['TMPDIR']}\n{os.environ['VM0_MITMDUMP_RUNTIME_DIR']}\n",
+    f"{os.environ['TMPDIR']}\n"
+    f"{os.environ['OKOU_MITMDUMP_RUNTIME_DIR']}\n"
+    f"{os.environ['VM0_MITMDUMP_RUNTIME_DIR']}\n",
     encoding="utf-8",
 )
 port = None
@@ -1033,7 +1046,8 @@ while True:
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf '%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
+  "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
 printf 'attempt\n' >> "$0.attempts"
 python3 - "$0.descendant" <<'PY' &
 import os
@@ -1594,9 +1608,16 @@ exit 42
         let args = std::fs::read_to_string(fake_mitmdump.with_extension("args")).unwrap();
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let environment: Vec<&str> = environment.lines().collect();
-        assert_eq!(environment.len(), 3);
+        assert_eq!(environment.len(), 4);
         assert_eq!(environment[0], environment[1]);
-        assert_eq!(environment[2], "runner-token");
+        assert_eq!(environment[0], environment[2]);
+        assert_eq!(environment[3], "runner-token");
+        let launched_environ = std::fs::read(fake_mitmdump.with_extension("environ")).unwrap();
+        assert_eq!(
+            legacy_only_runtime_marker(&launched_environ),
+            Some(environment[0].as_bytes()),
+            "the pre-migration legacy-only reader must recognize Stage 1 launch environments"
+        );
         let launch_path = Path::new(environment[0]);
         assert_eq!(launch_path.parent(), Some(config.runtime_dir.as_path()));
         assert!(
@@ -1916,28 +1937,43 @@ exit 42
     }
 
     #[tokio::test]
-    async fn proxy_startup_reconciles_only_marked_private_launches() {
+    async fn proxy_startup_reconciles_all_marker_sources_and_only_private_launches() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         let config = test_proxy_config(dir.path(), &home, dir.path().join("mitmdump"));
         let runtime = acquire_test_runtime(&config).await;
-        let launch = runtime.create_launch_dir().await.unwrap();
-        let stale_launch = launch.path().to_path_buf();
-        std::fs::create_dir(stale_launch.join("_MEI-stale")).unwrap();
-        std::fs::write(stale_launch.join("_MEI-stale/payload"), b"stale").unwrap();
+        let mut stale_processes = Vec::new();
+        for (source, canonical, legacy) in [
+            ("legacy-only", false, true),
+            ("canonical-only", true, false),
+            ("dual", true, true),
+        ] {
+            let stale_launch = config.runtime_dir.join(format!("launch-{source}"));
+            std::fs::create_dir(&stale_launch).unwrap();
+            std::fs::create_dir(stale_launch.join("_MEI-stale")).unwrap();
+            std::fs::write(stale_launch.join("_MEI-stale/payload"), b"stale").unwrap();
 
-        let mut stale_process = tokio::process::Command::new("sleep")
-            .arg("60")
-            .env("TMPDIR", &stale_launch)
-            .env(RUNTIME_MARKER_ENV, &stale_launch)
-            .process_group(0)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-        let stale_pid = stale_process.id().unwrap();
-        let stale_launch = launch.keep();
+            let mut command = tokio::process::Command::new("sleep");
+            command
+                .arg("60")
+                .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
+                .env_remove(LEGACY_RUNTIME_MARKER_ENV)
+                .env("TMPDIR", &stale_launch)
+                .process_group(0)
+                .kill_on_drop(true)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            if canonical {
+                command.env(CANONICAL_RUNTIME_MARKER_ENV, &stale_launch);
+            }
+            if legacy {
+                command.env(LEGACY_RUNTIME_MARKER_ENV, &stale_launch);
+            }
+            let stale_process = command.spawn().unwrap();
+            let stale_pid = stale_process.id().unwrap();
+            stale_processes.push((source, stale_process, stale_pid, stale_launch));
+        }
         drop(runtime);
 
         let unrelated_sibling = config.runtime_dir.join("keep-me");
@@ -1949,21 +1985,76 @@ exit 42
 
         let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
 
-        let status = tokio::time::timeout(Duration::from_secs(2), stale_process.wait())
-            .await
-            .expect("stale marked process was not terminated")
-            .unwrap();
-        assert!(
-            !status.success(),
-            "stale process unexpectedly exited cleanly"
-        );
-        assert!(
-            wait_for_pid_absent(stale_pid).await,
-            "stale marked process {stale_pid} remains live"
-        );
-        assert!(!stale_launch.exists());
+        for (source, mut stale_process, stale_pid, stale_launch) in stale_processes {
+            let status = tokio::time::timeout(Duration::from_secs(2), stale_process.wait())
+                .await
+                .unwrap_or_else(|_| panic!("stale {source} marked process was not terminated"))
+                .unwrap();
+            assert!(
+                !status.success(),
+                "stale {source} process unexpectedly exited cleanly"
+            );
+            assert!(
+                wait_for_pid_absent(stale_pid).await,
+                "stale {source} process {stale_pid} remains live"
+            );
+            assert!(
+                !stale_launch.exists(),
+                "stale {source} launch directory remains"
+            );
+        }
         assert!(unrelated_sibling.is_dir());
         assert!(unrelated_shared.path().is_dir());
+    }
+
+    #[tokio::test]
+    async fn proxy_startup_preserves_launches_for_conflicting_runtime_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let config = test_proxy_config(dir.path(), &home, dir.path().join("mitmdump"));
+        let runtime = acquire_test_runtime(&config).await;
+        let canonical = config
+            .runtime_dir
+            .join("launch-canonical-value-should-not-leak");
+        let legacy = config
+            .runtime_dir
+            .join("launch-legacy-value-should-not-leak");
+        std::fs::create_dir(&canonical).unwrap();
+        std::fs::create_dir(&legacy).unwrap();
+        drop(runtime);
+
+        let mut conflicting_process = tokio::process::Command::new("sleep")
+            .arg("60")
+            .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
+            .env_remove(LEGACY_RUNTIME_MARKER_ENV)
+            .env("TMPDIR", &canonical)
+            .env(CANONICAL_RUNTIME_MARKER_ENV, &canonical)
+            .env(LEGACY_RUNTIME_MARKER_ENV, &legacy)
+            .process_group(0)
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let error = MitmProxy::new(config)
+            .await
+            .err()
+            .expect("expected conflicting runtime markers")
+            .to_string();
+
+        assert!(error.contains(CANONICAL_RUNTIME_MARKER_ENV));
+        assert!(error.contains(LEGACY_RUNTIME_MARKER_ENV));
+        assert!(!error.contains("canonical-value-should-not-leak"));
+        assert!(!error.contains("legacy-value-should-not-leak"));
+        assert!(
+            conflicting_process.try_wait().unwrap().is_none(),
+            "conflicting marker process was signalled"
+        );
+        assert!(canonical.is_dir());
+        assert!(legacy.is_dir());
+        conflicting_process.kill().await.unwrap();
     }
 
     #[tokio::test]

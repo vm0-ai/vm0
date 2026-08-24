@@ -5,11 +5,13 @@ import { ProductBrandMarkLink } from "./directed-shared.tsx";
 
 export function ZeroConnectorFlowCard({
   connectorIcon,
+  iconContent,
   title,
   description,
   children,
 }: {
   readonly connectorIcon: PublicConnectorCatalogIcon | undefined;
+  readonly iconContent?: ReactNode;
   readonly title: string;
   readonly description: ReactNode;
   readonly children: ReactNode;
@@ -25,7 +27,7 @@ export function ZeroConnectorFlowCard({
           <div className="flex flex-col items-center gap-2.5">
             <h1 className="text-lg font-medium text-foreground">{title}</h1>
             <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-              <ConnectorIcon icon={connectorIcon} size={20} />
+              {iconContent ?? <ConnectorIcon icon={connectorIcon} size={20} />}
             </div>
             <p className="w-64 text-sm text-muted-foreground">{description}</p>
           </div>

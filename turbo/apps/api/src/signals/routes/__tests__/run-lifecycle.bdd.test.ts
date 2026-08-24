@@ -14229,6 +14229,58 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
   });
 
+  it("advertises banking tools only while the feature is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.Banking]: false,
+    });
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "review my recent banking activity",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "okou banking access-request",
+    );
+    await api.requestCancelRun(actor, gatedOff.runId, [200]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.Banking]: true,
+    });
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "review my recent banking activity",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("okou banking access-request");
+    expect(appendSystemPrompt).toContain("account-scoped, expiring grant");
+    expect(appendSystemPrompt).toContain(
+      "bank or card balances, transactions, spending, income, or cash flow",
+    );
+    expect(appendSystemPrompt).toContain(
+      "you MUST use `okou banking`, not `okou finance`",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Do not give generic banking-app directions",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Make the callback prompt preserve the original task",
+    );
+    expect(appendSystemPrompt).toContain(
+      "run `okou banking accounts`, then use `okou banking balances`",
+    );
+
+    await api.requestCancelRun(actor, gatedOn.runId, [200]);
+  });
+
   it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();

@@ -31,15 +31,105 @@ const chatEventReadHeadersSchema = authHeadersSchema.extend({
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
+const annotationPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+const annotationRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
+/**
+ * Ink is stored as a literal hex rather than a palette enum: the palette is a
+ * design decision that will move, and an enum would turn every future palette
+ * edit into a read migration for annotations already sitting in the database.
+ * The client picks from `ANNOTATION_INKS`; this boundary only rejects garbage.
+ */
+const annotationInkSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+
+/**
+ * One mark drawn on an attached image.
+ *
+ * Geometry is normalized to the image's own 0..1 space, never pixels, so a mark
+ * survives every rescale it passes through — the 36px composer chip, the editor
+ * canvas at whatever zoom, and the flatten that renders at the image's native
+ * resolution. `note` is the sentence the user attached to that mark; it is what
+ * reaches the agent as text, separately from the pixels.
+ */
+const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
+  z.object({
+    id: z.string(),
+    shape: z.literal("box"),
+    rect: annotationRectSchema,
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    shape: z.literal("arrow"),
+    from: annotationPointSchema,
+    to: annotationPointSchema,
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    shape: z.literal("pen"),
+    points: z.array(annotationPointSchema),
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    shape: z.literal("text"),
+    at: annotationPointSchema,
+    text: z.string(),
+    ink: annotationInkSchema,
+  }),
+  // Highlight and redact carry no ink: a highlight is always the one yellow
+  // wash, and a redaction is an opaque neutral block — colouring either would
+  // make it read as a mark instead of as a state of the image.
+  z.object({
+    id: z.string(),
+    shape: z.literal("highlight"),
+    rect: annotationRectSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    shape: z.literal("redact"),
+    rect: annotationRectSchema,
+  }),
+]);
+
+const imageAnnotationSchema = z.object({
+  marks: z.array(imageAnnotationMarkSchema),
+  /** Normalized crop applied before the marks are drawn. */
+  crop: annotationRectSchema.optional(),
+});
+
 /**
  * File attachment metadata stored alongside user messages.
  * The `id` is the attachment id — URLs are resolved at query time.
+ *
+ * When a user annotates an image, the message carries both files: the flattened
+ * copy (which is what the vision model sees) and the untouched original. The
+ * flattened one points back with `annotatedFromFileId`, which is what lets the
+ * bubble render a single card with a "view original" affordance instead of two
+ * unrelated chips. `annotation` rides along so the marks can be re-opened later
+ * without re-deriving them from pixels.
  */
 const attachFileSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
+  annotatedFromFileId: z.string().optional(),
+  annotation: imageAnnotationSchema.optional(),
 });
 
 const assetMaterializationSchema = z.discriminatedUnion("status", [
@@ -116,6 +206,12 @@ const persistedAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
+  /**
+   * Marks the user drew but has not sent yet. They live on the draft rather
+   * than on a rendered copy so the original bytes are never rewritten and the
+   * editor can reopen in a fully editable state after a reload.
+   */
+  annotation: imageAnnotationSchema.optional(),
 });
 
 /**
@@ -1791,6 +1887,8 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  imageAnnotationSchema,
+  imageAnnotationMarkSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -1897,6 +1995,9 @@ export type ChatUsageEvent = Extract<
 >;
 export type ChatEventUsagePayload = z.infer<typeof chatEventUsagePayloadSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
+export type ImageAnnotation = z.infer<typeof imageAnnotationSchema>;
+export type ImageAnnotationMark = z.infer<typeof imageAnnotationMarkSchema>;
+export type ImageAnnotationMarkShape = ImageAnnotationMark["shape"];
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;

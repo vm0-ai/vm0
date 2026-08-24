@@ -43,7 +43,7 @@ jq -e '
   .runs.using == "composite" and
   any(.runs.steps[];
     .shell == "bash" and
-    .env.VM0_MEMORY_REPORT_LABEL == "${{ inputs.job-label }}" and
+    .env.OKOU_MEMORY_REPORT_LABEL == "${{ inputs.job-label }}" and
     .run == "bash \"$GITHUB_ACTION_PATH/report.sh\""
   )
 ' <<<"$action_json" >/dev/null || fail "peak memory action must run the bundled cgroup reporter"
