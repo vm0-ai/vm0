@@ -1968,7 +1968,11 @@ describe("chat composer models", () => {
     ]);
     mockAgent();
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: false },
+    });
 
     await expectComposerModel("DeepSeek V4 Flash");
     await user.click(await findComposerModel("DeepSeek V4 Flash"));

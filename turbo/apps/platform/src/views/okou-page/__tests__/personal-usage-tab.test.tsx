@@ -272,9 +272,9 @@ async function openUsageSettings(
   detachedSetupPage({
     context,
     path: `/?settings=${section}`,
-    featureSwitches: usagePackPlansEnabled
-      ? { [FeatureSwitchKey.UsagePackPlans]: true }
-      : undefined,
+    featureSwitches: {
+      [FeatureSwitchKey.UsagePackPlans]: usagePackPlansEnabled,
+    },
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
