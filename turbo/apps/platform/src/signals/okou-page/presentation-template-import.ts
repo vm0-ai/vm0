@@ -6,10 +6,15 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
 
 /**
- * Decks a user can hand over. Both end up as ordered page images the same way,
- * so nothing downstream distinguishes them.
+ * Decks a user can hand over. They all end up as ordered page images the same
+ * way, so nothing downstream distinguishes them.
+ *
+ * `.ppt` is here because a deck old enough to still be saved in the legacy
+ * binary format is exactly the deck whose visual language is worth reusing,
+ * and a picker that greys it out reads as "not supported" rather than "export
+ * it first".
  */
-export const PRESENTATION_TEMPLATE_IMPORT_ACCEPT = ".pptx,.pdf";
+export const PRESENTATION_TEMPLATE_IMPORT_ACCEPT = ".pptx,.ppt,.pdf";
 
 /**
  * The message the deck is sent with.

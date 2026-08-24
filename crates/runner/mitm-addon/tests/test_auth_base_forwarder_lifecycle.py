@@ -243,6 +243,68 @@ class TestForwardRequestAsyncWrapper:
         with forwarder._forward_request_active_handles_lock:
             assert not forwarder._forward_request_active_handles
 
+    async def test_caller_cancellation_during_dns_releases_capacity(self):
+        lookup_entered = asyncio.Event()
+        lookup_cancelled = asyncio.Event()
+
+        async def blocked_lookup(_host: str) -> list[str]:
+            lookup_entered.set()
+            try:
+                await asyncio.Event().wait()
+                raise AssertionError("blocked DNS lookup unexpectedly resumed")
+            finally:
+                lookup_cancelled.set()
+
+        with patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1):
+            with fake_forwarder_upstream(lookup_side_effect=blocked_lookup) as upstream:
+                task = asyncio.create_task(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+                )
+                await lookup_entered.wait()
+                semaphore = forwarder._get_forward_request_admission_semaphore()
+                task.cancel()
+
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+                assert lookup_cancelled.is_set()
+                assert upstream.sockets == []
+
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+            with forwarder._forward_request_active_handles_lock:
+                assert not forwarder._forward_request_active_handles
+            with forwarder._forward_request_pending_futures_lock:
+                assert not forwarder._forward_request_pending_futures
+            with forwarder._forward_request_workers_lock:
+                assert not forwarder._forward_request_workers
+            assert forwarder._get_forward_request_admission_semaphore() is semaphore
+
+            await asyncio.wait_for(semaphore.acquire(), timeout=1)
+            try:
+                assert semaphore.locked()
+            finally:
+                semaphore.release()
+
+            with fake_forwarder_upstream():
+                status, body, headers = await asyncio.wait_for(
+                    forwarder.forward_request(
+                        "https://example.com",
+                        "GET",
+                        [],
+                        None,
+                    ),
+                    timeout=2,
+                )
+
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
+
     async def test_shutdown_before_active_handle_tracking_releases_capacity(self):
         loop = asyncio.get_running_loop()
         with patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1):
