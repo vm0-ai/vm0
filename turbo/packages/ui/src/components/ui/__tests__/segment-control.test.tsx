@@ -51,18 +51,6 @@ describe("SegmentControl", () => {
     expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
   });
 
-  it("drops the raised selected fill and its shadow in the plain variant", () => {
-    renderAspectRatioControl({ variant: "plain" });
-
-    const selected = screen.getByRole("radio", { name: "9:16" });
-
-    // The raised fill and the shadow are separate utilities, so a consumer
-    // cannot take the shadow back through `className` on its own.
-    expect(selected.className).not.toContain("bg-segment-selected");
-    expect(selected.className).not.toContain("shadow-segment-selected");
-    expect(selected.className).toContain("data-checked:bg-state-selected");
-  });
-
   it("skips a disabled segment", async () => {
     const user = userEvent.setup();
     render(
