@@ -3639,6 +3639,17 @@ describe("Feishu integration", () => {
       [404],
     );
     await accept(
+      connectorAccountsClient().connection({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: connectorId },
+        query: {
+          kind: "custom",
+          customConnectorId: customConnector.id,
+        },
+      }),
+      [404],
+    );
+    await accept(
       connectorAccountsClient().rename({
         headers: { authorization: "Bearer clerk-session" },
         params: { connectionId: connectorId },
