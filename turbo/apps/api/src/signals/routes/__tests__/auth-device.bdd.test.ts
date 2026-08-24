@@ -5,7 +5,11 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
 import {
   createAuthDeviceApiActions,
   mockClaudeCodeTokenEndpoint,
@@ -51,6 +55,36 @@ function expectCliApprovalError(
   ) {
     throw new Error("Expected CLI approval error response body");
   }
+}
+
+async function connectPersonalCodexTestAccount(
+  actor: ApiTestUser,
+  args: {
+    readonly accessTokenExpiresAt: number;
+    readonly accountId: string;
+    readonly refreshToken: string;
+    readonly workspaceName: string;
+  },
+): Promise<string> {
+  mockCodexDeviceAuthProvider({
+    tokenScope: "personal",
+    ...args,
+  });
+  const started = await authDevice.requestCodexStart(actor, "personal", [200], {
+    mode: "add",
+  });
+  if (started.status !== 200) {
+    throw new Error(`Expected ${args.accountId} device auth to start`);
+  }
+  const completed = await authDevice.requestCodexComplete(
+    actor,
+    started.body.sessionToken,
+    [200],
+  );
+  if (!("status" in completed.body) || completed.body.status !== "complete") {
+    throw new Error(`Expected ${args.accountId} device auth to complete`);
+  }
+  return completed.body.provider.id;
 }
 
 describe("AUTH-02: CLI device authorization", () => {
@@ -738,6 +772,98 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       isActive: true,
     });
 
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+  });
+
+  it("isolates terminal Codex refresh state between concrete accounts", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+    const currentSeconds = Math.floor(now() / 1000);
+    const accountAId = await connectPersonalCodexTestAccount(member, {
+      accessTokenExpiresAt: currentSeconds - 60,
+      accountId: "codex-refresh-account-a",
+      refreshToken: "rt_codex_refresh_account_a",
+      workspaceName: "Refresh Account A",
+    });
+    const accountBId = await connectPersonalCodexTestAccount(member, {
+      accessTokenExpiresAt: currentSeconds + 7200,
+      accountId: "codex-refresh-account-b",
+      refreshToken: "rt_codex_refresh_account_b",
+      workspaceName: "Refresh Account B",
+    });
+
+    let refreshCalls = 0;
+    const usageAccountIds: (string | null)[] = [];
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+        refreshCalls += 1;
+        await expect(request.json()).resolves.toMatchObject({
+          grant_type: "refresh_token",
+          refresh_token: "rt_codex_refresh_account_a",
+        });
+        return HttpResponse.json(
+          {
+            error: {
+              code: "refresh_token_invalidated",
+              message: "refresh token invalidated",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+      http.get("https://chatgpt.com/backend-api/wham/usage", ({ request }) => {
+        const accountId = request.headers.get("chatgpt-account-id");
+        usageAccountIds.push(accountId);
+        expect(accountId).toBe("codex-refresh-account-b");
+        return HttpResponse.json({
+          plan_type: "plus",
+          rate_limit: {
+            primary_window: {
+              limit_window_seconds: 18_000,
+              reset_at: 1_893_441_600,
+              used_percent: 20,
+            },
+          },
+        });
+      }),
+    );
+
+    for (let requestIndex = 0; requestIndex < 2; requestIndex += 1) {
+      const listed = await support.listPersonalModelProviders(member, [200]);
+      if (!("modelProviders" in listed.body)) {
+        throw new Error("Expected personal model provider list response");
+      }
+      expect(
+        listed.body.modelProviders.find((provider) => {
+          return provider.id === accountAId;
+        }),
+      ).toMatchObject({
+        needsReconnect: true,
+        lastRefreshErrorCode: "refresh_token_invalidated",
+      });
+      expect(
+        listed.body.modelProviders.find((provider) => {
+          return provider.id === accountBId;
+        }),
+      ).toMatchObject({
+        needsReconnect: false,
+        subscriptionUsage: {
+          fiveHour: { usedPercent: 20 },
+        },
+      });
+    }
+
+    expect(refreshCalls).toBe(1);
+    expect(usageAccountIds).toStrictEqual([
+      "codex-refresh-account-b",
+      "codex-refresh-account-b",
+    ]);
     await support.deletePersonalModelProvider(
       member,
       "codex-oauth-token",

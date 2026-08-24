@@ -9,9 +9,10 @@ import { modelProviderAccountSecrets } from "@okouai/db/schema/model-provider-ac
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import { tapError } from "../utils";
+import { resolveCurrentModelProviderRuntimeSecretForApi } from "./agent-webhook-firewall-auth.service";
 import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
 import {
   consumeCodexRateLimitResetCredit,
@@ -27,10 +28,13 @@ import type {
 
 const L = logger("model-provider-subscription-usage.service");
 
-const CODEX_USAGE_SECRET_NAMES = [
-  "CHATGPT_ACCESS_TOKEN",
+const CODEX_USAGE_METADATA_SECRET_NAMES = [
   "CHATGPT_ACCOUNT_ID",
   "CHATGPT_ID_TOKEN",
+] as const;
+const CODEX_RESET_SECRET_NAMES = [
+  "CHATGPT_ACCESS_TOKEN",
+  "CHATGPT_ACCOUNT_ID",
 ] as const;
 const CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME = "CLAUDE_CODE_OAUTH_TOKEN";
 
@@ -164,7 +168,7 @@ function withSubscriptionMetadata(
 
 async function refreshCodexProvider(
   args: {
-    readonly db: ReadonlyDb;
+    readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
     readonly provider: ModelProviderResponse;
@@ -172,29 +176,60 @@ async function refreshCodexProvider(
   },
   signal: AbortSignal,
 ): Promise<ModelProviderResponse> {
-  const secretValues = await modelProviderSecretValues(
-    {
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      names: CODEX_USAGE_SECRET_NAMES,
-      ...(args.provider.modelProviderId
-        ? { modelProviderAccountId: args.provider.id }
-        : {}),
-      featureSwitchContext: args.featureSwitchContext,
-    },
-    signal,
-  );
-  const accessToken = secretValues.get("CHATGPT_ACCESS_TOKEN");
+  const accountMetadata = {
+    sourceType: "model-provider" as const,
+    sourceUserId: args.userId,
+    ...(args.provider.modelProviderId ? { sourceId: args.provider.id } : {}),
+    metadataKey: args.provider.type,
+  };
+  const [accessTokenResult, secretValues] = await Promise.all([
+    resolveCurrentModelProviderRuntimeSecretForApi(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        key: "CHATGPT_ACCESS_TOKEN",
+        providerKey: args.provider.type,
+        metadata: accountMetadata,
+        featureSwitchContext: args.featureSwitchContext,
+      },
+      signal,
+    ),
+    modelProviderSecretValues(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        names: CODEX_USAGE_METADATA_SECRET_NAMES,
+        ...(args.provider.modelProviderId
+          ? { modelProviderAccountId: args.provider.id }
+          : {}),
+        featureSwitchContext: args.featureSwitchContext,
+      },
+      signal,
+    ),
+  ]);
+  signal.throwIfAborted();
+  if (accessTokenResult.status === "unavailable") {
+    return accessTokenResult.reconnectState
+      ? {
+          ...args.provider,
+          needsReconnect: accessTokenResult.reconnectState.needsReconnect,
+          lastRefreshErrorCode:
+            accessTokenResult.reconnectState.lastRefreshErrorCode,
+        }
+      : args.provider;
+  }
+
   const accountId = secretValues.get("CHATGPT_ACCOUNT_ID");
   const idToken = secretValues.get("CHATGPT_ID_TOKEN");
-  if (!accessToken || !accountId) {
+  if (!accountId) {
     return args.provider;
   }
 
   const metadata = await fetchCodexUsageMetadata(
     {
-      accessToken,
+      accessToken: accessTokenResult.value,
       accountId,
       idToken,
     },
@@ -244,7 +279,7 @@ async function refreshClaudeCodeProvider(
 
 async function refreshProvider(
   args: {
-    readonly db: ReadonlyDb;
+    readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
     readonly provider: ModelProviderResponse;
@@ -252,12 +287,11 @@ async function refreshProvider(
   },
   signal: AbortSignal,
 ): Promise<ModelProviderResponse> {
-  if (args.provider.needsReconnect) {
-    return args.provider;
-  }
-
   if (args.provider.type === "codex-oauth-token") {
     return await refreshCodexProvider(args, signal);
+  }
+  if (args.provider.needsReconnect) {
+    return args.provider;
   }
   if (args.provider.type === "claude-code-oauth-token") {
     return await refreshClaudeCodeProvider(args, signal);
@@ -267,7 +301,7 @@ async function refreshProvider(
 
 export const refreshPersonalModelProviderSubscriptionUsage$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -279,7 +313,7 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
       return args.result;
     }
 
-    const database = get(db$);
+    const database = set(writeDb$);
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
@@ -304,6 +338,9 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
                 "failed to refresh personal model provider subscription usage",
                 {
                   error,
+                  ...(provider.modelProviderId
+                    ? { modelProviderAccountId: provider.id }
+                    : {}),
                   orgId: args.orgId,
                   providerType: provider.type,
                   userId: args.userId,
@@ -351,7 +388,7 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
         db: database,
         orgId: args.orgId,
         userId: args.userId,
-        names: CODEX_USAGE_SECRET_NAMES,
+        names: CODEX_RESET_SECRET_NAMES,
         modelProviderAccountId: args.modelProviderAccountId,
         featureSwitchContext,
       },
