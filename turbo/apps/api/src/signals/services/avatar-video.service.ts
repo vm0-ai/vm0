@@ -38,7 +38,7 @@ const JOGGAI_PUBLIC_AVATARS_URL = `${JOGGAI_API_BASE_URL}/avatars/public`;
 const JOGGAI_PUBLIC_VOICES_URL = `${JOGGAI_API_BASE_URL}/voices`;
 const JOGGAI_CREDIT_DURATION_SECONDS = 120;
 
-type ErrorStatus = 400 | 402 | 403 | 502 | 503;
+type ErrorStatus = 400 | 402 | 502 | 503;
 
 interface ErrorBody {
   readonly error: {
@@ -182,16 +182,6 @@ export function avatarVideoRequiresPaidPlan(): AvatarVideoErrorResponse {
     body: errorBody(
       "Built-in avatar video generation requires Pro, Team, or Custom workspace access.",
       "PRO_REQUIRED",
-    ),
-  };
-}
-
-export function avatarVideoFeatureDisabled(): AvatarVideoErrorResponse {
-  return {
-    status: 403,
-    body: errorBody(
-      "Built-in JoggAI avatar video generation is not enabled for this workspace.",
-      "FEATURE_DISABLED",
     ),
   };
 }

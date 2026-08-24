@@ -375,21 +375,16 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
-  avatarEnabled,
   sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
-  readonly avatarEnabled: boolean;
   readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
   const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
-    return (
-      (kind !== "avatar" || avatarEnabled) &&
-      (kind !== "shared-thread" || sharedConversationEnabled)
-    );
+    return kind !== "shared-thread" || sharedConversationEnabled;
   });
   return (
     <div
@@ -532,9 +527,6 @@ export function ArtifactCatalogPage() {
           </div>
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
-            avatarEnabled={
-              featureSwitches[FeatureSwitchKey.JoggAiBuiltIn] ?? false
-            }
             sharedConversationEnabled={
               featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
             }
