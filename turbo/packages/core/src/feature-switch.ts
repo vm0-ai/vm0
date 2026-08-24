@@ -405,12 +405,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatQuoteOnlyFeedback]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Allow quoted assistant passages to be sent without an added user comment.",
-    enabled: true,
-  },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
     description:

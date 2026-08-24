@@ -2465,9 +2465,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatQuoteOnlyFeedback]: true,
-      },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
