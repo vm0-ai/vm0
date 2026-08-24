@@ -4,7 +4,7 @@ def nested_for_break(flow, rows, condition):
         if condition:
             metadata = flow.metadata
             break
-    metadata["vm_run_id"] = "run-1"
+    metadata["sandbox_run_id"] = "run-1"
 
 
 async def nested_async_for_break(flow, rows, condition):
@@ -13,7 +13,7 @@ async def nested_async_for_break(flow, rows, condition):
         if condition:
             metadata = flow.metadata
             break
-    metadata["vm_sandbox_token"] = "sandbox"
+    metadata["sandbox_token"] = "sandbox"
 
 
 def nested_while_break(flow, condition, stop):
@@ -43,7 +43,7 @@ def break_alias_does_not_enter_for_else(flow, rows, condition):
             metadata = flow.metadata
             break
     else:
-        metadata["vm_run_id"] = "run-1"
+        metadata["sandbox_run_id"] = "run-1"
 
 
 def inner_break_stays_in_inner_loop(flow, outer_rows, inner_rows, condition):
@@ -66,7 +66,7 @@ def break_finally_rebinds(flow, rows, condition):
                 break
         finally:
             metadata = {}
-    metadata["vm_run_id"] = "run-1"
+    metadata["sandbox_run_id"] = "run-1"
 
 
 def break_finally_aliases(flow, rows, condition):
@@ -90,7 +90,7 @@ def finally_raises_after_break(flow, rows, condition):
         finally:
             metadata = {}
             raise RuntimeError()
-    metadata["vm_run_id"] = "run-1"
+    metadata["sandbox_run_id"] = "run-1"
 
 
 def finally_reads_nested_break_alias(flow, rows, condition):
@@ -139,7 +139,7 @@ def unreachable_handler_break_does_not_escape(flow, rows, condition):
             if condition:
                 metadata = flow.metadata
                 break
-    metadata["vm_run_id"] = "run-1"
+    metadata["sandbox_run_id"] = "run-1"
 
 
 def break_bypasses_while_else(flow, condition, stop):
@@ -160,4 +160,4 @@ def break_alias_does_not_enter_while_else(flow, condition, stop):
             metadata = flow.metadata
             break
     else:
-        metadata["vm_run_id"] = "run-1"
+        metadata["sandbox_run_id"] = "run-1"
