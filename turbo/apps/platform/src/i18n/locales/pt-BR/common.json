@@ -503,6 +503,28 @@
       "zoomIn": "Ampliar zoom",
       "zoomOut": "Reduzir zoom"
     },
+    "annotation": {
+      "attach": "Anexar marcações",
+      "draftOnly": "As marcações ficam no rascunho — você pode alterá-las até enviar",
+      "notePlaceholder": "Diga o que deve mudar aqui",
+      "open": "Anotar",
+      "redo": "Refazer",
+      "removeMark": "Remover marcação",
+      "subtitle_one": "{{count}} marcação",
+      "subtitle_many": "{{count}} marcações",
+      "subtitle_other": "{{count}} marcações",
+      "tools": {
+        "arrow": "Seta",
+        "box": "Retângulo",
+        "crop": "Recortar",
+        "highlight": "Destacar",
+        "pen": "Desenhar",
+        "redact": "Ocultar",
+        "select": "Selecionar",
+        "text": "Texto"
+      },
+      "undo": "Desfazer"
+    },
     "attachments": {
       "cancelUpload": "Cancelar envio de {{filename}}",
       "download": "Baixar {{filename}}",

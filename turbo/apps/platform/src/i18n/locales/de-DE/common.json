@@ -489,6 +489,27 @@
       "zoomIn": "Vergrößern",
       "zoomOut": "Herauszoomen"
     },
+    "annotation": {
+      "attach": "Markierungen anhängen",
+      "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "open": "Markieren",
+      "redo": "Wiederholen",
+      "removeMark": "Markierung entfernen",
+      "subtitle_one": "{{count}} Markierung",
+      "subtitle_other": "{{count}} Markierungen",
+      "tools": {
+        "arrow": "Pfeil",
+        "box": "Rechteck",
+        "crop": "Zuschneiden",
+        "highlight": "Hervorheben",
+        "pen": "Zeichnen",
+        "redact": "Schwärzen",
+        "select": "Auswählen",
+        "text": "Text"
+      },
+      "undo": "Rückgängig"
+    },
     "attachments": {
       "cancelUpload": "Hochladen abbrechen {{filename}}",
       "download": "{{filename}} herunterladen",

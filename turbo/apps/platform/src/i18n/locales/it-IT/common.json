@@ -503,6 +503,28 @@
       "zoomIn": "Ingrandisci",
       "zoomOut": "Rimpicciolisci"
     },
+    "annotation": {
+      "attach": "Allega segni",
+      "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
+      "open": "Annota",
+      "redo": "Ripeti",
+      "removeMark": "Rimuovi segno",
+      "subtitle_one": "{{count}} segno",
+      "subtitle_many": "{{count}} segni",
+      "subtitle_other": "{{count}} segni",
+      "tools": {
+        "arrow": "Freccia",
+        "box": "Rettangolo",
+        "crop": "Ritaglia",
+        "highlight": "Evidenzia",
+        "pen": "Disegna",
+        "redact": "Oscura",
+        "select": "Seleziona",
+        "text": "Testo"
+      },
+      "undo": "Annulla"
+    },
     "attachments": {
       "cancelUpload": "Annulla caricamento {{filename}}",
       "download": "Scarica {{filename}}",

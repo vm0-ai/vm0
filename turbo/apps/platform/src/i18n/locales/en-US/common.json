@@ -489,6 +489,27 @@
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out"
     },
+    "annotation": {
+      "attach": "Attach marks",
+      "draftOnly": "Marks stay in the draft — you can change them until you send",
+      "notePlaceholder": "Say what should change here",
+      "open": "Annotate",
+      "redo": "Redo",
+      "removeMark": "Remove mark",
+      "subtitle_one": "{{count}} mark",
+      "subtitle_other": "{{count}} marks",
+      "tools": {
+        "arrow": "Arrow",
+        "box": "Box",
+        "crop": "Crop",
+        "highlight": "Highlight",
+        "pen": "Draw",
+        "redact": "Redact",
+        "select": "Select",
+        "text": "Text"
+      },
+      "undo": "Undo"
+    },
     "attachments": {
       "cancelUpload": "Cancel upload {{filename}}",
       "download": "Download {{filename}}",

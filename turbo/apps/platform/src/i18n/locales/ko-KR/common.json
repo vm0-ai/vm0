@@ -489,6 +489,26 @@
       "zoomIn": "확대",
       "zoomOut": "축소"
     },
+    "annotation": {
+      "attach": "표시 첨부",
+      "draftOnly": "표시는 임시 보관함에 남아 있으며 보내기 전까지 수정할 수 있습니다",
+      "notePlaceholder": "여기를 어떻게 바꿀지 적어 주세요",
+      "open": "주석",
+      "redo": "다시 실행",
+      "removeMark": "표시 삭제",
+      "subtitle_other": "표시 {{count}}개",
+      "tools": {
+        "arrow": "화살표",
+        "box": "사각형",
+        "crop": "자르기",
+        "highlight": "강조",
+        "pen": "그리기",
+        "redact": "가리기",
+        "select": "선택",
+        "text": "텍스트"
+      },
+      "undo": "실행 취소"
+    },
     "attachments": {
       "cancelUpload": "업로드 취소 {{filename}}",
       "download": "{{filename}} 다운로드",

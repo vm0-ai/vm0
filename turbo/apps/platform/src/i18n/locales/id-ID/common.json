@@ -489,6 +489,26 @@
       "zoomIn": "Perbesar",
       "zoomOut": "Perkecil"
     },
+    "annotation": {
+      "attach": "Lampirkan tanda",
+      "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "notePlaceholder": "Tulis apa yang harus diubah di sini",
+      "open": "Anotasi",
+      "redo": "Ulangi",
+      "removeMark": "Hapus tanda",
+      "subtitle_other": "{{count}} tanda",
+      "tools": {
+        "arrow": "Panah",
+        "box": "Kotak",
+        "crop": "Pangkas",
+        "highlight": "Sorot",
+        "pen": "Gambar",
+        "redact": "Sensor",
+        "select": "Pilih",
+        "text": "Teks"
+      },
+      "undo": "Urungkan"
+    },
     "attachments": {
       "cancelUpload": "Batalkan unggahan {{filename}}",
       "download": "Unduh {{filename}}",

@@ -503,6 +503,28 @@
       "zoomIn": "Acercar",
       "zoomOut": "Alejar"
     },
+    "annotation": {
+      "attach": "Adjuntar marcas",
+      "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
+      "notePlaceholder": "Di qué debería cambiar aquí",
+      "open": "Anotar",
+      "redo": "Rehacer",
+      "removeMark": "Eliminar marca",
+      "subtitle_one": "{{count}} marca",
+      "subtitle_many": "{{count}} marcas",
+      "subtitle_other": "{{count}} marcas",
+      "tools": {
+        "arrow": "Flecha",
+        "box": "Rectángulo",
+        "crop": "Recortar",
+        "highlight": "Resaltar",
+        "pen": "Dibujar",
+        "redact": "Ocultar",
+        "select": "Seleccionar",
+        "text": "Texto"
+      },
+      "undo": "Deshacer"
+    },
     "attachments": {
       "cancelUpload": "Cancelar la subida {{filename}}",
       "download": "Descargar {{filename}}",
