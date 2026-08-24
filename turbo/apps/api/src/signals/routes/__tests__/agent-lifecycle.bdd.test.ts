@@ -6,7 +6,7 @@ import { createBddApi, expectApiError } from "./helpers/api-bdd";
 const context = testContext();
 const api = createBddApi(context);
 
-describe("AGENT-01: zero agent lifecycle through public API", () => {
+describe("AGENT-01: agent lifecycle through public API", () => {
   it("creates, reads, lists, updates, deletes, and verifies removal through API-visible state", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();

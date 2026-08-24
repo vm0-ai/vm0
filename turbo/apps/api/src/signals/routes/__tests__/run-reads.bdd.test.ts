@@ -744,8 +744,8 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
   });
 });
 
-describe("RUN-03: cancel through the Zero route", () => {
-  it("cancels runs through the Zero cancel route across states", async () => {
+describe("RUN-03: cancel through the run cancel route", () => {
+  it("cancels runs through the run cancel route across states", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-cancel");
 
@@ -2112,7 +2112,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(eventQueries[0]?.[1]).toStrictEqual({ noCache: true });
   });
 
-  it("hardens network log rows in the zero read API", async () => {
+  it("hardens network log rows in the agent read API", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");
     const agentRun = await api.createDirectRun(actor, {
@@ -2597,7 +2597,7 @@ describe("RUN-04: agent run telemetry families", () => {
     });
   });
 
-  it("maps zero run context, network, and runner metadata from axiom snapshots", async () => {
+  it("maps agent run context, network, and runner metadata from axiom snapshots", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     await api.ensureOrgModelProvider(actor);
@@ -3181,8 +3181,8 @@ describe("RUN-04: agent run telemetry families", () => {
   });
 });
 
-describe("RUN-04/OPS-01: zero run logs", () => {
-  it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
+describe("RUN-04/OPS-01: agent run logs", () => {
+  it("lists run logs with filters, paging, agent tokens, and detail residue", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     await api.ensureOrgModelProvider(actor);
@@ -3524,7 +3524,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
   });
 
-  it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
+  it("resolves run log agent identity from the run session when compose versions are shared", async () => {
     const actor = await entitledActor();
     const foreignActor = bdd.user();
     await api.ensureOrgModelProvider(actor);

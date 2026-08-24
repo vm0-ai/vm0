@@ -1530,7 +1530,7 @@ describe("workflows", () => {
     ).toBeTruthy();
   });
 
-  it("inherits copied automation budgets from Zero callers and rejects exhausted runs", async () => {
+  it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {
     const actor = user({ orgRole: "org:admin" });
     await enableWorkflowRuns(actor);
     const sourceAgent = await createAgent(actor, {

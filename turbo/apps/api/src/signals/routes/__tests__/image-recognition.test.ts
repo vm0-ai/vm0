@@ -300,7 +300,7 @@ describe("POST /api/recognize", () => {
     ]);
   });
 
-  it("enforces Zero-only capability authorization before object access", async () => {
+  it("enforces agent-only capability authorization before object access", async () => {
     const actor = await seedActor();
     const fileId = randomUUID();
 

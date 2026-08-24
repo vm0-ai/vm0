@@ -235,7 +235,7 @@ describe("GET /api/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:read capability", async () => {
+  it("returns 403 for an agent token without agent:read capability", async () => {
     const actor = bdd.user();
     const token = okouTokenFor(actor, ["file:read"]);
 

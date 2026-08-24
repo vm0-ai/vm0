@@ -232,7 +232,7 @@ describe("GET /api/mcp-connectors", () => {
     expect(response.body).toStrictEqual({ connectors: [] });
   });
 
-  it("requires Zero authentication with connector read capability", async () => {
+  it("requires agent authentication with connector read capability", async () => {
     const actor = bdd.user();
     mockClerkMembership(context, actor, "org:admin");
     const runId = randomUUID();

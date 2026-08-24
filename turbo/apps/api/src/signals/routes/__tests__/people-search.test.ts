@@ -275,7 +275,7 @@ async function successfulRequest(
 }
 
 describe("okou people-search route", () => {
-  it("rejects zero tokens without people-search capability", async () => {
+  it("rejects agent tokens without people-search capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("People Search test actor must have an organization");

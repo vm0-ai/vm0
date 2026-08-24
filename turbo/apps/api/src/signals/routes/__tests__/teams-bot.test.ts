@@ -3190,7 +3190,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.requestCancelRun(actor, runId, [200]);
   });
 
-  it("includes Teams thread computer use host bindings in queued zero tokens", async () => {
+  it("includes Teams thread computer use host bindings in queued agent tokens", async () => {
     const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
     const host = await computerUseApi.startComputerUseHost(actor, {
       hostName: "Teams authorized host",

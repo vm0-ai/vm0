@@ -597,8 +597,8 @@ describe("AUTH-02 auth probe CLI PAT bearers", () => {
   });
 });
 
-describe("AUTH-01 sandbox and zero bearers", () => {
-  it("resolves sandbox and zero bearers on the auth probe by capability opt-in", async () => {
+describe("AUTH-01 sandbox and agent bearers", () => {
+  it("resolves sandbox and agent bearers on the auth probe by capability opt-in", async () => {
     const sandboxActor = api.user();
     const zeroMember = api.user();
     const zeroAdmin = api.user();
@@ -688,7 +688,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
     expect(badSignature.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("enforces zero capabilities on real user-config routes", async () => {
+  it("enforces agent capabilities on real user-config routes", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
     const agent = await api.createAgent(admin, {
@@ -738,7 +738,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
     });
   });
 
-  it("accepts sandbox and zero bearers on auth me", async () => {
+  it("accepts sandbox and agent bearers on auth me", async () => {
     const sandboxActor = api.user();
     const writeActor = api.user();
     const bareActor = api.user();

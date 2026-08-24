@@ -603,7 +603,7 @@ describe("POST /api/image-io/generate", () => {
     });
   });
 
-  it("returns 403 when a zero token lacks file write capability", async () => {
+  it("returns 403 when an agent token lacks file write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
@@ -1057,7 +1057,7 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
-  it("limits run-scoped zero token image generations after three active built-ins", async () => {
+  it("limits run-scoped agent token image generations after three active built-ins", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -1143,7 +1143,7 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(10_000);
   });
 
-  it("generates image files on the Okou CDN for Okou run-scoped zero tokens", async () => {
+  it("generates image files on the Okou CDN for Okou run-scoped agent tokens", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,

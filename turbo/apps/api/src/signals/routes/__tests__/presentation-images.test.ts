@@ -338,7 +338,7 @@ describe("POST /api/presentation/images/resolve", () => {
     });
   });
 
-  it("requires file write capability for zero tokens", async () => {
+  it("requires file write capability for agent tokens", async () => {
     const fixture = createFixture();
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     const client = setupApp({ context, routes: presentationImagesRoutes })(

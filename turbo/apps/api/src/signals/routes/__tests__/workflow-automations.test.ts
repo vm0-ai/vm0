@@ -4417,7 +4417,7 @@ describe("okou workflow automations", () => {
     await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
   });
 
-  it("derives manual run budgets from the source and rejects exhausted Zero callers", async () => {
+  it("derives manual run budgets from the source and rejects exhausted agent callers", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { actor, workflowId } = await setupFixture();
     const automation = await accept(
