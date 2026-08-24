@@ -49,37 +49,6 @@ type SerializedSubscriptionUsage = NonNullable<
   ModelProviderResponse["subscriptionUsage"]
 >;
 
-async function resolveCurrentCodexAccessToken(
-  args: {
-    readonly db: Db;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly modelProviderAccountId?: string;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-  signal: AbortSignal,
-) {
-  return await resolveCurrentModelProviderRuntimeSecretForApi(
-    {
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      key: "CHATGPT_ACCESS_TOKEN",
-      providerKey: "codex-oauth-token",
-      metadata: {
-        sourceType: "model-provider",
-        sourceUserId: args.userId,
-        ...(args.modelProviderAccountId
-          ? { sourceId: args.modelProviderAccountId }
-          : {}),
-        metadataKey: "codex-oauth-token",
-      },
-      featureSwitchContext: args.featureSwitchContext,
-    },
-    signal,
-  );
-}
-
 async function modelProviderSecretValues(
   args: {
     readonly db: ReadonlyDb;
@@ -204,15 +173,21 @@ async function refreshCodexProvider(
   },
   signal: AbortSignal,
 ): Promise<ModelProviderResponse> {
+  const accountMetadata = {
+    sourceType: "model-provider" as const,
+    sourceUserId: args.userId,
+    ...(args.provider.modelProviderId ? { sourceId: args.provider.id } : {}),
+    metadataKey: args.provider.type,
+  };
   const [accessTokenResult, secretValues] = await Promise.all([
-    resolveCurrentCodexAccessToken(
+    resolveCurrentModelProviderRuntimeSecretForApi(
       {
         db: args.db,
         orgId: args.orgId,
         userId: args.userId,
-        ...(args.provider.modelProviderId
-          ? { modelProviderAccountId: args.provider.id }
-          : {}),
+        key: "CHATGPT_ACCESS_TOKEN",
+        providerKey: args.provider.type,
+        metadata: accountMetadata,
         featureSwitchContext: args.featureSwitchContext,
       },
       signal,
@@ -421,18 +396,26 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
       return notFound("Resource not found");
     }
 
-    const accessTokenResult = await resolveCurrentCodexAccessToken(
-      {
-        db: database,
-        orgId: args.orgId,
-        userId: args.userId,
-        ...(args.modelProviderAccountId
-          ? { modelProviderAccountId: args.modelProviderAccountId }
-          : {}),
-        featureSwitchContext,
-      },
-      signal,
-    );
+    const accessTokenResult =
+      await resolveCurrentModelProviderRuntimeSecretForApi(
+        {
+          db: database,
+          orgId: args.orgId,
+          userId: args.userId,
+          key: "CHATGPT_ACCESS_TOKEN",
+          providerKey: "codex-oauth-token",
+          metadata: {
+            sourceType: "model-provider",
+            sourceUserId: args.userId,
+            ...(args.modelProviderAccountId
+              ? { sourceId: args.modelProviderAccountId }
+              : {}),
+            metadataKey: "codex-oauth-token",
+          },
+          featureSwitchContext,
+        },
+        signal,
+      );
     signal.throwIfAborted();
     if (accessTokenResult.status === "unavailable") {
       if (!accessTokenResult.reconnectState) {
