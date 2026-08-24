@@ -1557,6 +1557,9 @@
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
       "title": "Attachments",
+      "unavailable": "{{filename}} is no longer available. Upload it again to send.",
+      "unavailableCount_one": "{{count}} attachment is no longer available. Upload it again to send.",
+      "unavailableCount_other": "{{count}} attachments are no longer available. Upload them again to send.",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
       "uploadsFailed": "Some attachments failed to upload. Try again."

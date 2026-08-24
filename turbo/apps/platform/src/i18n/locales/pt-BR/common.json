@@ -1581,6 +1581,10 @@
       "loadingFile": "Carregando {{filename}}",
       "previewFile": "Visualizar {{filename}}",
       "title": "Anexos",
+      "unavailable": "{{filename}} não está mais disponível. Faça o upload novamente para enviar.",
+      "unavailableCount_one": "{{count}} anexo não está mais disponível. Faça o upload novamente para enviar.",
+      "unavailableCount_many": "{{count}} anexos não estão mais disponíveis. Faça o upload novamente para enviar.",
+      "unavailableCount_other": "{{count}} anexos não estão mais disponíveis. Faça o upload novamente para enviar.",
       "uploadFailed": "Falha ao enviar {{filename}}",
       "uploadFailedRetry": "Falha ao enviar {{filename}}. Tente novamente.",
       "uploadsFailed": "Falha ao enviar alguns anexos. Tente novamente."

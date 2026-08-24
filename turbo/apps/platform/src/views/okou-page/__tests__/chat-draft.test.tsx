@@ -10,6 +10,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
 import { teamContract } from "@okouai/api-contracts/contracts/team";
@@ -615,6 +616,79 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
+    });
+  });
+
+  it("drops and clears a saved attachment whose artifact no longer resolves", async () => {
+    const draftPatches: Record<string, unknown>[] = [];
+    const toastWarning = vi.spyOn(toast, "warning");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+      });
+    });
+    // The artifact is stored per user, so a draft carried over from another
+    // account resolves to nothing here.
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      return respond(404, {
+        error: { message: "File not found", code: "NOT_FOUND" },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveTextContent("Review the saved launch brief");
+    });
+    expect(toastWarning).toHaveBeenCalledWith(
+      "brief.md is no longer available. Upload it again to send.",
+      { id: "chat-attachment-unavailable" },
+    );
+    expect(screen.queryByLabelText("Remove brief.md")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Review the saved launch brief" }],
+        },
+        draftAttachments: null,
+      });
     });
   });
 
@@ -1743,6 +1817,76 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(input).toHaveTextContent(pastedText);
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+    });
+  });
+
+  it("drops a copied attachment that is unavailable in the current account", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e3000000-0000-4000-a000-000000000006";
+    const pastedText = "Please use the copied brief";
+    const filename = "foreign-brief.md";
+    const draftPatches: Record<string, unknown>[] = [];
+    const toastWarning = vi.spyOn(toast, "warning");
+
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      return respond(404, {
+        error: { message: "File not found", code: "NOT_FOUND" },
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+    await user.click(input);
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: pastedText,
+              attachments: [
+                {
+                  id: "foreign-brief",
+                  url: "https://cdn.vm7.io/artifacts/another-user/foreign-brief.md",
+                  filename,
+                  contentType: "text/markdown",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(input).toHaveTextContent(pastedText);
+      expect(
+        screen.queryByLabelText(`Remove ${filename}`),
+      ).not.toBeInTheDocument();
+    });
+    expect(toastWarning).toHaveBeenCalledWith(
+      `${filename} is no longer available. Upload it again to send.`,
+      { id: "chat-attachment-unavailable" },
+    );
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: pastedText }],
+        },
+        draftAttachments: null,
+      });
     });
   });
 

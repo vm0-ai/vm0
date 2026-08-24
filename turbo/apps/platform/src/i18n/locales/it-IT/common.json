@@ -1581,6 +1581,10 @@
       "loadingFile": "Caricamento in corso {{filename}}",
       "previewFile": "Anteprima {{filename}}",
       "title": "Allegati",
+      "unavailable": "{{filename}} non è più disponibile. Caricalo di nuovo per inviarlo.",
+      "unavailableCount_one": "{{count}} allegato non è più disponibile. Caricalo di nuovo per inviarlo.",
+      "unavailableCount_many": "{{count}} allegati non sono più disponibili. Caricali di nuovo per inviarli.",
+      "unavailableCount_other": "{{count}} allegati non sono più disponibili. Caricali di nuovo per inviarli.",
       "uploadFailed": "Impossibile caricare {{filename}}",
       "uploadFailedRetry": "Impossibile caricare {{filename}}. Riprova.",
       "uploadsFailed": "Impossibile caricare alcuni allegati. Riprova."

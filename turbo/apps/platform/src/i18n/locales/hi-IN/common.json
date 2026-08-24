@@ -1557,6 +1557,9 @@
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
       "title": "संलग्नक",
+      "unavailable": "{{filename}} अब उपलब्ध नहीं है। भेजने के लिए इसे दोबारा अपलोड करें।",
+      "unavailableCount_one": "{{count}} अटैचमेंट अब उपलब्ध नहीं है। भेजने के लिए उसे दोबारा अपलोड करें।",
+      "unavailableCount_other": "{{count}} अटैचमेंट अब उपलब्ध नहीं हैं। भेजने के लिए उन्हें दोबारा अपलोड करें।",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"

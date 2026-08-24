@@ -1557,6 +1557,8 @@
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
       "title": "添付ファイル",
+      "unavailable": "{{filename}} は利用できなくなりました。送信するにはもう一度アップロードしてください。",
+      "unavailableCount_other": "{{count}} 件の添付ファイルは利用できなくなりました。送信するにはもう一度アップロードしてください。",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"
