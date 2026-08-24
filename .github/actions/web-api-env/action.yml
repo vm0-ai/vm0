@@ -95,6 +95,11 @@ runs:
           json_get "$secrets_json" "$1"
         }
 
+        # Stage 1 protects repository configuration consumed by checked-out
+        # deployment workflows during the supported old-workflow rerun and
+        # rollback window. Remove legacy reads only after #28914 establishes
+        # equal canonical config, retires old-only rollback targets, and
+        # records zero legacy-only source evidence.
         resolve_repo_alias() {
           local accessor="$1"
           local canonical_key="$2"
