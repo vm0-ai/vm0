@@ -107,12 +107,6 @@ type PromotionResult =
   | PromotedQueuedCandidateTransactionResult
   | PromoteQueuedCandidateNonPromotedResult;
 
-interface PromoteQueuedCandidateArgs {
-  readonly orgId: string;
-  readonly row: QueueCandidate;
-  readonly payload: QueuedRunnerJobPayload | null;
-}
-
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
@@ -254,34 +248,33 @@ async function loadDrainCandidates(
     .orderBy(agentRunQueue.createdAt);
 }
 
-async function promoteQueuedCandidate(
-  db: Db,
-  args: PromoteQueuedCandidateArgs,
-): Promise<PromoteQueuedCandidateResult> {
-  // Promotion can happen after the original create-run collector was flushed.
-  // Buffer its lock timings locally and carry them past the durable boundary.
-  const timing = new ApiDispatchTimingCollector();
-  const committed = await db.transaction(async (tx) => {
-    await timing.measure(
-      "api_dispatch_queue_promotion_lock_wait",
-      "nested",
-      async () => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-        );
-      },
-    );
-    const admissionLockHeldStartedAt = now();
-    return {
-      result: await promoteQueuedCandidateUnderLock(tx, args),
-      admissionLockHeldStartedAt,
-    };
-  });
+async function acquirePromotionAdmissionLock(
+  tx: DbTransaction,
+  orgId: string,
+  timing: ApiDispatchTimingCollector,
+): Promise<number> {
+  await timing.measure(
+    "api_dispatch_queue_promotion_lock_wait",
+    "nested",
+    async () => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+    },
+  );
+  return now();
+}
+
+function finalizePromoteQueuedCandidate(
+  timing: ApiDispatchTimingCollector,
+  committed: {
+    readonly result: PromotionResult;
+    readonly lockHeldAt: number;
+  },
+): PromoteQueuedCandidateResult {
   const transactionReturnedAt = now();
   timing.recordElapsed(
     "api_dispatch_queue_promotion_lock_held",
     "nested",
-    committed.admissionLockHeldStartedAt,
+    committed.lockHeldAt,
     transactionReturnedAt,
   );
   const result = committed.result;
@@ -303,118 +296,137 @@ async function promoteQueuedCandidate(
   };
 }
 
-async function promoteQueuedCandidateUnderLock(
-  tx: DbTransaction,
-  args: PromoteQueuedCandidateArgs,
-): Promise<PromotionResult> {
-  // The caller owns the organization advisory lock for this complete boundary.
-  const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
-  if (concurrency.activeRunCount >= concurrency.limit) {
-    return { status: "full" };
-  }
-
-  const [lockedRun] = await tx
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, args.row.runId))
-    .for("update");
-  if (!lockedRun) {
-    await tx
-      .delete(agentRunQueue)
-      .where(eq(agentRunQueue.runId, args.row.runId));
-    return { status: "removed-stale" };
-  }
-  if (lockedRun.status !== "queued") {
-    await tx
-      .delete(agentRunQueue)
-      .where(eq(agentRunQueue.runId, args.row.runId));
-    return { status: "removed-stale" };
-  }
-  if (args.row.runStatus !== "queued") {
-    return { status: "lost" };
-  }
-
-  const [queueRow] = await tx
-    .select({ runId: agentRunQueue.runId })
-    .from(agentRunQueue)
-    .where(
-      and(
-        eq(agentRunQueue.runId, args.row.runId),
-        eq(agentRunQueue.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  if (!queueRow) {
-    return { status: "lost" };
-  }
-
-  if (args.payload === null) {
-    throw new Error(
-      `Queued run "${args.row.runId}" is missing its runner job payload`,
+async function promoteQueuedCandidate(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
+): Promise<PromoteQueuedCandidateResult> {
+  // Promotion may outlive the create-run collector, so buffer timing until commit.
+  const timing = new ApiDispatchTimingCollector();
+  const committed = await db.transaction(async (tx) => {
+    const lockHeldAt = await acquirePromotionAdmissionLock(
+      tx,
+      args.orgId,
+      timing,
     );
-  }
-  const payload = args.payload;
-  const runValues = {
-    status: "pending",
-    lastHeartbeatAt: nowDate(),
-    runnerGroup: payload.runnerGroup,
-  };
-  const [updated] = await tx
-    .update(agentRuns)
-    .set(runValues)
-    .where(
-      and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
-    )
-    .returning({ id: agentRuns.id });
-  if (!updated) {
-    return { status: "lost" };
-  }
+    const complete = (result: PromotionResult) => {
+      return { result, lockHeldAt };
+    };
+    const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
+    if (concurrency.activeRunCount >= concurrency.limit) {
+      return complete({ status: "full" });
+    }
 
-  await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.row.runId));
+    const [lockedRun] = await tx
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.row.runId))
+      .for("update");
+    if (!lockedRun) {
+      await tx
+        .delete(agentRunQueue)
+        .where(eq(agentRunQueue.runId, args.row.runId));
+      return complete({ status: "removed-stale" });
+    }
+    if (lockedRun.status !== "queued") {
+      await tx
+        .delete(agentRunQueue)
+        .where(eq(agentRunQueue.runId, args.row.runId));
+      return complete({ status: "removed-stale" });
+    }
+    if (args.row.runStatus !== "queued") {
+      return complete({ status: "lost" });
+    }
 
-  const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
-    runId: args.row.runId,
-    userId: args.row.userId,
-  });
+    const [queueRow] = await tx
+      .select({ runId: agentRunQueue.runId })
+      .from(agentRunQueue)
+      .where(
+        and(
+          eq(agentRunQueue.runId, args.row.runId),
+          eq(agentRunQueue.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    if (!queueRow) {
+      return complete({ status: "lost" });
+    }
 
-  const runnerJob = await insertPromotedRunnerJob(tx, {
-    orgId: args.orgId,
-    runId: args.row.runId,
-    queuedAt: args.row.createdAt,
-    payload,
-  });
-  return {
-    status: "promoted",
-    queueMarkerNotification,
-    pendingActivation: {
-      apiStartTime: runnerJob.apiStartedAt,
-      chatThreadId: args.row.chatThreadId ?? undefined,
-      runnerNotification: {
-        runId: args.row.runId,
-        runnerGroup: payload.runnerGroup,
-        profile: runnerJob.profile,
-        reuseKey: payload.reuseKey,
-        cliAgentSessionId: payload.cliAgentSessionId,
-        historyGenerationRunId: payload.historyGenerationRunId,
-        createdAt: runnerJob.createdAt,
+    if (args.payload === null) {
+      throw new Error(
+        `Queued run "${args.row.runId}" is missing its runner job payload`,
+      );
+    }
+    const payload = args.payload;
+    const runValues = {
+      status: "pending",
+      lastHeartbeatAt: nowDate(),
+      runnerGroup: payload.runnerGroup,
+    };
+    const [updated] = await tx
+      .update(agentRuns)
+      .set(runValues)
+      .where(
+        and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
+      )
+      .returning({ id: agentRuns.id });
+    if (!updated) {
+      return complete({ status: "lost" });
+    }
+
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+
+    const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
+      runId: args.row.runId,
+      userId: args.row.userId,
+    });
+
+    const runnerJob = await insertPromotedRunnerJob(tx, {
+      orgId: args.orgId,
+      runId: args.row.runId,
+      queuedAt: args.row.createdAt,
+      payload,
+    });
+    return complete({
+      status: "promoted",
+      queueMarkerNotification,
+      pendingActivation: {
+        apiStartTime: runnerJob.apiStartedAt,
+        chatThreadId: args.row.chatThreadId ?? undefined,
+        runnerNotification: {
+          runId: args.row.runId,
+          runnerGroup: payload.runnerGroup,
+          profile: runnerJob.profile,
+          reuseKey: payload.reuseKey,
+          cliAgentSessionId: payload.cliAgentSessionId,
+          historyGenerationRunId: payload.historyGenerationRunId,
+          createdAt: runnerJob.createdAt,
+        },
+        ...(runnerJob.executionContext.piLaunchConfig &&
+        args.row.prompt !== null
+          ? {
+              piApiFirstTurn: {
+                runId: args.row.runId,
+                runnerGroup: payload.runnerGroup,
+                userId: args.row.userId,
+                orgId: args.orgId,
+                prompt: args.row.prompt,
+                appendSystemPrompt: args.row.appendSystemPrompt,
+                executionContext: requirePiApiFirstTurnExecutionContext(
+                  runnerJob.executionContext,
+                ),
+              },
+            }
+          : {}),
       },
-      ...(runnerJob.executionContext.piLaunchConfig && args.row.prompt !== null
-        ? {
-            piApiFirstTurn: {
-              runId: args.row.runId,
-              runnerGroup: payload.runnerGroup,
-              userId: args.row.userId,
-              orgId: args.orgId,
-              prompt: args.row.prompt,
-              appendSystemPrompt: args.row.appendSystemPrompt,
-              executionContext: requirePiApiFirstTurnExecutionContext(
-                runnerJob.executionContext,
-              ),
-            },
-          }
-        : {}),
-    },
-  };
+    });
+  });
+  return finalizePromoteQueuedCandidate(timing, committed);
 }
 
 async function publishPromotedQueueSideEffects(args: {
@@ -431,7 +443,11 @@ async function publishPromotedQueueSideEffects(args: {
 
 async function promoteQueuedCandidateWithSideEffects(
   db: Db,
-  args: PromoteQueuedCandidateArgs,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
   if (result.status === "removed-stale") {
