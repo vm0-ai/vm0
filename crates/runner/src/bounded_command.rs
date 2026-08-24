@@ -571,7 +571,10 @@ mod tests {
         let outcome = run_output_bounded(
             command,
             "sh",
-            CommandOutputPolicy::semantic_stdout(),
+            CommandOutputPolicy {
+                stdout: StdoutOutputPolicy::Semantic { max_bytes: 6 },
+                diagnostic_stderr_max_bytes: 6,
+            },
             Duration::from_secs(1),
         )
         .await
