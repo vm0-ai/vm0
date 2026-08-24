@@ -77,6 +77,7 @@ interface FeishuConnectionState {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly accountMutation: ConnectorAccountMutationIntent;
 }
 
@@ -305,6 +306,7 @@ async function upsertFeishuConnection(
       .update(feishuOrgConnections)
       .set({
         feishuUserName: args.userInfo.name,
+        publicBrand: args.state.publicBrand,
         updatedAt: nowDate(),
       })
       .where(eq(feishuOrgConnections.id, existing.id));
@@ -319,6 +321,7 @@ async function upsertFeishuConnection(
         feishuOpenId: args.userInfo.openId,
         userId: args.state.userId,
         feishuUserName: args.userInfo.name,
+        publicBrand: args.state.publicBrand,
       })
       .onConflictDoNothing({
         target: [
@@ -887,6 +890,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
       installationId: installation.installationId,
       orgId: args.state.orgId,
       userId: args.state.userId,
+      publicBrand: args.state.publicBrand,
       accountMutation: args.state.accountMutation,
     };
     const completed = await finishFeishuOAuthConnection(

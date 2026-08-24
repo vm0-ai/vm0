@@ -525,7 +525,7 @@ function FeishuCreateStep() {
           <p className="mt-1 text-sm text-muted-foreground">
             <a
               href="/icons/icon-512.png"
-              download="vm0-feishu-app-icon.png"
+              download={`${brandName.toLowerCase()}-feishu-app-icon.png`}
               className="font-medium text-foreground underline underline-offset-4"
             >
               {t(
