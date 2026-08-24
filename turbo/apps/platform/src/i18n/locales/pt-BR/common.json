@@ -1063,6 +1063,24 @@
     },
     "toggleTheme": "Alternar tema",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "Não foi possível concluir seu login. Comece novamente e tente outra vez.",
+        "activationErrorTitle": "Não foi possível concluir o login",
+        "chooseOrganizationDescription": "Escolha uma organização para continuar no {{brandName}}.",
+        "chooseOrganizationTitle": "Escolha uma organização",
+        "completeDescription": "Levando você ao {{brandName}}.",
+        "completeTitle": "Login concluído",
+        "loadingDescription": "Verificando o que sua conta precisa fazer a seguir.",
+        "loadingTitle": "Finalizando o login",
+        "noOrganizationsDescription": "Esta conta não tem uma organização disponível. Peça acesso a um administrador da organização e comece novamente.",
+        "noOrganizationsTitle": "Nenhuma organização disponível",
+        "recoveryAction": "Começar novamente",
+        "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
+        "secondFactorTitle": "Verificação adicional necessária",
+        "selectOrganization": "Continuar com {{organizationName}}",
+        "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
+        "unsupportedTitle": "Etapa de login indisponível"
+      },
       "signIn": {
         "action": "Usar o login atual",
         "title": "Entrar no {{brandName}}"

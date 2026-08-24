@@ -1044,6 +1044,24 @@
     },
     "toggleTheme": "Design wechseln",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "Die Anmeldung konnte nicht abgeschlossen werden. Starte erneut und versuche es noch einmal.",
+        "activationErrorTitle": "Anmeldung konnte nicht abgeschlossen werden",
+        "chooseOrganizationDescription": "Wähle eine Organisation aus, um mit {{brandName}} fortzufahren.",
+        "chooseOrganizationTitle": "Organisation auswählen",
+        "completeDescription": "Du wirst zu {{brandName}} weitergeleitet.",
+        "completeTitle": "Anmeldung abgeschlossen",
+        "loadingDescription": "Es wird geprüft, welcher Schritt für dein Konto als Nächstes erforderlich ist.",
+        "loadingTitle": "Anmeldung wird abgeschlossen",
+        "noOrganizationsDescription": "Für dieses Konto ist keine Organisation verfügbar. Bitte einen Organisationsadministrator um Zugriff und starte dann erneut.",
+        "noOrganizationsTitle": "Keine Organisation verfügbar",
+        "recoveryAction": "Neu starten",
+        "secondFactorDescription": "Diese Anmeldung erfordert einen zusätzlichen Bestätigungsschritt, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
+        "secondFactorTitle": "Zusätzliche Bestätigung erforderlich",
+        "selectOrganization": "Mit {{organizationName}} fortfahren",
+        "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
+        "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
+      },
       "signIn": {
         "action": "Aktuelle Anmeldung verwenden",
         "title": "Bei {{brandName}} anmelden"

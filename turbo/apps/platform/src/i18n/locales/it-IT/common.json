@@ -1063,6 +1063,24 @@
     },
     "toggleTheme": "Cambia tema",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "Non è stato possibile completare l'accesso. Ricomincia e riprova.",
+        "activationErrorTitle": "Impossibile completare l'accesso",
+        "chooseOrganizationDescription": "Scegli un'organizzazione per continuare su {{brandName}}.",
+        "chooseOrganizationTitle": "Scegli un'organizzazione",
+        "completeDescription": "Ti stiamo portando su {{brandName}}.",
+        "completeTitle": "Accesso completato",
+        "loadingDescription": "Stiamo verificando il prossimo passaggio richiesto dal tuo account.",
+        "loadingTitle": "Completamento dell'accesso",
+        "noOrganizationsDescription": "Questo account non dispone di organizzazioni. Chiedi l'accesso a un amministratore dell'organizzazione, quindi ricomincia.",
+        "noOrganizationsTitle": "Nessuna organizzazione disponibile",
+        "recoveryAction": "Ricomincia",
+        "secondFactorDescription": "Questo accesso richiede un ulteriore passaggio di verifica non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
+        "secondFactorTitle": "È richiesta un'ulteriore verifica",
+        "selectOrganization": "Continua con {{organizationName}}",
+        "unsupportedDescription": "Il tuo account ha restituito un passaggio di autenticazione non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
+        "unsupportedTitle": "Passaggio di accesso non disponibile"
+      },
       "signIn": {
         "action": "Usa l'accesso attuale",
         "title": "Accedi a {{brandName}}"

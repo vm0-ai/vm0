@@ -1043,6 +1043,24 @@
     },
     "toggleTheme": "テーマの切り替え",
     "v2": {
+      "continuation": {
+        "activationErrorDescription": "サインインを完了できませんでした。最初からやり直してください。",
+        "activationErrorTitle": "サインインを完了できませんでした",
+        "chooseOrganizationDescription": "{{brandName}} に進む組織を選択してください。",
+        "chooseOrganizationTitle": "組織を選択",
+        "completeDescription": "{{brandName}} に移動しています。",
+        "completeTitle": "サインイン完了",
+        "loadingDescription": "アカウントに必要な次の手順を確認しています。",
+        "loadingTitle": "サインインを完了しています",
+        "noOrganizationsDescription": "このアカウントで利用できる組織がありません。組織の管理者にアクセスを依頼してから、最初からやり直してください。",
+        "noOrganizationsTitle": "利用できる組織がありません",
+        "recoveryAction": "最初からやり直す",
+        "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
+        "secondFactorTitle": "追加の確認が必要です",
+        "selectOrganization": "{{organizationName}} で続行",
+        "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
+        "unsupportedTitle": "サインイン手順を利用できません"
+      },
       "signIn": {
         "action": "現在のサインインを使用",
         "title": "{{brandName}} にサインイン"
