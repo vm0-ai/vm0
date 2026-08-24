@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
@@ -39,6 +39,7 @@ const UNATTENDED_TRIGGER_SOURCES = [
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
 const FINICITY_CONNECT_URL = `${FINICITY_BASE_URL}/connect/v2/generate`;
+const FINICITY_APP_SECRET = randomBytes(32).toString("hex");
 
 type BankingConnectionStatus =
   | "active"
@@ -190,7 +191,7 @@ function finicityAuthHandler() {
     expect(request.headers.get("Finicity-App-Key")).toBe("test-app-key");
     expect(body).toStrictEqual({
       partnerId: "test-partner",
-      partnerSecret: "test-secret",
+      partnerSecret: FINICITY_APP_SECRET,
     });
     return HttpResponse.json({ token: "test-app-token" });
   });
@@ -199,7 +200,7 @@ function finicityAuthHandler() {
 describe("POST /api/zero/banking/*", () => {
   beforeEach(() => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
-    mockEnv("FINICITY_APP_SECRET", "test-secret");
+    mockEnv("FINICITY_APP_SECRET", FINICITY_APP_SECRET);
     mockEnv("FINICITY_PARTNER_ID", "test-partner");
   });
 
@@ -635,7 +636,7 @@ describe("POST /api/zero/banking/*", () => {
 describe("banking access request lifecycle", () => {
   beforeEach(() => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
-    mockEnv("FINICITY_APP_SECRET", "test-secret");
+    mockEnv("FINICITY_APP_SECRET", FINICITY_APP_SECRET);
     mockEnv("FINICITY_PARTNER_ID", "test-partner");
   });
 
@@ -645,7 +646,7 @@ describe("banking access request lifecycle", () => {
 
   function signedWebhookBody(body: Record<string, unknown>) {
     const rawBody = JSON.stringify(body);
-    const signature = createHmac("sha256", "test-secret")
+    const signature = createHmac("sha256", FINICITY_APP_SECRET)
       .update(rawBody)
       .digest("hex");
     return { rawBody, signature };
