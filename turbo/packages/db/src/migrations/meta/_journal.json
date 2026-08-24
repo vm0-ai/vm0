@@ -1258,8 +1258,15 @@
     {
       "idx": 987,
       "version": "7",
-      "when": 1787577104000,
-      "tag": "0987_soft_squadron_sinister",
+      "when": 1787577316793,
+      "tag": "0987_jittery_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 988,
+      "version": "7",
+      "when": 1787579864763,
+      "tag": "0988_dapper_mole_man",
       "breakpoints": true
     }
   ]

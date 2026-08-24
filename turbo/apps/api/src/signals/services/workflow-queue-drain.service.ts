@@ -1,4 +1,5 @@
 import { workflows, workflowAutomations } from "@okouai/db/schema/workflow";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/log";
@@ -166,7 +167,7 @@ function consumeUnavailableAutomationEvent(
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
   const conflictMessage =
-    event.automationId === null
+    event.automationId === null || event.publicBrand === null
       ? "Workflow queue event payload is unreadable"
       : "Workflow automation no longer exists";
   log.debug("Consuming workflow queue event without automation", {
@@ -247,6 +248,40 @@ function matchingLaunch(
   return launch?.eventId === eventId ? launch : undefined;
 }
 
+function queuedWorkflowLaunchMaterial(
+  event: PendingWorkflowQueueEvent,
+  target: DequeueTarget,
+  publicBrand: PublicBrand,
+) {
+  return buildWorkflowAutomationQueuedLaunchMaterial({
+    workflowName: event.workflowName,
+    eventType: event.workflowAutomationEventType,
+    eventPayload: event.workflowAutomationEventPayload,
+    automation: target.automation,
+    agentId: target.agentId,
+    chatThreadId: event.chatThreadId,
+    publicBrand,
+  });
+}
+
+type LaunchableQueueEvent = PendingWorkflowQueueEvent & {
+  readonly automationId: string;
+  readonly triggerSource: NonNullable<
+    PendingWorkflowQueueEvent["triggerSource"]
+  >;
+  readonly publicBrand: PublicBrand;
+};
+
+function isLaunchableQueueEvent(
+  event: PendingWorkflowQueueEvent,
+): event is LaunchableQueueEvent {
+  return (
+    event.automationId !== null &&
+    event.triggerSource !== null &&
+    event.publicBrand !== null
+  );
+}
+
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
@@ -266,7 +301,7 @@ export const drainWorkflowQueueForThread$ = command(
         return null;
       }
 
-      if (!event.automationId || !event.triggerSource) {
+      if (!isLaunchableQueueEvent(event)) {
         const step = await consumeUnavailableAutomationEvent(
           db,
           event,
@@ -294,14 +329,11 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const launchMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
-        workflowName: event.workflowName,
-        eventType: event.workflowAutomationEventType,
-        eventPayload: event.workflowAutomationEventPayload,
-        automation: target.automation,
-        agentId: target.agentId,
-        chatThreadId: event.chatThreadId,
-      });
+      const launchMaterial = queuedWorkflowLaunchMaterial(
+        event,
+        target,
+        event.publicBrand,
+      );
       signal.throwIfAborted();
       if (!launchMaterial) {
         log.error("Consuming workflow queue event with incomplete context", {
@@ -355,6 +387,7 @@ export const drainWorkflowQueueForThread$ = command(
           queueEventId: event.id,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
+          publicBrand: event.publicBrand,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
           ...(event.connectorSourceId

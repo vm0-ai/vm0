@@ -5738,7 +5738,7 @@ describe("INT-02: Telegram integration", () => {
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
@@ -5796,13 +5796,31 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected app sign-in redirect");
     }
     const unauthenticatedUrl = new URL(unauthenticatedLocation);
-    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.test");
+    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.ai");
     expect(unauthenticatedUrl.pathname).toBe("/sign-in");
     const redirectUrl = unauthenticatedUrl.searchParams.get("redirect_url");
     if (!redirectUrl) {
       throw new Error("Expected redirect_url query parameter");
     }
     expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
+
+    const fixedOriginOkouConnect = await integrations.requestGithubOauthConnect(
+      null,
+      { publicBrand: "okou" },
+      [307],
+    );
+    const fixedOriginOkouUrl = new URL(
+      fixedOriginOkouConnect.headers.get("location") ?? "",
+    );
+    expect(fixedOriginOkouUrl.origin).toBe("https://app.okou.ai");
+    const fixedOriginRedirect =
+      fixedOriginOkouUrl.searchParams.get("redirect_url");
+    if (!fixedOriginRedirect) {
+      throw new Error("Expected branded GitHub connect redirect_url");
+    }
+    expect(new URL(fixedOriginRedirect).searchParams.get("publicBrand")).toBe(
+      "okou",
+    );
 
     const actor = integrations.user();
     const invalidSignedConnect = await integrations.requestGithubOauthConnect(
@@ -5888,6 +5906,16 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       account_mutation: { intent: "single-account" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const okouResponse = await integrations.requestGithubOauthConnect(
+      actor,
+      { publicBrand: "okou" },
+      [307],
+    );
+    const okouState = new URL(
+      okouResponse.headers.get("location") ?? "",
+    ).searchParams.get("state");
+    expect(okouState).toMatch(/^okou\.[0-9a-f]{64}$/u);
   });
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {

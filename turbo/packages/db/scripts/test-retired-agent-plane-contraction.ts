@@ -64,6 +64,7 @@ const canonicalConversationId = "00000000-0000-4000-8700-000000980001";
 const canonicalCheckpointId = "00000000-0000-4000-8800-000000980001";
 const canonicalThreadId = "00000000-0000-4000-8300-000000980002";
 const canonicalThreadEventId = "00000000-0000-4000-9200-000000980028";
+const searchNoiseThreadId = "00000000-0000-4000-8300-000000980003";
 const storageId = "00000000-0000-4000-8900-000000980001";
 const usageEventId = "00000000-0000-4000-8a00-000000980001";
 const protectedUsageEventId = "00000000-0000-4000-8a00-000000980002";
@@ -72,6 +73,20 @@ const usageAllocationId = "00000000-0000-4000-8c00-000000980001";
 const entitlementId = "00000000-0000-4000-8d00-000000980001";
 const shortWindowId = "00000000-0000-4000-8e00-000000980001";
 const weeklyWindowId = "00000000-0000-4000-8e00-000000980002";
+// One tenth of the observed production table and legacy-reference cardinality.
+// This keeps the focused harness practical while preserving production shape.
+const productionShapedSearchRows = 131_176;
+const productionShapedLegacySearchRows = 1_711;
+// The largest observed approved-artifact user/org pair has 132 candidates.
+const productionShapedArtifactPairCandidates = 132;
+const exactArtifactSearchRows = 2;
+const productionShapedArtifactPairNoiseRows =
+  productionShapedArtifactPairCandidates - exactArtifactSearchRows;
+const allowedArtifactSearchLookupIndexes = new Set([
+  "chat_event_search_messages_user_org_created_idx",
+  "chat_event_search_messages_user_org_agent_created_idx",
+  "chat_event_search_messages_user_org_agent_id_created_idx",
+]);
 
 function databaseUrlFor(database: string): string {
   const url = new URL(baseDatabaseUrl);
@@ -503,6 +518,147 @@ async function seedProtectedHistory(client: Client): Promise<void> {
   }
 }
 
+async function seedAndAssertProductionShapedSearchLookups(
+  client: Client,
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "chat_threads" ("id", "user_id", "title")
+      VALUES ($1, 'stage8-artifact-user', 'stage8 search noise thread')
+    `,
+    [searchNoiseThreadId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
+        "agent_compose_id", "role", "created_at", "text", "text_bigram"
+      )
+      SELECT
+        $1, "ordinal" + 1, 'stage8-protected-user', 'stage8-protected-org',
+        $2,
+        CASE WHEN "ordinal" <= $3 THEN $2::uuid ELSE NULL END,
+        'user', now(), 'stage8 protected bulk', 'stage8 protected bulk'
+      FROM generate_series(1, $4) AS "ordinal"
+    `,
+    [
+      canonicalThreadId,
+      canonicalAgentId,
+      productionShapedLegacySearchRows,
+      productionShapedSearchRows,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id", "role",
+        "created_at", "text", "text_bigram"
+      )
+      SELECT
+        $1, "ordinal", 'stage8-artifact-user', 'stage8-artifact-org',
+        'user', now(), 'stage8 pair candidate', 'stage8 pair candidate'
+      FROM generate_series(1, $2) AS "ordinal"
+    `,
+    [searchNoiseThreadId, productionShapedArtifactPairNoiseRows],
+  );
+  const artifactPair = await client.query<{ count: number }>(
+    `
+      SELECT count(*)::integer AS "count"
+      FROM "chat_event_search_messages"
+      WHERE "user_id" = 'stage8-artifact-user'
+        AND "org_id" = 'stage8-artifact-org'
+    `,
+  );
+  assert.equal(
+    artifactPair.rows[0]?.count,
+    productionShapedArtifactPairCandidates,
+  );
+  await client.query(`ANALYZE "chat_event_search_messages"`);
+
+  for (const artifactId of artifactIds) {
+    const plan = await client.query<{ "QUERY PLAN": string }>(
+      `
+        EXPLAIN (COSTS OFF)
+        SELECT "message"."chat_thread_id", "message"."seq_id"
+        FROM "chat_event_search_messages" AS "message"
+        WHERE "message"."user_id" = $1
+          AND "message"."org_id" = $2
+          AND "message"."agent_compose_id" = $3
+      `,
+      ["stage8-artifact-user", "stage8-artifact-org", artifactId],
+    );
+    const planText = plan.rows
+      .map((row) => {
+        return row["QUERY PLAN"];
+      })
+      .join("\n");
+    assert.doesNotMatch(
+      planText,
+      /Seq Scan on chat_event_search_messages/u,
+      `artifact search lookup must not scan the production-shaped table:\n${planText}`,
+    );
+    const lookupIndexNames = Array.from(
+      planText.matchAll(/(?:Index Scan using|Bitmap Index Scan on) (\S+)\b/gu),
+      (match) => {
+        return match[1] ?? "";
+      },
+    );
+    assert.ok(
+      lookupIndexNames.length > 0,
+      `artifact search lookup must use an index path:\n${planText}`,
+    );
+    assert.ok(
+      lookupIndexNames.every((indexName) => {
+        return allowedArtifactSearchLookupIndexes.has(indexName);
+      }),
+      `artifact search lookup must only use known user/org-leading indexes:\n${planText}`,
+    );
+    const boundedIndexCondition = plan.rows.some((row) => {
+      const line = row["QUERY PLAN"];
+      return (
+        line.includes("Index Cond:") &&
+        line.includes("user_id") &&
+        line.includes("org_id")
+      );
+    });
+    assert.ok(
+      boundedIndexCondition,
+      `artifact search lookup must bind user_id and org_id in its index condition:\n${planText}`,
+    );
+  }
+}
+
+async function assertProductionShapedSearchRowsPreserved(
+  client: Client,
+): Promise<void> {
+  const result = await client.query<{
+    protectedSearchMessageCount: number;
+    threadCount: number;
+    searchMessageCount: number;
+  }>(
+    `
+      SELECT
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $2) AS "protectedSearchMessageCount",
+        (SELECT count(*)::integer FROM "chat_threads"
+          WHERE "id" = $1
+            AND "user_id" = 'stage8-artifact-user'
+            AND "agent_id" IS NULL) AS "threadCount",
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $1
+            AND "agent_id" IS NULL) AS "searchMessageCount"
+    `,
+    [searchNoiseThreadId, canonicalThreadId],
+  );
+  assert.deepEqual(result.rows, [
+    {
+      protectedSearchMessageCount: productionShapedSearchRows + 1,
+      threadCount: 1,
+      searchMessageCount: productionShapedArtifactPairNoiseRows,
+    },
+  ]);
+}
+
 async function seedArtifactBilling(client: Client): Promise<void> {
   await client.query(
     `
@@ -812,7 +968,33 @@ function assertStaticBoundary(): void {
   );
   assert.match(
     productionMigrationSql,
-    /Broad before\/after preservation acceptance is controller-owned through\s+-- read-only MaskDB/u,
+    /Broad preservation, reference-partition, and historical acceptance is\s+-- controller-owned through read-only MaskDB/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /SELECT\s+"compose"\."id",\s+"compose"\."user_id",\s+"compose"\."org_id",/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /FOR artifact IN\s+SELECT "id", "user_id", "org_id"\s+FROM "_stage8_approved_artifacts"\s+ORDER BY "id"\s+LOOP/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /EXECUTE \$stage8_search_lookup\$\s+INSERT INTO "_stage8_artifact_search_messages"[\s\S]*?FROM "chat_event_search_messages" AS "message"\s+WHERE "message"\."user_id" = \$1\s+AND "message"\."org_id" = \$2\s+AND "message"\."agent_compose_id" = \$3\s+\$stage8_search_lookup\$\s+USING artifact\.user_id, artifact\.org_id, artifact\.id/u,
+  );
+  assert.equal(
+    productionMigrationSql.match(/FROM "chat_event_search_messages"(?:\s|$)/gu)
+      ?.length,
+    3,
+    "only the two nonempty probes and per-artifact lookup may read the search table",
+  );
+  assert.doesNotMatch(
+    productionMigrationSql,
+    /enable_seqscan|enable_hashjoin|enable_mergejoin/u,
+  );
+  assert.doesNotMatch(
+    productionMigrationSql,
+    /_stage8_deleted_anchor_events|canonical_references|legacy\/canonical reference partition|unexpected event history/u,
   );
   assert.match(
     productionMigrationSql,
@@ -1016,8 +1198,10 @@ async function validateExactCleanupAndLockRetry(): Promise<void> {
     const client = await connect(database);
     try {
       await seedApprovedClosure(client);
+      await seedAndAssertProductionShapedSearchLookups(client);
       await runMigration(client, syntheticMigrationSql());
       await assertFinalState(client);
+      await assertProductionShapedSearchRowsPreserved(client);
     } finally {
       await client.end();
     }

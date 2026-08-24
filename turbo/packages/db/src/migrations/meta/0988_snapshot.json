@@ -1,6 +1,6 @@
 {
-  "id": "87e3c639-71c1-4dc9-a28b-8d6dc38bf2d9",
-  "prevId": "99e84620-8c40-4fc3-8be8-051ff0efaf3c",
+  "id": "ecca3403-c087-41c4-a14a-2ac73aa31a46",
+  "prevId": "87e3c639-71c1-4dc9-a28b-8d6dc38bf2d9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6519,6 +6519,12 @@
         },
         "thinking_message_id": {
           "name": "thinking_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
           "type": "text",
           "primaryKey": false,
           "notNull": false
