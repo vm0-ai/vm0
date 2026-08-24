@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.481.2](https://github.com/vm0-ai/vm0/compare/api-v1.481.1...api-v1.481.2) (2026-08-24)
+
+
+### Refactoring
+
+* **api:** drop the branded compatibility row for uploads/prepare ([#28978](https://github.com/vm0-ai/vm0/issues/28978)) ([65517f9](https://github.com/vm0-ai/vm0/commit/65517f9335cb31efb0c75e1c5e71e04ac734d1ed))
+* **api:** drop the branded compatibility rows with no traffic in the window ([#28941](https://github.com/vm0-ai/vm0/issues/28941)) ([6baa556](https://github.com/vm0-ai/vm0/commit/6baa55638a677520cc6119b94c6d3837c2376130))
+* **runtime:** add a trusted platform environment channel ([#28970](https://github.com/vm0-ai/vm0/issues/28970)) ([7d6e40b](https://github.com/vm0-ai/vm0/commit/7d6e40b7a8da820582587d96479f4da9f02932b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.2
+    * @okouai/core bumped to 8.586.2
+    * @okouai/db bumped to 1.218.11
+
 ## [1.481.1](https://github.com/vm0-ai/vm0/compare/api-v1.481.0...api-v1.481.1) (2026-08-24)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.786.0](https://github.com/vm0-ai/vm0/compare/app-v0.785.1...app-v0.786.0) (2026-08-24)
+
+
+### Features
+
+* **auth:** scaffold versioned authentication routes ([#28950](https://github.com/vm0-ai/vm0/issues/28950)) ([2d3a789](https://github.com/vm0-ai/vm0/commit/2d3a789095f63f44886788dfe9fdfb2bf9c3d227))
+
+
+### Bug Fixes
+
+* **platform:** remove unavailable restored attachments ([#28871](https://github.com/vm0-ai/vm0/issues/28871)) ([16a3f22](https://github.com/vm0-ai/vm0/commit/16a3f2278db41669f27e3af909312f80429b782e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.2
+    * @okouai/core bumped to 8.586.2
+
 ## [0.785.1](https://github.com/vm0-ai/vm0/compare/app-v0.785.0...app-v0.785.1) (2026-08-24)
 
 
