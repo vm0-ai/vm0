@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.788.0](https://github.com/vm0-ai/vm0/compare/app-v0.787.0...app-v0.788.0) (2026-08-24)
+
+
+### Features
+
+* **slack:** migrate official app to okou ([#28795](https://github.com/vm0-ai/vm0/issues/28795)) ([57d1a9f](https://github.com/vm0-ai/vm0/commit/57d1a9f500272b2b8214462fcbc640528103dd8f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.359.0
+    * @okouai/core bumped to 8.587.1
+
 ## [0.787.0](https://github.com/vm0-ai/vm0/compare/app-v0.786.0...app-v0.787.0) (2026-08-24)
 
 
