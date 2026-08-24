@@ -4811,7 +4811,7 @@ describe("INT-02: Telegram integration", () => {
       throw new Error("Expected Telegram onboarding to configure an agent");
     }
 
-    const telegramUserId = 91_234_567;
+    const telegramUserId = randomInt(100_000_000, 999_999_999);
     await integrations.requestLinkTelegram(
       actor,
       {
