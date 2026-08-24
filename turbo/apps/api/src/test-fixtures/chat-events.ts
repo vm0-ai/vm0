@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 import type {
   ChatSlackMentionDisplayNames,
