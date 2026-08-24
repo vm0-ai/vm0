@@ -256,6 +256,7 @@ jobs:
             .github/scripts/download-verified.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/list-okou-pages-preview-pr-numbers.sh \
+            .github/scripts/mitm-addon-only-changed.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
@@ -285,6 +286,7 @@ jobs:
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
+            .github/scripts/tests/mitm-addon-ci-selection-test.sh \
             .github/scripts/tests/neon-credential-mask-test.sh \
             .github/scripts/tests/neon-connection-string-ssl-test.sh \
             .github/scripts/tests/okou-desktop-artifact-test.sh \

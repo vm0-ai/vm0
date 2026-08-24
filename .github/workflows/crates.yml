@@ -64,6 +64,7 @@ jobs:
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
+      mitm-addon-only-changed: ${{ steps.detect.outputs.mitm-addon-only-changed }}
       mitm-addon-test-inputs-changed: ${{ steps.detect.outputs.mitm-addon-test-inputs-changed }}
       mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
       runner-firewall-contract-inputs-changed: ${{ steps.detect.outputs.runner-firewall-contract-inputs-changed }}
@@ -119,6 +120,16 @@ jobs:
           check_crate runner
           check_crate nbd-cow
           check_crate vsock-test
+
+          mitm_addon_only_rc=0
+          .github/scripts/mitm-addon-only-changed.sh "$BASE_REF" && mitm_addon_only_rc=0 || mitm_addon_only_rc=$?
+          if [ "$mitm_addon_only_rc" -eq 0 ]; then
+            echo "mitm-addon-only-changed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$mitm_addon_only_rc" -eq 1 ]; then
+            echo "mitm-addon-only-changed=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$mitm_addon_only_rc"
+          fi
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
@@ -312,11 +323,13 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
+        if: needs.detect.outputs.mitm-addon-only-changed != 'true'
         run: |
           cd crates
           cargo fmt --all -- --check
 
       - name: Run clippy
+        if: needs.detect.outputs.mitm-addon-only-changed != 'true'
         run: |
           cd crates
           cargo clippy --all-targets --all-features
@@ -330,9 +343,18 @@ jobs:
           cargo clippy -p vsock-guest --release --no-default-features --all-targets
 
       - name: Build documentation
+        if: needs.detect.outputs.mitm-addon-only-changed != 'true'
         run: |
           cd crates
           cargo doc --workspace --all-features --no-deps
+
+      - name: Check runner and mitm-addon version contract
+        if: needs.detect.outputs.mitm-addon-only-changed == 'true'
+        run: |
+          cd crates
+          cargo test -p runner --bin runner \
+            deps::tests::mitmproxy_version_contract_matches_python_runtime_and_tests -- \
+            --exact
 
       - name: Run ably-subscriber smoke test
         if: |
@@ -411,7 +433,9 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
-    if: needs.detect.outputs.any-changed == 'true'
+    if: |
+      needs.detect.outputs.any-changed == 'true' &&
+      needs.detect.outputs.mitm-addon-only-changed != 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
