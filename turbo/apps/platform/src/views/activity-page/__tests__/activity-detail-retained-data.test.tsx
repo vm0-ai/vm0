@@ -114,10 +114,10 @@ describe("activity retained diagnostic data", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("downloads events with metadata, context, and network data", async () => {
+  it("downloads retained data from the previous log detail shape", async () => {
     const downloads = context.mocks.browser.blobDownload();
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, managedLogDetail());
+      return respond(200, logDetail());
     });
     context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
       return respond(200, {
@@ -167,10 +167,6 @@ describe("activity retained diagnostic data", () => {
       id: RUN_ID,
       displayName: "Checkout Export",
       framework: "codex",
-      modelProvider: "vm0",
-      selectedModel: SELECTED_MODEL,
-      modelRuntimeProvider: RUNTIME_PROVIDER,
-      modelRuntimeModel: RUNTIME_MODEL,
     });
     expect(downloaded.context).toMatchObject({ runId: RUN_ID });
     expect(downloaded.networkLogs).toStrictEqual([networkLog()]);
@@ -224,6 +220,12 @@ describe("activity retained diagnostic data", () => {
     >;
 
     expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+    expect(downloaded.meta).toMatchObject({
+      modelProvider: "vm0",
+      selectedModel: SELECTED_MODEL,
+      modelRuntimeProvider: RUNTIME_PROVIDER,
+      modelRuntimeModel: RUNTIME_MODEL,
+    });
     expect(downloaded.events).toStrictEqual([]);
     expect(downloaded).not.toHaveProperty("context");
     expect(downloaded.networkLogs).toStrictEqual([]);
