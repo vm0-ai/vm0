@@ -211,3 +211,13 @@ export const resetConnectorAccountManagerDrafts$ = command(({ set }) => {
   set(internalConnectorAccountRenameDraft$, null);
   set(internalConnectorAccountDeletionDraft$, null);
 });
+
+export const resetConnectorAccountDialogs$ = command(({ set }) => {
+  set(internalBuiltinAccountManager$, null);
+  set(internalBuiltinAccountConnectDialog$, null);
+  set(internalCustomAccountManager$, null);
+  set(internalCustomAccountConnectDialog$, null);
+  set(internalConnectorAccountLabel$, "");
+  set(resetConnectorAccountManagerDrafts$);
+  set(settingsConnectorAccounts.setTarget$, null);
+});

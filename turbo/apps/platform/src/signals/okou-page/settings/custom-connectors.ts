@@ -35,6 +35,7 @@ import {
   readConnectorAccountMutationVersion,
   type ConnectorAccountMutationVersion,
 } from "./connector-accounts.ts";
+import { resetConnectorAccountDialogs$ } from "./connector-account-dialogs.ts";
 
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
@@ -60,6 +61,9 @@ export const connectorsPageTab$ = computed((get) => {
 });
 export const setConnectorsPageTab$ = command(({ get, set }, value: string) => {
   const tab = normalizeConnectorsPageTab(value);
+  if (tab !== normalizeConnectorsPageTab(get(searchParams$).get("tab"))) {
+    set(resetConnectorAccountDialogs$);
+  }
   const next = new URLSearchParams(get(searchParams$));
   if (tab === "builtin") {
     next.delete("tab");
