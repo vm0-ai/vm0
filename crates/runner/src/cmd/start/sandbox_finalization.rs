@@ -521,16 +521,28 @@ async fn finalize_sandbox_for_completion_inner(
                     rejected,
                     reason,
                     error,
+                    expected_capacity_rejection,
                 } => {
                     telemetry.record_idle_publication(false, Some(reason));
-                    warn!(
-                        run_id = %run_id,
-                        reuse_key_fingerprint = %reuse_key_fingerprint,
-                        reuse_key_kind = reuse_kind,
-                        reason,
-                        error,
-                        "parked sandbox failed idle admission, destroying instead of reusing"
-                    );
+                    if expected_capacity_rejection {
+                        info!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            reason,
+                            error,
+                            "parked sandbox rejected by idle capacity admission, destroying instead of reusing"
+                        );
+                    } else {
+                        warn!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            reason,
+                            error,
+                            "parked sandbox failed idle admission, destroying instead of reusing"
+                        );
+                    }
                     close_network_log_session(
                         run_id,
                         network_log_session.take(),
@@ -1838,9 +1850,10 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _finalization_ready =
-            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
-                .await;
+        let (_finalization_ready, events) = capture_async_log_events(
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context),
+        )
+        .await;
 
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.unpark_call_count(), 1);
@@ -1853,6 +1866,14 @@ mod tests {
             cleanup_state.disposition(),
             RunCleanupDisposition::DestroyCompleted
         );
+        let capacity_event = captured_event(&events, "sandbox rejected from idle reuse");
+        assert_eq!(capacity_event.level, Level::INFO);
+        assert_event_field(capacity_event, "reason", "low_bytes");
+        let lifecycle_event = captured_event(
+            &events,
+            "parked sandbox rejected by idle capacity admission, destroying instead of reusing",
+        );
+        assert_eq!(lifecycle_event.level, Level::INFO);
     }
 
     #[tokio::test]
