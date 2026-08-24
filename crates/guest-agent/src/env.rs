@@ -46,6 +46,10 @@ impl RunMetadataEnvSource {
     }
 }
 
+/// Resolve Stage 1 compatibility between an existing runner or sandbox and a
+/// new guest reader. #28914 owns the follow-up writer-cutover and reader-removal
+/// issues; remove the legacy branch only after the reader floor, sandbox drain,
+/// rollback window, and legacy-read-zero gates are complete.
 fn run_metadata_env_or_empty(
     canonical_key: &'static str,
     legacy_key: &'static str,
@@ -255,6 +259,9 @@ pub struct GuestConfigRaw {
 
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
+    ///
+    /// Returns an error when a canonical and legacy run-metadata alias pair
+    /// contains conflicting values.
     pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
             std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
