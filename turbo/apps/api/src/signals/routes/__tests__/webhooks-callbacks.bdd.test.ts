@@ -1534,12 +1534,17 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     );
     expect(resultDeliveredBytes).toBeLessThanOrEqual(900_000);
 
-    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+    const reductionLogs = context.mocks.axiomLogging.debug.mock.calls.filter(
       ([message]) => {
         return message === "Reduced oversized agent event for Axiom";
       },
     );
     expect(reductionLogs).toHaveLength(2);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some(([message]) => {
+        return message === "Reduced oversized agent event for Axiom";
+      }),
+    ).toBeFalsy();
     const assistantFields = reductionLogs[0]?.[1];
     expect(assistantFields).toStrictEqual(
       expect.objectContaining({

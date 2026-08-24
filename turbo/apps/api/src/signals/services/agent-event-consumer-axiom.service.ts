@@ -229,7 +229,7 @@ function eventDataForAxiom(
     encoder,
   );
   const deliveredBytes = serializedUtf8Bytes(reducedEvent, encoder);
-  L.warn("Reduced oversized agent event for Axiom", {
+  L.debug("Reduced oversized agent event for Axiom", {
     runId,
     sequenceNumber: event.sequenceNumber,
     eventType: event.type,
