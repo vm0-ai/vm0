@@ -86,7 +86,9 @@ pub struct ExecutionContext {
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
-    /// Trusted API-authored agent environment. Older claim responses omit it.
+    /// Trusted API-authored agent environment. Old API/stored claims omit it;
+    /// keep the default until prior API rollback targets and supported pre-field
+    /// contexts are gone. #28914 tracks that gate.
     #[serde(default)]
     pub platform_environment: Option<HashMap<String, String>>,
     #[serde(default)]

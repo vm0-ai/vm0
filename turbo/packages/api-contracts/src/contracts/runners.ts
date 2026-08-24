@@ -900,8 +900,9 @@ const storedExecutionContextObjectSchema = z.object({
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Trusted API-authored values remain duplicated in environment while old
-  // runners drain. Previous stored contexts omit this field.
+  // Old API/stored payload -> new API: previous contexts omit this field. Keep
+  // it optional until prior API rollback targets retire and no supported
+  // resumable context predates it; #28914 tracks that gate.
   platformEnvironment: z.record(z.string(), z.string()).optional(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
@@ -1005,8 +1006,9 @@ const executionContextObjectSchema = z.object({
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Trusted API-authored values are an additive overlay on legacy environment.
-  // Old API responses omit this field and old runners ignore it.
+  // Old API -> new runner: previous claims omit this field. Keep it optional
+  // until prior API rollback targets and supported pre-field claims are gone;
+  // #28914 tracks that gate. Old runners ignore it and use legacy environment.
   platformEnvironment: z.record(z.string(), z.string()).optional(),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not

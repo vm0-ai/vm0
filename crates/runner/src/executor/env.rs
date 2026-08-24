@@ -384,10 +384,11 @@ fn for_each_guest_user_env_entry<'a>(
         }
     }
 
-    // During this additive compatibility stage both channels retain today's
-    // runner-owned filtering, so dual-carried claims cannot expose a key that
-    // the previous runner scrubbed. Applying the trusted channel last still
-    // gives it deterministic precedence for effective agent environment.
+    // New runner before the namespace-ownership phase: both channels retain
+    // today's filtering, so a dual-carried claim cannot expose a key that the
+    // previous runner scrubbed. Replace this compatibility behavior only after
+    // the #28914 ownership phase activates the trusted channel; applying it last
+    // meanwhile gives deterministic precedence without changing effective env.
     for_each_filtered_environment_entry(context.platform_environment.as_ref(), &mut visit);
 }
 

@@ -6361,6 +6361,9 @@ async function buildStoredExecutionContextDraft(args: {
     featureSwitchContext: args.featureSwitchContext,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
+  // New API -> old runner: keep trusted entries in legacy environment until
+  // prior API rollback targets retire and old runners/sandboxes finish their
+  // up-to-two-hour drain. #28914 tracks removal after both gates are proven.
   const environment = {
     ...(args.includeOkouTokenSecret
       ? withoutLegacyZeroEntries(expandedEnvironment ?? undefined)
