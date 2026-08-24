@@ -507,7 +507,7 @@ async function seedProtectedHistory(client: Client): Promise<void> {
   }
 }
 
-async function seedAndAssertProductionShapedSearchPlan(
+async function seedAndAssertProductionShapedSearchLookups(
   client: Client,
 ): Promise<void> {
   await client.query(
@@ -531,48 +531,35 @@ async function seedAndAssertProductionShapedSearchPlan(
     ],
   );
   await client.query(`ANALYZE "chat_event_search_messages"`);
-  await client.query(`
-    CREATE TEMP TABLE "_stage8_plan_artifacts" (
-      "id" uuid PRIMARY KEY,
-      "user_id" text NOT NULL,
-      "org_id" text NOT NULL
-    )
-  `);
-  await client.query(
-    `
-      INSERT INTO "_stage8_plan_artifacts" ("id", "user_id", "org_id")
-      SELECT "id", 'stage8-artifact-user', 'stage8-artifact-org'
-      FROM unnest($1::uuid[]) AS "artifact"("id")
-    `,
-    [artifactIds],
-  );
-  await client.query(`ANALYZE "_stage8_plan_artifacts"`);
 
-  const plan = await client.query<{ "QUERY PLAN": string }>(`
-    EXPLAIN (COSTS OFF)
-    SELECT "message"."chat_thread_id", "message"."seq_id"
-    FROM "chat_event_search_messages" AS "message"
-    INNER JOIN "_stage8_plan_artifacts" AS "artifact"
-      ON "artifact"."user_id" = "message"."user_id"
-      AND "artifact"."org_id" = "message"."org_id"
-      AND "artifact"."id" = "message"."agent_compose_id"
-  `);
-  const planText = plan.rows
-    .map((row) => {
-      return row["QUERY PLAN"];
-    })
-    .join("\n");
-  assert.match(
-    planText,
-    /chat_event_search_messages_user_org_agent_created_idx/u,
-    `artifact search closure must use the frozen legacy composite index:\n${planText}`,
-  );
-  assert.doesNotMatch(
-    planText,
-    /Seq Scan on chat_event_search_messages/u,
-    `artifact search closure must not scan the production-shaped table:\n${planText}`,
-  );
-  await client.query(`DROP TABLE "_stage8_plan_artifacts"`);
+  for (const artifactId of artifactIds) {
+    const plan = await client.query<{ "QUERY PLAN": string }>(
+      `
+        EXPLAIN (COSTS OFF)
+        SELECT "message"."chat_thread_id", "message"."seq_id"
+        FROM "chat_event_search_messages" AS "message"
+        WHERE "message"."user_id" = $1
+          AND "message"."org_id" = $2
+          AND "message"."agent_compose_id" = $3
+      `,
+      ["stage8-artifact-user", "stage8-artifact-org", artifactId],
+    );
+    const planText = plan.rows
+      .map((row) => {
+        return row["QUERY PLAN"];
+      })
+      .join("\n");
+    assert.match(
+      planText,
+      /chat_event_search_messages_user_org_agent_created_idx/u,
+      `artifact search lookup must use the frozen legacy composite index:\n${planText}`,
+    );
+    assert.doesNotMatch(
+      planText,
+      /Seq Scan on chat_event_search_messages/u,
+      `artifact search lookup must not scan the production-shaped table:\n${planText}`,
+    );
+  }
 }
 
 async function assertProductionShapedSearchRowsPreserved(
@@ -906,13 +893,21 @@ function assertStaticBoundary(): void {
   );
   assert.match(
     productionMigrationSql,
-    /FROM "chat_event_search_messages" AS "message"\s+INNER JOIN "_stage8_approved_artifacts" AS "artifact"\s+ON "artifact"\."user_id" = "message"\."user_id"\s+AND "artifact"\."org_id" = "message"\."org_id"\s+AND "artifact"\."id" = "message"\."agent_compose_id"/u,
+    /FOR artifact IN\s+SELECT "id", "user_id", "org_id"\s+FROM "_stage8_approved_artifacts"\s+ORDER BY "id"\s+LOOP/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /EXECUTE \$stage8_search_lookup\$\s+INSERT INTO "_stage8_artifact_search_messages"[\s\S]*?FROM "chat_event_search_messages" AS "message"\s+WHERE "message"\."user_id" = \$1\s+AND "message"\."org_id" = \$2\s+AND "message"\."agent_compose_id" = \$3\s+\$stage8_search_lookup\$\s+USING artifact\.user_id, artifact\.org_id, artifact\.id/u,
   );
   assert.equal(
     productionMigrationSql.match(/FROM "chat_event_search_messages"(?:\s|$)/gu)
       ?.length,
     3,
-    "only the two nonempty probes and index-bounded artifact freeze may read the search table",
+    "only the two nonempty probes and per-artifact lookup may read the search table",
+  );
+  assert.doesNotMatch(
+    productionMigrationSql,
+    /enable_seqscan|enable_hashjoin|enable_mergejoin/u,
   );
   assert.doesNotMatch(
     productionMigrationSql,
@@ -1120,7 +1115,7 @@ async function validateExactCleanupAndLockRetry(): Promise<void> {
     const client = await connect(database);
     try {
       await seedApprovedClosure(client);
-      await seedAndAssertProductionShapedSearchPlan(client);
+      await seedAndAssertProductionShapedSearchLookups(client);
       await runMigration(client, syntheticMigrationSql());
       await assertFinalState(client);
       await assertProductionShapedSearchRowsPreserved(client);

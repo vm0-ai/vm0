@@ -282,8 +282,8 @@ WHERE "zero_agent"."id" IS NULL;--> statement-breakpoint
 ALTER TABLE "_stage8_approved_artifacts"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
 
--- Give the planner the exact six-row cardinality before the composite-key
--- closure joins below.
+-- Give the planner the exact six-row cardinality for the bounded temp-table
+-- gates below.
 ANALYZE "_stage8_approved_artifacts";--> statement-breakpoint
 
 DO $$
@@ -391,16 +391,37 @@ INNER JOIN "_stage8_approved_artifacts" AS "artifact"
 ALTER TABLE "_stage8_artifact_threads"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
 
-CREATE TEMP TABLE "_stage8_artifact_search_messages" ON COMMIT DROP AS
-SELECT "message"."chat_thread_id", "message"."seq_id"
-FROM "chat_event_search_messages" AS "message"
-INNER JOIN "_stage8_approved_artifacts" AS "artifact"
-  ON "artifact"."user_id" = "message"."user_id"
-  AND "artifact"."org_id" = "message"."org_id"
-  AND "artifact"."id" = "message"."agent_compose_id";--> statement-breakpoint
+CREATE TEMP TABLE "_stage8_artifact_search_messages" (
+  "chat_thread_id" uuid NOT NULL,
+  "seq_id" bigint NOT NULL,
+  PRIMARY KEY ("chat_thread_id", "seq_id")
+) ON COMMIT DROP;--> statement-breakpoint
 
-ALTER TABLE "_stage8_artifact_search_messages"
-  ADD PRIMARY KEY ("chat_thread_id", "seq_id");--> statement-breakpoint
+DO $$
+DECLARE
+  artifact record;
+BEGIN
+  FOR artifact IN
+    SELECT "id", "user_id", "org_id"
+    FROM "_stage8_approved_artifacts"
+    ORDER BY "id"
+  LOOP
+    -- Dynamic execution replans each of the exact six lookups with its
+    -- composite index keys instead of admitting a whole-table hash join.
+    EXECUTE $stage8_search_lookup$
+      INSERT INTO "_stage8_artifact_search_messages" (
+        "chat_thread_id", "seq_id"
+      )
+      SELECT "message"."chat_thread_id", "message"."seq_id"
+      FROM "chat_event_search_messages" AS "message"
+      WHERE "message"."user_id" = $1
+        AND "message"."org_id" = $2
+        AND "message"."agent_compose_id" = $3
+    $stage8_search_lookup$
+    USING artifact.user_id, artifact.org_id, artifact.id;
+  END LOOP;
+END
+$$;--> statement-breakpoint
 
 CREATE TEMP TABLE "_stage8_artifact_versions" ON COMMIT DROP AS
 SELECT "version"."id"
