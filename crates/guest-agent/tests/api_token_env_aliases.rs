@@ -282,7 +282,7 @@ fn assert_http_mode(tmp: &Path, case: SuccessCase, raw: GuestConfigRaw) -> TestR
         }
     };
     assert!(
-        http.has_api() == !case.expected_value.is_empty(),
+        http.has_api() != case.expected_value.is_empty(),
         "{} constructed the wrong HTTP client mode",
         case.name
     );
