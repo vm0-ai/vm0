@@ -3620,6 +3620,25 @@ describe("chat composer templates", () => {
       }
       return found;
     });
+    const secondaryCard = dialog.querySelector(
+      `[data-imported-presentation-template="${secondaryTemplateId}"]`,
+    );
+    if (!(secondaryCard instanceof HTMLElement)) {
+      throw new Error("Secondary template card not found");
+    }
+    expect(within(card).getByRole("img")).toHaveAttribute("loading", "eager");
+    expect(within(card).getByRole("img")).toHaveAttribute(
+      "fetchpriority",
+      "high",
+    );
+    expect(within(secondaryCard).getByRole("img")).toHaveAttribute(
+      "loading",
+      "lazy",
+    );
+    expect(within(secondaryCard).getByRole("img")).toHaveAttribute(
+      "fetchpriority",
+      "auto",
+    );
     const previewButton = within(card).getByLabelText(
       "Preview Primary draft deck at current slide",
     );
