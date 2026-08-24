@@ -31,8 +31,8 @@ import {
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-  zeroUserPermissionGrantsContract,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+  userPermissionGrantsContract,
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
   customConnectorByIdContract,
   customConnectorsContract,
@@ -912,7 +912,7 @@ describe("team page navigation", () => {
 
   it("shows a permission grants error from an agent page", async () => {
     mockTeamAPIs();
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(400, {
         error: {
           message: "Permission grants unavailable",
@@ -1443,11 +1443,11 @@ describe("team page navigation", () => {
       return respond(200, { permissions });
     });
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedApplies.push(body);
         return respond(
@@ -1523,7 +1523,7 @@ describe("team page navigation", () => {
   it("ignores expired allow grants when opening connector permissions", async () => {
     mockNow(context.signal);
     mockTeamAPIs();
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: researchAgentId,
@@ -1611,7 +1611,7 @@ describe("team page navigation", () => {
         return createPersistedGrant(permission, index === 0 ? null : expiresAt);
       }),
     ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
 
@@ -1698,11 +1698,11 @@ describe("team page navigation", () => {
         updatedAt: "2026-03-01T00:00:00.000Z",
       },
     ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedApplies.push(body);
         const appliedGrants: UserPermissionGrantResponse[] = body.grants.map(

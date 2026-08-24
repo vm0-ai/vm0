@@ -1,4 +1,4 @@
-import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type {

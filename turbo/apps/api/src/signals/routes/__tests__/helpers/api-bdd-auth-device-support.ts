@@ -1,6 +1,6 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorsBySlugContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
   personalModelProvidersByTypeContract,
@@ -162,7 +162,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
     ): Promise<ConnectorResponse> {
       const response = await accept(
-        authDeviceSupportApp(context)(zeroConnectorsBySlugContract).get({
+        authDeviceSupportApp(context)(connectorsBySlugContract).get({
           params: { connectorSlug },
           headers: authenticate(context, actor),
         }),

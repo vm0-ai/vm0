@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
@@ -63,7 +63,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorManualGrantContract,
+      connectorManualGrantContract,
     ).connect({
       params: { connectorSlug: "openai" },
       body: {
@@ -103,7 +103,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({ params: { connectorSlug: "github" }, headers: {} }),
@@ -117,7 +117,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -135,7 +135,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -155,7 +155,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -185,7 +185,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -208,7 +208,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -238,7 +238,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     });
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({

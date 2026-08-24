@@ -1003,7 +1003,7 @@ export {
   type UserConnectorsContract,
 } from "./user-connectors";
 export {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   userPermissionGrantScopeSchema,
   userPermissionGrantActionSchema,
   userPermissionGrantApplyModeSchema,
@@ -1018,24 +1018,24 @@ export {
   type ListUserPermissionGrantsQuery,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
-  type ZeroUserPermissionGrantsContract,
-} from "./zero-user-permission-grants";
+  type UserPermissionGrantsContract,
+} from "./user-permission-grants";
 export {
-  zeroConnectorsMainContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsSearchContract,
-  type ZeroConnectorsMainContract,
-  type ZeroConnectorsBySlugContract,
-  type ZeroConnectorScopeDiffContract,
-  type ZeroConnectorManualGrantContract,
-  type ZeroConnectorNoAuthGrantContract,
-  type ZeroConnectorOauthDeviceAuthSessionContract,
-  type ZeroConnectorsSearchContract,
-} from "./zero-connectors";
+  connectorsMainContract,
+  connectorsBySlugContract,
+  connectorScopeDiffContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorsSearchContract,
+  type ConnectorsMainContract,
+  type ConnectorsBySlugContract,
+  type ConnectorScopeDiffContract,
+  type ConnectorManualGrantContract,
+  type ConnectorNoAuthGrantContract,
+  type ConnectorOauthDeviceAuthSessionContract,
+  type ConnectorsSearchContract,
+} from "./connectors";
 export {
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
   publicConnectorCatalogIconSchema,

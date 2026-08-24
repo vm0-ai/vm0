@@ -8,9 +8,9 @@ import {
   type AgentInstructionsResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
@@ -103,7 +103,7 @@ export async function listUserPermissionGrants(
   agentId: string,
 ): Promise<UserPermissionGrant[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroUserPermissionGrantsContract, config);
+  const client = initClient(userPermissionGrantsContract, config);
   const result = await client.list({ query: { agentId } });
   if (result.status === 200) {
     return result.body;

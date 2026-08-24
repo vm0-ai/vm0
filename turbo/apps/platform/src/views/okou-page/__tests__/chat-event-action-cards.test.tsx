@@ -1,10 +1,10 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   browserContract,
   type BrowserSession,
@@ -28,9 +28,9 @@ import {
   type CustomConnectorMcpResponse,
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -1471,7 +1471,7 @@ describe("chat event action cards", () => {
     });
     mockAgentConnectorAuthorizations(["gmail"]);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("gmail");
         expect(body).toStrictEqual({
@@ -1594,7 +1594,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           account: { intent: "single-account" },
@@ -1698,7 +1698,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
@@ -1902,7 +1902,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         oauthStartRequests += 1;
         expect(params.connectorSlug).toBe("gmail");
@@ -2127,7 +2127,7 @@ describe("chat event action cards", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedPermissionGrantBody = body;
         const grant = body.grants[0];
@@ -2272,7 +2272,7 @@ describe("chat event action cards", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedPermissionGrantBodies.push(body);
         const grant = body.grants[0];
@@ -2413,7 +2413,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -2652,7 +2652,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("future-connector");
         expect(body.agentId).toBe(AGENT_ID);
@@ -2784,7 +2784,7 @@ describe("chat event action cards", () => {
     mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
@@ -2797,7 +2797,7 @@ describe("chat event action cards", () => {
         },
       ]);
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.apply, ({ respond }) => {
       applyRequests += 1;
       return respond(200, []);
     });
@@ -2849,7 +2849,7 @@ describe("chat event action cards", () => {
     mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
@@ -2862,7 +2862,7 @@ describe("chat event action cards", () => {
         },
       ]);
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.apply, ({ respond }) => {
       applyRequests += 1;
       return respond(200, [
         {
@@ -2926,7 +2926,7 @@ describe("chat event action cards", () => {
   it("shows already denied permission action cards as read-only after refresh", async () => {
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=deny`;
     let applyRequests = 0;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
@@ -2939,7 +2939,7 @@ describe("chat event action cards", () => {
         },
       ]);
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.apply, ({ respond }) => {
       applyRequests += 1;
       return respond(200, []);
     });
@@ -2988,7 +2988,7 @@ describe("chat event action cards", () => {
     mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let grantAllowed = false;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(
         200,
         grantAllowed
@@ -3632,7 +3632,7 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
+      userPermissionGrantsContract.list,
       async ({ signal, respond }) => {
         if (!pendingRequest) {
           return respond(200, []);
@@ -3650,7 +3650,7 @@ describe("chat event action cards", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -3730,7 +3730,7 @@ describe("chat event action cards", () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let capturedBody: unknown = null;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       listRequests += 1;
       if (listRequests === 1) {
         throw new Error("temporary permission grant load failure");
@@ -3738,7 +3738,7 @@ describe("chat event action cards", () => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -3827,7 +3827,7 @@ describe("chat event action cards", () => {
       throw new Error("Permission grant list request did not start");
     };
     context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
+      userPermissionGrantsContract.list,
       async ({ deferred, respond }) => {
         const listDeferred = deferred<void>();
         resolveList = () => {
@@ -3890,7 +3890,7 @@ describe("chat event action cards", () => {
   it("does not retry non-transient permission action loading failures", async () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       listRequests += 1;
       return respond(403, {
         error: {
@@ -3948,10 +3948,10 @@ describe("chat event action cards", () => {
   it("shows permission save failures outside the action button", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.apply, ({ respond }) => {
       return respond(403, {
         error: {
           code: "FORBIDDEN",
@@ -4061,7 +4061,7 @@ describe("chat event action cards", () => {
       throw new Error("Permission grant reload request did not start");
     };
     context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
+      userPermissionGrantsContract.list,
       async ({ deferred, respond }) => {
         listRequests += 1;
         if (listRequests === 1) {
@@ -4078,7 +4078,7 @@ describe("chat event action cards", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -4163,11 +4163,11 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -4250,11 +4250,11 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const grant = body.grants[0];
         if (!grant) {
@@ -4345,11 +4345,11 @@ describe("chat event action cards", () => {
         updatedAt: "2026-06-09T10:30:00Z",
       },
     ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const appliedGrant = body.grants[0];
         if (!appliedGrant) {

@@ -22,7 +22,7 @@ import {
   connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
@@ -3410,14 +3410,14 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
+      userPermissionGrantsContract.list,
       ({ query, respond }) => {
         permissionGrantAgentIds.push(query.agentId);
         return respond(200, []);
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         appliedPermissionAgentId = body.agentId;
         return respond(200, []);

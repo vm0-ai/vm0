@@ -6,7 +6,7 @@ import {
   type GithubConnectUserBody,
   type GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
-import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorsBySlugContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -391,7 +391,7 @@ export function createGithubBddApi(context: TestContext) {
 
     async readGithubConnector(actor: ApiTestUser) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       );
       const response = await accept(
         client.get({

@@ -17,13 +17,13 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorExternalCodeSessionContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorExternalCodeSessionContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorScopeDiffContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
@@ -306,7 +306,7 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
 }
 
 export const apiConnectorsHandlers = [
-  mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+  mockApi(connectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
       connectorProvidedBindings: [],
@@ -438,31 +438,25 @@ export const apiConnectorsHandlers = [
     },
   ),
 
-  mockApi(
-    zeroConnectorManualGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
-      );
-      upsertMockConnector(connector);
-      return respond(200, connector);
-    },
-  ),
+  mockApi(connectorManualGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
 
-  mockApi(
-    zeroConnectorNoAuthGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
-      );
-      upsertMockConnector(connector);
-      return respond(200, connector);
-    },
-  ),
+  mockApi(connectorNoAuthGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
 
-  mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+  mockApi(connectorScopeDiffContract.getScopeDiff, ({ respond }) => {
     return respond(200, {
       addedScopes: [],
       removedScopes: [],
@@ -472,7 +466,7 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(
-    zeroConnectorOauthDeviceAuthSessionContract.create,
+    connectorOauthDeviceAuthSessionContract.create,
     ({ params, respond }) => {
       const response = {
         ...defaultOauthDeviceAuthSessionStartResponse(params.connectorSlug),
@@ -494,7 +488,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorOauthDeviceAuthSessionContract.poll,
+    connectorOauthDeviceAuthSessionContract.poll,
     ({ params, respond }) => {
       const response =
         mockOauthDeviceAuthSessionPollResponses.shift() ??
@@ -511,7 +505,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorExternalCodeSessionContract.create,
+    connectorExternalCodeSessionContract.create,
     ({ params, respond }) => {
       return respond(200, {
         ...defaultExternalCodeSessionStartResponse(params.connectorSlug),
@@ -524,7 +518,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorExternalCodeSessionContract.complete,
+    connectorExternalCodeSessionContract.complete,
     ({ body, params, respond }) => {
       if (!body.code) {
         return respond(400, {

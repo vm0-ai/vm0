@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorOauthStartContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import {
   afterEach,
   beforeEach,
@@ -35,7 +35,7 @@ async function startGithubOauth(marker: string): Promise<string> {
   mockAuthenticatedSession(marker);
   const response = await accept(
     setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorOauthStartContract,
+      connectorOauthStartContract,
     ).start({
       params: { connectorSlug: "github" },
       headers: { authorization: "Bearer clerk-session" },

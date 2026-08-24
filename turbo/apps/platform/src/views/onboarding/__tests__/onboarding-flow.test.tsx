@@ -17,9 +17,9 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 
 import {
   click,
@@ -804,7 +804,7 @@ describe("onboarding flow", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("github");
         return respond(200, {
@@ -896,7 +896,7 @@ describe("onboarding flow", () => {
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");

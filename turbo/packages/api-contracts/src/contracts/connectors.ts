@@ -22,9 +22,9 @@ import {
 const c = initContract();
 
 /**
- * Zero contract for GET /api/connectors
+ * Contract for GET /api/connectors
  */
-export const zeroConnectorsMainContract = c.router({
+export const connectorsMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/connectors",
@@ -40,9 +40,9 @@ export const zeroConnectorsMainContract = c.router({
 });
 
 /**
- * Zero contract for GET /api/connectors/:connectorSlug
+ * Contract for GET /api/connectors/:connectorSlug
  */
-export const zeroConnectorsBySlugContract = c.router({
+export const connectorsBySlugContract = c.router({
   get: {
     method: "GET",
     path: "/api/connectors/:connectorSlug",
@@ -59,10 +59,10 @@ export const zeroConnectorsBySlugContract = c.router({
 });
 
 /**
- * Zero contract for GET /api/connectors/:connectorSlug/scope-diff
+ * Contract for GET /api/connectors/:connectorSlug/scope-diff
  * App-layer endpoint (direct service call, no proxy)
  */
-export const zeroConnectorScopeDiffContract = c.router({
+export const connectorScopeDiffContract = c.router({
   getScopeDiff: {
     method: "GET",
     path: "/api/connectors/:connectorSlug/scope-diff",
@@ -78,7 +78,7 @@ export const zeroConnectorScopeDiffContract = c.router({
   },
 });
 
-export const zeroConnectorOauthStartContract = c.router({
+export const connectorOauthStartContract = c.router({
   start: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/oauth/start",
@@ -104,7 +104,7 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-export const zeroConnectorOpenIdStartContract = c.router({
+export const connectorOpenIdStartContract = c.router({
   start: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/openid/start",
@@ -129,7 +129,7 @@ export const zeroConnectorOpenIdStartContract = c.router({
   },
 });
 
-export const zeroConnectorManualGrantContract = c.router({
+export const connectorManualGrantContract = c.router({
   connect: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/manual-grant",
@@ -155,7 +155,7 @@ export const zeroConnectorManualGrantContract = c.router({
   },
 });
 
-export const zeroConnectorNoAuthGrantContract = c.router({
+export const connectorNoAuthGrantContract = c.router({
   connect: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/no-auth",
@@ -180,7 +180,7 @@ export const zeroConnectorNoAuthGrantContract = c.router({
   },
 });
 
-export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
+export const connectorOauthDeviceAuthSessionContract = c.router({
   create: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/oauth/device/sessions",
@@ -225,7 +225,7 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   },
 });
 
-export const zeroConnectorExternalCodeSessionContract = c.router({
+export const connectorExternalCodeSessionContract = c.router({
   create: {
     method: "POST",
     path: "/api/connectors/:connectorSlug/external-code/sessions",
@@ -287,10 +287,10 @@ export type ConnectorSearchResponse = z.infer<
 >;
 
 /**
- * Zero contract for GET /api/connectors/search
+ * Contract for GET /api/connectors/search
  * Returns up to 100 featured connectors or slug/label search results.
  */
-export const zeroConnectorsSearchContract = c.router({
+export const connectorsSearchContract = c.router({
   search: {
     method: "GET",
     path: "/api/connectors/search",
@@ -306,16 +306,13 @@ export const zeroConnectorsSearchContract = c.router({
   },
 });
 
-export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
-export type ZeroConnectorsBySlugContract = typeof zeroConnectorsBySlugContract;
-export type ZeroConnectorScopeDiffContract =
-  typeof zeroConnectorScopeDiffContract;
-export type ZeroConnectorManualGrantContract =
-  typeof zeroConnectorManualGrantContract;
-export type ZeroConnectorNoAuthGrantContract =
-  typeof zeroConnectorNoAuthGrantContract;
-export type ZeroConnectorOauthDeviceAuthSessionContract =
-  typeof zeroConnectorOauthDeviceAuthSessionContract;
-export type ZeroConnectorExternalCodeSessionContract =
-  typeof zeroConnectorExternalCodeSessionContract;
-export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;
+export type ConnectorsMainContract = typeof connectorsMainContract;
+export type ConnectorsBySlugContract = typeof connectorsBySlugContract;
+export type ConnectorScopeDiffContract = typeof connectorScopeDiffContract;
+export type ConnectorManualGrantContract = typeof connectorManualGrantContract;
+export type ConnectorNoAuthGrantContract = typeof connectorNoAuthGrantContract;
+export type ConnectorOauthDeviceAuthSessionContract =
+  typeof connectorOauthDeviceAuthSessionContract;
+export type ConnectorExternalCodeSessionContract =
+  typeof connectorExternalCodeSessionContract;
+export type ConnectorsSearchContract = typeof connectorsSearchContract;

@@ -11,16 +11,16 @@ import {
   type TestSystemStoragePresignedUrlCacheStateActionBody,
 } from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorsSearchContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorOpenIdStartContract,
+  connectorsSearchContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
-import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
   workflowAutomationsContract,
   workflowsCollectionContract,
@@ -1810,7 +1810,7 @@ describe("connector catalog valid lifecycle", () => {
       routes: connectorCatalogRoutes,
     })(connectorCatalogContract);
     const searchClient = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
@@ -2875,7 +2875,7 @@ describe("connector catalog valid lifecycle", () => {
     ]);
     const grants = await accept(
       setupApp({ context, routes: userPermissionGrantsRoutes })(
-        zeroUserPermissionGrantsContract,
+        userPermissionGrantsContract,
       ).apply({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -2980,7 +2980,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const client = setupApp({ context, routes: userPermissionGrantsRoutes })(
-      zeroUserPermissionGrantsContract,
+      userPermissionGrantsContract,
     );
     await accept(
       client.apply({
@@ -3793,7 +3793,7 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorOpenIdStartContract,
+        connectorOpenIdStartContract,
       ).start({
         params: { connectorSlug: "steam" },
         headers,
@@ -4734,7 +4734,7 @@ describe("connector catalog valid lifecycle", () => {
     );
     const searchResponse = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsSearchContract,
+        connectorsSearchContract,
       ).search({
         headers,
         query: {},

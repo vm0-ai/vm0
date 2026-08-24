@@ -15,9 +15,9 @@ import {
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import {
-  zeroConnectorOauthStartContract,
-  zeroConnectorOpenIdStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorOauthStartContract,
+  connectorOpenIdStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -214,7 +214,7 @@ function startGoogleDriveConnectAndRun(
         params.authMethod.grantKind === "openid-auth"
           ? await accept(
               params
-                .createClient(zeroConnectorOpenIdStartContract, {
+                .createClient(connectorOpenIdStartContract, {
                   apiBase: "api",
                 })
                 .start(request),
@@ -222,7 +222,7 @@ function startGoogleDriveConnectAndRun(
             )
           : await accept(
               params
-                .createClient(zeroConnectorOauthStartContract, {
+                .createClient(connectorOauthStartContract, {
                   apiBase: OAUTH_API_BASE,
                 })
                 .start({

@@ -1,9 +1,9 @@
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorCatalogContract,
@@ -117,7 +117,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
   });
 
   context.mocks.api(
-    zeroConnectorOauthStartContract.start,
+    connectorOauthStartContract.start,
     ({ body, params, respond }) => {
       expect(body).toStrictEqual({
         account: { intent: "single-account" },
@@ -146,7 +146,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
   });
 
   context.mocks.api(
-    zeroConnectorOpenIdStartContract.start,
+    connectorOpenIdStartContract.start,
     ({ body, params, respond }) => {
       expect(body).toStrictEqual({
         account: { intent: "single-account" },
@@ -160,7 +160,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
       });
     },
   );
-  context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+  context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
     return never();
   });
   context.mocks.browser.open(authWindow);
@@ -344,7 +344,7 @@ describe("directed connector authorize page", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);
@@ -402,7 +402,7 @@ describe("directed connector authorize page", () => {
   it("opens the connect dialog when catalog does not expose direct OAuth", async () => {
     let startCalls = 0;
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         startCalls += 1;
         return respond(200, {
@@ -523,7 +523,7 @@ describe("directed connector authorize page", () => {
     let connectCalls = 0;
     let authorized = false;
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");

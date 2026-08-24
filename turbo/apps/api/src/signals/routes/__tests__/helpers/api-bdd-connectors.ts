@@ -45,16 +45,16 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorExternalCodeSessionContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorOauthStartContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-  zeroConnectorsSearchContract,
+  connectorManualGrantContract,
+  connectorExternalCodeSessionContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorOauthStartContract,
+  connectorScopeDiffContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+  connectorsSearchContract,
   type ConnectorSearchResponse,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+} from "@okouai/api-contracts/contracts/connectors";
 import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { z } from "zod";
@@ -1341,7 +1341,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsMainContract,
+        connectorsMainContract,
       );
       return await accept(
         client.list({ headers: authenticate(actor) }),
@@ -1361,7 +1361,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsSearchContract,
+        connectorsSearchContract,
       );
       return await accept(
         client.search({ query: { keyword }, headers: authenticate(actor) }),
@@ -1384,7 +1384,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       );
       return await accept(
         client.get({
@@ -1431,7 +1431,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorScopeDiffContract,
+        connectorScopeDiffContract,
       );
       return await accept(
         client.getScopeDiff({
@@ -1464,7 +1464,7 @@ export function createConnectorBddApi(context: TestContext) {
       },
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorManualGrantContract,
+        connectorManualGrantContract,
       );
       return await accept(
         client.connect({
@@ -1513,7 +1513,7 @@ export function createConnectorBddApi(context: TestContext) {
       },
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorOauthStartContract,
+        connectorOauthStartContract,
       );
       return await accept(
         client.start({
@@ -1692,7 +1692,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: connectorsOauthDeviceAuthRoutes,
-      })(zeroConnectorOauthDeviceAuthSessionContract);
+      })(connectorOauthDeviceAuthSessionContract);
       return await accept(
         client.create({
           params: { connectorSlug },
@@ -1732,7 +1732,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: connectorsOauthDeviceAuthRoutes,
-      })(zeroConnectorOauthDeviceAuthSessionContract);
+      })(connectorOauthDeviceAuthSessionContract);
       return await accept(
         client.poll({
           params: { connectorSlug, sessionId },
@@ -1770,7 +1770,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: connectorsExternalCodeRoutes,
-      })(zeroConnectorExternalCodeSessionContract);
+      })(connectorExternalCodeSessionContract);
       return await accept(
         client.create({
           params: { connectorSlug },
@@ -1794,7 +1794,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: connectorsExternalCodeRoutes,
-      })(zeroConnectorExternalCodeSessionContract);
+      })(connectorExternalCodeSessionContract);
       return await accept(
         client.complete({
           params: { connectorSlug, sessionId: args.sessionId },

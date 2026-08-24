@@ -15,15 +15,15 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
-  zeroConnectorScopeDiffContract,
-  zeroConnectorExternalCodeSessionContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorScopeDiffContract,
+  connectorExternalCodeSessionContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type {
   InitClientArgs,
@@ -724,7 +724,7 @@ export const scopeDiff$ = computed(async (get) => {
     return null;
   }
   const createClient = get(apiClient$);
-  const client = createClient(zeroConnectorScopeDiffContract);
+  const client = createClient(connectorScopeDiffContract);
   const result = await accept(
     client.getScopeDiff({ params: { connectorSlug } }),
     [200],
@@ -901,7 +901,7 @@ export const submitManualGrant$ = command(
     return await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
-        const connectorClient = createClient(zeroConnectorManualGrantContract);
+        const connectorClient = createClient(connectorManualGrantContract);
         await accept(
           connectorClient.connect({
             params: { connectorSlug },
@@ -975,7 +975,7 @@ export const connectConnectorNoAuth$ = command(
     return await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
-        const connectorClient = createClient(zeroConnectorNoAuthGrantContract);
+        const connectorClient = createClient(connectorNoAuthGrantContract);
         await accept(
           connectorClient.connect({
             params: { connectorSlug },
@@ -1180,7 +1180,7 @@ function connectorOAuthDeviceAuthStartBody(
 }
 
 type ConnectorOAuthDeviceAuthSessionClient = InitClientReturn<
-  typeof zeroConnectorOauthDeviceAuthSessionContract,
+  typeof connectorOauthDeviceAuthSessionContract,
   InitClientArgs
 >;
 
@@ -1436,7 +1436,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     }: PollConnectorOAuthDeviceAuthArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const client = createClient(zeroConnectorOauthDeviceAuthSessionContract, {
+    const client = createClient(connectorOauthDeviceAuthSessionContract, {
       apiBase: OAUTH_API_BASE,
     });
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
@@ -1529,10 +1529,9 @@ const connectConnectorOAuthDeviceAuth$ = command(
         });
 
         const createClient = get(apiClient$);
-        const client = createClient(
-          zeroConnectorOauthDeviceAuthSessionContract,
-          { apiBase: OAUTH_API_BASE },
-        );
+        const client = createClient(connectorOauthDeviceAuthSessionContract, {
+          apiBase: OAUTH_API_BASE,
+        });
         const startResponse = await tapError(
           accept(
             client.create({
@@ -1783,7 +1782,7 @@ export const connectConnectorExternalCode$ = command(
         });
 
         const createClient = get(apiClient$);
-        const client = createClient(zeroConnectorExternalCodeSessionContract, {
+        const client = createClient(connectorExternalCodeSessionContract, {
           apiBase: OAUTH_API_BASE,
         });
         const startResponse = await tapError(
@@ -1909,7 +1908,7 @@ const completeConnectorExternalCode$ = command(
       (async () => {
         const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
         const createClient = get(apiClient$);
-        const client = createClient(zeroConnectorExternalCodeSessionContract, {
+        const client = createClient(connectorExternalCodeSessionContract, {
           apiBase: OAUTH_API_BASE,
         });
         const completeResult = await accept(
@@ -2065,7 +2064,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   let initialUpdatedAt: string | null | undefined;
 
   return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
-    const client = get(apiClient$)(zeroConnectorsMainContract);
+    const client = get(apiClient$)(connectorsMainContract);
     const result = await accept(
       client.list({ fetchOptions: { signal: sig } }),
       [200],
@@ -2163,7 +2162,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
         const startResult =
           args.method.grantKind === "openid-auth"
             ? await accept(
-                get(apiClient$)(zeroConnectorOpenIdStartContract, {
+                get(apiClient$)(connectorOpenIdStartContract, {
                   apiBase: "api",
                 }).start({
                   params: { connectorSlug: args.connectorSlug },
@@ -2178,7 +2177,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 [200],
               )
             : await accept(
-                get(apiClient$)(zeroConnectorOauthStartContract, {
+                get(apiClient$)(connectorOauthStartContract, {
                   apiBase: OAUTH_API_BASE,
                 }).start({
                   params: { connectorSlug: args.connectorSlug },

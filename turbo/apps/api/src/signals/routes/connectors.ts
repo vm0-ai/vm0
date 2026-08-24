@@ -1,14 +1,14 @@
 import { command, computed } from "ccstate";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-  zeroConnectorsSearchContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+  connectorScopeDiffContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+  connectorsSearchContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
@@ -183,7 +183,7 @@ const getConnectorListInner$ = computed(async (get) => {
 
 const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
+  const params = get(pathParamsOf(connectorsBySlugContract.get));
   const connector = await get(
     connectorBySlug({
       orgId: auth.orgId,
@@ -200,7 +200,7 @@ const getConnectorBySlugInner$ = computed(async (get) => {
 
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
+  const params = get(pathParamsOf(connectorScopeDiffContract.getScopeDiff));
   const diff = await get(
     connectorScopeDiff({
       orgId: auth.orgId,
@@ -217,7 +217,7 @@ const getScopeDiffInner$ = computed(async (get) => {
 
 const searchConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroConnectorsSearchContract.search));
+  const query = get(queryOf(connectorsSearchContract.search));
   const connectors = await settle(
     get(
       connectorSearch({
@@ -244,9 +244,9 @@ const searchConnectorsInner$ = computed(async (get) => {
 const connectManualGrantConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorManualGrantContract.connect));
+    const params = get(pathParamsOf(connectorManualGrantContract.connect));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorManualGrantContract.connect),
+      bodyResultOf(connectorManualGrantContract.connect),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -335,9 +335,9 @@ const connectManualGrantConnectorInner$ = command(
 const connectNoAuthConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorNoAuthGrantContract.connect));
+    const params = get(pathParamsOf(connectorNoAuthGrantContract.connect));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorNoAuthGrantContract.connect),
+      bodyResultOf(connectorNoAuthGrantContract.connect),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -421,9 +421,9 @@ const connectNoAuthConnectorInner$ = command(
 
 const startConnectorOauthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(zeroConnectorOauthStartContract.start));
+    const params = get(pathParamsOf(connectorOauthStartContract.start));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorOauthStartContract.start),
+      bodyResultOf(connectorOauthStartContract.start),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -552,9 +552,9 @@ const startConnectorOauthInner$ = command(
 
 const startConnectorOpenIdInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(zeroConnectorOpenIdStartContract.start));
+    const params = get(pathParamsOf(connectorOpenIdStartContract.start));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorOpenIdStartContract.start),
+      bodyResultOf(connectorOpenIdStartContract.start),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -674,35 +674,35 @@ const startConnectorOpenIdInner$ = command(
 
 export const connectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorManualGrantContract.connect,
+    route: connectorManualGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectManualGrantConnectorInner$),
   },
   {
-    route: zeroConnectorNoAuthGrantContract.connect,
+    route: connectorNoAuthGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectNoAuthConnectorInner$),
   },
   {
-    route: zeroConnectorsSearchContract.search,
+    route: connectorsSearchContract.search,
     handler: authRoute(connectorReadAuth, searchConnectorsInner$),
   },
   {
-    route: zeroConnectorsMainContract.list,
+    route: connectorsMainContract.list,
     handler: authRoute(connectorReadAuth, getConnectorListInner$),
   },
   {
-    route: zeroConnectorScopeDiffContract.getScopeDiff,
+    route: connectorScopeDiffContract.getScopeDiff,
     handler: authRoute(connectorReadAuth, getScopeDiffInner$),
   },
   {
-    route: zeroConnectorOauthStartContract.start,
+    route: connectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
   },
   {
-    route: zeroConnectorOpenIdStartContract.start,
+    route: connectorOpenIdStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOpenIdInner$),
   },
   {
-    route: zeroConnectorsBySlugContract.get,
+    route: connectorsBySlugContract.get,
     handler: authRoute(connectorReadAuth, getConnectorBySlugInner$),
   },
 ];

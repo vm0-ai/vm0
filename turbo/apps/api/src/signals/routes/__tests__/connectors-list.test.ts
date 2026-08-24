@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -49,7 +49,7 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorManualGrantContract,
+      connectorManualGrantContract,
     ).connect({
       params: { connectorSlug: "gitlab" },
       body: {
@@ -99,7 +99,7 @@ describe("GET /api/connectors", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(
       client.list({ headers: authHeaders() }),
@@ -117,7 +117,7 @@ describe("GET /api/connectors", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(
       client.list({ headers: authHeaders() }),
@@ -162,7 +162,7 @@ describe("GET /api/connectors", () => {
 
     const response = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsMainContract,
+        connectorsMainContract,
       ).list({ headers: authHeaders() }),
       [200],
     );
@@ -174,7 +174,7 @@ describe("GET /api/connectors", () => {
 
     const detail = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "gitlab" },
         headers: authHeaders(),
@@ -198,7 +198,7 @@ describe("GET /api/connectors", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(
       client.list({ headers: authHeaders() }),
@@ -222,7 +222,7 @@ describe("GET /api/connectors", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(
       client.list({ headers: authHeaders() }),
@@ -237,7 +237,7 @@ describe("GET /api/connectors", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(client.list({ headers: {} }), [401]);
 
@@ -248,7 +248,7 @@ describe("GET /api/connectors", () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsMainContract,
+      connectorsMainContract,
     );
     const response = await accept(
       client.list({ headers: authHeaders() }),
