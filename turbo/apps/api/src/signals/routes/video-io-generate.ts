@@ -67,7 +67,7 @@ function resolveGenerationPublicBrand(
   auth: AuthContext,
   requestPublicBrand: PublicBrand,
 ): PublicBrand {
-  return auth.tokenType === "zero" ? auth.publicBrand : requestPublicBrand;
+  return auth.tokenType === "agent" ? auth.publicBrand : requestPublicBrand;
 }
 
 async function loadRunVideoModel(
@@ -430,7 +430,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+    auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
   const publicBrand = resolveGenerationPublicBrand(auth, get(publicBrand$));

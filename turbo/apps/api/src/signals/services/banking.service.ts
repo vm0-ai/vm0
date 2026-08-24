@@ -31,7 +31,7 @@ import {
 import { env } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
 import { now, nowDate } from "../../lib/time";
-import type { ZeroAuthContext } from "../../types/auth";
+import type { AgentAuthContext } from "../../types/auth";
 import { type Db, writeDb$ } from "../external/db";
 import { safeJsonParse } from "../utils";
 
@@ -39,7 +39,7 @@ const APP_TOKEN_REFRESH_MS = 90 * 60 * 1000;
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const PROVIDER = "finicity";
 
-type BankingAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
+type BankingAuth = Extract<AgentAuthContext, { readonly orgId: string }>;
 type BankingAccountRow = InferSelectModel<typeof bankingAccounts>;
 
 interface CachedFinicityAppToken {

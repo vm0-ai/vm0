@@ -39,9 +39,9 @@ interface SandboxAuthContext {
   readonly runId: string;
 }
 
-export type ZeroAuthContext =
+export type AgentAuthContext =
   | {
-      readonly tokenType: "zero";
+      readonly tokenType: "agent";
       readonly userId: string;
       readonly orgId: string;
       readonly orgRole?: ApiOrgRole;
@@ -51,7 +51,7 @@ export type ZeroAuthContext =
       readonly computerUseHostId?: string;
     }
   | {
-      readonly tokenType: "zero";
+      readonly tokenType: "agent";
       readonly userId: string;
       readonly runId: string;
       readonly publicBrand: PublicBrand;
@@ -64,7 +64,7 @@ export type AuthContext =
   | SessionAuthContext
   | PatAuthContext
   | SandboxAuthContext
-  | ZeroAuthContext;
+  | AgentAuthContext;
 
 export type AuthTokenType = AuthContext["tokenType"];
 
@@ -79,7 +79,7 @@ export interface SandboxAuth {
   readonly orgId: string;
 }
 
-export interface ZeroAuth {
+export interface AgentAuth {
   readonly userId: string;
   readonly runId: string;
   readonly orgId: string;

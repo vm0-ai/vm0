@@ -54,7 +54,7 @@ const transactionsBody$ = bodyResultOf(bankingContract.transactions);
 
 const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     return okouTokenRequired();
   }
   if (!(await set(bankingEnabled$))) {
@@ -73,7 +73,7 @@ const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     return okouTokenRequired();
   }
   if (!(await set(bankingEnabled$))) {
@@ -93,7 +93,7 @@ const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const transactionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (auth.tokenType !== "zero") {
+    if (auth.tokenType !== "agent") {
       return okouTokenRequired();
     }
     if (!(await set(bankingEnabled$))) {
@@ -119,7 +119,7 @@ const bankingAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "banking:read",
-  accept: ["zero"],
+  accept: ["agent"],
 } as const;
 
 export const bankingRoutes: readonly RouteEntry[] = [

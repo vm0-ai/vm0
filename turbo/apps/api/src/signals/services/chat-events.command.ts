@@ -270,7 +270,7 @@ interface PreparedNormalSend {
 function normalSendTriggerSource(
   auth: OrganizationAuthContext,
 ): "web" | "agent" {
-  return auth.tokenType === "zero" ? "agent" : "web";
+  return auth.tokenType === "agent" ? "agent" : "web";
 }
 
 async function resolveChatAgentRunSourceById(
@@ -331,7 +331,7 @@ async function resolveChatAgentRunSource(
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
 } | null> {
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     return null;
   }
   return await resolveChatAgentRunSourceById(db, auth, auth.runId);
@@ -361,7 +361,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   if (params.sourceRunId !== undefined) {
     if (
-      params.auth.tokenType === "zero" ||
+      params.auth.tokenType === "agent" ||
       params.auth.tokenType === "sandbox"
     ) {
       return {
@@ -389,7 +389,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   const resolved = await resolveChatAgentRunSource(params.db, params.auth);
   if (resolved === null) {
-    return params.auth.tokenType === "zero"
+    return params.auth.tokenType === "agent"
       ? { response: badRequestMessage("Agent source run not found") }
       : { source: null };
   }
@@ -2519,7 +2519,7 @@ function resolveTimedNormalSendAgentRunSource(
       normal_send_agent_run_source_kind:
         args.body.sourceRunId !== undefined
           ? "forward"
-          : args.auth.tokenType === "zero"
+          : args.auth.tokenType === "agent"
             ? "agent"
             : "none",
     },

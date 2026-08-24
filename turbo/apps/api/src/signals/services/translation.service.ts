@@ -8,7 +8,7 @@ import {
 import { command } from "ccstate";
 
 import { insufficientCredits, notConfigured } from "../../lib/error";
-import type { ZeroAuthContext } from "../../types/auth";
+import type { AgentAuthContext } from "../../types/auth";
 import { requestSignal$ } from "../context/hono";
 import {
   generateTextWithUsage,
@@ -35,7 +35,7 @@ const TRANSLATION_SYSTEM_PROMPT = [
   "Return only the translated text with no explanation, labels, quotation marks, or commentary.",
 ].join("\n");
 
-type TranslationAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
+type TranslationAuth = Extract<AgentAuthContext, { readonly orgId: string }>;
 
 interface TranslationArgs {
   readonly auth: TranslationAuth;

@@ -75,7 +75,7 @@ const linkDraftBody$ = bodyResultOf(mailContract.linkDraft);
 const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const bodyResult = await get(linkDraftBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -206,7 +206,7 @@ const mailDraftLinkAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "connector:read" as const,
-  accept: Object.freeze(["session", "zero"] as const),
+  accept: Object.freeze(["session", "agent"] as const),
 });
 
 const mailDraftHumanAuth = Object.freeze({

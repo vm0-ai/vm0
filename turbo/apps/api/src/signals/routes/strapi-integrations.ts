@@ -68,7 +68,7 @@ const list$ = computed(async (get) => {
       ...(await listStrapiIntegrations(get(db$), {
         orgId: auth.orgId,
         publicBrand:
-          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       })),
     ],
   };
@@ -94,7 +94,7 @@ const create$ = command(async ({ get, set }, signal: AbortSignal) => {
     name: bodyResult.data.name,
     baseUrl: bodyResult.data.baseUrl,
     publicBrand:
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
   });
   signal.throwIfAborted();
   if (result.kind === "bad_request") {
@@ -121,7 +121,7 @@ const revealSecret$ = computed(async (get) => {
     orgId: auth.orgId,
     integrationId: params.integrationId,
     publicBrand:
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
   });
   return secret
     ? { status: 200 as const, body: secret }

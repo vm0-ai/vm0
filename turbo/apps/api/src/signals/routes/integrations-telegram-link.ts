@@ -311,7 +311,7 @@ const linkOfficialInner$ = command(
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const config = getOfficialTelegramBotConfig();
@@ -427,7 +427,7 @@ const linkCustomWithTelegramAuth$ = command(
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const telegramAuth = args.body.telegramAuth;
@@ -475,7 +475,7 @@ const linkCustomWithConnectSignature$ = command(
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const connectSignature = args.body.connectSignature;

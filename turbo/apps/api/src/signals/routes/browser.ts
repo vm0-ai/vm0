@@ -41,7 +41,7 @@ const createBrowserInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       createBrowser$,
       {
@@ -70,7 +70,7 @@ const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     useBrowser$,
     {
@@ -96,7 +96,7 @@ const leaseBrowserInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       leaseCurrentBrowser$,
       {
@@ -124,7 +124,7 @@ const leaseBrowserByThreadInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       leaseBrowserByThread$,
       {
@@ -152,7 +152,7 @@ const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     openBrowserForThread$,
     {
@@ -181,7 +181,7 @@ const closeBrowserInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       closeBrowserForThread$,
       {
@@ -211,7 +211,7 @@ const resizeBrowserByThreadInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       resizeBrowserByThread$,
       {
@@ -234,7 +234,7 @@ const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       getCurrentBrowser$,
       {
@@ -255,7 +255,7 @@ const getParams$ = pathParamsOf(browserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     getBrowser$,
     {
@@ -276,14 +276,14 @@ const browserReadAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "browser:read" as const,
-  accept: Object.freeze(["session", "zero"] as const),
+  accept: Object.freeze(["session", "agent"] as const),
 });
 
 const browserWriteAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "browser:write" as const,
-  accept: Object.freeze(["zero"] as const),
+  accept: Object.freeze(["agent"] as const),
 });
 
 // Keeping a browser alive and restarting a suspended one are viewer actions, so
@@ -292,14 +292,14 @@ const browserViewerWriteAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "browser:write" as const,
-  accept: Object.freeze(["session", "zero"] as const),
+  accept: Object.freeze(["session", "agent"] as const),
 });
 
 const browserCurrentAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "browser:read" as const,
-  accept: Object.freeze(["zero"] as const),
+  accept: Object.freeze(["agent"] as const),
 });
 
 export const browserRoutes: readonly RouteEntry[] = [

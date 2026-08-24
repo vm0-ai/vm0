@@ -41,7 +41,7 @@ const browserAuthorizationAuthOptions = {
 const browserAuthorizationCreateAuthOptions = {
   ...browserAuthorizationAuthOptions,
   acceptAnySandboxCapability: true,
-  accept: ["zero", "sandbox"],
+  accept: ["agent", "sandbox"],
 } as const;
 
 const createAuthorizationRequestInner$ = command(
@@ -52,13 +52,13 @@ const createAuthorizationRequestInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    if (auth.tokenType !== "zero" && auth.tokenType !== "sandbox") {
+    if (auth.tokenType !== "agent" && auth.tokenType !== "sandbox") {
       return badRequestMessage(
         "Cloud browser authorization requires a run token",
       );
     }
     // Legacy sandbox tokens do not carry presentation context and remain VM0.
-    const publicBrand = auth.tokenType === "zero" ? auth.publicBrand : "vm0";
+    const publicBrand = auth.tokenType === "agent" ? auth.publicBrand : "vm0";
 
     const result = await set(
       createBrowserAuthorizationRequest$,
