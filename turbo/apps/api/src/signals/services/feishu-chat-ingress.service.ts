@@ -57,7 +57,7 @@ export async function ensureFeishuChatThreadRoute(
   db: Db,
   args: FeishuChatThreadRouteKey & {
     readonly orgId: string;
-    readonly agentComposeId: string;
+    readonly agentId: string;
     readonly selectedModel: string | null;
     readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
@@ -77,7 +77,7 @@ export async function ensureFeishuChatThreadRoute(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentId: args.agentComposeId,
+        agentId: args.agentId,
         selectedModel: args.selectedModel,
         codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
@@ -136,7 +136,7 @@ export async function ensureFeishuChatThreadRoute(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,

@@ -9,7 +9,7 @@ use tokio::fs;
 use chrono::SecondsFormat;
 
 use crate::bounded_command::{
-    BoundedCommandError, BoundedCommandOutcome, CommandOutputCapture, run_output_bounded,
+    BoundedCommandError, BoundedCommandOutcome, CommandOutputPolicy, run_output_bounded,
 };
 use crate::error::{RunnerError, RunnerResult};
 
@@ -160,9 +160,14 @@ pub(super) async fn sparse_copy_with_timeout(
         .arg("--")
         .arg(src)
         .arg(dst);
-    let output = match run_output_bounded(command, "cp", CommandOutputCapture::Stderr, timeout)
-        .await
-        .map_err(cp_command_error)?
+    let output = match run_output_bounded(
+        command,
+        "cp",
+        CommandOutputPolicy::diagnostic_stderr(),
+        timeout,
+    )
+    .await
+    .map_err(cp_command_error)?
     {
         BoundedCommandOutcome::Exited(output) => output,
         BoundedCommandOutcome::TimedOut => {
@@ -191,6 +196,9 @@ fn cp_command_error(error: BoundedCommandError) -> RunnerError {
         BoundedCommandError::Spawn(error) => RunnerError::Internal(format!("exec cp: {error}")),
         BoundedCommandError::Wait(error) => RunnerError::Internal(format!("wait cp: {error}")),
         BoundedCommandError::Lifecycle(message) => RunnerError::Internal(message),
+        BoundedCommandError::OutputTooLarge { stream, limit } => RunnerError::Internal(format!(
+            "cp {stream} exceeded output limit of {limit} bytes"
+        )),
     }
 }
 

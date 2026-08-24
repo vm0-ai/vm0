@@ -5,7 +5,7 @@ import {
   testUsageStateContract,
   type TestUsageStateActionBody,
 } from "@okouai/api-contracts/contracts/test-usage-state";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -23,7 +23,6 @@ import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rol
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { variables } from "@okouai/db/schema/variable";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   and,
   count,
@@ -253,30 +252,12 @@ async function deleteUsageStateFixture(
     );
   signal.throwIfAborted();
 
-  const composeRows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-    );
-  signal.throwIfAborted();
-  const composeIds = composeRows.map((row) => {
-    return row.id;
-  });
-
   await db.delete(chatThreads).where(eq(chatThreads.userId, userId));
   signal.throwIfAborted();
 
-  if (composeIds.length > 0) {
-    await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-    signal.throwIfAborted();
-  }
-
   await db
-    .delete(agentComposes)
-    .where(
-      and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-    );
+    .delete(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.owner, userId)));
   signal.throwIfAborted();
 
   const storageRows = await db
@@ -314,23 +295,19 @@ async function seedCompose(
 ): Promise<{ composeId: string; agentId: string }> {
   const name = args.name ?? `compose-${randomUUID().slice(0, 8)}`;
   const [row] = await db
-    .insert(agentComposes)
-    .values({ userId: args.userId, orgId: args.orgId, name })
-    .returning({ id: agentComposes.id });
-  if (!row) {
-    throw new Error("seedCompose: insert returned no row");
-  }
-  await db
-    .insert(zeroAgents)
+    .insert(agents)
     .values({
-      id: row.id,
-      orgId: args.orgId,
+      id: randomUUID(),
       owner: args.userId,
+      orgId: args.orgId,
       name,
       displayName: args.displayName ?? null,
       visibility: args.visibility ?? "public",
     })
-    .onConflictDoNothing();
+    .returning({ id: agents.id });
+  if (!row) {
+    throw new Error("seedCompose: insert returned no row");
+  }
   return { composeId: row.id, agentId: row.id };
 }
 

@@ -585,7 +585,7 @@ async function getVisibleAgentPickerOptions(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly defaultComposeId: string | null;
+  readonly defaultAgentId: string | null;
 }): Promise<
   readonly {
     readonly composeId: string;
@@ -610,7 +610,7 @@ async function getVisibleAgentPickerOptions(args: {
 
   return rows
     .filter((agent) => {
-      return agent.composeId !== args.defaultComposeId;
+      return agent.composeId !== args.defaultAgentId;
     })
     .slice(0, AGENT_PICKER_MAX_OPTIONS);
 }
@@ -627,13 +627,13 @@ async function resolveEffectiveCompose(
       return { status: "resolved", composeId: override, agent };
     }
   }
-  const defaultComposeId = await resolveDefaultComposeId(db, orgId);
-  if (!defaultComposeId) {
+  const defaultAgentId = await resolveDefaultComposeId(db, orgId);
+  if (!defaultAgentId) {
     return { status: "not_configured" };
   }
   const configuredDefaultAgent = await getWorkspaceAgent(
     db,
-    defaultComposeId,
+    defaultAgentId,
     orgId,
   );
   if (!configuredDefaultAgent) {
@@ -641,7 +641,7 @@ async function resolveEffectiveCompose(
   }
   const visibleDefaultAgent = await getVisibleWorkspaceAgent(
     db,
-    defaultComposeId,
+    defaultAgentId,
     orgId,
     userId,
   );
@@ -650,7 +650,7 @@ async function resolveEffectiveCompose(
   }
   return {
     status: "resolved",
-    composeId: defaultComposeId,
+    composeId: defaultAgentId,
     agent: visibleDefaultAgent,
   };
 }
@@ -810,9 +810,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
       channelType: args.channelType,
       messageTs: args.messageTs,
       ...(args.threadTs ? { threadTs: args.threadTs } : {}),
-      ...(effectiveCompose
-        ? { agentComposeId: effectiveCompose.composeId }
-        : {}),
+      ...(effectiveCompose ? { agentId: effectiveCompose.composeId } : {}),
       selectedModel: mainDirectMessageModelRoute?.selectedModel ?? null,
       serviceTier: integrationModelRouteServiceTier(
         mainDirectMessageModelRoute,
@@ -864,7 +862,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
     const route = await ensureCanonicalSlackChatThreadRoute(args.db, {
       ...routeKey,
       orgId: args.orgId,
-      agentComposeId: effectiveCompose.composeId,
+      agentId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
       serviceTier: modelRoute?.serviceTier ?? null,
       currentTime: nowDate(),
@@ -1067,7 +1065,7 @@ const refreshOrgAppHome$ = command(
     let canSwitch = false;
     if (installation.orgId) {
       const orgId = installation.orgId;
-      const [effectiveCompose, overrideComposeId, defaultComposeId] =
+      const [effectiveCompose, overrideComposeId, defaultAgentId] =
         await Promise.all([
           resolveEffectiveCompose(db, connection.userId, orgId),
           getUserAgentPreference(db, connection.userId, orgId),
@@ -1081,10 +1079,10 @@ const refreshOrgAppHome$ = command(
             connection.userId,
           )
         : undefined;
-      const visibleDefaultAgent = defaultComposeId
+      const visibleDefaultAgent = defaultAgentId
         ? await getVisibleWorkspaceAgent(
             db,
-            defaultComposeId,
+            defaultAgentId,
             orgId,
             connection.userId,
           )
@@ -1093,14 +1091,14 @@ const refreshOrgAppHome$ = command(
         db,
         orgId,
         userId: connection.userId,
-        defaultComposeId,
+        defaultAgentId,
       });
       if (effectiveCompose.status === "resolved") {
         agentName =
           effectiveCompose.agent.displayName ?? effectiveCompose.agent.name;
       }
       isOverrideActive = Boolean(
-        visibleOverrideAgent && overrideComposeId !== defaultComposeId,
+        visibleOverrideAgent && overrideComposeId !== defaultAgentId,
       );
       canSwitch = Boolean(visibleDefaultAgent || visibleOptions.length > 0);
     }
@@ -1148,7 +1146,7 @@ const commandSwitchResponse$ = command(
         ),
       );
     }
-    const defaultComposeId = await resolveDefaultComposeId(
+    const defaultAgentId = await resolveDefaultComposeId(
       db,
       installation.orgId,
     );
@@ -1156,12 +1154,12 @@ const commandSwitchResponse$ = command(
       db,
       orgId: installation.orgId,
       userId: connection.userId,
-      defaultComposeId,
+      defaultAgentId,
     });
-    const visibleDefaultAgent = defaultComposeId
+    const visibleDefaultAgent = defaultAgentId
       ? await getVisibleWorkspaceAgent(
           db,
-          defaultComposeId,
+          defaultAgentId,
           installation.orgId,
           connection.userId,
         )
@@ -1856,11 +1854,11 @@ const handleAgentPickerSubmit$ = command(
     );
     const channelId = parseViewChannelId(payload.view?.private_metadata);
     if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
-      const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
-      const visibleDefaultAgent = defaultComposeId
+      const defaultAgentId = await resolveDefaultComposeId(db, ctx.orgId);
+      const visibleDefaultAgent = defaultAgentId
         ? await getVisibleWorkspaceAgent(
             db,
-            defaultComposeId,
+            defaultAgentId,
             ctx.orgId,
             ctx.connection.userId,
           )
@@ -2010,17 +2008,17 @@ const handleHomeSwitchAgent$ = command(
     if (!ctx) {
       return;
     }
-    const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
+    const defaultAgentId = await resolveDefaultComposeId(db, ctx.orgId);
     const options = await getVisibleAgentPickerOptions({
       db,
       orgId: ctx.orgId,
       userId: ctx.connection.userId,
-      defaultComposeId,
+      defaultAgentId,
     });
-    const visibleDefaultAgent = defaultComposeId
+    const visibleDefaultAgent = defaultAgentId
       ? await getVisibleWorkspaceAgent(
           db,
-          defaultComposeId,
+          defaultAgentId,
           ctx.orgId,
           ctx.connection.userId,
         )

@@ -11,7 +11,11 @@ import {
   rustTypeBindings,
 } from "../types";
 import { modelProviderCodexRuntimeConfigSchema } from "../../contracts/model-providers";
-import { storageMountEntrySchema } from "../../contracts/runners";
+import {
+  piLaunchConfigSchema,
+  piModelConfigSchema,
+  storageMountEntrySchema,
+} from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
   webhookCheckpointsContract,
@@ -23,6 +27,16 @@ const expectedBindings = [
   {
     rustModulePath: ["runners", "runs"],
     rustTypeName: "CodexRuntimeConfig",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiLaunchConfig",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfig",
     direction: "response",
   },
   {
@@ -214,6 +228,14 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
     expect(firstRender).toContain("pub struct StorageMountEntry {");
     expect(firstRender).toContain("pub struct CodexRuntimeConfig {");
+    expect(firstRender).toContain("pub struct PiLaunchConfig {");
+    expect(firstRender).toContain("pub struct PiLaunchConfigApiFirstTurn {");
+    expect(firstRender).toContain(
+      "pub struct PiLaunchConfigApiFirstTurnBaseSession {",
+    );
+    expect(firstRender).toContain("pub struct PiModelConfig {");
+    expect(firstRender).toContain("pub enum PiModelConfigProvider {");
+    expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
     expect(firstRender).toContain(
       "pub http_headers: Option<std::collections::BTreeMap<String, String>>",
     );
@@ -298,6 +320,80 @@ describe("Rust type bindings", () => {
         },
       },
     );
+  });
+
+  it("keeps the Pi runtime bindings aligned with their canonical schemas", () => {
+    const launchBinding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustTypeName === "PiLaunchConfig" &&
+          rustModulePath.join("/") === "runners/runs"
+        );
+      },
+    );
+    const modelBinding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustTypeName === "PiModelConfig" &&
+          rustModulePath.join("/") === "runners/runs"
+        );
+      },
+    );
+
+    expect(launchBinding?.schema).toBe(piLaunchConfigSchema);
+    expect(modelBinding?.schema).toBe(piModelConfigSchema);
+    expect(z.toJSONSchema(piLaunchConfigSchema)).toMatchObject({
+      required: ["schemaVersion", "apiFirstTurn"],
+      properties: {
+        schemaVersion: { const: 2 },
+        apiFirstTurn: {
+          required: [
+            "schemaVersion",
+            "resourceSnapshotDigest",
+            "manifestUrl",
+            "sessionUrl",
+            "deadlineAt",
+            "baseSession",
+            "sandboxEventSequenceStart",
+          ],
+          properties: {
+            schemaVersion: { const: 1 },
+            sandboxEventSequenceStart: { const: 1 },
+            baseSession: {
+              required: ["sessionId", "sha256"],
+            },
+          },
+        },
+      },
+    });
+    expect(z.toJSONSchema(piModelConfigSchema)).toMatchObject({
+      required: [
+        "provider",
+        "baseUrl",
+        "model",
+        "apiKeyEnv",
+        "credentialSecretName",
+      ],
+      properties: {
+        provider: {
+          enum: [
+            "deepseek",
+            "moonshotai",
+            "openai",
+            "openrouter",
+            "vercel-ai-gateway",
+            "codex",
+          ],
+        },
+        apiKeyEnv: {
+          enum: [
+            "ANTHROPIC_AUTH_TOKEN",
+            "OPENAI_API_KEY",
+            "CHATGPT_ACCESS_TOKEN",
+          ],
+        },
+      },
+    });
   });
 
   it("keeps canonical Storage mount override aligned with its schema", () => {

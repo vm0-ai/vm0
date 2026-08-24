@@ -361,7 +361,7 @@ async function persistCanonicalFeishuIngress(
     threadId: routeThreadId,
     userId: args.connection.userId,
     orgId: args.installation.orgId,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
     currentTime: args.ingress.createdAt,

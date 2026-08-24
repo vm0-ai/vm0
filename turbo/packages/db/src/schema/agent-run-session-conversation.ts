@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes, agentComposeVersions } from "./agent-compose";
 import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 import { chatThreads } from "./chat-thread";
@@ -32,21 +31,13 @@ import type {
 /**
  * Agent Runs table
  * Created when developer executes agent via SDK
- * References immutable compose version for reproducibility
+ * Stores an immutable launch snapshot for reproducibility.
  */
 export const agentRuns = pgTable(
   "agent_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    agentComposeVersionId: varchar("agent_compose_version_id", {
-      length: 64,
-    }).references(
-      () => {
-        return agentComposeVersions.id;
-      },
-      { onDelete: "set null" },
-    ),
     continuedFromSessionId: uuid("continued_from_session_id"),
     sessionId: uuid("session_id")
       .notNull()
@@ -242,8 +233,7 @@ export const agentRuns = pgTable(
 
 /**
  * Agent Sessions table
- * Lightweight compose to conversation association for continue operations
- * Sessions always use HEAD compose version at runtime, with no snapshotting.
+ * Lightweight Agent-to-conversation association for continue operations.
  */
 export const agentSessions = pgTable(
   "agent_sessions",
@@ -251,12 +241,6 @@ export const agentSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentComposeId: uuid("agent_compose_id").references(
-      () => {
-        return agentComposes.id;
-      },
-      { onDelete: "cascade" },
-    ),
     agentId: uuid("agent_id").references(
       () => {
         return agents.id;
@@ -278,16 +262,8 @@ export const agentSessions = pgTable(
   },
   (table) => {
     return [
-      index("idx_agent_sessions_user_compose").on(
-        table.userId,
-        table.agentComposeId,
-      ),
       index("idx_agent_sessions_user_agent").on(table.userId, table.agentId),
       index("idx_agent_sessions_org").on(table.orgId),
-      check(
-        "agent_sessions_agent_reference_match",
-        sql`${table.agentId} IS NULL OR ${table.agentComposeId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
-      ),
     ];
   },
 );

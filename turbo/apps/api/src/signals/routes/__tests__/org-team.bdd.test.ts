@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { createHistoricalAgentComposeFixture } from "../../../test-fixtures/historical-agent-composes";
 import { createDeferredPromise } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
@@ -981,29 +980,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       visibility: "public",
     });
-    expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     expect(typeof defaultEntry?.updatedAt).toBe("string");
-
-    // Direct historical construction verifies that a Compose-only row never
-    // appears in the canonical Agent team list.
-    if (!admin.orgId) {
-      throw new Error("Historical Compose fixtures require an organization");
-    }
-    const composeName = slug("bdd-r5-compose");
-    const compose = await createHistoricalAgentComposeFixture({
-      actor: { userId: admin.userId, orgId: admin.orgId },
-      content: {
-        version: "1",
-        agents: { [composeName]: { framework: "claude-code" } },
-      },
-      signal: context.signal,
-    });
-    const teamAfterCompose = await api.listTeam(admin);
-    expect(
-      teamAfterCompose.map((entry) => {
-        return entry.id;
-      }),
-    ).not.toContain(compose.composeId);
 
     // Private agents are visible to their owner only; public agents to the
     // whole org; nothing leaks across orgs.

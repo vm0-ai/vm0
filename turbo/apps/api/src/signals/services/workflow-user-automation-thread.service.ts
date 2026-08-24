@@ -141,7 +141,7 @@ export async function createAutomationChatThread(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.title,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,

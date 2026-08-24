@@ -79,20 +79,9 @@ export {
 export {
   AGENT_NAME_REGEX,
   agentNameSchema,
-  volumeConfigSchema,
-  artifactConfigSchema,
-  artifactsArraySchema,
   MOUNT_PATH_TEMPLATE,
   expandMountPath,
-  agentDefinitionSchema,
-  agentComposeContentSchema,
-  agentComposeApiContentSchema,
-  composeResponseSchema,
-  createComposeResponseSchema,
-  // Inferred types
-  type ComposeResponse,
-  type ArtifactConfig,
-} from "./composes";
+} from "./agents";
 export {
   ALL_RUN_STATUSES,
   runStatusSchema,

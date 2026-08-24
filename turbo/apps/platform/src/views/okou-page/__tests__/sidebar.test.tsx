@@ -99,7 +99,6 @@ function prepareDefaultAgent(): void {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
@@ -115,7 +114,6 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
@@ -126,7 +124,6 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_2",
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
@@ -137,7 +134,6 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      headVersionId: "version_3",
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ];
@@ -184,12 +180,11 @@ function prepareOverflowingPinnedAgents(targetContext = context): string[] {
   const team = prepareAgentTeam(targetContext);
   targetContext.mocks.data.team([
     ...team,
-    ...OVERFLOW_PINNED_AGENTS.map((agent, index) => {
+    ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
         ...team[1]!,
         id: agent.id,
         displayName: agent.displayName,
-        headVersionId: `version_${String(index + 4)}`,
       };
     }),
   ]);
@@ -2324,7 +2319,6 @@ describe("zero sidebar", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -2335,7 +2329,6 @@ describe("zero sidebar", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_2",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -2346,7 +2339,6 @@ describe("zero sidebar", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_3",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -2357,7 +2349,6 @@ describe("zero sidebar", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_4",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -2368,7 +2359,6 @@ describe("zero sidebar", () => {
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        headVersionId: "version_5",
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);

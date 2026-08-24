@@ -104,17 +104,17 @@ export async function touchChatThreadLastMessageAt(
     .returning({
       id: chatThreads.id,
       userId: chatThreads.userId,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
       lastMessageAt: chatThreads.lastMessageAt,
     });
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return;
   }
   await appendChatThreadEvent(tx, {
     kind: "sort_touched",
     userId: thread.userId,
     chatThreadId: thread.id,
-    agentComposeId: thread.agentComposeId,
+    agentId: thread.agentId,
     eventId,
     createdAt: thread.lastMessageAt,
   });

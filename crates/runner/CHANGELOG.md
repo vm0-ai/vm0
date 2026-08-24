@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.171.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.6...runner-rs-v0.171.7) (2026-08-24)
+
+
+### Bug Fixes
+
+* **python:** track nested break exits in metadata linter ([#28907](https://github.com/vm0-ai/vm0/issues/28907)) ([93164bb](https://github.com/vm0-ai/vm0/commit/93164bb7165f8ce5978c8b2be5de832cee61b87c))
+
+
+### Documentation
+
+* **python:** document percent-decoded host contract ([#28901](https://github.com/vm0-ai/vm0/issues/28901)) ([be56585](https://github.com/vm0-ai/vm0/commit/be565851b852545c7cf90ac30707dc9ff8bb1ef8))
+
+
+### Performance Improvements
+
+* **runner:** bound command output capture ([#28909](https://github.com/vm0-ai/vm0/issues/28909)) ([5279ac7](https://github.com/vm0-ai/vm0/commit/5279ac7a4707242d4566127133fc72dde43179d6))
+
 ## [0.171.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.5...runner-rs-v0.171.6) (2026-08-24)
 
 

@@ -130,7 +130,6 @@ function mockAgentChatPage(agentId: string): void {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
