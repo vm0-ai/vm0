@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.171.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.3...runner-rs-v0.171.4) (2026-08-24)
+
+
+### Bug Fixes
+
+* **runner:** treat reuse capacity rejection as informational ([#28789](https://github.com/vm0-ai/vm0/issues/28789)) ([13456e3](https://github.com/vm0-ai/vm0/commit/13456e3bb2cc1bdd3cbb10df49bb7dc4ccbcd087))
+
+
+### Performance Improvements
+
+* **python:** share responses websocket parsing ([#28757](https://github.com/vm0-ai/vm0/issues/28757)) ([8671c2b](https://github.com/vm0-ai/vm0/commit/8671c2bc617aeb0e4aab3318b992524d437e1929))
+
 ## [0.171.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.2...runner-rs-v0.171.3) (2026-08-24)
 
 

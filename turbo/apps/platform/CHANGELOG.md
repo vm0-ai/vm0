@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.784.2](https://github.com/vm0-ai/vm0/compare/app-v0.784.1...app-v0.784.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **platform:** label unmatched endpoints as other endpoints ([#28760](https://github.com/vm0-ai/vm0/issues/28760)) ([1f99095](https://github.com/vm0-ai/vm0/commit/1f99095cfeada9eed2bcde77af98725a1808e42e))
+* **platform:** use semantic icons for debug diagnostics ([#28759](https://github.com/vm0-ai/vm0/issues/28759)) ([ffd7484](https://github.com/vm0-ai/vm0/commit/ffd748457aeedb16d51fee83a1b30858a02aae47))
+* **platform:** use the Ideogram brand mark in the image model picker ([#28781](https://github.com/vm0-ai/vm0/issues/28781)) ([1c273db](https://github.com/vm0-ai/vm0/commit/1c273db0c7a64c28f78e45828d78b9c2a6ea3249))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.584.1
+
 ## [0.784.1](https://github.com/vm0-ai/vm0/compare/app-v0.784.0...app-v0.784.1) (2026-08-24)
 
 
