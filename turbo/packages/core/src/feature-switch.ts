@@ -396,6 +396,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.ComposerNoteEditableIsolation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the feedback note's wrapper elements outside the editable flow, with the note content opting back in as its own editing host, so WebKit's editing machinery can neither restructure the wrappers during an IME composition nor land the caret between them.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -414,13 +421,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.HomeStartCards]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Replace the chat landing page's suggested prompts with entry cards for each thing the agent can make.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

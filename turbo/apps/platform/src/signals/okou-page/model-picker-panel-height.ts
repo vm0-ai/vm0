@@ -37,6 +37,14 @@ const SELECT_LIST_SELECTOR = '[data-slot="select-list"]';
 const PANEL_HEADER_SELECTOR = "[data-model-picker-header]";
 
 /**
+ * A media category replaces the model rows, so the selected chat model stays in
+ * the list as a 1px, transparent row the select can still measure. A keyframe
+ * outranks the class that hides it, so fading that row in would print the model
+ * name over the header for the length of the fade.
+ */
+const PANEL_MEASUREMENT_ROW_SELECTOR = '[aria-hidden="true"]';
+
+/**
  * Animates the model picker popup between the heights its category panels ask
  * for. Attach to the popup; it finds the list underneath on its own.
  *
@@ -100,7 +108,10 @@ export const modelPickerPanelHeightRef$ = onRef(
         if (!(row instanceof HTMLElement)) {
           continue;
         }
-        if (row.matches(PANEL_HEADER_SELECTOR)) {
+        if (
+          row.matches(PANEL_HEADER_SELECTOR) ||
+          row.matches(PANEL_MEASUREMENT_ROW_SELECTOR)
+        ) {
           continue;
         }
         row.animate([{ opacity: PANEL_CONTENT_FADE_FROM }, { opacity: 1 }], {

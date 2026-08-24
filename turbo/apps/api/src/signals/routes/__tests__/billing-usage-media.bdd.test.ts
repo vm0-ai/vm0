@@ -718,7 +718,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
         async ({ request }) => {
           const body = (await request.json()) as Record<string, unknown>;
           expect(body).toMatchObject({
-            model: "dreamina-seedance-2-0-fast-260128",
+            model: "dreamina-seedance-2-0-260128",
             resolution: "480p",
             ratio: "16:9",
             duration: 4,
@@ -801,7 +801,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expect(finalGeneration.body.result).toMatchObject({
       contentType: "video/mp4",
       durationSeconds: 4,
-      model: "dreamina-seedance-2-0-fast-260128",
+      model: "dreamina-seedance-2-0-260128",
       aspectRatio: "16:9",
       duration: "4s",
       resolution: "480p",
@@ -1122,13 +1122,13 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
       admin,
       {
         prompt: "animated billing usage chart",
-        resolution: "1080p",
+        resolution: "4k",
       },
       [400],
     );
     expectApiError(unsupportedVideoResolution.body);
     expect(unsupportedVideoResolution.body.error.message).toBe(
-      "Unsupported video resolution for dreamina-seedance-2.0-fast: 1080p",
+      "Unsupported video resolution for dreamina-seedance-2.0: 4k",
     );
 
     const invalidVideoSeed = await api.requestVideoIoGenerate(

@@ -6,7 +6,7 @@ import {
 import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 
 import { now } from "../../lib/time";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
@@ -176,6 +176,7 @@ const postTestTeamsDispatchProbe$ = command(
         dispatchTeamsMessageToAgent$,
         {
           activity,
+          publicBrand: get(publicBrand$),
           apiStartTime,
           timing: new ApiDispatchTimingCollector(),
         },

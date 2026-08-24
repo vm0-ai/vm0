@@ -32,7 +32,10 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { composerSubmitDomReconcileEnabled$ } from "../external/feature-switch.ts";
+import {
+  composerNoteEditableIsolationEnabled$,
+  composerSubmitDomReconcileEnabled$,
+} from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { sentryLogContext } from "../../lib/sentry-config.ts";
 import { onRef, resetSignal } from "../utils.ts";
@@ -643,6 +646,7 @@ function createFeedbackItemNodeView(
   node: ProseMirrorNode,
   removeFeedback: (id: number) => void,
   localizedUi: Set<() => void>,
+  editableIsolationEnabled: () => boolean,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.feedbackItem = "";
@@ -691,6 +695,14 @@ function createFeedbackItemNodeView(
   contentDOM.setAttribute("aria-multiline", "true");
   noteDom.append(placeholderDom, contentDOM);
   dom.append(quoteDom, noteDom);
+  if (editableIsolationEnabled()) {
+    // Everything around contentDOM is chrome. Keeping it outside the editable
+    // region denies WebKit's editing machinery a reason to restructure it and
+    // keeps the caret from landing between the wrappers (#27787); contentDOM
+    // opts back in as its own editing host.
+    dom.contentEditable = "false";
+    contentDOM.contentEditable = "true";
+  }
 
   let currentNode = node;
   function localize(): void {
@@ -1606,6 +1618,8 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
+  /** Resolved ComposerNoteEditableIsolation switch, set while mounted. */
+  noteEditableIsolation: boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1777,6 +1791,9 @@ function createFeedbackItemNode(
             runtime.removeFeedback(id);
           },
           runtime.localizedUi,
+          () => {
+            return runtime.noteEditableIsolation;
+          },
         );
       };
     },
@@ -1940,6 +1957,7 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.blur = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
+  runtime.noteEditableIsolation = false;
 }
 
 function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
@@ -2156,6 +2174,9 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
+      runtime.noteEditableIsolation = get(
+        composerNoteEditableIsolationEnabled$,
+      );
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2566,6 +2587,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
+    noteEditableIsolation: false,
   };
 }
 
