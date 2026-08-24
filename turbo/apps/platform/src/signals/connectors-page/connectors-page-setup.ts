@@ -6,7 +6,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { resetConnectorAccountDialogs$ } from "../zero-page/settings/connector-account-dialogs.ts";
+import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
 
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
