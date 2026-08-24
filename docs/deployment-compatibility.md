@@ -13,8 +13,8 @@ Other release artifacts, such as the desktop app and host-worker deployments,
 have their own release paths and are outside this compatibility model unless
 they interact with these frontend, backend, or runner boundaries.
 
-New versions are normally deployed together, but they do not become active at the
-same instant. Code and tests must account for short periods where different
+New versions are normally deployed together, but they do not become active at
+the same instant. Code and tests must account for periods where different
 surfaces are on different versions.
 
 ## Deployment Model
@@ -242,7 +242,7 @@ capabilities in their client version. The API projects a stored locale to
 writes that the client did not advertise. Keep this compatibility layer until
 stale browser clients and API rollback windows have closed.
 
-### Treat Deploy-before-migrate Windows as a First-class Risk
+### Treat Database/API Transitions as a First-class Boundary
 
 Schema changes have two independent compatibility directions:
 
@@ -255,11 +255,17 @@ Schema changes have two independent compatibility directions:
   visible to it. New readers and writers must not require the new column, enum
   value, relation, constraint, or function until the migration is complete.
 
-The production workflow must continue to order required migrations before API
-traffic promotion, but intended ordering is not a substitute for compatibility.
-Promotion drift, rollback, draining instances, and other environments can expose
-either direction. A compatibility object that protects old code after migration
-does not by itself protect new code before migration.
+The normal production release enforces migration-before-promotion in
+`promote-api-production`: it builds one API artifact, runs required migrations
+against the Neon `production` database, and deploys that exact artifact only
+after the migrations succeed. A failed migration stops the job before API
+promotion.
+
+For a successful normal release, this closes the new-code-before-migration gate
+for its release target. Old code after migration remains a separate boundary:
+outgoing, draining, and retained rollback API targets must stay compatible with
+the current schema. The production rollback workflow promotes App, Runner, and
+API artifacts; it does not restore an older database schema.
 
 The ChatEvent schema-contraction releases from July 27-29, 2026 provide concrete
 examples:
