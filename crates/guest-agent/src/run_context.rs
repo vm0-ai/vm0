@@ -54,15 +54,27 @@ impl GuestRuntime {
     /// process-wide setup and consume runner-owned inputs before returning, so
     /// callers must not retry it in the same process.
     pub fn from_process_env() -> Result<Self, String> {
+        let guest_runtime_dir =
+            guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
+                .map_err(|error| format!("failed to resolve guest runtime paths: {error}"))?;
+        let guest_runtime_dir_source = guest_runtime_dir.source();
         let (process_control_endpoint, process_control_source) =
             process_control_endpoint_from_process_env()?;
         let workload_containment =
             WorkloadContainment::from_process_env(process_control_endpoint.is_some())?;
-        let raw = GuestConfigRaw::from_process_env()?;
+        let raw = GuestConfigRaw::from_process_env_with_guest_runtime_dir(guest_runtime_dir)?;
         raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
         guest_common::log::set_system_log_file(paths.system_log_file());
         guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
+        if let Some(source) = guest_runtime_dir_source {
+            guest_common::log_info!(
+                LOG_TAG,
+                "guest_runtime_dir_env_source key={} source={}",
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                source.label()
+            );
+        }
         if let Some(source) = process_control_source {
             guest_common::log_info!(
                 LOG_TAG,

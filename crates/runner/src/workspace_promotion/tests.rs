@@ -386,6 +386,10 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert_eq!(
+        exec_calls[0].env_keys,
+        vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
+    );
     assert!(exec_calls[1].cmd.contains("rm -f --"));
     assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
     assert!(exec_calls[2].sudo);

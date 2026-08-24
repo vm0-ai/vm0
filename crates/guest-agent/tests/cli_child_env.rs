@@ -47,6 +47,18 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
 
     let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
+    let configured_runtime_dir =
+        guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), &run_id)?;
+    unsafe {
+        std::env::set_var(
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+            &configured_runtime_dir,
+        );
+        std::env::set_var(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &configured_runtime_dir,
+        );
+    }
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
     std::fs::create_dir_all(&user_env_dir)?;
@@ -165,6 +177,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     for key in [
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::USER_ENV_FILE_ENV,
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,

@@ -454,6 +454,7 @@ fn build_env_json_required_keys() {
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
+    assert!(!env.contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV));
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
@@ -779,6 +780,10 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
+    );
+    assert!(
+        !bootstrap_env
+            .contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
     );
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");

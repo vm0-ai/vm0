@@ -1195,6 +1195,7 @@ mod tests {
             guest_contracts::env::USE_MOCK_CODEX_ENV,
             guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
