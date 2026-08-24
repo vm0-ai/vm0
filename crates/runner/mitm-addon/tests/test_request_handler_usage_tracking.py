@@ -13,6 +13,7 @@ from mitmproxy.flow import Error
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import terminal_usage
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.pending_helpers import assert_pending
@@ -250,6 +251,68 @@ def _auth_url_rewrite_token_meta() -> dict[str, object]:
         "refreshed_secrets": [],
         "cache_hit": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("firewall_billable", "model_usage_observable"),
+    [(True, False), (False, True)],
+)
+def test_repeated_eligibility_checks_keep_one_usage_flow_in_flight(
+    usage_pending_path,
+    real_flow,
+    firewall_billable,
+    model_usage_observable,
+):
+    """One flow owns one drain unit across changed eligibility signals."""
+    flow = _model_provider_tracking_flow(real_flow)
+
+    terminal_usage.track_flow_if_needed(
+        flow,
+        firewall_billable,
+        model_usage_observable,
+    )
+    usage.write_pending_snapshot(flush_request_id="after-first-admission")
+    assert_pending(
+        usage_pending_path,
+        flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-first-admission",
+    )
+
+    terminal_usage.track_flow_if_needed(
+        flow,
+        not firewall_billable,
+        not model_usage_observable,
+    )
+    usage.write_pending_snapshot(flush_request_id="after-repeated-admission")
+    assert_pending(
+        usage_pending_path,
+        flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-repeated-admission",
+    )
+
+    terminal_usage.release_tracked_flow(flow)
+    usage.write_pending_snapshot(flush_request_id="after-release")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-release",
+    )
+
+    terminal_usage.release_tracked_flow(flow)
+    usage.write_pending_snapshot(flush_request_id="after-repeated-release")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-repeated-release",
+    )
 
 
 async def test_billable_flow_is_tracked_before_responseheaders(
