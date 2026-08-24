@@ -345,6 +345,14 @@ function authenticateOrg(
   mocks.clerk.session(fixture.userId, fixture.orgId, role);
 }
 
+async function disableUsagePackPlans(
+  fixture: BillingOrgFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.UsagePackPlans]: false,
+  });
+}
+
 function mockClerkOrganization(fixture: BillingOrgFixture): void {
   context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
     id: fixture.orgId,
@@ -2286,6 +2294,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
   it("keeps the usage pack catalog behind the same feature switch", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
+    await disableUsagePackPlans(fixture);
 
     const response = await accept(
       setupApp({ context, routes: billingCheckoutRoutes })(
@@ -2358,6 +2367,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
   it("keeps usage pack checkout behind its feature switch", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
+    await disableUsagePackPlans(fixture);
     const before = await readUsagePackState(fixture.orgId);
 
     const response = await accept(
@@ -5080,6 +5090,7 @@ describe("legacy subscription usage pack migration", () => {
       orgId: `org_non_staff_${randomUUID()}`,
     });
     expect(isStaffOrg(fixture.orgId)).toBeFalsy();
+    await disableUsagePackPlans(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       legacyMigrationSubscription(fixture),
     );

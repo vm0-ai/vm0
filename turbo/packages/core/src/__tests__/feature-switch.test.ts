@@ -155,7 +155,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
   });
 
   it("should enable composer submit DOM reconciliation only for Bingjie", () => {
