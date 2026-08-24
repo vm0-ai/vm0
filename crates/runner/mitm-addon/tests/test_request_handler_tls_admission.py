@@ -1,6 +1,7 @@
 """Connection-scoped TLS admission request hook integration tests."""
 
 import json
+from typing import cast
 
 import pytest
 
@@ -131,11 +132,22 @@ async def test_valid_tls_admission_blocks_when_run_id_changes(
     _assert_stale_tls_admission_block(flow, reason="run_id_mismatch")
 
 
-async def test_valid_tls_admission_blocks_when_request_client_ip_is_missing(
+@pytest.mark.parametrize(
+    "request_peername",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(
+            cast(tuple[str, int], ("10.200.0.5",)),
+            id="one-element-tuple",
+        ),
+    ],
+)
+async def test_valid_tls_admission_blocks_when_request_client_ip_is_unavailable(
     tmp_path,
     real_flow,
     make_tls_data,
     mitm_ctx,
+    request_peername: tuple[str, int] | None,
 ):
     client_ip = "10.200.0.5"
     reg_path = _write_registry(
@@ -160,7 +172,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_is_missing(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        flow.client_conn.peername = None
+        flow.client_conn.peername = request_peername
 
         await mitm_addon.request(flow)
 

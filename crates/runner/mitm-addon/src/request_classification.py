@@ -367,7 +367,8 @@ def _classify_request(
     trusted_authority: TrustedAuthority | None,
     defer_unresolved_public_destination: bool,
 ) -> RequestClassification:
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    client_peername = connection_endpoints.client_peername(flow.client_conn)
+    client_ip = client_peername[0] if client_peername is not None else None
 
     if not client_ip:
         if tls_admission is not None:

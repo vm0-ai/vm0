@@ -7,6 +7,51 @@ import pytest
 import connection_endpoints
 
 
+class _Client:
+    def __init__(self, peername: object) -> None:
+        self.peername = peername
+
+
+@pytest.mark.parametrize(
+    "peername",
+    [
+        pytest.param((), id="empty-tuple"),
+        pytest.param(("10.200.0.5",), id="one-element-tuple"),
+        pytest.param((int(ipaddress.IPv4Address("10.200.0.5")), 12345), id="integer-host"),
+        pytest.param(("10.200.0.5", "12345"), id="string-port"),
+        pytest.param(["10.200.0.5", 12345], id="list"),
+    ],
+)
+def test_client_peername_rejects_malformed_endpoint(peername: object) -> None:
+    assert connection_endpoints.client_peername(_Client(peername)) is None
+
+
+def test_client_peername_rejects_missing_peername() -> None:
+    assert connection_endpoints.client_peername(object()) is None
+
+
+@pytest.mark.parametrize(
+    ("peername", "expected"),
+    [
+        pytest.param(
+            ("10.200.0.5", 12345),
+            ("10.200.0.5", 12345),
+            id="ipv4-pair",
+        ),
+        pytest.param(
+            ("2001:db8::5", 12345, 0, 2),
+            ("2001:db8::5", 12345),
+            id="ipv6-extra-fields",
+        ),
+    ],
+)
+def test_client_peername_returns_host_port_pair(
+    peername: tuple[object, ...],
+    expected: tuple[str, int],
+) -> None:
+    assert connection_endpoints.client_peername(_Client(peername)) == expected
+
+
 @pytest.mark.parametrize(
     "address",
     [
