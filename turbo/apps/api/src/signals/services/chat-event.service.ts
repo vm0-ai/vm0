@@ -107,6 +107,7 @@ type ChatEventDisplayContext =
         readonly threadId: string;
         readonly serviceUrl: string;
         readonly teamsAppId: string | null;
+        readonly publicBrand: PublicBrand;
         readonly senderUserId: string;
         readonly senderDisplayName: string | null;
         readonly senderPrincipalName: string | null;
@@ -494,6 +495,7 @@ type NewDisplayContext =
       readonly threadId: string;
       readonly serviceUrl: string;
       readonly teamsAppId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly senderUserId: string;
       readonly senderDisplayName: string | null;
       readonly senderPrincipalName: string | null;
@@ -898,6 +900,7 @@ async function insertDisplayContext(
       threadId: context.threadId,
       serviceUrl: context.serviceUrl,
       teamsAppId: context.teamsAppId,
+      publicBrand: context.publicBrand,
       senderUserId: context.senderUserId,
       senderDisplayName: context.senderDisplayName,
       senderPrincipalName: context.senderPrincipalName,

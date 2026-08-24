@@ -1076,6 +1076,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     expect(connectUrl.searchParams.get("teamId")).toBe(fixture.teamsTeamId);
     expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
     expect(connectUrl.searchParams.get("conversationType")).toBe("channel");
+    expect(connectUrl.searchParams.get("botName")).toBe("Zero");
     expect(body).not.toHaveProperty("dispatch");
     await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
@@ -1146,6 +1147,42 @@ describe("POST /api/webhooks/teams/bot", () => {
       tenantName: "Tenant One",
       teamId: fixture.teamsTeamId,
       teamName: "Team One",
+    });
+  });
+
+  it("uses the webhook Host for product branding and the Teams recipient for bot identity", async () => {
+    const fixture = await trackedBotFixture();
+    botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const botName = "Tenant Helper";
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: teamsFixtureExternalId(fixture, "activity-okou-host-help"),
+        text: "help",
+        entities: [],
+        recipient: { id: fixture.teamsBotId, name: botName },
+      }),
+      token: teamsToken(),
+      url: "https://api.okou.ai/api/webhooks/teams/bot",
+    });
+
+    const body = z
+      .object({ connectUrl: z.string() })
+      .parse(await readTeamsBotResponseAndFlush(response));
+    const connectUrl = new URL(body.connectUrl);
+    expect(connectUrl.origin).toBe("https://app.okou.ai");
+    expect(connectUrl.searchParams.get("botName")).toBe(botName);
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining(`${botName} Teams Bot Help`),
+    });
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining("Connect to Okou"),
+    });
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining(`@${botName}`),
     });
   });
 
@@ -2987,6 +3024,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       expect.objectContaining({
         payload: expect.objectContaining({
           teamsDelivery: expect.objectContaining({
+            publicBrand: "vm0",
             files: expect.arrayContaining([
               expect.objectContaining({ name: "current-task.txt" }),
               expect.objectContaining({ name: "deployment-plan.pdf" }),

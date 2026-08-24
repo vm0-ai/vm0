@@ -15,6 +15,7 @@ export const teamsBrowserConnectQuerySchema = z.object({
   upn: z.string().optional(),
   teamId: z.string().optional(),
   teamName: z.string().optional(),
+  botName: z.string().optional(),
   serviceUrl: z.string().optional(),
   conversationId: z.string().optional(),
   conversationType: z.string().optional(),
