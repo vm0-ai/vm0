@@ -30,6 +30,14 @@ function okouBrandLink(): HTMLElement {
   return link;
 }
 
+function authV2ActionLink(): HTMLAnchorElement {
+  const link = screen.getByTestId("app-auth-v2").querySelector("a");
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error("Auth v2 action link not found");
+  }
+  return link;
+}
+
 function disableUrlCanParse(): void {
   const urlWithoutCanParse = new Proxy(URL, {
     get(target, property, receiver) {
@@ -355,6 +363,74 @@ describe("app auth pages", () => {
     expect(
       screen.queryByTestId("clerk-google-one-tap"),
     ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      action: "Continue to sign in",
+      heading: "Sign in",
+      legacyPath: "/sign-in",
+      path: "/v2/sign-in",
+    },
+    {
+      action: "Continue to sign in",
+      heading: "Sign in",
+      legacyPath: "/sign-in",
+      path: "/v2/sign-in/tasks/choose-organization",
+    },
+    {
+      action: "Continue to sign up",
+      heading: "Sign up",
+      legacyPath: "/sign-up",
+      path: "/v2/sign-up",
+    },
+    {
+      action: "Continue to sign up",
+      heading: "Sign up",
+      legacyPath: "/sign-up",
+      path: "/v2/sign-up/verify-email-address",
+    },
+  ])("renders the auth v2 scaffold at $path", async (routeCase) => {
+    setBrowserUrl(`https://app.vm0.ai${routeCase.path}`);
+
+    detachedSetupPage({ context, path: routeCase.path });
+
+    await expect(screen.findByTestId("app-auth-v2")).resolves.toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: routeCase.heading }),
+    ).toBeVisible();
+    const actionLink = authV2ActionLink();
+    expect(actionLink).toHaveTextContent(routeCase.action);
+    expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(document.title).toBe(`${routeCase.heading} | VM0`);
+  });
+
+  it("preserves branded auth intent when leaving the v2 scaffold", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
+    const hash = "#/?step=identifier";
+    const path = `/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await expect(screen.findByTestId("app-auth-v2")).resolves.toBeVisible();
+    const continueLink = authV2ActionLink();
+    expect(continueLink).toHaveAttribute(
+      "href",
+      `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`,
+    );
+    expect(document.title).toBe("Sign in | Okou");
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-title",
+      "Sign in to Okou",
+    );
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {

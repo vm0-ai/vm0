@@ -1016,7 +1016,12 @@
       "signUp": "サインアップ"
     },
     "loading": "認証を読み込み中",
-    "toggleTheme": "テーマの切り替え"
+    "toggleTheme": "テーマの切り替え",
+    "v2": {
+      "continueToSignIn": "現在のサインインに進む",
+      "continueToSignUp": "現在のサインアップに進む",
+      "unavailable": "新しい認証画面はまだ利用できません。"
+    }
   },
   "authorization": {
     "browser": {

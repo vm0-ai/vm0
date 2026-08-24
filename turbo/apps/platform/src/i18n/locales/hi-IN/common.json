@@ -1016,7 +1016,12 @@
       "signUp": "साइन अप करें"
     },
     "loading": "प्रमाणीकरण लोड हो रहा है",
-    "toggleTheme": "थीम टॉगल करें"
+    "toggleTheme": "थीम टॉगल करें",
+    "v2": {
+      "continueToSignIn": "साइन इन जारी रखें",
+      "continueToSignUp": "साइन अप जारी रखें",
+      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+    }
   },
   "authorization": {
     "browser": {
