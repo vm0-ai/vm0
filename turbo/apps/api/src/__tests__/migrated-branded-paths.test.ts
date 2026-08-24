@@ -12,7 +12,6 @@ import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
-import { uploadsPrepareRoutes } from "../signals/routes/uploads-prepare";
 import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
 import { webFileUrlRoutes } from "../signals/routes/web-file-url";
 import {
@@ -432,10 +431,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/uploads/multipart/complete",
     "/api/zero/uploads/multipart/complete",
   ],
-  "/api/uploads/prepare": [
-    "/api/okou/uploads/prepare",
-    "/api/zero/uploads/prepare",
-  ],
   "/api/voice-io/quota": [
     "/api/okou/voice-io/quota",
     "/api/zero/voice-io/quota",
@@ -674,41 +669,30 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
-  // The #28463 twin of the two assertions above, and the one that covers a GET
-  // as well as a POST: the slice moved a mix of methods, and a row is matched on
+  // The #28463 twin of the two assertions above. A row is matched on
   // `entry.route.path` alone. Every branded path below exists only because of
   // a table row, and the request goes through the app factory production wires,
   // so a row that never reaches the registration chain fails here rather than
-  // 404ing a released CLI or platform build.
+  // 404ing a released CLI or platform build. The POST arm this loop used to
+  // carry went with `uploads/prepare` in #28974; both endpoints left are GETs,
+  // so the request builder no longer branches on a method.
   it("serves the migrated product paths through the production app factory", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
 
     const endpoints = [
-      {
-        routes: uploadsPrepareRoutes,
-        method: "POST",
-        suffix: "uploads/prepare",
-      },
-      { routes: voiceIoQuotaRoutes, method: "GET", suffix: "voice-io/quota" },
-      { routes: webFileUrlRoutes, method: "GET", suffix: "web/file-url" },
+      { routes: voiceIoQuotaRoutes, suffix: "voice-io/quota" },
+      { routes: webFileUrlRoutes, suffix: "web/file-url" },
     ] as const;
 
-    for (const { routes, method, suffix } of endpoints) {
+    for (const { routes, suffix } of endpoints) {
       const app = createAppWithRoutes({ signal: context.signal, routes });
 
       async function statusFor(path: string): Promise<number> {
-        const response = await app.request(
-          `${REQUEST_ORIGIN}${path}`,
-          method === "GET"
-            ? { method }
-            : {
-                method,
-                headers: { "content-type": "application/json" },
-                body: "{}",
-              },
-        );
+        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+          method: "GET",
+        });
         return response.status;
       }
 
@@ -749,10 +733,11 @@ describe("branded paths for migrated neutral routes", () => {
   // because nothing enumerated it.
   //
   // That is the guard #28709 left behind when it took the table from 314 rows
-  // to 184, #28711 kept when it took the 42 drained rows that left 142, and
-  // #28917 kept when it took 53 more and left 89. None of them left a case
-  // asserting the removed rows now 404: `docs/fallback.md` section 1 rules that
-  // class out, and the route table already proves the registration is gone.
+  // to 184, #28711 kept when it took the 42 drained rows that left 142, #28917
+  // kept when it took 53 more and left 89, and #28974 kept when it took
+  // `uploads/prepare` and left 88. None of them left a case asserting the
+  // removed rows now 404: `docs/fallback.md` section 1 rules that class out,
+  // and the route table already proves the registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
   // the request-log evidence #26701 requires — which is what this count and the
   // per-family cases catch.
@@ -764,7 +749,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 89;
+    const MIGRATED_BRANDED_ROW_COUNT = 88;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,
