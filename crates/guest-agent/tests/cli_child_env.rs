@@ -187,10 +187,17 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
     }
     assert!(!cli_env.contains_key("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
-    assert!(
-        !cli_env
-            .contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-    );
+    for key in [
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
 
     let session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     let canonical_history = Path::new(&runtime.config.claude_config_dir)

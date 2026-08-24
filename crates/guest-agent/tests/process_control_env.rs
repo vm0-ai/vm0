@@ -29,7 +29,9 @@ async fn process_control_endpoint_aliases_without_workload_capability_fail_close
             .env_remove(process_control_ipc::BOOTSTRAP_ENV)
             .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
             .env(bootstrap_env, "missing-capability")
+            .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
             .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+            .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
             .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
             .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
         let output = common::command_output_with_timeout(
@@ -82,6 +84,8 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
         .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
+        .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
+        .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
         .env(
             process_control_ipc::BOOTSTRAP_ENV,
             "process-control-present",

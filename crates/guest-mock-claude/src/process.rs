@@ -4,17 +4,26 @@ mod stream_json_input;
 
 use crate::args::ParsedArgs;
 use crate::scenario::MockScenario;
-use guest_contracts::process_containment::{TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOL_EXEC_PATH};
+use guest_contracts::process_containment::{
+    CANONICAL_TOOL_CGROUP_PROCS_ENV, TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOL_EXEC_PATH,
+};
+use std::ffi::OsStr;
 use std::io::BufReader;
 use std::process::{Command, ExitCode};
 
 fn bash_tool_command() -> Command {
-    let binary = if std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV).is_some() {
+    let canonical = std::env::var_os(CANONICAL_TOOL_CGROUP_PROCS_ENV);
+    let legacy = std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
+    let binary = bash_tool_binary(canonical.as_deref(), legacy.as_deref());
+    Command::new(binary)
+}
+
+fn bash_tool_binary(canonical: Option<&OsStr>, legacy: Option<&OsStr>) -> &'static str {
+    if canonical.is_some() || legacy.is_some() {
         TOOL_EXEC_PATH
     } else {
         "bash"
-    };
-    Command::new(binary)
+    }
 }
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
@@ -143,5 +152,26 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
             fixtures::run_parallel_shell_tool_oom_scenario(output_format)
         }
         MockScenario::Shell => shell_execution::run(prompt, output_format),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn either_tool_endpoint_alias_selects_the_managed_launcher() {
+        let endpoint = OsStr::new("endpoint");
+        let empty = OsStr::new("");
+
+        assert_eq!(bash_tool_binary(None, None), "bash");
+        assert_eq!(bash_tool_binary(Some(endpoint), None), TOOL_EXEC_PATH);
+        assert_eq!(bash_tool_binary(None, Some(endpoint)), TOOL_EXEC_PATH);
+        assert_eq!(
+            bash_tool_binary(Some(endpoint), Some(endpoint)),
+            TOOL_EXEC_PATH
+        );
+        assert_eq!(bash_tool_binary(Some(empty), None), TOOL_EXEC_PATH);
+        assert_eq!(bash_tool_binary(None, Some(empty)), TOOL_EXEC_PATH);
     }
 }
