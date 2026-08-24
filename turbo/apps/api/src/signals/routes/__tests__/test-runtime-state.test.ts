@@ -352,72 +352,137 @@ describe("POST /api/test/runtime-state/action", () => {
 });
 
 describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
-  it("records a bounded cooldown for only the persisted managed route", async () => {
-    const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
-    await withMockNowForTest(startedAt, async () => {
-      const claimed = await createClaimedVm0Run();
-      const primary = await resolveVm0ManagedModelRouteFixture(
-        context,
-        claimed.selectedModel,
-        true,
-      );
-      if (!primary) {
-        throw new Error("Expected a managed model primary route");
-      }
-      registerVm0ManagedCandidateCooldownCleanup(
-        context,
-        claimed.selectedModel,
-        primary,
-      );
-
-      await expect(
-        runs.reportRunnerModelProviderFailure(claimed.runId, {
-          failureKind: "authentication",
-        }),
-      ).resolves.toStrictEqual({ outcome: "recorded" });
-      await expect(
-        runs.readRun(claimed.actor, claimed.runId),
-      ).resolves.toMatchObject({ status: "running" });
-      await expect(
-        resolveVm0ManagedModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          false,
-        ),
-      ).resolves.toMatchObject({
-        provider_type: primary.provider_type,
-        upstream_model: primary.upstream_model,
-      });
-      await expect(
-        resolveVm0ManagedModelRouteFixture(
+  it.each([
+    {
+      caseName: "authentication intervention",
+      failureKind: "authentication",
+      retryAfterSeconds: 1,
+      cooldownSeconds: 30 * 60,
+    },
+    {
+      caseName: "billing intervention",
+      failureKind: "billing",
+      retryAfterSeconds: 1,
+      cooldownSeconds: 30 * 60,
+    },
+    {
+      caseName: "rate limit default",
+      failureKind: "rate_limit",
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "provider unavailable default",
+      failureKind: "provider_unavailable",
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "timeout default",
+      failureKind: "timeout",
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "connection default",
+      failureKind: "connection",
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "bounded provider retry delay",
+      failureKind: "rate_limit",
+      retryAfterSeconds: 120,
+      cooldownSeconds: 120,
+    },
+  ] as const)(
+    "records the $caseName cooldown for only the persisted managed route",
+    async ({ failureKind, retryAfterSeconds, cooldownSeconds }) => {
+      const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
+      await withMockNowForTest(startedAt, async () => {
+        const claimed = await createClaimedVm0Run();
+        const primary = await resolveVm0ManagedModelRouteFixture(
           context,
           claimed.selectedModel,
           true,
-        ),
-      ).resolves.not.toMatchObject({
-        provider_type: primary.provider_type,
-        upstream_model: primary.upstream_model,
-      });
+        );
+        if (!primary) {
+          throw new Error("Expected a managed model primary route");
+        }
+        registerVm0ManagedCandidateCooldownCleanup(
+          context,
+          claimed.selectedModel,
+          primary,
+        );
 
-      await seedVm0ManagedModelCandidateKeys(context, "deepseek-v4-pro");
-      await expect(
-        resolveVm0ManagedModelRouteFixture(context, "deepseek-v4-pro", true),
-      ).resolves.toMatchObject({ provider_type: "deepseek" });
-
-      await withMockNowForTest(startedAt + 60_000, async () => {
+        await expect(
+          runs.reportRunnerModelProviderFailure(claimed.runId, {
+            failureKind,
+            ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+          }),
+        ).resolves.toStrictEqual({ outcome: "recorded" });
+        await expect(
+          runs.readRun(claimed.actor, claimed.runId),
+        ).resolves.toMatchObject({ status: "running" });
+        await expect(
+          resolveVm0ManagedModelRouteFixture(
+            context,
+            claimed.selectedModel,
+            false,
+          ),
+        ).resolves.toMatchObject({
+          provider_type: primary.provider_type,
+          upstream_model: primary.upstream_model,
+        });
         await expect(
           resolveVm0ManagedModelRouteFixture(
             context,
             claimed.selectedModel,
             true,
           ),
-        ).resolves.toMatchObject({
+        ).resolves.not.toMatchObject({
           provider_type: primary.provider_type,
           upstream_model: primary.upstream_model,
         });
+
+        await seedVm0ManagedModelCandidateKeys(context, "deepseek-v4-pro");
+        await expect(
+          resolveVm0ManagedModelRouteFixture(context, "deepseek-v4-pro", true),
+        ).resolves.toMatchObject({ provider_type: "deepseek" });
+
+        await withMockNowForTest(
+          startedAt + cooldownSeconds * 1000 - 1,
+          async () => {
+            await expect(
+              resolveVm0ManagedModelRouteFixture(
+                context,
+                claimed.selectedModel,
+                true,
+              ),
+            ).resolves.not.toMatchObject({
+              provider_type: primary.provider_type,
+              upstream_model: primary.upstream_model,
+            });
+          },
+        );
+        await withMockNowForTest(
+          startedAt + cooldownSeconds * 1000,
+          async () => {
+            await expect(
+              resolveVm0ManagedModelRouteFixture(
+                context,
+                claimed.selectedModel,
+                true,
+              ),
+            ).resolves.toMatchObject({
+              provider_type: primary.provider_type,
+              upstream_model: primary.upstream_model,
+            });
+          },
+        );
       });
-    });
-  });
+    },
+  );
 
   it("monotonically extends concurrent bounded reports from receipt time", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 1, 0, 0);
