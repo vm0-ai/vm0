@@ -317,6 +317,87 @@ def test_tweet_create_multi_member_gzip_enforces_total_decoded_cap(
 
 
 @pytest.mark.parametrize(
+    ("wbits", "decoded_size", "expected_category"),
+    [
+        pytest.param(
+            _ZLIB_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            "content.create",
+            id="zlib-exact-limit",
+        ),
+        pytest.param(
+            _RAW_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            "content.create",
+            id="raw-exact-limit",
+        ),
+        pytest.param(
+            _ZLIB_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            "content.create_with_url",
+            id="zlib-over-limit",
+        ),
+        pytest.param(
+            _RAW_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            "content.create_with_url",
+            id="raw-over-limit",
+        ),
+    ],
+)
+def test_tweet_create_deflate_enforces_decoded_cap(
+    x_usage, tmp_path, real_flow, wbits, decoded_size, expected_category
+):
+    request_payload = _tweet_body_with_size(decoded_size)
+    request_body = zlib.compress(request_payload, wbits=wbits)
+    assert len(request_payload) == decoded_size
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="deflate",
+    )
+    flow.request.method = "POST"
+
+    real_factory = zlib.decompressobj
+    max_lengths: list[int] = []
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, data, max_length=0):
+            max_lengths.append(max_length)
+            return self._wrapped.decompress(data, max_length=max_length)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unused_data(self):
+            return self._wrapped.unused_data
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    with patch("billing_body.zlib.decompressobj", factory):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == expected_category
+    assert p["quantity"] == 1
+    assert max_lengths
+    assert set(max_lengths) == {REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1}
+
+
+@pytest.mark.parametrize(
     ("request_encoding", "request_body", "wbits"),
     [
         pytest.param(
