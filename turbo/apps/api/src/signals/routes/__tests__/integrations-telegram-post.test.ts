@@ -1544,6 +1544,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramRootMessageId: "dm",
       telegramUserLinkKind: "custom",
     });
+    // The current production API cannot create the old persisted shape after
+    // this schema ships. Clear only the additive field to emulate queued work
+    // admitted by an old API and prove it still launches during rollout.
     await clearTelegramPublicBrandFixture(queuedParams.eventId);
     await setTelegramThinkingMessageIdFixture(queuedParams.eventId, "701");
     await completeCanonicalChatRun({
@@ -2410,7 +2413,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         ?.url ?? "";
     expect(buttonUrl).toContain("http://localhost:3002/telegram/connect?bot=");
     expect(buttonUrl).toContain("tgUser=91612");
-    expect(new URL(buttonUrl).searchParams.get("brand")).toBe("vm0");
+    // The branded app Host carries presentation identity; keep the signed
+    // query compatible with pre-brand Telegram connect consumers.
+    expect(new URL(buttonUrl).searchParams.has("brand")).toBeFalsy();
 
     const help = await postWebhook({
       telegramBotId: fixture.telegramBotId,

@@ -152,7 +152,6 @@ function signConnectParams(args: {
   readonly botToken: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
-  readonly publicBrand?: PublicBrand;
 }): string {
   const normalizedTelegramUsername = normalizeTelegramUsername(
     args.telegramUsername,
@@ -167,9 +166,6 @@ function signConnectParams(args: {
   if (normalizedTelegramDisplayName) {
     data += `:${normalizedTelegramDisplayName}`;
   }
-  if (args.publicBrand) {
-    data += `:${args.publicBrand}`;
-  }
   return createHmac("sha256", args.botToken).update(data).digest("hex");
 }
 
@@ -181,7 +177,6 @@ export function verifyConnectSignature(args: {
   readonly botToken: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
-  readonly publicBrand?: PublicBrand;
 }): boolean {
   const nowSeconds = Math.floor(now() / 1000);
   if (nowSeconds - args.timestamp > MAX_CONNECT_AGE_SECONDS) {

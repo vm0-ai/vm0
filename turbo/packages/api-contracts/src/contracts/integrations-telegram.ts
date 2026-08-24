@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -80,7 +79,6 @@ const telegramConnectSignatureSchema = z.object({
   telegramDisplayName: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
-  publicBrand: publicBrandSchema.optional(),
 });
 
 const telegramAuthSchema = z.object({

@@ -1121,23 +1121,12 @@ function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
-function isTelegramReplyToBot(
+function isTelegramReplyToBotId(
   message: TelegramMessage,
   botId: string,
-  botUsername: string | null | undefined,
 ): boolean {
   const replyFrom = message.reply_to_message?.from;
-  if (replyFrom?.is_bot !== true) {
-    return false;
-  }
-  if (String(replyFrom.id) === botId) {
-    return true;
-  }
-  const username = normalizedBotUsername(botUsername).toLowerCase();
-  return (
-    username !== "" &&
-    normalizedBotUsername(replyFrom.username).toLowerCase() === username
-  );
+  return replyFrom?.is_bot === true && String(replyFrom.id) === botId;
 }
 
 function parseBotCommand(
@@ -1215,7 +1204,6 @@ function signConnectParams(args: {
   readonly botToken: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
-  readonly publicBrand?: PublicBrand;
 }): string {
   const username = normalizeTelegramUsername(args.telegramUsername);
   const displayName = normalizeTelegramDisplayName(args.telegramDisplayName);
@@ -1225,9 +1213,6 @@ function signConnectParams(args: {
   }
   if (displayName) {
     data += `:${displayName}`;
-  }
-  if (args.publicBrand) {
-    data += `:${args.publicBrand}`;
   }
   return createHmac("sha256", args.botToken).update(data).digest("hex");
 }
@@ -1246,7 +1231,6 @@ function buildConnectUrl(args: {
     tgUser: args.telegramUserId,
     ts: String(timestamp),
     sig: signConnectParams({ ...args, timestamp }),
-    brand: args.publicBrand,
   });
   const username = normalizeTelegramUsername(args.telegramUsername);
   const displayName = normalizeTelegramDisplayName(args.telegramDisplayName);
@@ -1685,12 +1669,11 @@ function rootMessageIdForAgentMessage(args: {
   readonly isDM: boolean;
   readonly message: TelegramMessage;
   readonly botId: string;
-  readonly botUsername: string | null;
 }): string | undefined {
   if (args.isDM) {
     return "dm";
   }
-  return isTelegramReplyToBot(args.message, args.botId, args.botUsername)
+  return isTelegramReplyToBotId(args.message, args.botId)
     ? String(args.message.reply_to_message?.message_id)
     : undefined;
 }
@@ -2708,7 +2691,7 @@ function isCustomGroupAddressed(
 ): boolean {
   return (
     hasBotMention(message, botUsername) ||
-    isTelegramReplyToBot(message, botId, botUsername)
+    isTelegramReplyToBotId(message, botId)
   );
 }
 
@@ -2962,7 +2945,7 @@ const processOfficialWebhookMessage$ = command(
     const isAddressed =
       isPrivateChat ||
       hasBotMention(args.message, config.botUsername) ||
-      isTelegramReplyToBot(args.message, config.botId, config.botUsername);
+      isTelegramReplyToBotId(args.message, config.botId);
     if (!isAddressed) {
       await storeUnaddressedOfficialMessage(
         {

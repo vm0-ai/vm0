@@ -392,13 +392,10 @@ const linkOfficialInner$ = command(
           botToken: config.botToken,
           telegramUsername: connectSignature.telegramUsername,
           telegramDisplayName: connectSignature.telegramDisplayName,
-          publicBrand: connectSignature.publicBrand,
         })
       ) {
         return invalidConnectSignatureResponse();
       }
-      const flowPublicBrand = connectSignature.publicBrand ?? publicBrand;
-
       const db = set(writeDb$);
       const composeId = await resolveOfficialConnectComposeId(db, args.auth);
       signal.throwIfAborted();
@@ -414,7 +411,7 @@ const linkOfficialInner$ = command(
           telegramDisplayName: connectSignature.telegramDisplayName,
           userId: args.auth.userId,
           orgId: args.auth.orgId,
-          publicBrand: flowPublicBrand,
+          publicBrand,
         },
         signal,
       );
@@ -423,7 +420,7 @@ const linkOfficialInner$ = command(
       if (!result.ok) {
         return officialLinkConflictResponse(
           result.reason,
-          flowPublicBrand,
+          publicBrand,
           config.botUsername,
         );
       }
@@ -432,7 +429,7 @@ const linkOfficialInner$ = command(
         botToken: config.botToken,
         telegramUserId: connectSignature.telegramUserId,
         official: true,
-        publicBrand: flowPublicBrand,
+        publicBrand,
       });
 
       return linkSuccessResponse(
@@ -518,13 +515,10 @@ const linkCustomWithConnectSignature$ = command(
         botToken: args.installation.botToken,
         telegramUsername: connectSignature.telegramUsername,
         telegramDisplayName: connectSignature.telegramDisplayName,
-        publicBrand: connectSignature.publicBrand,
       })
     ) {
       return invalidConnectSignatureResponse();
     }
-    const flowPublicBrand = connectSignature.publicBrand ?? publicBrand;
-
     const result = await set(
       linkTelegramUser$,
       {
@@ -539,14 +533,14 @@ const linkCustomWithConnectSignature$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return linkConflictResponse(result.reason, flowPublicBrand);
+      return linkConflictResponse(result.reason, publicBrand);
     }
 
     sendConnectSuccessMessage({
       botToken: args.installation.botToken,
       telegramUserId: connectSignature.telegramUserId,
       official: false,
-      publicBrand: flowPublicBrand,
+      publicBrand,
     });
 
     return linkSuccessResponse(

@@ -1,5 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
-import type { TelegramBotStatus } from "@okouai/api-contracts/contracts/integrations-telegram";
+import {
+  integrationsTelegramContract,
+  type TelegramBotStatus,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,7 +11,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { parseTelegramConnectParams } from "../../../signals/okou-page/telegram-connect-params.ts";
 
 const context = testContext();
 
@@ -44,51 +46,45 @@ function telegramStatus(): TelegramBotStatus {
   };
 }
 
-function telegramConnectPath(): string {
+function telegramConnectPath(signature = "b".repeat(64)): string {
   const params = new URLSearchParams({
     bot: botId,
     tgUser: "99001",
     tgUserName: "alice",
     tgDisplayName: "Alice Tester",
     ts: "1700000000",
-    sig: "b".repeat(64),
-    brand: "okou",
+    sig: signature,
   });
   return `/telegram/connect?${params.toString()}`;
 }
 
 describe("zero Telegram connect page", () => {
-  it("preserves a validated public brand in signed connect parameters", () => {
-    const parsed = parseTelegramConnectParams(
-      new URL(telegramConnectPath(), "https://app.okou.ai").searchParams,
-    );
-    expect(parsed).toMatchObject({
-      ok: true,
-      params: {
-        telegramBotId: botId,
-        connectSignature: { publicBrand: "okou" },
-      },
-    });
-    if (!parsed.ok) {
-      throw new Error("Expected branded Telegram connect params to parse");
-    }
-    expect(parsed.returnPath).toContain("brand=okou");
-  });
+  it("shows invalid signed links through the rendered page", async () => {
+    detachedSetupPage({ context, path: telegramConnectPath("invalid") });
 
-  it("rejects an invalid public brand in signed connect parameters", () => {
-    const params = new URL(telegramConnectPath(), "https://app.okou.ai")
-      .searchParams;
-    params.set("brand", "owner_named_bot");
-    expect(parseTelegramConnectParams(params)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_signature" },
-    });
+    await expect(
+      screen.findByRole("heading", { name: "Connect link is invalid" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("The signature on this link is not valid."),
+    ).toBeInTheDocument();
   });
 
   it("links the Telegram user and shows the connected state", async () => {
+    let capturedLinkBody: unknown = null;
     context.mocks.data.telegramIntegration({
       statuses: [telegramStatus()],
     });
+    context.mocks.api(
+      integrationsTelegramContract.link,
+      ({ body, respond }) => {
+        capturedLinkBody = body;
+        return respond(200, {
+          botUsername: "agent_bot",
+          telegramUserId: "99001",
+        });
+      },
+    );
     context.mocks.browser.locationAssign();
 
     detachedSetupPage({ context, path: telegramConnectPath() });
@@ -114,5 +110,17 @@ describe("zero Telegram connect page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Open Telegram")).toBeInTheDocument();
     expect(screen.getByText("Back to Telegram settings")).toBeInTheDocument();
+    // Product brand is carried by the app/API Host. Keeping this request body
+    // byte-for-byte compatible lets old and new app/API versions interoperate.
+    expect(capturedLinkBody).toStrictEqual({
+      telegramBotId: botId,
+      connectSignature: {
+        telegramUserId: "99001",
+        telegramUsername: "alice",
+        telegramDisplayName: "Alice Tester",
+        timestamp: 1_700_000_000,
+        signature: "b".repeat(64),
+      },
+    });
   });
 });

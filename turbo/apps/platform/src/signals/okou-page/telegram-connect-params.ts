@@ -1,8 +1,3 @@
-import {
-  publicBrandSchema,
-  type PublicBrand,
-} from "@okouai/api-contracts/contracts/public-brand";
-
 import { i18n } from "../../i18n/index.ts";
 
 export interface TelegramConnectParams {
@@ -13,7 +8,6 @@ export interface TelegramConnectParams {
     telegramDisplayName?: string;
     timestamp: number;
     signature: string;
-    publicBrand?: PublicBrand;
   } | null;
 }
 
@@ -54,9 +48,6 @@ function encodeReturnPath(params: TelegramConnectParams): string {
     search.set("tgUser", params.connectSignature.telegramUserId);
     search.set("ts", String(params.connectSignature.timestamp));
     search.set("sig", params.connectSignature.signature);
-    if (params.connectSignature.publicBrand) {
-      search.set("brand", params.connectSignature.publicBrand);
-    }
     if (params.connectSignature.telegramUsername) {
       search.set("tgUserName", params.connectSignature.telegramUsername);
     }
@@ -81,28 +72,12 @@ function normalizeTelegramDisplayNameParam(
   return displayName || undefined;
 }
 
-function parseTelegramConnectSignatureParams(
-  signature: string,
-  publicBrandRaw: string | undefined,
-):
-  | { readonly ok: true; readonly publicBrand: PublicBrand | undefined }
-  | { readonly ok: false } {
-  if (!/^[0-9a-f]{64}$/i.test(signature)) {
-    return { ok: false };
-  }
-  const publicBrand = publicBrandSchema.optional().safeParse(publicBrandRaw);
-  return publicBrand.success
-    ? { ok: true, publicBrand: publicBrand.data }
-    : { ok: false };
-}
-
 function buildConnectSignature(params: {
   telegramUserId: string;
   telegramUsername?: string;
   telegramDisplayName?: string;
   timestamp: number;
   signature: string;
-  publicBrand?: PublicBrand;
 }): TelegramConnectParams["connectSignature"] {
   return {
     telegramUserId: params.telegramUserId,
@@ -114,7 +89,6 @@ function buildConnectSignature(params: {
       : {}),
     timestamp: params.timestamp,
     signature: params.signature,
-    ...(params.publicBrand ? { publicBrand: params.publicBrand } : {}),
   };
 }
 
@@ -178,7 +152,6 @@ export function parseTelegramConnectParams(
   );
   const tsRaw = firstParam(searchParams, "ts")?.trim();
   const sig = firstParam(searchParams, "sig")?.trim();
-  const brandRaw = firstParam(searchParams, "brand")?.trim();
 
   if (!bot) {
     return telegramConnectParamError("incomplete");
@@ -210,8 +183,7 @@ export function parseTelegramConnectParams(
     return telegramConnectParamError("invalid_timestamp");
   }
 
-  const signatureParams = parseTelegramConnectSignatureParams(sig, brandRaw);
-  if (!signatureParams.ok) {
+  if (!/^[0-9a-f]{64}$/i.test(sig)) {
     return telegramConnectParamError("invalid_signature");
   }
 
@@ -227,7 +199,6 @@ export function parseTelegramConnectParams(
       telegramDisplayName,
       timestamp,
       signature: sig,
-      publicBrand: signatureParams.publicBrand,
     }),
   };
 

@@ -544,6 +544,11 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
+      // Backend/runner rollout compatibility: callbacks created by the old
+      // API omit publicBrand and can finish while runner/sandbox instances
+      // drain for up to 2 hours. Remove under #27750 after old API rollback
+      // targets and runners have drained and no deliverable Telegram callback
+      // payload lacks publicBrand.
       publicBrand: payload.publicBrand ?? binding.publicBrand,
     },
     signal,

@@ -144,7 +144,6 @@ function signConnectParams(args: {
   readonly botToken?: string;
   readonly telegramUsername?: string;
   readonly telegramDisplayName?: string;
-  readonly publicBrand?: "vm0" | "okou";
 }): string {
   let data = `${args.installationId}:${args.telegramUserId}:${args.timestamp}`;
   if (args.telegramUsername || args.telegramDisplayName) {
@@ -152,9 +151,6 @@ function signConnectParams(args: {
   }
   if (args.telegramDisplayName) {
     data += `:${args.telegramDisplayName}`;
-  }
-  if (args.publicBrand) {
-    data += `:${args.publicBrand}`;
   }
   return createHmac("sha256", args.botToken ?? "test-bot-token")
     .update(data)
@@ -1321,7 +1317,7 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
-  it("uses the signed public brand for an official bot connect flow", async () => {
+  it("uses the request Host brand for a legacy-compatible official connect payload", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     await seedDefaultAgentForLink(orgId, userId);
     const telegramUserId = "99015";
@@ -1342,34 +1338,38 @@ describe("POST /api/integrations/telegram/link", () => {
       ),
     );
     const timestamp = Math.floor(now() / 1000);
-    const client = setupApp({
-      context,
+    const app = createApp({
+      signal: context.signal,
       routes: integrationsTelegramRoutes,
-    })(integrationsTelegramContract);
+    });
 
-    const response = await accept(
-      client.link({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
+    const response = await app.request(
+      "https://api.okou.ai/api/integrations/telegram/link",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          origin: "https://app.vm0.ai",
+        },
+        body: JSON.stringify({
           telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
           connectSignature: {
             telegramUserId,
             timestamp,
-            publicBrand: "okou",
             signature: signConnectParams({
               installationId: OFFICIAL_TELEGRAM_BOT_ID,
               telegramUserId,
               timestamp,
               botToken: OFFICIAL_BOT_TOKEN,
-              publicBrand: "okou",
             }),
           },
-        },
-      }),
-      [200],
+        }),
+      },
     );
 
-    expect(response.body).toStrictEqual({
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
       botUsername: OFFICIAL_BOT_USERNAME,
       telegramUserId,
     });
@@ -1645,91 +1645,83 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
-  it.each([
-    { label: "legacy", publicBrand: undefined },
-    { label: "branded", publicBrand: "okou" as const },
-  ])(
-    "links a custom bot account via a valid $label connectSignature and sends confirmation",
-    async ({ publicBrand }) => {
-      const { token, orgId, userId } = await seedLinkContext();
-      const telegramBotId = newTelegramBotId();
-      const builder = makeTelegramFixtureBuilder(orgId);
-      const installation = await store.set(
-        seedTelegramInstallation$,
-        { orgId, ownerUserId: userId, telegramBotId },
-        context.signal,
-      );
-      builder.composeIds.push(installation.composeId);
-      builder.telegramBotIds.push(installation.telegramBotId);
-      fixtures.push(freezeTelegramFixture(builder));
-      const sentMessages: {
-        readonly chat_id: string;
-        readonly text: string;
-      }[] = [];
-      server.use(
-        http.post(
-          "https://api.telegram.org/bottest-bot-token/sendMessage",
-          async ({ request }) => {
-            sentMessages.push(
-              (await request.json()) as { chat_id: string; text: string },
-            );
-            return HttpResponse.json({
-              ok: true,
-              result: { message_id: 1, chat: { id: 99_005 } },
-            });
-          },
-        ),
-      );
-      const timestamp = Math.floor(now() / 1000);
-      const telegramUserId = "99005";
-      const client = setupApp({
-        context,
-        routes: integrationsTelegramRoutes,
-      })(integrationsTelegramContract);
+  it("links a custom bot account via a valid connectSignature and sends confirmation", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    const sentMessages: {
+      readonly chat_id: string;
+      readonly text: string;
+    }[] = [];
+    server.use(
+      http.post(
+        "https://api.telegram.org/bottest-bot-token/sendMessage",
+        async ({ request }) => {
+          sentMessages.push(
+            (await request.json()) as { chat_id: string; text: string },
+          );
+          return HttpResponse.json({
+            ok: true,
+            result: { message_id: 1, chat: { id: 99_005 } },
+          });
+        },
+      ),
+    );
+    const timestamp = Math.floor(now() / 1000);
+    const telegramUserId = "99005";
+    const client = setupApp({
+      context,
+      routes: integrationsTelegramRoutes,
+    })(integrationsTelegramContract);
 
-      const response = await accept(
-        client.link({
-          headers: { authorization: `Bearer ${token}` },
-          body: {
-            telegramBotId,
-            connectSignature: {
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId,
+          connectSignature: {
+            telegramUserId,
+            telegramUsername: "connect_tg",
+            telegramDisplayName: "Connect User",
+            timestamp,
+            signature: signConnectParams({
+              installationId: telegramBotId,
               telegramUserId,
+              timestamp,
               telegramUsername: "connect_tg",
               telegramDisplayName: "Connect User",
-              timestamp,
-              ...(publicBrand ? { publicBrand } : {}),
-              signature: signConnectParams({
-                installationId: telegramBotId,
-                telegramUserId,
-                timestamp,
-                telegramUsername: "connect_tg",
-                telegramDisplayName: "Connect User",
-                publicBrand,
-              }),
-            },
+            }),
           },
-        }),
-        [200],
-      );
-
-      expect(response.body.telegramUserId).toBe(telegramUserId);
-      await flushWaitUntilForTest();
-      expect(sentMessages).toStrictEqual([
-        {
-          chat_id: telegramUserId,
-          parse_mode: "HTML",
-          text: "✅ Account linked.\nSend me a message to start chatting with your agent.",
         },
-      ]);
-      await expectTelegramBotConnection({
-        token,
-        botId: telegramBotId,
-        telegramUserId,
-        telegramUsername: "connect_tg",
-        telegramDisplayName: "Connect User",
-      });
-    },
-  );
+      }),
+      [200],
+    );
+
+    expect(response.body.telegramUserId).toBe(telegramUserId);
+    await flushWaitUntilForTest();
+    expect(sentMessages).toStrictEqual([
+      {
+        chat_id: telegramUserId,
+        parse_mode: "HTML",
+        text: "✅ Account linked.\nSend me a message to start chatting with your agent.",
+      },
+    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: telegramBotId,
+      telegramUserId,
+      telegramUsername: "connect_tg",
+      telegramDisplayName: "Connect User",
+    });
+  });
 
   it("returns 403 when connecting a custom bot from another org", async () => {
     const { token } = await seedLinkContext();

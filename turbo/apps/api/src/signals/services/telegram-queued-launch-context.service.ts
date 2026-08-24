@@ -228,6 +228,11 @@ export async function loadTelegramQueuedLaunchMaterial(
     context.userLinkKind === "custom"
       ? context.customBotUsername
       : officialBotConfig.botUsername;
+  // DB/API rollout compatibility: an old API can leave this additive column
+  // null during the observed ~102-minute skew, and its queued run can outlive
+  // that writer while a runner/sandbox drains for up to 2 hours. Remove under
+  // #27750 only after old API rollback targets and runners have drained and
+  // production has no pending Telegram context with a null public_brand.
   const publicBrand =
     context.publicBrand ??
     (context.userLinkKind === "custom"
