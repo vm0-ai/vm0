@@ -6,9 +6,10 @@
 --
 -- This is intentionally a normal migration. migration-runner.ts owns the
 -- enclosing transaction plus lock_timeout=1s and statement_timeout=10s.
--- Broad before/after preservation acceptance is controller-owned through
--- read-only MaskDB. This transaction keeps only the exact mutation-boundary
--- gates needed to prove that the frozen artifact closure is safe to remove.
+-- Broad preservation, reference-partition, and historical acceptance is
+-- controller-owned through read-only MaskDB. This transaction keeps only the
+-- exact mutation-boundary gates needed to prove that the frozen artifact
+-- closure is safe to remove.
 
 DO $$
 DECLARE
@@ -253,6 +254,8 @@ $$;--> statement-breakpoint
 CREATE TEMP TABLE "_stage8_approved_artifacts" ON COMMIT DROP AS
 SELECT
   "compose"."id",
+  "compose"."user_id",
+  "compose"."org_id",
   encode(
     sha256(
       convert_to(
@@ -278,6 +281,10 @@ WHERE "zero_agent"."id" IS NULL;--> statement-breakpoint
 
 ALTER TABLE "_stage8_approved_artifacts"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
+
+-- Give the planner the exact six-row cardinality before the composite-key
+-- closure joins below.
+ANALYZE "_stage8_approved_artifacts";--> statement-breakpoint
 
 DO $$
 DECLARE
@@ -359,7 +366,8 @@ CREATE TEMP TABLE "_stage8_artifact_sessions" ON COMMIT DROP AS
 SELECT "session"."id"
 FROM "agent_sessions" AS "session"
 INNER JOIN "_stage8_approved_artifacts" AS "artifact"
-  ON "artifact"."id" = "session"."agent_compose_id";--> statement-breakpoint
+  ON "artifact"."user_id" = "session"."user_id"
+  AND "artifact"."id" = "session"."agent_compose_id";--> statement-breakpoint
 
 ALTER TABLE "_stage8_artifact_sessions"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
@@ -377,7 +385,8 @@ CREATE TEMP TABLE "_stage8_artifact_threads" ON COMMIT DROP AS
 SELECT "thread"."id"
 FROM "chat_threads" AS "thread"
 INNER JOIN "_stage8_approved_artifacts" AS "artifact"
-  ON "artifact"."id" = "thread"."agent_compose_id";--> statement-breakpoint
+  ON "artifact"."user_id" = "thread"."user_id"
+  AND "artifact"."id" = "thread"."agent_compose_id";--> statement-breakpoint
 
 ALTER TABLE "_stage8_artifact_threads"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
@@ -386,7 +395,9 @@ CREATE TEMP TABLE "_stage8_artifact_search_messages" ON COMMIT DROP AS
 SELECT "message"."chat_thread_id", "message"."seq_id"
 FROM "chat_event_search_messages" AS "message"
 INNER JOIN "_stage8_approved_artifacts" AS "artifact"
-  ON "artifact"."id" = "message"."agent_compose_id";--> statement-breakpoint
+  ON "artifact"."user_id" = "message"."user_id"
+  AND "artifact"."org_id" = "message"."org_id"
+  AND "artifact"."id" = "message"."agent_compose_id";--> statement-breakpoint
 
 ALTER TABLE "_stage8_artifact_search_messages"
   ADD PRIMARY KEY ("chat_thread_id", "seq_id");--> statement-breakpoint
@@ -398,33 +409,6 @@ INNER JOIN "_stage8_approved_artifacts" AS "artifact"
   ON "artifact"."id" = "version"."compose_id";--> statement-breakpoint
 
 ALTER TABLE "_stage8_artifact_versions"
-  ADD PRIMARY KEY ("id");--> statement-breakpoint
-
-CREATE TEMP TABLE "_stage8_deleted_anchor_events" ON COMMIT DROP AS
-SELECT "event"."id"
-FROM "chat_thread_events" AS "event"
-LEFT JOIN "agents" AS "agent" ON "agent"."id" = "event"."agent_compose_id"
-LEFT JOIN "agent_composes" AS "compose"
-  ON "compose"."id" = "event"."agent_compose_id"
-LEFT JOIN "zero_agents" AS "zero_agent"
-  ON "zero_agent"."id" = "event"."agent_compose_id"
-LEFT JOIN "chat_threads" AS "thread"
-  ON "thread"."id" = "event"."chat_thread_id"
-WHERE "event"."agent_compose_id" IS NOT NULL
-  AND "event"."agent_id" IS NULL
-  AND "agent"."id" IS NULL
-  AND "compose"."id" IS NULL
-  AND "zero_agent"."id" IS NULL
-  AND "thread"."id" IS NULL
-  AND EXISTS (
-    SELECT 1
-    FROM "chat_thread_snapshots" AS "snapshot"
-    WHERE "snapshot"."user_id" = "event"."user_id"
-      AND "snapshot"."org_id" = "event"."org_id"
-      AND "snapshot"."latest_event_id" = "event"."id"
-  );--> statement-breakpoint
-
-ALTER TABLE "_stage8_deleted_anchor_events"
   ADD PRIMARY KEY ("id");--> statement-breakpoint
 
 DO $$
@@ -441,9 +425,8 @@ BEGIN
       OR (SELECT count(*) FROM "_stage8_artifact_runs") <> 2
       OR (SELECT count(*) FROM "_stage8_artifact_threads") <> 1
       OR (SELECT count(*) FROM "_stage8_artifact_search_messages") <> 2
-      OR (SELECT count(*) FROM "_stage8_deleted_anchor_events") <> 27
     THEN
-      RAISE EXCEPTION 'Stage 8 approved artifact/history closure drift';
+      RAISE EXCEPTION 'Stage 8 approved artifact closure drift';
     END IF;
 
     IF EXISTS (
@@ -461,7 +444,6 @@ BEGIN
     OR (SELECT count(*) FROM "_stage8_artifact_runs") <> 0
     OR (SELECT count(*) FROM "_stage8_artifact_threads") <> 0
     OR (SELECT count(*) FROM "_stage8_artifact_search_messages") <> 0
-    OR (SELECT count(*) FROM "_stage8_deleted_anchor_events") <> 0
   THEN
     RAISE EXCEPTION 'Stage 8 fresh-schema closure is not empty';
   END IF;
@@ -508,55 +490,6 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'Stage 8 approved artifact has a default/preference/install reference';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM "agent_sessions" AS "session"
-    WHERE "session"."agent_compose_id" IS NOT NULL
-      AND "session"."agent_id" IS DISTINCT FROM "session"."agent_compose_id"
-      AND "session"."agent_compose_id" NOT IN (
-        SELECT "id" FROM "_stage8_approved_artifacts"
-      )
-  ) OR EXISTS (
-    SELECT 1
-    FROM "chat_threads" AS "thread"
-    WHERE "thread"."agent_compose_id" IS NOT NULL
-      AND "thread"."agent_id" IS DISTINCT FROM "thread"."agent_compose_id"
-      AND "thread"."agent_compose_id" NOT IN (
-        SELECT "id" FROM "_stage8_approved_artifacts"
-      )
-  ) OR EXISTS (
-    SELECT 1
-    FROM "chat_event_search_messages" AS "message"
-    WHERE "message"."agent_compose_id" IS NOT NULL
-      AND "message"."agent_id" IS DISTINCT FROM "message"."agent_compose_id"
-      AND "message"."agent_compose_id" NOT IN (
-        SELECT "id" FROM "_stage8_approved_artifacts"
-      )
-  ) OR EXISTS (
-    SELECT 1
-    FROM "chat_thread_events" AS "event"
-    WHERE "event"."agent_compose_id" IS NOT NULL
-      AND "event"."agent_id" IS DISTINCT FROM "event"."agent_compose_id"
-      AND "event"."agent_compose_id" NOT IN (
-        SELECT "id" FROM "_stage8_approved_artifacts"
-      )
-      AND "event"."id" NOT IN (
-        SELECT "id" FROM "_stage8_deleted_anchor_events"
-      )
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 legacy/canonical reference partition drift';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM "chat_thread_events"
-    WHERE "agent_compose_id" IN (
-      SELECT "id" FROM "_stage8_approved_artifacts"
-    )
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 approved artifact has unexpected event history';
   END IF;
 
   IF EXISTS (
@@ -709,38 +642,6 @@ BEGIN
     INNER JOIN "agents" AS "agent" ON "agent"."id" = "artifact"."id"
   ) THEN
     RAISE EXCEPTION 'Stage 8 approved artifact unexpectedly resolves in agents';
-  END IF;
-
-  IF EXISTS (
-    WITH canonical_references AS (
-      SELECT "agent_id" AS "agent_id" FROM "agent_sessions"
-      UNION ALL SELECT "agent_id" FROM "chat_threads"
-      UNION ALL SELECT "agent_id" FROM "chat_thread_events"
-      UNION ALL SELECT "agent_id" FROM "chat_event_search_messages"
-      UNION ALL SELECT "default_agent_id" FROM "telegram_installations"
-      UNION ALL SELECT "default_agent_id" FROM "feishu_org_installations"
-      UNION ALL SELECT "default_agent_id" FROM "github_installations"
-      UNION ALL SELECT "selected_agent_id" FROM "slack_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "teams_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "agentphone_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "telegram_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "feishu_user_agent_preferences"
-      UNION ALL SELECT "default_agent_id" FROM "org_metadata"
-      UNION ALL SELECT "agent_id" FROM "zero_workflows"
-      UNION ALL SELECT "agent_id" FROM "user_connectors"
-      UNION ALL SELECT "agent_id" FROM "user_custom_connectors"
-      UNION ALL SELECT "agent_id" FROM "user_permission_grants"
-      UNION ALL SELECT "agent_id" FROM "zero_agent_drafts"
-      UNION ALL SELECT "agent_id" FROM "banking_agent_enablements"
-      UNION ALL SELECT "agent_id" FROM "thread_goals"
-    )
-    SELECT 1
-    FROM canonical_references AS "reference"
-    LEFT JOIN "agents" AS "agent" ON "agent"."id" = "reference"."agent_id"
-    WHERE "reference"."agent_id" IS NOT NULL
-      AND "agent"."id" IS NULL
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 canonical Agent reference validity drift';
   END IF;
 END
 $$;--> statement-breakpoint
@@ -1149,52 +1050,6 @@ BEGIN
       '322fe577941ce4d6e5b34de9d115b08e8a304d19238f52df3cef3bf35f9be164'
   THEN
     RAISE EXCEPTION 'Stage 8 canonical Agent index postflight drift';
-  END IF;
-
-  IF EXISTS (
-    WITH canonical_references AS (
-      SELECT "agent_id" AS "agent_id" FROM "agent_sessions"
-      UNION ALL SELECT "agent_id" FROM "chat_threads"
-      UNION ALL SELECT "agent_id" FROM "chat_thread_events"
-      UNION ALL SELECT "agent_id" FROM "chat_event_search_messages"
-      UNION ALL SELECT "default_agent_id" FROM "telegram_installations"
-      UNION ALL SELECT "default_agent_id" FROM "feishu_org_installations"
-      UNION ALL SELECT "default_agent_id" FROM "github_installations"
-      UNION ALL SELECT "selected_agent_id" FROM "slack_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "teams_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "agentphone_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "telegram_user_agent_preferences"
-      UNION ALL SELECT "selected_agent_id" FROM "feishu_user_agent_preferences"
-      UNION ALL SELECT "default_agent_id" FROM "org_metadata"
-      UNION ALL SELECT "agent_id" FROM "zero_workflows"
-      UNION ALL SELECT "agent_id" FROM "user_connectors"
-      UNION ALL SELECT "agent_id" FROM "user_custom_connectors"
-      UNION ALL SELECT "agent_id" FROM "user_permission_grants"
-      UNION ALL SELECT "agent_id" FROM "zero_agent_drafts"
-      UNION ALL SELECT "agent_id" FROM "banking_agent_enablements"
-      UNION ALL SELECT "agent_id" FROM "thread_goals"
-    )
-    SELECT 1
-    FROM canonical_references AS "reference"
-    LEFT JOIN "agents" AS "agent" ON "agent"."id" = "reference"."agent_id"
-    WHERE "reference"."agent_id" IS NOT NULL
-      AND "agent"."id" IS NULL
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 canonical Agent reference postflight drift';
-  END IF;
-END
-$$;--> statement-breakpoint
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM "_stage8_deleted_anchor_events" AS "frozen"
-    LEFT JOIN "chat_thread_events" AS "event"
-      ON "event"."id" = "frozen"."id"
-    WHERE "event"."id" IS NULL OR "event"."agent_id" IS NOT NULL
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 deleted-entity snapshot anchor drift';
   END IF;
 END
 $$;
