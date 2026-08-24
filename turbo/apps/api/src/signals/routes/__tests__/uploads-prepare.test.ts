@@ -45,7 +45,7 @@ function validBody() {
   return { filename: "hello.txt", contentType: "text/plain", size: 13 };
 }
 
-describe("POST /api/zero/uploads/prepare", () => {
+describe("POST /api/uploads/prepare", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context, routes: uploadsTestRoutes })(
       uploadsContract,

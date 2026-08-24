@@ -21,12 +21,35 @@ class TestLoadRegistry:
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
 
-    def test_classifies_invalid_registered_vm_entries(self, tmp_path):
+    def test_does_not_read_legacy_vms_collection(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
                 {
                     "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-legacy",
+                            "billableFirewalls": [],
+                            "cliAgentType": "claude-code",
+                        }
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.sandboxes == {}
+        assert state.invalid_sandboxes == {}
+
+    def test_classifies_invalid_registered_sandbox_entries(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "sandboxes": {
                         "10.200.0.1": {
                             "runId": "run-active",
                             "billableFirewalls": [],
@@ -51,8 +74,8 @@ class TestLoadRegistry:
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert set(state.vms) == {"10.200.0.1"}
-        assert set(state.invalid_vms) == {
+        assert set(state.sandboxes) == {"10.200.0.1"}
+        assert set(state.invalid_sandboxes) == {
             "10.200.0.2",
             "10.200.0.3",
             "10.200.0.4",
@@ -60,104 +83,107 @@ class TestLoadRegistry:
             "10.200.0.6",
             "10.200.0.7",
         }
-        assert state.invalid_vms["10.200.0.2"].reason == "invalid_vm_entry"
-        assert state.invalid_vms["10.200.0.3"].reason == "missing_run_id"
-        assert state.invalid_vms["10.200.0.4"].reason == "empty_run_id"
-        assert state.invalid_vms["10.200.0.5"].reason == "invalid_run_id"
-        assert state.invalid_vms["10.200.0.6"].reason == "empty_run_id"
-        assert state.invalid_vms["10.200.0.7"].reason == "invalid_run_id"
+        assert state.invalid_sandboxes["10.200.0.2"].reason == "invalid_sandbox_entry"
+        assert state.invalid_sandboxes["10.200.0.3"].reason == "missing_run_id"
+        assert state.invalid_sandboxes["10.200.0.4"].reason == "empty_run_id"
+        assert state.invalid_sandboxes["10.200.0.5"].reason == "invalid_run_id"
+        assert state.invalid_sandboxes["10.200.0.6"].reason == "empty_run_id"
+        assert state.invalid_sandboxes["10.200.0.7"].reason == "invalid_run_id"
 
     @pytest.mark.parametrize(
-        ("vm_fields", "expected_reason", "expected_message"),
+        ("sandbox_fields", "expected_reason", "expected_message"),
         [
             pytest.param(
                 {"omittedBuiltinFirewalls": "github"},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                "proxy registry sandbox entry omittedBuiltinFirewalls must be a string list",
                 id="builtin-omissions-not-list",
             ),
             pytest.param(
                 {"omittedBuiltinFirewalls": [""]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                "proxy registry sandbox entry omittedBuiltinFirewalls must be a string list",
                 id="builtin-omissions-empty-member",
             ),
             pytest.param(
                 {"omittedBuiltinFirewalls": [1]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                "proxy registry sandbox entry omittedBuiltinFirewalls must be a string list",
                 id="builtin-omissions-non-string-member",
             ),
             pytest.param(
                 {"omittedBuiltinFirewalls": ["github", "github"]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedBuiltinFirewalls must be unique",
+                "proxy registry sandbox entry omittedBuiltinFirewalls must be unique",
                 id="builtin-omissions-duplicate",
             ),
             pytest.param(
                 {"omittedCustomConnectorIds": "connector-1"},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                "proxy registry sandbox entry omittedCustomConnectorIds must be a string list",
                 id="custom-omissions-not-list",
             ),
             pytest.param(
                 {"omittedCustomConnectorIds": [""]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                "proxy registry sandbox entry omittedCustomConnectorIds must be a string list",
                 id="custom-omissions-empty-member",
             ),
             pytest.param(
                 {"omittedCustomConnectorIds": [1]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                "proxy registry sandbox entry omittedCustomConnectorIds must be a string list",
                 id="custom-omissions-non-string-member",
             ),
             pytest.param(
                 {"omittedCustomConnectorIds": ["connector-1", "connector-1"]},
                 "invalid_omitted_intents",
-                "proxy registry VM entry omittedCustomConnectorIds must be unique",
+                "proxy registry sandbox entry omittedCustomConnectorIds must be unique",
                 id="custom-omissions-duplicate",
             ),
             pytest.param(
                 {"connectorRoutingVariables": []},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables must be an object",
+                "proxy registry sandbox entry connectorRoutingVariables must be an object",
                 id="routing-variables-not-object",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"github": {}}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                "proxy registry sandbox entry connectorRoutingVariables keys must "
+                "identify a connector",
                 id="routing-identity-unsupported",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"builtin:": {}}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                "proxy registry sandbox entry connectorRoutingVariables keys must "
+                "identify a connector",
                 id="builtin-routing-identity-empty",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"custom:": {}}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                "proxy registry sandbox entry connectorRoutingVariables keys must "
+                "identify a connector",
                 id="custom-routing-identity-empty",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"builtin:github": []}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                "proxy registry sandbox entry connectorRoutingVariables values must be string maps",
                 id="routing-variable-map-not-object",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"builtin:github": {"HOST": 1}}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                "proxy registry sandbox entry connectorRoutingVariables values must be string maps",
                 id="routing-variable-value-not-string",
             ),
             pytest.param(
                 {"connectorRoutingVariables": {"builtin:github": {"": "example.test"}}},
                 "invalid_connector_routing_variables",
-                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                "proxy registry sandbox entry connectorRoutingVariables values must be string maps",
                 id="routing-variable-key-empty",
             ),
         ],
@@ -165,31 +191,31 @@ class TestLoadRegistry:
     def test_rejects_invalid_routing_metadata(
         self,
         tmp_path,
-        vm_fields,
+        sandbox_fields,
         expected_reason,
         expected_message,
     ):
         path = tmp_path / "registry.json"
-        vm = {
+        sandbox = {
             "runId": "run-active",
             "billableFirewalls": [],
             "cliAgentType": "claude-code",
-            **vm_fields,
+            **sandbox_fields,
         }
-        path.write_text(json.dumps({"vms": {"10.200.0.1": vm}, "updatedAt": 0}))
+        path.write_text(json.dumps({"sandboxes": {"10.200.0.1": sandbox}, "updatedAt": 0}))
 
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.vms == {}
-        assert set(state.invalid_vms) == {"10.200.0.1"}
-        invalid_vm = state.invalid_vms["10.200.0.1"]
-        assert invalid_vm.reason == expected_reason
-        assert invalid_vm.message == expected_message
+        assert state.sandboxes == {}
+        assert set(state.invalid_sandboxes) == {"10.200.0.1"}
+        invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+        assert invalid_sandbox.reason == expected_reason
+        assert invalid_sandbox.message == expected_message
 
     @pytest.mark.parametrize(
-        "vm_fields",
+        "sandbox_fields",
         [
             pytest.param({}, id="metadata-absent"),
             pytest.param(
@@ -210,22 +236,22 @@ class TestLoadRegistry:
             ),
         ],
     )
-    def test_accepts_valid_routing_metadata(self, tmp_path, vm_fields):
+    def test_accepts_valid_routing_metadata(self, tmp_path, sandbox_fields):
         path = tmp_path / "registry.json"
-        vm = {
+        sandbox = {
             "runId": "run-active",
             "billableFirewalls": [],
             "cliAgentType": "claude-code",
-            **vm_fields,
+            **sandbox_fields,
         }
-        path.write_text(json.dumps({"vms": {"10.200.0.1": vm}, "updatedAt": 0}))
+        path.write_text(json.dumps({"sandboxes": {"10.200.0.1": sandbox}, "updatedAt": 0}))
 
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert set(state.vms) == {"10.200.0.1"}
-        assert state.invalid_vms == {}
+        assert set(state.sandboxes) == {"10.200.0.1"}
+        assert state.invalid_sandboxes == {}
 
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
@@ -248,7 +274,7 @@ class TestLoadRegistry:
 
         # Modify the file
         new_data = {
-            "vms": {
+            "sandboxes": {
                 "10.200.0.99": {
                     "runId": "new-run",
                     "billableFirewalls": [],
@@ -311,12 +337,12 @@ class TestLoadRegistry:
         assert second["10.200.0.1"]["runId"] == "run-two"
         assert second is not first
 
-    def test_invalid_vm_entries_do_not_block_valid_vms(self, tmp_path):
+    def test_invalid_sandbox_entries_do_not_block_valid_sandboxes(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {
                             "runId": "good-run",
                             "billableFirewalls": [],
@@ -347,7 +373,7 @@ class TestLoadRegistry:
         assert cached is result
         assert log.warn.call_count == 1
         warning = log.warn.call_args_list[0].args[0]
-        assert "Rejected 4 invalid proxy registry VM entries" in warning
+        assert "Rejected 4 invalid proxy registry sandbox entries" in warning
         assert "10.200.0.2" not in warning
         assert "good-run" not in warning
 
@@ -458,11 +484,11 @@ class TestLoadRegistry:
         "registry_payload",
         [
             pytest.param(
-                b'{"vms":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}",
+                b'{"sandboxes":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}",
                 id="decoder-recursion",
             ),
             pytest.param(
-                b'{"vms":' + b"1" * 10000 + b"}",
+                b'{"sandboxes":' + b"1" * 10000 + b"}",
                 id="integer-digit-limit",
             ),
         ],
@@ -484,20 +510,20 @@ class TestLoadRegistry:
         ):
             state1 = registry.load_registry_state(str(registry_file))
             state2 = registry.load_registry_state(str(registry_file))
-            vm_info = registry.get_vm_info("10.200.0.1", str(registry_file))
+            sandbox_info = registry.get_sandbox_info("10.200.0.1", str(registry_file))
 
         assert isinstance(state1, registry.RegistryUnavailable)
         assert isinstance(state2, registry.RegistryUnavailable)
         assert state1.reason == "parse_failed"
         assert state2.reason == "parse_failed"
-        assert vm_info is None
+        assert sandbox_info is None
         assert spy.call_count == 1
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
-    def test_non_object_vms_after_success_marks_registry_unavailable(self, registry_file):
+    def test_non_object_sandboxes_after_success_marks_registry_unavailable(self, registry_file):
         registry.load_registry(str(registry_file))
-        registry_file.write_text(json.dumps({"vms": ["broken"], "updatedAt": 0}))
+        registry_file.write_text(json.dumps({"sandboxes": ["broken"], "updatedAt": 0}))
 
         log = MagicMock()
         with (
@@ -555,7 +581,7 @@ class TestLoadRegistry:
     def test_read_failure_after_open_does_not_poison_file_key(self, registry_file):
         registry.load_registry(str(registry_file))
         new_registry = {
-            "vms": {
+            "sandboxes": {
                 "10.200.0.99": {
                     "runId": "new-run",
                     "billableFirewalls": [],
@@ -602,7 +628,7 @@ class TestLoadRegistry:
     def test_read_failure_clears_previous_failed_key(self, tmp_path):
         path = tmp_path / "registry.json"
         valid_registry = {
-            "vms": {
+            "sandboxes": {
                 "10.0.0.1": {
                     "runId": "r1",
                     "billableFirewalls": [],
@@ -662,7 +688,7 @@ class TestLoadRegistry:
             path.write_text(
                 json.dumps(
                     {
-                        "vms": {
+                        "sandboxes": {
                             "10.0.0.1": {
                                 "runId": "r1",
                                 "billableFirewalls": [],

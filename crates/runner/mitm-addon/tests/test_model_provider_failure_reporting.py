@@ -60,8 +60,8 @@ def _make_flow(
     )
     flow.metadata.update(
         {
-            metadata_keys.VM_RUN_ID: "run-model-failure",
-            metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
+            metadata_keys.SANDBOX_RUN_ID: "run-model-failure",
+            metadata_keys.SANDBOX_PROXY_LOG_PATH: str(proxy_log_path),
             metadata_keys.ORIGINAL_URL: f"https://api.openai.com{request_path}",
             metadata_keys.FIREWALL_NAME: firewall_name,
             metadata_keys.FIREWALL_BILLABLE: True,
@@ -87,7 +87,7 @@ def _reported_payloads(model_provider_failure_api) -> list[dict[str, object]]:
 
 
 def _suppressed_failure_entries(flow: http.HTTPFlow) -> list[dict[str, object]]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [

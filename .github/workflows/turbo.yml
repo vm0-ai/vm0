@@ -2841,7 +2841,7 @@ jobs:
             "${test_files[@]}"
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          VM0_MITM_RUNNER_TOKEN: ${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}
+          OKOU_MITM_RUNNER_TOKEN: ${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}
       - name: Print runner E2E trace log
         if: always()
         shell: bash

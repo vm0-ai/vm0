@@ -608,7 +608,7 @@ async def test_redacts_over_budget_host_from_network_log(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     oversized_host = b"a" * (_MAX_HOST_HEADER_BYTES + 1)
     flow = real_flow(

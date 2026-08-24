@@ -75,11 +75,11 @@ def make_model_provider_flow(
     model_usage_provider: str | None = None,
 ) -> http.HTTPFlow:
     flow = real_flow(with_response=False, host=host, path=path, method=method)
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(
         network_log_path if network_log_path is not None else tmp_path / "network.jsonl"
     )
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(
         proxy_log_path if proxy_log_path is not None else tmp_path / "proxy.jsonl"
     )
     flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
@@ -92,7 +92,7 @@ def make_model_provider_flow(
     )
     flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = (
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = (
         "tok-xyz" if sandbox_token is None else sandbox_token
     )
     if cli_agent_type is not None:
@@ -157,7 +157,7 @@ def model_provider_usage_sources(flow: http.HTTPFlow) -> dict:
 
 
 def model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [

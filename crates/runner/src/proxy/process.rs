@@ -13,7 +13,7 @@ use super::flush::{
     MitmJsonlFlushHandle, UsageFlushTarget, new_usage_state_id, usage_flush_state_guard,
 };
 use super::managed_process::ManagedMitmdump;
-use super::registry::{ProxyRegistryHandle, VmRegistration, write_empty_registry};
+use super::registry::{ProxyRegistryHandle, SandboxRegistration, write_empty_registry};
 use super::runtime::{MitmdumpRuntime, RUNTIME_MARKER_ENV};
 use super::stderr::log_mitmdump_stderr_line;
 use crate::error::{RunnerError, RunnerResult};
@@ -30,7 +30,7 @@ const ADDON_READY_FILENAME: &str = "addon-ready";
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const RUNNER_TOKEN_ENV: &str = "VM0_MITM_RUNNER_TOKEN";
+const RUNNER_TOKEN_ENV: &str = "OKOU_MITM_RUNNER_TOKEN";
 
 #[derive(Debug)]
 enum MitmdumpStartupFailure {
@@ -242,7 +242,7 @@ impl MitmProxy {
         self.port
     }
 
-    /// Create a cloneable handle for registry operations (register/unregister VMs).
+    /// Create a cloneable handle for registry operations (register/unregister sandboxes).
     ///
     /// The handle is `Clone + Send + Sync` and uses file locking for concurrent
     /// access, making it safe to share across executor tasks.
@@ -268,20 +268,20 @@ impl MitmProxy {
         }
     }
 
-    /// Register a VM in the proxy registry so the addon can identify its traffic.
-    pub async fn register_vm(
+    /// Register a sandbox in the proxy registry so the addon can identify its traffic.
+    pub async fn register_sandbox(
         &self,
         source_ip: &str,
-        registration: &VmRegistration<'_>,
+        registration: &SandboxRegistration<'_>,
     ) -> RunnerResult<()> {
         self.registry_handle()
-            .register_vm(source_ip, registration)
+            .register_sandbox(source_ip, registration)
             .await
     }
 
-    /// Unregister a VM from the proxy registry.
-    pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
-        self.registry_handle().unregister_vm(source_ip).await
+    /// Unregister a sandbox from the proxy registry.
+    pub async fn unregister_sandbox(&self, source_ip: &str) -> RunnerResult<()> {
+        self.registry_handle().unregister_sandbox(source_ip).await
     }
 
     /// Current mitmdump usage state expected in the usage-pending state file.
@@ -877,7 +877,7 @@ mod tests {
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 printf '%s\n%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" \
-  "${VM0_MITM_RUNNER_TOKEN-}" > "$0.env"
+  "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
 port=""
 ready_path=""
 usage_state_id=""
@@ -1412,7 +1412,8 @@ exit 42
         assert!(addon_dir.join("mitm_addon.py").is_file());
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(registry["vms"], serde_json::json!({}));
+        assert_eq!(registry["sandboxes"], serde_json::json!({}));
+        assert!(registry.get("vms").is_none());
     }
 
     #[tokio::test]

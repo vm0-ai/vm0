@@ -22,6 +22,8 @@ use uuid::Uuid;
 
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
+const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
@@ -312,6 +314,12 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        if self.scenario == Scenario::RuntimeTurnStartedBeforeSteer {
+            std::fs::write(
+                crate::session::codex_home().join(SESSION_HISTORY_READY_FILE),
+                SESSION_HISTORY_READY_EVENT,
+            )?;
+        }
         let turn_output = mock_turn_output(inputs.iter().map(String::as_str))?;
         let response_text = match &turn_output {
             MockTurnOutput::Complete(response_text)

@@ -113,7 +113,7 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     sync_usage_executor,
 ) -> None:
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     secret = "provider-secret-that-must-not-be-reported"
     generated_request_received_at = 1_700_000_000.125
 
@@ -255,7 +255,7 @@ def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
         _feed_generated_response(reconnect)
 
         reused_sandbox_run = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        reused_sandbox_run.metadata[metadata_keys.VM_RUN_ID] = "run-reused-sandbox"
+        reused_sandbox_run.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-reused-sandbox"
         mitm_addon.responseheaders(reused_sandbox_run)
         _feed_generated_response(reused_sandbox_run)
 
@@ -382,12 +382,12 @@ def test_eviction_and_reset_release_retained_buffered_report(
         patch.object(codex_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
+        first_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-first"
         mitm_addon.responseheaders(first_flow)
         _feed_generated_response(first_flow, include_text=False)
 
         second_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        second_flow.metadata[metadata_keys.VM_RUN_ID] = "run-second"
+        second_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-second"
         mitm_addon.responseheaders(second_flow)
         _feed_generated_response(second_flow, include_text=False)
 
@@ -430,7 +430,7 @@ def test_lru_hit_recency_preserves_recent_buffered_report(
 
     def codex_flow(run_id: str) -> http.HTTPFlow:
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
         mitm_addon.responseheaders(flow)
         return flow
 

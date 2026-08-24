@@ -3150,15 +3150,19 @@ function createRecallMessage(deps: RecallMessageDeps) {
     const templatePart = userMessage.parts.find((part) => {
       return part.type === "template";
     });
-    set(draft.seed$, {
-      content: messageDocumentToPrompt(userMessage) ?? "",
-      userMessage,
-      generationTemplate:
-        templatePart?.type === "template" ? templatePart.template : undefined,
-      attachments: userMessageFileAttachments(userMessage).map(
-        createRestoredAttachment,
-      ),
-    });
+    await set(
+      draft.seed$,
+      {
+        content: messageDocumentToPrompt(userMessage) ?? "",
+        userMessage,
+        generationTemplate:
+          templatePart?.type === "template" ? templatePart.template : undefined,
+        attachments: userMessageFileAttachments(userMessage).map(
+          createRestoredAttachment,
+        ),
+      },
+      signal,
+    );
 
     await set(
       sendEvent$,

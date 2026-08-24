@@ -11,6 +11,7 @@ import {
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
@@ -312,6 +313,88 @@ function isVm0ManagedModelAction(
   ].includes(body.action);
 }
 
+type SetVm0ManagedCandidateCooldownAction = Extract<
+  Vm0ManagedModelAction,
+  { action: "set-vm0-managed-candidate-cooldown" }
+>;
+
+async function setVm0ManagedCandidateCooldown(
+  db: Db,
+  body: SetVm0ManagedCandidateCooldownAction,
+): Promise<void> {
+  const unavailableUntil = new Date(body.unavailable_until);
+  const cooldownStorage = body.cooldown_storage ?? "both";
+  await db.transaction(async (tx) => {
+    if (cooldownStorage !== "built-in") {
+      await tx
+        .insert(managedModelCandidateCooldown)
+        .values({
+          selectedModel: body.selected_model,
+          providerType: body.provider_type,
+          upstreamModel: body.upstream_model,
+          unavailableUntil,
+        })
+        .onConflictDoUpdate({
+          target: [
+            managedModelCandidateCooldown.selectedModel,
+            managedModelCandidateCooldown.providerType,
+            managedModelCandidateCooldown.upstreamModel,
+          ],
+          set: { unavailableUntil },
+        });
+    }
+    if (cooldownStorage !== "legacy") {
+      await tx
+        .insert(builtInModelCandidateCooldown)
+        .values({
+          selectedModel: body.selected_model,
+          providerType: body.provider_type,
+          upstreamModel: body.upstream_model,
+          unavailableUntil,
+        })
+        .onConflictDoUpdate({
+          target: [
+            builtInModelCandidateCooldown.selectedModel,
+            builtInModelCandidateCooldown.providerType,
+            builtInModelCandidateCooldown.upstreamModel,
+          ],
+          set: { unavailableUntil },
+        });
+    }
+  });
+}
+
+type DeleteVm0ManagedCandidateCooldownAction = Extract<
+  Vm0ManagedModelAction,
+  { action: "delete-vm0-managed-candidate-cooldown" }
+>;
+
+async function deleteVm0ManagedCandidateCooldown(
+  db: Db,
+  body: DeleteVm0ManagedCandidateCooldownAction,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(managedModelCandidateCooldown)
+      .where(
+        and(
+          eq(managedModelCandidateCooldown.selectedModel, body.selected_model),
+          eq(managedModelCandidateCooldown.providerType, body.provider_type),
+          eq(managedModelCandidateCooldown.upstreamModel, body.upstream_model),
+        ),
+      );
+    await tx
+      .delete(builtInModelCandidateCooldown)
+      .where(
+        and(
+          eq(builtInModelCandidateCooldown.selectedModel, body.selected_model),
+          eq(builtInModelCandidateCooldown.providerType, body.provider_type),
+          eq(builtInModelCandidateCooldown.upstreamModel, body.upstream_model),
+        ),
+      );
+  });
+}
+
 async function vm0ManagedModelActionResponse(
   db: Db,
   body: Vm0ManagedModelAction,
@@ -381,41 +464,12 @@ async function vm0ManagedModelActionResponse(
       };
     }
     case "set-vm0-managed-candidate-cooldown": {
-      await db
-        .insert(managedModelCandidateCooldown)
-        .values({
-          selectedModel: body.selected_model,
-          providerType: body.provider_type,
-          upstreamModel: body.upstream_model,
-          unavailableUntil: new Date(body.unavailable_until),
-        })
-        .onConflictDoUpdate({
-          target: [
-            managedModelCandidateCooldown.selectedModel,
-            managedModelCandidateCooldown.providerType,
-            managedModelCandidateCooldown.upstreamModel,
-          ],
-          set: { unavailableUntil: new Date(body.unavailable_until) },
-        });
+      await setVm0ManagedCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "delete-vm0-managed-candidate-cooldown": {
-      await db
-        .delete(managedModelCandidateCooldown)
-        .where(
-          and(
-            eq(
-              managedModelCandidateCooldown.selectedModel,
-              body.selected_model,
-            ),
-            eq(managedModelCandidateCooldown.providerType, body.provider_type),
-            eq(
-              managedModelCandidateCooldown.upstreamModel,
-              body.upstream_model,
-            ),
-          ),
-        );
+      await deleteVm0ManagedCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }

@@ -103,6 +103,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -134,6 +137,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -158,13 +164,16 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
   });
 
-  it("should enable composer submit DOM reconciliation only for Bingjie", () => {
+  it("should enable Bingjie-only composer switches only for Bingjie", () => {
     const bingjieStates = getAllFeatureStates({
       email: "bingjie@vm0.ai",
     });
     expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       true,
     );
+    expect(
+      bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(true);
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -173,6 +182,9 @@ describe("getAllFeatureStates", () => {
     expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
+    expect(
+      otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
+    ).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

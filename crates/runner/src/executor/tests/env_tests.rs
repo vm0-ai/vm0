@@ -24,8 +24,9 @@ use super::support::{
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
-    RUNNER_CONCURRENCY_FACTOR_ENV, RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV, RUNNER_DISK_IOPS_ENV,
-    RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV, LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_DISK_IOPS_ENV, LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
@@ -593,6 +594,52 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 }
 
 #[test]
+fn dual_carried_platform_environment_preserves_effective_agent_environment() {
+    let mut ctx = minimal_context();
+    let platform_environment = HashMap::from([
+        ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "trusted-bypass".into(),
+        ),
+    ]);
+    ctx.environment = Some(HashMap::from([
+        ("USER_VALUE".into(), "user-value".into()),
+        ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "trusted-bypass".into(),
+        ),
+    ]));
+    let previous_runner_environment = build_user_env_json(&ctx);
+
+    ctx.platform_environment = Some(platform_environment);
+
+    assert_eq!(build_user_env_json(&ctx), previous_runner_environment);
+}
+
+#[test]
+fn platform_environment_overlays_legacy_environment() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "legacy".into()),
+        ("LEGACY_ONLY".into(), "legacy-only".into()),
+    ]));
+    ctx.platform_environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "trusted".into()),
+        ("PLATFORM_ONLY".into(), "platform-only".into()),
+    ]));
+
+    let environment = build_user_env_json(&ctx);
+
+    assert_eq!(environment["DUPLICATE"], "trusted");
+    assert_eq!(environment["LEGACY_ONLY"], "legacy-only");
+    assert_eq!(environment["PLATFORM_ONLY"], "platform-only");
+}
+
+#[test]
 fn build_env_json_scrubs_user_provided_runner_owned_env() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
@@ -633,11 +680,14 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             r#"{"bad":true}"#.into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
-        (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
-        (RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
+        (
+            LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(),
+            "999".into(),
+        ),
+        (LEGACY_RUNNER_DISK_IOPS_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
         (
             guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
             "claude-code".into(),
@@ -709,11 +759,11 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
-        RUNNER_CONCURRENCY_FACTOR_ENV,
-        RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-        RUNNER_DISK_IOPS_ENV,
-        RUNNER_NET_RX_MIB_PER_SEC_ENV,
-        RUNNER_NET_TX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
+        LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_DISK_IOPS_ENV,
+        LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
