@@ -1315,6 +1315,54 @@ test("model picker category switch marks its selection without a raised shadow",
   expect(selected.backgroundColor).not.toBe(unselected.backgroundColor);
 });
 
+test("model picker category switch keeps its measurement row hidden", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const imageCategory = page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" });
+  await expect(imageCategory).toBeVisible();
+
+  // A media category replaces the model rows, so the selected chat model stays
+  // in the list as a 1px, transparent row the select can still measure. The
+  // swap fades the rows it brings in, and a keyframe outranks the class that
+  // hides that row: fading it printed the model name over the header for the
+  // whole fade. The click and the read share one evaluate because a round trip
+  // between them can outlast the fade and miss the row while it is lit.
+  const measurementRowOpacity = await imageCategory.evaluate(
+    async (segment) => {
+      if (!(segment instanceof HTMLElement)) {
+        throw new Error("Model picker category segment is not an HTML element");
+      }
+      segment.click();
+      // The fade starts once the swapped list has laid out, so let one frame
+      // carry the resize and read on the next.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      });
+      const measurementRow = document.querySelector(
+        '[data-slot="select-list"] [data-slot="select-item"][aria-hidden="true"]',
+      );
+      if (measurementRow === null) {
+        throw new Error("Model picker has no measurement row");
+      }
+      return getComputedStyle(measurementRow).opacity;
+    },
+  );
+  expect(measurementRowOpacity).toBe("0");
+});
+
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
   page,
 }) => {
