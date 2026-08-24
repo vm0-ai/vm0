@@ -46,7 +46,7 @@ pub struct SubmitArgs {
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
-    /// VM profile to use (e.g. "vm0/default")
+    /// Sandbox profile to use (e.g. "vm0/default")
     #[arg(long)]
     profile: Option<String>,
     /// Chat thread ID for sandbox and workspace reuse across turns

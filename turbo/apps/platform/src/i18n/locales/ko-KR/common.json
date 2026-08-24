@@ -1035,12 +1035,24 @@
       "signIn": "로그인",
       "signUp": "회원가입"
     },
+    "homeLink": "{{brandName}} 홈으로 이동",
     "loading": "인증 중",
+    "theme": {
+      "darkEnabled": "어두운 테마가 켜졌습니다",
+      "lightEnabled": "밝은 테마가 켜졌습니다"
+    },
     "toggleTheme": "테마 전환",
     "v2": {
-      "continueToSignIn": "현재 로그인으로 계속",
-      "continueToSignUp": "현재 회원가입으로 계속",
-      "unavailable": "새 인증 화면은 아직 사용할 수 없습니다."
+      "signIn": {
+        "action": "현재 로그인 사용",
+        "description": "새 로그인 화면은 아직 사용할 수 없습니다.",
+        "title": "{{brandName}}에 로그인"
+      },
+      "signUp": {
+        "action": "현재 회원가입 사용",
+        "description": "새 회원가입 화면은 아직 사용할 수 없습니다.",
+        "title": "{{brandName}} 계정 만들기"
+      }
     }
   },
   "authorization": {

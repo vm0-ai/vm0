@@ -457,7 +457,7 @@ fn build_env_json_required_keys() {
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
-    // checkpoint lands before VM teardown.
+    // checkpoint lands before sandbox teardown.
     assert!(
         env.get("VM0_SANDBOX_ID")
             .unwrap()

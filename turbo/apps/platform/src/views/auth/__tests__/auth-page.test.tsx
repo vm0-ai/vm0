@@ -367,26 +367,30 @@ describe("app auth pages", () => {
 
   it.each([
     {
-      action: "Continue to sign in",
-      heading: "Sign in",
+      action: "Use current sign-in",
+      documentTitle: "Sign in | VM0",
+      heading: "Sign in to VM0",
       legacyPath: "/sign-in",
       path: "/v2/sign-in",
     },
     {
-      action: "Continue to sign in",
-      heading: "Sign in",
+      action: "Use current sign-in",
+      documentTitle: "Sign in | VM0",
+      heading: "Sign in to VM0",
       legacyPath: "/sign-in",
       path: "/v2/sign-in/tasks/choose-organization",
     },
     {
-      action: "Continue to sign up",
-      heading: "Sign up",
+      action: "Use current sign-up",
+      documentTitle: "Sign up | VM0",
+      heading: "Create your VM0 account",
       legacyPath: "/sign-up",
       path: "/v2/sign-up",
     },
     {
-      action: "Continue to sign up",
-      heading: "Sign up",
+      action: "Use current sign-up",
+      documentTitle: "Sign up | VM0",
+      heading: "Create your VM0 account",
       legacyPath: "/sign-up",
       path: "/v2/sign-up/verify-email-address",
     },
@@ -408,7 +412,7 @@ describe("app auth pages", () => {
       "aria-hidden",
       "true",
     );
-    expect(document.title).toBe(`${routeCase.heading} | VM0`);
+    expect(document.title).toBe(routeCase.documentTitle);
   });
 
   it("preserves branded auth intent when leaving the v2 scaffold", async () => {
@@ -420,6 +424,9 @@ describe("app auth pages", () => {
     detachedSetupPage({ context, path });
 
     await expect(screen.findByTestId("app-auth-v2")).resolves.toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Sign in to Okou" }),
+    ).toBeVisible();
     const continueLink = authV2ActionLink();
     expect(continueLink).toHaveAttribute(
       "href",

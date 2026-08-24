@@ -1036,12 +1036,24 @@
       "signIn": "Sign in",
       "signUp": "Sign up"
     },
+    "homeLink": "Go to {{brandName}} home",
     "loading": "Loading authentication",
+    "theme": {
+      "darkEnabled": "Dark theme enabled",
+      "lightEnabled": "Light theme enabled"
+    },
     "toggleTheme": "Toggle theme",
     "v2": {
-      "continueToSignIn": "Continue to sign in",
-      "continueToSignUp": "Continue to sign up",
-      "unavailable": "The new authentication experience is not ready yet."
+      "signIn": {
+        "action": "Use current sign-in",
+        "description": "The new sign-in experience is not ready yet.",
+        "title": "Sign in to {{brandName}}"
+      },
+      "signUp": {
+        "action": "Use current sign-up",
+        "description": "The new sign-up experience is not ready yet.",
+        "title": "Create your {{brandName}} account"
+      }
     }
   },
   "authorization": {

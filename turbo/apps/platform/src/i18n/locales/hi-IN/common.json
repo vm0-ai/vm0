@@ -1036,12 +1036,24 @@
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
     },
+    "homeLink": "{{brandName}} होम पर जाएं",
     "loading": "प्रमाणीकरण लोड हो रहा है",
+    "theme": {
+      "darkEnabled": "डार्क थीम चालू है",
+      "lightEnabled": "लाइट थीम चालू है"
+    },
     "toggleTheme": "थीम टॉगल करें",
     "v2": {
-      "continueToSignIn": "साइन इन जारी रखें",
-      "continueToSignUp": "साइन अप जारी रखें",
-      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+      "signIn": {
+        "action": "मौजूदा साइन-इन का उपयोग करें",
+        "description": "नया साइन-इन अनुभव अभी उपलब्ध नहीं है।",
+        "title": "{{brandName}} में साइन इन करें"
+      },
+      "signUp": {
+        "action": "मौजूदा साइन-अप का उपयोग करें",
+        "description": "नया साइन-अप अनुभव अभी उपलब्ध नहीं है।",
+        "title": "अपना {{brandName}} खाता बनाएं"
+      }
     }
   },
   "authorization": {
