@@ -13,11 +13,15 @@ import { getClerkLocalization } from "../../auth/clerk-localization.ts";
 
 const CLERK_APPLICATION_NAME = "{{applicationName}}";
 const CLERK_IDENTIFIER = "{{identifier}}";
+const CLERK_PROVIDER = "{{provider|titleize}}";
 
 type ClerkLocalization = ReturnType<typeof getClerkLocalization>;
 
 export interface AuthV2SignInCopy {
+  readonly addAccount: string;
   readonly back: string;
+  readonly chooseAccountSubtitle: string;
+  readonly chooseAccountTitle: string;
   readonly chooseMethodSubtitle: string;
   readonly chooseMethodTitle: string;
   readonly codeLabel: string;
@@ -30,6 +34,7 @@ export interface AuthV2SignInCopy {
   readonly emailCodeSubtitle: string;
   readonly emailCodeTitle: string;
   readonly forgotPassword: string;
+  readonly googleMethod: string;
   readonly identifierLabel: string;
   readonly legacySignIn: string;
   readonly loading: string;
@@ -45,6 +50,9 @@ export interface AuthV2SignInCopy {
   readonly passwordResetMethod: string;
   readonly passwordSubtitle: string;
   readonly passwordTitle: string;
+  readonly passkeyCancelled: string;
+  readonly passkeyMethod: string;
+  readonly passkeyUnavailable: string;
   readonly resendCode: string;
   readonly resetPassword: string;
   readonly resetPasswordCodeSubtitle: string;
@@ -156,6 +164,50 @@ function methodCopy(localization: ClerkLocalization) {
     passwordMethod: localizedString(
       methods?.blockButton__password,
       fallback?.blockButton__password,
+    ),
+    passkeyMethod: localizedString(
+      methods?.blockButton__passkey,
+      fallback?.blockButton__passkey,
+    ),
+    googleMethod: replaceClerkVariable(
+      localizedString(
+        localization.socialButtonsBlockButton,
+        enUS.socialButtonsBlockButton,
+      ),
+      CLERK_PROVIDER,
+      "Google",
+    ),
+  };
+}
+
+function accountCopy(localization: ClerkLocalization) {
+  const accountSwitcher = localization.signIn?.accountSwitcher;
+  const fallback = enUS.signIn?.accountSwitcher;
+  return {
+    addAccount: localizedString(
+      accountSwitcher?.action__addAccount,
+      fallback?.action__addAccount,
+    ),
+    chooseAccountSubtitle: localizedString(
+      accountSwitcher?.subtitle,
+      fallback?.subtitle,
+    ),
+    chooseAccountTitle: localizedString(
+      accountSwitcher?.title,
+      fallback?.title,
+    ),
+  };
+}
+
+function passkeyErrorCopy(localization: ClerkLocalization) {
+  return {
+    passkeyCancelled: localizedString(
+      localization.unstable__errors?.passkey_retrieval_cancelled,
+      enUS.unstable__errors?.passkey_retrieval_cancelled,
+    ),
+    passkeyUnavailable: localizedString(
+      localization.unstable__errors?.passkey_not_supported,
+      enUS.unstable__errors?.passkey_not_supported,
     ),
   };
 }
@@ -272,12 +324,14 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
   return {
     ...formCopy(localization),
     ...startCopy(localization),
+    ...accountCopy(localization),
     ...methodCopy(localization),
     ...passwordCopy(localization),
     ...emailCodeCopy(localization, authBrand.brandName),
     ...resetPasswordCopy(localization),
     ...resetCodeCopy(localization),
     ...terminalCopy(localization, authBrand.brandName),
+    ...passkeyErrorCopy(localization),
     ...translatedCopy,
   };
 }
@@ -288,6 +342,12 @@ export function signInErrorMessage(
 ): string {
   if (error.code === "password-mismatch") {
     return copy.passwordMismatch;
+  }
+  if (error.code === "passkey-cancelled") {
+    return error.message ?? copy.passkeyCancelled;
+  }
+  if (error.code === "passkey-unavailable") {
+    return error.message ?? copy.passkeyUnavailable;
   }
   return error.message ?? copy.unknownError;
 }
@@ -310,6 +370,9 @@ export function signInCardDescription(
   }
   if (flowState.step === "choose-factor") {
     return copy.chooseMethodSubtitle;
+  }
+  if (flowState.step === "choose-session") {
+    return copy.chooseAccountSubtitle;
   }
   if (flowState.step === "password") {
     return copy.passwordSubtitle;
@@ -335,6 +398,12 @@ export function signInFactorLabel(
   }
   if (factor.kind === "password-reset") {
     return copy.passwordResetMethod;
+  }
+  if (factor.kind === "oauth") {
+    return copy.googleMethod;
+  }
+  if (factor.kind === "passkey") {
+    return copy.passkeyMethod;
   }
   return replaceClerkVariable(
     copy.emailCodeMethod,

@@ -1,5 +1,5 @@
 import { Button } from "@okouai/ui";
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2SignInSignals } from "../../../signals/auth-v2/sign-in-flow.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
@@ -15,6 +15,7 @@ export function AuthV2SignInCard({
 }) {
   const copy = useAuthV2SignInCopy();
   const flowState = useGet(signals.state$);
+  const googleOneTapLifecycleRef = useSet(signals.googleOneTapLifecycleRef$);
   const description = signInCardDescription(flowState, copy);
   return (
     <AuthV2Shell
@@ -23,7 +24,7 @@ export function AuthV2SignInCard({
       focusKey="sign-in"
       title={copy.signInTitle}
     >
-      <div className="space-y-4">
+      <div className="space-y-4" ref={googleOneTapLifecycleRef}>
         <SignInCardContent copy={copy} signals={signals} state={flowState} />
         <div className="flex justify-center">
           <Button asChild size="sm" variant="link">

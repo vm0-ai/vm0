@@ -12,8 +12,12 @@ import {
   queryAllByRoleFast,
 } from "../../../../__tests__/page-helper.ts";
 import {
+  mockAuthV2Capabilities,
+  mockedGoogleOneTap,
   mockedClerk,
+  mockGoogleOneTapCredential,
   mockSignInResource,
+  type MockedClientSession,
   type MockedSignInFactor,
   type MockedSignInResourceState,
 } from "../../../../__tests__/mock-auth.ts";
@@ -42,6 +46,14 @@ function passwordResetFactor(): MockedSignInFactor {
   };
 }
 
+function googleOAuthFactor(): MockedSignInFactor {
+  return { strategy: "oauth_google" };
+}
+
+function passkeyFactor(): MockedSignInFactor {
+  return { strategy: "passkey" };
+}
+
 function currentSignInResource() {
   return mockedClerk.client.signIn;
 }
@@ -51,14 +63,28 @@ function moveSignInTo(state: MockedSignInResourceState) {
   return currentSignInResource();
 }
 
-function setupSignInPage(state: MockedSignInResourceState): void {
+interface SetupSignInPageOptions {
+  readonly url?: string;
+  readonly user?: {
+    readonly clientSessions: MockedClientSession[];
+    readonly email?: string;
+    readonly fullName: string;
+    readonly id: string;
+  } | null;
+}
+
+function setupSignInPage(
+  state: MockedSignInResourceState,
+  options: SetupSignInPageOptions = {},
+): void {
   mockSignInResource(state);
-  context.mocks.browser.url("https://app.vm0.ai/v2/sign-in");
+  const url = new URL(options.url ?? "https://app.vm0.ai/v2/sign-in");
+  context.mocks.browser.url(url.toString());
   detachedSetupPage({
     context,
-    path: "/v2/sign-in",
+    path: `${url.pathname}${url.search}${url.hash}`,
     session: null,
-    user: null,
+    user: options.user ?? null,
   });
 }
 
@@ -177,9 +203,267 @@ describe("auth v2 sign-in flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      redirectUrl: "/",
+      redirectUrl: "https://app.vm0.ai",
       session: "session_password",
     });
+  });
+
+  it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=oauth";
+    const authSearch = new URLSearchParams({
+      redirect_url: redirectUrl,
+      utm_campaign: "oauth",
+    });
+    const authHash = "#/?step=start";
+    mockAuthV2Capabilities({ googleOAuth: true });
+    setupSignInPage(
+      { status: "needs_identifier" },
+      {
+        url: `https://app.vm0.ai/v2/sign-in?${authSearch.toString()}${authHash}`,
+      },
+    );
+
+    const google = await waitForRoleElement("button", "Continue with Google");
+    fireEvent.click(google);
+    fireEvent.click(google);
+
+    await waitFor(() => {
+      expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+    expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith({
+      continueSignIn: true,
+      continueSignUp: false,
+      redirectUrl: `/v2/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
+      redirectUrlComplete: redirectUrl,
+      strategy: "oauth_google",
+    });
+  });
+
+  it("recovers a Google OAuth callback reload without activating twice", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=callback";
+    mockSignInResource({
+      createdSessionId: "session_oauth",
+      status: "complete",
+    });
+    mockedClerk.setActive.mockResolvedValue(undefined);
+    mockedClerk.handleRedirectCallback.mockImplementation(async (params) => {
+      await mockedClerk.setActive({
+        redirectUrl: params?.signInForceRedirectUrl ?? undefined,
+        session: "session_oauth",
+      });
+    });
+
+    setupSignInPage(
+      {
+        createdSessionId: "session_oauth",
+        status: "complete",
+      },
+      {
+        url: `https://app.vm0.ai/v2/sign-in/sso-callback?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      },
+    );
+
+    await waitFor(() => {
+      expect(mockedClerk.handleRedirectCallback).toHaveBeenCalledTimes(1);
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.handleRedirectCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        firstFactorUrl: expect.stringContaining("/v2/sign-in/factor-one"),
+        reloadResource: "signIn",
+        signInFallbackRedirectUrl: redirectUrl,
+        signInForceRedirectUrl: redirectUrl,
+        transferable: false,
+      }),
+    );
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      redirectUrl,
+      session: "session_oauth",
+    });
+  });
+
+  it("exchanges one Google One Tap credential only on the exact base route", async () => {
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential("google-one-tap-token");
+    mockedClerk.clientSignInCreate.mockImplementation((params) => {
+      if (params.strategy === "google_one_tap") {
+        return Promise.resolve(
+          moveSignInTo({
+            createdSessionId: "session_one_tap",
+            status: "complete",
+          }),
+        );
+      }
+      return Promise.resolve(currentSignInResource());
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+        signUpIfMissing: false,
+        strategy: "google_one_tap",
+        token: "google-one-tap-token",
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedGoogleOneTap.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auto_select: false,
+        client_id: "google-client-id",
+      }),
+    );
+  });
+
+  it("does not start Google One Tap on a nested sign-in route", async () => {
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential("google-one-tap-token");
+
+    setupSignInPage(
+      { status: "needs_identifier" },
+      { url: "https://app.vm0.ai/v2/sign-in/factor-one" },
+    );
+
+    await expect(
+      screen.findByLabelText("Email address or username"),
+    ).resolves.toBeVisible();
+    expect(mockedGoogleOneTap.initialize).not.toHaveBeenCalled();
+    expect(mockedGoogleOneTap.prompt).not.toHaveBeenCalled();
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      clerkError: {
+        errors: [{ code: "passkey_retrieval_cancelled" }],
+      },
+      expectedMessage: "Passkey verification was cancelled or timed out.",
+      name: "user cancellation",
+    },
+    {
+      clerkError: {
+        errors: [{ code: "passkey_not_supported" }],
+      },
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "an unavailable device",
+    },
+    {
+      clerkError: {
+        errors: [
+          {
+            code: "passkey_verification_failed",
+            longMessage: "Your passkey could not be verified.",
+          },
+        ],
+      },
+      expectedMessage: "Your passkey could not be verified.",
+      name: "a verification error",
+    },
+  ])("keeps another enabled method available after $name", async (testCase) => {
+    mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
+    mockedClerk.signInAuthenticateWithPasskey.mockRejectedValue(
+      testCase.clerkError,
+    );
+    setupSignInPage({
+      status: "needs_first_factor",
+      supportedFirstFactors: [googleOAuthFactor(), passkeyFactor()],
+    });
+
+    const passkey = await waitForRoleElement(
+      "button",
+      "Sign in with your passkey",
+    );
+    fireEvent.click(passkey);
+    fireEvent.click(passkey);
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      testCase.expectedMessage,
+    );
+    expect(mockedClerk.signInAuthenticateWithPasskey).toHaveBeenCalledTimes(1);
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(google).toBeVisible();
+    expect(passkey).toBeVisible();
+
+    fireEvent.click(google);
+    await waitFor(() => {
+      expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+  });
+
+  it("selects an existing Clerk account once and can fall back to a new sign-in", async () => {
+    const activation = createDeferredPromise<void>(context.signal);
+    mockedClerk.setActive.mockImplementation(() => {
+      return activation.promise;
+    });
+    setupSignInPage(
+      { status: "needs_identifier" },
+      {
+        user: {
+          clientSessions: [
+            {
+              id: "session_ada",
+              status: "active",
+              user: {
+                fullName: "Ada Lovelace",
+                primaryEmailAddress: { emailAddress: "ada@example.com" },
+              },
+            },
+            {
+              id: "session_grace",
+              status: "active",
+              user: {
+                fullName: "Grace Hopper",
+                primaryEmailAddress: { emailAddress: "grace@example.com" },
+              },
+            },
+          ],
+          email: "ada@example.com",
+          fullName: "Ada Lovelace",
+          id: "user_ada",
+        },
+      },
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "Choose an account" }),
+    ).resolves.toBeVisible();
+    const adaAccount = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.includes("Ada Lovelace");
+    });
+    if (!adaAccount) {
+      throw new Error("Ada Lovelace account button not found");
+    }
+    fireEvent.click(adaAccount);
+    fireEvent.click(adaAccount);
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      redirectUrl: "https://app.vm0.ai",
+      session: "session_ada",
+    });
+
+    await act(async () => {
+      activation.resolve(undefined);
+      await activation.promise;
+    });
+    fireEvent.click(await waitForRoleElement("button", "Add account"));
+
+    await expect(
+      screen.findByLabelText("Email address or username"),
+    ).resolves.toBeVisible();
   });
 
   it("prepares and resends one email code per concurrent user action", async () => {
@@ -328,6 +612,7 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("clerk-google-one-tap")).toBeInTheDocument();
 
     act(() => {
       window.history.back();
@@ -337,6 +622,9 @@ describe("auth v2 sign-in flow", () => {
     );
 
     await expect(screen.findByLabelText("Password")).resolves.toHaveValue("");
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+    expect(document.querySelector('[class*="cl-"]')).not.toBeInTheDocument();
   });
 
   it("runs the password-reset code and new-password sequence", async () => {
@@ -451,7 +739,7 @@ describe("auth v2 sign-in flow", () => {
       name: "an unsupported factor set",
       state: {
         status: "needs_first_factor",
-        supportedFirstFactors: [{ strategy: "oauth_google" }],
+        supportedFirstFactors: [{ strategy: "oauth_github" }],
       },
     },
     {

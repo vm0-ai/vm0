@@ -11,26 +11,29 @@ import {
   createAuthV2SignInSignals,
   type AuthV2SignInSignals,
 } from "./auth-v2/sign-in-flow.ts";
+import { AUTH_V2_OAUTH_CALLBACK_PATH } from "./auth-v2/sign-in-external-strategies.ts";
+import { resolveAuthV2PlatformContext } from "./auth-v2/platform-context.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
-
-// Redirect, brand, and attribution policy intentionally live outside the
-// flow. The parallel redirect track can replace this resolver without changing
-// Clerk operations or activation ownership.
-function resolveAuthV2SignInRedirectUrl(): string {
-  return "/";
-}
+import { ROUTES } from "./route-paths.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ set }, signal: AbortSignal) => {
-    const authBrand = resolveAuthBrandContext();
+    let authBrand: ReturnType<typeof resolveAuthBrandContext>;
     let signInSignals: AuthV2SignInSignals | null = null;
     if (mode === "sign-in") {
+      const platformContext = resolveAuthV2PlatformContext(mode);
+      authBrand = platformContext.authBrand;
       signInSignals = createAuthV2SignInSignals({
-        resolveRedirectUrl: resolveAuthV2SignInRedirectUrl,
+        isBaseRoute: location.pathname === ROUTES.signInV2,
+        isOAuthCallbackRoute:
+          location.pathname ===
+          `${ROUTES.signInV2}${AUTH_V2_OAUTH_CALLBACK_PATH}`,
+        navigation: platformContext.navigation,
       });
       set(updatePage$, createElement(AuthV2Page, { mode, signInSignals }));
     } else {
+      authBrand = resolveAuthBrandContext();
       set(updatePage$, createElement(AuthV2Page, { mode }));
     }
     set(
