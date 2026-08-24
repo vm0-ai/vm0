@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { createStore } from "ccstate";
+import { onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { holdSlackInstallationDeleteTransactionFixture } from "../../../test-fixtures/slack-installations";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -386,6 +388,35 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       context.signal,
     );
     expect(installation?.publicBrand).toBe("okou");
+  });
+
+  it("fails when a legacy installation disappears during normalization", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, { publicBrand: "vm0" }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const deletion = await holdSlackInstallationDeleteTransactionFixture({
+      slackWorkspaceId: fixture.slackWorkspaceId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      deletion.release();
+      await deletion.done;
+    });
+    const connect = postRawSlackConnect(
+      JSON.stringify({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      }),
+    );
+
+    await expect.poll(deletion.blockedWaiterCount).toBeGreaterThan(0);
+    deletion.release();
+    await deletion.done;
+    const response = await connect;
+
+    expect(response.status).toBe(500);
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
   });
 
   it("does not provision artifact storage after connect", async () => {

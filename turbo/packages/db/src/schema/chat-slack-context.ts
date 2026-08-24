@@ -30,7 +30,12 @@ export const chatSlackContext = pgTable("chat_slack_context", {
   messageTs: text("message_ts"),
   /** Bot user ID of the installation that received the message. */
   botUserId: text("bot_user_id"),
-  /** Product brand derived from the Slack webhook hostname at ingress. */
+  /**
+   * Product brand derived from the Slack webhook hostname at ingress. The
+   * `vm0` default keeps historical rows and the column-omitting pre-#28795 API
+   * legal across DB/API skew (observed for up to about 102 minutes) and retained
+   * rollback targets. Remove the default after #28937 closes that writer gate.
+   */
   publicBrand: text("public_brand")
     .$type<PublicBrand>()
     .default("vm0")

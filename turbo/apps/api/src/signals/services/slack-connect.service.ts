@@ -96,6 +96,13 @@ async function upsertSlackConnection(
   return existing.id;
 }
 
+/**
+ * The API version draining after migrations 0978/0979 can still explicitly
+ * write its request-flow brand onto the shared installation row. Repair that
+ * DB/API rollout state (observed for up to about 102 minutes) while old and
+ * retained rollback writers exist; remove this bridge after #28937 closes its
+ * version-floor gate.
+ */
 async function normalizeOfficialSlackInstallationBrand(
   writeDb: Db,
   installation: SlackInstallation,
@@ -117,7 +124,12 @@ async function normalizeOfficialSlackInstallationBrand(
     .returning();
   signal.throwIfAborted();
 
-  return updated ?? installation;
+  if (!updated) {
+    throw new Error(
+      `Slack installation ${installation.slackWorkspaceId} disappeared during official-brand normalization`,
+    );
+  }
+  return updated;
 }
 
 async function resolveDefaultComposeId(

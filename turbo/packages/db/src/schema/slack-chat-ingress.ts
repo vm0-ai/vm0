@@ -37,6 +37,12 @@ export const slackChatIngress = pgTable(
       ),
     eventId: varchar("event_id", { length: 255 }).notNull(),
     payload: text("payload").notNull(),
+    /**
+     * The `vm0` default keeps historical rows and column-omitting pre-#28795
+     * API writers legal across DB/API skew (observed for up to about 102
+     * minutes) and retained rollback targets. Remove it after #28937 closes
+     * that writer gate.
+     */
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
       .default("vm0")

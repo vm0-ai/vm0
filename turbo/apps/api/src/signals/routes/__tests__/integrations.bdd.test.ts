@@ -12,7 +12,10 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
+import {
+  insertLegacySlackPublicBrandDefaultsFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -1748,6 +1751,26 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(deliveryCallback).toMatchObject({
       payload: { publicBrand: "vm0" },
     });
+
+    const legacyRoute = state.chat_thread_routes[0];
+    if (!legacyRoute) {
+      throw new Error("Expected a canonical Slack route for legacy writes");
+    }
+    const legacyDefaults = await insertLegacySlackPublicBrandDefaultsFixture({
+      chatThreadId: legacyRoute.chatThreadId,
+      routeId: legacyRoute.id,
+    });
+    expect(legacyDefaults).toMatchObject({
+      chatContextPublicBrand: "vm0",
+      ingressPublicBrand: "vm0",
+    });
+    const stateAfterLegacyWrites =
+      await integrations.readSlackTestState(teamId);
+    expect(
+      stateAfterLegacyWrites.chat_ingress.find((ingress) => {
+        return ingress.eventId === legacyDefaults.ingressEventId;
+      }),
+    ).toMatchObject({ publicBrand: "vm0", status: "pending" });
   });
 
   it("keeps queued Web and Slack inputs on one canonical route", async () => {
@@ -3647,13 +3670,24 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("handles Slack commands for unknown workspaces and unbound installations", async () => {
     integrations.configureSlackAppMocks();
     const slackUserId = uniqueSlackUserId();
+    const uninstalledTeamId = `T_BDD_NONE_${randomUUID().slice(0, 8)}`;
 
     const notInstalled = await integrations.postSlackCommand({
-      teamId: `T_BDD_NONE_${randomUUID().slice(0, 8)}`,
+      teamId: uninstalledTeamId,
       userId: slackUserId,
       text: "connect",
     });
     expect(JSON.stringify(notInstalled)).toContain("hasn't been set up");
+
+    const uninstalledHelp = await integrations.postSlackCommand({
+      teamId: uninstalledTeamId,
+      userId: slackUserId,
+      text: "help",
+    });
+    const uninstalledHelpJson = JSON.stringify(uninstalledHelp);
+    expect(uninstalledHelpJson).toContain("Slack Bot Help");
+    expect(uninstalledHelpJson).toContain("mention it in a channel");
+    expect(uninstalledHelpJson).not.toContain("@Okou");
 
     const unbound = await integrations.installSlackWorkspace(null);
     const help = await integrations.postSlackCommand({
@@ -4491,6 +4525,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(auditedBlocks).toContain("Audit");
     expect(auditedBlocks).toContain(`https://app.okou.ai/activities/${run1Id}`);
     expect(auditedBlocks).toContain("Claude Sonnet 5");
+
+    // Production can no longer author this historical shape. Requeue the
+    // real Slack callback without only its new field, then redrive the real
+    // delivery service to prove the installation brand carries old payloads.
+    context.mocks.slack.chat.postMessage.mockClear();
+    await integrations.redriveLegacySlackChatCallback(run1Id);
+    const legacyAuditedBlocks = slackPostMessageCallsJson();
+    expect(legacyAuditedBlocks).toContain("SLACK_BDD_OUTPUT");
+    expect(legacyAuditedBlocks).toContain("Audit");
+    expect(legacyAuditedBlocks).toContain(
+      `https://app.okou.ai/activities/${run1Id}`,
+    );
     await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,

@@ -336,7 +336,7 @@ export function buildHelpMessage(
   const { assistantName } = publicBrandPresentation(publicBrand);
   const botMention = opts?.botUserId
     ? officialSlackBotMention(opts.botUserId)
-    : `@${OFFICIAL_SLACK_APP_NAME}`;
+    : undefined;
   const switchLine = opts?.canSwitch
     ? `\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} switch\` - Choose which agent responds to your messages`
     : "";
@@ -348,7 +348,9 @@ export function buildHelpMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${botMention} Slack Bot Help*`,
+        text: botMention
+          ? `*${botMention} Slack Bot Help*`
+          : "*Slack Bot Help*",
       },
     },
     { type: "divider" },
@@ -363,7 +365,9 @@ export function buildHelpMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Usage*\n\u2022 ${botMention} <message> - Send a message to your agent`,
+        text: botMention
+          ? `*Usage*\n\u2022 ${botMention} <message> - Send a message to your agent`
+          : "*Usage*\n\u2022 Send a DM to this bot or mention it in a channel to message your agent",
       },
     },
   ];

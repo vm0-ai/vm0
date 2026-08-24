@@ -20,6 +20,7 @@ import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
 import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
+import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -82,6 +83,7 @@ const databaseConnectionOwnerRowSchema = z.object({
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 const blockedQueryRowSchema = z.object({ query: z.string() });
+const legacySlackBrandInsertRowSchema = z.object({ id: z.string().uuid() });
 
 type ChatThreadBlockedStatementKind =
   | "select_for_key_share"
@@ -301,6 +303,80 @@ export async function readChatEventContextFixture(
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
+}
+
+/**
+ * Reproduce the exact cross-version property that production APIs cannot
+ * construct after #28795: the previous API's INSERT column lists omit the new
+ * Slack public-brand columns. Execute those legacy statement shapes against
+ * the migrated schema, then read both rows through the current Drizzle schema.
+ */
+export async function insertLegacySlackPublicBrandDefaultsFixture(args: {
+  readonly chatThreadId: string;
+  readonly routeId: string;
+}): Promise<{
+  readonly chatContextPublicBrand: PublicBrand;
+  readonly ingressEventId: string;
+  readonly ingressPublicBrand: PublicBrand;
+}> {
+  const [contextInsert] = await executeRawRows(
+    db(),
+    sql`
+      INSERT INTO "chat_slack_context" (
+        "chat_thread_id",
+        "message_text"
+      )
+      VALUES (
+        ${args.chatThreadId},
+        'legacy column-omitting Slack context'
+      )
+      RETURNING "id"
+    `,
+    legacySlackBrandInsertRowSchema,
+  );
+  const ingressEventId = `EvLegacyBrand${randomUUID().replaceAll("-", "")}`;
+  const [ingressInsert] = await executeRawRows(
+    db(),
+    sql`
+      INSERT INTO "slack_chat_ingress" (
+        "route_id",
+        "event_id",
+        "payload",
+        "status"
+      )
+      VALUES (
+        ${args.routeId},
+        ${ingressEventId},
+        '{"type":"legacy_brand_default"}',
+        'pending'
+      )
+      RETURNING "id"
+    `,
+    legacySlackBrandInsertRowSchema,
+  );
+  if (!contextInsert || !ingressInsert) {
+    throw new Error("Expected both legacy Slack statement shapes to insert");
+  }
+
+  const [chatContext] = await db()
+    .select({ publicBrand: chatSlackContext.publicBrand })
+    .from(chatSlackContext)
+    .where(eq(chatSlackContext.id, contextInsert.id))
+    .limit(1);
+  const [ingress] = await db()
+    .select({ publicBrand: slackChatIngress.publicBrand })
+    .from(slackChatIngress)
+    .where(eq(slackChatIngress.id, ingressInsert.id))
+    .limit(1);
+  if (!chatContext || !ingress) {
+    throw new Error("Expected current Slack brand readers to load legacy rows");
+  }
+
+  return {
+    chatContextPublicBrand: chatContext.publicBrand,
+    ingressEventId,
+    ingressPublicBrand: ingress.publicBrand,
+  };
 }
 
 const annotationProjectionInputs = [
