@@ -547,7 +547,11 @@ function CustomConnectorGrid({
   );
 }
 
-function CustomAccountDialogs() {
+function CustomAccountDialogs({
+  mcpEnabled,
+}: {
+  readonly mcpEnabled: boolean;
+}) {
   const managedAccounts = useGet(customAccountManager$);
   const accountConnect = useGet(customAccountConnectDialog$);
   const closeAccountManager = useSet(closeCustomAccountManager$);
@@ -578,6 +582,9 @@ function CustomAccountDialogs() {
               displayName={managedAccounts.displayName}
               size={20}
             />
+          }
+          connectionActionsEnabled={
+            managedAccounts.kind === "http" || mcpEnabled
           }
           onClose={closeAccountManager}
           onAdd={() => {
@@ -616,7 +623,7 @@ export function CustomConnectorsPanel() {
         />
       ) : null}
       <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
-      <CustomAccountDialogs />
+      <CustomAccountDialogs mcpEnabled={mcpEnabled} />
     </section>
   );
 }

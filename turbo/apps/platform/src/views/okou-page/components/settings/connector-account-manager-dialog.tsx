@@ -46,6 +46,7 @@ interface ConnectorAccountManagerDialogProps {
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
   readonly icon: ReactNode;
+  readonly connectionActionsEnabled: boolean;
   readonly onClose: () => void;
   readonly onAdd: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
@@ -80,10 +81,12 @@ function AccountStatus({ account }: { account: ConnectorAccountConnection }) {
 function AccountActions({
   target,
   account,
+  connectionActionsEnabled,
   onReconnect,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
+  readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
@@ -106,15 +109,17 @@ function AccountActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={() => {
-            return onReconnect(account);
-          }}
-        >
-          {t(($) => {
-            return $.connectors.actions.reconnect;
-          })}
-        </DropdownMenuItem>
+        {connectionActionsEnabled ? (
+          <DropdownMenuItem
+            onClick={() => {
+              return onReconnect(account);
+            }}
+          >
+            {t(($) => {
+              return $.connectors.actions.reconnect;
+            })}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           onClick={() => {
             return startRename(account);
@@ -160,11 +165,13 @@ function AccountRow({
   target,
   account,
   connectorLabel,
+  connectionActionsEnabled,
   onReconnect,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
   readonly connectorLabel: string;
+  readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
@@ -194,6 +201,7 @@ function AccountRow({
       <AccountActions
         target={target}
         account={account}
+        connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
       />
     </div>
@@ -204,11 +212,13 @@ function AccountList({
   loadable,
   target,
   connectorLabel,
+  connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
+  readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
@@ -239,6 +249,7 @@ function AccountList({
         target={target}
         account={account}
         connectorLabel={connectorLabel}
+        connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
       />
     );
@@ -378,6 +389,7 @@ export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
   icon,
+  connectionActionsEnabled,
   onClose,
   onAdd,
   onReconnect,
@@ -433,6 +445,7 @@ export function ConnectorAccountManagerDialog({
           <Button
             type="button"
             disabled={
+              !connectionActionsEnabled ||
               accountsLoadable.state === "hasError" ||
               (accountsLoadable.state === "hasData" &&
                 !accountsLoadable.data.available)
@@ -451,6 +464,7 @@ export function ConnectorAccountManagerDialog({
             loadable={accountsLoadable}
             target={target}
             connectorLabel={connectorLabel}
+            connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={(account) => {
               leave(() => {
                 return onReconnect(account);

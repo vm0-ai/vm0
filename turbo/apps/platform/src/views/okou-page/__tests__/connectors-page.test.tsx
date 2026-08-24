@@ -6212,6 +6212,66 @@ describe("connectors page", () => {
     },
   );
 
+  it("keeps MCP account connection actions disabled with the MCP feature off", async () => {
+    const connector = mcpCustomConnector({ connected: true });
+    const account = {
+      id: crypto.randomUUID(),
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "manual",
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: [account], nextCursor: null });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.CustomConnectorMcp]: false,
+      },
+    });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("Acme MCP");
+    });
+    expect(buttonByText("Add", card)).toBeDisabled();
+    click(buttonByText("Manage", card));
+
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage Acme MCP accounts",
+    });
+    expect(buttonByText("Add account", manager)).toBeDisabled();
+    click(within(manager).getByLabelText("Account actions"));
+    expect(queryMenuItemByText("Reconnect")).toBeNull();
+    expect(menuItemByText("Rename")).toBeInTheDocument();
+  });
+
   it("confirms a labeled custom OAuth addition from account summary growth", async () => {
     let connector: CustomConnectorHttpResponse = customConnector({
       fields: [],

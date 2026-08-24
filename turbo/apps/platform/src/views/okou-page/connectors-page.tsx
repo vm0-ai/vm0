@@ -1270,6 +1270,7 @@ export function ZeroConnectorsPage() {
           }}
           connectorLabel={managedAccountConnector.label}
           icon={<ConnectorIcon icon={managedAccountConnector.icon} size={20} />}
+          connectionActionsEnabled
           onClose={() => {
             closeAccountManager();
           }}
