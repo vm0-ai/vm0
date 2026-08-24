@@ -1088,7 +1088,6 @@
         "updatedTitle": "権限が更新されました"
       },
       "saving": "保存中...",
-      "unknownEndpoints": "不明なエンドポイント",
       "userFallback": "そこに",
       "wouldLike": "したいです"
     }
@@ -1851,6 +1850,7 @@
       "expiresInHours_one": "{{count}} 時間後に期限切れになります",
       "expiresInHours_other": "{{count}} 時間で期限切れになります",
       "loadFailed": "権限ステータスを読み込めませんでした",
+      "otherEndpoints": "その他のエンドポイント",
       "unknown": "不明な権限",
       "updated": "権限が更新されました",
       "updateFailed": "権限を更新できませんでした"

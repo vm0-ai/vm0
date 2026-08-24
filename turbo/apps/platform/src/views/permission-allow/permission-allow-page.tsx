@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@okouai/ui";
 import { AlertTriangle, Ban, Check, Loader2 } from "lucide-react";
 import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
@@ -131,9 +132,11 @@ function ConnectorPermissionCard({
           <span className="min-w-0 flex-1 text-sm text-foreground truncate">
             {permission.description ?? permission.name}
           </span>
-          <code className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700">
-            {permission.name}
-          </code>
+          {permission.name !== UNKNOWN_PERMISSION_GRANT && (
+            <code className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700">
+              {permission.name}
+            </code>
+          )}
         </div>
       </div>
     </div>

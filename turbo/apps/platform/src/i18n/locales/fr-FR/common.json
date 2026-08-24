@@ -1108,7 +1108,6 @@
         "updatedTitle": "Autorisations mises à jour"
       },
       "saving": "Enregistrement...",
-      "unknownEndpoints": "Points de terminaison inconnus",
       "userFallback": "là",
       "wouldLike": "Souhaite"
     }
@@ -1883,6 +1882,7 @@
       "expiresInHours_many": "Expire dans {{count}} heures",
       "expiresInHours_other": "Expire dans {{count}} heures",
       "loadFailed": "Impossible de charger le statut de la permission",
+      "otherEndpoints": "autres points de terminaison",
       "unknown": "Permission inconnue",
       "updated": "Permissions mises à jour",
       "updateFailed": "Impossible de mettre à jour les permissions"

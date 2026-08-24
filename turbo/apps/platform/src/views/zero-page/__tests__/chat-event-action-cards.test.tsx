@@ -4312,7 +4312,7 @@ describe("chat event action cards", () => {
         within(permissionCard).getByText("Cloudflare permissions"),
       ).toBeInTheDocument();
       expect(
-        within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
+        within(permissionCard).getByText("Allow other endpoints"),
       ).toBeInTheDocument();
     });
 

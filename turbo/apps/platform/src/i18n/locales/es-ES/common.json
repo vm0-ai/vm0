@@ -1108,7 +1108,6 @@
         "updatedTitle": "Permisos actualizados"
       },
       "saving": "Guardando...",
-      "unknownEndpoints": "Endpoints desconocidos",
       "userFallback": "Ahí",
       "wouldLike": "Me gustaría"
     }
@@ -1883,6 +1882,7 @@
       "expiresInHours_many": "Caduca en {{count}} horas",
       "expiresInHours_other": "Caduca en {{count}} horas",
       "loadFailed": "No se pudo cargar el estado de los permisos",
+      "otherEndpoints": "otros endpoints",
       "unknown": "Permiso desconocido",
       "updated": "Permisos actualizados",
       "updateFailed": "No se pudieron actualizar los permisos"
