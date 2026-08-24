@@ -1,6 +1,5 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 
@@ -24,22 +23,18 @@ const storedOAuthStateSelection = Object.freeze({
   authorizationUrl: connectorOauthStates.authorizationUrl,
   codeVerifier: connectorOauthStates.codeVerifier,
   oauthContext: connectorOauthStates.oauthContext,
-  accountMutation:
-    storedConnectorAccountMutationSelection(connectorOauthStates),
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorOauthStates.accountMutation,
+  ),
   createdAt: connectorOauthStates.createdAt,
   expiresAt: connectorOauthStates.expiresAt,
   consumedAt: connectorOauthStates.consumedAt,
 });
 
-type StoredOAuthStateRow = Omit<
-  Pick<
-    typeof connectorOauthStates.$inferSelect,
-    keyof typeof storedOAuthStateSelection
-  >,
-  "accountMutation"
-> & {
-  readonly accountMutation: StoredConnectorAccountMutation | null;
-};
+type StoredOAuthStateRow = Pick<
+  typeof connectorOauthStates.$inferSelect,
+  keyof typeof storedOAuthStateSelection
+>;
 
 export type StoredBuiltinOAuthState = Omit<
   StoredOAuthStateRow,

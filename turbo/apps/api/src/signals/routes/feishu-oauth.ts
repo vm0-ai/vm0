@@ -1,16 +1,15 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, ne } from "drizzle-orm";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
-import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 import { logger } from "../../lib/log";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -78,7 +77,7 @@ interface FeishuConnectionState {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly accountMutation?: StoredConnectorAccountMutation | null;
+  readonly accountMutation: ConnectorAccountMutationIntent;
 }
 
 interface FeishuInstallationOAuthRow {
@@ -450,9 +449,7 @@ async function persistFeishuOAuthConnection(
               intent: "reconnect",
               connectionId: connection.memberConnectorId,
             }
-          : parseStoredConnectorAccountMutationIntent(
-              args.state.accountMutation ?? null,
-            ),
+          : args.state.accountMutation,
       },
       signal,
     );
@@ -771,7 +768,10 @@ const completeLegacyFeishuOAuth$ = command(
     const completed = await finishFeishuOAuthConnection(
       {
         db,
-        state,
+        state: {
+          ...state,
+          accountMutation: { intent: "single-account" },
+        },
         installation,
         connector,
         ...exchanged,
