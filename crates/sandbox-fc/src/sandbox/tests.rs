@@ -2460,17 +2460,51 @@ fn exec_result_from_operation_result_preserves_terminal_metadata() {
     assert!(!result.stderr_truncated);
 }
 
-#[test]
-fn storage_manifest_exec_result_preserves_terminal_metadata() {
-    let result = storage_manifest_exec_result(GuestStorageManifestResult {
-        termination: vsock_proto::ExecTermination::WaitFailed,
-        duration_ms: 19,
-        stdout: b"out".to_vec(),
-        stderr: b"err".to_vec(),
-        stdout_truncated: true,
-        stderr_truncated: false,
-        diagnostic: "containment cleanup failed".to_string(),
-    });
+#[tokio::test]
+async fn apply_storage_manifest_preserves_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let request = StorageManifestRequest {
+        manifest_json: b"{\"storages\":[]}",
+        run_id: "run-1",
+        runtime_dir: "/run/vm0/runs/run-1",
+        timeout: Duration::from_secs(5),
+    };
+
+    let apply = sandbox.apply_storage_manifest(&request);
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_GUEST_STORAGE_MANIFEST);
+        let decoded = vsock_proto::decode_guest_storage_manifest_request(&request.payload).unwrap();
+        assert_eq!(decoded.timeout_ms, 5_000);
+        assert_eq!(decoded.run_id, "run-1");
+        assert_eq!(decoded.runtime_dir, "/run/vm0/runs/run-1");
+        assert_eq!(decoded.manifest_json, b"{\"storages\":[]}");
+
+        let payload = vsock_proto::encode_guest_storage_manifest_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            19,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: true,
+            },
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: false,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_GUEST_STORAGE_MANIFEST_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(apply, respond);
+    let result = result.unwrap();
 
     assert_eq!(result.termination, ExecTermination::WaitFailed);
     assert_eq!(result.guest_duration_ms, Some(19));
