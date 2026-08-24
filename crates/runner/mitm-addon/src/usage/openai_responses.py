@@ -15,7 +15,8 @@ model-provider usage billing:
   ``inspect_openai_responses_event_json``, and
   ``inspect_openai_responses_server_event``, consumed by ``mitm_addon.py`` and
   ``model_websocket_usage.py`` for client request intent, event-type timing,
-  shared server lifecycle correlation, and usage received over upgrades.
+  shared server failure evidence, lifecycle correlation, and usage received
+  over upgrades.
   ``extract_openai_responses_usage_from_event`` retains the usage-only facade.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` for terminal SSE events and
@@ -263,9 +264,9 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
 
     The returned ``event_type`` is only the bounded-prefix observation; this
     function does not fully parse or validate the frame. Pass the returned event
-    to ``inspect_openai_responses_server_event`` for shared lifecycle and usage
-    inspection, or to ``extract_openai_responses_usage_from_event`` when only
-    usage is needed.
+    to ``inspect_openai_responses_server_event`` for shared failure, lifecycle,
+    and usage inspection, or to ``extract_openai_responses_usage_from_event``
+    when only usage is needed.
     """
     result = _probe_responses_event_type(body)
     return OpenAIResponsesEvent(
