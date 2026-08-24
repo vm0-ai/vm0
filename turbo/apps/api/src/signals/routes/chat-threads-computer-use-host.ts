@@ -118,10 +118,10 @@ const updateComputerUseHostInner$ = command(
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
         });
-      if (!thread?.agentComposeId) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -129,7 +129,7 @@ const updateComputerUseHostInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         computerUseHostId: hostId,
         cloudBrowserEnabled: thread.cloudBrowserEnabled,

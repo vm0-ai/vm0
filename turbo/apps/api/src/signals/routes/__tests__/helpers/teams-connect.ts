@@ -242,7 +242,7 @@ export async function postTeamsActivityForTest(args: {
   });
   const apiOrigin =
     args.publicBrand === "okou" ? "https://api.okou.ai" : "http://api.test";
-  return await app.request(`${apiOrigin}/api/zero/teams/bot`, {
+  return await app.request(`${apiOrigin}/api/webhooks/teams/bot`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${teamsToken()}`,

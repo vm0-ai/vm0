@@ -249,11 +249,6 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   describe("environment field", () => {
-    const dol = "\x24";
-    const composeContent = JSON.parse(
-      `{"settings":{"api_key":"${dol}{{ secrets.SEC_A }}","region":"${dol}{{ vars.VAR_A }}"}}`,
-    ) as Record<string, unknown>;
-
     async function seedEnvironmentVersion(): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
@@ -261,7 +256,6 @@ describe("GET /api/zero/integrations/slack", () => {
         seed_default_agent: true,
         default_agent_name: "slack-bot",
         default_agent_display_name: "Slack Bot",
-        compose_content: composeContent,
       });
     }
 
@@ -297,7 +291,7 @@ describe("GET /api/zero/integrations/slack", () => {
       });
     }
 
-    it("ignores legacy environment when canonical runtime bindings are provided", async () => {
+    it("reports no user requirements for application-owned runtime bindings", async () => {
       await seedEnvironmentVersion();
       await seedUserSecret("SEC_A");
       await seedUserVariable("VAR_A", "us-east-1");

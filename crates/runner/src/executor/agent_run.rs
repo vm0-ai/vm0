@@ -1145,6 +1145,8 @@ pub(super) struct RunControls {
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
+    pub(super) pre_spawn_admission_lease:
+        Option<crate::pre_spawn_admission::PreSpawnAdmissionLease>,
     guest_state_prepared: bool,
 }
 
@@ -1252,6 +1254,7 @@ impl RunControls {
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
             prepared_guest_runtime: None,
+            pre_spawn_admission_lease: None,
             guest_state_prepared: false,
         }
     }
@@ -1580,6 +1583,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
         mut prepared_storage,
         prepared_guest_runtime,
+        mut pre_spawn_admission_lease,
         guest_state_prepared,
     } = controls;
     let pre_spawn_started = Instant::now();
@@ -2131,6 +2135,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             if let Some(spawn_timing) = spawn_timing {
                 spawn_timing.record_spawn_success_at(telemetry, spawned_at);
             }
+            // The guest process handle is the api_to_spawn boundary. Releasing here keeps
+            // steady-state execution outside the burst gate while every pre-spawn early return
+            // continues to release through RAII.
+            drop(pre_spawn_admission_lease.take());
             h
         }
         Err(e) => {

@@ -23,7 +23,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { conflict, notFound } from "../../lib/error";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
-import { deleteAgentById$ } from "../services/compose-data.service";
+import { deleteAgentById$ } from "../services/agent-deletion.service";
 import {
   agentResponse,
   agentDetail,

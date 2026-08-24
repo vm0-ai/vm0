@@ -126,19 +126,6 @@ export const testTeamsStateResponseSchema = z.object({
       orgId: z.string(),
     })
     .nullable(),
-  default_compose: z
-    .object({
-      id: z.string(),
-      name: z.string(),
-      headVersionId: z.string().nullable(),
-    })
-    .nullable(),
-  default_compose_version: z
-    .object({
-      id: z.string(),
-      content_keys: z.array(z.string()),
-    })
-    .nullable(),
 });
 
 export const testTeamsStateContract = c.router({

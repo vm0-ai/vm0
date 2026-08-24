@@ -29,7 +29,7 @@ use crate::host_env::{
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{ExecutionContext, PiModelConfig, ResumeSession, SandboxReuseResult};
+use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -72,6 +72,27 @@ fn pi_launch_config_for_test(session_id: &str) -> serde_json::Value {
             "sandboxEventSequenceStart": 1
         }
     })
+}
+
+fn pi_model_config_for_test() -> serde_json::Value {
+    json!({
+        "provider": "deepseek",
+        "baseUrl": "https://api.deepseek.com/",
+        "model": "deepseek-v4-flash",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "credentialSecretName": "DEEPSEEK_API_KEY"
+    })
+}
+
+fn pi_context_for_test() -> ExecutionContext {
+    let mut context = minimal_context();
+    context.cli_agent_type = "pi".to_string();
+    context.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    context.pi_launch_config = Some(pi_launch_config_for_test(
+        "22222222-2222-4222-8222-222222222222",
+    ));
+    context.pi_model_config = Some(pi_model_config_for_test());
+    context
 }
 
 #[test]
@@ -1297,21 +1318,22 @@ fn non_pi_execution_contexts_do_not_require_pi_resources() {
 }
 
 #[test]
-fn build_run_payload_for_run_preserves_pi_resources() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "pi".to_string();
-    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
-    ctx.pi_launch_config = Some(pi_launch_config_for_test(
-        "22222222-2222-4222-8222-222222222222",
-    ));
-    ctx.pi_model_config = Some(PiModelConfig {
-        provider: "deepseek".to_string(),
-        base_url: "https://api.deepseek.com/".to_string(),
-        model: "deepseek-v4-flash".to_string(),
-        api_key_env: "OPENAI_API_KEY".to_string(),
-        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
-    });
-    let payload = build_run_payload_for_run(&ctx).unwrap();
+fn pi_execution_context_preserves_additive_fields_in_run_payload() {
+    let mut ctx = pi_context_for_test();
+    ctx.pi_launch_config.as_mut().unwrap()["futureLaunchField"] = json!("launch-root");
+    ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
+        json!("first-turn");
+    ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
+    let sandbox_id = SandboxId::new_v4().to_string();
+    let payload = validate_execution_context_before_sandbox(
+        &ctx,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+    .unwrap()
+    .into_run_payload(&ctx)
+    .unwrap();
 
     assert_eq!(
         payload.pi_session_id,
@@ -1319,10 +1341,13 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     );
     let launch: serde_json::Value = serde_json::from_str(&payload.pi_launch_config).unwrap();
     assert_eq!(launch["schemaVersion"], 2);
+    assert_eq!(launch["futureLaunchField"], "launch-root");
+    assert_eq!(launch["apiFirstTurn"]["futureFirstTurnField"], "first-turn");
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
     assert_eq!(model["credentialSecretName"], "DEEPSEEK_API_KEY");
+    assert_eq!(model["futureModelField"], "model-root");
 }
 
 #[test]
@@ -1331,13 +1356,7 @@ fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
     ctx.cli_agent_type = "pi".to_string();
     ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
     ctx.pi_launch_config = Some(json!({ "schemaVersion": 2 }));
-    ctx.pi_model_config = Some(PiModelConfig {
-        provider: "deepseek".to_string(),
-        base_url: "https://api.deepseek.com/".to_string(),
-        model: "deepseek-v4-flash".to_string(),
-        api_key_env: "OPENAI_API_KEY".to_string(),
-        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
-    });
+    ctx.pi_model_config = Some(pi_model_config_for_test());
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
@@ -1346,23 +1365,131 @@ fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
 
 #[test]
 fn pi_execution_context_rejects_mismatched_h0_before_sandbox() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "pi".to_string();
-    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    let mut ctx = pi_context_for_test();
     ctx.pi_launch_config = Some(pi_launch_config_for_test(
         "33333333-3333-4333-8333-333333333333",
     ));
-    ctx.pi_model_config = Some(PiModelConfig {
-        provider: "deepseek".to_string(),
-        base_url: "https://api.deepseek.com/".to_string(),
-        model: "deepseek-v4-flash".to_string(),
-        api_key_env: "OPENAI_API_KEY".to_string(),
-        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
-    });
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("H0 session id"));
+}
+
+#[test]
+fn pi_execution_context_rejects_missing_required_base_hash_before_sandbox() {
+    let mut context = pi_context_for_test();
+    context
+        .pi_launch_config
+        .as_mut()
+        .unwrap()
+        .pointer_mut("/apiFirstTurn/baseSession")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("sha256");
+
+    let error = validate_context_for_test(&context).unwrap_err();
+
+    assert!(error.contains("H0 sha256 must be present"));
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_launch_fields_before_sandbox() {
+    let cases = [
+        ("/schemaVersion", json!(3), "schemaVersion must be 2"),
+        (
+            "/apiFirstTurn/schemaVersion",
+            json!(2),
+            "schemaVersion must be 1",
+        ),
+        (
+            "/apiFirstTurn/resourceSnapshotDigest",
+            json!("not-a-digest"),
+            "resource snapshot digest",
+        ),
+        (
+            "/apiFirstTurn/manifestUrl",
+            json!("ftp://storage.example/manifest.json"),
+            "manifestUrl must use HTTP or HTTPS",
+        ),
+        (
+            "/apiFirstTurn/sessionUrl",
+            json!("not a URL"),
+            "sessionUrl is invalid",
+        ),
+        (
+            "/apiFirstTurn/deadlineAt",
+            json!(-1),
+            "deadlineAt must be positive",
+        ),
+        (
+            "/apiFirstTurn/sandboxEventSequenceStart",
+            json!(2),
+            "event sequence must start at 1",
+        ),
+        (
+            "/apiFirstTurn/baseSession/sha256",
+            json!("not-a-digest"),
+            "H0 sha256",
+        ),
+    ];
+
+    for (pointer, value, expected) in cases {
+        let mut context = pi_context_for_test();
+        *context
+            .pi_launch_config
+            .as_mut()
+            .unwrap()
+            .pointer_mut(pointer)
+            .unwrap() = value;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{pointer} produced unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
+    let cases = [
+        (
+            "/provider",
+            json!("future-provider"),
+            "Pi model config is invalid",
+        ),
+        (
+            "/apiKeyEnv",
+            json!("FUTURE_API_KEY"),
+            "Pi model config is invalid",
+        ),
+        ("/baseUrl", json!("not a URL"), "baseUrl is invalid"),
+        ("/model", json!(""), "model must not be empty"),
+        (
+            "/credentialSecretName",
+            json!("lowercase-secret"),
+            "credentialSecretName is invalid",
+        ),
+    ];
+
+    for (pointer, value, expected) in cases {
+        let mut context = pi_context_for_test();
+        *context
+            .pi_model_config
+            .as_mut()
+            .unwrap()
+            .pointer_mut(pointer)
+            .unwrap() = value;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{pointer} produced unexpected error: {error}"
+        );
+    }
 }
 
 #[test]

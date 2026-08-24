@@ -1195,8 +1195,15 @@
     {
       "idx": 978,
       "version": "7",
-      "when": 1787558561542,
-      "tag": "0978_lovely_dragon_man",
+      "when": 1787547905480,
+      "tag": "0978_remove_retired_agent_compose_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 979,
+      "version": "7",
+      "when": 1787563848562,
+      "tag": "0979_military_mad_thinker",
       "breakpoints": true
     }
   ]

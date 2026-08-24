@@ -793,7 +793,7 @@ describe("okou people-search route", () => {
       webSearchPricing(),
     ]);
     configureProvider();
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [`people-search-${randomUUID().slice(0, 8)}`]: {
@@ -803,7 +803,7 @@ describe("okou people-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "Find a public professional profile",
     });
     const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [

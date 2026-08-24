@@ -506,7 +506,7 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     configureProvider();
     const name = `social-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [name]: {
@@ -516,7 +516,7 @@ describe("managed SocialKit route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "Retrieve public social data",
     });
     const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [

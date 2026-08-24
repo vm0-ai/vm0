@@ -16,7 +16,6 @@ import { settle } from "../utils";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
-import { deleteLegacyAgentIdentitiesInTransaction } from "./agent-compose-provenance-lifecycle.service";
 
 export function agentExistsInOrg(args: {
   readonly orgId: string;
@@ -151,12 +150,6 @@ async function deleteAgentInTransaction(tx: Tx, args: DeleteAgentArgs) {
   await tx
     .delete(agents)
     .where(and(eq(agents.id, args.agentId), eq(agents.orgId, args.orgId)));
-
-  await deleteLegacyAgentIdentitiesInTransaction(tx, {
-    kind: "organization",
-    orgId: args.orgId,
-    agentIds: [args.agentId],
-  });
 
   const s3Prefix = await removeAgentInstructionsStorageInTransaction(tx, {
     orgId: args.orgId,

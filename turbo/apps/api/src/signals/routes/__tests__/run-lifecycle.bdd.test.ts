@@ -22,10 +22,7 @@ import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
-  WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
-} from "@okouai/core/resource-registry";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -78,16 +75,6 @@ import {
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
-import {
-  readHistoricalAgentComposeHeadFixture,
-  readRawHistoricalAgentComposeHeadFixture,
-  replaceHistoricalAgentComposeHeadFixture,
-  setHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
-import {
-  materializeAgentLegacyVersionFixture,
-  readAgentRunVersionFixture,
-} from "../../../test-fixtures/agent-compose-provenance";
 import {
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
@@ -150,7 +137,6 @@ import {
   releaseOrgAdmissionLock,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
-  setAgentComposeVersionlessFixture,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
@@ -224,8 +210,6 @@ function runnerPreference(job: RunnerJob | null | undefined) {
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const MCP_CONNECTOR_PROMPT_HEADING = "# MCP Custom Connectors";
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
-const MISSING_DIRECT_AGENT_VALUES_MESSAGE =
-  "Missing required values: vars.OKOU_AGENT_ID, secrets.OKOU_TOKEN";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
@@ -319,7 +303,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_run_callbacks",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
-  "api_dispatch_prepare_context_resolve_compose",
+  "api_dispatch_prepare_context_resolve_agent_execution",
   "api_dispatch_prepare_context_load_persisted_environment",
   "api_dispatch_prepare_context_build_resolved_body",
   "api_dispatch_prepare_context_resolve_framework",
@@ -522,18 +506,18 @@ const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_apply_model_provider_permission_policy",
   "api_dispatch_prepare_context_merge_permission_manifest",
 ] as const;
-const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
-  "api_dispatch_resolve_compose_by_agent_id",
-  "api_dispatch_resolve_compose_by_session_id",
+const API_DISPATCH_RESOLVE_AGENT_EXECUTION_PATH_ACTION_TYPES = [
+  "api_dispatch_resolve_agent_execution_by_agent_id",
+  "api_dispatch_resolve_agent_execution_by_session_id",
 ] as const;
-const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
-  "api_dispatch_resolve_compose_lookup_agent",
-  "api_dispatch_resolve_compose_lookup_session_snapshot",
-  "api_dispatch_resolve_compose_resolve_session_history",
+const API_DISPATCH_RESOLVE_AGENT_EXECUTION_SUBSTEP_ACTION_TYPES = [
+  "api_dispatch_resolve_agent_execution_lookup_agent",
+  "api_dispatch_resolve_agent_execution_lookup_session_snapshot",
+  "api_dispatch_resolve_agent_execution_resolve_session_history",
 ] as const;
 const REPLACED_SESSION_RESOLUTION_ACTION_TYPES = [
-  "api_dispatch_resolve_compose_lookup_session",
-  "api_dispatch_resolve_compose_lookup_session_vars",
+  "api_dispatch_resolve_agent_execution_lookup_session",
+  "api_dispatch_resolve_agent_execution_lookup_session_vars",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -1435,7 +1419,6 @@ async function entitledRunActor(): Promise<{
     description: "Exercises the full run lifecycle.",
     visibility: "private",
   });
-  await materializeAgentLegacyVersionFixture(agent.agentId);
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
@@ -1628,53 +1611,6 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("resolves a direct canonical Agent when its legacy compose has no version", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    await setAgentComposeVersionlessFixture(context, agentId);
-
-    const rejected = await api.requestDirectRun(
-      actor,
-      {
-        agentId,
-        prompt: "run a versionless Agent",
-      },
-      [400],
-    );
-
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
-    );
-  });
-
-  it("resolves a Session canonical Agent when its legacy compose loses its version", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    const first = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
-        agentId,
-        prompt: "start a Session before losing the compose version",
-      }),
-    });
-    await api.requestCancelRun(actor, first.runId, [200]);
-    await setAgentComposeVersionlessFixture(context, agentId);
-
-    const rejected = await api.requestDirectRun(
-      actor,
-      {
-        sessionId: first.sessionId,
-        prompt: "resume a versionless Agent Session",
-      },
-      [400],
-    );
-
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
-    );
-  });
-
   it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -1847,20 +1783,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_resolve_compose_by_agent_id",
-      "api_dispatch_resolve_compose_lookup_agent",
+      "api_dispatch_resolve_agent_execution_by_agent_id",
+      "api_dispatch_resolve_agent_execution_lookup_agent",
     ]);
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_by_agent_id";
-      }),
+      API_DISPATCH_RESOLVE_AGENT_EXECUTION_PATH_ACTION_TYPES.filter(
+        (actionType) => {
+          return (
+            actionType !== "api_dispatch_resolve_agent_execution_by_agent_id"
+          );
+        },
+      ),
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_lookup_agent";
-      }),
+      API_DISPATCH_RESOLVE_AGENT_EXECUTION_SUBSTEP_ACTION_TYPES.filter(
+        (actionType) => {
+          return (
+            actionType !== "api_dispatch_resolve_agent_execution_lookup_agent"
+          );
+        },
+      ),
     );
     const observedActionTypes = apiDispatchActionTypes(timingEvents);
     const preCreateEvents = timingEvents.filter((event) => {
@@ -3063,7 +3007,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await bdd.updateUserTimezone(actor, "Asia/Shanghai");
     const prompt = "direct service dispatch timing should not leak prompt";
     const composeName = `bdd-direct-service-timing-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -3072,11 +3016,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = compose.versionId;
+    const directAgentId = compose.agentId;
 
     context.mocks.s3.send.mockClear();
     const created = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt,
     });
 
@@ -3156,7 +3100,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
-      headVersionId,
+      directAgentId,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
@@ -3178,7 +3122,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const suspendedPrompt = `suspended direct ${randomUUID()}`;
     const rejected = await api.requestDirectRun(
       actor,
-      { agentId: compose.composeId, prompt: suspendedPrompt },
+      { agentId: compose.agentId, prompt: suspendedPrompt },
       [402],
     );
     expectApiError(rejected.body);
@@ -3286,7 +3230,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const composeName = `bdd-manifest-shape-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       volumes: {
         cache: {
@@ -3302,10 +3246,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = compose.versionId;
+    const directAgentId = compose.agentId;
 
     const created = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt,
       additionalVolumes: [
         {
@@ -3479,7 +3423,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       storageName,
       mountPath,
       prepared.versionId,
-      headVersionId,
+      directAgentId,
       "https://r2.example.com",
     ]);
 
@@ -3505,7 +3449,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     const initialized = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "storage manifest dimensions initialized artifact path",
       additionalVolumes: [
         {
@@ -3563,7 +3507,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       storageName,
       mountPath,
       prepared.versionId,
-      headVersionId,
+      directAgentId,
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
@@ -3594,7 +3538,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const composeName = `bdd-exact-candidate-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       volumes: {
         primary: { name: storageName, version: prepared.versionId },
@@ -3614,7 +3558,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.heartbeatRunner(runnerGroup);
     const created = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "resolve only exact storage candidates",
       additionalVolumes: [
         { name: missingAdditionalName, mountPath: "/additional" },
@@ -3677,7 +3621,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const api = createRunsApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-storage-manifest-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -3689,7 +3633,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const canonicalRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "canonical storage claim",
     });
     const canonicalClaim = await api.claimRunnerJob(canonicalRun.runId);
@@ -3778,7 +3722,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       headVersionId: preparedPinnedArtifact.versionId,
     });
     const composeName = `bdd-storage-persistence-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       volumes: {
         checkpoint: {
@@ -3797,7 +3741,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const initialRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "persist canonical storage mounts",
       artifacts: [
         {
@@ -4022,7 +3966,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const webhooks = createWebhookCallbackApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
     const composeName = `bdd-legacy-storage-state-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -4034,7 +3978,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const invalidQueueRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "reject a pre-canonical Storage queue entry",
     });
     // Pre-migration null JSONB columns cannot be produced by a current public
@@ -4049,7 +3993,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(rejectedClaim.body);
 
     const invalidPersistenceRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "reject pre-canonical Storage checkpoint state",
     });
     const canonicalClaim = await api.claimRunnerJob(
@@ -4079,7 +4023,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const storages = createStoragesBddApi(context);
     const { actor } = await entitledRunActor();
     const composeName = `bdd-artifact-head-commit-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -4089,7 +4033,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     });
     const initialRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "initial empty artifact creation should not block later commits",
     });
     onTestFinished(async () => {
@@ -4188,7 +4132,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     const committedRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "committed artifact head should stay non-empty",
     });
     onTestFinished(async () => {
@@ -4283,7 +4227,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor } = await entitledRunActor();
     const prompt = "Agent timing should not leak prompt";
     const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -4292,39 +4236,47 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = compose.versionId;
+    const directAgentId = compose.agentId;
 
     const created = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt,
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_resolve_compose_by_agent_id",
-      "api_dispatch_resolve_compose_lookup_agent",
+      "api_dispatch_resolve_agent_execution_by_agent_id",
+      "api_dispatch_resolve_agent_execution_lookup_agent",
     ]);
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_by_agent_id";
-      }),
+      API_DISPATCH_RESOLVE_AGENT_EXECUTION_PATH_ACTION_TYPES.filter(
+        (actionType) => {
+          return (
+            actionType !== "api_dispatch_resolve_agent_execution_by_agent_id"
+          );
+        },
+      ),
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_lookup_agent";
-      }),
+      API_DISPATCH_RESOLVE_AGENT_EXECUTION_SUBSTEP_ACTION_TYPES.filter(
+        (actionType) => {
+          return (
+            actionType !== "api_dispatch_resolve_agent_execution_lookup_agent"
+          );
+        },
+      ),
     );
     for (const event of timingEvents) {
       expect(JSON.stringify(event)).not.toContain(prompt);
-      expect(JSON.stringify(event)).not.toContain(headVersionId);
+      expect(JSON.stringify(event)).not.toContain(directAgentId);
     }
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("emits compose resolution timing for session continuation", async () => {
+  it("emits Agent execution resolution timing for session continuation", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -4362,9 +4314,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(resumed.sessionId).toBe(first.sessionId);
     const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
     expectApiDispatchActions(sessionTimingEvents, [
-      "api_dispatch_resolve_compose_by_session_id",
-      "api_dispatch_resolve_compose_lookup_session_snapshot",
-      "api_dispatch_resolve_compose_resolve_session_history",
+      "api_dispatch_resolve_agent_execution_by_session_id",
+      "api_dispatch_resolve_agent_execution_lookup_session_snapshot",
+      "api_dispatch_resolve_agent_execution_resolve_session_history",
     ]);
     expectNoApiDispatchActions(
       sessionTimingEvents,
@@ -4372,9 +4324,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       sessionTimingEvents,
-      API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_by_session_id";
-      }),
+      API_DISPATCH_RESOLVE_AGENT_EXECUTION_PATH_ACTION_TYPES.filter(
+        (actionType) => {
+          return (
+            actionType !== "api_dispatch_resolve_agent_execution_by_session_id"
+          );
+        },
+      ),
     );
     for (const event of sessionTimingEvents) {
       const serialized = JSON.stringify(event);
@@ -4665,12 +4621,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runId: created.runId,
       experimentalProfile: "vm0/default",
     });
-    expect(poll.body.job).not.toHaveProperty("agentComposeVersionId");
-
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.prompt).toBe("claim previous profile context");
     expect(claim).not.toHaveProperty("experimentalProfile");
-    expect(claim).not.toHaveProperty("agentComposeVersionId");
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
@@ -4693,7 +4646,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(emptySupport.body);
 
     const composeName = `bdd-runner-profile-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -4704,7 +4657,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     });
     const created = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "poll with explicit support list",
     });
     expect(created.status).toBe("pending");
@@ -4855,23 +4808,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "start a session",
       modelProvider: "anthropic-api-key",
     });
-    const currentHead = await readHistoricalAgentComposeHeadFixture(agentId);
-    const continuationOnlyMarker = `continuation-persisted-\${{ secrets.CONTINUATION_CONTENT_SECRET }}`;
-    await api.createHistoricalCompose(actor, {
-      version: "1",
-      agents: {
-        [currentHead.name]: {
-          framework: "claude-code",
-          instructions: "CLAUDE.md",
-          description: continuationOnlyMarker,
-          environment: {
-            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-          },
-        },
-      },
-    });
-
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -4881,12 +4817,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(resumed.sessionId).toBe(first.sessionId);
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.resumeSession).toBeNull();
-    expect(resumedClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBeNull();
-    expect(JSON.stringify(resumedClaim)).not.toContain(continuationOnlyMarker);
-    expect(JSON.stringify(resumedClaim)).not.toContain(
-      "CONTINUATION_CONTENT_SECRET",
-    );
     expect(runContextSnapshotForRun(resumed.runId)).not.toHaveProperty(
       "agentExecutionAuthority",
     );
@@ -8326,7 +8256,7 @@ describe("RUN-02: persisted run environment resolution", () => {
     });
 
     const composeName = `bdd-persisted-environment-${suffix.toLowerCase()}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8344,7 +8274,7 @@ describe("RUN-02: persisted run environment resolution", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "resolve persisted environment",
       vars: { [names.requestVariable]: "request-variable-value" },
       secrets: { [names.requestSecret]: "request-secret-value" },
@@ -8367,7 +8297,7 @@ describe("RUN-02: persisted run environment resolution", () => {
     expect(cancelled.status).toBe("cancelled");
 
     const variableOnlyComposeName = `bdd-persisted-vars-${suffix.toLowerCase()}`;
-    const variableOnlyCompose = await api.createHistoricalCompose(actor, {
+    const variableOnlyCompose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [variableOnlyComposeName]: {
@@ -8381,7 +8311,7 @@ describe("RUN-02: persisted run environment resolution", () => {
       },
     });
     const variableOnlyRun = await api.createDirectRun(actor, {
-      agentId: variableOnlyCompose.composeId,
+      agentId: variableOnlyCompose.agentId,
       prompt: "resolve persisted variables without secret references",
     });
     const variableOnlyClaim = await api.claimRunnerJob(variableOnlyRun.runId);
@@ -8618,7 +8548,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "x-bdd-overridden-refresh",
     });
     const composeName = `bdd-overridden-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8631,7 +8561,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
       connectorScope: {
@@ -8722,7 +8652,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       host: "gitlab.example.com",
     });
     const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8738,7 +8668,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "use compose-overridden gitlab token",
       connectorScope: {
         allowedConnectorSlugs: ["gitlab"],
@@ -8755,60 +8685,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.GITLAB_TOKEN).toBe("glpat-inline-token");
     expect(claim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("ignores legacy environment content when building a product launch", async () => {
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "github",
-      authMethod: "oauth",
-      accessToken: "github-shadow-unavailable",
-    });
-    await api.enableAgentConnectors(actor, agentId, ["github"]);
-    const canonicalCompose =
-      await readHistoricalAgentComposeHeadFixture(agentId);
-    await api.createHistoricalCompose(actor, {
-      version: "1",
-      agents: {
-        [canonicalCompose.name]: {
-          framework: "claude-code",
-          environment: {
-            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-            GH_TOKEN: "legacy-authoritative-token",
-          },
-        },
-      },
-    });
-    const kms = useSecretKmsProbe();
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "build the environment from application owners",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(kms.decryptCalls).toBe(1);
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.environment?.GH_TOKEN).toBe("github-shadow-unavailable");
-    expect(claim.environment?.GH_TOKEN).not.toBe("legacy-authoritative-token");
-    expect(claim.environment?.GITHUB_TOKEN).toStrictEqual(expect.any(String));
-    expect(claim.environment?.GITHUB_TOKEN).not.toBe(
-      "github-shadow-unavailable",
-    );
-    expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-      "environmentShadowClassification",
-    );
-    expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
-    expect(JSON.stringify(claim)).not.toContain("environmentShadow");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -8831,7 +8707,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "test-oauth-bdd-refresh",
     });
     const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8842,7 +8718,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "use stored connector variable aliases",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -8885,7 +8761,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "incompatible-refresh",
     });
     const composeName = `bdd-incompatible-connector-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -8896,7 +8772,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const compatibleRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "materialize compatible connector state",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -8927,7 +8803,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       userId: actor.userId,
     });
     const incompatibleRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "do not materialize incompatible connector state",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -9532,7 +9408,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
     const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -9547,7 +9423,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "restore prepared masking values",
       secrets: {
         FIRST_TOKEN: "first-secret-value",
@@ -9595,7 +9471,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -9610,7 +9486,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const missingRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "reject missing masking metadata",
       secrets: {
         FIRST_TOKEN: "first-missing-secret",
@@ -9640,7 +9516,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "Runner job missing valid execution context",
     );
     const invalidRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "materialize invalid masking metadata",
       secrets: {
         FIRST_TOKEN: "first-fallback-secret",
@@ -13686,142 +13562,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
-  it("preserves session agent identity when compose versions are shared", async () => {
-    const bdd = createBddApi(context);
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const foreignActor = bdd.user();
-    const actor = bdd.user();
-
-    bdd.acceptAgentStorageWrites();
-    api.acceptStorageDownloads();
-    api.acceptTelemetryIngest();
-    const runnerGroup = api.configureRunnerGroup();
-
-    const foreignStatus = await bdd.requestReadOnboardingStatus(
-      foreignActor,
-      [200],
-    );
-    if (foreignStatus.status !== 200) {
-      throw new Error("Expected foreign onboarding status");
-    }
-    const foreignAgentId = foreignStatus.body.defaultAgentId;
-    if (!foreignAgentId) {
-      throw new Error("Expected foreign default agent bootstrap");
-    }
-
-    const currentStatus = await bdd.requestReadOnboardingStatus(actor, [200]);
-    if (currentStatus.status !== 200) {
-      throw new Error("Expected current onboarding status");
-    }
-    const agentId = currentStatus.body.defaultAgentId;
-    if (!agentId) {
-      throw new Error("Expected current default agent bootstrap");
-    }
-    expect(agentId).not.toBe(foreignAgentId);
-
-    await materializeAgentLegacyVersionFixture(foreignAgentId);
-    await materializeAgentLegacyVersionFixture(agentId);
-    const foreignCompose =
-      await readHistoricalAgentComposeHeadFixture(foreignAgentId);
-    await setHistoricalAgentComposeHeadFixture(
-      agentId,
-      foreignCompose.headVersionId,
-      context.signal,
-    );
-    const currentCompose = await readHistoricalAgentComposeHeadFixture(agentId);
-    expect(foreignCompose.headVersionId).toStrictEqual(expect.any(String));
-    expect(currentCompose.headVersionId).toBe(foreignCompose.headVersionId);
-
-    await bdd.updateAgentMetadata(foreignActor, foreignAgentId, {
-      displayName: "Foreign shared agent",
-    });
-    await bdd.updateAgentMetadata(actor, agentId, {
-      displayName: "Current shared agent",
-    });
-
-    await api.grantProEntitlement(actor);
-    await api.ensureOrgModelProvider(actor);
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "slack",
-      authMethod: "oauth",
-      accessToken: "xoxb-bdd-shared-version",
-    });
-    await api.enableAgentConnectors(actor, agentId, ["slack"]);
-
-    await api.applyUserPermissionGrant(foreignActor, {
-      agentId: foreignAgentId,
-      connectorSlug: "slack",
-      permission: "files:write",
-      action: "allow",
-    });
-    await api.applyUserPermissionGrant(actor, {
-      agentId,
-      connectorSlug: "slack",
-      permission: "chat:write",
-      action: "allow",
-    });
-
-    await api.heartbeatRunner(runnerGroup);
-    const parent = await api.createRun(actor, {
-      agentId,
-      prompt: "shared version parent run",
-      modelProvider: "anthropic-api-key",
-    });
-    const claim = await api.claimRunnerJob(parent.runId);
-    const slackTarget = builtinConnectorRuntimeRegistration(claim, "slack");
-    const claimedPolicy = claim.networkPolicies?.slack;
-    if (!claimedPolicy) {
-      throw new Error("Expected shared-version Slack policy");
-    }
-    expect(claimedPolicy.allow).toContain("chat:write");
-    expect(claimedPolicy.deny).not.toContain("chat:write");
-    expect(claimedPolicy.deny).toContain("files:write");
-    expect(claimedPolicy.allow).not.toContain("files:write");
-
-    const queue = await api.readRunQueue(actor);
-    expect(queue.body.runningTasks).toContainEqual(
-      expect.objectContaining({
-        runId: parent.runId,
-        agentDisplayName: "Current shared agent",
-      }),
-    );
-    expect(queue.body.runningTasks).not.toContainEqual(
-      expect.objectContaining({
-        agentDisplayName: "Foreign shared agent",
-      }),
-    );
-
-    context.mocks.ably.publish.mockClear();
-    await api.applyUserPermissionGrant(actor, {
-      agentId,
-      connectorSlug: "slack",
-      permission: "files:write",
-      action: "allow",
-    });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: parent.runId,
-        target: { kind: "builtin", connectorSlug: "slack" },
-      },
-    );
-
-    const [refreshed] = await api.syncConnectorRuntime(parent.runId, {
-      targets: [slackTarget],
-    });
-    if (refreshed?.state !== "available") {
-      throw new Error("Expected refreshed connector runtime to be available");
-    }
-    expect(refreshed.networkPolicy.allow).toContain("chat:write");
-    expect(refreshed.networkPolicy.allow).toContain("files:write");
-    expect(refreshed.networkPolicy.deny).not.toContain("files:write");
-
-    await api.requestCancelRun(actor, parent.runId, [200]);
-    const drained = await api.readRunQueue(actor);
-    expect(drained.body.concurrency.active).toBe(0);
-  });
-
   it("uses connector-specific unknown endpoint defaults with user grant overrides", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -13894,7 +13634,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       accessToken: "cloudflare-direct-bdd-token",
     });
     const composeName = `bdd-cloudflare-direct-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -13905,7 +13645,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "direct run cloudflare defaults",
       connectorScope: {
         allowedConnectorSlugs: ["cloudflare"],
@@ -13951,637 +13691,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: agent runner context, queue promotion, and skills", () => {
-  it("uses the application plan for a valid legacy head", async () => {
-    const appUrl = "https://app.environment-shadow.example.test";
-    mockEnv("APP_URL", appUrl);
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error(
-        "The environment shadow fixture requires an organization",
-      );
-    }
-    const canonicalCompose =
-      await readHistoricalAgentComposeHeadFixture(agentId);
-    const persistedOnlyMarker = `persisted-only-\${{ secrets.PERSISTED_VERSION_CONTENT_SECRET }}`;
-    const parityHead = await api.createHistoricalCompose(actor, {
-      version: "1",
-      agents: {
-        [canonicalCompose.name]: {
-          framework: "claude-code",
-          instructions: "CLAUDE.md",
-          description: persistedOnlyMarker,
-          environment: {
-            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-          },
-        },
-      },
-    });
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "compare the canonical application environment",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const poll = await api.pollRunner(runnerGroup);
-    expect(poll.body.job).toMatchObject({ runId: run.runId });
-    expect(poll.body.job).not.toHaveProperty("agentComposeVersionId");
-    const claim = await api.claimRunnerJob(run.runId);
-    expect(claim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(run.runId)).resolves.toBeNull();
-
-    expectCanonicalOkouRunEnvironment({
-      environment: claim.environment,
-      secretValues: claim.secretValues,
-      appUrl,
-      agentId,
-      userId: actor.userId,
-      orgId: actor.orgId,
-      runId: run.runId,
-    });
-    const okouToken = claim.environment?.OKOU_TOKEN;
-    if (!okouToken) {
-      throw new Error(
-        "Expected the canonical environment to include its token",
-      );
-    }
-    expect(claim.environment).toStrictEqual({
-      ANTHROPIC_API_KEY: modelProviderPlaceholder(
-        "anthropic-api-key",
-        "ANTHROPIC_API_KEY",
-      ),
-      ANTHROPIC_MODEL: "claude-sonnet-5",
-      OKOU_AGENT_ID: agentId,
-      OKOU_TOKEN: okouToken,
-      OKOU_APP_URL: appUrl,
-      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
-      [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]: "previous",
-    });
-    expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-      "environmentShadowClassification",
-    );
-    expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
-    expect(JSON.stringify(claim)).not.toContain("environmentShadow");
-    expect(JSON.stringify(claim)).not.toContain("agentExecutionAuthority");
-    expect(JSON.stringify(claim)).not.toContain(persistedOnlyMarker);
-    expect(JSON.stringify(claim)).not.toContain(
-      "PERSISTED_VERSION_CONTENT_SECRET",
-    );
-    await expect(
-      readRunLaunchSnapshotFixture(context, run.runId),
-    ).resolves.toStrictEqual({
-      exists: true,
-      launch_snapshot: {
-        schemaVersion: 1,
-        framework: claim.cliAgentType,
-        runnerProfile: DEFAULT_PROFILE,
-      },
-    });
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const unchangedHead = await readHistoricalAgentComposeHeadFixture(agentId);
-    expect(unchangedHead.headVersionId).toBe(parityHead.versionId);
-    expect(
-      Object.values(unchangedHead.content?.agents ?? {})[0]?.description,
-    ).toBe(persistedOnlyMarker);
-  });
-
-  it("uses the application plan for unsupported and noncanonical heads", async () => {
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error("Expected a framework-fallback organization");
-    }
-    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
-    if (!canonicalHead.content) {
-      throw new Error("Expected a canonical Agent head");
-    }
-    const frameworkVariant = (
-      framework: "missing" | "future-framework",
-    ): Record<string, unknown> => {
-      const content = structuredClone(
-        canonicalHead.content,
-      ) as unknown as Record<string, unknown>;
-      const agents = content.agents;
-      if (!isRecord(agents)) {
-        throw new Error("Expected raw historical Agent definitions");
-      }
-      const activeAgent = agents[canonicalHead.name];
-      if (!isRecord(activeAgent)) {
-        throw new Error("Expected a raw historical active Agent");
-      }
-      if (framework === "missing") {
-        delete activeAgent.framework;
-      } else {
-        activeAgent.framework = framework;
-      }
-      return content;
-    };
-    await fw.seedOrgCodexProvider(actor, {
-      accessToken: "framework-fallback-access",
-      refreshToken: "framework-fallback-refresh",
-      accountId: "framework-fallback-workspace",
-      idToken: "framework-fallback-id-token",
-      expiresIn: 3600,
-    });
-
-    const missingFrameworkContent = frameworkVariant("missing");
-    const missingFrameworkHead = await replaceHistoricalAgentComposeHeadFixture(
-      {
-        composeId: agentId,
-        userId: actor.userId,
-        content: missingFrameworkContent,
-      },
-      context.signal,
-    );
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "launch a missing-framework historical Agent",
-      modelProvider: "codex-oauth-token",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const firstPoll = await api.pollRunner(runnerGroup);
-    expect(firstPoll.body.job).toMatchObject({
-      runId: first.runId,
-      experimentalProfile: DEFAULT_PROFILE,
-    });
-    expect(firstPoll.body.job).not.toHaveProperty("agentComposeVersionId");
-    const firstClaim = await api.claimRunnerJob(first.runId);
-    expect(firstClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(first.runId)).resolves.toBeNull();
-    expect(firstClaim.cliAgentType).toBe("codex");
-    expect(firstClaim.environment).toMatchObject({
-      OPENAI_MODEL: "gpt-5.6-sol",
-    });
-    expectCanonicalOkouRunEnvironment({
-      environment: firstClaim.environment,
-      secretValues: firstClaim.secretValues,
-      appUrl: env("APP_URL"),
-      agentId,
-      userId: actor.userId,
-      orgId: actor.orgId,
-      runId: first.runId,
-    });
-    expect(runContextSnapshotForRun(first.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
-    expect(runContextSnapshotsForRun(first.runId)).toHaveLength(1);
-    expect(JSON.stringify(runContextSnapshotForRun(first.runId))).not.toContain(
-      "future-framework",
-    );
-    await expect(
-      readRunLaunchSnapshotFixture(context, first.runId),
-    ).resolves.toStrictEqual({
-      exists: true,
-      launch_snapshot: {
-        schemaVersion: 1,
-        framework: "codex",
-        runnerProfile: DEFAULT_PROFILE,
-      },
-    });
-    await expect(
-      readRawHistoricalAgentComposeHeadFixture(agentId),
-    ).resolves.toStrictEqual({
-      headVersionId: missingFrameworkHead.versionId,
-      content: missingFrameworkContent,
-    });
-    await api.requestCancelRun(actor, first.runId, [200]);
-
-    const unsupportedFrameworkContent = frameworkVariant("future-framework");
-    const unsupportedFrameworkHead =
-      await replaceHistoricalAgentComposeHeadFixture(
-        {
-          composeId: agentId,
-          userId: actor.userId,
-          content: unsupportedFrameworkContent,
-        },
-        context.signal,
-      );
-    const resumedPrompt = "continue with the latest unsupported-framework head";
-    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
-      if (
-        dataset === "run-context" &&
-        Array.isArray(events) &&
-        events.some((event) => {
-          return isRecord(event) && event.prompt === resumedPrompt;
-        })
-      ) {
-        throw new Error("framework-fallback observation failed");
-      }
-      return true;
-    });
-    const resumed = await api.createRun(actor, {
-      agentId,
-      sessionId: first.sessionId,
-      prompt: resumedPrompt,
-      modelProvider: "codex-oauth-token",
-    });
-    expect(resumed.sessionId).toBe(first.sessionId);
-    await api.heartbeatRunner(runnerGroup);
-    const resumedPoll = await api.pollRunner(runnerGroup);
-    expect(resumedPoll.body.job).toMatchObject({
-      runId: resumed.runId,
-      experimentalProfile: DEFAULT_PROFILE,
-    });
-    expect(resumedPoll.body.job).not.toHaveProperty("agentComposeVersionId");
-    const resumedClaim = await api.claimRunnerJob(resumed.runId);
-    expect(resumedClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBeNull();
-    expect(resumedClaim.cliAgentType).toBe("codex");
-    expect(runContextSnapshotForRun(resumed.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
-    expect(runContextSnapshotsForRun(resumed.runId)).toHaveLength(1);
-    expect(JSON.stringify(resumedClaim)).not.toContain("future-framework");
-    expect(
-      JSON.stringify(runContextSnapshotForRun(resumed.runId)),
-    ).not.toContain("future-framework");
-    await expect(
-      readRunLaunchSnapshotFixture(context, resumed.runId),
-    ).resolves.toStrictEqual({
-      exists: true,
-      launch_snapshot: {
-        schemaVersion: 1,
-        framework: "codex",
-        runnerProfile: DEFAULT_PROFILE,
-      },
-    });
-    await expect(
-      readRawHistoricalAgentComposeHeadFixture(agentId),
-    ).resolves.toStrictEqual({
-      headVersionId: unsupportedFrameworkHead.versionId,
-      content: unsupportedFrameworkContent,
-    });
-    await api.requestCancelRun(actor, resumed.runId, [200]);
-  });
-
-  it("launches missing and dangling heads with NULL provenance", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    const initial = await api.createRun(actor, {
-      agentId,
-      prompt: "establish a Session before removing legacy provenance",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, initial.runId, [200]);
-
-    await setHistoricalAgentComposeHeadFixture(agentId, null, context.signal);
-    const missing = await api.createRun(actor, {
-      agentId,
-      prompt: "launch without a legacy head",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const missingClaim = await api.claimRunnerJob(missing.runId);
-    expect(missingClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(missing.runId)).resolves.toBeNull();
-    await expect(api.readRun(actor, missing.runId)).resolves.not.toHaveProperty(
-      "agentComposeVersionId",
-    );
-    await expect(
-      readRunLaunchSnapshotFixture(context, missing.runId),
-    ).resolves.toStrictEqual({
-      exists: true,
-      launch_snapshot: {
-        schemaVersion: 1,
-        framework: missingClaim.cliAgentType,
-        runnerProfile: DEFAULT_PROFILE,
-      },
-    });
-    await api.requestCancelRun(actor, missing.runId, [200]);
-
-    await setHistoricalAgentComposeHeadFixture(
-      agentId,
-      "d".repeat(64),
-      context.signal,
-    );
-    const dangling = await api.createRun(actor, {
-      agentId,
-      sessionId: initial.sessionId,
-      prompt: "continue with a dangling legacy head",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(dangling.sessionId).toBe(initial.sessionId);
-    const danglingClaim = await api.claimRunnerJob(dangling.runId);
-    expect(danglingClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(
-      readAgentRunVersionFixture(dangling.runId),
-    ).resolves.toBeNull();
-    await expect(
-      readRunLaunchSnapshotFixture(context, dangling.runId),
-    ).resolves.toStrictEqual({
-      exists: true,
-      launch_snapshot: {
-        schemaVersion: 1,
-        framework: danglingClaim.cliAgentType,
-        runnerProfile: DEFAULT_PROFILE,
-      },
-    });
-    await api.requestCancelRun(actor, dangling.runId, [200]);
-  });
-
-  it("uses application environment owners for legacy connector-heavy heads", async () => {
-    const appUrl = "https://app.stage-4e.example.test";
-    mockEnv("APP_URL", appUrl);
-    const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error("Expected a historical-builder organization");
-    }
-    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
-    if (!canonicalHead.content) {
-      throw new Error("Expected a canonical Agent head");
-    }
-
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-stage-4e-current",
-      host: "gitlab-before-stage-4e.example.com",
-    });
-    await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
-
-    const baseline = await api.createRun(actor, {
-      agentId,
-      prompt: "establish the pre-transition session",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const baselinePoll = await api.pollRunner(runnerGroup);
-    expect(baselinePoll.body.job).toMatchObject({ runId: baseline.runId });
-    const baselineClaim = await api.claimRunnerJob(baseline.runId);
-    expect(baselineClaim.environment?.GITLAB_HOST).toBe(
-      "gitlab-before-stage-4e.example.com",
-    );
-    await api.requestCancelRun(actor, baseline.runId, [200]);
-
-    const historicalContent = {
-      version: "1",
-      agents: {
-        [canonicalHead.name]: {
-          framework: "claude-code",
-          instructions: "CLAUDE.md",
-          environment: {
-            GITLAB_HOST: `\${{ vars.GITLAB_HOST }}`,
-            GITLAB_TOKEN: `\${{ secrets.GITLAB_TOKEN }}`,
-            ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
-            ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
-          },
-        },
-      },
-    };
-    const historicalHead = await replaceHistoricalAgentComposeHeadFixture(
-      {
-        composeId: agentId,
-        userId: actor.userId,
-        content: historicalContent,
-      },
-      context.signal,
-    );
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-stage-4e-current",
-      host: "gitlab-stage-4e-current.example.com",
-    });
-
-    const resumed = await api.createRun(actor, {
-      agentId,
-      sessionId: baseline.sessionId,
-      prompt: "continue with the latest legacy connector-heavy head",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(resumed.sessionId).toBe(baseline.sessionId);
-    await api.heartbeatRunner(runnerGroup);
-    const resumedPoll = await api.pollRunner(runnerGroup);
-    expect(resumedPoll.body.job).toMatchObject({ runId: resumed.runId });
-    const resumedClaim = await api.claimRunnerJob(resumed.runId);
-    expect(resumedClaim.resumeSession).toBeNull();
-    await api.requestCancelRun(actor, resumed.runId, [200]);
-
-    const fresh = await api.createRun(actor, {
-      agentId,
-      prompt: "launch the exact historical builder head as a new Run",
-      modelProvider: "anthropic-api-key",
-    });
-    const freshTimingEvents = apiDispatchTimingEventsForRun(fresh.runId);
-    expectApiDispatchActions(
-      freshTimingEvents,
-      API_DISPATCH_TIMING_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      freshTimingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      freshTimingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      freshTimingEvents,
-      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
-    );
-    expectNoApiDispatchActions(freshTimingEvents, [
-      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
-    ]);
-    for (const existingOwnerAction of [
-      "api_dispatch_resolve_compose_lookup_agent",
-      "api_dispatch_prepare_context_resolve_model_provider",
-      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
-      "api_dispatch_prepare_context_load_builtin_permission_indexes",
-      "api_dispatch_prepare_storage_manifest_load_storage_index",
-    ]) {
-      expect(
-        freshTimingEvents.filter((event) => {
-          return event.op_type === existingOwnerAction;
-        }),
-      ).toHaveLength(1);
-    }
-    await api.heartbeatRunner(runnerGroup);
-    const freshPoll = await api.pollRunner(runnerGroup);
-    expect(freshPoll.body.job).toMatchObject({ runId: fresh.runId });
-    const freshClaim = await api.claimRunnerJob(fresh.runId);
-
-    for (const { run, claim } of [
-      { run: resumed, claim: resumedClaim },
-      { run: fresh, claim: freshClaim },
-    ]) {
-      expect(claim).not.toHaveProperty("agentComposeVersionId");
-      await expect(readAgentRunVersionFixture(run.runId)).resolves.toBeNull();
-      expect(claim.cliAgentType).toBe("claude-code");
-      expect(claim.environment).toMatchObject({
-        ANTHROPIC_API_KEY: modelProviderPlaceholder(
-          "anthropic-api-key",
-          "ANTHROPIC_API_KEY",
-        ),
-        ANTHROPIC_MODEL: "claude-sonnet-5",
-        GITLAB_TOKEN: connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
-        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
-        CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-        [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
-      });
-      expect(claim.vars).toMatchObject({
-        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
-      });
-      expect(claim.secretConnectorMap).toMatchObject({
-        GITLAB_TOKEN: "gitlab",
-      });
-      expect(claim.secretValues ?? []).not.toContain("glpat-stage-4e-current");
-      expectCanonicalOkouRunEnvironment({
-        environment: claim.environment,
-        secretValues: claim.secretValues,
-        appUrl,
-        agentId,
-        userId: actor.userId,
-        orgId: actor.orgId,
-        runId: run.runId,
-      });
-      const serializedClaim = JSON.stringify(claim);
-      const serializedAuthorityEnvironment = JSON.stringify({
-        environment: claim.environment,
-        vars: claim.vars,
-        secretConnectorMap: claim.secretConnectorMap,
-      });
-      for (const discardedHistoricalBinding of [
-        "ZERO_AGENT_ID",
-        "ZERO_TOKEN",
-      ]) {
-        expect(serializedAuthorityEnvironment).not.toContain(
-          discardedHistoricalBinding,
-        );
-      }
-      expect(runContextSnapshotsForRun(run.runId)).toHaveLength(1);
-      expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-        "agentExecutionAuthority",
-      );
-      expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-        "environmentShadowClassification",
-      );
-      expect(serializedClaim).not.toContain("agentExecutionAuthority");
-      expect(serializedClaim).not.toContain("environmentShadow");
-      await expect(
-        readRunLaunchSnapshotFixture(context, run.runId),
-      ).resolves.toStrictEqual({
-        exists: true,
-        launch_snapshot: {
-          schemaVersion: 1,
-          framework: "claude-code",
-          runnerProfile: DEFAULT_PROFILE,
-        },
-      });
-    }
-
-    await expect(
-      readRawHistoricalAgentComposeHeadFixture(agentId),
-    ).resolves.toStrictEqual({
-      headVersionId: historicalHead.versionId,
-      content: historicalContent,
-    });
-    await api.requestCancelRun(actor, fresh.runId, [200]);
-  });
-
-  it("ignores every legacy environment value shape", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    if (!actor.orgId) {
-      throw new Error("The legacy shadow fixture requires an organization");
-    }
-    const canonicalCompose =
-      await readHistoricalAgentComposeHeadFixture(agentId);
-    const legacyKey = "LEGACY_ENVIRONMENT_BINDING";
-    const userScope = { orgId: actor.orgId, userId: actor.userId };
-    await seedUserVariable(context, {
-      ...userScope,
-      name: "LEGACY_VARIABLE",
-      value: "legacy-variable-value",
-    });
-    await seedUserVariable(context, {
-      ...userScope,
-      name: "LEGACY_MIXED_VARIABLE",
-      value: "legacy-mixed-variable",
-    });
-    await seedUserSecret(context, {
-      ...userScope,
-      name: "LEGACY_SECRET",
-      value: "legacy-secret-value",
-    });
-    await seedUserSecret(context, {
-      ...userScope,
-      name: "LEGACY_MIXED_SECRET",
-      value: "legacy-mixed-secret",
-    });
-    const cases: readonly {
-      readonly name: string;
-      readonly value: string;
-      readonly expectedValue: string;
-    }[] = [
-      {
-        name: "variable reference",
-        value: `\${{ vars.LEGACY_VARIABLE }}`,
-        expectedValue: "legacy-variable-value",
-      },
-      {
-        name: "secret reference",
-        value: `\${{ secrets.LEGACY_SECRET }}`,
-        expectedValue: "legacy-secret-value",
-      },
-      {
-        name: "mixed references",
-        value: `\${{ vars.LEGACY_MIXED_VARIABLE }}:\${{ secrets.LEGACY_MIXED_SECRET }}`,
-        expectedValue: "legacy-mixed-variable:legacy-mixed-secret",
-      },
-      {
-        name: "literal value",
-        value: "legacy-literal-value",
-        expectedValue: "legacy-literal-value",
-      },
-    ];
-
-    for (const legacyCase of cases) {
-      await api.createHistoricalCompose(actor, {
-        version: "1",
-        agents: {
-          [canonicalCompose.name]: {
-            framework: "claude-code",
-            instructions: "CLAUDE.md",
-            environment: {
-              OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-              OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-              [legacyKey]: legacyCase.value,
-            },
-          },
-        },
-      });
-      const run = await api.createRun(actor, {
-        agentId,
-        prompt: `compare ${legacyCase.name}`,
-        modelProvider: "anthropic-api-key",
-      });
-      await api.heartbeatRunner(runnerGroup);
-      const claim = await api.claimRunnerJob(run.runId);
-      expect(claim.environment).not.toHaveProperty(legacyKey);
-      const serializedEnvironment = JSON.stringify(claim.environment);
-      for (const forbidden of [
-        legacyKey,
-        legacyCase.value,
-        legacyCase.expectedValue,
-      ]) {
-        expect(serializedEnvironment).not.toContain(forbidden);
-      }
-      expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-        "environmentShadowClassification",
-      );
-      expect(runContextSnapshotForRun(run.runId)).not.toHaveProperty(
-        "agentExecutionAuthority",
-      );
-      await api.requestCancelRun(actor, run.runId, [200]);
-    }
-  });
-
   it.each([
     { publicBrand: "vm0", staticDomain: "static.vm0.io" },
     { publicBrand: "okou", staticDomain: "static.okou.io" },
@@ -14638,81 +13747,61 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("keeps direct-run Compose behavior isolated from product execution", async () => {
+  it("keeps direct-run execution config isolated from product execution", async () => {
     const appUrl = "https://app.writer-stop.example.test";
     mockEnv("APP_URL", appUrl);
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
-      throw new Error("The legacy compose fixture requires an organization");
+      throw new Error("The direct Agent fixture requires an organization");
     }
 
-    const initialLegacyCompose =
-      await readHistoricalAgentComposeHeadFixture(agentId);
-    const initialLegacyAgent = Object.values(
-      initialLegacyCompose.content?.agents ?? {},
-    )[0];
-    expect(initialLegacyAgent?.environment).toBeUndefined();
-
-    const legacyEnvironment = {
+    const directEnvironment = {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
       ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
     };
-    const legacyCompose = await api.createHistoricalCompose(actor, {
+    const directAgent = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
-        [initialLegacyCompose.name]: {
+        "direct-run-fixture": {
           framework: "claude-code",
-          environment: legacyEnvironment,
+          environment: directEnvironment,
         },
       },
     });
-    expect(legacyCompose.composeId).toBe(agentId);
 
-    const historicalOkouToken = generateOkouToken(
+    const directOkouToken = generateOkouToken(
       actor.userId,
-      "historical-context-fixture",
+      "direct-context-fixture",
       actor.orgId,
     );
-    const historical = await api.createDirectRun(actor, {
-      agentId,
-      prompt: "consume an immutable legacy Zero context",
+    const direct = await api.createDirectRun(actor, {
+      agentId: directAgent.agentId,
+      prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
-      vars: { ZERO_AGENT_ID: agentId },
-      secrets: { ZERO_TOKEN: historicalOkouToken },
+      vars: { ZERO_AGENT_ID: directAgent.agentId },
+      secrets: { ZERO_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
-    const historicalClaim = await api.claimRunnerJob(historical.runId);
-    expect(historicalClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(
-      readAgentRunVersionFixture(historical.runId),
-    ).resolves.toBeNull();
-    expect(historicalClaim.environment).toMatchObject({
-      ZERO_AGENT_ID: agentId,
-      ZERO_TOKEN: historicalOkouToken,
+    const directClaim = await api.claimRunnerJob(direct.runId);
+    expect(directClaim.environment).toMatchObject({
+      ZERO_AGENT_ID: directAgent.agentId,
+      ZERO_TOKEN: directOkouToken,
     });
-    expect(historicalClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
-    expect(sandboxTokenPayload(historicalOkouToken)).toMatchObject({
+    expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
+    expect(sandboxTokenPayload(directOkouToken)).toMatchObject({
       scope: "okou",
     });
-    expect(historicalClaim.secretValues).toContain(historicalOkouToken);
-    expect(runContextSnapshotForRun(historical.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
-    await api.requestCancelRun(actor, historical.runId, [200]);
+    expect(directClaim.secretValues).toContain(directOkouToken);
+    await api.requestCancelRun(actor, direct.runId, [200]);
 
     const current = await api.createRun(actor, {
       agentId,
-      prompt: "build a canonical context from a legacy compose version",
+      prompt: "build a canonical product context",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const currentClaim = await api.claimRunnerJob(current.runId);
-    expect(currentClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(current.runId)).resolves.toBeNull();
-    expect(runContextSnapshotForRun(current.runId)).not.toHaveProperty(
-      "agentExecutionAuthority",
-    );
     expectCanonicalOkouRunEnvironment({
       environment: currentClaim.environment,
       secretValues: currentClaim.secretValues,
@@ -14728,13 +13817,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       }),
     ).toBeFalsy();
     await api.requestCancelRun(actor, current.runId, [200]);
-
-    const unchangedCompose =
-      await readHistoricalAgentComposeHeadFixture(agentId);
-    expect(unchangedCompose.headVersionId).toBe(legacyCompose.versionId);
-    expect(
-      Object.values(unchangedCompose.content?.agents ?? {})[0]?.environment,
-    ).toStrictEqual(legacyEnvironment);
   });
 
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
@@ -16022,7 +15104,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     // provider, or connector secrets, so no encrypted secrets map is stored
     // with the queued job.
     const composeName = `bdd-no-secrets-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -16033,7 +15115,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "claim without stored secrets",
     });
     expect(run.status).toBe("pending");
@@ -16050,7 +15132,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(cancelled.status).toBe("cancelled");
 
     const emptyRun = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "claim without matching environment secrets",
       secrets: { UNUSED_TOKEN: "unused-secret-value" },
     });
@@ -16063,7 +15145,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.
     const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
-    const foreignCompose = await api.createHistoricalCompose(actor, {
+    const foreignCompose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [foreignName]: {
@@ -16075,7 +15157,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       },
     });
     const failedRun = await api.createDirectRun(actor, {
-      agentId: foreignCompose.composeId,
+      agentId: foreignCompose.agentId,
       prompt: "dispatch to a foreign runner group",
     });
     expect(failedRun.status).toBe("failed");
@@ -16101,17 +15183,17 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(failedClaim.body.error.message).toBe("Job not found in queue");
 
     const firstActive = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "active direct run one",
     });
     const secondActive = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "active direct run two",
     });
     const rejected = await api.requestDirectRun(
       actor,
       {
-        agentId: foreignCompose.composeId,
+        agentId: foreignCompose.agentId,
         prompt: "concurrency should win before runner payload validation",
       },
       [429],
@@ -18299,7 +17381,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     // Direct compose runs created without vars leave the stored vars null,
     // and their zero-run rows carry no model provider or pinned model.
     const composeName = `bdd-null-vars-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
@@ -18309,7 +17391,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "checkpoint without vars",
     });
     const sandboxHeaders = {

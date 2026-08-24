@@ -9,7 +9,6 @@ import {
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
@@ -1498,22 +1497,15 @@ async function setRunnerJobContextProfileAsPreviousApi(
   signal: AbortSignal,
 ) {
   // The previous API stored the routing profile in both the dedicated queue
-  // column and execution-context JSON. It could also persist the retired
-  // Compose version response field in that JSON; the current reader must strip
-  // both fields before publishing the claim.
-  const legacyVersionId = "a".repeat(64);
+  // column and execution-context JSON. The current reader must strip the
+  // internal routing field before publishing the claim.
   const [updated] = await db
     .update(runnerJobQueue)
     .set({
       executionContext: sql`jsonb_set(
-        jsonb_set(
-          ${runnerJobQueue.executionContext},
-          '{experimentalProfile}',
-          to_jsonb(${body.profile}::text),
-          true
-        ),
-        '{agentComposeVersionId}',
-        to_jsonb(${legacyVersionId}::text),
+        ${runnerJobQueue.executionContext},
+        '{experimentalProfile}',
+        to_jsonb(${body.profile}::text),
         true
       )`,
     })
@@ -1833,18 +1825,6 @@ const postRuntimeStateAction$ = command(
             }),
           },
         };
-      }
-      case "set-agent-compose-versionless": {
-        const [updated] = await db
-          .update(agentComposes)
-          .set({ headVersionId: null })
-          .where(eq(agentComposes.id, body.agent_id))
-          .returning({ id: agentComposes.id });
-        signal.throwIfAborted();
-        if (!updated) {
-          throw new Error("Expected an Agent compose fixture");
-        }
-        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },
