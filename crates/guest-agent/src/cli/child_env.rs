@@ -176,4 +176,36 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn apply_values_clears_resume_session_bootstrap_aliases() {
+        let mut command = tokio::process::Command::new("unused");
+        command
+            .env(
+                guest_contracts::env::RESUME_SESSION_ID_ENV,
+                "legacy-session-id",
+            )
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                "canonical-session-id",
+            );
+
+        let values = values_with_inputs("/tmp/home", &HashMap::new(), "");
+        apply_values_to_tokio_command(&mut command, &values);
+
+        let explicit_keys = command
+            .as_std()
+            .get_envs()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>();
+        for key in [
+            guest_contracts::env::RESUME_SESSION_ID_ENV,
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+        ] {
+            assert!(
+                !explicit_keys.contains(&std::ffi::OsStr::new(key)),
+                "CLI child environment retained bootstrap key {key}"
+            );
+        }
+    }
 }

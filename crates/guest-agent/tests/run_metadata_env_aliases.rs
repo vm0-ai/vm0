@@ -14,7 +14,7 @@ struct RunMetadataEnvPair {
     value: fn(&GuestConfigRaw) -> &str,
 }
 
-const RUN_METADATA_ENV_PAIRS: [RunMetadataEnvPair; 4] = [
+const RUN_METADATA_ENV_PAIRS: [RunMetadataEnvPair; 5] = [
     RunMetadataEnvPair {
         canonical: guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
         legacy: guest_contracts::env::SANDBOX_ID_ENV,
@@ -29,6 +29,11 @@ const RUN_METADATA_ENV_PAIRS: [RunMetadataEnvPair; 4] = [
         canonical: guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
         legacy: guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
         value: |raw| &raw.workspace_reuse_result,
+    },
+    RunMetadataEnvPair {
+        canonical: guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+        legacy: guest_contracts::env::RESUME_SESSION_ID_ENV,
+        value: |raw| &raw.resume_session_id,
     },
     RunMetadataEnvPair {
         canonical: guest_contracts::env::CANONICAL_API_START_TIME_ENV,
@@ -198,9 +203,15 @@ fn assert_non_unicode_behaviors(tmp: &Path, index: usize, pair: RunMetadataEnvPa
     Ok(())
 }
 
-fn assert_legacy_guest_config(tmp: &Path) -> TestResult {
+fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
     clear_run_metadata_env();
-    let runtime_dir = tmp.join("legacy-config-runtime");
+    let source = if canonical { "canonical" } else { "legacy" };
+    let source_label = if canonical {
+        "canonical-only"
+    } else {
+        "legacy-only"
+    };
+    let runtime_dir = tmp.join(format!("{source}-config-runtime"));
     let payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let payload_path = payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
     std::fs::create_dir_all(&payload_dir)?;
@@ -209,13 +220,17 @@ fn assert_legacy_guest_config(tmp: &Path) -> TestResult {
         serde_json::to_vec(&guest_contracts::env::RunPayload::default())?,
     )?;
 
-    let legacy_values = [
-        "legacy-sandbox-id",
+    let values = [
+        "shared-sandbox-id",
         "reused",
         "sandboxReused",
+        "resume-session-id",
         "1700000000000",
     ];
-    set_test_env(guest_contracts::env::RUN_ID_ENV, "legacy-config-run");
+    set_test_env(
+        guest_contracts::env::RUN_ID_ENV,
+        format!("{source}-config-run"),
+    );
     set_test_env("HOME", tmp.join("home"));
     set_test_env(
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
@@ -223,23 +238,29 @@ fn assert_legacy_guest_config(tmp: &Path) -> TestResult {
     );
     set_test_env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, &payload_path);
     remove_test_env(guest_contracts::env::USER_ENV_FILE_ENV);
-    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(legacy_values) {
-        set_test_env(pair.legacy, value);
+    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
+        let key = if canonical {
+            pair.canonical
+        } else {
+            pair.legacy
+        };
+        set_test_env(key, value);
     }
 
-    let config_log_path = tmp.join("legacy-config.log");
+    let config_log_path = tmp.join(format!("{source}-config.log"));
     guest_common::log::set_system_log_file(&config_log_path);
     let config =
         guest_agent::env::GuestConfig::from_process_env().map_err(std::io::Error::other)?;
     guest_common::log::clear_system_log_file();
 
-    assert_eq!(config.sandbox_id, legacy_values[0]);
-    assert_eq!(config.sandbox_reuse_result, legacy_values[1]);
-    assert_eq!(config.workspace_reuse_result, legacy_values[2]);
-    assert_eq!(config.api_start_time, legacy_values[3]);
+    assert_eq!(config.sandbox_id, values[0]);
+    assert_eq!(config.sandbox_reuse_result, values[1]);
+    assert_eq!(config.workspace_reuse_result, values[2]);
+    assert_eq!(config.resume_session_id, values[3]);
+    assert_eq!(config.api_start_time, values[4]);
     let config_log = std::fs::read_to_string(config_log_path)?;
-    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(legacy_values) {
-        assert_source_log(&config_log, pair, "legacy-only", Some(value));
+    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
+        assert_source_log(&config_log, pair, source_label, Some(value));
     }
 
     clear_run_metadata_env();
@@ -257,5 +278,6 @@ fn process_env_dual_reads_run_metadata_without_value_leaks() -> TestResult {
         assert_non_unicode_behaviors(tmp.path(), index, pair)?;
     }
 
-    assert_legacy_guest_config(tmp.path())
+    assert_guest_config_for_source(tmp.path(), false)?;
+    assert_guest_config_for_source(tmp.path(), true)
 }

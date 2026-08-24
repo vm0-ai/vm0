@@ -314,7 +314,10 @@ impl GuestConfigRaw {
                 guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
             )?,
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
-            resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
+            resume_session_id: run_metadata_env_or_empty(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                guest_contracts::env::RESUME_SESSION_ID_ENV,
+            )?,
             api_start_time: run_metadata_env_or_empty(
                 guest_contracts::env::CANONICAL_API_START_TIME_ENV,
                 guest_contracts::env::API_START_TIME_ENV,
