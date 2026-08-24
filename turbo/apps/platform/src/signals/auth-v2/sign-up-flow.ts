@@ -18,7 +18,7 @@ import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
 import { locale$ } from "../locale.ts";
 import { logger } from "../log.ts";
-import { onRef, settle, withCleanup } from "../utils.ts";
+import { createDeferredPromise, onRef, settle, withCleanup } from "../utils.ts";
 
 const L = logger("AuthV2SignUp");
 
@@ -368,6 +368,22 @@ function passwordValidationFailed(validation: PasswordValidation): boolean {
     Object.values(validation.complexity ?? {}).some(Boolean) ||
     validation.strength?.state === "fail"
   );
+}
+
+function validatePassword(
+  resource: SignUpResource,
+  password: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const validation = createDeferredPromise<boolean>(signal);
+  resource.validatePassword(password, {
+    onValidation: (result) => {
+      if (!validation.settled()) {
+        validation.resolve(passwordValidationFailed(result));
+      }
+    },
+  });
+  return validation.promise;
 }
 
 function hasDetailsToCollect(snapshot: SignUpResourceSnapshot): boolean {
@@ -925,12 +941,12 @@ function createSubmitOperation(
     }
     const password = get(atoms.password$);
     if (snapshot.fields.password !== "hidden" && password) {
-      let invalidPassword = false;
-      resource.validatePassword(password, {
-        onValidation: (validation) => {
-          invalidPassword = passwordValidationFailed(validation);
-        },
-      });
+      const invalidPassword = await validatePassword(
+        resource,
+        password,
+        signal,
+      );
+      signal.throwIfAborted();
       if (invalidPassword) {
         set(atoms.error$, {
           code: "password-invalid",

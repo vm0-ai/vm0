@@ -1,3 +1,4 @@
+import type { PasswordValidation } from "@clerk/react/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -171,7 +172,7 @@ let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
   privacyPolicyUrl: "https://vm0.ai/privacy",
   termsUrl: "https://vm0.ai/terms",
 };
-let internalMockedPasswordValidation = {
+let internalMockedPasswordValidation: PasswordValidation = {
   complexity: {},
   strength: undefined,
 };
@@ -222,7 +223,7 @@ export function mockSignUpConfiguration(
 }
 
 export function mockSignUpPasswordValidation(
-  validation: typeof internalMockedPasswordValidation,
+  validation: PasswordValidation,
 ): void {
   internalMockedPasswordValidation = validation;
 }
@@ -662,9 +663,7 @@ const signUpAttemptEmailAddressVerification = vi.fn<
 >(defaultSignUpResourceOperationImpl);
 
 interface MockedPasswordValidationCallbacks {
-  readonly onValidation?: (
-    validation: typeof internalMockedPasswordValidation,
-  ) => void;
+  readonly onValidation?: (validation: PasswordValidation) => void;
 }
 
 function defaultSignUpValidatePasswordImpl(

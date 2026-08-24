@@ -1,3 +1,4 @@
+import type { PasswordValidation } from "@clerk/react/types";
 import {
   act,
   fireEvent,
@@ -343,6 +344,52 @@ describe("auth v2 sign-up flow", () => {
         expect.objectContaining({ legalAccepted: true }),
       );
     });
+  });
+
+  it("waits for Clerk's delayed password-strength result before creating", async () => {
+    let finishValidation:
+      | ((validation: PasswordValidation) => void)
+      | undefined;
+    mockedClerk.signUpValidatePassword.mockImplementation(
+      (_password, callbacks) => {
+        finishValidation = callbacks?.onValidation;
+      },
+    );
+    setupSignUpPage({ status: null });
+    const { emailInput } = await fillRequiredDetails();
+
+    fireEvent.submit(containingForm(emailInput));
+
+    await waitFor(() => {
+      expect(mockedClerk.signUpValidatePassword).toHaveBeenCalledWith(
+        "valid-password",
+        expect.objectContaining({ onValidation: expect.any(Function) }),
+      );
+    });
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+
+    act(() => {
+      finishValidation?.({
+        complexity: {},
+        strength: {
+          keys: ["min_zxcvbn_strength"],
+          result: {
+            calcTime: 0,
+            feedback: { suggestions: [], warning: null },
+            guesses: 0,
+            guessesLog10: 0,
+            password: "valid-password",
+            score: 0,
+          },
+          state: "fail",
+        },
+      });
+    });
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Your password is not strong enough.",
+    );
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
   });
 
   it("shows expired verification recovery and lets the user edit the email before preparing once", async () => {
