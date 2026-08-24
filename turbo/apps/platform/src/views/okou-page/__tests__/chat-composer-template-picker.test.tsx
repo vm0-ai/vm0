@@ -13,7 +13,11 @@ import type {
   GenerationTemplateRequest,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
+import {
+  presentationTemplatesContract,
+  type PresentationTemplateDetail,
+  type PresentationTemplateSummary,
+} from "@okouai/api-contracts/contracts/presentation-templates";
 import {
   avatarVideoContract,
   type AvatarVideoAvatarsQuery,
@@ -87,7 +91,17 @@ async function loadImportedTemplateCardImage(
     return found;
   });
   fireEvent.load(image);
+  await waitFor(() => {
+    expect(image).toHaveAttribute("data-active", "true");
+  });
   return image;
+}
+
+function presentationTemplateSummary(
+  template: PresentationTemplateDetail,
+): PresentationTemplateSummary {
+  const { pageUrls: _pageUrls, ...summary } = template;
+  return summary;
 }
 
 function createAvatarFirstPage() {
@@ -1731,11 +1745,19 @@ describe("chat composer templates", () => {
       expect.stringContaining("presentation-gallery"),
     );
 
-    await user.click(
-      within(templateDialog).getByLabelText(
-        `Select template ${template.title}`,
-      ),
+    const detailUseButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") ===
+            `Select template ${template.title}` &&
+          candidate.closest("[inert]") === null
+        );
+      },
     );
+    if (!detailUseButton) {
+      throw new Error("Presentation detail Use button not found");
+    }
+    await user.click(detailUseButton);
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
@@ -3442,7 +3464,9 @@ describe("chat composer templates", () => {
     );
     expect(coverPlaceholder).not.toHaveAttribute("hidden");
     fireEvent.load(coverImage);
-    expect(coverPlaceholder).toHaveAttribute("hidden");
+    await waitFor(() => {
+      expect(coverPlaceholder).toHaveAttribute("hidden");
+    });
 
     // Grid order is the import tile, then this user's decks, then the
     // built-ins: a returning user looks for their own deck first.
@@ -3478,7 +3502,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("bounds uploaded deck page prefetch without loading again on picker open", async () => {
+  it("prefetches uploaded decks before picker open and revalidates without blanking", async () => {
     const user = userEvent.setup({ delay: null });
     const loadedAtMs = new Date("2026-08-23T03:00:00.000Z").getTime();
     mockNow(context.signal, loadedAtMs);
@@ -3548,7 +3572,7 @@ describe("chat composer templates", () => {
       presentationTemplatesContract.list,
       async ({ respond }) => {
         catalogRequestCount += 1;
-        if (catalogRequestCount > 1) {
+        if (catalogRequestCount > 2) {
           refreshCatalogRequested.resolve();
           await releaseRefreshCatalog.promise;
           return respond(200, [renewedPrimarySummary, renewedSecondarySummary]);
@@ -3561,7 +3585,7 @@ describe("chat composer templates", () => {
       ({ params, respond }) => {
         if (params.templateId === primaryTemplateId) {
           primaryDetailRequestCount += 1;
-          if (primaryDetailRequestCount > 1) {
+          if (primaryDetailRequestCount > 2) {
             refreshedPrimaryDetailRequested.resolve();
             return respond(200, renewedPrimaryTemplate);
           }
@@ -3630,6 +3654,10 @@ describe("chat composer templates", () => {
     if (!(secondaryCard instanceof HTMLElement)) {
       throw new Error("Secondary template card not found");
     }
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(2);
+      expect(primaryDetailRequestCount).toBe(2);
+    });
     expect(within(card).getByRole("img")).toHaveAttribute("loading", "eager");
     expect(within(card).getByRole("img")).toHaveAttribute(
       "fetchpriority",
@@ -3675,8 +3703,8 @@ describe("chat composer templates", () => {
         "https://example.com/prefetch-primary-page-1.png",
       );
     });
-    expect(catalogRequestCount).toBe(1);
-    expect(primaryDetailRequestCount).toBe(1);
+    expect(catalogRequestCount).toBe(2);
+    expect(primaryDetailRequestCount).toBe(2);
     expect(secondaryDetailRequestCount).toBe(0);
 
     await user.keyboard("{Escape}");
@@ -3736,10 +3764,12 @@ describe("chat composer templates", () => {
       "https://example.com/prefetch-primary-page-1.png",
     );
     fireEvent.load(renewedCover);
-    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
-      "src",
-      "https://example.com/renewed-primary-page-1.png",
-    );
+    await waitFor(() => {
+      expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
+        "src",
+        "https://example.com/renewed-primary-page-1.png",
+      );
+    });
     Object.defineProperty(refreshedPreview, "getBoundingClientRect", {
       configurable: true,
       value: () => {
@@ -3757,15 +3787,14 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/renewed-primary-page-100.png",
     );
-    expect(catalogRequestCount).toBe(2);
-    expect(primaryDetailRequestCount).toBe(2);
+    expect(catalogRequestCount).toBe(3);
+    expect(primaryDetailRequestCount).toBe(3);
     expect(secondaryDetailRequestCount).toBe(0);
   });
 
-  it("makes a template published after navigating away usable in the other thread", async () => {
+  it("makes a workspace template published after navigating away usable in the other thread", async () => {
     const user = userEvent.setup({ delay: null });
     const analysisCatalogLoaded = context.mocks.deferred<void>();
-    const otherThreadCatalogLoaded = context.mocks.deferred<void>();
     const publishedCatalogLoaded = context.mocks.deferred<void>();
     const publishedTemplate = {
       id: "9a6d0b2f-7a8e-4c3d-9f1a-2b3c4d5e6f70",
@@ -3773,22 +3802,17 @@ describe("chat composer templates", () => {
       sourceFilename: "fresh-deck.pptx",
       coverUrl: "https://example.com/fresh-deck-cover.png",
       pageCount: 12,
-      visibility: "private" as const,
-      canManage: true,
+      visibility: "public" as const,
+      canManage: false,
       createdAt: "2026-08-23T03:00:00.000Z",
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
     let catalog: (typeof publishedTemplate)[] = [];
-    let viewingOtherThread = false;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
       if (catalog.length > 0 && !publishedCatalogLoaded.settled()) {
         publishedCatalogLoaded.resolve();
       }
-      if (viewingOtherThread) {
-        if (!otherThreadCatalogLoaded.settled()) {
-          otherThreadCatalogLoaded.resolve();
-        }
-      } else if (!analysisCatalogLoaded.settled()) {
+      if (!analysisCatalogLoaded.settled()) {
         analysisCatalogLoaded.resolve();
       }
       return respond(200, catalog);
@@ -3823,7 +3847,6 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    viewingOtherThread = true;
     await user.click(linkByText("Other deck work"));
     const otherThreadContainer = await waitFor(() => {
       expect(document.title).toBe("Other deck work | VM0");
@@ -3835,15 +3858,20 @@ describe("chat composer templates", () => {
       }
       return container;
     });
-    await otherThreadCatalogLoaded.promise;
 
     catalog = [publishedTemplate];
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("presentationTemplatesChanged"),
+        context.mocks.ably.hasSubscriptionOnChannel(
+          "org:org_default",
+          "presentationTemplatesChanged",
+        ),
       ).toBeTruthy();
     });
-    context.mocks.ably.trigger("presentationTemplatesChanged");
+    context.mocks.ably.triggerOnChannel(
+      "org:org_default",
+      "presentationTemplatesChanged",
+    );
     await publishedCatalogLoaded.promise;
     lifecycle.completeRun("Template published");
 
@@ -3959,6 +3987,183 @@ describe("chat composer templates", () => {
           `[data-imported-presentation-template="${templateId}"]`,
         ),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps remaining uploaded cards mounted while delete refresh is pending", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const deletedTemplate: PresentationTemplateDetail = {
+      id: "e3b3a9c6-cad5-49d1-bdd3-ab4083501462",
+      title: "Delete this deck",
+      sourceFilename: "delete-this-deck.pptx",
+      coverUrl: "https://example.com/delete-this-deck-cover.png",
+      pageCount: 2,
+      visibility: "private",
+      canManage: true,
+      pageUrls: [
+        "https://example.com/delete-this-deck-cover.png",
+        "https://example.com/delete-this-deck-page-2.png",
+      ],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    };
+    const remainingTemplate: PresentationTemplateDetail = {
+      id: "ba5e76aa-4082-47a8-9fb8-57e63857bba8",
+      title: "Keep this deck",
+      sourceFilename: "keep-this-deck.pptx",
+      coverUrl: "https://example.com/keep-this-deck-cover.png",
+      pageCount: 2,
+      visibility: "private",
+      canManage: true,
+      pageUrls: [
+        "https://example.com/keep-this-deck-cover.png",
+        "https://example.com/keep-this-deck-page-2.png",
+      ],
+      createdAt: "2026-08-21T02:42:59.522Z",
+      updatedAt: "2026-08-21T02:42:59.522Z",
+    };
+    let catalog = [deletedTemplate, remainingTemplate];
+    let holdCatalogRefresh = false;
+    let catalogRequestCount = 0;
+    const deleteRefreshRequested = context.mocks.deferred<void>();
+    const releaseDeleteRefresh = context.mocks.deferred<void>();
+    context.mocks.api(
+      presentationTemplatesContract.list,
+      async ({ respond }) => {
+        catalogRequestCount += 1;
+        if (holdCatalogRefresh) {
+          deleteRefreshRequested.resolve();
+          await releaseDeleteRefresh.promise;
+        }
+        return respond(200, catalog.map(presentationTemplateSummary));
+      },
+    );
+    context.mocks.api(
+      presentationTemplatesContract.get,
+      ({ params, respond }) => {
+        const template = catalog.find((candidate) => {
+          return candidate.id === params.templateId;
+        });
+        if (!template) {
+          return respond(404, {
+            error: {
+              code: "NOT_FOUND",
+              message: `Presentation template not found: ${params.templateId}`,
+            },
+          });
+        }
+        return respond(200, template);
+      },
+    );
+    context.mocks.api(
+      presentationTemplatesContract.delete,
+      ({ params, respond }) => {
+        expect(params.templateId).toBe(deletedTemplate.id);
+        catalog = catalog.filter((template) => {
+          return template.id !== params.templateId;
+        });
+        holdCatalogRefresh = true;
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(2);
+    });
+    const dialog = screen.getByRole("dialog");
+    const deletedCard = dialog.querySelector<HTMLElement>(
+      `[data-imported-presentation-template="${deletedTemplate.id}"]`,
+    );
+    const remainingCard = dialog.querySelector<HTMLElement>(
+      `[data-imported-presentation-template="${remainingTemplate.id}"]`,
+    );
+    if (!deletedCard || !remainingCard) {
+      throw new Error("Uploaded template cards not found");
+    }
+    const remainingCover = Array.from(
+      remainingCard.querySelectorAll<HTMLImageElement>(
+        "[data-imported-presentation-template-image]",
+      ),
+    ).find((image) => {
+      return image.getAttribute("src") === remainingTemplate.coverUrl;
+    });
+    if (!remainingCover) {
+      throw new Error("Remaining uploaded template cover not found");
+    }
+    fireEvent.load(remainingCover);
+    await waitFor(() => {
+      expect(remainingCover).toHaveAttribute("data-active", "true");
+    });
+    const scrollContainer = presentationTemplateGridScrollContainer();
+    scrollContainer.scrollTop = 187;
+    fireEvent.scroll(scrollContainer);
+
+    await user.click(
+      within(deletedCard).getByLabelText(
+        "Preview Delete this deck at current slide",
+      ),
+    );
+    await screen.findByTestId("Delete this deck imported detail image preview");
+    expect(deletedCard).toBeInTheDocument();
+    expect(remainingCard).toBeInTheDocument();
+
+    const deleteButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.trim() === "Delete";
+    });
+    if (!deleteButton) {
+      throw new Error("Imported template Delete button not found");
+    }
+    await user.click(deleteButton);
+    await deleteRefreshRequested.promise;
+
+    await waitFor(() => {
+      expect(deletedCard).not.toBeInTheDocument();
+    });
+    expect(
+      dialog.querySelector(
+        `[data-imported-presentation-template="${remainingTemplate.id}"]`,
+      ),
+    ).toBe(remainingCard);
+    expect(remainingCover).toBeInTheDocument();
+    expect(remainingCover).toHaveAttribute("data-active", "true");
+    expect(scrollContainer.scrollTop).toBe(187);
+
+    releaseDeleteRefresh.resolve();
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(3);
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${deletedTemplate.id}"]`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${remainingTemplate.id}"]`,
+        ),
+      ).toBe(remainingCard);
+    });
+
+    // Once a successful catalog response confirms the deletion, its local
+    // tombstone is retired. A later authoritative response therefore wins
+    // instead of being hidden for the rest of the app session.
+    holdCatalogRefresh = false;
+    catalog = [deletedTemplate, remainingTemplate];
+    context.mocks.ably.trigger("presentationTemplatesChanged");
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(4);
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${deletedTemplate.id}"]`,
+        ),
+      ).toBeInTheDocument();
     });
   });
 

@@ -15,7 +15,10 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
-import { publishPresentationTemplatesChangedSafely } from "../external/realtime";
+import {
+  publishPresentationTemplatesChangedForOrgSafely,
+  publishPresentationTemplatesChangedForUserSafely,
+} from "../external/realtime";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
@@ -129,7 +132,7 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         ),
       )
     : null;
-  await publishPresentationTemplatesChangedSafely(auth.userId);
+  await publishPresentationTemplatesChangedForUserSafely(auth.userId);
   signal.throwIfAborted();
   return {
     status: 200 as const,
@@ -216,26 +219,47 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const [row] = await set(writeDb$)
-    .update(presentationTemplates)
-    .set({
-      title: bodyResult.data.title,
-      visibility: bodyResult.data.visibility,
-      updatedAt: nowDate(),
-      updatedBy: auth.userId,
-    })
-    .where(
-      and(
-        eq(presentationTemplates.id, params.templateId),
-        eq(presentationTemplates.orgId, auth.orgId),
-        eq(presentationTemplates.ownerUserId, auth.userId),
-      ),
-    )
-    .returning();
+  const mutation = await set(writeDb$).transaction(async (tx) => {
+    const whereOwner = and(
+      eq(presentationTemplates.id, params.templateId),
+      eq(presentationTemplates.orgId, auth.orgId),
+      eq(presentationTemplates.ownerUserId, auth.userId),
+    );
+    const [previous] = await tx
+      .select({ visibility: presentationTemplates.visibility })
+      .from(presentationTemplates)
+      .where(whereOwner)
+      .for("update")
+      .limit(1);
+    if (!previous) {
+      return null;
+    }
+    const [row] = await tx
+      .update(presentationTemplates)
+      .set({
+        title: bodyResult.data.title,
+        visibility: bodyResult.data.visibility,
+        updatedAt: nowDate(),
+        updatedBy: auth.userId,
+      })
+      .where(whereOwner)
+      .returning();
+    if (!row) {
+      throw new Error(
+        `Presentation template disappeared: ${params.templateId}`,
+      );
+    }
+    return {
+      row,
+      workspaceVisible:
+        previous.visibility === "public" || row.visibility === "public",
+    };
+  });
   signal.throwIfAborted();
-  if (!row) {
+  if (!mutation) {
     return templateNotFound(params.templateId);
   }
+  const { row, workspaceVisible } = mutation;
   const coverKey = row.pageKeys[0];
   const coverUrl = coverKey
     ? await get(
@@ -248,6 +272,12 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         ),
       )
     : null;
+  if (workspaceVisible) {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
   return {
     status: 200 as const,
     body: presentationTemplateSummary(row, coverUrl, auth.userId),
@@ -270,9 +300,16 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  return deleted
-    ? { status: 204 as const, body: undefined }
-    : templateNotFound(params.templateId);
+  if (!deleted) {
+    return templateNotFound(params.templateId);
+  }
+  if (deleted.visibility === "public") {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
+  return { status: 204 as const, body: undefined };
 });
 
 export const presentationTemplatesRoutes: readonly RouteEntry[] = [

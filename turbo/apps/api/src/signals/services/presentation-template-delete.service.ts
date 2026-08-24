@@ -4,6 +4,10 @@ import { and, eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 
+interface DeletedPresentationTemplate {
+  readonly visibility: "private" | "public";
+}
+
 export const deletePresentationTemplate$ = command(
   async (
     { set },
@@ -13,7 +17,7 @@ export const deletePresentationTemplate$ = command(
       readonly templateId: string;
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<DeletedPresentationTemplate | null> => {
     // Source and page objects are normal user uploads. Deleting a template must
     // not delete independently owned attachments that may be reused elsewhere.
     //
@@ -29,8 +33,8 @@ export const deletePresentationTemplate$ = command(
           eq(presentationTemplates.ownerUserId, args.ownerUserId),
         ),
       )
-      .returning({ id: presentationTemplates.id });
+      .returning({ visibility: presentationTemplates.visibility });
     signal.throwIfAborted();
-    return deleted !== undefined;
+    return deleted ?? null;
   },
 );

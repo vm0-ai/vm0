@@ -6,9 +6,11 @@ import {
   getAuthTokenHistory,
   hasChannelSubscription,
   hasSubscription,
+  hasSubscriptionOnChannel,
   rejectAblySubscribe,
   rejectNextAblySubscribe,
   triggerAblyConnectionState,
+  triggerAblyChannelEvent,
   triggerAblyConnectionClosed,
   triggerAblyEvent,
   triggerAblyFailure,
@@ -349,6 +351,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         return deferNextAblySubscribe(getSignal());
       },
       trigger: triggerAblyEvent,
+      triggerOnChannel: triggerAblyChannelEvent,
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
@@ -360,6 +363,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       rejectNextSubscribe: rejectNextAblySubscribe,
       hasChannelSubscription,
       hasSubscription,
+      hasSubscriptionOnChannel,
       getAuthTokenHistory,
     },
     clerk: {

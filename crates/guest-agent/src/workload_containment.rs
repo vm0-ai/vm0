@@ -52,21 +52,11 @@ impl WorkloadContainment {
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
-    /// environment state. A process-control bootstrap requires a matching
-    /// workload capability in production. Direct local execution is unmanaged
-    /// when neither bootstrap value exists.
-    pub fn from_process_env() -> Result<Option<Self>, String> {
-        let process_control_present = match std::env::var_os(process_control_ipc::BOOTSTRAP_ENV) {
-            None => false,
-            Some(endpoint) if endpoint.is_empty() => false,
-            Some(endpoint) if endpoint.to_str().is_none() => {
-                return Err(format!(
-                    "{} must be valid UTF-8",
-                    process_control_ipc::BOOTSTRAP_ENV
-                ));
-            }
-            Some(_) => true,
-        };
+    /// environment state. The caller supplies the once-resolved canonical or
+    /// legacy process-control presence. A process-control bootstrap requires a
+    /// matching workload capability in production. Direct local execution is
+    /// unmanaged when neither bootstrap value exists.
+    pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
         let placement_endpoint = std::env::var_os(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
         let tool_endpoint = std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
 
@@ -96,15 +86,17 @@ impl WorkloadContainment {
                 })
             }
             (true, _, _) => Err(format!(
-                "{} and {} are required with {}",
+                "{} and {} are required with {} or {}",
                 WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                 process_control_ipc::BOOTSTRAP_ENV
             )),
             (false, _, _) => Err(format!(
-                "{} and {} require {}",
+                "{} and {} require {} or {}",
                 WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                 process_control_ipc::BOOTSTRAP_ENV
             )),
         }

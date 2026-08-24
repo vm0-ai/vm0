@@ -18,28 +18,43 @@ const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const PROCESS_CONTROL_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
-async fn process_control_endpoint_without_workload_capability_fails_closed()
+async fn process_control_endpoint_aliases_without_workload_capability_fail_closed()
 -> Result<(), Box<dyn std::error::Error>> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
-    command
-        .env(process_control_ipc::BOOTSTRAP_ENV, "missing-capability")
-        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
-        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
-    let output = common::command_output_with_timeout(
-        &mut command,
-        PROCESS_CONTROL_CHILD_TIMEOUT,
-        "missing-workload-capability guest-agent scenario did not finish",
-    )
-    .await?;
+    for bootstrap_env in [
+        process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+        command
+            .env_remove(process_control_ipc::BOOTSTRAP_ENV)
+            .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
+            .env(bootstrap_env, "missing-capability")
+            .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+            .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
+            .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+        let output = common::command_output_with_timeout(
+            &mut command,
+            PROCESS_CONTROL_CHILD_TIMEOUT,
+            "missing-workload-capability guest-agent scenario did not finish",
+        )
+        .await?;
 
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV),
-        "stderr: {stderr}"
-    );
-    assert!(stderr.contains("are required with"), "stderr: {stderr}");
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr
+                .contains(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV),
+            "{bootstrap_env} stderr: {stderr}"
+        );
+        assert!(
+            stderr.contains("are required with"),
+            "{bootstrap_env} stderr: {stderr}"
+        );
+        assert!(
+            !stderr.contains("missing-capability"),
+            "{bootstrap_env} stderr exposed endpoint material"
+        );
+    }
     Ok(())
 }
 
@@ -66,6 +81,7 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
+        .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
         .env(
             process_control_ipc::BOOTSTRAP_ENV,
             "process-control-present",
@@ -153,7 +169,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
         common::setup_env(
             &mock,
             tmp.path(),
-            r#"if [ -n "${VM0_PROCESS_CONTROL_ENDPOINT:-}" ]; then echo "process control endpoint leaked" >&2; exit 42; fi"#,
+            r#"if [ -n "${VM0_PROCESS_CONTROL_ENDPOINT:-}" ] || [ -n "${OKOU_PROCESS_CONTROL_ENDPOINT:-}" ]; then echo "process control endpoint leaked" >&2; exit 42; fi"#,
             3,
             1,
         )?;
@@ -163,7 +179,11 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     unsafe {
         std::env::set_var(
             process_control_ipc::BOOTSTRAP_ENV,
-            "stale-process-control-endpoint",
+            "stale-legacy-process-control-endpoint",
+        );
+        std::env::set_var(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            "stale-canonical-process-control-endpoint",
         );
     }
 
@@ -181,8 +201,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     assert_eq!(
         result.exit_code,
         common::CLEAN_EXIT,
-        "CLI child inherited {}",
-        process_control_ipc::BOOTSTRAP_ENV
+        "CLI child inherited a process-control endpoint alias"
     );
     Ok(())
 }

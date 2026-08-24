@@ -472,18 +472,22 @@ async function requestRawAgentPhoneWebhook(
     readonly "x-webhook-event"?: string;
     readonly "x-webhook-id"?: string;
   },
+  publicBrand: PublicBrand,
 ): Promise<AgentPhoneWebhookResponse> {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request("/api/agentphone/webhook", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...headers,
+  }).request(
+    `${publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai"}/api/agentphone/webhook`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
     },
-    body,
-  });
+  );
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -1763,6 +1767,8 @@ export function createBddIntegrationApi(context: TestContext) {
         readonly timestamp: number;
         readonly signature: string;
         readonly channel?: string;
+        readonly publicBrand?: PublicBrand;
+        readonly publicBrandSignature?: string;
       },
       statuses: readonly (200 | 400 | 401 | 409)[],
       publicBrand: PublicBrand = "vm0",
@@ -1792,9 +1798,10 @@ export function createBddIntegrationApi(context: TestContext) {
         readonly "x-webhook-id"?: string;
       },
       statuses: readonly (200 | 400 | 401 | 404)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       return await accept(
-        requestRawAgentPhoneWebhook(context, body, headers),
+        requestRawAgentPhoneWebhook(context, body, headers, publicBrand),
         statuses,
       );
     },

@@ -5068,6 +5068,21 @@ function completeImportedPptCardImage(image: HTMLImageElement): void {
   activateImportedPptCardImage(media, slot);
 }
 
+async function decodeImportedPptCardImage(
+  image: HTMLImageElement,
+): Promise<void> {
+  await bestEffort(image.decode());
+  completeImportedPptCardImage(image);
+}
+
+function prepareImportedPptCardImage(image: HTMLImageElement): void {
+  if (image.decode === undefined) {
+    completeImportedPptCardImage(image);
+    return;
+  }
+  detach(decodeImportedPptCardImage(image), Reason.DomCallback);
+}
+
 function failImportedPptCardImage(image: HTMLImageElement): void {
   const media = image.closest<HTMLDivElement>(
     "[data-imported-presentation-template-media]",
@@ -5212,7 +5227,7 @@ function ImportedPptCardMedia({
         draggable={false}
         className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
         onLoad={(event) => {
-          completeImportedPptCardImage(event.currentTarget);
+          prepareImportedPptCardImage(event.currentTarget);
         }}
         onError={(event) => {
           failImportedPptCardImage(event.currentTarget);
@@ -5228,7 +5243,7 @@ function ImportedPptCardMedia({
         draggable={false}
         className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
         onLoad={(event) => {
-          completeImportedPptCardImage(event.currentTarget);
+          prepareImportedPptCardImage(event.currentTarget);
         }}
         onError={(event) => {
           failImportedPptCardImage(event.currentTarget);
@@ -5863,6 +5878,21 @@ function ImportedPresentationTemplatePreviewPage({
   );
 }
 
+function useImportedPresentationTemplates(
+  signals: ComposerSignals,
+): readonly PresentationTemplateSummary[] {
+  const templates =
+    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const deletedTemplateIds = useGet(
+    signals.template.importedPresentationTemplateDeletedIds$,
+  );
+  return deletedTemplateIds.size === 0
+    ? templates
+    : templates.filter((template) => {
+        return !deletedTemplateIds.has(template.id);
+      });
+}
+
 function PptTemplateGrid({
   items,
   runtime,
@@ -5887,8 +5917,7 @@ function PptTemplateGrid({
   const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
-  const importedTemplates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplates = useImportedPresentationTemplates(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {importEnabled ? (
@@ -6021,8 +6050,7 @@ function TemplatePickerDialog({
     presentationItems.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const importedTemplates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplates = useImportedPresentationTemplates(signals);
   const importedPreviewSummary =
     importedTemplates.find((template) => {
       return template.id === importedPreviewId;
@@ -6319,6 +6347,84 @@ function TemplatePickerDialog({
           }
         }}
       >
+        <div
+          inert={isPreviewing}
+          aria-hidden={isPreviewing}
+          className={cn(
+            "min-h-0 flex-1 flex-col",
+            isPreviewing ? "hidden" : "flex",
+          )}
+        >
+          <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
+            <DialogTitle>
+              {t(($) => {
+                return $.artifacts.templates.template;
+              })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+            <TemplatePickerCategoryNav
+              selectedCategory={selectedCategory}
+              hasPptTab={hasPptTab}
+              hasIllustrationTab={hasIllustrationTab}
+              hasVideoTab={hasVideoTab}
+              hasAvatarTab={hasAvatarTab}
+              hasWorkflowTab={hasWorkflowTab}
+              onChange={handleCategoryChange}
+            />
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+              <div
+                className={cn(
+                  "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                  showTemplatePickerSearch || showAvatarPickerToolbar
+                    ? "flex"
+                    : "hidden sm:flex",
+                )}
+              >
+                {showTemplatePickerSearch ? (
+                  <TemplatePickerWorkflowSearch
+                    search={search}
+                    onSearchChange={handleSearchChange}
+                  />
+                ) : null}
+                {showAvatarPickerToolbar ? (
+                  <AvatarTemplatePickerToolbar signals={signals} />
+                ) : null}
+              </div>
+              <TemplatePickerCategoryContent
+                signals={signals}
+                selectedCategory={selectedCategory}
+                hasPptTab={hasPptTab}
+                hasVideoTab={hasVideoTab}
+                hasAvatarTab={hasAvatarTab}
+                hasWorkflowTab={hasWorkflowTab}
+                pptItems={presentationItems}
+                websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                videoItems={VIDEO_TEMPLATE_ITEMS}
+                workflowCatalog={workflowCatalog}
+                value={value}
+                illustrationVariantIndex={illustrationVariantIndex}
+                onPresentationScroll={setPresentationGridScrollTop}
+                onRestorePresentationScroll={restorePresentationGridScrollNode}
+                onSelectPresentation={handleSelectPresentation}
+                onSelectImportedPresentation={handleSelectImportedPresentation}
+                onPreviewPresentation={handlePreview}
+                onPreviewImportedPresentation={handlePreviewImported}
+                onImportedPresentation={closeTemplatePicker}
+                onSelectWebsite={handleSelectWebsite}
+                onPreviewWebsite={handlePreviewWebsite}
+                onSelectIllustration={handleSelectIllustration}
+                onIllustrationVariantChange={setIllustrationVariantIndex}
+                onSelectVideo={handleSelectVideo}
+                onSelectAvatar={handleSelectAvatar}
+                onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                onSelectWorkflow={handleSelectWorkflow}
+                runtime={runtime}
+              />
+            </div>
+          </div>
+        </div>
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
@@ -6336,83 +6442,7 @@ function TemplatePickerDialog({
             onSelect={handleSelectImportedPresentation}
             signals={signals}
           />
-        ) : (
-          <>
-            <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-              <DialogTitle>
-                {t(($) => {
-                  return $.artifacts.templates.template;
-                })}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-              <TemplatePickerCategoryNav
-                selectedCategory={selectedCategory}
-                hasPptTab={hasPptTab}
-                hasIllustrationTab={hasIllustrationTab}
-                hasVideoTab={hasVideoTab}
-                hasAvatarTab={hasAvatarTab}
-                hasWorkflowTab={hasWorkflowTab}
-                onChange={handleCategoryChange}
-              />
-              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <div
-                  className={cn(
-                    "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch || showAvatarPickerToolbar
-                      ? "flex"
-                      : "hidden sm:flex",
-                  )}
-                >
-                  {showTemplatePickerSearch ? (
-                    <TemplatePickerWorkflowSearch
-                      search={search}
-                      onSearchChange={handleSearchChange}
-                    />
-                  ) : null}
-                  {showAvatarPickerToolbar ? (
-                    <AvatarTemplatePickerToolbar signals={signals} />
-                  ) : null}
-                </div>
-                <TemplatePickerCategoryContent
-                  signals={signals}
-                  selectedCategory={selectedCategory}
-                  hasPptTab={hasPptTab}
-                  hasVideoTab={hasVideoTab}
-                  hasAvatarTab={hasAvatarTab}
-                  hasWorkflowTab={hasWorkflowTab}
-                  pptItems={presentationItems}
-                  websiteItems={WEBSITE_TEMPLATE_ITEMS}
-                  illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
-                  videoItems={VIDEO_TEMPLATE_ITEMS}
-                  workflowCatalog={workflowCatalog}
-                  value={value}
-                  illustrationVariantIndex={illustrationVariantIndex}
-                  onPresentationScroll={setPresentationGridScrollTop}
-                  onRestorePresentationScroll={
-                    restorePresentationGridScrollNode
-                  }
-                  onSelectPresentation={handleSelectPresentation}
-                  onSelectImportedPresentation={
-                    handleSelectImportedPresentation
-                  }
-                  onPreviewPresentation={handlePreview}
-                  onPreviewImportedPresentation={handlePreviewImported}
-                  onImportedPresentation={closeTemplatePicker}
-                  onSelectWebsite={handleSelectWebsite}
-                  onPreviewWebsite={handlePreviewWebsite}
-                  onSelectIllustration={handleSelectIllustration}
-                  onIllustrationVariantChange={setIllustrationVariantIndex}
-                  onSelectVideo={handleSelectVideo}
-                  onSelectAvatar={handleSelectAvatar}
-                  onWorkflowCategoryChange={setWorkflowCategoryFilter}
-                  onSelectWorkflow={handleSelectWorkflow}
-                  runtime={runtime}
-                />
-              </div>
-            </div>
-          </>
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -6845,8 +6875,7 @@ function ComposerTemplateAttachmentSync({
     signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplates = useImportedPresentationTemplates(signals);
   const importedTemplateResources =
     useLastResolved(signals.template.importedPresentationTemplateResources$) ??
     [];
@@ -6982,8 +7011,7 @@ function TemplatePickerButton({
     signals.template.refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplates = useImportedPresentationTemplates(signals);
   const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
@@ -8410,8 +8438,7 @@ function useComposerTemplatePicker(
   const value = useGet(signals.template.generationTemplate$);
   const setValue = useSet(signals.template.setGenerationTemplate$);
   const insertTemplate = useSet(signals.template.insertTemplate$);
-  const importedTemplates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+  const importedTemplates = useImportedPresentationTemplates(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
   return (
     inlineComposerTemplatePicker({
