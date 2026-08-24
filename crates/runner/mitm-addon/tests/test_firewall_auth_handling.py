@@ -713,6 +713,83 @@ class TestHandleFirewallRequest:
         assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
         assert "Credential=AKIDEXAMPLE/" in flow.request.headers["authorization"]
 
+    async def test_requestheaders_auth_application_failure_restores_probe_state(
+        self,
+        headers,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        placeholder_authorization = aws_sigv4_authorization(
+            signed_headers="host;x-amz-content-sha256;x-amz-date"
+        )
+        flow = real_flow(
+            with_response=False,
+            host=STS_HOST,
+            path="/?existing=1",
+            method="POST",
+            request_headers=headers(
+                ("Host", STS_HOST),
+                ("X-Client", "original"),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"),
+                ("Authorization", placeholder_authorization),
+            ),
+        )
+        flow.metadata.update(
+            {
+                metadata_keys.VM_RUN_ID: "test-run",
+                metadata_keys.ORIGINAL_URL: get_trusted_authority(flow).url,
+                "preexisting": "keep",
+            }
+        )
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry(
+            base="https://sts.amazonaws.com",
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_TOKEN }}"},
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                },
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry, rule="POST /", rel_path="/")
+        token_meta = _token_meta(headers={"Authorization": "Bearer managed-token"})
+        token_meta["query"] = {"api_key": "managed-query"}
+        token_meta["aws_sigv4"] = resolved_aws_sigv4_credentials()
+        get_firewall_headers = AsyncMock(return_value=token_meta)
+        revalidation_count = 0
+
+        def revalidate() -> bool:
+            nonlocal revalidation_count
+            revalidation_count += 1
+            return True
+
+        with patch.object(auth, "get_firewall_headers", get_firewall_headers), mitm_ctx():
+            result = await _run_firewall_auth_phase(
+                "requestheaders",
+                flow,
+                allow,
+                vm_info,
+                revalidate=revalidate,
+            )
+
+        get_firewall_headers.assert_awaited_once()
+        assert revalidation_count == 1
+        assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+        assert flow.metadata == original_metadata
+        assert flow.request.url == original_url
+        assert flow.request.headers.fields == original_headers
+        assert flow.request.headers["Authorization"] == placeholder_authorization
+        assert "api_key" not in flow.request.query
+        assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+
     @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_unexpected_resolved_auth_base_fails_closed_in_both_phases(
         self,
