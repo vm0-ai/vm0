@@ -24,6 +24,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function buttonByText(
   text: string,
@@ -347,10 +348,11 @@ function mockUsagePackCatalog(): void {
   });
 }
 
-async function openMembersTab(heading = "People"): Promise<void> {
+async function openLegacyMembersTab(heading = "People"): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=people",
+    featureSwitches: LEGACY_PRICING,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -369,7 +371,7 @@ function rowByEmail(email: string): HTMLElement {
 describe("organization members settings", () => {
   it("filters members and sends an invitation", async () => {
     mockMembersStory();
-    await openMembersTab();
+    await openLegacyMembersTab();
 
     expect(screen.getByText("Alice Admin")).toBeInTheDocument();
     expect(screen.getByText("bob@example.com")).toBeInTheDocument();
@@ -869,7 +871,7 @@ describe("organization members settings", () => {
 
   it("accepts and rejects membership requests", async () => {
     mockMembersStory();
-    await openMembersTab();
+    await openLegacyMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "carol");
     await waitFor(() => {
@@ -911,7 +913,7 @@ describe("organization members settings", () => {
 
   it("changes roles, removes a member, and lets an admin self-demote", async () => {
     mockMembersStory();
-    await openMembersTab();
+    await openLegacyMembersTab();
 
     click(screen.getByLabelText("Actions for bob@example.com"));
     click(menuItemByText("Make admin"));
@@ -1015,7 +1017,7 @@ describe("organization members settings", () => {
 
   it("cancels and confirms invitation revoke", async () => {
     mockMembersStory();
-    await openMembersTab();
+    await openLegacyMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "pending");
     await waitFor(() => {
@@ -1059,7 +1061,7 @@ describe("organization members settings", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await openMembersTab("Pessoas");
+    await openLegacyMembersTab("Pessoas");
 
     const settingsDialog = screen.getByRole("dialog", {
       name: "Configurações",

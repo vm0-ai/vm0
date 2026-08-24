@@ -17,6 +17,7 @@ import {
   resolveAppUrl,
   resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
 import { getClerkLocalization } from "../auth/clerk-localization.ts";
 import { getClerkAppearance } from "./clerk-appearance.ts";
 
@@ -31,10 +32,14 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const domainBrandName = useGet(brandName$);
   const locale = useGet(locale$);
   const isAuthPage =
-    location.pathname === "/sign-in" ||
-    location.pathname.startsWith("/sign-in/") ||
-    location.pathname === "/sign-up" ||
-    location.pathname.startsWith("/sign-up/");
+    location.pathname === ROUTES.signIn ||
+    location.pathname.startsWith(`${ROUTES.signIn}/`) ||
+    location.pathname === ROUTES.signUp ||
+    location.pathname.startsWith(`${ROUTES.signUp}/`) ||
+    location.pathname === ROUTES.signInV2 ||
+    location.pathname.startsWith(`${ROUTES.signInV2}/`) ||
+    location.pathname === ROUTES.signUpV2 ||
+    location.pathname.startsWith(`${ROUTES.signUpV2}/`);
   const clerkBrandName = isAuthPage
     ? resolveAuthBrandContext().brandName
     : domainBrandName;

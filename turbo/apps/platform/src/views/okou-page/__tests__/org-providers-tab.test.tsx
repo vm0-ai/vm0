@@ -15,6 +15,7 @@ import {
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -325,8 +326,16 @@ async function openProvidersTab(): Promise<void> {
   });
 }
 
-async function openModelSettings(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=model" });
+async function openModelSettings(
+  usagePackPlansEnabled: boolean,
+): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=model",
+    featureSwitches: {
+      [FeatureSwitchKey.UsagePackPlans]: usagePackPlansEnabled,
+    },
+  });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -917,7 +926,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openProvidersTab();
+    await openModelSettings(false);
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
@@ -941,7 +950,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings();
+    await openModelSettings(true);
 
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -975,7 +984,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings();
+    await openModelSettings(false);
 
     click(buttonByText("Add model"));
     await selectDialogModel("Claude Opus 4.8");
@@ -1004,7 +1013,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings();
+    await openModelSettings(false);
 
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });

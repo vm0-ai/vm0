@@ -32,7 +32,7 @@ from tests.aws_sigv4_helpers import (
 )
 from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 
-DEFAULT_SANDBOX_TOKEN = "sandbox-token"
+DEFAULT_SANDBOX_AUTH_KEY = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999
 
 
@@ -79,7 +79,7 @@ class AwsApiEntry(AwsApiEntryBase, total=False):
     id: str
 
 
-class AwsVmInfoBase(TypedDict):
+class AwsSandboxInfoBase(TypedDict):
     runId: str
     sandboxToken: str
     encryptedSecrets: str
@@ -88,7 +88,7 @@ class AwsVmInfoBase(TypedDict):
     vars: dict[str, str]
 
 
-class AwsVmInfo(AwsVmInfoBase, total=False):
+class AwsSandboxInfo(AwsSandboxInfoBase, total=False):
     secretConnectorMap: dict[str, str]
     secretConnectorMetadataMap: dict[str, object]
 
@@ -149,7 +149,7 @@ def aws_allow(
     )
 
 
-def aws_vm_info(
+def aws_sandbox_info(
     tmp_path: Path,
     *,
     run_id: str = "run-1",
@@ -159,20 +159,22 @@ def aws_vm_info(
     billable_firewalls: Sequence[str] | None = None,
     secret_connector_map: Mapping[str, str] | None = None,
     secret_connector_metadata_map: Mapping[str, object] | None = None,
-) -> AwsVmInfo:
-    vm_info: AwsVmInfo = {
+) -> AwsSandboxInfo:
+    sandbox_info: AwsSandboxInfo = {
         "runId": run_id,
-        "sandboxToken": DEFAULT_SANDBOX_TOKEN if sandbox_token is None else sandbox_token,
+        "sandboxToken": DEFAULT_SANDBOX_AUTH_KEY if sandbox_token is None else sandbox_token,
         "encryptedSecrets": encrypted_secrets,
         "networkLogPath": str(tmp_path / "network.jsonl"),
         "billableFirewalls": [] if billable_firewalls is None else list(billable_firewalls),
         "vars": {"AWS_REGION": region},
     }
     if secret_connector_map is not None:
-        vm_info["secretConnectorMap"] = dict(secret_connector_map)
+        sandbox_info["secretConnectorMap"] = dict(secret_connector_map)
     if secret_connector_metadata_map is not None:
-        vm_info["secretConnectorMetadataMap"] = copy.deepcopy(dict(secret_connector_metadata_map))
-    return vm_info
+        sandbox_info["secretConnectorMetadataMap"] = copy.deepcopy(
+            dict(secret_connector_metadata_map)
+        )
+    return sandbox_info
 
 
 def aws_auth_response(
@@ -219,7 +221,7 @@ def prepare_firewall_request(
     original_url: str | None = None,
     run_id: str = "run-1",
 ) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         get_trusted_authority(flow).url if original_url is None else original_url
     )
@@ -278,20 +280,20 @@ async def handle_firewall_request_with_auth_endpoint(
     endpoint: FakeAuthEndpoint | None = None,
     auth_response: dict[str, object] | None = None,
     allow: matching.FirewallAllow | None = None,
-    vm_info: AwsVmInfo | None = None,
+    sandbox_info: AwsSandboxInfo | None = None,
 ) -> auth.FirewallAuthHandlingResult:
     resolved_endpoint = FakeAuthEndpoint() if endpoint is None else endpoint
     resolved_endpoint.queue_json_response(
         aws_auth_response() if auth_response is None else auth_response
     )
-    resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
-    prepare_firewall_request(flow, run_id=resolved_vm_info["runId"])
+    resolved_sandbox_info = aws_sandbox_info(tmp_path) if sandbox_info is None else sandbox_info
+    prepare_firewall_request(flow, run_id=resolved_sandbox_info["runId"])
 
     with resolved_endpoint.run(), mitm_ctx(api_url=resolved_endpoint.api_url):
         return await handle_firewall_request_without_upstream_admission(
             flow,
             aws_allow() if allow is None else allow,
-            dict(resolved_vm_info),
+            dict(resolved_sandbox_info),
         )
 
 
@@ -311,29 +313,29 @@ def assert_sigv4_failed_closed(
 def _aws_auth_cache_key(
     tmp_path: Path,
     allow: matching.FirewallAllow | None = None,
-    vm_info: AwsVmInfo | None = None,
+    sandbox_info: AwsSandboxInfo | None = None,
 ) -> auth_cache.FirewallAuthCacheKey:
     resolved_allow = aws_allow() if allow is None else allow
     resolved_api_entry = resolved_allow.api_entry
-    resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
+    resolved_sandbox_info = aws_sandbox_info(tmp_path) if sandbox_info is None else sandbox_info
     auth_config = resolved_api_entry["auth"]
     auth_request = auth_client.FirewallAuthRequest(
-        encrypted_secrets=resolved_vm_info["encryptedSecrets"],
+        encrypted_secrets=resolved_sandbox_info["encryptedSecrets"],
         auth_headers=auth_config["headers"],
-        sandbox_token=resolved_vm_info["sandboxToken"],
+        sandbox_token=resolved_sandbox_info["sandboxToken"],
         auth_base=auth_config.get("base"),
         auth_query=auth_config.get("query"),
         auth_aws_sigv4=auth_config["awsSigv4"],
-        secret_connector_map=resolved_vm_info.get("secretConnectorMap"),
-        secret_connector_metadata_map=resolved_vm_info.get("secretConnectorMetadataMap"),
-        vars_map=resolved_vm_info["vars"],
+        secret_connector_map=resolved_sandbox_info.get("secretConnectorMap"),
+        secret_connector_metadata_map=resolved_sandbox_info.get("secretConnectorMetadataMap"),
+        vars_map=resolved_sandbox_info["vars"],
         firewall_billable=auth.is_billable_firewall(
             resolved_allow.name,
-            dict(resolved_vm_info),
+            dict(resolved_sandbox_info),
         ),
     )
     return auth_cache_key(
-        run_id=resolved_vm_info["runId"],
+        run_id=resolved_sandbox_info["runId"],
         api_id=resolved_api_entry.get("id", resolved_api_entry["base"]),
         auth_identity=auth._build_firewall_auth_identity(
             firewall_name=resolved_allow.name,
@@ -347,14 +349,14 @@ def cache_aws_sigv4_credentials(
     tmp_path: Path,
     *,
     allow: matching.FirewallAllow | None = None,
-    vm_info: AwsVmInfo | None = None,
+    sandbox_info: AwsSandboxInfo | None = None,
     credentials: AwsSigV4Credentials | None = None,
     headers: Mapping[str, str] | None = None,
     query: Mapping[str, str] | None = None,
     expires_at: object = None,
 ) -> None:
     set_cached_headers(
-        _aws_auth_cache_key(tmp_path, allow=allow, vm_info=vm_info),
+        _aws_auth_cache_key(tmp_path, allow=allow, sandbox_info=sandbox_info),
         headers=dict(headers) if headers is not None else {},
         expires_at=expires_at,
         query=dict(query) if query is not None else None,

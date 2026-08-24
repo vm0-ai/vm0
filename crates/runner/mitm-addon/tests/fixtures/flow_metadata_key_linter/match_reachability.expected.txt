@@ -1,4 +1,4 @@
-match_reachability.py:21: use metadata_keys.VM_RUN_ID for flow.metadata access
-match_reachability.py:27: use metadata_keys.VM_RUN_ID for flow.metadata access
-match_reachability.py:35: use metadata_keys.VM_RUN_ID for flow.metadata access
-match_reachability.py:45: use metadata_keys.VM_RUN_ID for flow.metadata access
+match_reachability.py:21: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+match_reachability.py:27: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+match_reachability.py:35: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+match_reachability.py:45: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access

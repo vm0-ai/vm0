@@ -17,7 +17,7 @@ use crate::types::ExecutionContext;
 pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> ExecutorConfig {
     let registry_path = dir.join("proxy-registry.json");
     let lock_path = dir.join("proxy-registry.json.lock");
-    tokio::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#)
+    tokio::fs::write(&registry_path, r#"{"sandboxes":{},"updatedAt":0}"#)
         .await
         .unwrap();
     let log_dir = dir.join("logs");
@@ -43,6 +43,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
             .unwrap(),
+        pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(2).unwrap(),
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }
@@ -127,9 +128,11 @@ pub(in crate::executor::tests) async fn assert_proxy_registry_empty(dir: &Path) 
         .unwrap();
     let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(
-        registry["vms"].as_object().map(|vms| vms.len()),
+        registry["sandboxes"]
+            .as_object()
+            .map(|sandboxes| sandboxes.len()),
         Some(0),
-        "proxy registry should not retain a VM after executor cleanup: {registry}",
+        "proxy registry should not retain a sandbox after executor cleanup: {registry}",
     );
     assert!(
         registry["updatedAt"]

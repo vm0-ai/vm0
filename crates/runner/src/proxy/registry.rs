@@ -19,13 +19,13 @@ use crate::types::{
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProxyRegistry {
-    vms: HashMap<String, VmEntry>,
+    sandboxes: HashMap<String, SandboxEntry>,
     updated_at: i64,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct VmEntry {
+struct SandboxEntry {
     run_id: String,
     cli_agent_type: String,
     sandbox_token: String,
@@ -53,9 +53,9 @@ struct VmEntry {
     model_usage_provider: Option<String>,
 }
 
-/// Parameters for registering a VM in the proxy registry.
+/// Parameters for registering a sandbox in the proxy registry.
 #[derive(Debug)]
-pub struct VmRegistration<'a> {
+pub struct SandboxRegistration<'a> {
     pub run_id: &'a str,
     pub cli_agent_type: &'a str,
     pub sandbox_token: &'a str,
@@ -129,9 +129,9 @@ fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
     // sum of positive per-policy deltas is therefore the maximum growth across
     // any subset of sequential fail-closed transitions.
     value
-        .vms
+        .sandboxes
         .values()
-        .filter_map(|vm| vm.network_policies.as_ref())
+        .filter_map(|sandbox| sandbox.network_policies.as_ref())
         .flat_map(|policies| policies.values())
         .try_fold(0_u64, |reserve, policy| {
             let current_bytes = serde_json::to_vec(policy)
@@ -270,7 +270,7 @@ fn replace_first_matching_firewall(
 }
 
 fn apply_custom_connector_runtime_state(
-    vm: &mut VmEntry,
+    sandbox: &mut SandboxEntry,
     custom_connector_id: &str,
     state: &CustomConnectorRuntimeRegistryState,
 ) -> RunnerResult<()> {
@@ -297,7 +297,7 @@ fn apply_custom_connector_runtime_state(
             }
             let inline_firewall_name = inline_firewall.name.clone();
 
-            let firewalls = vm.firewalls.get_or_insert_with(Vec::new);
+            let firewalls = sandbox.firewalls.get_or_insert_with(Vec::new);
             if firewalls.iter().any(|entry| {
                 firewall_name(entry) == inline_firewall_name
                     && custom_connector_owner(entry) != Some(custom_connector_id)
@@ -339,22 +339,24 @@ fn apply_custom_connector_runtime_state(
                 .map(firewall_name)
                 .map(ToOwned::to_owned)
                 .collect::<HashSet<_>>();
-            let network_policies = vm.network_policies.get_or_insert_with(HashMap::new);
+            let network_policies = sandbox.network_policies.get_or_insert_with(HashMap::new);
             for firewall_name in removed_firewall_names {
                 if !retained_firewall_names.contains(&firewall_name) {
                     network_policies.remove(&firewall_name);
                 }
             }
             network_policies.insert(inline_firewall_name, (**network_policy).clone());
-            vm.connector_routing_variables.insert(
+            sandbox.connector_routing_variables.insert(
                 custom_connector_routing_key(custom_connector_id),
                 routing_variables.clone(),
             );
-            vm.omitted_custom_connector_ids.remove(custom_connector_id);
+            sandbox
+                .omitted_custom_connector_ids
+                .remove(custom_connector_id);
         }
         CustomConnectorRuntimeRegistryState::Absent => {
             let mut removed_firewall_names = Vec::new();
-            if let Some(firewalls) = vm.firewalls.as_mut() {
+            if let Some(firewalls) = sandbox.firewalls.as_mut() {
                 firewalls.retain(|entry| {
                     if let FirewallEntry::Inline {
                         firewall,
@@ -370,7 +372,7 @@ fn apply_custom_connector_runtime_state(
                     }
                 });
             }
-            let retained_firewall_names = vm
+            let retained_firewall_names = sandbox
                 .firewalls
                 .as_deref()
                 .unwrap_or_default()
@@ -378,14 +380,15 @@ fn apply_custom_connector_runtime_state(
                 .map(firewall_name)
                 .map(ToOwned::to_owned)
                 .collect::<HashSet<_>>();
-            if let Some(network_policies) = vm.network_policies.as_mut() {
+            if let Some(network_policies) = sandbox.network_policies.as_mut() {
                 for firewall_name in removed_firewall_names {
                     if !retained_firewall_names.contains(&firewall_name) {
                         network_policies.remove(&firewall_name);
                     }
                 }
             }
-            vm.omitted_custom_connector_ids
+            sandbox
+                .omitted_custom_connector_ids
                 .insert(custom_connector_id.to_string());
         }
     }
@@ -393,11 +396,12 @@ fn apply_custom_connector_runtime_state(
 }
 
 fn apply_connector_runtime_update(
-    vm: &mut VmEntry,
+    sandbox: &mut SandboxEntry,
     update: &ConnectorRuntimeRegistryUpdate,
 ) -> RunnerResult<bool> {
     let target_is_registered =
-        vm.connector_runtime_targets
+        sandbox
+            .connector_runtime_targets
             .iter()
             .any(|target| match (target, update) {
                 (
@@ -427,23 +431,24 @@ fn apply_connector_runtime_update(
             connector_slug,
             network_policy,
         } => {
-            if !vm_has_connector_firewall(vm, connector_slug) {
+            if !sandbox_has_connector_firewall(sandbox, connector_slug) {
                 return Ok(false);
             }
-            vm.network_policies
+            sandbox
+                .network_policies
                 .get_or_insert_with(HashMap::new)
                 .insert(connector_slug.clone(), network_policy.clone());
         }
         ConnectorRuntimeRegistryUpdate::Custom {
             custom_connector_id,
             state,
-        } => apply_custom_connector_runtime_state(vm, custom_connector_id, state)?,
+        } => apply_custom_connector_runtime_state(sandbox, custom_connector_id, state)?,
     }
     Ok(true)
 }
 
 fn initial_omitted_connector_runtime_targets(
-    registration: &VmRegistration<'_>,
+    registration: &SandboxRegistration<'_>,
 ) -> (HashSet<String>, HashSet<String>) {
     let mut active_builtin_firewalls = HashSet::new();
     let mut active_custom_connector_ids = HashSet::new();
@@ -485,7 +490,7 @@ fn initial_omitted_connector_runtime_targets(
 }
 
 fn initial_connector_routing_variables(
-    registration: &VmRegistration<'_>,
+    registration: &SandboxRegistration<'_>,
 ) -> RunnerResult<HashMap<String, HashMap<String, String>>> {
     let mut routing_variables = HashMap::new();
     let run_vars = registration.vars;
@@ -579,11 +584,11 @@ impl ProxyRegistryHandle {
         self
     }
 
-    /// Register a VM in the proxy registry.
-    pub async fn register_vm(
+    /// Register a sandbox in the proxy registry.
+    pub async fn register_sandbox(
         &self,
         source_ip: &str,
-        registration: &VmRegistration<'_>,
+        registration: &SandboxRegistration<'_>,
     ) -> RunnerResult<()> {
         validate_custom_connector_resource_ownership(registration.firewalls.unwrap_or_default())?;
         let connector_routing_variables = initial_connector_routing_variables(registration)?;
@@ -594,9 +599,9 @@ impl ProxyRegistryHandle {
         let firewalls = registration.firewalls.map(|s| s.to_vec());
         let (omitted_builtin_firewalls, omitted_custom_connector_ids) =
             initial_omitted_connector_runtime_targets(registration);
-        registry.vms.insert(
+        registry.sandboxes.insert(
             source_ip.to_string(),
-            VmEntry {
+            SandboxEntry {
                 run_id: registration.run_id.to_string(),
                 cli_agent_type: registration.cli_agent_type.to_string(),
                 sandbox_token: registration.sandbox_token.to_string(),
@@ -628,27 +633,27 @@ impl ProxyRegistryHandle {
         info!(
             source_ip,
             run_id = registration.run_id,
-            "registered VM in proxy registry"
+            "registered sandbox in proxy registry"
         );
         Ok(())
     }
 
-    /// Unregister a VM from the proxy registry.
-    pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
+    /// Unregister a sandbox from the proxy registry.
+    pub async fn unregister_sandbox(&self, source_ip: &str) -> RunnerResult<()> {
         let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
-        registry.vms.remove(source_ip);
+        registry.sandboxes.remove(source_ip);
         registry.updated_at = chrono::Utc::now().timestamp_millis();
         write_registry(&self.registry_path, &registry).await?;
-        info!(source_ip, "unregistered VM from proxy registry");
+        info!(source_ip, "unregistered sandbox from proxy registry");
         Ok(())
     }
 
     /// Publish validated Builtin and Custom candidate updates in one registry
-    /// transaction. `None` means the VM disappeared or now belongs to another
+    /// transaction. `None` means the sandbox disappeared or now belongs to another
     /// run; otherwise each boolean reports whether the same-index update was
-    /// accepted. Accepted batches persist only when the resulting VM state
+    /// accepted. Accepted batches persist only when the resulting sandbox state
     /// changes.
     #[cfg(test)]
     pub(crate) async fn apply_connector_runtime_updates_if_run_matches(
@@ -721,7 +726,7 @@ impl ProxyRegistryHandle {
     }
 
     /// Fail-close all matching connector runtime targets in one registry
-    /// transaction. `None` means the VM disappeared or now belongs to another
+    /// transaction. `None` means the sandbox disappeared or now belongs to another
     /// run; otherwise each outcome corresponds to the same-index target.
     pub(crate) async fn fail_closed_connector_runtime_targets_if_run_matches(
         &self,
@@ -731,10 +736,10 @@ impl ProxyRegistryHandle {
     ) -> RunnerResult<Option<Vec<ConnectorRuntimeFailCloseOutcome>>> {
         let _guard = lock::acquire(self.lock_path.clone()).await?;
         let mut registry = read_registry(&self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
+        let Some(sandbox) = registry.sandboxes.get_mut(source_ip) else {
             return Ok(None);
         };
-        if vm.run_id != run_id {
+        if sandbox.run_id != run_id {
             return Ok(None);
         }
 
@@ -743,11 +748,11 @@ impl ProxyRegistryHandle {
             .map(|target| {
                 let result = match target {
                     ConnectorRuntimeTarget::Builtin { connector_slug } => Ok(
-                        fail_closed_builtin_connector_runtime_target(vm, connector_slug),
+                        fail_closed_builtin_connector_runtime_target(sandbox, connector_slug),
                     ),
                     ConnectorRuntimeTarget::Custom {
                         custom_connector_id,
-                    } => fail_closed_custom_connector_runtime_target(vm, custom_connector_id),
+                    } => fail_closed_custom_connector_runtime_target(sandbox, custom_connector_id),
                 };
                 match result {
                     Ok(true) => ConnectorRuntimeFailCloseOutcome::Applied,
@@ -789,32 +794,34 @@ impl ConnectorRuntimeRegistryTransaction<'_> {
         updates: &[ConnectorRuntimeRegistryUpdate],
     ) -> RunnerResult<Option<Vec<bool>>> {
         let mut registry = read_registry(self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
+        let Some(sandbox) = registry.sandboxes.get_mut(source_ip) else {
             return Ok(None);
         };
-        if vm.run_id != run_id {
+        if sandbox.run_id != run_id {
             return Ok(None);
         }
 
-        // Keep this snapshot aligned with every VM field mutated by
+        // Keep this snapshot aligned with every sandbox field mutated by
         // `apply_connector_runtime_update`.
-        let previous_firewalls = vm.firewalls.clone();
-        let previous_network_policies = vm.network_policies.clone();
-        let previous_omitted_custom_connector_ids = vm.omitted_custom_connector_ids.clone();
-        let previous_connector_routing_variables = vm.connector_routing_variables.clone();
+        let previous_firewalls = sandbox.firewalls.clone();
+        let previous_network_policies = sandbox.network_policies.clone();
+        let previous_omitted_custom_connector_ids = sandbox.omitted_custom_connector_ids.clone();
+        let previous_connector_routing_variables = sandbox.connector_routing_variables.clone();
         let accepted = updates
             .iter()
-            .map(|update| apply_connector_runtime_update(vm, update))
+            .map(|update| apply_connector_runtime_update(sandbox, update))
             .collect::<RunnerResult<Vec<_>>>()?;
         if !accepted.iter().any(|accepted| *accepted) {
             return Ok(Some(accepted));
         }
 
-        validate_custom_connector_resource_ownership(vm.firewalls.as_deref().unwrap_or_default())?;
-        if previous_firewalls == vm.firewalls
-            && previous_network_policies == vm.network_policies
-            && previous_omitted_custom_connector_ids == vm.omitted_custom_connector_ids
-            && previous_connector_routing_variables == vm.connector_routing_variables
+        validate_custom_connector_resource_ownership(
+            sandbox.firewalls.as_deref().unwrap_or_default(),
+        )?;
+        if previous_firewalls == sandbox.firewalls
+            && previous_network_policies == sandbox.network_policies
+            && previous_omitted_custom_connector_ids == sandbox.omitted_custom_connector_ids
+            && previous_connector_routing_variables == sandbox.connector_routing_variables
         {
             return Ok(Some(accepted));
         }
@@ -830,11 +837,14 @@ impl ConnectorRuntimeRegistryTransaction<'_> {
     }
 }
 
-fn fail_closed_builtin_connector_runtime_target(vm: &mut VmEntry, connector_slug: &str) -> bool {
-    if !vm_has_connector_firewall(vm, connector_slug) {
+fn fail_closed_builtin_connector_runtime_target(
+    sandbox: &mut SandboxEntry,
+    connector_slug: &str,
+) -> bool {
+    if !sandbox_has_connector_firewall(sandbox, connector_slug) {
         return false;
     }
-    let Some(policy) = vm
+    let Some(policy) = sandbox
         .network_policies
         .as_mut()
         .and_then(|policies| policies.get_mut(connector_slug))
@@ -846,10 +856,10 @@ fn fail_closed_builtin_connector_runtime_target(vm: &mut VmEntry, connector_slug
 }
 
 fn fail_closed_custom_connector_runtime_target(
-    vm: &mut VmEntry,
+    sandbox: &mut SandboxEntry,
     custom_connector_id: &str,
 ) -> RunnerResult<bool> {
-    let Some(firewalls) = vm.firewalls.as_deref() else {
+    let Some(firewalls) = sandbox.firewalls.as_deref() else {
         return Ok(false);
     };
     let owned_firewall_names = firewalls
@@ -869,7 +879,7 @@ fn fail_closed_custom_connector_runtime_target(
             "custom connector {custom_connector_id} does not exclusively own its firewall"
         )));
     }
-    let Some(network_policies) = vm.network_policies.as_mut() else {
+    let Some(network_policies) = sandbox.network_policies.as_mut() else {
         return Ok(false);
     };
     let mut changed = false;
@@ -896,8 +906,8 @@ fn fail_closed_policy(policy: &NetworkPolicy) -> NetworkPolicy {
     }
 }
 
-fn vm_has_connector_firewall(vm: &VmEntry, connector_slug: &str) -> bool {
-    vm.firewalls.as_deref().is_some_and(|firewalls| {
+fn sandbox_has_connector_firewall(sandbox: &SandboxEntry, connector_slug: &str) -> bool {
+    sandbox.firewalls.as_deref().is_some_and(|firewalls| {
         firewalls
             .iter()
             .any(|entry| firewall_entry_matches(entry, connector_slug))
@@ -913,7 +923,7 @@ fn firewall_entry_matches(entry: &FirewallEntry, connector_slug: &str) -> bool {
 
 pub(super) async fn write_empty_registry(path: &Path) -> RunnerResult<()> {
     let empty_registry = ProxyRegistry {
-        vms: HashMap::new(),
+        sandboxes: HashMap::new(),
         updated_at: 0,
     };
     write_registry(path, &empty_registry).await
@@ -964,8 +974,8 @@ mod tests {
         }
     }
 
-    fn base_registration<'a>() -> VmRegistration<'a> {
-        VmRegistration {
+    fn base_registration<'a>() -> SandboxRegistration<'a> {
+        SandboxRegistration {
             run_id: "run-test",
             cli_agent_type: "claude-code",
             sandbox_token: "tok",
@@ -1126,16 +1136,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
         let empty = ProxyRegistry {
-            vms: HashMap::new(),
+            sandboxes: HashMap::new(),
             updated_at: 0,
         };
         write_registry(&registry_path, &empty).await.unwrap();
 
-        // Register a VM.
+        // Register a sandbox.
         let mut registry = read_registry(&registry_path).await.unwrap();
-        registry.vms.insert(
+        registry.sandboxes.insert(
             "10.200.0.2".to_string(),
-            VmEntry {
+            SandboxEntry {
                 run_id: "test-run".to_string(),
                 cli_agent_type: "claude-code".to_string(),
                 sandbox_token: String::new(),
@@ -1161,19 +1171,19 @@ mod tests {
 
         // Verify registration.
         let loaded = read_registry(&registry_path).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.2").unwrap();
-        assert_eq!(vm.run_id, "test-run");
+        let sandbox = loaded.sandboxes.get("10.200.0.2").unwrap();
+        assert_eq!(sandbox.run_id, "test-run");
 
-        // Unregister the VM.
+        // Unregister the sandbox.
         let mut registry = read_registry(&registry_path).await.unwrap();
-        registry.vms.remove("10.200.0.2");
+        registry.sandboxes.remove("10.200.0.2");
         write_registry(&registry_path, &registry).await.unwrap();
 
         // Verify unregistration.
         let loaded = read_registry(&registry_path).await.unwrap();
         assert!(
-            !loaded.vms.contains_key("10.200.0.2"),
-            "VM should be removed from registry"
+            !loaded.sandboxes.contains_key("10.200.0.2"),
+            "sandbox should be removed from registry"
         );
     }
 
@@ -1182,7 +1192,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
         let empty = ProxyRegistry {
-            vms: HashMap::new(),
+            sandboxes: HashMap::new(),
             updated_at: 0,
         };
 
@@ -1202,12 +1212,12 @@ mod tests {
     async fn write_registry_repairs_existing_wide_file_mode() {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
-        std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        std::fs::write(&registry_path, r#"{"sandboxes":{},"updatedAt":0}"#).unwrap();
         let mut permissions = std::fs::metadata(&registry_path).unwrap().permissions();
         permissions.set_mode(0o644);
         std::fs::set_permissions(&registry_path, permissions).unwrap();
         let empty = ProxyRegistry {
-            vms: HashMap::new(),
+            sandboxes: HashMap::new(),
             updated_at: 0,
         };
 
@@ -1228,7 +1238,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
         let outside = dir.path().join("outside-registry.json");
-        std::fs::write(&outside, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        std::fs::write(&outside, r#"{"sandboxes":{},"updatedAt":0}"#).unwrap();
         std::os::unix::fs::symlink(&outside, &registry_path).unwrap();
 
         let error = read_registry(&registry_path)
@@ -1285,44 +1295,52 @@ mod tests {
         let harness = RegistryHarness::new().await;
 
         // Register via handle.
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             run_id: "run-1",
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &registration)
+            .register_sandbox("10.200.0.2", &registration)
             .await
             .unwrap();
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.2").unwrap();
-        assert_eq!(vm.run_id, "run-1");
+        let sandbox = loaded.sandboxes.get("10.200.0.2").unwrap();
+        assert_eq!(sandbox.run_id, "run-1");
 
         // Re-register same IP overwrites the entry.
-        let registration2 = VmRegistration {
+        let registration2 = SandboxRegistration {
             run_id: "run-2",
             cli_agent_type: "codex",
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &registration2)
+            .register_sandbox("10.200.0.2", &registration2)
             .await
             .unwrap();
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.2").unwrap();
-        assert_eq!(vm.run_id, "run-2");
-        assert_eq!(vm.cli_agent_type, "codex");
+        let sandbox = loaded.sandboxes.get("10.200.0.2").unwrap();
+        assert_eq!(sandbox.run_id, "run-2");
+        assert_eq!(sandbox.cli_agent_type, "codex");
 
         // Unregister via handle.
-        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
+        harness
+            .handle
+            .unregister_sandbox("10.200.0.2")
+            .await
+            .unwrap();
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        assert!(!loaded.vms.contains_key("10.200.0.2"));
+        assert!(!loaded.sandboxes.contains_key("10.200.0.2"));
 
         // Unregister non-existent IP is a no-op.
-        harness.handle.unregister_vm("10.200.0.99").await.unwrap();
+        harness
+            .handle
+            .unregister_sandbox("10.200.0.99")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1372,9 +1390,9 @@ mod tests {
 
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     connector_runtime_targets: Some(&targets),
                     vars: Some(&vars),
@@ -1385,17 +1403,17 @@ mod tests {
             .unwrap();
 
         let registry = read_registry(harness.registry_path()).await.unwrap();
-        let vm = &registry.vms["10.200.0.2"];
+        let sandbox = &registry.sandboxes["10.200.0.2"];
         assert_eq!(
-            vm.omitted_builtin_firewalls,
+            sandbox.omitted_builtin_firewalls,
             HashSet::from(["github".to_string()])
         );
         assert_eq!(
-            vm.omitted_custom_connector_ids,
+            sandbox.omitted_custom_connector_ids,
             HashSet::from([omitted_custom_id.to_string()])
         );
         assert_eq!(
-            vm.connector_routing_variables,
+            sandbox.connector_routing_variables,
             HashMap::from([
                 (
                     "builtin:slack".to_string(),
@@ -1405,7 +1423,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            vm.connector_runtime_targets,
+            sandbox.connector_runtime_targets,
             vec![
                 ConnectorRuntimeTarget::Builtin {
                     connector_slug: "slack".to_string(),
@@ -1438,9 +1456,9 @@ mod tests {
 
         let error = harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     ..base_registration()
                 },
@@ -1458,7 +1476,7 @@ mod tests {
             read_registry(harness.registry_path())
                 .await
                 .unwrap()
-                .vms
+                .sandboxes
                 .is_empty()
         );
     }
@@ -1502,9 +1520,9 @@ mod tests {
         ];
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
                     connector_runtime_targets: Some(&runtime_targets),
@@ -1623,9 +1641,9 @@ mod tests {
         let runtime_targets = builtin_runtime_targets(&["github", "slack"]);
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
                     connector_runtime_targets: Some(&runtime_targets),
@@ -1661,7 +1679,7 @@ mod tests {
         let after = registry_file_state(harness.registry_path()).await;
         assert_ne!(after.inode, before.inode);
         let registry = read_registry(harness.registry_path()).await.unwrap();
-        let policies = registry.vms["10.200.0.2"]
+        let policies = registry.sandboxes["10.200.0.2"]
             .network_policies
             .as_ref()
             .unwrap();
@@ -1708,9 +1726,9 @@ mod tests {
         ];
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
                     connector_runtime_targets: Some(&runtime_targets),
@@ -1796,9 +1814,9 @@ mod tests {
         ];
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     run_id: "run-test",
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
@@ -1831,38 +1849,38 @@ mod tests {
             Some(vec![true, true])
         );
         let absent = read_registry(harness.registry_path()).await.unwrap();
-        let absent_vm = &absent.vms["10.200.0.2"];
+        let absent_sandbox = &absent.sandboxes["10.200.0.2"];
         assert!(
-            absent_vm
+            absent_sandbox
                 .omitted_custom_connector_ids
                 .contains(custom_connector_id)
         );
-        assert!(absent_vm.firewalls.as_ref().is_some_and(|entries| {
+        assert!(absent_sandbox.firewalls.as_ref().is_some_and(|entries| {
             entries.iter().any(
                 |entry| matches!(entry, FirewallEntry::Builtin { name, .. } if name == "slack"),
             )
         }));
         assert!(
-            !absent_vm
+            !absent_sandbox
                 .network_policies
                 .as_ref()
                 .unwrap()
                 .contains_key(original_name)
         );
         assert!(
-            absent_vm
+            absent_sandbox
                 .network_policies
                 .as_ref()
                 .unwrap()
                 .contains_key("slack")
         );
-        let slack_policy = &absent_vm.network_policies.as_ref().unwrap()["slack"];
+        let slack_policy = &absent_sandbox.network_policies.as_ref().unwrap()["slack"];
         assert!(slack_policy.allow.is_empty());
         assert_eq!(slack_policy.deny, ["chat:write"]);
         assert!(slack_policy.ask.is_empty());
         assert_eq!(slack_policy.unknown_policy, "deny");
         assert_eq!(
-            absent_vm.connector_routing_variables
+            absent_sandbox.connector_routing_variables
                 [&custom_connector_routing_key(custom_connector_id)],
             pinned_routing_variables
         );
@@ -1885,32 +1903,32 @@ mod tests {
                 .unwrap()
         );
         let restored = read_registry(harness.registry_path()).await.unwrap();
-        let restored_vm = &restored.vms["10.200.0.2"];
+        let restored_sandbox = &restored.sandboxes["10.200.0.2"];
         assert!(
-            !restored_vm
+            !restored_sandbox
                 .omitted_custom_connector_ids
                 .contains(custom_connector_id)
         );
         assert_eq!(
-            restored_vm.connector_routing_variables
+            restored_sandbox.connector_routing_variables
                 [&custom_connector_routing_key(custom_connector_id)],
             pinned_routing_variables
         );
         assert!(
-            restored_vm
+            restored_sandbox
                 .network_policies
                 .as_ref()
                 .unwrap()
                 .contains_key(restored_name)
         );
         assert!(
-            restored_vm
+            restored_sandbox
                 .network_policies
                 .as_ref()
                 .unwrap()
                 .contains_key("slack")
         );
-        assert!(restored_vm.firewalls.as_ref().is_some_and(|entries| {
+        assert!(restored_sandbox.firewalls.as_ref().is_some_and(|entries| {
             entries.iter().any(|entry| {
                 matches!(
                     entry,
@@ -1926,13 +1944,13 @@ mod tests {
     #[tokio::test]
     async fn oversized_registration_preserves_readable_registry() {
         let harness = RegistryHarness::new().await;
-        let existing = VmRegistration {
+        let existing = SandboxRegistration {
             run_id: "run-existing",
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &existing)
+            .register_sandbox("10.200.0.2", &existing)
             .await
             .unwrap();
         let previous_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
@@ -1941,14 +1959,14 @@ mod tests {
             "OVERSIZED".to_string(),
             "x".repeat(PROXY_REGISTRY_MAX_BYTES as usize),
         )]);
-        let oversized = VmRegistration {
+        let oversized = SandboxRegistration {
             run_id: "run-oversized",
             vars: Some(&oversized_vars),
             ..base_registration()
         };
         let error = harness
             .handle
-            .register_vm("10.200.0.3", &oversized)
+            .register_sandbox("10.200.0.3", &oversized)
             .await
             .unwrap_err();
 
@@ -1964,25 +1982,33 @@ mod tests {
             "a rejected registration must not replace the readable registry"
         );
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        assert!(loaded.vms.contains_key("10.200.0.2"));
-        assert!(!loaded.vms.contains_key("10.200.0.3"));
+        assert!(loaded.sandboxes.contains_key("10.200.0.2"));
+        assert!(!loaded.sandboxes.contains_key("10.200.0.3"));
 
-        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
-        let later = VmRegistration {
+        harness
+            .handle
+            .unregister_sandbox("10.200.0.2")
+            .await
+            .unwrap();
+        let later = SandboxRegistration {
             run_id: "run-later",
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.3", &later)
+            .register_sandbox("10.200.0.3", &later)
             .await
             .unwrap();
-        harness.handle.unregister_vm("10.200.0.3").await.unwrap();
+        harness
+            .handle
+            .unregister_sandbox("10.200.0.3")
+            .await
+            .unwrap();
         assert!(
             read_registry(harness.registry_path())
                 .await
                 .unwrap()
-                .vms
+                .sandboxes
                 .is_empty()
         );
     }
@@ -2003,7 +2029,7 @@ mod tests {
         ]);
         let runtime_targets = builtin_runtime_targets(&["github", "slack"]);
         let empty_padding = HashMap::from([("PADDING".to_string(), String::new())]);
-        let measured = VmRegistration {
+        let measured = SandboxRegistration {
             run_id: "run-near-limit",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
@@ -2013,7 +2039,7 @@ mod tests {
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &measured)
+            .register_sandbox("10.200.0.2", &measured)
             .await
             .unwrap();
         let normal_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
@@ -2041,14 +2067,18 @@ mod tests {
             .checked_sub(normal_bytes.len())
             .expect("test policies should grow when failed closed");
         assert!(total_fail_closed_growth > 0);
-        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
+        harness
+            .handle
+            .unregister_sandbox("10.200.0.2")
+            .await
+            .unwrap();
 
         let max_bytes = PROXY_REGISTRY_MAX_BYTES as usize;
         let padding_len = max_bytes
             .checked_sub(normal_bytes.len() + total_fail_closed_growth)
             .expect("measured registry should leave room for padding");
         let padding = HashMap::from([("PADDING".to_string(), "x".repeat(padding_len))]);
-        let near_limit = VmRegistration {
+        let near_limit = SandboxRegistration {
             run_id: "run-near-limit",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
@@ -2058,7 +2088,7 @@ mod tests {
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &near_limit)
+            .register_sandbox("10.200.0.2", &near_limit)
             .await
             .unwrap();
         let before_patch = tokio::fs::read(harness.registry_path()).await.unwrap();
@@ -2120,7 +2150,7 @@ mod tests {
             policy(&["repos.read"], &[], &[], "ask"),
         );
         let runtime_targets = builtin_runtime_targets(&["github"]);
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
@@ -2129,7 +2159,7 @@ mod tests {
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &registration)
+            .register_sandbox("10.200.0.2", &registration)
             .await
             .unwrap();
 
@@ -2171,9 +2201,9 @@ mod tests {
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
         let policy = loaded
-            .vms
+            .sandboxes
             .get("10.200.0.2")
-            .and_then(|vm| vm.network_policies.as_ref())
+            .and_then(|sandbox| sandbox.network_policies.as_ref())
             .and_then(|policies| policies.get("github"))
             .unwrap();
         assert_eq!(policy.allow, Vec::<String>::new());
@@ -2189,14 +2219,14 @@ mod tests {
         let target = ConnectorRuntimeTarget::Builtin {
             connector_slug: "github".to_string(),
         };
-        let without_policy = VmRegistration {
+        let without_policy = SandboxRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &without_policy)
+            .register_sandbox("10.200.0.2", &without_policy)
             .await
             .unwrap();
         let registry_before = tokio::fs::read(harness.registry_path()).await.unwrap();
@@ -2244,7 +2274,7 @@ mod tests {
             "github".to_string(),
             policy(&["repos.read"], &["issues.write"], &[], "allow"),
         );
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
@@ -2252,7 +2282,7 @@ mod tests {
         };
         harness
             .handle
-            .register_vm("10.200.0.2", &registration)
+            .register_sandbox("10.200.0.2", &registration)
             .await
             .unwrap();
 
@@ -2272,9 +2302,9 @@ mod tests {
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
         let policy = loaded
-            .vms
+            .sandboxes
             .get("10.200.0.2")
-            .and_then(|vm| vm.network_policies.as_ref())
+            .and_then(|sandbox| sandbox.network_policies.as_ref())
             .and_then(|policies| policies.get("github"))
             .unwrap();
         assert_eq!(policy.allow, Vec::<String>::new());
@@ -2320,9 +2350,9 @@ mod tests {
         ];
         harness
             .handle
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
                     connector_runtime_targets: Some(&runtime_targets),
@@ -2333,7 +2363,7 @@ mod tests {
             .unwrap();
         let mut registry = read_registry(harness.registry_path()).await.unwrap();
         registry
-            .vms
+            .sandboxes
             .get_mut("10.200.0.2")
             .unwrap()
             .firewalls
@@ -2374,7 +2404,10 @@ mod tests {
         ));
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        let policies = loaded.vms["10.200.0.2"].network_policies.as_ref().unwrap();
+        let policies = loaded.sandboxes["10.200.0.2"]
+            .network_policies
+            .as_ref()
+            .unwrap();
         assert_eq!(policies[custom_firewall_name].allow, ["custom.read"]);
         assert_eq!(policies[custom_firewall_name].unknown_policy, "allow");
         assert!(policies["slack"].allow.is_empty());
@@ -2397,22 +2430,22 @@ mod tests {
                     std::path::PathBuf::from(format!("/tmp/network-{run_id_owned}.jsonl"));
                 let proxy_path =
                     std::path::PathBuf::from(format!("/tmp/proxy-{run_id_owned}.jsonl"));
-                let registration = VmRegistration {
+                let registration = SandboxRegistration {
                     run_id: &run_id_owned,
                     network_log_path: &log_path,
                     proxy_log_path: &proxy_path,
                     ..base_registration()
                 };
-                h.register_vm(&ip, &registration).await.unwrap();
+                h.register_sandbox(&ip, &registration).await.unwrap();
             });
         }
         while let Some(result) = tasks.join_next().await {
             result.unwrap();
         }
 
-        // All 10 VMs should be registered (no lost updates).
+        // All 10 sandboxes should be registered (no lost updates).
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        assert_eq!(loaded.vms.len(), 10);
+        assert_eq!(loaded.sandboxes.len(), 10);
     }
 
     #[tokio::test]
@@ -2450,20 +2483,20 @@ mod tests {
             source_id: Some(source_id.to_string()),
         }];
 
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             firewalls: Some(&firewall_entries),
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.5", &registration)
+            .register_sandbox("10.200.0.5", &registration)
             .await
             .unwrap();
 
         // Verify firewall entries are stored in registry.
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.5").unwrap();
-        let stored = vm.firewalls.as_ref().unwrap();
+        let sandbox = loaded.sandboxes.get("10.200.0.5").unwrap();
+        let stored = sandbox.firewalls.as_ref().unwrap();
         assert_eq!(stored.len(), 1);
         let FirewallEntry::Inline { firewall, .. } = &stored[0] else {
             panic!("expected inline firewall entry");
@@ -2480,8 +2513,8 @@ mod tests {
             .await
             .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let vm_json = &value["vms"]["10.200.0.5"];
-        let fw = &vm_json["firewalls"][0];
+        let sandbox_json = &value["sandboxes"]["10.200.0.5"];
+        let fw = &sandbox_json["firewalls"][0];
         assert_eq!(fw["kind"], "inline");
         assert_eq!(fw["sourceId"], source_id);
         assert_eq!(fw["firewall"]["name"], "gmail");
@@ -2497,15 +2530,15 @@ mod tests {
         assert_eq!(perms[0]["rules"][0], "GET /messages");
         assert_eq!(perms[0]["rules"][1], "GET /messages/{id}");
 
-        // Empty billableFirewalls round-trips as [] (Python reads vm_info["billableFirewalls"]).
-        assert_eq!(vm_json["billableFirewalls"], serde_json::json!([]));
+        // Empty billableFirewalls round-trips as [] (Python reads sandbox_info["billableFirewalls"]).
+        assert_eq!(sandbox_json["billableFirewalls"], serde_json::json!([]));
     }
 
     #[tokio::test]
     async fn registry_serializes_billable_firewalls() {
         let harness = RegistryHarness::new().await;
         let billable = ["model-provider:vm0".to_string()];
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             cli_agent_type: "codex",
             billable_firewalls: &billable,
             model_usage_provider: Some("claude-sonnet-4-6"),
@@ -2513,32 +2546,32 @@ mod tests {
         };
         harness
             .handle
-            .register_vm("10.200.0.9", &registration)
+            .register_sandbox("10.200.0.9", &registration)
             .await
             .unwrap();
 
         // Guard the TS↔Rust↔Python wire contract: the camelCase key is what
-        // mitm-addon reads via `vm_info["billableFirewalls"]`.
+        // mitm-addon reads via `sandbox_info["billableFirewalls"]`.
         let raw = tokio::fs::read_to_string(harness.registry_path())
             .await
             .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(
-            value["vms"]["10.200.0.9"]["billableFirewalls"],
+            value["sandboxes"]["10.200.0.9"]["billableFirewalls"],
             serde_json::json!(["model-provider:vm0"])
         );
         assert_eq!(
-            value["vms"]["10.200.0.9"]["cliAgentType"],
+            value["sandboxes"]["10.200.0.9"]["cliAgentType"],
             serde_json::json!("codex")
         );
         assert_eq!(
-            value["vms"]["10.200.0.9"]["modelUsageProvider"],
+            value["sandboxes"]["10.200.0.9"]["modelUsageProvider"],
             serde_json::json!("claude-sonnet-4-6")
         );
     }
 
     #[tokio::test]
-    async fn register_vm_stores_encrypted_secrets() {
+    async fn register_sandbox_stores_encrypted_secrets() {
         let harness = RegistryHarness::new().await;
 
         let metadata = HashMap::from([(
@@ -2550,21 +2583,21 @@ mod tests {
                 metadata_key: Some("codex-oauth-token".to_string()),
             },
         )]);
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
             secret_connector_metadata_map: Some(&metadata),
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.6", &registration)
+            .register_sandbox("10.200.0.6", &registration)
             .await
             .unwrap();
 
         let loaded = read_registry(harness.registry_path()).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.6").unwrap();
+        let sandbox = loaded.sandboxes.get("10.200.0.6").unwrap();
         assert_eq!(
-            vm.encrypted_secrets.as_deref(),
+            sandbox.encrypted_secrets.as_deref(),
             Some("iv_b64:tag_b64:data_b64")
         );
 
@@ -2574,15 +2607,17 @@ mod tests {
             .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(
-            value["vms"]["10.200.0.6"]["encryptedSecrets"],
+            value["sandboxes"]["10.200.0.6"]["encryptedSecrets"],
             "iv_b64:tag_b64:data_b64"
         );
         assert_eq!(
-            value["vms"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]["sourceUserId"],
+            value["sandboxes"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]
+                ["sourceUserId"],
             "user-123"
         );
         assert_eq!(
-            value["vms"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]["sourceId"],
+            value["sandboxes"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]
+                ["sourceId"],
             "550e8400-e29b-41d4-a716-446655440000"
         );
     }
@@ -2611,14 +2646,14 @@ mod tests {
             source_id: None,
         }];
 
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             firewalls: Some(&firewall_entries),
             encrypted_secrets: Some("enc_data"),
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.7", &registration)
+            .register_sandbox("10.200.0.7", &registration)
             .await
             .unwrap();
 
@@ -2627,7 +2662,7 @@ mod tests {
             .await
             .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["firewall"]["apis"][0];
+        let api = &value["sandboxes"]["10.200.0.7"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
         // headers should be empty object
         assert_eq!(api["auth"]["headers"], serde_json::json!({}));
@@ -2664,14 +2699,14 @@ mod tests {
             source_id: None,
         }];
 
-        let registration = VmRegistration {
+        let registration = SandboxRegistration {
             firewalls: Some(&firewall_entries),
             encrypted_secrets: Some("enc_data"),
             ..base_registration()
         };
         harness
             .handle
-            .register_vm("10.200.0.8", &registration)
+            .register_sandbox("10.200.0.8", &registration)
             .await
             .unwrap();
 
@@ -2680,7 +2715,7 @@ mod tests {
             .await
             .unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["firewall"]["apis"][0];
+        let api = &value["sandboxes"]["10.200.0.8"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(
             api["auth"]["query"],
             serde_json::json!({"api_key": "${{ secrets.SERPAPI_TOKEN }}"})

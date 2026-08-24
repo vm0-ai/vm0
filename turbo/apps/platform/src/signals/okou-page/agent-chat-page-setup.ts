@@ -100,13 +100,7 @@ export const setupAgentChatPage$ = command(
     const prompt = params.get("prompt");
     const queue = params.get("queue");
     if (agentDraft && !prompt) {
-      await set(
-        loadAgentDraft$,
-        agentId,
-        agentDraft.draft,
-        agentDraft.isNew,
-        signal,
-      );
+      await set(loadAgentDraft$, agentId, agentDraft, signal);
     }
     if (prompt) {
       const targetDraft = agentDraft?.draft ?? get(talkDraft$);

@@ -539,15 +539,19 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/model-selection",
     paramName: "id",
   },
+  // Neutral rather than branded: #28917 retired this row's branded forms, so a
+  // branded request here would 404 before the parameter check it exists to
+  // exercise.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/computer-use-host",
+    path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
   { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
+  // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/unpin",
+    path: "/api/chat-threads/:id/unpin",
     paramName: "id",
   },
   // Neutral rather than branded: #28711 retired this row's branded forms, so a

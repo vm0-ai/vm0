@@ -1,4 +1,4 @@
-"""Registry VM firewall entry resolution."""
+"""Registry sandbox firewall entry resolution."""
 
 import copy
 import uuid
@@ -64,8 +64,8 @@ def _apply_source_id(firewall: dict, source_id: str | None) -> None:
             api["sourceId"] = source_id
 
 
-def _connector_runtime_target_ids(vm: dict) -> tuple[set[str], set[str]]:
-    raw_targets = vm.get("connectorRuntimeTargets", [])
+def _connector_runtime_target_ids(sandbox: dict) -> tuple[set[str], set[str]]:
+    raw_targets = sandbox.get("connectorRuntimeTargets", [])
     if not isinstance(raw_targets, list):
         raise FirewallEntryResolutionError("connectorRuntimeTargets must be a list")
     builtin_slugs: set[str] = set()
@@ -113,7 +113,7 @@ class ResolvedFirewallEntries:
     """Resolved registry firewall configs and aligned builtin cache keys.
 
     `firewalls` contains the runtime firewall configs that registry state should
-    use after builtin and inline expansion. `firewalls is None` preserves a VM
+    use after builtin and inline expansion. `firewalls is None` preserves a sandbox
     that did not provide a `firewalls` entry at all.
 
     When firewalls are present, `builtin_cache_keys` is positionally aligned
@@ -304,12 +304,12 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
 
 
 def resolve_firewall_entries(
-    vm: dict,
+    sandbox: dict,
     *,
     builtin_firewall_catalog_cache_path: str | None = None,
     builtin_firewall_catalog_snapshot: BuiltinFirewallCatalogSnapshot | None = None,
 ) -> ResolvedFirewallEntries:
-    """Expand a registry VM's firewall entries into runtime firewall configs.
+    """Expand a registry sandbox's firewall entries into runtime firewall configs.
 
     Supported entry kinds are `builtin` and `inline`. Builtins resolve from the
     supplied catalog snapshot when provided, otherwise from the catalog cache
@@ -322,7 +322,7 @@ def resolve_firewall_entries(
     non-empty string ID; absent, empty, or non-string IDs are generated.
     Generated IDs use `<runId>:<index>`, where the zero-based index advances over
     dictionary API entries in resolved firewall order, including entries whose
-    IDs are preserved. Callers must validate `vm["runId"]` as a non-empty string
+    IDs are preserved. Callers must validate `sandbox["runId"]` as a non-empty string
     before calling.
 
     Builtin names absent from a valid current catalog are omitted and returned
@@ -331,7 +331,7 @@ def resolve_firewall_entries(
     kinds, invalid builtin base URL templates, and builtin host-policy validation
     failures.
     """
-    raw_firewalls = vm.get("firewalls")
+    raw_firewalls = sandbox.get("firewalls")
     if raw_firewalls is None:
         return ResolvedFirewallEntries(None, None)
     if not isinstance(raw_firewalls, list):
@@ -340,7 +340,7 @@ def resolve_firewall_entries(
     resolved: list[dict] = []
     builtin_cache_keys: list[BuiltinFirewallCoreCacheKey | None] = []
     omitted_builtin_names: set[str] = set()
-    builtin_target_slugs, custom_target_ids = _connector_runtime_target_ids(vm)
+    builtin_target_slugs, custom_target_ids = _connector_runtime_target_ids(sandbox)
     for entry in raw_firewalls:
         if not isinstance(entry, dict):
             raise FirewallEntryResolutionError("firewall entries must be objects")
@@ -401,7 +401,7 @@ def resolve_firewall_entries(
             continue
         raise FirewallEntryResolutionError("firewall entries must use a supported kind")
 
-    _assign_firewall_api_ids(resolved, vm["runId"])
+    _assign_firewall_api_ids(resolved, sandbox["runId"])
     return ResolvedFirewallEntries(
         resolved,
         tuple(builtin_cache_keys),

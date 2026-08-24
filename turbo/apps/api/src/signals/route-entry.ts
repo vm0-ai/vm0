@@ -232,13 +232,49 @@ export function withApiNamespaceAliases(
  *   the ~2 day bundle window rather than the two-hour one. Group the log by
  *   `x_client_type` before reading a silence as a drain.
  *
- * #28916 then took twenty-six more, leaving 116. Those rows are not silent
- * rows: each one carried branded traffic early in the retained window and went
- * to exactly zero once its producer cut over, with the neutral path taking the
- * same calls from the same callers on the same day. A crossover measured
- * per row is stronger evidence than silence, because it names the build that
- * stopped emitting the branded form rather than only the absence of a request.
- * Two more facts about reading this log, on top of the two above:
+ * #28917 then took fifty-three of the 142, leaving 89. Every one of them was
+ * silent on both branded forms across the whole retained window — 2026-08-20
+ * 06:34Z to 2026-08-24 08:28Z, 4.1 days, all 685 distinct branded templates
+ * pulled without truncation and matched with `:param` rewritten to `[^/]+`.
+ * Three whole slices drained: #28417 (maps), #28357 (weather) and #28418
+ * (browser, finance, SEO) no longer have a row here.
+ *
+ * Silence alone is weak for the rarer rows, so it was corroborated rather than
+ * trusted: for thirty-five of the fifty-three the neutral path carried traffic
+ * inside the same window while both branded forms stayed at zero, and no
+ * shipped CLI, desktop or platform build emits a branded literal for any of
+ * them. The desktop build's entire hardcoded surface is `auth/me`,
+ * `computer-use/{heartbeat,host/*,hosts/start}`, `desktop/{updates,
+ * migration-policy}`, `feature-switches` and `org`, and every one of those
+ * rows is kept.
+ *
+ * Three rows the #28917 inventory listed were held back, and each names a way
+ * a zero-count reading fails:
+ *
+ * - `integrations/teams/oauth/callback`. `callbackRedirectUri` in
+ *   `routes/teams-oauth.ts` still emits its `zero` form for the VM0 brand, so
+ *   the row is an active producer target. No window can drain it and no count
+ *   can retire it; see the comment on the row itself.
+ * - `computer-use/hosts/start` and `computer-use/host/stop`. Both are
+ *   hardcoded in every Desktop build up to 0.38.53, and those builds were
+ *   still sending branded `heartbeat` and `host/commands/next` inside this
+ *   window. Start and stop fire once per session, so at the measured rate the
+ *   branded count they should produce over four days is under one request.
+ *   Zero is not a drain; it is the absence of statistical power.
+ *
+ * The general rule those three leave behind: a zero count retires a row only
+ * when the row's caller both has a bounded window and would have been expected
+ * to appear in the window at all. Check the call rate before reading a silence.
+ *
+ * #28916 then took twenty-six more, leaving 63. Its set is disjoint from
+ * #28917's: those rows were silent, these were not. Each of these carried
+ * branded traffic early in the same window and went to exactly zero once its
+ * producer cut over, with the neutral path taking the same calls from the same
+ * callers on the same day. Across the twenty-six the crossover is direct —
+ * branded 10/2415/27/0/0 against neutral 0/3425/6605/13822/3810 on 08-20
+ * through 08-24. An observed cutover is stronger than a silence, because it
+ * names the build that stopped emitting the branded form rather than only the
+ * absence of a request. Two more facts about reading this log:
  *
  * - `x_client_type` is absent on some released callers, so it cannot be the
  *   only field a caller is classified by. The desktop Computer Use host sends
@@ -251,37 +287,19 @@ export function withApiNamespaceAliases(
  *   a write command finishes, so its silence measures how often that happened,
  *   not whether the caller of `host/commands/next` — which this table still
  *   holds — is still there. Read a row against the traffic of the loop it
- *   belongs to, not only against its own.
+ *   belongs to, not only against its own. This is #28917's call-rate rule
+ *   reached from the other direction.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
-  // the URL by hand rather than from the contract, so the path it holds shipped
-  // independently of this table — and the `zero` form was reachable through the
-  // blanket expansion until the contract moved. Both are owed.
-  //
-  // Surface: commit-addressed CLI packages, not web clients. A run execution
-  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
-  // a later API deploy, so the exposure is the context drain described in
-  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
-  // claimed execution and finalization lifetime, with execution bounded by the
-  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
-  // drain is the floor for removal, not the condition: these rows retire under
-  // #26701's evidence rules like every other row in this file.
-  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
   // #28421: personal model providers, onboarding, team, and user preferences.
-  "/api/me/model-provider-accounts/:id/activate": [
-    "/api/okou/me/model-provider-accounts/:id/activate",
-    "/api/zero/me/model-provider-accounts/:id/activate",
-  ],
+  // #28917 removed `me/model-provider-accounts/:id/activate` and
+  // `onboarding/complete`: both branded forms were silent across the whole
+  // retained window while their neutral paths carried traffic.
   "/api/me/model-providers": [
     "/api/okou/me/model-providers",
     "/api/zero/me/model-providers",
-  ],
-  "/api/onboarding/complete": [
-    "/api/okou/onboarding/complete",
-    "/api/zero/onboarding/complete",
   ],
   "/api/onboarding/status": [
     "/api/okou/onboarding/status",
@@ -296,61 +314,15 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/user-preferences",
     "/api/zero/user-preferences",
   ],
-  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
-  // form (`callWeather` built it by hand rather than from the contract, so it
-  // shipped independently of this path), and the `zero` form was reachable
-  // through the blanket expansion until the contract moved. Both are owed.
-  //
-  // Surface: commit-addressed CLI packages pinned by run contexts created
-  // before this deploy, so the branded form outlives the deploy by the queue
-  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
-  // external holder of the `zero` brand path, which has no time box. Removal
-  // therefore follows the table's #26701 evidence gate above, not a clock.
-  "/api/weather/current": [
-    "/api/okou/weather/current",
-    "/api/zero/weather/current",
-  ],
-  // #28418: the browser, finance, and SEO routes. The slice also covered
-  // `browsers/use` and the MCP connector routes; #28711 removed those rows
-  // because the log measured only CLI callers on their branded forms, so the
-  // pinning window bounded them and the drain had already happened. The callers
-  // the remaining rows keep working are a released web or app client, which holds the
-  // branded path until a refresh loads a build that derives the neutral one
-  // (~2 days), and a CLI artifact pinned by an execution context's
-  // `CLI_PKG_URL`, which holds it for that context's queue and claimed-run
-  // lifetime. Neither window is the removal condition on its own: a row is
-  // removed under #26701's evidence rules, because the request log retains
-  // about three days and cannot tell a drained caller from a weekly one.
-  "/api/browsers/current": [
-    "/api/okou/browsers/current",
-    "/api/zero/browsers/current",
-  ],
-  "/api/browsers/lease": [
-    "/api/okou/browsers/lease",
-    "/api/zero/browsers/lease",
-  ],
-  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
-  "/api/finance/profile": [
-    "/api/okou/finance/profile",
-    "/api/zero/finance/profile",
-  ],
-  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
-  "/api/seo/backlinks-summary": [
-    "/api/okou/seo/backlinks-summary",
-    "/api/zero/seo/backlinks-summary",
-  ],
-  "/api/seo/keyword-ideas": [
-    "/api/okou/seo/keyword-ideas",
-    "/api/zero/seo/keyword-ideas",
-  ],
-  // #28420. Every caller of these five derives its URL from the contract, so
+  // #28420. Every caller of these derives its URL from the contract, so
   // nothing in this repository still asks for a branded form. Released builds
   // do: a browser tab holding already-loaded platform code keeps calling the
   // `okou` path it was built against until it navigates or reloads, which is
   // the ~2 day old-web-client window in `docs/fallback.md` section 7. The
   // `zero` form was reachable through the blanket expansion until the contract
   // moved. Both are owed, and both are removable only under #26701's evidence
-  // rules, like every other row in this table.
+  // rules, like every other row in this table. #28917 removed
+  // `chat-thread-unreads/mark-read` on zero-traffic evidence.
   "/api/attribution/signup": [
     "/api/okou/attribution/signup",
     "/api/zero/attribution/signup",
@@ -363,50 +335,35 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-thread-unreads",
     "/api/zero/chat-thread-unreads",
   ],
-  "/api/chat-thread-unreads/mark-read": [
-    "/api/okou/chat-thread-unreads/mark-read",
-    "/api/zero/chat-thread-unreads/mark-read",
-  ],
   "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
-  // #28422: the per-artifact catalog read, logs, the platform realtime token,
-  // and the run reads. The slice also covered the catalog collection, push
-  // subscriptions and the agent telemetry read; #28916 removed those three
-  // rows because the platform build that held their branded forms cut over
-  // mid-window and the branded traffic stopped dead.
-  "/api/artifacts/catalog/:artifactId": [
-    "/api/okou/artifacts/catalog/:artifactId",
-    "/api/zero/artifacts/catalog/:artifactId",
-  ],
+  // #28422: logs and the platform realtime token, all that is left of the
+  // artifact catalog, push subscription and run rows the slice moved. #28917
+  // removed the per-artifact catalog read and every run row but the agent
+  // telemetry read — `runs/:id`, its `context`, `network` and `runner` reads,
+  // and `runs/queue` — because their branded forms were silent across the whole
+  // retained window while the neutral paths carried the same callers. #28916
+  // then removed the three that were not silent — the catalog collection, push
+  // subscriptions and that agent telemetry read — because the platform build
+  // holding their branded forms cut over mid-window and the branded traffic
+  // stopped dead.
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
   "/api/realtime/token": [
     "/api/okou/realtime/token",
     "/api/zero/realtime/token",
   ],
-  "/api/runs/:id": ["/api/okou/runs/:id", "/api/zero/runs/:id"],
-  "/api/runs/:id/context": [
-    "/api/okou/runs/:id/context",
-    "/api/zero/runs/:id/context",
-  ],
-  "/api/runs/:id/network": [
-    "/api/okou/runs/:id/network",
-    "/api/zero/runs/:id/network",
-  ],
-  "/api/runs/:id/runner": [
-    "/api/okou/runs/:id/runner",
-    "/api/zero/runs/:id/runner",
-  ],
-  "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
   // #28459: the chat threads themselves, the chat event reader, the per-thread
-  // browser read, per-thread goals, and workflow automations.
+  // browser read, and workflow automations.
   // The slice also covered shared threads, queue position and the X image
   // share; #28709 removed those rows on zero-traffic evidence, which is why the
   // `okou-app` share worker no longer appears among the holders below. #28711
   // removed the search reader, `chat-threads/:id/metadata` and
-  // `chat-threads/:id/rename` on drained-traffic evidence, and #28916 removed
-  // `chat-threads/:id/model-selection` and the three browser-session writes
-  // (`browser/open`, `browser/lease`, `browser/close`) on cutover evidence: the
-  // branded forms carried platform traffic through 08-22 and then stopped
-  // while the neutral forms picked the same calls up. Every
+  // `chat-threads/:id/rename` on drained-traffic evidence, and #28917 removed
+  // `chat-threads/:id/computer-use-host`, `chat-threads/:id/unpin` and both
+  // per-thread goal rows, which is why goals no longer appear below. #28916
+  // removed `chat-threads/:id/model-selection` and the three browser-session
+  // writes (`browser/open`, `browser/lease`, `browser/close`) on cutover
+  // evidence: their branded forms carried platform traffic through 08-22 and
+  // then stopped while the neutral forms picked the same calls up. Every
   // caller in this repository derives its URL from the contract, so nothing
   // here still asks for a branded form. Released builds do: a browser tab
   // holding already-loaded platform code keeps calling the `okou` path it was
@@ -424,10 +381,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:id",
     "/api/zero/chat-threads/:id",
   ],
-  "/api/chat-threads/:id/computer-use-host": [
-    "/api/okou/chat-threads/:id/computer-use-host",
-    "/api/zero/chat-threads/:id/computer-use-host",
-  ],
   "/api/chat-threads/:id/draft": [
     "/api/okou/chat-threads/:id/draft",
     "/api/zero/chat-threads/:id/draft",
@@ -439,10 +392,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/chat-threads/:id/pin": [
     "/api/okou/chat-threads/:id/pin",
     "/api/zero/chat-threads/:id/pin",
-  ],
-  "/api/chat-threads/:id/unpin": [
-    "/api/okou/chat-threads/:id/unpin",
-    "/api/zero/chat-threads/:id/unpin",
   ],
   "/api/chat-threads/:threadId/artifacts": [
     "/api/okou/chat-threads/:threadId/artifacts",
@@ -460,14 +409,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:threadId/event-snapshot",
     "/api/zero/chat-threads/:threadId/event-snapshot",
   ],
-  "/api/chat-threads/:threadId/goal": [
-    "/api/okou/chat-threads/:threadId/goal",
-    "/api/zero/chat-threads/:threadId/goal",
-  ],
-  "/api/chat-threads/:threadId/goal/pause": [
-    "/api/okou/chat-threads/:threadId/goal/pause",
-    "/api/zero/chat-threads/:threadId/goal/pause",
-  ],
   "/api/chat-threads/:threadId/workflow-automations": [
     "/api/okou/chat-threads/:threadId/workflow-automations",
     "/api/zero/chat-threads/:threadId/workflow-automations",
@@ -481,69 +422,41 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/chat-threads/snapshot",
   ],
   "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
-  // #28457: the billing surface — concurrency checkout and subscriptions,
-  // credit purchase, usage-pack checkout, the Stripe portal, status, restore,
-  // and code redemption. #28916 removed six of the slice's rows — plan
-  // checkout, invoices, `usage-pack-catalog`, `usage-pack-credits`,
-  // `usage-pack-migration` and `usage-pack-subscription` — because
-  // the platform build that held their branded forms cut over mid-window and
-  // the branded traffic went to zero; the last branded request on any of the
-  // six was `billing/checkout` at 2026-08-22 20:08 UTC. Every caller derives
-  // its URL from the contract, so nothing in this repository asks for a branded
-  // form, but released builds still do: an
+  // #28457: the billing surface — plan and usage-pack checkout, concurrency
+  // subscriptions, credit purchase, the Stripe portal, invoices, and code
+  // redemption, of which only the status read is still owed. Every caller
+  // derives its URL from the contract, so nothing in
+  // this repository asks for a branded form, but released builds still do: an
   // already-loaded platform tab keeps calling the `okou` path it was built
   // against for the ~2 day old-web-client window in `docs/fallback.md` section
   // 7, and a CLI package pinned by an execution context's `CLI_PKG_URL` embeds
   // the contract path it was built from for that context's queue and claimed-run
   // lifetime. The `zero` form was reachable through the blanket expansion until
-  // the contract moved, and `/api/zero/billing/concurrency-checkout/preview`
-  // carried measured traffic of its own, so it is owed by evidence rather than
-  // by symmetry — #28701 dropped its `LEGACY_ZERO_PATHS` row because these rows
-  // are what serve it, not because the evidence expired. Both forms are
-  // removable only under #26701's evidence rules, like every other row here.
-  "/api/billing/concurrency-checkout": [
-    "/api/okou/billing/concurrency-checkout",
-    "/api/zero/billing/concurrency-checkout",
-  ],
-  "/api/billing/concurrency-checkout/preview": [
-    "/api/okou/billing/concurrency-checkout/preview",
-    "/api/zero/billing/concurrency-checkout/preview",
-  ],
-  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/preview": [
-    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
-    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
-  ],
-  "/api/billing/credit-checkout/confirm": [
-    "/api/okou/billing/credit-checkout/confirm",
-    "/api/zero/billing/credit-checkout/confirm",
-  ],
-  "/api/billing/portal": [
-    "/api/okou/billing/portal",
-    "/api/zero/billing/portal",
-  ],
-  "/api/billing/redeem-code": [
-    "/api/okou/billing/redeem-code",
-    "/api/zero/billing/redeem-code",
-  ],
-  "/api/billing/restore": [
-    "/api/okou/billing/restore",
-    "/api/zero/billing/restore",
-  ],
+  // the contract moved. Both forms are removable only under #26701's evidence
+  // rules, like every other row here.
+  //
+  // #28917 removed nine of these rows — both concurrency-checkout rows, the
+  // concurrency subscription change preview, the credit-checkout confirm, the
+  // Stripe portal, code redemption, purchase restore, the usage-pack checkout,
+  // and both usage-pack subscription-change rows. Several of them fire only on
+  // a user action that need not occur inside a four-day window, so the reading
+  // rests on the corroborating sweep as much as on the silence: no shipped CLI,
+  // desktop, or platform build emits a branded literal for any of them, and
+  // every caller derives its URL from a contract that has declared the neutral
+  // path since #28457. `/api/zero/billing/concurrency-checkout/preview` was
+  // among the nine: it carried measured traffic when #28701 dropped its
+  // `LEGACY_ZERO_PATHS` row and these rows are what served it afterwards, but
+  // the retained window recorded no request on either branded form.
+  //
+  // #28916 then removed the six that were not silent — plan checkout, invoices,
+  // `usage-pack-catalog`, `usage-pack-credits`, `usage-pack-migration` and
+  // `usage-pack-subscription`. Those did carry branded traffic, and it stopped
+  // when the platform build holding the branded forms cut over; the last
+  // branded request on any of the six was `billing/checkout` at 2026-08-22
+  // 20:08 UTC, with the neutral paths taking the same callers from 08-23 on.
   "/api/billing/status": [
     "/api/okou/billing/status",
     "/api/zero/billing/status",
-  ],
-  "/api/billing/usage-pack-checkout": [
-    "/api/okou/billing/usage-pack-checkout",
-    "/api/zero/billing/usage-pack-checkout",
-  ],
-  "/api/billing/usage-pack-subscription/subscription-change/confirm": [
-    "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
-    "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
-  ],
-  "/api/billing/usage-pack-subscription/subscription-change/preview": [
-    "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
-    "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
   ],
   // #28466: the desktop Computer Use family. The highest-traffic branded family
   // in the repository — about 716,000 requests over the retained request-log
@@ -562,6 +475,18 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // Desktop build, and the log measured no Desktop caller on their branded
   // forms at all. The host endpoints the Desktop build hardcodes are untouched.
   //
+  // #28917 measured `hosts/start` and `host/stop` silent on both branded forms
+  // and kept them anyway, because for this family silence is not drain
+  // evidence. Both are hardcoded — see `computer-use-host.ts` at 5edd3c9c^ —
+  // in every Desktop build up to 0.38.53, and those builds were still sending
+  // `/api/okou/computer-use/heartbeat` and `/api/okou/computer-use/host/
+  // commands/next` inside the same window. Start and stop fire once per
+  // session, so the branded count they should produce over four days is under
+  // one request: the neutral paths took ~70 each against ~130,000 neutral
+  // `host/commands/next`. Zero is what a fully live caller looks like at that
+  // rate. Removing them would also strand a build that can still poll and
+  // heartbeat but can no longer open or close a session.
+  //
   // Four of these paths — `host/commands/next`, `audit-events`, `heartbeat`,
   // and `hosts/start` — were served by `LEGACY_ZERO_PATHS` before this move and
   // are served by these rows after it: the contract no longer declares a
@@ -570,15 +495,16 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // these follows #26701's evidence rules like every other row here.
   //
   // #28916 listed `audit-events` and `host/commands/:commandId/complete` for
-  // removal and both were kept, because the evidence that put them on the list
-  // does not hold once the caller is identified. All of their branded traffic
-  // came from the desktop host loop, which sends no client headers and shows up
-  // as `user_agent: node` with a null `x_client_type` — the same installed
-  // build this comment names, not an anonymous caller. `complete` is worse than
-  // quiet: it is only called when a write command finishes, so its silence
-  // measures how often that happened while `host/commands/next`, which this
-  // table still holds for the same build, kept being polled. Removing it would
-  // 404 the completion half of a loop whose polling half is deliberately kept.
+  // removal and both were kept, for the mirror image of #28917's reason. All of
+  // their branded traffic came from the desktop host loop, which sends no
+  // client headers and shows up as `user_agent: node` with a null
+  // `x_client_type` — the same installed build this comment names, not the
+  // anonymous caller a `x_client_type`-only grouping reported. `complete` is
+  // worse than quiet: it is only called when a write command finishes, so its
+  // silence measures how often that happened while `host/commands/next`, which
+  // this table still holds for the same build, kept being polled. Removing it
+  // would 404 the completion half of a loop whose polling half is kept on
+  // purpose, which is the same failure `hosts/start` and `host/stop` avoid.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
@@ -613,11 +539,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28423: the integration control plane and the CLI messaging and file
   // surfaces. The slice covered Feishu, Slack, Microsoft Teams, Telegram,
   // GitHub, AgentPhone and Strapi; #28709 removed the Telegram, GitHub,
-  // AgentPhone and Feishu messaging and file rows on zero-traffic evidence, so
-  // what remains is the Slack messaging and file surface plus the Feishu,
-  // Slack and Strapi control-plane reads. #28916 then removed
-  // `integrations/teams/connect`, the last Teams row here, on cutover evidence.
-  // The #28709 removal also retired
+  // AgentPhone and Feishu messaging and file rows on zero-traffic evidence, and
+  // #28917 removed the Feishu and Strapi control-plane reads on the same
+  // evidence. #28916 then removed `integrations/teams/connect`, the last Teams
+  // row here, on cutover evidence, so what remains is the Slack messaging and
+  // file surface plus the Slack control-plane read. The #28709 removal also
+  // retired
   // `downloadFeishuFile` and `downloadPhoneFile`, the two CLI callers that
   // built a branded URL by hand rather than from the contract. Every remaining
   // caller derives its URL from the contract, which a published CLI package
@@ -634,10 +561,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
-  "/api/integrations/feishu": [
-    "/api/okou/integrations/feishu",
-    "/api/zero/integrations/feishu",
-  ],
   "/api/integrations/slack": [
     "/api/okou/integrations/slack",
     "/api/zero/integrations/slack",
@@ -662,22 +585,21 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/integrations/slack/upload-file/materialize",
     "/api/zero/integrations/slack/upload-file/materialize",
   ],
-  "/api/integrations/strapi": [
-    "/api/okou/integrations/strapi",
-    "/api/zero/integrations/strapi",
-  ],
   // #28460: the connector catalog, the connector connections and their
   // authorization starts, the custom connectors, the model provider
   // connections, and the user permission grants. #28711 removed the slice's
   // `connector-catalog/:connectorSlug/permissions`, `connectors`,
   // `connectors/:connectorSlug` and `connectors/diagnostics/check` rows once
-  // the log showed their callers drained, and #28916 removed
-  // `connector-catalog/discovery`, `connectors/:connectorSlug/oauth/start` and
-  // the `user-permission-grants` collection on cutover evidence.
-  // `/api/connector-catalog/status` stays: an earlier pass batched these rows
-  // into one APL `case()`, which returns the first match, so
-  // `connector-catalog/:connectorSlug` absorbed its seven requests and hid
-  // them. Attribute a logged path to every row whose pattern matches it.
+  // the log showed their callers drained, and #28917 removed
+  // `connector-catalog/diagnostics`, `connectors/:connectorSlug/manual-grant`,
+  // `model-provider-connections` and `user-permission-grants/apply` on
+  // zero-traffic evidence. #28916 removed `connector-catalog/discovery`,
+  // `connectors/:connectorSlug/oauth/start` and the `user-permission-grants`
+  // collection on cutover evidence. `/api/connector-catalog/status` stays: an
+  // earlier pass batched these rows into one APL `case()`, which returns the
+  // first match, so `connector-catalog/:connectorSlug` absorbed its seven
+  // requests and hid them. Attribute a logged path to every row whose pattern
+  // matches it.
   //
   // Two surfaces hold the branded paths
   // that remain. A released web or app build keeps calling the form it was
@@ -691,29 +613,13 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/connector-catalog/:connectorSlug",
     "/api/zero/connector-catalog/:connectorSlug",
   ],
-  "/api/connector-catalog/diagnostics": [
-    "/api/okou/connector-catalog/diagnostics",
-    "/api/zero/connector-catalog/diagnostics",
-  ],
   "/api/connector-catalog/status": [
     "/api/okou/connector-catalog/status",
     "/api/zero/connector-catalog/status",
   ],
-  "/api/connectors/:connectorSlug/manual-grant": [
-    "/api/okou/connectors/:connectorSlug/manual-grant",
-    "/api/zero/connectors/:connectorSlug/manual-grant",
-  ],
   "/api/custom-connectors": [
     "/api/okou/custom-connectors",
     "/api/zero/custom-connectors",
-  ],
-  "/api/model-provider-connections": [
-    "/api/okou/model-provider-connections",
-    "/api/zero/model-provider-connections",
-  ],
-  "/api/user-permission-grants/apply": [
-    "/api/okou/user-permission-grants/apply",
-    "/api/zero/user-permission-grants/apply",
   ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes, of
   // which #28709 kept only the Slack rows — the Teams and Feishu connect and
@@ -769,13 +675,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/desktop/updates/:channel/:platform/:arch/release",
     "/api/zero/desktop/updates/:channel/:platform/:arch/release",
   ],
-  // #28462: feature switches, model policies, the Codex device-auth sessions,
-  // the org profile and invite routes, and the usage member read. #28916
-  // removed the `model-providers` collection, `org/logo`, `org/members` and
-  // `usage/record` on cutover evidence — all four were platform-held, and the
-  // build holding their branded forms cut over on 08-21. Three surfaces hold
-  // the branded paths that remain, and the widest one is why the rows matter
-  // more here than in most slices:
+  // #28462: feature switches, model policies, org-level model providers and
+  // their device-auth sessions, the org profile and membership routes, and the
+  // usage reads, of which only feature switches, model policies and the org
+  // profile are still owed. Three surfaces hold these branded paths open, and
+  // the widest one is why the rows matter more here than in most slices:
   //
   // - An installed desktop build, which hardcodes `/api/okou/org` and
   //   `/api/okou/feature-switches` rather than deriving them from a contract.
@@ -785,6 +689,16 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // - A commit-addressed CLI package pinned by an execution context's
   //   `CLI_PKG_URL`, draining over that context's queue lifetime plus claimed
   //   execution bounded by the runner's 2h `JOB_TIMEOUT`.
+  //
+  // #28917 removed the three `model-providers/codex/device-auth/sessions`
+  // rows, the three `org/invite` rows, and `usage/members`. None of them has a
+  // desktop caller — the installed build hardcodes only `/api/okou/org` and
+  // `/api/okou/feature-switches`, both kept — and every one was silent on both
+  // branded forms across the retained window.
+  //
+  // #28916 removed the four that were not silent — the `model-providers`
+  // collection, `org/logo`, `org/members` and `usage/record`. All four were
+  // platform-held, and the build holding their branded forms cut over on 08-21.
   //
   // The CI bootstrap steps in `.github/workflows/turbo.yml` used to call
   // `/api/okou/model-providers` on purpose, to exercise the compatibility these
@@ -803,40 +717,21 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/model-policies",
     "/api/zero/model-policies",
   ],
-  "/api/model-providers/codex/device-auth/sessions": [
-    "/api/okou/model-providers/codex/device-auth/sessions",
-    "/api/zero/model-providers/codex/device-auth/sessions",
-  ],
-  "/api/model-providers/codex/device-auth/sessions/cancel": [
-    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
-    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
-  ],
-  "/api/model-providers/codex/device-auth/sessions/complete": [
-    "/api/okou/model-providers/codex/device-auth/sessions/complete",
-    "/api/zero/model-providers/codex/device-auth/sessions/complete",
-  ],
   "/api/org": ["/api/okou/org", "/api/zero/org"],
-  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
-  "/api/org/invite/purchase/:purchaseId/confirm": [
-    "/api/okou/org/invite/purchase/:purchaseId/confirm",
-    "/api/zero/org/invite/purchase/:purchaseId/confirm",
-  ],
-  "/api/org/invite/purchase/preview": [
-    "/api/okou/org/invite/purchase/preview",
-    "/api/zero/org/invite/purchase/preview",
-  ],
-  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
   // #28461: the agent reads and writes and the workflow and
   // workflow-automation management routes. The slice also covered the manual
   // Morning Brief trigger; #28709 removed that row on zero-traffic evidence,
   // and #28711 removed `agents/:id/instructions`, `workflow-automations`,
   // `workflows/:workflowId`, `workflows/:workflowId/automations` and
-  // `workflows/:workflowId/run` on drained-traffic evidence. #28916 removed the
-  // `agents` collection and `workflow-automations/:id` on cutover evidence. The
-  // branded `agents` form was platform-held and stopped on 08-21; the CLI took
-  // `workflow-automations/:id` to the neutral form mid-window, and the only
-  // caller its branded form had left was two ad-hoc `curl` requests out of a
-  // sandbox, which is not a released build with a drain window. Every caller in
+  // `workflows/:workflowId/run` on drained-traffic evidence; #28917 removed
+  // `workflow-automations/:id/enable` and `workflow-automations/:id/disable`,
+  // which were silent on both branded forms while the neutral paths served
+  // them. #28916 removed the `agents` collection and `workflow-automations/:id`
+  // on cutover evidence. The branded `agents` form was platform-held and
+  // stopped on 08-21; the CLI took `workflow-automations/:id` to the neutral
+  // form mid-window, and the only caller its branded form had left was two
+  // ad-hoc `curl` requests out of a sandbox, which is not a released build with
+  // a drain window. Every caller in
   // this repository derives its URL from the contract, so nothing here still
   // asks for a branded form; released builds do. Two surfaces hold these paths,
   // and each has its own window.
@@ -871,26 +766,25 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/agents/:id/user-connectors",
     "/api/zero/agents/:id/user-connectors",
   ],
-  "/api/workflow-automations/:id/disable": [
-    "/api/okou/workflow-automations/:id/disable",
-    "/api/zero/workflow-automations/:id/disable",
-  ],
-  "/api/workflow-automations/:id/enable": [
-    "/api/okou/workflow-automations/:id/enable",
-    "/api/zero/workflow-automations/:id/enable",
-  ],
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28545: the two Microsoft console routes, the first rows whose branded
-  // forms a provider console holds rather than a released client. The Azure Bot
+  // #28545: the Microsoft console routes, the first rows whose branded forms a
+  // provider console holds rather than a released client. The Azure Bot
   // messaging endpoint and the Microsoft identity platform redirect URIs now
   // hold the final paths, so the contracts declare them and both branded forms
   // are owed from here.
   //
-  // What holds the branded forms open is not a released client but the two
+  // What holds the branded forms open is not a released client but the
   // Microsoft consoles themselves, which have no drain window: they keep
   // sending to whatever URL is registered until an operator changes it.
   // Removal follows #26701's evidence rules, and for the `zero` callback the
   // ordering constraint recorded there.
+  //
+  // #28917 removed the slice's `webhooks/teams/bot` row. #28545 records that an
+  // operator had already repointed the Azure Bot messaging endpoint at the
+  // neutral path before that slice landed, so nothing on the Microsoft side
+  // still holds either branded bot URL, and the retained window measured both
+  // silent. The OAuth callback row below stays for the reason its own comment
+  // gives, which is not a drain window and is not measurable in the log at all.
   "/api/integrations/teams/oauth/callback": [
     "/api/okou/teams/oauth/callback",
     // Not drain-window compatibility. `callbackRedirectUri` in
@@ -900,13 +794,17 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     // `api.vm0.ai` brand host. So this row is an active producer target, not a
     // leftover — do not prune it merely for being an `/api/zero/` path, or
     // live VM0-brand connects lose the callback they were sent to.
+    //
+    // A traffic sweep cannot retire this row: a quiet window means nobody
+    // connected Teams under the VM0 brand that week, and the next person who
+    // does is sent here regardless. #28917 listed this row for removal on that
+    // silence and it was held back for exactly this reason.
     "/api/zero/teams/oauth/callback",
   ],
-  "/api/webhooks/teams/bot": ["/api/okou/teams/bot", "/api/zero/teams/bot"],
   // #28463: avatar video generation, the per-token browser authorization
-  // requests, the mail draft send, the per-template presentation read, uploads,
-  // and voice-io quota and speech. The slice also covered banking, inbound
-  // email, the GitHub user-connect start, the Strapi
+  // requests, mail drafts, the per-template presentation read, uploads,
+  // voice-io quota and speech, and the web file-url read. The slice also
+  // covered banking, inbound email, the GitHub user-connect start, the Strapi
   // webhook and video-io; #28709 removed those rows on zero-traffic evidence,
   // which is why `domains/banking.ts` and the customer-held Strapi console URL
   // no longer appear among the holders below.
@@ -919,13 +817,18 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // the CLI pinning window; the log measured both branded forms silent for
   // longer than that before the removal.
   //
-  // #28916 removed three more — `mail/drafts/:mailDraftId`,
+  // #28917 removed five more on zero-traffic evidence: both per-token browser
+  // authorization-request rows, `mail/drafts/:mailDraftId/send`, the
+  // per-template presentation read, and `uploads/multipart/abort`.
+  //
+  // #28916 removed the three that were not silent — the mail draft read,
   // `uploads/multipart/complete` and `web/file-url` — on cutover evidence.
-  // `web/file-url` was the largest branded producer in this removal at about
-  // 2,000 requests, and it is the clearest crossover: the platform build cut
+  // `web/file-url` was the largest branded producer in that removal at about
+  // 2,000 requests, and the clearest crossover in it: the platform build cut
   // over on 08-22 and the neutral path took every call from the same browsers
   // from 08-23 on, which is why `domains/web.ts` no longer appears among the
-  // holders below.
+  // holders below. What the slice still owns below is `uploads/prepare` and the
+  // two voice-io rows.
   //
   // Published CLI builds hold the `okou` form directly: they build some URLs by
   // hand rather than from the contract, so the path they carry shipped
@@ -937,26 +840,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // the blanket expansion until these contracts moved, which has no window at
   // all. Removal therefore follows the #26701 evidence gate above rather than
   // any of those clocks.
-  "/api/browser/authorization-requests/:requestToken": [
-    "/api/okou/browser/authorization-requests/:requestToken",
-    "/api/zero/browser/authorization-requests/:requestToken",
-  ],
-  "/api/browser/authorization-requests/:requestToken/apply": [
-    "/api/okou/browser/authorization-requests/:requestToken/apply",
-    "/api/zero/browser/authorization-requests/:requestToken/apply",
-  ],
-  "/api/mail/drafts/:mailDraftId/send": [
-    "/api/okou/mail/drafts/:mailDraftId/send",
-    "/api/zero/mail/drafts/:mailDraftId/send",
-  ],
-  "/api/presentation-templates/:templateId": [
-    "/api/okou/presentation-templates/:templateId",
-    "/api/zero/presentation-templates/:templateId",
-  ],
-  "/api/uploads/multipart/abort": [
-    "/api/okou/uploads/multipart/abort",
-    "/api/zero/uploads/multipart/abort",
-  ],
   "/api/uploads/prepare": [
     "/api/okou/uploads/prepare",
     "/api/zero/uploads/prepare",

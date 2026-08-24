@@ -385,7 +385,9 @@ describe("personal model providers settings", () => {
     context.mocks.data.personalModelProviders([]);
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
 
-    await openModelSettings();
+    await openModelSettings("Models", {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
 
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",

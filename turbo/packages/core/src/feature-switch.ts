@@ -339,8 +339,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -378,6 +377,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Re-read every composer block from the live contenteditable before serializing a submission, recovering text a broken mobile composition left only in the DOM, and report each recovery.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Validate restored composer attachments against the current account, remove unavailable references, and show a warning.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },

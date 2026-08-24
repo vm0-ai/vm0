@@ -9,27 +9,27 @@ from tests.registry_builtin_helpers import (
     first_firewall_core,
     write_catalog_cache,
 )
-from tests.registry_helpers import inline_vm, write_multi_vm_registry
+from tests.registry_helpers import inline_sandbox, write_multi_sandbox_registry
 
 
 class TestRegistryInlineFirewalls:
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             path,
             {
-                "10.200.0.1": inline_vm("run-inline-a"),
-                "10.200.0.2": inline_vm("run-inline-b"),
+                "10.200.0.1": inline_sandbox("run-inline-a"),
+                "10.200.0.2": inline_sandbox("run-inline-b"),
             },
         )
 
-        first_context = registry.get_vm_context("10.200.0.1", str(path))
-        second_context = registry.get_vm_context("10.200.0.2", str(path))
+        first_context = registry.get_sandbox_context("10.200.0.1", str(path))
+        second_context = registry.get_sandbox_context("10.200.0.2", str(path))
 
         assert first_context is not None
         assert second_context is not None
-        first_vm_info, first_compiled, first_policies = first_context
-        second_vm_info, second_compiled, second_policies = second_context
+        first_sandbox_info, first_compiled, first_policies = first_context
+        second_sandbox_info, second_compiled, second_policies = second_context
         assert first_compiled is not None
         assert second_compiled is not None
         assert first_firewall_core(first_compiled) is not first_firewall_core(second_compiled)
@@ -49,15 +49,15 @@ class TestRegistryInlineFirewalls:
 
         assert isinstance(first_result, matching.FirewallAllow)
         assert isinstance(second_result, matching.FirewallAllow)
-        assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
-        assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
+        assert first_result.api_entry is first_sandbox_info["firewalls"][0]["apis"][0]
+        assert second_result.api_entry is second_sandbox_info["firewalls"][0]["apis"][0]
 
     def test_inline_only_registry_ignores_catalog_cache_changes(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": inline_vm("run-inline")},
+            {"10.200.0.1": inline_sandbox("run-inline")},
         )
         write_catalog_cache(
             cache_path,
@@ -71,7 +71,7 @@ class TestRegistryInlineFirewalls:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             write_catalog_cache(
                 cache_path,
                 digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -79,22 +79,22 @@ class TestRegistryInlineFirewalls:
                 firewalls={"unused": cache_firewall("unused", "https://unused-b.example.com")},
             )
             os.utime(cache_path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
-            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            second_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert first_context is not None
         assert second_context is not None
-        _first_vm_info, first_compiled, _first_policies = first_context
-        _second_vm_info, second_compiled, _second_policies = second_context
+        _first_sandbox_info, first_compiled, _first_policies = first_context
+        _second_sandbox_info, second_compiled, _second_policies = second_context
         assert first_compiled is not None
         assert second_compiled is not None
         assert first_firewall_core(first_compiled) is first_firewall_core(second_compiled)
 
     def test_inline_firewall_api_ids_preserve_custom_ids_and_global_positions(self, tmp_path):
         path = tmp_path / "registry.json"
-        vm = inline_vm("run-inline")
-        first_api = vm["firewalls"][0]["firewall"]["apis"][0]
+        sandbox = inline_sandbox("run-inline")
+        first_api = sandbox["firewalls"][0]["firewall"]["apis"][0]
         first_api["id"] = "custom-api-id"
-        vm["firewalls"].append(
+        sandbox["firewalls"].append(
             {
                 "kind": "inline",
                 "firewall": {
@@ -103,70 +103,70 @@ class TestRegistryInlineFirewalls:
                 },
             }
         )
-        write_multi_vm_registry(path, {"10.200.0.1": vm})
+        write_multi_sandbox_registry(path, {"10.200.0.1": sandbox})
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert [firewall["apis"][0]["id"] for firewall in vm_info["firewalls"]] == [
+        assert [firewall["apis"][0]["id"] for firewall in sandbox_info["firewalls"]] == [
             "custom-api-id",
             "run-inline:1",
         ]
 
-    def test_malformed_custom_connector_apis_reject_only_affected_vm(self, tmp_path, mitm_ctx):
+    def test_malformed_custom_connector_apis_reject_only_affected_sandbox(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
-        malformed_vm = inline_vm("run-malformed")
-        malformed_entry = malformed_vm["firewalls"][0]
+        malformed_sandbox = inline_sandbox("run-malformed")
+        malformed_entry = malformed_sandbox["firewalls"][0]
         malformed_entry["customConnectorId"] = "550e8400-e29b-41d4-a716-446655440000"
         malformed_entry["firewall"]["apis"] = None
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             path,
             {
-                "10.200.0.1": malformed_vm,
-                "10.200.0.2": inline_vm("run-valid"),
+                "10.200.0.1": malformed_sandbox,
+                "10.200.0.2": inline_sandbox("run-valid"),
             },
         )
 
         with mitm_ctx():
             state = registry.load_registry_state(str(path))
-            valid_context = registry.get_vm_context("10.200.0.2", str(path))
+            valid_context = registry.get_sandbox_context("10.200.0.2", str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert set(state.vms) == {"10.200.0.2"}
-        invalid_vm = state.invalid_vms["10.200.0.1"]
-        assert invalid_vm.reason == "invalid_firewalls"
-        assert invalid_vm.message == "inline firewall apis must be a list"
+        assert set(state.sandboxes) == {"10.200.0.2"}
+        invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+        assert invalid_sandbox.reason == "invalid_firewalls"
+        assert invalid_sandbox.message == "inline firewall apis must be a list"
         assert valid_context is not None
         _, compiled_firewalls, _ = valid_context
         assert compiled_firewalls is not None
 
-    def test_non_string_inline_custom_connector_id_rejects_only_affected_vm(
+    def test_non_string_inline_custom_connector_id_rejects_only_affected_sandbox(
         self, tmp_path, mitm_ctx
     ):
         path = tmp_path / "registry.json"
-        malformed_vm = inline_vm("run-malformed")
-        malformed_vm["firewalls"][0]["customConnectorId"] = 1
-        write_multi_vm_registry(
+        malformed_sandbox = inline_sandbox("run-malformed")
+        malformed_sandbox["firewalls"][0]["customConnectorId"] = 1
+        write_multi_sandbox_registry(
             path,
             {
-                "10.200.0.1": malformed_vm,
-                "10.200.0.2": inline_vm("run-valid"),
+                "10.200.0.1": malformed_sandbox,
+                "10.200.0.2": inline_sandbox("run-valid"),
             },
         )
 
         with mitm_ctx():
             state = registry.load_registry_state(str(path))
-            malformed_context = registry.get_vm_context("10.200.0.1", str(path))
-            valid_context = registry.get_vm_context("10.200.0.2", str(path))
+            malformed_context = registry.get_sandbox_context("10.200.0.1", str(path))
+            valid_context = registry.get_sandbox_context("10.200.0.2", str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert set(state.vms) == {"10.200.0.2"}
-        assert set(state.invalid_vms) == {"10.200.0.1"}
-        invalid_vm = state.invalid_vms["10.200.0.1"]
-        assert invalid_vm.reason == "invalid_firewalls"
-        assert invalid_vm.message == "inline firewall customConnectorId must be a UUID"
+        assert set(state.sandboxes) == {"10.200.0.2"}
+        assert set(state.invalid_sandboxes) == {"10.200.0.1"}
+        invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+        assert invalid_sandbox.reason == "invalid_firewalls"
+        assert invalid_sandbox.message == "inline firewall customConnectorId must be a UUID"
         assert malformed_context is None
         assert valid_context is not None
         _, compiled_firewalls, _ = valid_context

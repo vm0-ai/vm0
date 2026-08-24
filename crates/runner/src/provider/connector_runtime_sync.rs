@@ -1774,7 +1774,7 @@ mod tests {
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use crate::http::{HttpClient, HttpClientConfig};
-    use crate::proxy::{ProxyRegistryHandle, VmRegistration};
+    use crate::proxy::{ProxyRegistryHandle, SandboxRegistration};
     use crate::test_fixtures::raw_http::{
         RawHttpAction, RawHttpTestServer, join_raw_http_task, json_response, read_http_request,
     };
@@ -2057,7 +2057,7 @@ mod tests {
         async fn new_with_api(api: ApiClient, run_id: RunId, connector_slugs: &[&str]) -> Self {
             let dir = tempfile::tempdir().expect("tempdir should be created");
             let registry_path = dir.path().join("proxy-registry.json");
-            tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+            tokio::fs::write(&registry_path, br#"{"sandboxes":{},"updatedAt":0}"#)
                 .await
                 .expect("empty registry should be written");
             let registry =
@@ -2104,9 +2104,9 @@ mod tests {
             let network_log_path = dir.path().join("network.jsonl");
             let proxy_log_path = dir.path().join("proxy.log");
             registry
-                .register_vm(
+                .register_sandbox(
                     source_ip,
-                    &VmRegistration {
+                    &SandboxRegistration {
                         run_id: &run_id_string,
                         cli_agent_type: "codex",
                         sandbox_token: "sandbox-token",
@@ -2125,7 +2125,7 @@ mod tests {
                     },
                 )
                 .await
-                .expect("vm should be registered");
+                .expect("sandbox should be registered");
 
             let handle = ConnectorRuntimeSyncHandle::new(api);
             handle
@@ -2166,7 +2166,7 @@ mod tests {
                     .expect("registry should be readable"),
             )
             .expect("registry should be valid JSON");
-            registry_json["vms"][&self.source_ip]["networkPolicies"][connector_slug].clone()
+            registry_json["sandboxes"][&self.source_ip]["networkPolicies"][connector_slug].clone()
         }
 
         async fn shutdown(self) {
@@ -2352,7 +2352,7 @@ mod tests {
     ) {
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry_path = dir.path().join("proxy-registry.json");
-        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+        tokio::fs::write(&registry_path, br#"{"sandboxes":{},"updatedAt":0}"#)
             .await
             .expect("empty registry should be written");
         let lock_path = dir.path().join("registry.lock");
@@ -2381,9 +2381,9 @@ mod tests {
             source_id: None,
         }];
         registry
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     run_id: &run_id_string,
                     cli_agent_type: "codex",
                     sandbox_token: "sandbox-token",
@@ -2402,7 +2402,7 @@ mod tests {
                 },
             )
             .await
-            .expect("vm should be registered");
+            .expect("sandbox should be registered");
         (dir, registry, registry_path, lock_path)
     }
 
@@ -2452,7 +2452,7 @@ mod tests {
     ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry_path = dir.path().join("proxy-registry.json");
-        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+        tokio::fs::write(&registry_path, br#"{"sandboxes":{},"updatedAt":0}"#)
             .await
             .expect("empty registry should be written");
         let registry = ProxyRegistryHandle::new(
@@ -2478,9 +2478,9 @@ mod tests {
             .flat_map(|base_url_vars| base_url_vars.clone())
             .collect::<HashMap<_, _>>();
         registry
-            .register_vm(
+            .register_sandbox(
                 "10.200.0.2",
-                &VmRegistration {
+                &SandboxRegistration {
                     run_id: &run_id,
                     cli_agent_type: "codex",
                     sandbox_token: "sandbox-token",
@@ -2499,7 +2499,7 @@ mod tests {
                 },
             )
             .await
-            .expect("vm should be registered");
+            .expect("sandbox should be registered");
         (dir, registry, registry_path)
     }
 
@@ -2569,7 +2569,7 @@ mod tests {
                 .expect("registry should be readable"),
         )
         .expect("registry should be valid JSON");
-        registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone()
+        registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["slack"].clone()
     }
 
     async fn wait_until_slack_policy(
@@ -3108,7 +3108,7 @@ mod tests {
         )
         .expect("replacement registry should contain valid JSON");
         assert_last_known_good_policy(
-            &registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"],
+            &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["slack"],
         );
         let active_runs = handle.core.inner.active_runs.lock().await;
         let replacement = active_runs
@@ -3180,7 +3180,7 @@ mod tests {
         )
         .expect("replacement registry should contain valid JSON");
         assert_last_known_good_policy(
-            &registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"],
+            &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["slack"],
         );
 
         handle.shutdown().await;
@@ -3441,9 +3441,9 @@ mod tests {
                 .expect("registry should be readable"),
         )
         .expect("registry should be valid JSON");
-        let vm = &registry_json["vms"]["10.200.0.2"];
+        let sandbox = &registry_json["sandboxes"]["10.200.0.2"];
         assert_eq!(
-            vm["firewalls"],
+            sandbox["firewalls"],
             json!([{
                 "kind": "builtin",
                 "name": "slack",
@@ -3452,10 +3452,10 @@ mod tests {
             }])
         );
         assert_eq!(
-            vm["networkPolicies"]["slack"]["allow"],
+            sandbox["networkPolicies"]["slack"]["allow"],
             json!(["chat:write", "files:write"])
         );
-        assert!(vm.get("omittedBuiltinFirewalls").is_none());
+        assert!(sandbox.get("omittedBuiltinFirewalls").is_none());
         let active_runs = core.inner.active_runs.lock().await;
         assert_eq!(
             active_runs[&run_id].connectors[&target].consecutive_failures,
@@ -3547,7 +3547,7 @@ mod tests {
                 .expect("registry should be readable"),
         )
         .expect("registry should be valid JSON");
-        let policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        let policies = &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"];
         assert_eq!(
             policies["slack"]["allow"],
             json!(["chat:write", "files:write"])
@@ -3618,7 +3618,7 @@ mod tests {
         )
         .expect("registry should be valid JSON");
         assert_eq!(
-            registry_json["vms"]["10.200.0.2"]["networkPolicies"]["github"]["allow"],
+            registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["github"]["allow"],
             json!(["issues:write"])
         );
         core.unregister_run(run_id).await;
@@ -3711,7 +3711,7 @@ mod tests {
                 .expect("registry should be readable"),
         )
         .expect("registry should be valid JSON");
-        let policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        let policies = &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"];
         assert_eq!(policies["slack"]["allow"], json!(["last-known-good"]));
         assert_eq!(policies["github"]["allow"], json!(["current:write"]));
         let active_runs = core.inner.active_runs.lock().await;
@@ -3777,7 +3777,7 @@ mod tests {
         )
         .expect("registry should be valid JSON");
         assert_eq!(
-            absent_registry["vms"]["10.200.0.2"]["omittedCustomConnectorIds"],
+            absent_registry["sandboxes"]["10.200.0.2"]["omittedCustomConnectorIds"],
             json!([custom_connector_id])
         );
         assert!(
@@ -3824,16 +3824,16 @@ mod tests {
                 .expect("registry should be readable"),
         )
         .expect("registry should be valid JSON");
-        let vm = &registry_json["vms"]["10.200.0.2"];
+        let sandbox = &registry_json["sandboxes"]["10.200.0.2"];
         assert_eq!(
-            vm["firewalls"][0]["customConnectorId"],
+            sandbox["firewalls"][0]["customConnectorId"],
             json!(custom_connector_id)
         );
         assert_eq!(
-            vm["networkPolicies"]["custom_connector_550e8400e29b41d4a716446655440000"]["allow"],
+            sandbox["networkPolicies"]["custom_connector_550e8400e29b41d4a716446655440000"]["allow"],
             json!(["custom.read"])
         );
-        assert!(vm.get("omittedCustomConnectorIds").is_none());
+        assert!(sandbox.get("omittedCustomConnectorIds").is_none());
         assert!(
             core.inner.active_runs.lock().await[&run_id]
                 .sync_tasks
@@ -3985,12 +3985,12 @@ mod tests {
         let registry_json: serde_json::Value =
             serde_json::from_slice(&registry_after_available).unwrap();
         assert_eq!(
-            registry_json["vms"]["10.200.0.2"]["connectorRoutingVariables"]
+            registry_json["sandboxes"]["10.200.0.2"]["connectorRoutingVariables"]
                 [format!("custom:{custom_connector_id}")],
             json!(base_url_vars)
         );
         assert_eq!(
-            registry_json["vms"]["10.200.0.2"]["firewalls"][0]["sourceId"],
+            registry_json["sandboxes"]["10.200.0.2"]["firewalls"][0]["sourceId"],
             source_id
         );
 
@@ -4960,7 +4960,7 @@ mod tests {
                 .expect("registry should remain readable"),
         )
         .expect("registry should remain valid JSON");
-        let network_policies = &registry_json["vms"]["10.200.0.2"]["networkPolicies"];
+        let network_policies = &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"];
         assert_fail_closed_policy(&network_policies["slack"]);
         assert_fail_closed_policy(&network_policies["github"]);
         assert_fail_closed_policy(&network_policies[&custom_firewall_name]);
@@ -5204,7 +5204,7 @@ mod tests {
             )
             .expect("registry should be valid JSON before retry response");
             let policy_before_retry_response =
-                registry_json["vms"][&source_ip]["networkPolicies"]["slack"].clone();
+                registry_json["sandboxes"][&source_ip]["networkPolicies"]["slack"].clone();
             second_socket
                 .write_all(&json_response("200 OK", &response_body))
                 .await
@@ -5459,9 +5459,9 @@ mod tests {
             harness._dir.path().join("registry.lock"),
         );
         registry
-            .unregister_vm(&harness.source_ip)
+            .unregister_sandbox(&harness.source_ip)
             .await
-            .expect("replacement ownership should remove the old VM");
+            .expect("replacement ownership should remove the old sandbox");
 
         harness.sync_slack().await;
 
@@ -5683,7 +5683,7 @@ mod tests {
         )
         .expect("registry should remain valid JSON");
         assert_last_known_good_policy(
-            &registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"],
+            &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["slack"],
         );
         assert_retry_scheduled(&core, run_id, "slack", 1).await;
     }
@@ -5730,7 +5730,7 @@ mod tests {
         let (core, _requests) = core_without_worker(&server);
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry_path = dir.path().join("proxy-registry.json");
-        tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
+        tokio::fs::write(&registry_path, br#"{"sandboxes":{},"updatedAt":0}"#)
             .await
             .expect("empty registry should be written");
         let registry = ProxyRegistryHandle::new(registry_path, dir.path().join("registry.lock"));

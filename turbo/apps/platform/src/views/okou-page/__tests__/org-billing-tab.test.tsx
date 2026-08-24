@@ -33,6 +33,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
+const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function queryButtonByText(
   text: string,
@@ -271,7 +272,11 @@ async function openBillingTab(
   path = "/?settings=billing",
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
-  detachedSetupPage({ context, path, featureSwitches });
+  detachedSetupPage({
+    context,
+    path,
+    featureSwitches: { ...LEGACY_PRICING, ...featureSwitches },
+  });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -347,6 +352,7 @@ describe("organization billing settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing",
+      featureSwitches: LEGACY_PRICING,
     });
 
     await waitFor(() => {

@@ -1,13 +1,26 @@
 use super::*;
+use crate::error::RunnerError;
 use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
+
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use sandbox::SandboxConfig;
+use tokio_util::sync::CancellationToken;
+
+fn assert_future_pending<T>(future: Pin<&mut impl Future<Output = T>>) {
+    let waker = futures_util::task::noop_waker();
+    let mut context = Context::from_waker(&waker);
+    assert!(matches!(future.poll(&mut context), Poll::Pending));
+}
 
 struct CreateGateFactory {
     inner: MockSandboxFactory,
     entered: tokio::sync::Notify,
     release: tokio::sync::Notify,
+    create_calls: AtomicUsize,
 }
 
 impl CreateGateFactory {
@@ -16,6 +29,7 @@ impl CreateGateFactory {
             inner: MockSandboxFactory::new(),
             entered: tokio::sync::Notify::new(),
             release: tokio::sync::Notify::new(),
+            create_calls: AtomicUsize::new(0),
         }
     }
 }
@@ -31,6 +45,7 @@ impl SandboxFactory for CreateGateFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
         self.entered.notify_one();
         self.release.notified().await;
         self.inner.create(config).await
@@ -43,6 +58,120 @@ impl SandboxFactory for CreateGateFactory {
     async fn shutdown(&mut self) {
         self.inner.shutdown().await;
     }
+}
+
+#[tokio::test]
+async fn fresh_pre_spawn_admission_cancels_before_factory_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let holder_cancel = CancellationToken::new();
+    let holder = config
+        .pre_spawn_admission
+        .acquire(2, &holder_cancel)
+        .await
+        .unwrap();
+    let factory = CreateGateFactory::new();
+    let cancel = CancellationToken::new();
+    let context = minimal_context();
+    let params = default_params();
+    let mut telemetry = test_telemetry(&config, &context);
+    let mut task = Box::pin(execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        cancel.clone(),
+    ));
+
+    assert_future_pending(task.as_mut());
+    cancel.cancel();
+    let result = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap();
+
+    assert!(matches!(result, Err(RunnerError::Cancelled)));
+    assert_eq!(factory.create_calls.load(Ordering::SeqCst), 0);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_pre_spawn_admission_wait",
+        false,
+        Some("cancelled"),
+    );
+    drop(holder);
+}
+
+#[tokio::test]
+async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = Arc::new(test_executor_config(dir.path()).await);
+    let total_tokens = config.pre_spawn_admission.total_tokens();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let start_gate = MockLifecycleGate::new();
+    let wait_gate = MockLifecycleGate::new();
+    overrides.set_start_process_lifecycle_gate(start_gate.clone());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let task = tokio::spawn({
+        let config = Arc::clone(&config);
+        async move {
+            let context = minimal_context();
+            let mut telemetry = test_telemetry(&config, &context);
+            let result = execute_new_sandbox(
+                &factory,
+                &context,
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                &mut telemetry,
+                CancellationToken::new(),
+            )
+            .await;
+            (result, telemetry)
+        }
+    });
+
+    start_gate
+        .wait_entered(1, Duration::from_secs(2))
+        .await
+        .unwrap();
+    let probe_cancel = CancellationToken::new();
+    let mut admission_probe = Box::pin(
+        config
+            .pre_spawn_admission
+            .acquire(total_tokens, &probe_cancel),
+    );
+    assert_future_pending(admission_probe.as_mut());
+
+    start_gate.release_one();
+    wait_gate
+        .wait_entered(1, Duration::from_secs(2))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), admission_probe)
+        .await
+        .expect("fresh admission remained held after process spawn")
+        .unwrap();
+    wait_gate.release_one();
+
+    let (result, telemetry) = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.unwrap().exit_code(), 0);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_pre_spawn_admission_wait",
+        true,
+        None,
+    );
 }
 
 fn guest_dns_readiness_failure(
@@ -593,6 +722,15 @@ async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
         captured_events_named(&events, "guest DNS readiness replacement completed").is_empty(),
         "events={events:#?}"
     );
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        config
+            .pre_spawn_admission
+            .acquire(2, &CancellationToken::new()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
 }
 
 #[tokio::test]

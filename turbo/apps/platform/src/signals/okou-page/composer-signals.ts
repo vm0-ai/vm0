@@ -1,7 +1,6 @@
 import type {
   ChatRunVideoOptionsRequest,
   GenerationTemplateRequest,
-  PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
@@ -137,7 +136,7 @@ interface ComposerDraftSignals {
   readonly attachments$: Computed<ZeroChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
-  readonly restoreAttachments$: Command<void, [PersistedAttachment[]]>;
+  readonly restoreAttachments$: DraftSignals["restoreAttachments$"];
   readonly removeAttachment$: Command<void, [ZeroChatAttachment]>;
   readonly dragOver$: Computed<boolean>;
   readonly setDragOver$: Command<void, [boolean]>;

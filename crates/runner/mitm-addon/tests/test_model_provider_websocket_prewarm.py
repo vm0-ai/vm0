@@ -45,7 +45,7 @@ def _openai_websocket_created_frame(response_id: str) -> bytes:
 
 
 def _correlation_entries(flow: http.HTTPFlow) -> list[dict[str, object]]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [
@@ -319,7 +319,7 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert ignored_entry["usage_events"] == []
         assert ignored_entry["model_usage_observations"] == []
         assert ignored_entry["url"] == "https://api.openai.com/v1/responses"
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         assert sensitive_marker not in proxy_log.read_text()
         assert model_provider_usage_sources(flow) == {}
         assert model_websocket_usage.is_enabled(flow) is False

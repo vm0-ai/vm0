@@ -15,7 +15,7 @@ values is ignored:
 
 ```text
 # Optional host-local concurrency override
-VM0_RUNNER_CONCURRENCY_FACTOR = 1.5
+OKOU_RUNNER_CONCURRENCY_FACTOR = 1.5
 ```
 
 Do not use `export`, shell interpolation, quoted numeric values, or inline
@@ -23,13 +23,33 @@ comments. The parser accepts only the keys listed below. An unreadable file, a
 line without `=`, an unsupported key, or a duplicate key is a configuration
 error that prevents the runner from starting.
 
-| Key                                     | Unit                   | Valid values                               | Behavior                                                                                             |
-| --------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
-| `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+## Temporary Dual-Read Migration
+
+The `OKOU_*` names are canonical. During the temporary dual-read stage, the
+runner also accepts the corresponding legacy `VM0_*` alias for each logical
+field:
+
+| Canonical key                            | Temporary legacy alias                  | Unit                   | Valid values                               | Behavior                                                                                             |
+| ---------------------------------------- | --------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR`         | `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
+| `OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_DISK_IOPS`                  | `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_RX_MIB_PER_SEC`         | `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_TX_MIB_PER_SEC`         | `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+
+Use exactly one spelling for each field. If both aliases for the same field
+appear, the runner fails startup even when their values are identical; the
+error does not include either value. Different I/O fields may use different
+spellings during migration, and they still form one all-or-none group after
+alias normalization. A planned host cutover should rewrite all four I/O fields
+to their canonical spelling in the same file update.
+
+Do not change a deployed `host.env` to canonical names until every supported
+runner and rollback target includes this dual reader. An older reader rejects
+the canonical names as unsupported. Rolling back to an older reader therefore
+requires atomically restoring the legacy spellings before starting the older
+binary. Every file change still requires the normal runner drain and restart;
+the running process does not reload it.
 
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an
@@ -45,10 +65,10 @@ all four:
 
 ```text
 # Example sustainable aggregate host capacity; measure values for this host.
-VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=2000
-VM0_RUNNER_DISK_IOPS=200000
-VM0_RUNNER_NET_RX_MIB_PER_SEC=1250
-VM0_RUNNER_NET_TX_MIB_PER_SEC=1000
+OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=2000
+OKOU_RUNNER_DISK_IOPS=200000
+OKOU_RUNNER_NET_RX_MIB_PER_SEC=1250
+OKOU_RUNNER_NET_TX_MIB_PER_SEC=1000
 ```
 
 These values describe sustainable total host capacity, not desired per-sandbox
@@ -112,13 +132,14 @@ disk budget into `209715200 bytes/s` and `20000 ops/s` for each drive.
 
 Host-file parsing and I/O resolution have different failure boundaries:
 
-| Configuration state                                                   | Runner behavior                                                                                                                                  |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| File missing, or none of the four I/O keys present                    | Starts with I/O limiters disabled and logs `I/O limiters disabled`.                                                                              |
-| All four I/O keys present and usable                                  | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
-| I/O keys partial, numerically invalid, or insufficient after division | Starts, logs `I/O limiter host env config invalid; disabling I/O limiter capacity` with a `reason`, and disables every disk and network limiter. |
-| File unreadable, line malformed, key unsupported, or key duplicated   | Fails startup with a runner configuration error.                                                                                                 |
-| `VM0_RUNNER_CONCURRENCY_FACTOR` present but invalid                   | Fails startup with a runner configuration error naming the key and `host.env`.                                                                   |
+| Configuration state                                                       | Runner behavior                                                                                                                                  |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| File missing, or none of the four I/O keys present                        | Starts with I/O limiters disabled and logs `I/O limiters disabled`.                                                                              |
+| All four logical I/O fields present and usable                            | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
+| I/O fields partial, numerically invalid, or insufficient after division   | Starts, logs `I/O limiter host env config invalid; disabling I/O limiter capacity` with a `reason`, and disables every disk and network limiter. |
+| File unreadable, line malformed, key unsupported, or exact key duplicated | Fails startup with a runner configuration error.                                                                                                 |
+| Both aliases for one logical field present                                | Fails startup with a value-free alias conflict error.                                                                                            |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR` or its legacy alias present but invalid  | Fails startup with a runner configuration error naming the canonical key and `host.env`.                                                         |
 
 The non-fatal I/O warning is all-or-nothing. A valid disk pair does not stay
 enabled when the network pair is missing or invalid, and vice versa.

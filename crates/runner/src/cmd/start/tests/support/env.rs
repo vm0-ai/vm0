@@ -189,7 +189,7 @@ fn build_mock_run_config_with_runtime(
     let registry_path = temp_dir.path().join("registry.json");
     let lock_path = temp_dir.path().join("registry.lock");
     // Write empty registry file so ProxyRegistryHandle can read it.
-    std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+    std::fs::write(&registry_path, r#"{"sandboxes":{},"updatedAt":0}"#).unwrap();
     let registry = proxy::ProxyRegistryHandle::new(registry_path, lock_path);
 
     let log_dir = temp_dir.path().join("logs");
@@ -275,6 +275,7 @@ fn build_mock_run_config_with_runtime(
             fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
             background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
                 .unwrap(),
+            pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(2).unwrap(),
             home,
             workspace_cache: None,
         }),
