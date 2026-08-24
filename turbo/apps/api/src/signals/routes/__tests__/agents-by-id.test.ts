@@ -300,7 +300,7 @@ describe("GET /api/agents/:id", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:read capability", async () => {
+  it("returns 403 for an agent token without agent:read capability", async () => {
     const actor = bdd.user();
     const token = okouTokenFor(actor, ["file:read"]);
 
@@ -320,7 +320,7 @@ describe("GET /api/agents/:id", () => {
     });
   });
 
-  it("returns the agent for a zero token with agent:read capability", async () => {
+  it("returns the agent for an agent token with agent:read capability", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, {
       displayName: "Zero Token Agent",
@@ -354,7 +354,7 @@ describe("DELETE /api/agents/:id", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:delete capability", async () => {
+  it("returns 403 for an agent token without agent:delete capability", async () => {
     const actor = bdd.user();
     const token = okouTokenFor(actor, ["file:read"]);
 

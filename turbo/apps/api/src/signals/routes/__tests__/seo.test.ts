@@ -143,7 +143,7 @@ function emptyDataForSeoResponse() {
 }
 
 describe("SEO routes", () => {
-  it("rejects zero tokens without the seo capability", async () => {
+  it("rejects agent tokens without the seo capability", async () => {
     const actor = await seedActor();
     if (!actor.orgId) {
       throw new Error("SEO test actor must belong to an organization");

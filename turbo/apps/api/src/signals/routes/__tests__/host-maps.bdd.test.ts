@@ -962,8 +962,8 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
   });
 });
 
-describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () => {
-  it("attributes maps usage and hosted-site artifacts to a claimed run through its real zero token [HOST-B/MAPS-B]", async () => {
+describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped agent-token attribution", () => {
+  it("attributes maps usage and hosted-site artifacts to a claimed run through its real agent token [HOST-B/MAPS-B]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const billing = createMapsBillingApi(context);

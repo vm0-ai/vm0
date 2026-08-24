@@ -813,7 +813,7 @@ describe("GET /api/okou/integrations/slack/download-file", () => {
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
-  it("rejects a zero token without slack:write capability", async () => {
+  it("rejects an agent token without slack:write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

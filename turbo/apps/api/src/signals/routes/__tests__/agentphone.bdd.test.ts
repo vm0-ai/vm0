@@ -1210,7 +1210,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsBeforeCompletion);
   });
 
-  it("uploads and streams phone media with a real run-scoped zero token", async () => {
+  it("uploads and streams phone media with a real run-scoped agent token", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const integrations = createBddIntegrationApi(context);

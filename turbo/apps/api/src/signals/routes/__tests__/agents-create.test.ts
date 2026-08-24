@@ -77,7 +77,7 @@ describe("POST /api/agents", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:write capability", async () => {
+  it("returns 403 for an agent token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "okou",

@@ -1038,8 +1038,8 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
   });
 });
 
-describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
-  it("serves the org read to a claimed run's zero token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
+describe("AUTH-02/ORG-01: run-scoped agent tokens on org routes", () => {
+  it("serves the org read to a claimed run's agent token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
     const runs = createRunsApi(context);
     const admin = api.user();
     api.acceptAgentStorageWrites();

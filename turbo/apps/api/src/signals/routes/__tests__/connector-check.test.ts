@@ -193,7 +193,7 @@ beforeEach(() => {
 });
 
 describe("POST /api/connectors/diagnostics/check", () => {
-  it("requires organization auth and both Zero capabilities", async () => {
+  it("requires organization auth and both agent capabilities", async () => {
     const body = {
       mode: "url" as const,
       method: "POST",
@@ -695,7 +695,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     }
   });
 
-  it("uses only an owned Zero snapshot, including dynamic bases and final policies", async () => {
+  it("uses only an owned agent run snapshot, including dynamic bases and final policies", async () => {
     const owner = bdd.user();
     const runId = await createOwnedRun(owner);
     await seedZeroMembership(owner);

@@ -18911,7 +18911,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
     ]);
   });
 
-  it("adds concurrency to the Plan subscription for a zero token with billing write capability", async () => {
+  it("adds concurrency to the Plan subscription for an agent token with billing write capability", async () => {
     context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
       data: [],
       has_more: false,
@@ -20147,7 +20147,7 @@ describe("POST /api/billing/credit-checkout", () => {
     });
   });
 
-  it("returns 403 for zero tokens without billing write capability", async () => {
+  it("returns 403 for agent tokens without billing write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
@@ -21027,7 +21027,7 @@ describe("POST /api/billing/credit-checkout", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("creates credit checkout for zero tokens with billing write capability", async () => {
+  it("creates credit checkout for agent tokens with billing write capability", async () => {
     const fixture = await trackedSeed();
     await seedMemberRole({
       orgId: fixture.orgId,

@@ -428,7 +428,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(files).toStrictEqual([]);
   });
 
-  it("records a Slack upload for a run-scoped zero token", async () => {
+  it("records a Slack upload for a run-scoped agent token", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     mockSlackFileInfo(fileId);
