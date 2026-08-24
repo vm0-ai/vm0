@@ -10,6 +10,7 @@ import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
@@ -235,7 +236,7 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
-        publicBrand: binding.publicBrand,
+        publicBrand: payload.publicBrand ?? binding.publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {
@@ -332,6 +333,7 @@ export async function deliverSlackChatAdmissionFailure(
     readonly threadTs: string;
     readonly routeThreadTs?: string;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -353,7 +355,6 @@ export async function deliverSlackChatAdmissionFailure(
         slackUserId: slackOrgConnections.slackUserId,
         workspaceId: slackOrgConnections.slackWorkspaceId,
         encryptedBotToken: slackOrgInstallations.encryptedBotToken,
-        publicBrand: slackOrgInstallations.publicBrand,
       })
       .from(slackChatThreadRoutes)
       .innerJoin(
@@ -422,7 +423,7 @@ export async function deliverSlackChatAdmissionFailure(
     footerParts.push(`Reply to <@${binding.slackUserId}>`);
   }
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
-    ? `${appUrlForPublicBrand(env("APP_URL"), binding.publicBrand)}/activities`
+    ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities`
     : undefined;
   const botToken = await decryptPersistentSecretValue(
     binding.encryptedBotToken,

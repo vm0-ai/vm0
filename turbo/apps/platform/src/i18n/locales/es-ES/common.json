@@ -2565,8 +2565,8 @@
         "connectTitle": "Conectar con Slack",
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Slack.",
         "open": "Abrir Slack",
-        "successDescription": "Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
-        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescription": "Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
         "successTitle": "¡Conectado a Slack!"
       },
       "teams": {

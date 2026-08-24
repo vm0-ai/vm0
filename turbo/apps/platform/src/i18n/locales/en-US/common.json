@@ -2521,8 +2521,8 @@
         "connectTitle": "Connect to Slack",
         "invalidDescription": "This page is meant to be opened from a Slack connect link.",
         "open": "Open Slack",
-        "successDescription": "Mention @Zero in any channel or send a DM to start chatting.",
-        "successDescriptionWorkspace": "You're connected to {{workspace}}. Mention @Zero in any channel or send a DM to start chatting.",
+        "successDescription": "Mention the installed bot in any channel or send a DM to start chatting.",
+        "successDescriptionWorkspace": "You're connected to {{workspace}}. Mention the installed bot in any channel or send a DM to start chatting.",
         "successTitle": "Connected to Slack!"
       },
       "teams": {

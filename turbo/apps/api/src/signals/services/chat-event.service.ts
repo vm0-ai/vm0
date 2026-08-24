@@ -1,6 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -48,6 +49,7 @@ type ChatEventDisplayContext =
         readonly channelId: string;
         readonly messageTs: string;
         readonly botUserId: string;
+        readonly publicBrand: PublicBrand;
         readonly conversationContext: string;
         readonly messageText: string;
         readonly messageFiles: ChatSlackMessageFiles;
@@ -446,6 +448,7 @@ type NewDisplayContext =
       readonly channelId: string;
       readonly messageTs: string;
       readonly botUserId: string;
+      readonly publicBrand: PublicBrand;
       readonly conversationContext: string;
       readonly messageText: string;
       readonly messageFiles: ChatSlackMessageFiles;
@@ -622,6 +625,7 @@ function newDisplayContext(
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
       botUserId: slackContext.botUserId,
+      publicBrand: slackContext.publicBrand,
       conversationContext: slackContext.conversationContext,
       messageText: slackContext.messageText,
       messageFiles: slackContext.messageFiles,
@@ -842,6 +846,7 @@ async function insertDisplayContext(
       channelId: context.channelId,
       messageTs: context.messageTs,
       botUserId: context.botUserId,
+      publicBrand: context.publicBrand,
       conversationContext: context.conversationContext,
       messageText: context.messageText,
       messageFiles: context.messageFiles,

@@ -2520,8 +2520,8 @@
         "connectTitle": "Hubungkan ke Slack",
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Slack.",
         "open": "Buka Slack",
-        "successDescription": "Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
-        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescription": "Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Slack!"
       },
       "teams": {

@@ -2521,8 +2521,8 @@
         "connectTitle": "Slack से कनेक्ट करें",
         "invalidDescription": "यह पेज Slack कनेक्ट लिंक से खोला जाना है।",
         "open": "Slack खोलें",
-        "successDescription": "किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
-        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescription": "किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
         "successTitle": "Slack से जुड़ा!"
       },
       "teams": {

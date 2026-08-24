@@ -2521,8 +2521,8 @@
         "connectTitle": "Stellen Sie eine Verbindung zu Slack her",
         "invalidDescription": "Diese Seite soll über einen Slack-Connect-Link geöffnet werden.",
         "open": "Öffnen Sie Slack",
-        "successDescription": "Erwähnen Sie @Zero in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
-        "successDescriptionWorkspace": "Sie sind mit {{workspace}} verbunden. Erwähnen Sie @Zero in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
+        "successDescription": "Erwähnen Sie den installierten Bot in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
+        "successDescriptionWorkspace": "Sie sind mit {{workspace}} verbunden. Erwähnen Sie den installierten Bot in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
         "successTitle": "Mit Slack verbunden!"
       },
       "teams": {

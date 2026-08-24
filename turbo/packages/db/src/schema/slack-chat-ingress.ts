@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   check,
   integer,
@@ -36,6 +37,10 @@ export const slackChatIngress = pgTable(
       ),
     eventId: varchar("event_id", { length: 255 }).notNull(),
     payload: text("payload").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     status: varchar("status", { length: 16 })
       .$type<SlackChatIngressStatus>()
       .default("pending")
