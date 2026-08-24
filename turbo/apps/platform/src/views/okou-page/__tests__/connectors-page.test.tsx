@@ -1662,6 +1662,101 @@ describe("connectors page", () => {
     expect(buttonByText("Add account", manager)).toBeDisabled();
   });
 
+  it("does not restore a pending deletion draft after the manager closes", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: [account], nextCursor: null });
+    });
+    let impactStarted = false;
+    let resolveImpact = (): void => {
+      throw new Error("Deletion impact request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.deletionImpact,
+      async ({ deferred, params, respond }) => {
+        const pending = deferred<void>();
+        resolveImpact = () => {
+          pending.resolve();
+        };
+        impactStarted = true;
+        await pending.promise;
+        return respond(200, {
+          connectionId: params.connectionId,
+          explicitSelectionCount: 1,
+          hasSibling: false,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("GitHub");
+    });
+    click(buttonByText("Manage", card));
+    const firstManager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    click(within(firstManager).getByLabelText("Account actions"));
+    click(menuItemByText("Delete"));
+    await waitFor(() => {
+      expect(impactStarted).toBeTruthy();
+    });
+    click(within(firstManager).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Manage GitHub accounts" }),
+      ).toBeNull();
+    });
+
+    click(buttonByText("Manage", connectorCardByLabel("GitHub")));
+    const reopenedManager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    resolveImpact();
+    await fill(
+      within(reopenedManager).getByPlaceholderText("Find accounts"),
+      "Work",
+    );
+    expect(within(reopenedManager).queryByText("Delete Work?")).toBeNull();
+  });
+
   it("renames and deletes an exact account after bounded impact", async () => {
     const [connector] = mockConnectors([
       { connectorSlug: "github", externalUsername: "octocat" },

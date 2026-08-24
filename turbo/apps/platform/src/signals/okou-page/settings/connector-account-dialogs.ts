@@ -141,6 +141,7 @@ interface ConnectorAccountRenameDraft {
 
 const internalConnectorAccountRenameDraft$ =
   state<ConnectorAccountRenameDraft | null>(null);
+const internalConnectorAccountManagerDraftGeneration$ = state(0);
 
 export const connectorAccountRenameDraft$ = computed((get) => {
   return get(internalConnectorAccountRenameDraft$);
@@ -148,6 +149,9 @@ export const connectorAccountRenameDraft$ = computed((get) => {
 
 export const startConnectorAccountRename$ = command(
   ({ set }, account: ConnectorAccountConnection) => {
+    set(internalConnectorAccountManagerDraftGeneration$, (generation) => {
+      return generation + 1;
+    });
     set(internalConnectorAccountDeletionDraft$, null);
     set(internalConnectorAccountRenameDraft$, {
       account,
@@ -182,20 +186,26 @@ export const connectorAccountDeletionDraft$ = computed((get) => {
 
 export const prepareConnectorAccountDeletion$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly target: ConnectorAccountConnection["target"];
       readonly account: ConnectorAccountConnection;
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const generation = get(internalConnectorAccountManagerDraftGeneration$) + 1;
+    set(internalConnectorAccountManagerDraftGeneration$, generation);
+    set(internalConnectorAccountRenameDraft$, null);
+    set(internalConnectorAccountDeletionDraft$, null);
     const impact = await set(
       connectorAccountDeletionImpact$,
       { target: args.target, connectionId: args.account.id },
       signal,
     );
     signal.throwIfAborted();
-    set(internalConnectorAccountRenameDraft$, null);
+    if (get(internalConnectorAccountManagerDraftGeneration$) !== generation) {
+      return;
+    }
     set(internalConnectorAccountDeletionDraft$, {
       account: args.account,
       explicitSelectionCount: impact.explicitSelectionCount,
@@ -208,6 +218,9 @@ export const clearConnectorAccountDeletion$ = command(({ set }) => {
 });
 
 export const resetConnectorAccountManagerDrafts$ = command(({ set }) => {
+  set(internalConnectorAccountManagerDraftGeneration$, (generation) => {
+    return generation + 1;
+  });
   set(internalConnectorAccountRenameDraft$, null);
   set(internalConnectorAccountDeletionDraft$, null);
 });
