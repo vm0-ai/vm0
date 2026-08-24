@@ -72,6 +72,10 @@ const usageAllocationId = "00000000-0000-4000-8c00-000000980001";
 const entitlementId = "00000000-0000-4000-8d00-000000980001";
 const shortWindowId = "00000000-0000-4000-8e00-000000980001";
 const weeklyWindowId = "00000000-0000-4000-8e00-000000980002";
+// One tenth of the observed production table and legacy-reference cardinality.
+// This keeps the focused harness practical while preserving production shape.
+const productionShapedSearchRows = 131_176;
+const productionShapedLegacySearchRows = 1_711;
 
 function databaseUrlFor(database: string): string {
   const url = new URL(baseDatabaseUrl);
@@ -503,6 +507,88 @@ async function seedProtectedHistory(client: Client): Promise<void> {
   }
 }
 
+async function seedAndAssertProductionShapedSearchPlan(
+  client: Client,
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
+        "agent_compose_id", "role", "created_at", "text", "text_bigram"
+      )
+      SELECT
+        $1, "ordinal" + 1, 'stage8-protected-user', 'stage8-protected-org',
+        $2,
+        CASE WHEN "ordinal" <= $3 THEN $2::uuid ELSE NULL END,
+        'user', now(), 'stage8 protected bulk', 'stage8 protected bulk'
+      FROM generate_series(1, $4) AS "ordinal"
+    `,
+    [
+      canonicalThreadId,
+      canonicalAgentId,
+      productionShapedLegacySearchRows,
+      productionShapedSearchRows,
+    ],
+  );
+  await client.query(`ANALYZE "chat_event_search_messages"`);
+  await client.query(`
+    CREATE TEMP TABLE "_stage8_plan_artifacts" (
+      "id" uuid PRIMARY KEY,
+      "user_id" text NOT NULL,
+      "org_id" text NOT NULL
+    )
+  `);
+  await client.query(
+    `
+      INSERT INTO "_stage8_plan_artifacts" ("id", "user_id", "org_id")
+      SELECT "id", 'stage8-artifact-user', 'stage8-artifact-org'
+      FROM unnest($1::uuid[]) AS "artifact"("id")
+    `,
+    [artifactIds],
+  );
+  await client.query(`ANALYZE "_stage8_plan_artifacts"`);
+
+  const plan = await client.query<{ "QUERY PLAN": string }>(`
+    EXPLAIN (COSTS OFF)
+    SELECT "message"."chat_thread_id", "message"."seq_id"
+    FROM "chat_event_search_messages" AS "message"
+    INNER JOIN "_stage8_plan_artifacts" AS "artifact"
+      ON "artifact"."user_id" = "message"."user_id"
+      AND "artifact"."org_id" = "message"."org_id"
+      AND "artifact"."id" = "message"."agent_compose_id"
+  `);
+  const planText = plan.rows
+    .map((row) => {
+      return row["QUERY PLAN"];
+    })
+    .join("\n");
+  assert.match(
+    planText,
+    /chat_event_search_messages_user_org_agent_created_idx/u,
+    `artifact search closure must use the frozen legacy composite index:\n${planText}`,
+  );
+  assert.doesNotMatch(
+    planText,
+    /Seq Scan on chat_event_search_messages/u,
+    `artifact search closure must not scan the production-shaped table:\n${planText}`,
+  );
+  await client.query(`DROP TABLE "_stage8_plan_artifacts"`);
+}
+
+async function assertProductionShapedSearchRowsPreserved(
+  client: Client,
+): Promise<void> {
+  const result = await client.query<{ count: number }>(
+    `
+      SELECT count(*)::integer AS "count"
+      FROM "chat_event_search_messages"
+      WHERE "chat_thread_id" = $1
+    `,
+    [canonicalThreadId],
+  );
+  assert.equal(result.rows[0]?.count, productionShapedSearchRows + 1);
+}
+
 async function seedArtifactBilling(client: Client): Promise<void> {
   await client.query(
     `
@@ -812,7 +898,25 @@ function assertStaticBoundary(): void {
   );
   assert.match(
     productionMigrationSql,
-    /Broad before\/after preservation acceptance is controller-owned through\s+-- read-only MaskDB/u,
+    /Broad preservation, reference-partition, and historical acceptance is\s+-- controller-owned through read-only MaskDB/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /SELECT\s+"compose"\."id",\s+"compose"\."user_id",\s+"compose"\."org_id",/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /FROM "chat_event_search_messages" AS "message"\s+INNER JOIN "_stage8_approved_artifacts" AS "artifact"\s+ON "artifact"\."user_id" = "message"\."user_id"\s+AND "artifact"\."org_id" = "message"\."org_id"\s+AND "artifact"\."id" = "message"\."agent_compose_id"/u,
+  );
+  assert.equal(
+    productionMigrationSql.match(/FROM "chat_event_search_messages"(?:\s|$)/gu)
+      ?.length,
+    3,
+    "only the two nonempty probes and index-bounded artifact freeze may read the search table",
+  );
+  assert.doesNotMatch(
+    productionMigrationSql,
+    /_stage8_deleted_anchor_events|canonical_references|legacy\/canonical reference partition|unexpected event history/u,
   );
   assert.match(
     productionMigrationSql,
@@ -1016,8 +1120,10 @@ async function validateExactCleanupAndLockRetry(): Promise<void> {
     const client = await connect(database);
     try {
       await seedApprovedClosure(client);
+      await seedAndAssertProductionShapedSearchPlan(client);
       await runMigration(client, syntheticMigrationSql());
       await assertFinalState(client);
+      await assertProductionShapedSearchRowsPreserved(client);
     } finally {
       await client.end();
     }
