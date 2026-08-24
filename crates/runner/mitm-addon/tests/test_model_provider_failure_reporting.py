@@ -757,6 +757,24 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
         ),
         (
             "model-provider:openai-api-key",
+            "/v1/chat/completions",
+            b'{"error":{"code":"rate_limit_error"}}',
+            "rate_limit",
+        ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/chat/completions",
+            b'{"error":{"code":"timeout_error"}}',
+            "timeout",
+        ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/chat/completions",
+            b'{"error":{"code":"connection_error"}}',
+            "connection",
+        ),
+        (
+            "model-provider:openai-api-key",
             "/v1/responses",
             b'{"status":"failed","error":{"code":"server_error"}}',
             "provider_unavailable",
