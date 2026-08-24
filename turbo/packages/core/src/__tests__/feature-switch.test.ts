@@ -145,8 +145,8 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
