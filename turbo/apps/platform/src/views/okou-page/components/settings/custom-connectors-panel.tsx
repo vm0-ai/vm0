@@ -54,8 +54,8 @@ import {
   reloadConnectorAccountSummaries$,
   settingsConnectorAccounts,
 } from "../../../../signals/okou-page/settings/connector-accounts.ts";
-import { connectorAccountEffectiveLabel } from "../../../../signals/connector-domain.ts";
 import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
+import { ConnectorAccountSummaryText } from "./connector-card.tsx";
 import {
   closeCustomAccountConnectDialog$,
   closeCustomAccountManager$,
@@ -203,62 +203,6 @@ function CustomConnectorCardHeader({
   );
 }
 
-function CustomConnectorAccountSummary({
-  connector,
-  accountSummary,
-}: {
-  readonly connector: CustomConnectorResponse;
-  readonly accountSummary: ConnectorAccountSummary | undefined;
-}) {
-  const { t } = useTranslation();
-  const accountCount = accountSummary?.accountCount ?? 0;
-  let accountSummaryText =
-    accountCount === 0
-      ? t(($) => {
-          return $.connectors.accounts.noAccounts;
-        })
-      : accountCount === 1
-        ? t(
-            ($) => {
-              return $.connectors.accounts.summaryOne;
-            },
-            { value: accountCount },
-          )
-        : t(
-            ($) => {
-              return $.connectors.accounts.summaryMany;
-            },
-            { value: accountCount },
-          );
-  if (accountSummary?.defaultConnection) {
-    accountSummaryText = t(
-      ($) => {
-        return $.connectors.accounts.summaryWithDefault;
-      },
-      {
-        summary: accountSummaryText,
-        account: connectorAccountEffectiveLabel(
-          accountSummary.defaultConnection,
-          connector.displayName,
-        ),
-      },
-    );
-  }
-  if (accountSummary && accountSummary.attentionCount > 0) {
-    accountSummaryText = t(
-      ($) => {
-        return $.connectors.accounts.summaryWithAttention;
-      },
-      { summary: accountSummaryText, value: accountSummary.attentionCount },
-    );
-  }
-  return (
-    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-      {accountSummaryText}
-    </span>
-  );
-}
-
 function CustomConnectorConnectionStatus({
   connected,
 }: {
@@ -302,9 +246,10 @@ function CustomConnectorCardFooter({
       }`}
     >
       {accountManagement ? (
-        <CustomConnectorAccountSummary
-          connector={connector}
-          accountSummary={accountSummary}
+        <ConnectorAccountSummaryText
+          summary={accountSummary}
+          connectorLabel={connector.displayName}
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
         />
       ) : (
         <CustomConnectorConnectionStatus connected={connector.connected} />

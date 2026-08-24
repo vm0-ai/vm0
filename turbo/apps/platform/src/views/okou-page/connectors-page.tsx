@@ -19,10 +19,7 @@ import type {
   PublicConnectorCatalogDiscoveryResponse,
   PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import {
-  connectorAccountEffectiveLabel,
-  type PlatformConnectorCatalogStatusItem,
-} from "../../signals/connector-domain.ts";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
@@ -943,20 +940,11 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
     />
   );
   if (props.accountManagement) {
-    const defaultConnection = props.accountSummary?.defaultConnection;
     return (
       <ConnectorCard
         variant="accounts"
         connector={props.connector}
         summary={props.accountSummary}
-        defaultLabel={
-          defaultConnection
-            ? connectorAccountEffectiveLabel(
-                defaultConnection,
-                props.connector.label,
-              )
-            : null
-        }
         busy={props.busy}
         onAdd={props.onAdd}
         onManage={props.onManageAccounts}

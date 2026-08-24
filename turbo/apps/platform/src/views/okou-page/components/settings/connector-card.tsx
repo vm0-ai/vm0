@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
+import {
+  connectorAccountEffectiveLabel,
+  type PlatformConnectorCatalogStatusItem,
+} from "../../../../signals/connector-domain.ts";
 import {
   Button,
   DropdownMenu,
@@ -47,7 +50,6 @@ type AccountsConnectorCardProps = {
   readonly variant: "accounts";
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly summary: ConnectorAccountSummary | undefined;
-  readonly defaultLabel: string | null;
   readonly busy: boolean;
   readonly manageAccess?: ReactNode;
   readonly onAdd: () => void;
@@ -345,15 +347,15 @@ function ConnectionConnectorCard({
   );
 }
 
-function AccountsConnectorCard({
-  connector,
+export function ConnectorAccountSummaryText({
   summary,
-  defaultLabel,
-  busy,
-  manageAccess,
-  onAdd,
-  onManage,
-}: AccountsConnectorCardProps) {
+  connectorLabel,
+  className,
+}: {
+  readonly summary: ConnectorAccountSummary | undefined;
+  readonly connectorLabel: string;
+  readonly className?: string;
+}) {
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
   let summaryText =
@@ -374,12 +376,18 @@ function AccountsConnectorCard({
             },
             { value: accountCount },
           );
-  if (defaultLabel) {
+  if (summary?.defaultConnection) {
     summaryText = t(
       ($) => {
         return $.connectors.accounts.summaryWithDefault;
       },
-      { summary: summaryText, account: defaultLabel },
+      {
+        summary: summaryText,
+        account: connectorAccountEffectiveLabel(
+          summary.defaultConnection,
+          connectorLabel,
+        ),
+      },
     );
   }
   if (summary && summary.attentionCount > 0) {
@@ -390,6 +398,19 @@ function AccountsConnectorCard({
       { summary: summaryText, value: summary.attentionCount },
     );
   }
+  return <span className={className}>{summaryText}</span>;
+}
+
+function AccountsConnectorCard({
+  connector,
+  summary,
+  busy,
+  manageAccess,
+  onAdd,
+  onManage,
+}: AccountsConnectorCardProps) {
+  const { t } = useTranslation();
+  const accountCount = summary?.accountCount ?? 0;
   return (
     <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
@@ -404,9 +425,11 @@ function AccountsConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
-        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {summaryText}
-        </div>
+        <ConnectorAccountSummaryText
+          summary={summary}
+          connectorLabel={connector.label}
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+        />
         {manageAccess}
         <Button
           type="button"
