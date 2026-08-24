@@ -13,8 +13,8 @@ Other release artifacts, such as the desktop app and host-worker deployments,
 have their own release paths and are outside this compatibility model unless
 they interact with these frontend, backend, or runner boundaries.
 
-New versions are normally deployed together, but they do not become active at the
-same instant. Code and tests must account for short periods where different
+New versions are normally deployed together, but they do not become active at
+the same instant. Code and tests must account for periods where different
 surfaces are on different versions.
 
 ## Deployment Model
@@ -242,7 +242,7 @@ capabilities in their client version. The API projects a stored locale to
 writes that the client did not advertise. Keep this compatibility layer until
 stale browser clients and API rollback windows have closed.
 
-### Treat Deploy-before-migrate Windows as a First-class Risk
+### Treat Database/API Transitions as a First-class Boundary
 
 Schema changes have two independent compatibility directions:
 
@@ -256,27 +256,15 @@ Schema changes have two independent compatibility directions:
   value, relation, constraint, or function until the migration is complete.
 
 The normal production release enforces migration-before-promotion in
-`promote-api-production`: it builds one API artifact, smoke-tests the migration
-on an expiring branch cloned from production, runs the migration against the
-Neon `production` database, and deploys that exact artifact only after the
-migration succeeds. A failed migration stops the job before API promotion. The
-rollback dashboard is updated only after all applicable production promotions
-succeed.
+`promote-api-production`: it builds one API artifact, migrates the Neon
+`production` database, and deploys that exact artifact only after the migration
+succeeds. A failed migration stops the job before API promotion.
 
-This ordering is direct evidence that a successful normal release closed the
-new-code-before-migration gate for its release target. It is not a reason to
-write incompatible migrations: promotion drift, draining instances,
-nonstandard deployment paths, and old code after migration remain reachable
-conditions. The production rollback workflow promotes App, Runner, and API
-artifacts and requires an explicit compatibility confirmation; it does not
-restore an older database schema. Retained rollback API targets must therefore
-remain compatible with the current schema.
-
-Do not replace these event-based gates with a fixed wait. Verify the release
-run, current schema, and retained target compatibility directly. A compatibility
-object that protects old code after migration does not by itself protect new
-code before migration, and migration-before-promotion does not protect an
-outgoing API whose statements become invalid after the migration.
+For a successful normal release, this closes the new-code-before-migration gate
+for its release target. Old code after migration remains a separate boundary:
+outgoing, draining, and retained rollback API targets must stay compatible with
+the current schema. The production rollback workflow promotes application
+artifacts; it does not restore an older database schema.
 
 The ChatEvent schema-contraction releases from July 27-29, 2026 provide concrete
 examples:
@@ -285,9 +273,7 @@ examples:
   added `event_type`. From about 09:11 to 10:52 UTC on July 27 (102 minutes),
   new App reads, crons, and the automation poller queried it before the migration
   ran and received PostgreSQL error `42703` (`column does not exist`). An
-  additive column still breaks a new reader when code wins the race. This is a
-  historical failure duration from before the current release ordering was
-  hardened, not a mandatory wait after a successful release.
+  additive column still breaks a new reader when code wins the race.
 - The [PR #23252](https://github.com/vm0-ai/vm0/pull/23252)-era migration
   `0700` added the `teams_user_message` enum value. From about 00:38 to 00:47 UTC
   on July 28 (10 minutes), new code used the value before the migration ran and
