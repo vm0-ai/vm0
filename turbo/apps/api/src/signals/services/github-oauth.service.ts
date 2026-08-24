@@ -18,6 +18,7 @@ import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { z } from "zod";
 
 import type { Db } from "../external/db";
 import { safeJsonParse, tapError } from "../utils";
@@ -39,16 +40,18 @@ const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
 const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
-interface AppInstallation {
-  readonly id: number;
-  readonly app_id?: number;
-  readonly app_slug?: string;
-  readonly account: {
-    readonly id: number;
-    readonly login: string;
-    readonly type: string;
-  };
-}
+const appInstallationSchema = z.object({
+  id: z.number(),
+  app_id: z.number(),
+  app_slug: z.string().min(1),
+  account: z.object({
+    id: z.number(),
+    login: z.string(),
+    type: z.string(),
+  }),
+});
+
+type AppInstallation = z.infer<typeof appInstallationSchema>;
 
 interface GitHubInstallationInfo {
   readonly appId: string;
@@ -161,7 +164,7 @@ async function listGithubAppInstallations(
     );
   }
 
-  return (await response.json()) as AppInstallation[];
+  return appInstallationSchema.array().parse(await response.json());
 }
 
 export async function getGithubInstallationInfo(
@@ -188,15 +191,7 @@ export async function getGithubInstallationInfo(
     );
   }
 
-  const data = (await response.json()) as {
-    readonly app_id: number;
-    readonly app_slug: string;
-    readonly account: {
-      readonly id: number;
-      readonly login: string;
-      readonly type: string;
-    };
-  };
+  const data = appInstallationSchema.parse(await response.json());
 
   return {
     appId: String(data.app_id),
@@ -779,8 +774,6 @@ async function linkExistingGithubAppInstallation(
   args: {
     readonly db: Db;
     readonly userId: string;
-    readonly appId: string;
-    readonly appSlug: string;
     readonly installation: {
       readonly id: string;
       readonly appId: string | null;
@@ -790,8 +783,8 @@ async function linkExistingGithubAppInstallation(
   },
   signal: AbortSignal,
 ): Promise<boolean> {
-  const providerAppId = String(args.providerInstallation.app_id ?? args.appId);
-  const providerAppSlug = args.providerInstallation.app_slug ?? args.appSlug;
+  const providerAppId = String(args.providerInstallation.app_id);
+  const providerAppSlug = args.providerInstallation.app_slug;
   if (
     args.installation.appId !== providerAppId ||
     args.installation.appSlug !== providerAppSlug
@@ -863,8 +856,6 @@ export async function tryLinkGithubFromRemoteInstallations(
         {
           db: args.db,
           userId: args.userId,
-          appId: args.appId,
-          appSlug: args.appSlug,
           installation: existing,
           providerInstallation: ghInstall,
         },
@@ -918,8 +909,8 @@ export async function tryLinkGithubFromRemoteInstallations(
     .insert(githubInstallations)
     .values({
       installationId: ghInstallationId,
-      appId: String(ghInstall.app_id ?? args.appId),
-      appSlug: ghInstall.app_slug ?? args.appSlug,
+      appId: String(ghInstall.app_id),
+      appSlug: ghInstall.app_slug,
       encryptedAccessToken: await encryptPersistentSecretValue(
         token,
         featureSwitchContext,

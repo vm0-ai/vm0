@@ -205,7 +205,7 @@ export interface PendingWorkflowQueueEvent {
   readonly workflowAutomationEventType: string | null;
   readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
   readonly connectorSourceId: string | undefined;
-  readonly publicBrand: PublicBrand;
+  readonly publicBrand: PublicBrand | null;
 }
 
 /**
@@ -275,7 +275,7 @@ export async function loadNextWorkflowQueueEvent(
     return {
       ...event,
       connectorSourceId: event.connectorSourceId ?? undefined,
-      publicBrand: event.publicBrand ?? "vm0",
+      publicBrand: event.publicBrand,
       triggerSource:
         event.automationKind === null
           ? null

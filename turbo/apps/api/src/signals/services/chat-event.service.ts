@@ -597,6 +597,9 @@ function newAutomationDisplayContext(
         : null,
     connectorSourceId:
       "connectorSourceId" in values ? (values.connectorSourceId ?? null) : null,
+    // Deliberate current-contract default: automation producers without a
+    // provider Host are VM0 until every producer supplies an authoritative
+    // public brand and this input can become required.
     publicBrand:
       "publicBrand" in values ? (values.publicBrand ?? "vm0") : "vm0",
     triggerBrief:
