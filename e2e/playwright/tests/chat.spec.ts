@@ -1832,14 +1832,6 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/feature-switches", async (route) => {
-    await route.fulfill({
-      json: {
-        switches: {},
-        effectiveSwitches: { joggAiBuiltIn: true },
-      },
-    });
-  });
   await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {

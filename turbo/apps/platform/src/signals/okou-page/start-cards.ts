@@ -5,7 +5,6 @@ import {
 } from "@okouai/core/workflow-template-items";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
-import { avatarTemplatesEnabled$ } from "../external/feature-switch.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 
 /**
@@ -81,13 +80,9 @@ export const startCardWorkflowConnectorIcons$ = computed(
 );
 
 export const startCardKinds$ = computed((get): readonly StartCardKind[] => {
-  const avatarEnabled = get(avatarTemplatesEnabled$);
   const workflowTemplate = get(startCardWorkflowTemplate$);
   return get(internalStartCardOrder$)
     .filter((kind) => {
-      if (kind === "avatar") {
-        return avatarEnabled;
-      }
       if (kind === "workflow") {
         return workflowTemplate !== undefined;
       }
