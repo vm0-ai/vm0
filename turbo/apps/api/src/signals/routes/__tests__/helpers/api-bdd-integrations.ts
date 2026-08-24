@@ -519,18 +519,22 @@ async function requestRawTelegramWebhook(
   telegramBotId: string,
   body: string,
   headers: { readonly "x-telegram-bot-api-secret-token"?: string },
+  publicBrand?: PublicBrand,
 ): Promise<TelegramWebhookResponse> {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(`/api/telegram/webhook/${telegramBotId}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...headers,
+  }).request(
+    `${publicBrand === "okou" ? "https://api.okou.ai" : ""}/api/telegram/webhook/${telegramBotId}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
     },
-    body,
-  });
+  );
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -1807,9 +1811,16 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: { readonly "x-telegram-bot-api-secret-token"?: string },
       statuses: readonly TelegramWebhookStatus[],
+      publicBrand?: PublicBrand,
     ) {
       return await accept(
-        requestRawTelegramWebhook(context, telegramBotId, body, headers),
+        requestRawTelegramWebhook(
+          context,
+          telegramBotId,
+          body,
+          headers,
+          publicBrand,
+        ),
         statuses,
       );
     },

@@ -2973,7 +2973,7 @@
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "newBotToken": "नया बॉट टोकन",
         "notConnected": "जुड़े नहीं हैं",
-        "officialBot": "{{assistantName}} आधिकारिक बॉट",
+        "officialBot": "आधिकारिक Telegram बॉट",
         "officialDescription": "{{brandName}} द्वारा प्रदान किया गया आधिकारिक बॉट।",
         "officialMissing": "आधिकारिक बॉट कॉन्फ़िगरेशन अनुपलब्ध है.",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",

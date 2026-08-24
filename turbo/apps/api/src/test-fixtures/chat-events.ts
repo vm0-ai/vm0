@@ -175,6 +175,7 @@ interface ChatEventContextFixture {
   readonly telegramThreadContext: string | null;
   readonly telegramRootMessageId: string | null;
   readonly telegramThinkingMessageId: string | null;
+  readonly telegramPublicBrand: PublicBrand | null;
   readonly telegramUserLinkId: string | null;
   readonly telegramUserLinkKind: "custom" | "official" | null;
   readonly telegramChatType: string | null;
@@ -276,6 +277,7 @@ export async function readChatEventContextFixture(
       telegramThreadContext: chatTelegramContext.threadContext,
       telegramRootMessageId: chatTelegramContext.rootMessageId,
       telegramThinkingMessageId: chatTelegramContext.thinkingMessageId,
+      telegramPublicBrand: chatTelegramContext.publicBrand,
       telegramUserLinkId: chatTelegramContext.userLinkId,
       telegramUserLinkKind: chatTelegramContext.userLinkKind,
       telegramChatType: chatTelegramContext.chatType,
@@ -492,6 +494,7 @@ const annotationProjectionInputs = [
         threadContext: "",
         rootMessageId: null,
         thinkingMessageId: null,
+        publicBrand: "vm0",
         userLinkId: "00000000-0000-4000-8000-000000000004",
         userLinkKind: "custom",
         chatType: "supergroup",
@@ -513,6 +516,7 @@ const annotationProjectionInputs = [
         threadContext: "",
         rootMessageId: "dm",
         thinkingMessageId: null,
+        publicBrand: "vm0",
         userLinkId: "00000000-0000-4000-8000-000000000005",
         userLinkKind: "official",
         chatType: "private",
@@ -534,6 +538,7 @@ const annotationProjectionInputs = [
         threadContext: "",
         rootMessageId: null,
         thinkingMessageId: null,
+        publicBrand: "vm0",
         userLinkId: "00000000-0000-4000-8000-000000000006",
         userLinkKind: "custom",
         chatType: "group",
@@ -773,6 +778,16 @@ export async function setTelegramThinkingMessageIdFixture(
   await db()
     .update(chatTelegramContext)
     .set({ thinkingMessageId })
+    .where(eq(chatTelegramContext.id, event.contextId));
+}
+
+export async function clearTelegramPublicBrandFixture(
+  eventId: string,
+): Promise<void> {
+  const event = await pendingTelegramEventContext(eventId);
+  await db()
+    .update(chatTelegramContext)
+    .set({ publicBrand: null })
     .where(eq(chatTelegramContext.id, event.contextId));
 }
 

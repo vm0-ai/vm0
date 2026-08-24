@@ -3024,7 +3024,7 @@
         "moreOptions": "Mais opções para {{bot}}",
         "newBotToken": "Novo token do bot",
         "notConnected": "Não conectado",
-        "officialBot": "Bot oficial do {{assistantName}}",
+        "officialBot": "Bot oficial do Telegram",
         "officialDescription": "Bot oficial fornecido pelo {{brandName}}.",
         "officialMissing": "A configuração do bot oficial está ausente.",
         "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",

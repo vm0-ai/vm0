@@ -132,6 +132,7 @@ type ChatEventDisplayContext =
         readonly threadContext: string;
         readonly rootMessageId: string | null;
         readonly thinkingMessageId: string | null;
+        readonly publicBrand: PublicBrand;
         readonly userLinkId: string;
         readonly userLinkKind: "custom" | "official";
         readonly chatType: string;
@@ -518,6 +519,7 @@ type NewDisplayContext =
       readonly threadContext: string;
       readonly rootMessageId: string | null;
       readonly thinkingMessageId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly userLinkId: string;
       readonly userLinkKind: "custom" | "official";
       readonly chatType: string;
@@ -819,6 +821,7 @@ async function insertTelegramDisplayContext(
     threadContext: context.threadContext,
     rootMessageId: context.rootMessageId,
     thinkingMessageId: context.thinkingMessageId,
+    publicBrand: context.publicBrand,
     userLinkId: context.userLinkId,
     userLinkKind: context.userLinkKind,
     chatType: context.chatType,

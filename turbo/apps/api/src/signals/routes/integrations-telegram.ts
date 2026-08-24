@@ -4,12 +4,17 @@ import {
   integrationsTelegramDownloadFileContract,
 } from "@okouai/api-contracts/contracts/integrations";
 import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
+import { allowedCorsOrigin } from "../../lib/cors";
+import { env } from "../../lib/env";
+import { inferMimetype } from "../../lib/mimetype";
 import {
   organizationAuthContext$,
   requiredAuthContext$,
 } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { integrationsTelegramBotIdRoutes } from "./integrations-telegram-bot-id";
 import { integrationsTelegramLinkRoutes } from "./integrations-telegram-link";
@@ -36,10 +41,8 @@ import {
   setupTelegramStatus$,
   telegramWebhook$,
 } from "../services/telegram-post.service";
-import { inferMimetype } from "../../lib/mimetype";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { publicBrand$ } from "../context/hono";
 
 function errorResponse(
   status: number,
@@ -165,12 +168,15 @@ const getIntegrationTelegramListInner$ = computed(async (get) => {
 const getIntegrationTelegramLinkStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(integrationsTelegramContract.getLinkStatus));
+  const publicBrand =
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   return await get(
     telegramIntegrationLinkStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       botId: query.botId,
       origin: query.origin,
+      publicBrand,
     }),
   );
 });
@@ -277,18 +283,18 @@ async function downloadTelegramFile(
 const registerTelegramBotInner$ = command(
   ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    return set(
-      registerTelegramBot$,
-      { auth, publicBrand: get(publicBrand$) },
-      signal,
-    );
+    const publicBrand =
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    return set(registerTelegramBot$, { auth, publicBrand }, signal);
   },
 );
 
 const setupTelegramStatusInner$ = command(
   ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    return set(setupTelegramStatus$, auth, signal);
+    const publicBrand =
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    return set(setupTelegramStatus$, { auth, publicBrand }, signal);
   },
 );
 
@@ -448,7 +454,21 @@ async function loadTelegramAvatar(
   });
 }
 
-const getIntegrationTelegramAuthCallback$ = computed((): Response => {
+const getIntegrationTelegramAuthCallback$ = computed((get): Response => {
+  const query = get(queryOf(integrationsTelegramContract.authCallback));
+  const fallbackTargetOrigin = new URL(
+    appUrlForPublicBrand(env("APP_URL"), get(publicBrand$)),
+  ).origin;
+  const targetOrigin = query.targetOrigin
+    ? allowedCorsOrigin(query.targetOrigin)
+    : fallbackTargetOrigin;
+  if (!targetOrigin) {
+    return new Response("Invalid target origin", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+  const serializedTargetOrigin = JSON.stringify(targetOrigin);
   const html = `<!DOCTYPE html>
 <html><head><title>Telegram Auth</title></head>
 <body><script>
@@ -457,9 +477,7 @@ const getIntegrationTelegramAuthCallback$ = computed((): Response => {
   if (!params.get("id")) {
     params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   }
-  var targetOrigin =
-    new URLSearchParams(window.location.search).get("targetOrigin") ||
-    window.location.origin;
+  var targetOrigin = ${serializedTargetOrigin};
   var data = {};
   ["id","first_name","last_name","username","photo_url","auth_date","hash"].forEach(function(k) {
     var v = params.get(k);
