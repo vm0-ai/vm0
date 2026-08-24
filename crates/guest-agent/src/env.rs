@@ -29,6 +29,69 @@ fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+#[derive(Clone, Copy)]
+enum PrivatePayloadFileEnvSource {
+    CanonicalOnly,
+    LegacyOnly,
+    Dual,
+}
+
+type PrivatePayloadFileEnvResolution = (String, Option<PrivatePayloadFileEnvSource>);
+
+impl PrivatePayloadFileEnvSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CanonicalOnly => "canonical-only",
+            Self::LegacyOnly => "legacy-only",
+            Self::Dual => "dual",
+        }
+    }
+}
+
+/// Resolve Stage 1 compatibility between existing runners or sandboxes and a
+/// new guest reader. Existing pointers can remain live through the two-hour
+/// guest runtime budget plus bounded finalization. #28914 owns the later
+/// writer-cutover and reader-removal issues; remove the legacy branches only
+/// after the reader floor, sandbox drain, rollback window, and
+/// legacy-read-zero gates are complete.
+fn private_payload_file_env(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<PrivatePayloadFileEnvResolution, String> {
+    let canonical = std::env::var(canonical_key)
+        .ok()
+        .filter(|value| !value.is_empty());
+    let legacy = std::env::var(legacy_key)
+        .ok()
+        .filter(|value| !value.is_empty());
+
+    match (canonical, legacy) {
+        (None, None) => Ok((String::new(), None)),
+        (Some(value), None) => Ok((value, Some(PrivatePayloadFileEnvSource::CanonicalOnly))),
+        (None, Some(value)) => Ok((value, Some(PrivatePayloadFileEnvSource::LegacyOnly))),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            Ok((canonical, Some(PrivatePayloadFileEnvSource::Dual)))
+        }
+        (Some(_), Some(_)) => Err(format!(
+            "conflicting private payload file environment aliases: canonical_key={canonical_key} \
+             legacy_key={legacy_key} state=conflict"
+        )),
+    }
+}
+
+fn record_private_payload_file_env_source(
+    canonical_key: &'static str,
+    source: Option<PrivatePayloadFileEnvSource>,
+) {
+    if let Some(source) = source {
+        log_info!(
+            LOG_TAG,
+            "private_payload_file_env_source key={canonical_key} source={}",
+            source.label()
+        );
+    }
+}
+
 /// Resolve the sensitive runner-to-guest API token at the single process-env
 /// capture boundary. Both aliases are reader-only during #28914 migration
 /// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
@@ -297,6 +360,24 @@ impl GuestConfigRaw {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from);
 
+        let (user_env_file, user_env_file_source) = private_payload_file_env(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            USER_ENV_FILE_ENV_KEY,
+        )?;
+        let (run_payload_file, run_payload_file_source) = private_payload_file_env(
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            RUN_PAYLOAD_FILE_ENV_KEY,
+        )?;
+
+        record_private_payload_file_env_source(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            user_env_file_source,
+        );
+        record_private_payload_file_env_source(
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            run_payload_file_source,
+        );
+
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
@@ -328,8 +409,8 @@ impl GuestConfigRaw {
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
-            user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
-            run_payload_file: env_or_empty(RUN_PAYLOAD_FILE_ENV_KEY),
+            user_env_file,
+            run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
             mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
             home: std::env::var("HOME").ok(),

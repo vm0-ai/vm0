@@ -1081,6 +1081,15 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
+    for canonical_key in [
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    ] {
+        assert!(
+            !start_env.contains_key(canonical_key),
+            "reader Stage 1 must not emit canonical key {canonical_key}"
+        );
+    }
     for key in [
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
