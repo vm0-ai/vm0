@@ -341,11 +341,11 @@ export type SaveCustomConnectorProposalResponse = z.infer<
 >;
 
 /**
- * Zero custom connectors contract for /api/custom-connectors
+ * Custom connectors contract for /api/custom-connectors
  * GET: list all org custom connectors with per-user connection state
  * POST: create a new custom connector (admin only)
  */
-export const zeroCustomConnectorsContract = c.router({
+export const customConnectorsContract = c.router({
   list: {
     method: "GET",
     path: "/api/custom-connectors",
@@ -372,14 +372,14 @@ export const zeroCustomConnectorsContract = c.router({
     summary: "Create an org custom connector",
   },
 });
-export type ZeroCustomConnectorsContract = typeof zeroCustomConnectorsContract;
+export type CustomConnectorsContract = typeof customConnectorsContract;
 
 /**
- * Zero custom connector by id contract for /api/custom-connectors/[id]
+ * Custom connector by id contract for /api/custom-connectors/[id]
  * DELETE: delete a custom connector (admin only — cascades secrets)
  * PUT: update a custom connector definition (admin only)
  */
-export const zeroCustomConnectorByIdContract = c.router({
+export const customConnectorByIdContract = c.router({
   get: {
     method: "GET",
     path: "/api/custom-connectors/:id",
@@ -439,10 +439,9 @@ export const zeroCustomConnectorByIdContract = c.router({
     summary: "Get an org custom connector permission bundle",
   },
 });
-export type ZeroCustomConnectorByIdContract =
-  typeof zeroCustomConnectorByIdContract;
+export type CustomConnectorByIdContract = typeof customConnectorByIdContract;
 
-export const zeroCustomConnectorValuesContract = c.router({
+export const customConnectorValuesContract = c.router({
   set: {
     method: "PUT",
     path: "/api/custom-connectors/:id/values",
@@ -461,10 +460,10 @@ export const zeroCustomConnectorValuesContract = c.router({
     summary: "Set the calling user's values for a custom connector",
   },
 });
-export type ZeroCustomConnectorValuesContract =
-  typeof zeroCustomConnectorValuesContract;
+export type CustomConnectorValuesContract =
+  typeof customConnectorValuesContract;
 
-export const zeroCustomConnectorOAuth2Contract = c.router({
+export const customConnectorOAuth2Contract = c.router({
   start: {
     method: "POST",
     path: "/api/custom-connectors/:id/oauth2/start",
@@ -501,10 +500,10 @@ export const zeroCustomConnectorOAuth2Contract = c.router({
     summary: "Complete OAuth 2.0 for a custom connector",
   },
 });
-export type ZeroCustomConnectorOAuth2Contract =
-  typeof zeroCustomConnectorOAuth2Contract;
+export type CustomConnectorOAuth2Contract =
+  typeof customConnectorOAuth2Contract;
 
-export const zeroCustomConnectorProposalContract = c.router({
+export const customConnectorProposalContract = c.router({
   save: {
     method: "POST",
     path: "/api/custom-connectors/proposals/save",
@@ -521,5 +520,5 @@ export const zeroCustomConnectorProposalContract = c.router({
     summary: "Save a custom connector proposal",
   },
 });
-export type ZeroCustomConnectorProposalContract =
-  typeof zeroCustomConnectorProposalContract;
+export type CustomConnectorProposalContract =
+  typeof customConnectorProposalContract;

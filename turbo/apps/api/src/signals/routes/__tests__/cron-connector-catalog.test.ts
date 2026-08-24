@@ -19,7 +19,7 @@ import {
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
   workflowAutomationsContract,
@@ -1530,7 +1530,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
     setupApp({ context, routes: featureSwitchesRoutes })(
-      zeroFeatureSwitchesContract,
+      featureSwitchesContract,
     ).update({
       headers: { authorization: "Bearer clerk-session" },
       body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
@@ -1541,7 +1541,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
     zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
       setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       ).delete({
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -2297,7 +2297,7 @@ describe("connector catalog valid lifecycle", () => {
     const featureClient = setupApp({
       context,
       routes: featureSwitchesRoutes,
-    })(zeroFeatureSwitchesContract);
+    })(featureSwitchesContract);
 
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
@@ -5759,7 +5759,7 @@ describe("connector catalog executable compatibility", () => {
     const featureClient = setupApp({
       context,
       routes: featureSwitchesRoutes,
-    })(zeroFeatureSwitchesContract);
+    })(featureSwitchesContract);
 
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,

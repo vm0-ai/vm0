@@ -1,4 +1,4 @@
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +14,7 @@ const context = testContext();
 
 describe("bootstrap feature switch hydration", () => {
   it("hydrates persisted feature switches for authenticated users", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.AhrefsConnector]: true },
         effectiveSwitches: { [FeatureSwitchKey.AhrefsConnector]: true },
@@ -33,7 +33,7 @@ describe("bootstrap feature switch hydration", () => {
   });
 
   it("keeps image recognition available without capability negotiation", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
@@ -50,7 +50,7 @@ describe("bootstrap feature switch hydration", () => {
   });
 
   it("enables avatar templates from the feature switch alone", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
         effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
@@ -67,7 +67,7 @@ describe("bootstrap feature switch hydration", () => {
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(500, {
         error: {
           code: "INTERNAL_SERVER_ERROR",

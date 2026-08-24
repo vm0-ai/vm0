@@ -18,7 +18,7 @@ import {
   type ExecutionContext,
   type Job as RunnerJob,
 } from "@okouai/api-contracts/contracts/runners";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";

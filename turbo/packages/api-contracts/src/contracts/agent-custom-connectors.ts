@@ -36,7 +36,7 @@ export type AgentCustomConnectorUpdate = z.infer<
  * A user's secret alone does not authorize an agent — they must also enable
  * the custom connector here for every agent that should use it.
  */
-export const zeroAgentCustomConnectorsContract = c.router({
+export const agentCustomConnectorsContract = c.router({
   get: {
     method: "GET",
     path: "/api/agents/:id/custom-connectors",
@@ -66,5 +66,5 @@ export const zeroAgentCustomConnectorsContract = c.router({
     summary: "Update custom connector grants for user on agent",
   },
 });
-export type ZeroAgentCustomConnectorsContract =
-  typeof zeroAgentCustomConnectorsContract;
+export type AgentCustomConnectorsContract =
+  typeof agentCustomConnectorsContract;

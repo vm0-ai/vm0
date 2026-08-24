@@ -5,13 +5,13 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorsBySlugContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -58,19 +58,19 @@ function connectorProjectionClient() {
 }
 
 function featureClient() {
-  return setupApp({ context, routes })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes })(featureSwitchesContract);
 }
 
 function customConnectorClient() {
-  return setupApp({ context, routes })(zeroCustomConnectorsContract);
+  return setupApp({ context, routes })(customConnectorsContract);
 }
 
 function customConnectorByIdClient() {
-  return setupApp({ context, routes })(zeroCustomConnectorByIdContract);
+  return setupApp({ context, routes })(customConnectorByIdContract);
 }
 
 function customConnectorValuesClient() {
-  return setupApp({ context, routes })(zeroCustomConnectorValuesContract);
+  return setupApp({ context, routes })(customConnectorValuesContract);
 }
 
 async function setConnectorAccountsEnabled(

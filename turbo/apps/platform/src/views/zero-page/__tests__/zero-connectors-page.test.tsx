@@ -1,21 +1,21 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorOAuth2Contract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOpenIdStartContract,
@@ -31,7 +31,7 @@ import {
   type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
@@ -414,30 +414,27 @@ function mockCustomConnectorStory(): {
   const createBodies: CreateCustomConnectorBody[] = [];
   const updateBodies: UpdateCustomConnectorBody[] = [];
 
-  context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors });
   });
+  context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+    createBodies.push(body);
+    const prefixTemplates = body.prefixTemplates ?? [];
+    const fields = body.fields ?? [];
+    const headerInjections = body.headerInjections ?? [];
+    const created = customConnector({
+      displayName: body.displayName,
+      prefixTemplates,
+      fields,
+      headerInjections,
+      queryInjections: body.queryInjections ?? [],
+      authMode: body.authMode ?? "manual",
+    });
+    connectors = [...connectors, created];
+    return respond(201, created);
+  });
   context.mocks.api(
-    zeroCustomConnectorsContract.create,
-    ({ body, respond }) => {
-      createBodies.push(body);
-      const prefixTemplates = body.prefixTemplates ?? [];
-      const fields = body.fields ?? [];
-      const headerInjections = body.headerInjections ?? [];
-      const created = customConnector({
-        displayName: body.displayName,
-        prefixTemplates,
-        fields,
-        headerInjections,
-        queryInjections: body.queryInjections ?? [],
-        authMode: body.authMode ?? "manual",
-      });
-      connectors = [...connectors, created];
-      return respond(201, created);
-    },
-  );
-  context.mocks.api(
-    zeroCustomConnectorValuesContract.set,
+    customConnectorValuesContract.set,
     ({ params, body, respond }) => {
       expect(body.account).toStrictEqual({ intent: "single-account" });
       let updated: CustomConnectorHttpResponse | undefined;
@@ -482,7 +479,7 @@ function mockCustomConnectorStory(): {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorByIdContract.update,
+    customConnectorByIdContract.update,
     ({ params, body, respond }) => {
       updateBodies.push(body);
       if (body.kind === "mcp") {
@@ -519,7 +516,7 @@ function mockCustomConnectorStory(): {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorByIdContract.delete,
+    customConnectorByIdContract.delete,
     ({ params, respond }) => {
       connectors = connectors.filter((connector) => {
         return connector.id !== params.id;
@@ -1649,7 +1646,7 @@ describe("connectors page", () => {
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
 
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
         effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
@@ -3612,12 +3609,12 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.team([]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     const updatedBodies: UpdateCustomConnectorBody[] = [];
     context.mocks.api(
-      zeroCustomConnectorByIdContract.update,
+      customConnectorByIdContract.update,
       ({ body, respond }) => {
         if (body.kind === "mcp") {
           throw new Error("Expected an HTTP custom connector update");
@@ -3684,11 +3681,11 @@ describe("connectors page", () => {
       teamAgent(supportAgentId, "Support"),
     ]);
     let agentAccessReads = 0;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         agentAccessReads += 1;
         const grants: AgentCustomConnectorGrant[] =
@@ -3749,11 +3746,11 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
-      zeroCustomConnectorByIdContract.permissions,
+      customConnectorByIdContract.permissions,
       ({ params, respond }) => {
         expect(params.id).toBe(connector.id);
         return respond(200, {
@@ -3776,13 +3773,13 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         return respond(200, accessByAgentId.get(params.id) ?? { grants: [] });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
         updates.push({ agentId: params.id, body });
         const current = accessByAgentId.get(params.id) ?? {
@@ -3949,7 +3946,7 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
@@ -3961,7 +3958,18 @@ describe("connectors page", () => {
         ],
       });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+      });
+    });
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      authorizationUpdates += 1;
       return respond(200, {
         grants: [
           {
@@ -3972,21 +3980,7 @@ describe("connectors page", () => {
       });
     });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        authorizationUpdates += 1;
-        return respond(200, {
-          grants: [
-            {
-              customConnectorId: connector.id,
-              permissionNames: ["messages:send-as-user"],
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, respond }) => {
         expect(body.account).toStrictEqual({ intent: "single-account" });
         submittedValues = body.values;
@@ -4076,11 +4070,11 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.team([]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, respond }) => {
         submittedValues = body.values;
         return respond(200, {
@@ -4160,45 +4154,36 @@ describe("connectors page", () => {
         role: "admin",
       });
       context.mocks.data.team([teamAgent(agentId, "Research")]);
-      context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      context.mocks.api(customConnectorsContract.list, ({ respond }) => {
         return respond(200, { connectors: [connector] });
       });
-      context.mocks.api(
-        zeroAgentCustomConnectorsContract.get,
-        ({ respond }) => {
-          return respond(200, { grants: [] });
-        },
-      );
-      context.mocks.api(
-        zeroAgentCustomConnectorsContract.update,
-        ({ respond }) => {
-          authorizationUpdates += 1;
-          return respond(200, {
-            grants: [
-              {
-                customConnectorId: connector.id,
-                permissionNames: [],
-              },
-            ],
-          });
-        },
-      );
-      context.mocks.api(
-        zeroCustomConnectorValuesContract.set,
-        ({ respond }) => {
-          valueWrites += 1;
-          return outcome === "request failure"
-            ? respond(500, {
-                error: { code: "UNAVAILABLE", message: "Write unavailable" },
-              })
-            : respond(200, {
-                ...connector,
-                connected: false,
-                missingRequiredFields: [],
-                configuredFieldKeys: ["secret"],
-              });
-        },
-      );
+      context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+        return respond(200, { grants: [] });
+      });
+      context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, {
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: [],
+            },
+          ],
+        });
+      });
+      context.mocks.api(customConnectorValuesContract.set, ({ respond }) => {
+        valueWrites += 1;
+        return outcome === "request failure"
+          ? respond(500, {
+              error: { code: "UNAVAILABLE", message: "Write unavailable" },
+            })
+          : respond(200, {
+              ...connector,
+              connected: false,
+              missingRequiredFields: [],
+              configuredFieldKeys: ["secret"],
+            });
+      });
 
       detachedSetupPage({ context, path: "/connectors?tab=custom" });
 
@@ -4246,33 +4231,30 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
+    context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      if (body.kind !== "mcp") {
+        throw new Error("Expected an MCP custom connector create");
+      }
+      createBodies.push(body);
+      connector = mcpCustomConnector({
+        displayName: body.displayName,
+        endpoint: body.endpoint,
+        fields: body.fields,
+        headerInjections: body.headerInjections,
+        queryInjections: body.queryInjections,
+        authMode: body.authMode ?? "manual",
+        storageVersion: body.storageVersion ?? 1,
+        connected: false,
+        missingRequiredFields: ["secret"],
+        configuredFieldKeys: [],
+      });
+      return respond(201, connector);
+    });
     context.mocks.api(
-      zeroCustomConnectorsContract.create,
-      ({ body, respond }) => {
-        if (body.kind !== "mcp") {
-          throw new Error("Expected an MCP custom connector create");
-        }
-        createBodies.push(body);
-        connector = mcpCustomConnector({
-          displayName: body.displayName,
-          endpoint: body.endpoint,
-          fields: body.fields,
-          headerInjections: body.headerInjections,
-          queryInjections: body.queryInjections,
-          authMode: body.authMode ?? "manual",
-          storageVersion: body.storageVersion ?? 1,
-          connected: false,
-          missingRequiredFields: ["secret"],
-          configuredFieldKeys: [],
-        });
-        return respond(201, connector);
-      },
-    );
-    context.mocks.api(
-      zeroCustomConnectorByIdContract.update,
+      customConnectorByIdContract.update,
       ({ body, respond }) => {
         if (body.kind !== "mcp" || !connector) {
           throw new Error("Expected an existing MCP custom connector update");
@@ -4292,7 +4274,7 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, respond }) => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
@@ -4329,14 +4311,14 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
         return respond(200, { grants });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
         authorizationUpdates.push({ agentId: params.id, body });
         const current = grantsByAgentId.get(params.id) ?? [];
@@ -4550,34 +4532,31 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.team([]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
+    context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      if (body.kind !== "mcp" || !body.oauthConfig) {
+        throw new Error("Expected an OAuth MCP custom connector create");
+      }
+      createdBodies.push(body);
+      connector = mcpCustomConnector({
+        displayName: body.displayName,
+        endpoint: body.endpoint,
+        fields: body.fields,
+        headerInjections: body.headerInjections,
+        queryInjections: body.queryInjections,
+        authMode: "oauth",
+        oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+        storageVersion: body.storageVersion ?? 1,
+        connected: false,
+        missingRequiredFields: ["oauth"],
+        configuredFieldKeys: [],
+      });
+      return respond(201, connector);
+    });
     context.mocks.api(
-      zeroCustomConnectorsContract.create,
-      ({ body, respond }) => {
-        if (body.kind !== "mcp" || !body.oauthConfig) {
-          throw new Error("Expected an OAuth MCP custom connector create");
-        }
-        createdBodies.push(body);
-        connector = mcpCustomConnector({
-          displayName: body.displayName,
-          endpoint: body.endpoint,
-          fields: body.fields,
-          headerInjections: body.headerInjections,
-          queryInjections: body.queryInjections,
-          authMode: "oauth",
-          oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
-          storageVersion: body.storageVersion ?? 1,
-          connected: false,
-          missingRequiredFields: ["oauth"],
-          configuredFieldKeys: [],
-        });
-        return respond(201, connector);
-      },
-    );
-    context.mocks.api(
-      zeroCustomConnectorByIdContract.update,
+      customConnectorByIdContract.update,
       ({ body, respond }) => {
         if (body.kind !== "mcp" || !body.oauthConfig || !connector) {
           throw new Error("Expected an OAuth MCP custom connector update");
@@ -4598,7 +4577,7 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.start,
+      customConnectorOAuth2Contract.start,
       ({ body, respond }) => {
         if (!connector) {
           throw new Error("Expected an OAuth MCP custom connector");
@@ -4733,18 +4712,18 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
         return respond(200, { grants });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
         if (body.operation !== "remove") {
           throw new Error("Expected only MCP authorization removal");
@@ -4878,7 +4857,7 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors });
     });
 
@@ -4918,10 +4897,10 @@ describe("connectors page", () => {
     });
     context.mocks.data.userPreferences({ locale: "pt-BR" });
     context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         grants: [{ customConnectorId: connector.id, permissionNames: [] }],
       });
@@ -5004,10 +4983,10 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       authorizationReads += 1;
       return respond(200, { grants: [] });
     });
@@ -5046,32 +5025,29 @@ describe("connectors page", () => {
     const browserOpen = context.mocks.browser.open(authWindow);
     const clipboard = context.mocks.browser.clipboardWriteText();
 
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
+    context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      createdBodies.push(body);
+      connector = customConnector({
+        displayName: body.displayName,
+        prefixTemplates: body.prefixTemplates ?? [],
+        fields: body.fields ?? [],
+        headerInjections: body.headerInjections ?? [],
+        queryInjections: body.queryInjections ?? [],
+        authMode: body.authMode,
+        storageVersion: body.storageVersion,
+        ...(body.oauthConfig
+          ? {
+              oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+            }
+          : {}),
+      });
+      return respond(201, connector);
+    });
     context.mocks.api(
-      zeroCustomConnectorsContract.create,
-      ({ body, respond }) => {
-        createdBodies.push(body);
-        connector = customConnector({
-          displayName: body.displayName,
-          prefixTemplates: body.prefixTemplates ?? [],
-          fields: body.fields ?? [],
-          headerInjections: body.headerInjections ?? [],
-          queryInjections: body.queryInjections ?? [],
-          authMode: body.authMode,
-          storageVersion: body.storageVersion,
-          ...(body.oauthConfig
-            ? {
-                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
-              }
-            : {}),
-        });
-        return respond(201, connector);
-      },
-    );
-    context.mocks.api(
-      zeroCustomConnectorByIdContract.update,
+      customConnectorByIdContract.update,
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
         updatedBodies.push(body);
@@ -5100,7 +5076,7 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.start,
+      customConnectorOAuth2Contract.start,
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
         expect(body).toStrictEqual({

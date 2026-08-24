@@ -17,7 +17,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -25,7 +25,7 @@ import {
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
-import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
@@ -2334,7 +2334,7 @@ describe("chat composer models", () => {
     let runCreateCount = 0;
 
     context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
+      personalModelProvidersMainContract.list,
       async ({ respond, withSignal }) => {
         if (holdProviderReload) {
           providerReloadStarted = true;
@@ -3034,7 +3034,7 @@ describe("chat composer models", () => {
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { grants: [] });
     });
 
@@ -3136,7 +3136,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       async ({ respond, withSignal }) => {
         customAuthorizationRequestCount += 1;
         if (customAuthorizationRequestCount > 1) {

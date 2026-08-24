@@ -1,4 +1,4 @@
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -53,7 +53,7 @@ describe("lab page", () => {
       needsOnboarding: true,
       onboardingComplete: false,
     });
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       const switches = { [FeatureSwitchKey.Banking]: true };
       return respond(200, { switches, effectiveSwitches: switches });
     });
@@ -76,20 +76,17 @@ describe("lab page", () => {
       [FeatureSwitchKey.Lab]: true,
       [FeatureSwitchKey.TestOauthConnector]: false,
     };
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches, effectiveSwitches: switches });
     });
-    context.mocks.api(
-      zeroFeatureSwitchesContract.update,
-      ({ body, respond }) => {
-        switches = { ...switches, ...body.switches };
-        return respond(200, {
-          switches: body.switches,
-          effectiveSwitches: switches,
-        });
-      },
-    );
-    context.mocks.api(zeroFeatureSwitchesContract.delete, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+      switches = { ...switches, ...body.switches };
+      return respond(200, {
+        switches: body.switches,
+        effectiveSwitches: switches,
+      });
+    });
+    context.mocks.api(featureSwitchesContract.delete, ({ respond }) => {
       switches = {};
       return respond(200, { deleted: true });
     });
@@ -133,20 +130,17 @@ describe("lab page", () => {
       [FeatureSwitchKey.NotionWorkflowAutomations]: false,
     };
     let updateBody: Record<string, boolean> | undefined;
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches, effectiveSwitches: switches });
     });
-    context.mocks.api(
-      zeroFeatureSwitchesContract.update,
-      ({ body, respond }) => {
-        updateBody = body.switches;
-        switches = { ...switches, ...body.switches };
-        return respond(200, {
-          switches,
-          effectiveSwitches: switches,
-        });
-      },
-    );
+    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+      updateBody = body.switches;
+      switches = { ...switches, ...body.switches };
+      return respond(200, {
+        switches,
+        effectiveSwitches: switches,
+      });
+    });
 
     detachedSetupPage({ context, path: "/_/lab" });
 
@@ -165,7 +159,7 @@ describe("lab page", () => {
   });
 
   it("shows feature switches in name order without sort controls", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
 
@@ -186,7 +180,7 @@ describe("lab page", () => {
   });
 
   it("filters feature switches by maintainer", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
 
@@ -218,7 +212,7 @@ describe("lab page", () => {
 
   it("shows the Lab controls in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
 

@@ -14,10 +14,10 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorUpdate,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentInstructionsContract,
@@ -34,12 +34,12 @@ import {
   zeroUserPermissionGrantsContract,
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
@@ -457,18 +457,18 @@ function mockTeamAPIs({
       return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     },
   );
-  context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [customConnector] });
   });
   context.mocks.api(
-    zeroAgentCustomConnectorsContract.get,
+    agentCustomConnectorsContract.get,
     ({ params, respond }) => {
       const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
       return respond(200, { grants });
     },
   );
   context.mocks.api(
-    zeroAgentCustomConnectorsContract.update,
+    agentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
       onCustomConnectorUpdate?.();
       const grants = applyCustomConnectorUpdate(
@@ -654,14 +654,14 @@ describe("team page navigation", () => {
     let updateCount = 0;
     mockTeamAPIs({ customConnector: connector });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(researchAgentId);
         return respond(200, { grants });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(researchAgentId);
         expect(body).toStrictEqual({
@@ -703,11 +703,11 @@ describe("team page navigation", () => {
     let connectorListReads = 0;
     let agentAccessReads = 0;
     mockTeamAPIs({ customConnector });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       connectorListReads += 1;
       return respond(200, { connectors: [customConnector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       agentAccessReads += 1;
       return respond(200, { grants: [] });
     });
@@ -733,7 +733,7 @@ describe("team page navigation", () => {
     const updatedAgentIds: string[] = [];
     mockTeamAPIs({ customConnector });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         return respond(
           200,
@@ -751,7 +751,7 @@ describe("team page navigation", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorByIdContract.permissions,
+      customConnectorByIdContract.permissions,
       ({ respond }) => {
         return respond(200, {
           ref: "builtin:feishu@1",
@@ -768,7 +768,7 @@ describe("team page navigation", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         updatedAgentIds.push(params.id);
         return respond(200, {

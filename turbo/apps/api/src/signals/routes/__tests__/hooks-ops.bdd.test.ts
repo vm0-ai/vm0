@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildInfoContract } from "@okouai/api-contracts/contracts/build-info";
 import { healthContract } from "@okouai/api-contracts/contracts/health";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -51,7 +51,7 @@ function healthAuthClient() {
 
 function featureSwitchesClient() {
   return setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
 }
 

@@ -141,8 +141,8 @@ import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector
 import {
   isIntegrationManagedCustomConnector,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   ImageModelBrandIcon,

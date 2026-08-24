@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -482,7 +482,7 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
 
 const getAgentCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.get));
+  const params = get(pathParamsOf(agentCustomConnectorsContract.get));
   const exists = await get(
     agentExists({
       orgId: auth.orgId,
@@ -510,7 +510,7 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
 });
 
 const updateAgentCustomConnectorsBody$ = bodyResultOf(
-  zeroAgentCustomConnectorsContract.update,
+  agentCustomConnectorsContract.update,
 );
 
 const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
@@ -736,7 +736,7 @@ const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const updateAgentCustomConnectorsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.update));
+    const params = get(pathParamsOf(agentCustomConnectorsContract.update));
     const body = await get(updateAgentCustomConnectorsBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -929,11 +929,11 @@ export const agentsRoutes: readonly RouteEntry[] = [
     handler: authRoute(agentReadAuth, getAgentUserConnectorsInner$),
   },
   {
-    route: zeroAgentCustomConnectorsContract.get,
+    route: agentCustomConnectorsContract.get,
     handler: authRoute(agentReadAuth, getAgentCustomConnectorsInner$),
   },
   {
-    route: zeroAgentCustomConnectorsContract.update,
+    route: agentCustomConnectorsContract.update,
     handler: authRoute(agentReadAuth, updateAgentCustomConnectorsInner$),
   },
   {

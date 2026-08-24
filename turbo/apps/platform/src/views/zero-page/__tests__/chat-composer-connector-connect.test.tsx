@@ -5,15 +5,15 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
@@ -275,12 +275,12 @@ describe("chat composer connector connection", () => {
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     let grants: AgentCustomConnectorGrant[] = [];
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         return respond(200, { grants });
@@ -288,7 +288,7 @@ describe("chat composer connector connection", () => {
     );
     let updateCount = 0;
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         updateCount += 1;
         expect(params.id).toBe(AGENT_ID);
@@ -325,10 +325,10 @@ describe("chat composer connector connection", () => {
       connected: true,
       missingRequiredFields: [],
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         grants: [
           {
@@ -365,18 +365,18 @@ describe("chat composer connector connection", () => {
       { customConnectorId: connector.id, permissionNames: [] },
     ];
     let updateCount = 0;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         return respond(200, { grants });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
@@ -415,20 +415,17 @@ describe("chat composer connector connection", () => {
       configuredFieldKeys: ["secret"],
       permissionBundleRef: "builtin:feishu@1",
     });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { grants: [] });
     });
     let updateCount = 0;
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        updateCount += 1;
-        return respond(200, { grants: [] });
-      },
-    );
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      updateCount += 1;
+      return respond(200, { grants: [] });
+    });
 
     detachedSetupPage({
       context,
@@ -457,7 +454,7 @@ describe("chat composer connector connection", () => {
     mockAgent({ includeOtherAgent: true });
     mockCatalog([]);
     let connected = false;
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           connected
@@ -472,7 +469,7 @@ describe("chat composer connector connection", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorValuesContract.set,
+      customConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         expect(body).toStrictEqual({
@@ -490,7 +487,7 @@ describe("chat composer connector connection", () => {
     );
     const updatedAgentIds: string[] = [];
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({
           grants: [{ customConnectorId: connector.id, permissionNames: [] }],
@@ -546,7 +543,7 @@ describe("chat composer connector connection", () => {
     const standardConnector = customConnector();
     const managedConnector = managedFeishuConnector();
     mockCatalog([]);
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [standardConnector, managedConnector],
       });

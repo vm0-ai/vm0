@@ -22,7 +22,7 @@ import {
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,

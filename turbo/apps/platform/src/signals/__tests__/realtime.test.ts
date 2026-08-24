@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -869,7 +869,7 @@ describe("realtime signals", () => {
       runs += 1;
       return false;
     });
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       requests += 1;
       if (requests === 1) {
         return respond(401, {

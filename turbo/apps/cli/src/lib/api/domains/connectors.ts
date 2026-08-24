@@ -21,14 +21,14 @@ import {
   type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorsContract,
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   mcpConnectorListResponseSchema,
   mcpConnectorsContract,
@@ -193,7 +193,7 @@ export async function listCustomConnectors(): Promise<
   CustomConnectorResponse[]
 > {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorsContract, config);
+  const client = initClient(customConnectorsContract, config);
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
@@ -219,7 +219,7 @@ export async function createCustomConnector(
   body: CreateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorsContract, config);
+  const client = initClient(customConnectorsContract, config);
 
   const result = await client.create({ body, headers: {} });
   if (result.status === 201) {
@@ -233,7 +233,7 @@ export async function getCustomConnector(
   id: string,
 ): Promise<CustomConnectorResponse | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorByIdContract, config);
+  const client = initClient(customConnectorByIdContract, config);
 
   const result = await client.get({ params: { id }, headers: {} });
   if (result.status === 200) {
@@ -251,7 +251,7 @@ export async function updateCustomConnector(
   body: UpdateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorByIdContract, config);
+  const client = initClient(customConnectorByIdContract, config);
 
   const result = await client.update({ params: { id }, body, headers: {} });
   if (result.status === 200) {

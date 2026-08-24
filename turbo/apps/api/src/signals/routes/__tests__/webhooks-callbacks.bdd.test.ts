@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 

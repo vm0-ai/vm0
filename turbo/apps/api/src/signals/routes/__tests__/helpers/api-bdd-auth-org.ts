@@ -26,9 +26,9 @@ import {
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -37,12 +37,12 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   orgContract,
   orgDeleteContract,
@@ -1416,7 +1416,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: CreateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       const response = await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -1431,7 +1431,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -1443,7 +1443,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       readonly connectors: readonly CustomConnectorResponse[];
     }> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
@@ -1458,7 +1458,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       value: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorValuesContract,
+        customConnectorValuesContract,
       );
       await accept(
         client.set({
@@ -1496,7 +1496,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorByIdContract,
+        customConnectorByIdContract,
       );
       await accept(
         client.delete({
@@ -1512,7 +1512,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
     ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const response = await accept(
         client.get({
@@ -1530,7 +1530,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorIds: readonly string[],
     ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const response = await accept(
         client.update({
@@ -1554,7 +1554,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       return await accept(
         client.update({

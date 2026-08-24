@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorByIdContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorByIdContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -27,9 +27,9 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return adminRequired;
   }
 
-  const params = get(pathParamsOf(zeroCustomConnectorByIdContract.update));
+  const params = get(pathParamsOf(customConnectorByIdContract.update));
   const bodyResult = await get(
-    bodyResultOf(zeroCustomConnectorByIdContract.update),
+    bodyResultOf(customConnectorByIdContract.update),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -66,7 +66,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const customConnectorsUpdateRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorByIdContract.update,
+    route: customConnectorByIdContract.update,
     handler: authRoute(
       {
         requireOrganization: true,

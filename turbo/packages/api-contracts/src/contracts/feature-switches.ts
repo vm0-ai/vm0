@@ -30,7 +30,7 @@ export type UpdateFeatureSwitchesRequest = z.infer<
  * DELETE: Remove current user's overrides plus org-scoped overrides controlled
  * by this endpoint.
  */
-export const zeroFeatureSwitchesContract = c.router({
+export const featureSwitchesContract = c.router({
   get: {
     method: "GET",
     path: "/api/feature-switches",
@@ -69,4 +69,4 @@ export const zeroFeatureSwitchesContract = c.router({
   },
 });
 
-export type ZeroFeatureSwitchesContract = typeof zeroFeatureSwitchesContract;
+export type FeatureSwitchesContract = typeof featureSwitchesContract;

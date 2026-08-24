@@ -26,15 +26,15 @@ import {
   type GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorProposalContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorOAuth2Contract,
+  customConnectorProposalContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
@@ -42,8 +42,8 @@ import {
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+} from "@okouai/api-contracts/contracts/custom-connectors";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorExternalCodeSessionContract,
@@ -85,7 +85,7 @@ import { customConnectorsUpdateRoutes } from "../../custom-connectors-update";
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { featureSwitchesRoutes } from "../../feature-switches";
 
-const zeroCustomConnectorByIdTestRoutes = Object.freeze([
+const customConnectorByIdTestRoutes = Object.freeze([
   ...customConnectorsDeleteRoutes,
   ...customConnectorsGetRoutes,
   ...customConnectorsUpdateRoutes,
@@ -1846,7 +1846,7 @@ export function createConnectorBddApi(context: TestContext) {
       switches: Readonly<Record<string, boolean>>,
     ): Promise<Readonly<Record<string, boolean>>> {
       const client = setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       );
       const response = await accept(
         client.update({
@@ -1860,7 +1860,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async deleteFeatureSwitches(actor: ApiTestUser): Promise<void> {
       const client = setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       );
       await accept(client.delete({ headers: authenticate(actor) }), [200]);
     },
@@ -1875,7 +1875,7 @@ export function createConnectorBddApi(context: TestContext) {
         context,
         routes: customConnectorsRoutes,
         signal,
-      })(zeroCustomConnectorsContract);
+      })(customConnectorsContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -1918,7 +1918,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 500)[],
     ) {
       const client = setupApp({ context, routes: customConnectorsRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       return await accept(
         client.list({ headers: authenticate(actor) }),
@@ -1940,8 +1940,8 @@ export function createConnectorBddApi(context: TestContext) {
     ): Promise<CustomConnectorResponse> {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
+        routes: customConnectorByIdTestRoutes,
+      })(customConnectorByIdContract);
       const response = await accept(
         client.get({
           params: { id: connectorId },
@@ -1960,8 +1960,8 @@ export function createConnectorBddApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
+        routes: customConnectorByIdTestRoutes,
+      })(customConnectorByIdContract);
       return await accept(
         client.permissions({
           params: { id: connectorId },
@@ -1992,8 +1992,8 @@ export function createConnectorBddApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
+        routes: customConnectorByIdTestRoutes,
+      })(customConnectorByIdContract);
       return await accept(
         client.update({
           params: { id: connectorId },
@@ -2026,8 +2026,8 @@ export function createConnectorBddApi(context: TestContext) {
     ) {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
+        routes: customConnectorByIdTestRoutes,
+      })(customConnectorByIdContract);
       return await accept(
         client.delete({
           params: { id: connectorId },
@@ -2053,7 +2053,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorProposalRoutes,
-      })(zeroCustomConnectorProposalContract);
+      })(customConnectorProposalContract);
       return await accept(
         client.save({ headers: authenticate(actor), body }),
         statuses,
@@ -2082,7 +2082,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorsValuesSetRoutes,
-      })(zeroCustomConnectorValuesContract);
+      })(customConnectorValuesContract);
       return await accept(
         client.set({
           params: { id: connectorId },
@@ -2120,7 +2120,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorsValuesSetRoutes,
-      })(zeroCustomConnectorValuesContract);
+      })(customConnectorValuesContract);
       return await accept(
         client.set({
           params: { id: connectorId },
@@ -2210,7 +2210,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorOAuth2Routes,
-      })(zeroCustomConnectorOAuth2Contract);
+      })(customConnectorOAuth2Contract);
       return await accept(
         client.start({
           params: { id: connectorId },
@@ -2242,7 +2242,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorOAuth2Routes,
-      })(zeroCustomConnectorOAuth2Contract);
+      })(customConnectorOAuth2Contract);
       return await accept(client.callback({ query }), [307]);
     },
 
@@ -2250,7 +2250,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: customConnectorOAuth2Routes,
-      })(zeroCustomConnectorOAuth2Contract);
+      })(customConnectorOAuth2Contract);
       const response = await accept(
         client.callback({ query: { ...query, responseMode: "json" } }),
         [200],
@@ -2265,7 +2265,7 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: agentsRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       return await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
@@ -2309,7 +2309,7 @@ export function createConnectorBddApi(context: TestContext) {
       operation?: "replace" | "add" | "remove",
     ) {
       const client = setupApp({ context, routes: agentsRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const body =
         operation === undefined
@@ -2380,7 +2380,7 @@ export function createConnectorBddApi(context: TestContext) {
       operation?: "replace" | "add" | "remove",
     ) {
       const client = setupApp({ context, routes: agentsRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const body =
         operation === undefined

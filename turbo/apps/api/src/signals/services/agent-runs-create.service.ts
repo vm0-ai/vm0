@@ -8,7 +8,7 @@ import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes"
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";

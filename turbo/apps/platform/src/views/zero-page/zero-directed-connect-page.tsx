@@ -9,7 +9,7 @@ import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contrac
 import type {
   CustomConnectorResponse,
   CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { Input } from "@okouai/ui/components/ui/input";
 import {

@@ -7,7 +7,7 @@ import {
   zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterEach } from "vitest";
 
@@ -55,7 +55,7 @@ function authHeaders() {
 
 function featureSwitchesClient() {
   return setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
 }
 

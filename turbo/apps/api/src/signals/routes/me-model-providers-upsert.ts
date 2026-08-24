@@ -4,7 +4,7 @@ import {
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
@@ -173,7 +173,7 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   // Body parse
   const bodyResult = await get(
-    bodyResultOf(zeroPersonalModelProvidersMainContract.upsert),
+    bodyResultOf(personalModelProvidersMainContract.upsert),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -306,7 +306,7 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const meModelProvidersUpsertRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPersonalModelProvidersMainContract.upsert,
+    route: personalModelProvidersMainContract.upsert,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       upsertInner$,

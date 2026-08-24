@@ -2,7 +2,7 @@ import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
 } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
@@ -201,7 +201,7 @@ const completeCustomConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(apiClient$)(zeroCustomConnectorOAuth2Contract, {
+    const client = get(apiClient$)(customConnectorOAuth2Contract, {
       apiBase: "api",
     });
     const response = await accept(

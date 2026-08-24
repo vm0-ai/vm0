@@ -17,9 +17,9 @@ import {
   zeroConnectorOpenIdStartContract,
 } from "../zero-connectors";
 import {
-  zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorValuesContract,
-} from "../zero-custom-connectors";
+  customConnectorOAuth2Contract,
+  customConnectorValuesContract,
+} from "../custom-connectors";
 
 const connectionId = "00000000-0000-4000-8000-000000276861";
 const customConnectorId = "00000000-0000-4000-8000-000000276862";
@@ -116,12 +116,11 @@ describe("connector account contracts", () => {
         authMethod: "external-code",
       }).success,
     ).toBe(false);
+    expect(customConnectorOAuth2Contract.start.body.safeParse({}).success).toBe(
+      false,
+    );
     expect(
-      zeroCustomConnectorOAuth2Contract.start.body.safeParse({}).success,
-    ).toBe(false);
-    expect(
-      zeroCustomConnectorValuesContract.set.body.safeParse({ values: [] })
-        .success,
+      customConnectorValuesContract.set.body.safeParse({ values: [] }).success,
     ).toBe(false);
   });
 

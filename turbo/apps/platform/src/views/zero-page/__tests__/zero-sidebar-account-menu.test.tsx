@@ -16,9 +16,9 @@ import {
   billingUsagePackCreditsContract,
 } from "@okouai/api-contracts/contracts/billing";
 import {
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersByTypeContract,
+  personalModelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
@@ -1061,7 +1061,7 @@ describe("zero sidebar account menu", () => {
       connectedPersonalCodexProvider(),
     ]);
     context.mocks.api(
-      zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+      personalModelProvidersByTypeContract.resetSubscriptionUsage,
       ({ respond }) => {
         const provider = connectedPersonalCodexProvider({
           subscriptionResetCredits: 1,
@@ -1206,7 +1206,7 @@ describe("zero sidebar account menu", () => {
     const refreshReady = context.mocks.deferred<void>();
     let refreshRequested = false;
     context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
+      personalModelProvidersMainContract.list,
       async ({ respond }) => {
         refreshRequested = true;
         await refreshReady.promise;
@@ -1546,7 +1546,7 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
+      personalModelProvidersMainContract.list,
       ({ respond }) => {
         modelProviderRequests += 1;
         return respond(401, {
@@ -1588,7 +1588,7 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
+      personalModelProvidersMainContract.list,
       ({ respond }) => {
         modelProviderRequests += 1;
         return respond(401, {
