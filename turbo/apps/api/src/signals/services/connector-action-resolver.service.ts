@@ -186,17 +186,6 @@ function createConnectorActionResolver(
     });
   };
 
-  const resolveSlug: ConnectorActionResolver["resolveSlug"] = (input) => {
-    const resolution = resolveSlugCore(input);
-    if (!resolution.ok && resolution.reason === "unknown_connector") {
-      log.warn("Connector runtime is unavailable", {
-        connectorSlug: input.connectorSlug,
-        reason: resolution.reason,
-      });
-    }
-    return resolution;
-  };
-
   const resolveMethodCore: ConnectorActionResolver["resolveMethod"] = (
     input,
   ) => {
@@ -259,7 +248,7 @@ function createConnectorActionResolver(
   };
 
   return {
-    resolveSlug,
+    resolveSlug: resolveSlugCore,
     resolveMethod,
 
     resolveNewActionMethod(input) {
