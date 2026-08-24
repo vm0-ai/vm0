@@ -4618,9 +4618,9 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Seedance 2.0")).toBeInTheDocument();
     expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
     expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
-    // The system default is still Seedance 2.0 fast, which the picker no longer
-    // offers, so no row claims the untouched thread.
-    expect(selectedVideoModelLabel()).toBeUndefined();
+    // An untouched thread follows the system default, and the row for the model
+    // its runs would use is the one marked as selected.
+    expect(selectedVideoModelLabel()).toBe("Seedance 2.0");
     // Every row states what one clip costs relative to the others.
     expect(videoPanelPriceTier("Seedance 1.5 pro")).toBe("$");
     expect(videoPanelPriceTier("MiniMax H3")).toBe("$$");
@@ -4797,8 +4797,8 @@ describe("chat composer video model", () => {
 
     await openVideoModels(user);
 
-    // Seedance 2.0 fast is the system default, and the chip states what that
-    // model would use before anything is touched.
+    // Seedance 2.0 is the system default, and the chip states what that model
+    // would use before anything is touched.
     const chip = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
