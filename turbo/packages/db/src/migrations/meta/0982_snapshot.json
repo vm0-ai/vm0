@@ -1,6 +1,6 @@
 {
-  "id": "bff63962-bd84-4fba-8444-6520c56ba747",
-  "prevId": "43470047-9955-4e72-9c8e-6d16e3bcbb64",
+  "id": "6155f1a3-514b-477b-ba96-783839f7196f",
+  "prevId": "1d45417d-639a-47e3-be29-0d887cee3886",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6080,6 +6080,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
         },
         "sender_user_id": {
           "name": "sender_user_id",
@@ -21835,7 +21842,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'vm0'"
+          "default": "'okou'"
         },
         "created_at": {
           "name": "created_at",

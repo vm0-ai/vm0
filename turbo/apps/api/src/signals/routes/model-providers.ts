@@ -10,8 +10,10 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
-import { asc, gt } from "drizzle-orm";
+import { asc, gt, max } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -73,19 +75,50 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
       return cooldownDiagnosticsDisabled;
     }
 
-    const activeCooldowns = await get(db$)
+    const db = get(db$);
+    const timestamp = nowDate();
+    const activeCooldownRows = db.$with("active_model_candidate_cooldowns").as(
+      unionAll(
+        db
+          .select({
+            selectedModel: managedModelCandidateCooldown.selectedModel,
+            providerType: managedModelCandidateCooldown.providerType,
+            upstreamModel: managedModelCandidateCooldown.upstreamModel,
+            unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+          })
+          .from(managedModelCandidateCooldown)
+          .where(gt(managedModelCandidateCooldown.unavailableUntil, timestamp)),
+        db
+          .select({
+            selectedModel: builtInModelCandidateCooldown.selectedModel,
+            providerType: builtInModelCandidateCooldown.providerType,
+            upstreamModel: builtInModelCandidateCooldown.upstreamModel,
+            unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
+          })
+          .from(builtInModelCandidateCooldown)
+          .where(gt(builtInModelCandidateCooldown.unavailableUntil, timestamp)),
+      ),
+    );
+    const activeCooldowns = await db
+      .with(activeCooldownRows)
       .select({
-        selectedModel: managedModelCandidateCooldown.selectedModel,
-        providerType: managedModelCandidateCooldown.providerType,
-        upstreamModel: managedModelCandidateCooldown.upstreamModel,
-        unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+        selectedModel: activeCooldownRows.selectedModel,
+        providerType: activeCooldownRows.providerType,
+        upstreamModel: activeCooldownRows.upstreamModel,
+        unavailableUntil: max(activeCooldownRows.unavailableUntil)
+          .mapWith(managedModelCandidateCooldown.unavailableUntil)
+          .as("unavailable_until"),
       })
-      .from(managedModelCandidateCooldown)
-      .where(gt(managedModelCandidateCooldown.unavailableUntil, nowDate()))
+      .from(activeCooldownRows)
+      .groupBy(
+        activeCooldownRows.selectedModel,
+        activeCooldownRows.providerType,
+        activeCooldownRows.upstreamModel,
+      )
       .orderBy(
-        asc(managedModelCandidateCooldown.selectedModel),
-        asc(managedModelCandidateCooldown.providerType),
-        asc(managedModelCandidateCooldown.upstreamModel),
+        asc(activeCooldownRows.selectedModel),
+        asc(activeCooldownRows.providerType),
+        asc(activeCooldownRows.upstreamModel),
       );
     signal.throwIfAborted();
 

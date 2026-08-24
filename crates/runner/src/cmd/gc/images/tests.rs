@@ -1124,7 +1124,7 @@ async fn gc_nested_images_symlink_snapshot_entry_preserves_rootfs() {
     );
 }
 
-const LOW_FD_IMAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_IMAGE_GC_CHILD";
+const LOW_FD_IMAGE_GC_CHILD_ENV: &str = "OKOU_RUNNER_LOW_FD_IMAGE_GC_CHILD";
 
 #[tokio::test]
 async fn gc_nested_images_many_candidates_does_not_exhaust_lock_fds() {

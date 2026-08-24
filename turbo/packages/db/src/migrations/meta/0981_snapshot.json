@@ -1,6 +1,6 @@
 {
-  "id": "81e677e4-65d3-4887-ae84-9958d7784b65",
-  "prevId": "9a6dfa92-3e48-4914-8604-ba8a67f7c031",
+  "id": "1d45417d-639a-47e3-be29-0d887cee3886",
+  "prevId": "bff63962-bd84-4fba-8444-6520c56ba747",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4513,6 +4513,52 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.built_in_model_candidate_cooldown": {
+      "name": "built_in_model_candidate_cooldown",
+      "schema": "",
+      "columns": {
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_type": {
+          "name": "provider_type",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upstream_model": {
+          "name": "upstream_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unavailable_until": {
+          "name": "unavailable_until",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "built_in_model_candidate_cooldown_selected_model_provider_type_upstream_model_pk": {
+          "name": "built_in_model_candidate_cooldown_selected_model_provider_type_upstream_model_pk",
+          "columns": [
+            "selected_model",
+            "provider_type",
+            "upstream_model"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.built_in_model_keys": {
       "name": "built_in_model_keys",
       "schema": "",
@@ -6039,7 +6085,8 @@
           "name": "public_brand",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'vm0'"
         },
         "sender_user_id": {
           "name": "sender_user_id",

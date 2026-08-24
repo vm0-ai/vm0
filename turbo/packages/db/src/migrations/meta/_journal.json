@@ -1202,22 +1202,36 @@
     {
       "idx": 979,
       "version": "7",
-      "when": 1787563287862,
-      "tag": "0979_classy_sugar_man",
+      "when": 1787563682443,
+      "tag": "0979_expand_built_in_model_candidate_cooldown",
       "breakpoints": true
     },
     {
       "idx": 980,
       "version": "7",
-      "when": 1787563305701,
-      "tag": "0980_backfill_teams_okou_brand",
+      "when": 1787563692115,
+      "tag": "0980_backfill_built_in_model_candidate_cooldown",
       "breakpoints": true
     },
     {
       "idx": 981,
       "version": "7",
-      "when": 1787565641431,
-      "tag": "0981_nappy_sersi",
+      "when": 1787569645711,
+      "tag": "0981_white_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 982,
+      "version": "7",
+      "when": 1787569660392,
+      "tag": "0982_backfill_teams_okou_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 983,
+      "version": "7",
+      "when": 1787569685422,
+      "tag": "0983_broad_iceman",
       "breakpoints": true
     }
   ]

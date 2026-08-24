@@ -4073,6 +4073,10 @@ mod tests {
             "fixture-model"
         );
         assert_eq!(
+            context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
+            "fixture-agent-id"
+        );
+        assert_eq!(
             context.secret_values.as_deref(),
             Some(["fixture-secret-value-not-real".to_string()].as_slice())
         );

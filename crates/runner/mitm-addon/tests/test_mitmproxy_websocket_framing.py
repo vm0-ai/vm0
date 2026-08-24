@@ -795,6 +795,150 @@ async def test_read_split_message_reuses_mutable_fragment(
     assert running.flow.websocket.messages[-1].content == b"split-across-reads"
 
 
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_message_frame_limit_counts_frames_across_read_splits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    from_client: bool,
+) -> None:
+    monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", 1)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        accepted = await _start_websocket(addon_context)
+        accepted_content = b"split-across-reads"
+        accepted_wire = _peer(from_client=from_client).send(_message_event(accepted_content))
+        accepted_header_size = len(accepted_wire) - len(accepted_content)
+        accepted_source = _bounded_source_websocket(
+            accepted,
+            from_client=from_client,
+        )
+        accepted_budget = accepted_source._vm0_message_limit._budget
+
+        first_read = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[: accepted_header_size + 1],
+            ),
+        )
+        assert first_read == []
+        assert accepted_budget.data_frames == 1
+        assert accepted_budget.decoded_bytes == 1
+        assert accepted_budget.aggregate_budget.decoded_bytes == 1
+
+        second_read = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[accepted_header_size + 1 : accepted_header_size + 2],
+            ),
+        )
+        assert second_read == []
+        assert accepted_budget.data_frames == 1
+        assert accepted_budget.decoded_bytes == 2
+        assert accepted_budget.aggregate_budget.decoded_bytes == 2
+
+        completed = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[accepted_header_size + 2 :],
+            ),
+        )
+
+        hooks = _message_hooks(completed)
+        sends = _data_sends(completed)
+        assert len(hooks) == 1
+        assert len(sends) == 1
+        assert completed.index(hooks[0]) < completed.index(sends[0])
+        assert accepted.flow.websocket is not None
+        assert accepted.flow.websocket.timestamp_end is None
+        assert [message.content for message in accepted.flow.websocket.messages] == [
+            accepted_content
+        ]
+        assert accepted_budget.data_frames == 0
+        assert accepted_budget.decoded_bytes == 0
+        assert accepted_budget.aggregate_budget.decoded_bytes == len(accepted_content)
+        await asyncio.sleep(0)
+        assert accepted_budget.aggregate_budget.decoded_bytes == 0
+
+        rejected = await _start_websocket(addon_context)
+        rejected_peer = _peer(from_client=from_client)
+        first_frame_content = b"first-frame"
+        first_frame_wire = rejected_peer.send(
+            _message_event(first_frame_content, message_finished=False)
+        )
+        first_frame_header_size = len(first_frame_wire) - len(first_frame_content)
+        rejected_source = _bounded_source_websocket(
+            rejected,
+            from_client=from_client,
+        )
+        rejected_budget = rejected_source._vm0_message_limit._budget
+
+        first_frame_start = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                first_frame_wire[: first_frame_header_size + 1],
+            ),
+        )
+        first_frame_complete = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                first_frame_wire[first_frame_header_size + 1 :],
+            ),
+        )
+
+        assert first_frame_start == []
+        assert first_frame_complete == []
+        assert rejected_budget.data_frames == 1
+        assert rejected_budget.decoded_bytes == len(first_frame_content)
+        assert rejected_budget.aggregate_budget.decoded_bytes == len(first_frame_content)
+
+        second_frame_content = b"second-frame"
+        second_frame_wire = rejected_peer.send(_message_event(second_frame_content))
+        second_frame_header_size = len(second_frame_wire) - len(second_frame_content)
+        second_frame_header = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                second_frame_wire[:second_frame_header_size],
+            ),
+        )
+        assert second_frame_header == []
+        assert rejected_budget.data_frames == 1
+
+        over_limit = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                second_frame_wire[second_frame_header_size : second_frame_header_size + 1],
+            ),
+        )
+
+    assert _message_hooks(over_limit) == []
+    assert _data_sends(over_limit) == []
+    assert rejected.flow.websocket is not None
+    assert rejected.flow.websocket.close_code == 1009
+    assert rejected.flow.websocket.messages == []
+    assert not rejected.flow.live
+    assert sum(len(fragment) for fragment in rejected_source.frame_buf) == 0
+    assert rejected_budget.data_frames == 0
+    assert rejected_budget.decoded_bytes == 0
+    assert rejected_budget.aggregate_budget.decoded_bytes == 0
+
+
 async def test_fragmented_message_limits_ignore_interleaved_control_frames(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

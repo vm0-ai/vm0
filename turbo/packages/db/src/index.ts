@@ -93,6 +93,7 @@ import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
+import * as builtInModelCooldownSchema from "./schema/built-in-model-cooldown";
 import * as managedModelCooldownSchema from "./schema/managed-model-cooldown";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
@@ -224,6 +225,7 @@ export const schema = {
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...builtInModelKeySchema,
+  ...builtInModelCooldownSchema,
   ...managedModelCooldownSchema,
   ...workflowSchema,
   ...morningBriefSchema,
