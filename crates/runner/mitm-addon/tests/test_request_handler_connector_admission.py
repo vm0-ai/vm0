@@ -208,6 +208,62 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_veri
     assert "Authorization" not in flow.request.headers
 
 
+@pytest.mark.parametrize(
+    "has_certificate_evidence",
+    [
+        pytest.param(True, id="certificate-present"),
+        pytest.param(False, id="certificate-missing"),
+    ],
+)
+async def test_matching_sni_and_host_requires_upstream_certificate_evidence(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    has_certificate_evidence: bool,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="140.82.112.5",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("140.82.112.5", 443),
+        peername=("140.82.112.5", 443),
+    )
+    if not has_certificate_evidence:
+        flow.server_conn.certificate_list = ()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    bindings = upstream_destination_binding.binding_snapshot_for_tests()
+    if has_certificate_evidence:
+        auth_fetch.assert_awaited_once()
+        assert flow.response is None
+        assert flow.request.headers["Authorization"] == "Bearer x"
+        binding = bindings[flow.server_conn.id]
+        assert binding.host == "api.github.com"
+        assert binding.original_address == ("140.82.112.5", 443)
+    else:
+        auth_fetch.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+        assert "Authorization" not in flow.request.headers
+        assert flow.server_conn.id not in bindings
+
+
 async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstream_sni_differs(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
