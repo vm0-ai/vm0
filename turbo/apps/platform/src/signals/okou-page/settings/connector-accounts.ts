@@ -114,11 +114,13 @@ export function connectorAccountMutationCompleted(
 interface ConnectorAccountPage {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
+  readonly available: boolean;
 }
 
 export interface ConnectorAccountList {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
+  readonly available: boolean;
 }
 
 function mergeConnectorAccountPages(
@@ -133,6 +135,7 @@ function mergeConnectorAccountPages(
       }),
     ],
     nextCursor: pages.at(-1)?.nextCursor ?? firstPage.nextCursor,
+    available: firstPage.available,
   };
 }
 
@@ -175,15 +178,17 @@ function createConnectorAccountListSignals() {
     get(reloadVersion$);
     const target = get(target$);
     if (!target) {
-      return { connections: [], nextCursor: null };
+      return { connections: [], nextCursor: null, available: false };
     }
     const result = await accept(
       get(apiClient$)(connectorAccountsContract).connections({
         query: targetListQuery(target, get(search$)),
       }),
-      [200],
+      [200, 404],
     );
-    return result.body;
+    return result.status === 404
+      ? { connections: [], nextCursor: null, available: false }
+      : { ...result.body, available: true };
   });
 
   const accounts$ = computed(async (get): Promise<ConnectorAccountList> => {
@@ -246,7 +251,7 @@ function createConnectorAccountListSignals() {
             query: targetListQuery(target, get(search$), cursor),
             fetchOptions: { signal },
           }),
-          [200],
+          [200, 404],
           signal,
         ),
         () => {
@@ -260,8 +265,12 @@ function createConnectorAccountListSignals() {
       if (get(generation$) !== generation) {
         return;
       }
+      if (result.status === 404) {
+        set(reload$);
+        return;
+      }
       set(pages$, (pages) => {
-        return [...pages, result.body];
+        return [...pages, { ...result.body, available: true }];
       });
       set(loadingCursor$, null);
     },

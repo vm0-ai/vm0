@@ -1601,6 +1601,67 @@ describe("connectors page", () => {
     });
   });
 
+  it("disables account additions when the active target becomes unavailable", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Target unavailable", code: "NOT_FOUND" },
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("GitHub");
+    });
+    click(buttonByText("Manage", card));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    await expect(
+      within(manager).findByText(
+        "Accounts are unavailable for this connector.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(buttonByText("Add account", manager)).toBeDisabled();
+  });
+
   it("renames and deletes an exact account after bounded impact", async () => {
     const [connector] = mockConnectors([
       { connectorSlug: "github", externalUsername: "octocat" },

@@ -222,6 +222,11 @@ function AccountList({
       return $.connectors.accounts.loading;
     });
   }
+  if (!loadable.data.available) {
+    return t(($) => {
+      return $.connectors.accounts.accountsUnavailable;
+    });
+  }
   if (loadable.data.connections.length === 0) {
     return t(($) => {
       return $.connectors.accounts.noAccountsFound;
@@ -430,6 +435,11 @@ export function ConnectorAccountManagerDialog({
           />
           <Button
             type="button"
+            disabled={
+              accountsLoadable.state === "hasError" ||
+              (accountsLoadable.state === "hasData" &&
+                !accountsLoadable.data.available)
+            }
             onClick={() => {
               return leave(onAdd);
             }}
