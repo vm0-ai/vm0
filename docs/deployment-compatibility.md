@@ -153,6 +153,14 @@ runner can also survive briefly talking to an old backend.
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
+The proxy registry and embedded mitm-addon are also a runner-private contract.
+The runner binary embeds the addon sources, recreates the addon directory and
+registry at startup, and keeps them in its version-specific base directory.
+Their registry schema and process-local flow metadata can therefore change
+atomically in one runner release without fallback keys or cross-version readers.
+This exemption does not extend to registry data persisted outside that runner
+artifact or consumed by an independently deployed component.
+
 Each sandbox is owned exclusively by the runner process that created it. A
 different runner never adopts that sandbox, and stopping the owning runner also
 destroys its sandboxes. Sandbox-local runtime files are therefore private to one

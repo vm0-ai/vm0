@@ -151,7 +151,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         entries = read_jsonl_entries_after_flush(
-            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         )
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -193,7 +193,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         entries = read_jsonl_entries_after_flush(
-            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         )
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -246,7 +246,7 @@ class TestXConnectorResponsePipeline:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -404,7 +404,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -567,7 +567,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -602,7 +602,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -637,7 +637,7 @@ class TestXConnectorResponsePipeline:
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
@@ -700,7 +700,7 @@ class TestXConnectorErrorPipeline:
         assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 2, "user.read": 1}
 
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         assert any(entry["type"] == "connection_error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
@@ -720,7 +720,7 @@ class TestXConnectorErrorPipeline:
         incremental parser must have accumulated counts from the chunks.
         """
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
         flow.metadata.pop(metadata_keys.NETWORK_LOG_TARGET)
 
         # 1. Register parser

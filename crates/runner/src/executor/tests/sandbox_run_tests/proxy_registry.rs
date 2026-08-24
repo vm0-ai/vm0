@@ -121,9 +121,9 @@ async fn proxy_registration_accepts_canonical_targets() {
             .unwrap(),
     )
     .unwrap();
-    let canonical_vm = &canonical_registry["vms"]["10.200.0.3"];
+    let canonical_sandbox = &canonical_registry["sandboxes"]["10.200.0.3"];
     assert_eq!(
-        canonical_vm["firewalls"],
+        canonical_sandbox["firewalls"],
         serde_json::json!([{
             "kind": "builtin",
             "name": "zendesk",
@@ -133,14 +133,14 @@ async fn proxy_registration_accepts_canonical_targets() {
         }])
     );
     assert_eq!(
-        canonical_vm["connectorRuntimeTargets"],
+        canonical_sandbox["connectorRuntimeTargets"],
         serde_json::json!([{
             "kind": "builtin",
             "connectorSlug": "zendesk"
         }])
     );
     assert_eq!(
-        canonical_vm["connectorRoutingVariables"]["builtin:zendesk"],
+        canonical_sandbox["connectorRoutingVariables"]["builtin:zendesk"],
         serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
     );
 }
@@ -171,7 +171,7 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
     assert!(
-        error.contains("register VM in proxy registry"),
+        error.contains("register sandbox in proxy registry"),
         "got: {error}"
     );
     assert!(outcome.sandbox.is_none());
@@ -213,7 +213,7 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
     assert!(
-        error.contains("register VM in proxy registry"),
+        error.contains("register sandbox in proxy registry"),
         "got: {error}"
     );
     assert!(outcome.sandbox.is_some());
@@ -287,7 +287,7 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
         "got: {error}"
     );
     assert!(
-        error.contains("unregister VM from proxy registry"),
+        error.contains("unregister sandbox from proxy registry"),
         "got: {error}"
     );
     assert!(outcome.sandbox.is_some());

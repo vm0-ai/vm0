@@ -154,9 +154,9 @@ async def _start_websocket(
     flow.response = http.Response.make(101, headers=response_headers)
     flow.websocket = WebSocketData()
     if run_id is not None:
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
     if proxy_log_path is not None:
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
 
     running = _RunningWebSocket(
         layer=websocket.WebsocketLayer(context, flow),

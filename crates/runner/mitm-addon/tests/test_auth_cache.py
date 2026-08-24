@@ -503,7 +503,7 @@ class TestFirewallHeaderCache:
         cache_key = auth_cache_key(run_id="run-old")
         set_cached_headers(cache_key, headers={}, expires_at=None)
 
-        registry = {"vms": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
+        registry = {"sandboxes": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 

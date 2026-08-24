@@ -804,7 +804,7 @@ def declared_firewall_permission_name_invalid_reason(
 # match a base and must fail closed at match time.
 #
 # Registry loading rejects explicit non-null, non-list firewalls payloads for
-# registered VMs before request handling. Direct compile_firewalls callers still
+# registered sandboxes before request handling. Direct compile_firewalls callers still
 # get None for missing, empty, or non-list payloads. compile_firewalls skips raw
 # entries that cannot participate in base matching: non-object firewall entries,
 # firewalls whose "apis" is not a list, non-object APIs, non-string bases, bases
@@ -1001,16 +1001,16 @@ def bind_compiled_firewall_core(
     )
 
 
-def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
+def compile_firewalls(sandbox_firewalls: object | None) -> CompiledFirewallSet | None:
     """Compile firewall data and retain selected malformed state.
 
     See the compiled matcher contract above for skipped versus retained inputs.
     """
-    if not isinstance(vm_firewalls, list) or not vm_firewalls:
+    if not isinstance(sandbox_firewalls, list) or not sandbox_firewalls:
         return None
 
     compiled_firewalls: list[_CompiledFirewall] = []
-    for fw_entry in vm_firewalls:
+    for fw_entry in sandbox_firewalls:
         core = compile_firewall_core(fw_entry)
         if core is None or not isinstance(fw_entry, dict):
             continue

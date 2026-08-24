@@ -1,2 +1,2 @@
-with_item_bindings.py:24: use metadata_keys.VM_RUN_ID for flow.metadata access
-with_item_bindings.py:34: use metadata_keys.VM_RUN_ID for flow.metadata access
+with_item_bindings.py:24: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+with_item_bindings.py:34: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access

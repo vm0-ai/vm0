@@ -116,22 +116,22 @@ def block_registry_unavailable(
     )
 
 
-def block_invalid_registry_vm(
+def block_invalid_registry_sandbox(
     flow: http.HTTPFlow,
-    invalid_vm: registry.InvalidVmEntry,
+    invalid_sandbox: registry.InvalidSandboxEntry,
 ) -> None:
     flow_metadata.set_firewall_decision(
         flow.metadata,
         "BLOCK",
-        error="invalid_registry_vm",
+        error="invalid_registry_sandbox",
     )
     flow.response = make_local_json_response(
         flow,
         503,
         {
-            "error": "invalid_registry_vm",
-            "message": invalid_vm.message,
-            "reason": invalid_vm.reason,
+            "error": "invalid_registry_sandbox",
+            "message": invalid_sandbox.message,
+            "reason": invalid_sandbox.reason,
         },
     )
 
@@ -148,7 +148,8 @@ def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
         {
             "error": _STALE_TLS_ADMISSION_ERROR,
             "message": (
-                "Request blocked: TLS admission is no longer backed by a valid proxy registry VM"
+                "Request blocked: TLS admission is no longer backed by a valid "
+                "proxy registry sandbox"
             ),
             "reason": reason,
         },

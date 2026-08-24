@@ -25,7 +25,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Forward errors must not leak secret-bearing resolved auth.base URLs."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://real.example.com/webhook/super-secret-token",
@@ -40,7 +40,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
@@ -52,7 +52,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Forwarder destination guard failures use the local rewrite failure path."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?client=visible",
@@ -82,7 +82,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 1
         assert flow.response is not None
@@ -102,7 +102,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Handler maps real forwarder destination rejection to local failure."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?client=visible",
@@ -124,14 +124,16 @@ class TestAuthBaseUrlRewriteSafety:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
 
         with (
             fake_forwarder_upstream(addresses=("127.0.0.1",)) as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert upstream.resolve_calls == ["real.example.com"]
@@ -186,7 +188,7 @@ class TestAuthBaseUrlRewriteSafety:
         request_path = path_prefix + "x" * (
             auth.MAX_AUTH_BASE_REQUEST_TARGET_BYTES - len(path_prefix) + extra_bytes
         )
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path=request_path,
@@ -205,7 +207,9 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert flow.request.path == request_path
         if accepted:
@@ -272,7 +276,7 @@ class TestAuthBaseUrlRewriteSafety:
     ):
         client_query = separator.join([raw_pair] * client_segments)
         request_path = f"/hook?{client_query}"
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path=request_path,
@@ -297,7 +301,9 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         get_headers.assert_awaited_once()
         assert flow.request.path == request_path
@@ -335,7 +341,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         partial_body = b'{"secret":"partial-upstream-secret"}'
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?client=visible",
@@ -357,7 +363,7 @@ class TestAuthBaseUrlRewriteSafety:
             },
         )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
 
         with (
             fake_forwarder_upstream(
@@ -367,7 +373,9 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert upstream.socket.response_file is not None
@@ -407,7 +415,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Secret-backed auth.base upstream URLs must not use cleartext HTTP."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?client=visible",
@@ -432,7 +440,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -451,7 +459,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Secret-backed auth.base fragments must not be silently dropped."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://real.example.com/webhook/super-secret-token#fragment",
@@ -464,7 +472,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -479,7 +487,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Secret-backed auth.base bracket syntax must be limited to IPv6 literals."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://[v1.invalid]/webhook/super-secret-token",
@@ -492,7 +500,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -514,7 +522,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, real_flow, mitm_ctx, tmp_path, request_path
     ):
         """Malformed request target query extraction must use the local rewrite failure path."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             path=request_path,
@@ -528,7 +536,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -563,7 +571,7 @@ class TestAuthBaseUrlRewriteSafety:
         self, real_flow, mitm_ctx, tmp_path, resolved_base
     ):
         """Secret-backed auth.base paths must reject unsafe path syntax."""
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base=resolved_base,
@@ -576,7 +584,7 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert mock_forward.call_count == 0
         assert flow.response is not None
@@ -587,7 +595,7 @@ class TestAuthBaseUrlRewriteSafety:
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
     async def test_empty_resolved_base_fails_closed(self, real_flow, mitm_ctx, tmp_path):
-        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
             auth_overrides={
@@ -606,7 +614,9 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
         updated_url = urlparse(flow.request.url)
         assert updated_url.scheme == original_url.scheme
         assert updated_url.netloc == original_url.netloc
