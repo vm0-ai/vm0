@@ -276,7 +276,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template archive SHA-256: cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+      "Selected template archive SHA-256: 9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
     );
   });
 
