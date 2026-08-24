@@ -149,6 +149,13 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
+/// Canonical user-environment file pointer accepted by guest readers.
+///
+/// Runners keep writing [`USER_ENV_FILE_ENV`] until the deployed reader floor,
+/// sandbox drain, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
+
 /// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
 pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
@@ -161,6 +168,13 @@ pub const USER_ENV_FILENAME: &str = "env.json";
 /// bootstrap environment values so guest-agent startup does not hit Linux
 /// argv/env limits. Production guest-agent startup requires this key.
 pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
+
+/// Canonical run-payload file pointer accepted by guest readers.
+///
+/// Runners keep writing [`RUN_PAYLOAD_FILE_ENV`] until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// are complete.
+pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 
 /// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
@@ -541,9 +555,11 @@ mod tests {
             "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
         );
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+        assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
     }
@@ -737,7 +753,9 @@ mod tests {
             PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
+            CANONICAL_USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
+            CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,

@@ -88,6 +88,14 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
         std::env::set_var("HOME", tmp.path().join("stale-home"));
+        for key in [
+            guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        ] {
+            std::env::set_var(key, "/stale/private-file-pointer");
+        }
     }
 
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
@@ -156,7 +164,17 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(cli_env.contains_key("PATH"));
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
-    assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
+    for key in [
+        guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
     for key in [
