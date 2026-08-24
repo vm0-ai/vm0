@@ -34,7 +34,10 @@ from .x_billing import (
     include_billing_category,
     refine_bucket_with_body,
 )
-from .x_response_inspection import parse_json_response_fields_from_body
+from .x_response_inspection import (
+    as_non_negative_response_count,
+    parse_json_response_fields_from_body,
+)
 
 # HTTP 2xx success range (RFC 9110). Also defined in ``response_streaming.py``
 # and ``x_response_inspection.py``; kept local to avoid a constants module for a
@@ -160,10 +163,6 @@ def _compile_request_fallback_hint_policies(
 _REQUEST_FALLBACK_HINT_POLICIES = _compile_request_fallback_hint_policies(
     _REQUEST_FALLBACK_HINT_POLICY_SPECS
 )
-
-
-def _as_non_bool_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int | None:
@@ -522,7 +521,7 @@ def _compute_billable_counts(
 
     if resp_meta.get("body_parsed"):
         if req_meta.get("is_count_endpoint"):
-            total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
+            total = as_non_negative_response_count(resp_meta.get("response_total_tweet_count"))
             primary = 0 if total is None else total
         else:
             # Body was parsed — trust actual response counts.
@@ -748,7 +747,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         method == "GET"
         and req_meta.get("is_count_endpoint")
         and resp_meta.get("body_parsed")
-        and _as_non_bool_int(resp_meta.get("response_total_tweet_count")) is None
+        and as_non_negative_response_count(resp_meta.get("response_total_tweet_count")) is None
     ):
         log_usage_underbilling(
             proxy_log_path,
