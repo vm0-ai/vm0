@@ -19,7 +19,7 @@ class ConnectedIpEndpoint:
 
 
 def client_peername(client: object) -> tuple[str, int] | None:
-    """Return the shape-validated client peer endpoint."""
+    """Return the client peer address pair after shape validation without parsing its host."""
     return address_pair(getattr(client, "peername", None))
 
 
