@@ -291,6 +291,7 @@ describe("GET /api/test/teams-state", () => {
               conversationId: "19:e2e-dm@thread.v2",
               activityId: "activity-e2e",
               connectionId: fixture.connectionId,
+              publicBrand: "vm0",
             }),
           }),
         }),

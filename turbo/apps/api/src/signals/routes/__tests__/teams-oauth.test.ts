@@ -340,6 +340,9 @@ describe("Teams OAuth API routes", () => {
     expect(response.headers.get("location")).toContain(
       `${APP_ORIGIN}/settings/teams?status=connected`,
     );
+    expect(
+      new URL(response.headers.get("location")!).searchParams.get("botName"),
+    ).toBe("Zero");
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
@@ -356,6 +359,7 @@ describe("Teams OAuth API routes", () => {
       isConnected: true,
       connectUrl: null,
       tenantId: fixture.teamsTenantId,
+      botName: "Zero",
     });
   });
 
@@ -389,6 +393,9 @@ describe("Teams OAuth API routes", () => {
     expect(response.headers.get("location")).toContain(
       `${APP_ORIGIN}/settings/teams?status=connected`,
     );
+    expect(
+      new URL(response.headers.get("location")!).searchParams.get("botName"),
+    ).toBe("Zero");
   });
 
   it("rejects OAuth users when the org is already bound to another Microsoft tenant", async () => {

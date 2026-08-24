@@ -2536,7 +2536,7 @@
         "invalidDescription": "이 페이지는 Microsoft Teams 연결 링크에서 열어야 합니다.",
         "open": "Teams 열기",
         "providerName": "Microsoft Teams",
-        "successDescription": "{{team}}에 연결되었습니다. Teams에서 @Zero를 언급하여 대화를 시작하세요.",
+        "successDescription": "{{team}}에 연결되었습니다. Teams에서 @{{botName}}를 언급하여 대화를 시작하세요.",
         "successTitle": "Microsoft Teams에 연결되었습니다"
       },
       "telegram": {

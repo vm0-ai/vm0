@@ -2536,7 +2536,7 @@
         "invalidDescription": "このページは、Microsoft Teams 接続リンクから開かれるように設計されています。",
         "open": "オープンチーム",
         "providerName": "Microsoft Teams",
-        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @Zero にメンションします。",
+        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @{{botName}} にメンションします。",
         "successTitle": "Microsoft Teams に接続されました"
       },
       "telegram": {

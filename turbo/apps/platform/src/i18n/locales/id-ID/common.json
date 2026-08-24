@@ -2536,7 +2536,7 @@
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Microsoft Teams.",
         "open": "Buka Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Anda tersambung ke {{team}}. Sebut @Zero di Teams untuk mulai mengobrol.",
+        "successDescription": "Anda tersambung ke {{team}}. Sebut @{{botName}} di Teams untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Microsoft Teams"
       },
       "telegram": {

@@ -298,7 +298,7 @@ async function deliverClaimedTeamsChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: binding.publicBrand,
+      publicBrand: payload.publicBrand ?? binding.publicBrand,
       replyToMention:
         payload.conversationType !== "personal" && mentionerCount > 1
           ? replyTo
@@ -570,7 +570,7 @@ export async function deliverTeamsChatAdmissionFailure(
   }
   const presentation = await resolveTeamsAdmissionFailurePresentation(
     args,
-    context.publicBrand,
+    args.target.publicBrand ?? context.publicBrand,
     signal,
   );
   const serviceUrl =
