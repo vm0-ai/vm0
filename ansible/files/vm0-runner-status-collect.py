@@ -14,10 +14,46 @@ SANDBOX_STATES = ("active", "idle", "preparing", "unknown")
 RUNNER_MODES = ("starting", "running", "draining", "stopping", "unknown")
 STATUS_RESULTS = ("included", "stopped", "invalid")
 STATE_PRECEDENCE = {"unknown": 0, "preparing": 1, "active": 2, "idle": 3}
+CANONICAL_RUNNERS_DIR_ENV = "OKOU_RUNNERS_DIR"
+LEGACY_RUNNERS_DIR_ENV = "VM0_RUNNERS_DIR"
+DEFAULT_RUNNERS_DIR = "/var/lib/vm0-runner/runners"
+CANONICAL_TEXTFILE_DIR_ENV = "OKOU_MONITORING_TEXTFILE_DIR"
+LEGACY_TEXTFILE_DIR_ENV = "VM0_MONITORING_TEXTFILE_DIR"
+DEFAULT_TEXTFILE_DIR = "/var/lib/vm0-monitoring/textfile-collector"
 
 
 class InvalidStatus(ValueError):
     pass
+
+
+def resolve_path_alias(canonical_key: str, legacy_key: str, default: str) -> Path:
+    canonical = os.environ.get(canonical_key) or None
+    legacy = os.environ.get(legacy_key) or None
+
+    if canonical is not None and legacy is not None:
+        if canonical != legacy:
+            raise SystemExit(
+                "monitoring path alias conflict "
+                f"canonical_key={canonical_key} legacy_key={legacy_key} "
+                "state=conflict"
+            )
+        value = canonical
+        state = "dual"
+    elif canonical is not None:
+        value = canonical
+        state = "canonical-only"
+    elif legacy is not None:
+        value = legacy
+        state = "legacy-only"
+    else:
+        return Path(default)
+
+    print(
+        "monitoring path alias source "
+        f"canonical_key={canonical_key} legacy_key={legacy_key} state={state}",
+        file=sys.stderr,
+    )
+    return Path(value)
 
 
 def parse_sandbox_entry(entry: object) -> tuple[dict[object, object], str]:
@@ -148,7 +184,12 @@ def collect(
         for sandbox_id, state in entries:
             record_state(sandbox_states, sandbox_id, state)
 
-    return Counter(sandbox_states.values()), runner_modes, status_results, collection_success
+    return (
+        Counter(sandbox_states.values()),
+        runner_modes,
+        status_results,
+        collection_success,
+    )
 
 
 def render_metrics(
@@ -216,14 +257,18 @@ def write_metrics(textfile_dir: Path, metrics: str) -> None:
 
 
 def main() -> None:
-    runners_dir = Path(
-        os.environ.get("VM0_RUNNERS_DIR", "/var/lib/vm0-runner/runners")
+    # Stage 1 keeps legacy aliases available until #28914 records an all-host
+    # canonical configuration floor, completes the rollback window, and verifies
+    # that no active host has a legacy-only override.
+    runners_dir = resolve_path_alias(
+        CANONICAL_RUNNERS_DIR_ENV,
+        LEGACY_RUNNERS_DIR_ENV,
+        DEFAULT_RUNNERS_DIR,
     )
-    textfile_dir = Path(
-        os.environ.get(
-            "VM0_MONITORING_TEXTFILE_DIR",
-            "/var/lib/vm0-monitoring/textfile-collector",
-        )
+    textfile_dir = resolve_path_alias(
+        CANONICAL_TEXTFILE_DIR_ENV,
+        LEGACY_TEXTFILE_DIR_ENV,
+        DEFAULT_TEXTFILE_DIR,
     )
 
     metrics = render_metrics(*collect(runners_dir))
