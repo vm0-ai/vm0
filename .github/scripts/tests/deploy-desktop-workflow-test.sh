@@ -64,7 +64,41 @@ ruby -e '
   raise "Desktop promotion must address artifacts by release_target" unless download.include?(ARGV[5])
   raise "Desktop promotion must require the Okou app archive" unless download.include?("--require-okou")
 
-  promote_text = File.read(ARGV[1]).split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
+  release_text = File.read(ARGV[1])
+  promote_text = release_text.split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
+  dollar = 36.chr
+  canonical_credentials = {
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" => dollar + "{{ steps.notary-key.outputs.path }}",
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_ID" => dollar + "{{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
+    "OKOU_DESKTOP_NOTARIZE_API_ISSUER" => dollar + "{{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
+  }
+  legacy_credentials = [
+    "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
+    "VM0_DESKTOP_NOTARIZE_API_KEY_ID",
+    "VM0_DESKTOP_NOTARIZE_API_ISSUER",
+  ]
+  credential_steps = promote.fetch("steps").select do |step|
+    environment = step.fetch("env", {})
+    canonical_credentials.keys.any? { |name| environment.key?(name) }
+  end
+  raise "Desktop promotion must define one atomic API credential source" unless credential_steps.length == 1
+  notarize_step = credential_steps.fetch(0)
+  raise "Desktop promotion must bind the canonical API credential triple together" unless notarize_step.fetch("env") == canonical_credentials
+
+  canonical_occurrences_are_exact = canonical_credentials.keys.all? do |name|
+    release_text.scan(name).length == 2
+  end
+  raise "Desktop release workflow must use each canonical API credential alias exactly twice" unless canonical_occurrences_are_exact
+  raise "Desktop release workflow must not use legacy API credential aliases" if legacy_credentials.any? { |name| release_text.include?(name) }
+
+  notarize_run = notarize_step.fetch("run")
+  raise "Desktop app signing must consume the atomic API credential source" unless notarize_run.include?("sign-and-notarize-packaged-app.mjs")
+  canonical_notarytool_arguments = [
+    "--key \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_PATH\"",
+    "--key-id \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_ID\"",
+    "--issuer \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_ISSUER\"",
+  ]
+  raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
   raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")

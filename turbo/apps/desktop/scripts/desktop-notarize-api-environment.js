@@ -34,10 +34,12 @@ function resolvedOptions(source, values) {
   );
 }
 
-// The release workflow and documented local-build surface remain legacy-only
-// during reader Stage 1. Remove these aliases only after #28914 atomically
-// cuts the writer and docs over, preserves the rollback window, and records
-// zero legacy-only source evidence.
+// The release workflow and documented local-build surface now use the canonical
+// triple. Keep legacy reads for a unit-revert rollback of that writer/docs
+// change. Remove them only after a signed Desktop release checks out a target
+// containing the canonical writer, records canonical-only source evidence,
+// completes the supported rollback window, and records zero legacy-use evidence
+// under #28914.
 function resolveDesktopNotarizeApiEnvironment() {
   const values = {
     canonical: CREDENTIAL_ALIASES.map((alias) =>

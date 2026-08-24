@@ -408,9 +408,9 @@ jobs:
       - name: Sign and notarize macOS artifacts
         id: desktop-artifacts
         env:
-          VM0_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
-          VM0_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          VM0_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          OKOU_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
+          OKOU_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          OKOU_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: |
           create_product_artifacts() {
             local product="$1"
@@ -439,9 +439,9 @@ jobs:
               "${background_args[@]}"
             codesign --force --sign "$VM0_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
             xcrun notarytool submit "$dmg_artifact_path" \
-              --key "$VM0_DESKTOP_NOTARIZE_API_KEY_PATH" \
-              --key-id "$VM0_DESKTOP_NOTARIZE_API_KEY_ID" \
-              --issuer "$VM0_DESKTOP_NOTARIZE_API_ISSUER" \
+              --key "$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" \
+              --key-id "$OKOU_DESKTOP_NOTARIZE_API_KEY_ID" \
+              --issuer "$OKOU_DESKTOP_NOTARIZE_API_ISSUER" \
               --wait
             xcrun stapler staple "$dmg_artifact_path"
           }
