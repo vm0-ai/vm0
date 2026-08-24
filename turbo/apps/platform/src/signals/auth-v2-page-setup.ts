@@ -7,12 +7,15 @@ import {
 } from "../views/auth-v2/auth-v2-page.tsx";
 import { hideAppSkeleton$ } from "./app-skeleton.ts";
 import { resolveAuthBrandContext } from "./auth.ts";
+import { authV2SignInSignals$ } from "./auth-v2/sign-in-flow.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
+import { setPageSignal$ } from "./page-signal.ts";
 import { updatePage$ } from "./react-router.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
-  return command(async ({ set }, signal: AbortSignal) => {
+  return command(async ({ get, set }, signal: AbortSignal) => {
     const authBrand = resolveAuthBrandContext();
+    set(setPageSignal$, signal);
     set(updatePage$, createElement(AuthV2Page, { mode }));
     set(
       updateDocumentTitle$,
@@ -26,6 +29,11 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       authBrand.brandName,
     );
     await set(hideAppSkeleton$, signal);
+    signal.throwIfAborted();
+    if (mode === "sign-in") {
+      const signInSignals = get(authV2SignInSignals$);
+      await set(signInSignals.initialize$, signal);
+    }
   });
 }
 
