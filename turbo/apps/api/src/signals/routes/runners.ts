@@ -134,7 +134,8 @@ const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
-const DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS = 60;
+const DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS = 5 * 60;
+const MANAGED_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS = 30 * 60;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
@@ -2613,14 +2614,17 @@ const modelProviderFailureInner$ = command(
       return { status: 200 as const, body: { outcome: "ignored" as const } };
     }
 
-    const retryAfterSeconds =
-      body.data.retryAfterSeconds ??
-      DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS;
+    const cooldownSeconds =
+      body.data.failureKind === "authentication" ||
+      body.data.failureKind === "billing"
+        ? MANAGED_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS
+        : (body.data.retryAfterSeconds ??
+          DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS);
     const unavailableUntil = await extendManagedModelCandidateCooldown(db, {
       selectedModel: run.selectedModel,
       providerType: run.modelRuntimeProvider,
       upstreamModel: run.modelRuntimeModel,
-      retryAfterSeconds,
+      retryAfterSeconds: cooldownSeconds,
     });
     signal.throwIfAborted();
     L.debug("Managed model provider failure report recorded", {
@@ -2629,7 +2633,7 @@ const modelProviderFailureInner$ = command(
       providerType: run.modelRuntimeProvider,
       upstreamModel: run.modelRuntimeModel,
       failureKind: body.data.failureKind,
-      retryAfterSeconds,
+      retryAfterSeconds: cooldownSeconds,
       unavailableUntil: unavailableUntil.toISOString(),
     });
     return { status: 200 as const, body: { outcome: "recorded" as const } };
