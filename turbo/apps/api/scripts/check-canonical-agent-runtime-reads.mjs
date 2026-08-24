@@ -229,26 +229,26 @@ const referenceConstraintSchemaContracts = [
   ],
 ];
 
-// Stage 7 permits only exact lifecycle teardown and privacy de-identification
-// against legacy identity/config tables. Canonical create/update authority is
-// never admitted here, and reads are not admitted merely because a file writes.
-const stage7IdentityWriterExpectedOccurrences = new Map([
+// Stage 8 PR 1 permits only these exact lifecycle teardown and privacy
+// de-identification statements against legacy identity/config tables. They
+// must also execute inside the schema-absence-safe savepoint boundary below.
+// Canonical create/update authority is never admitted here, and reads are not
+// admitted merely because a file writes.
+const pr1IdentityWriterExpectedOccurrences = new Map([
   [
-    "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|deleteClerkAgentLifecycleData|agentComposes|delete",
-    2,
-  ],
-  [
-    "turbo/apps/api/src/signals/services/compose-data.service.ts|deleteAgentInTransaction|agentComposes|delete",
+    "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|deleteLegacyAgentIdentitiesInTransaction|agentComposes|delete",
     1,
   ],
   [
-    "turbo/apps/api/src/signals/services/webhooks-clerk-cleanup.service.ts|deleteUserData|agentComposeVersions|update",
-    2,
+    "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|scrubLegacyAgentComposeVersionCreatorInTransaction|agentComposeVersions|update",
+    1,
   ],
 ]);
-const stage7IdentityWriters = new Set(
-  stage7IdentityWriterExpectedOccurrences.keys(),
-);
+const pr1IdentityWriters = new Set(pr1IdentityWriterExpectedOccurrences.keys());
+const legacyPrivacyTeardownBoundary = {
+  file: "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts",
+  functionName: "withLegacyAgentPrivacyTeardownSavepoint",
+};
 
 // Stage 7 has no legacy dependent-reference writers.
 const stage7ReferenceWriters = new Set([]);
@@ -261,12 +261,6 @@ const stage7WriterGuardReads = new Set([]);
 
 // Stage 7 has no Run-version dependent-writer support reads.
 const legacyDependentWriterSupportReads = new Set([]);
-
-// This exact runtime probe verifies the retained legacy provenance FK before
-// a lifecycle delete. It is schema/FK compatibility evidence, not Agent data.
-const schemaFkRuntimeProbes = new Set([
-  "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|assertAgentComposeProvenanceSchemaAvailable",
-]);
 
 const legacySqlTokens = [
   "agent_composes",
@@ -530,12 +524,6 @@ function stage7ReadAllowed(file, node, exportedName, allowances) {
   });
 }
 
-function schemaProbeAllowed(file, node, allowances) {
-  return enclosingScopeNames(node).some((scope) => {
-    return allowances.has(`${file}|${scope}`);
-  });
-}
-
 function literalText(node) {
   if (
     ts.isStringLiteral(node) ||
@@ -564,6 +552,27 @@ function enclosingStatement(node) {
   return node.parent;
 }
 
+function isInsideLegacyPrivacyTeardownBoundary(node) {
+  let current = node.parent;
+  while (current) {
+    if (
+      ts.isCallExpression(current) &&
+      ts.isIdentifier(current.expression) &&
+      current.expression.text === legacyPrivacyTeardownBoundary.functionName
+    ) {
+      const cleanup = current.arguments[1];
+      return (
+        cleanup !== undefined &&
+        (ts.isArrowFunction(cleanup) || ts.isFunctionExpression(cleanup)) &&
+        cleanup.pos <= node.pos &&
+        node.end <= cleanup.end
+      );
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 function isEnumeratedIdentityWriterUse(args) {
   const root = enclosingStatement(args.node);
   let enumeratedWriter = false;
@@ -574,6 +583,7 @@ function isEnumeratedIdentityWriterUse(args) {
       if (
         target === args.localName &&
         ["insert", "update", "delete"].includes(method) &&
+        isInsideLegacyPrivacyTeardownBoundary(candidate) &&
         args.stage7Writers.has(
           `${args.file}|${enclosingScopeNames(candidate).at(-1) ?? "<module>"}|${args.exportedIdentity}|${method}`,
         )
@@ -811,7 +821,12 @@ function analyzeIdentityCall(args) {
     if (!args.stage7Writers.has(writerKey)) {
       args.add(
         args.node,
-        `legacy identity write is not an enumerated Stage 7 writer: ${exportedName}.${method}`,
+        `legacy identity write is not an enumerated PR 1 teardown/privacy writer: ${exportedName}.${method}`,
+      );
+    } else if (!isInsideLegacyPrivacyTeardownBoundary(args.node)) {
+      args.add(
+        args.node,
+        `enumerated legacy identity write is outside ${legacyPrivacyTeardownBoundary.functionName}: ${exportedName}.${method}`,
       );
     } else if (args.observedWriterOccurrences) {
       args.observedWriterOccurrences.set(
@@ -1025,10 +1040,7 @@ function analyzeLegacyLiteral(args) {
   const tokens = legacySqlTokens.filter((token) => {
     return normalizedText.includes(token);
   });
-  if (
-    tokens.length > 0 &&
-    !schemaProbeAllowed(args.file, args.node, args.schemaProbes)
-  ) {
+  if (tokens.length > 0) {
     args.add(
       args.node,
       `runtime SQL/literal references legacy Agent storage: ${tokens.join(", ")}`,
@@ -1057,6 +1069,19 @@ function analyzeSource(args) {
   }
 
   function visit(node) {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === legacyPrivacyTeardownBoundary.functionName
+    ) {
+      if (args.file !== legacyPrivacyTeardownBoundary.file) {
+        add(
+          node,
+          `legacy privacy/teardown boundary must be declared only in ${legacyPrivacyTeardownBoundary.file}`,
+        );
+      } else if (args.observedBoundaryDefinitions) {
+        args.observedBoundaryDefinitions.count += 1;
+      }
+    }
     analyzeLegacyModuleBoundary({ node, add });
     if (ts.isCallExpression(node)) {
       analyzeIdentityCall({
@@ -1094,7 +1119,6 @@ function analyzeSource(args) {
     analyzeLegacyLiteral({
       node,
       file: args.file,
-      schemaProbes: args.schemaProbes,
       add,
     });
     ts.forEachChild(node, visit);
@@ -1260,6 +1284,66 @@ function assertReferenceWriterSelfTests(violations, fixturePath) {
   }
 }
 
+function assertLegacyIdentityWriterSelfTests(violations, fixturePath) {
+  const writerKey = `${fixturePath}|<module>|agentComposes|insert`;
+  if (
+    violations(`
+      import { agentComposes } from "@okouai/db/schema/agent-compose";
+      db.insert(agentComposes).values({ name: "writer" });
+    `).length === 0
+  ) {
+    throw new Error(
+      "validator self-test failed to reject an unenumerated legacy identity writer",
+    );
+  }
+  if (
+    violations(
+      `
+        import { agentComposes } from "@okouai/db/schema/agent-compose";
+        withLegacyAgentPrivacyTeardownSavepoint(tx, async (legacyTx) => {
+          await legacyTx.insert(agentComposes).values({ name: "writer" }).returning({ id: agentComposes.id });
+        });
+      `,
+      { stage7Writers: new Set([writerKey]) },
+    ).length > 0
+  ) {
+    throw new Error(
+      "validator self-test rejected an enumerated PR 1 boundary writer",
+    );
+  }
+
+  if (
+    violations(
+      `
+        import { agentComposes } from "@okouai/db/schema/agent-compose";
+        db.insert(agentComposes).values({ name: "writer" });
+      `,
+      { stage7Writers: new Set([writerKey]) },
+    ).length === 0
+  ) {
+    throw new Error(
+      "validator self-test accepted an unconditional enumerated legacy writer",
+    );
+  }
+
+  if (
+    violations(
+      `
+        import { agentComposes } from "@okouai/db/schema/agent-compose";
+        withLegacyAgentPrivacyTeardownSavepoint(
+          db.insert(agentComposes).values({ name: "writer" }),
+          async () => {},
+        );
+      `,
+      { stage7Writers: new Set([writerKey]) },
+    ).length === 0
+  ) {
+    throw new Error(
+      "validator self-test accepted a writer outside the boundary callback",
+    );
+  }
+}
+
 function assertSelfTests() {
   const fixturePath = "turbo/apps/api/src/validator-fixture.ts";
   const base = {
@@ -1268,7 +1352,6 @@ function assertSelfTests() {
     stage7IndirectReferenceWriters: new Set(),
     stage7ReferenceWriters: new Set(),
     stage7Writers: new Set(),
-    schemaProbes: new Set(),
   };
   const violations = (sourceText, overrides = {}) => {
     return analyzeSource({ ...base, ...overrides, sourceText });
@@ -1286,6 +1369,7 @@ function assertSelfTests() {
   }
 
   assertReferenceWriterSelfTests(violations, fixturePath);
+  assertLegacyIdentityWriterSelfTests(violations, fixturePath);
   if (
     violations(`
       import { agentComposes as legacyAgents } from "@okouai/db/schema/agent-compose";
@@ -1321,31 +1405,6 @@ function assertSelfTests() {
     violations("db.execute(sql`SELECT * FROM agent_composes`);").length === 0
   ) {
     throw new Error("validator self-test failed to reject raw legacy SQL");
-  }
-
-  const writerKey = `${fixturePath}|<module>|agentComposes|insert`;
-  if (
-    violations(`
-      import { agentComposes } from "@okouai/db/schema/agent-compose";
-      db.insert(agentComposes).values({ name: "writer" });
-    `).length === 0
-  ) {
-    throw new Error(
-      "validator self-test failed to reject an unenumerated legacy identity writer",
-    );
-  }
-  if (
-    violations(
-      `
-        import { agentComposes } from "@okouai/db/schema/agent-compose";
-        db.insert(agentComposes).values({ name: "writer" }).returning({ id: agentComposes.id });
-      `,
-      { stage7Writers: new Set([writerKey]) },
-    ).length > 0
-  ) {
-    throw new Error(
-      "validator self-test rejected an enumerated Stage 7 writer",
-    );
   }
 
   if (
@@ -1401,6 +1460,7 @@ const allowedLegacyWriterReads = new Set([
 ]);
 const observedIdentityWriterOccurrences = new Map();
 const observedCanonicalReferenceMutations = new Map();
+const observedBoundaryDefinitions = { count: 0 };
 const violations = runtimeFiles.flatMap((filePath) => {
   return analyzeSource({
     file: relativePath(filePath),
@@ -1408,16 +1468,16 @@ const violations = runtimeFiles.flatMap((filePath) => {
     stage7Reads: allowedLegacyWriterReads,
     stage7IndirectReferenceWriters,
     stage7ReferenceWriters,
-    stage7Writers: stage7IdentityWriters,
+    stage7Writers: pr1IdentityWriters,
     observedWriterOccurrences: observedIdentityWriterOccurrences,
     observedCanonicalReferenceMutations,
-    schemaProbes: schemaFkRuntimeProbes,
+    observedBoundaryDefinitions,
   });
 });
 
 violations.push(...referenceConstraintContractViolations());
 
-for (const [key, expected] of stage7IdentityWriterExpectedOccurrences) {
+for (const [key, expected] of pr1IdentityWriterExpectedOccurrences) {
   const observed = observedIdentityWriterOccurrences.get(key) ?? 0;
   if (observed !== expected) {
     violations.push({
@@ -1427,6 +1487,15 @@ for (const [key, expected] of stage7IdentityWriterExpectedOccurrences) {
       message: `bounded legacy writer occurrence count drifted: expected ${expected}, observed ${observed} for ${key}`,
     });
   }
+}
+
+if (observedBoundaryDefinitions.count !== 1) {
+  violations.push({
+    file: legacyPrivacyTeardownBoundary.file,
+    line: 1,
+    column: 1,
+    message: `legacy privacy/teardown boundary definition count drifted: expected 1, observed ${observedBoundaryDefinitions.count}`,
+  });
 }
 
 for (const [key, expected] of expectedCanonicalReferenceMutationOccurrences) {
@@ -1452,7 +1521,7 @@ for (const key of observedCanonicalReferenceMutations.keys()) {
 }
 
 const expectedLegacyIdentityOccurrenceCount = [
-  ...stage7IdentityWriterExpectedOccurrences.values(),
+  ...pr1IdentityWriterExpectedOccurrences.values(),
 ].reduce((sum, count) => {
   return sum + count;
 }, 0);
@@ -1464,7 +1533,7 @@ const expectedCanonicalReferenceMutationCount = [
 
 if (violations.length > 0) {
   process.stderr.write(
-    "Canonical Agent runtime validation failed (Stage 7 writes canonical):\n",
+    "Canonical Agent runtime validation failed (Stage 8 PR 1 runtime seal):\n",
   );
   for (const violation of violations) {
     process.stderr.write(
@@ -1474,6 +1543,6 @@ if (violations.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    `Canonical Agent runtime validation passed across ${runtimeFiles.length} production source files (${expectedLegacyIdentityOccurrenceCount} exact bounded legacy teardown/privacy occurrences in ${stage7IdentityWriters.size} writer keys, ${stage7ReferenceWriters.size} direct and ${stage7IndirectReferenceWriters.size} opaque legacy reference writer keys, ${stage7WriterGuardReads.size} legacy writer guards, ${legacyDependentWriterSupportReads.size} Run-version dependent-writer support reads, ${schemaFkRuntimeProbes.size} schema/FK probe; ${expectedCanonicalReferenceMutationCount} canonical mutable reference mutations in ${expectedCanonicalReferenceMutationOccurrences.size} keys; 6 immutable equality, 2 mutable required-presence, and 4 mutable nullable reference contracts).\n`,
+    `Canonical Agent runtime validation passed across ${runtimeFiles.length} production source files (${expectedLegacyIdentityOccurrenceCount} exact schema-absence-safe legacy teardown/privacy occurrences in ${pr1IdentityWriters.size} writer keys, 1 temporary savepoint boundary, ${stage7ReferenceWriters.size} direct and ${stage7IndirectReferenceWriters.size} opaque legacy reference writer keys, ${stage7WriterGuardReads.size} legacy writer guards, ${legacyDependentWriterSupportReads.size} Run-version dependent-writer support reads, 0 schema/FK probes; ${expectedCanonicalReferenceMutationCount} canonical mutable reference mutations in ${expectedCanonicalReferenceMutationOccurrences.size} keys; 6 immutable equality, 2 mutable required-presence, and 4 mutable nullable reference contracts).\n`,
   );
 }
