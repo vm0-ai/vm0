@@ -917,11 +917,19 @@ describe("settings dialog", () => {
   });
 
   it("shows complete managed model cooldown diagnostics in a collapsed disclosure", async () => {
+    const releaseRefresh = context.mocks.deferred<void>();
     let requestCount = 0;
     context.mocks.api(
       modelProviderCooldownDiagnosticsContract.get,
-      ({ respond }) => {
+      async ({ respond }) => {
         requestCount += 1;
+        if (requestCount > 1) {
+          await releaseRefresh.promise;
+          return respond(200, {
+            fallbackEnabled: true,
+            activeCooldowns: [],
+          });
+        }
         return respond(200, {
           fallbackEnabled: false,
           activeCooldowns: [
@@ -976,7 +984,25 @@ describe("settings dialog", () => {
     click(refreshButton);
     await waitFor(() => {
       expect(requestCount).toBe(2);
+      expect(refreshButton).toBeDisabled();
     });
+    expect(details.open).toBeTruthy();
+    expect(
+      within(diagnostics).getByText("gpt-5.6-luna-2026-08-01"),
+    ).toBeInTheDocument();
+
+    releaseRefresh.resolve();
+    await waitFor(() => {
+      expect(summary).toHaveTextContent("workspace fallback: enabled");
+      expect(summary).toHaveTextContent("global active cooldowns: 0");
+      expect(refreshButton).toBeEnabled();
+    });
+    expect(details.open).toBeTruthy();
+    expect(
+      within(diagnostics).getByText(
+        "No managed model routes are currently in global cooldown.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("refreshes managed model cooldown diagnostics on every Debug entry", async () => {

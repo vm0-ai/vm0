@@ -1,6 +1,6 @@
 import type { ManagedModelCooldownDiagnostics } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { Button } from "@okouai/ui/components/ui/button";
-import { useLoadable, useSet } from "ccstate-react";
+import { useLastResolved, useLoadableState, useSet } from "ccstate-react";
 import { ChevronDown, ChevronUp, Database, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -71,8 +71,10 @@ function CooldownDiagnosticsSummary({
 
 function CooldownDiagnosticsContent({
   diagnostics,
+  loading,
 }: {
   readonly diagnostics: ManagedModelCooldownDiagnostics;
+  readonly loading: boolean;
 }) {
   const { t } = useTranslation();
   const reloadDiagnostics = useSet(reloadManagedModelCooldownDiagnostics$);
@@ -91,6 +93,7 @@ function CooldownDiagnosticsContent({
           variant="outline"
           size="sm"
           className="h-8 gap-1.5 px-2.5 text-xs"
+          disabled={loading}
           onClick={() => {
             reloadDiagnostics();
           }}
@@ -188,10 +191,9 @@ function CooldownDiagnosticsContent({
 export function ManagedModelCooldownDiagnosticsBlock() {
   const { t } = useTranslation();
   const reloadDiagnostics = useSet(reloadManagedModelCooldownDiagnostics$);
-  const diagnosticsLoadable = useLoadable(managedModelCooldownDiagnostics$);
-  const loading = diagnosticsLoadable.state === "loading";
-  const diagnostics =
-    diagnosticsLoadable.state === "hasData" ? diagnosticsLoadable.data : null;
+  const diagnostics = useLastResolved(managedModelCooldownDiagnostics$);
+  const loading =
+    useLoadableState(managedModelCooldownDiagnostics$) === "loading";
 
   return (
     <section
@@ -202,7 +204,10 @@ export function ManagedModelCooldownDiagnosticsBlock() {
         <details className="group">
           <CooldownDiagnosticsSummary diagnostics={diagnostics} />
           <div className="border-t border-border/60 p-4">
-            <CooldownDiagnosticsContent diagnostics={diagnostics} />
+            <CooldownDiagnosticsContent
+              diagnostics={diagnostics}
+              loading={loading}
+            />
           </div>
         </details>
       ) : (
