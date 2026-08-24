@@ -382,11 +382,12 @@ export function CustomConnectorConnectDialog({
       return value.key;
     }),
   );
-  const requiredFieldKeys = accountMode
-    ? connector.fields.flatMap((field) => {
-        return field.required ? [field.key] : [];
-      })
-    : connector.missingRequiredFields;
+  const requiredFieldKeys =
+    accountMode?.kind === "add"
+      ? connector.fields.flatMap((field) => {
+          return field.required ? [field.key] : [];
+        })
+      : connector.missingRequiredFields;
   const hasRequiredValues = requiredFieldKeys.every((key) => {
     return submittedKeys.has(key);
   });

@@ -6284,6 +6284,86 @@ describe("connectors page", () => {
     expect(buttonByText("Save", dialog)).toBeEnabled();
   });
 
+  it("allows partial values when reconnecting a custom account", async () => {
+    const connector = customConnector({
+      connected: true,
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      configuredFieldKeys: ["secret", "subdomain"],
+      missingRequiredFields: [],
+    });
+    const existingAccount = {
+      id: crypto.randomUUID(),
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "manual",
+      displayName: "Existing",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: existingAccount.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: existingAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, {
+        connections: [existingAccount],
+        nextCursor: null,
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel(connector.displayName);
+    });
+    click(buttonByText("Manage", card));
+    const manager = await screen.findByRole("dialog", {
+      name: `Manage ${connector.displayName} accounts`,
+    });
+    click(await within(manager).findByLabelText("Account actions"));
+    click(menuItemByText("Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    expect(dialog).not.toHaveTextContent("Configured");
+    await fill(within(dialog).getByLabelText("Secret"), "new-secret");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+  });
+
   it("keeps MCP account connection actions disabled with the MCP feature off", async () => {
     const connector = mcpCustomConnector({ connected: true });
     const account = {
