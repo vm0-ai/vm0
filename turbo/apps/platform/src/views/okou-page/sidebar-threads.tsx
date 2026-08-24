@@ -20,7 +20,6 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./sidebar-shared.tsx";
 import {
   Tooltip,
@@ -47,7 +46,6 @@ import {
 import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   deleteChatThread$,
@@ -175,14 +173,8 @@ function ChatThreadMarkUnreadMenuItem({
   signals: SidebarChatThreadItemSignals;
 }) {
   const { t } = useTranslation();
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatMarkUnread] ?? false;
   const markUnread = useSet(signals.markUnread$);
   const pageSignal = useGet(pageSignal$);
-
-  if (!enabled) {
-    return null;
-  }
 
   return (
     <DropdownMenuItem
