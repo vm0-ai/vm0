@@ -1,14 +1,12 @@
 import { command, computed, type Computed } from "ccstate";
-import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
   integrationsSlackContract,
 } from "@okouai/api-contracts/contracts/integrations-slack";
+import { integrationsSlackDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import {
   appUrlForPublicBrand,
   publicBrandPresentation,
@@ -46,31 +44,6 @@ import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
 import type { RouteEntry } from "../route-entry";
 import { bestEffort, settle } from "../utils";
-
-const c = initContract();
-
-const slackDownloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/okou/integrations/slack/download-file",
-    headers: authHeadersSchema,
-    query: z.object({
-      file_id: z.string().optional(),
-    }),
-    responses: {
-      200: c.otherResponse({
-        contentType: "application/octet-stream",
-        body: z.unknown(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Download a Slack file via org bot token",
-  },
-});
 
 type SlackEnvironment = NonNullable<
   z.infer<typeof slackOrgStatusSchema>["environment"]
@@ -598,7 +571,7 @@ function slackFileFetchErrorResponse(error: unknown): Response | null {
 
 const getSlackDownloadFileInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(slackDownloadFileContract.download));
+  const query = get(queryOf(integrationsSlackDownloadFileContract.download));
   const fileId = query.file_id;
 
   if (!fileId) {
@@ -705,7 +678,7 @@ export const integrationsSlackRoutes: readonly RouteEntry[] = [
     handler: authRoute(slackReadAuth, deleteSlackIntegration$),
   },
   {
-    route: slackDownloadFileContract.download,
+    route: integrationsSlackDownloadFileContract.download,
     handler: authRoute(slackDownloadAuth, getSlackDownloadFileInner$),
   },
 ];
