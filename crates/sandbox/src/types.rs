@@ -76,6 +76,33 @@ pub struct ExecRequest<'a> {
     pub output_limits: ExecOutputLimits,
 }
 
+/// Request to apply one bounded storage manifest inside the guest.
+///
+/// The provider selects the fixed guest helper and argument contract. Callers
+/// supply only the canonical manifest bytes and the run-scoped context needed
+/// by that helper. Manifests outside the provider's bounded transport belong
+/// on the caller's established fallback path.
+pub struct StorageManifestRequest<'a> {
+    /// Canonical storage-manifest JSON passed to the fixed guest helper.
+    pub manifest_json: &'a [u8],
+    /// Run identity exposed to the helper through the guest run-id contract.
+    pub run_id: &'a str,
+    /// Absolute guest runtime directory exposed to the helper.
+    pub runtime_dir: &'a str,
+    /// Guest-side helper timeout.
+    pub timeout: Duration,
+}
+
+impl StorageManifestRequest<'_> {
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded operation into a zero-timeout request.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
+}
+
 impl ExecRequest<'_> {
     /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     ///

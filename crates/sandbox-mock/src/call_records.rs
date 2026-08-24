@@ -57,6 +57,19 @@ pub struct ExecCall {
     pub output_limits: ExecOutputLimits,
 }
 
+/// Captured fixed storage-manifest request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageManifestCall {
+    /// Canonical manifest JSON supplied to the provider operation.
+    pub manifest_json: Vec<u8>,
+    /// Run identity supplied to the fixed guest helper.
+    pub run_id: String,
+    /// Absolute guest runtime directory supplied to the fixed helper.
+    pub runtime_dir: String,
+    /// Helper timeout supplied by the caller.
+    pub timeout: Duration,
+}
+
 /// Captured `start_process` request fields recorded for test assertions.
 ///
 /// Unlike [`ExecCall`], this record captures environment values as well as

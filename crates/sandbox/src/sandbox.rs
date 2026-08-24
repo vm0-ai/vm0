@@ -10,7 +10,7 @@ use tokio::sync::Notify;
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    StartProcessRequest, WriteFileEntry,
+    StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
@@ -723,6 +723,17 @@ pub trait Sandbox: Send + Sync + Any {
     ) -> Result<ExecResult> {
         self.exec(request).await
     }
+
+    /// Apply a bounded canonical storage manifest through the provider's fixed
+    /// guest helper operation.
+    ///
+    /// Implementations must preserve helper timeout and cancellation, bounded
+    /// stdout/stderr capture, structured termination, and backend-crash
+    /// classification. The caller owns any oversized-manifest fallback.
+    async fn apply_storage_manifest(
+        &self,
+        request: &StorageManifestRequest<'_>,
+    ) -> Result<ExecResult>;
 
     /// Read a small file from the guest.
     ///

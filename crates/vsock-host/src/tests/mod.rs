@@ -4,3 +4,4 @@ mod connection;
 mod exec_operation;
 mod file;
 mod guest_dns_readiness;
+mod guest_storage_manifest;
