@@ -3582,7 +3582,7 @@ describe("chat composer templates", () => {
 
     const preloadedPage = await waitFor(() => {
       const found = document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-14.png"]',
+        'img[src="https://example.com/prefetch-primary-page-16.png"]',
       );
       if (!(found instanceof HTMLImageElement)) {
         throw new Error("Uploaded template page was not prefetched");
@@ -3592,12 +3592,17 @@ describe("chat composer templates", () => {
     expect(preloadedPage).toHaveAttribute("loading", "eager");
     expect(preloadedPage).toHaveAttribute("fetchpriority", "low");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    for (const coverUrl of [primaryPageUrls[0], secondaryPageUrls[0]]) {
+      const cover = document.querySelector(`img[src="${coverUrl}"]`);
+      expect(cover).toHaveAttribute("loading", "eager");
+      expect(cover).toHaveAttribute("fetchpriority", "high");
+    }
     expect(
       document.querySelectorAll('img[src^="https://example.com/prefetch-"]'),
-    ).toHaveLength(15);
+    ).toHaveLength(17);
     expect(
       document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-15.png"]',
+        'img[src="https://example.com/prefetch-primary-page-17.png"]',
       ),
     ).not.toBeInTheDocument();
     expect(

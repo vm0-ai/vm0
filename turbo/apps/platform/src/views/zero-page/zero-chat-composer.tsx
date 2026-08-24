@@ -6858,11 +6858,11 @@ function ComposerTemplateAttachmentSync({
     importedTemplates.flatMap((template) => {
       return template.coverUrl === null ? [] : [template.coverUrl];
     }),
-  ).slice(0, TEMPLATE_PREWARM_IMAGE_COUNT);
+  );
   const importedTemplatePagePreloads =
     selectImportedPresentationTemplatePagePreloads(
       importedTemplateResources,
-      TEMPLATE_PREWARM_IMAGE_COUNT - importedTemplateCoverUrls.length,
+      TEMPLATE_PREWARM_IMAGE_COUNT,
     );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
@@ -6901,7 +6901,7 @@ function ComposerTemplateAttachmentSync({
               src={coverUrl}
               loading="eager"
               decoding="async"
-              fetchPriority="low"
+              fetchPriority="high"
             />
           );
         })}
