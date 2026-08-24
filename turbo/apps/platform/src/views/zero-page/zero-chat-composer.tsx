@@ -5006,6 +5006,148 @@ function ImportedPptCardMediaControls({
   );
 }
 
+type ImportedPptCardImageSlot = "a" | "b";
+
+function importedPptCardImage(
+  media: HTMLDivElement,
+  slot: ImportedPptCardImageSlot,
+): HTMLImageElement | null {
+  return media.querySelector<HTMLImageElement>(
+    `[data-imported-presentation-template-image="${slot}"]`,
+  );
+}
+
+function setImportedPptCardPlaceholder(
+  media: HTMLDivElement,
+  state: "error" | "hidden" | "loading",
+): void {
+  const placeholder = media.querySelector<HTMLElement>(
+    "[data-imported-presentation-template-image-placeholder]",
+  );
+  if (placeholder === null) {
+    return;
+  }
+  placeholder.hidden = state === "hidden";
+  placeholder.dataset.state = state;
+}
+
+function activateImportedPptCardImage(
+  media: HTMLDivElement,
+  slot: ImportedPptCardImageSlot,
+): void {
+  const active = importedPptCardImage(media, slot);
+  const inactive = importedPptCardImage(media, slot === "a" ? "b" : "a");
+  if (active === null || inactive === null) {
+    return;
+  }
+  media.dataset.activeImageSlot = slot;
+  active.dataset.active = "true";
+  active.alt = media.dataset.imageLabel ?? "";
+  active.title = media.dataset.imageLabel ?? "";
+  active.removeAttribute("aria-hidden");
+  inactive.dataset.active = "false";
+  inactive.alt = "";
+  inactive.removeAttribute("title");
+  inactive.setAttribute("aria-hidden", "true");
+  setImportedPptCardPlaceholder(media, "hidden");
+}
+
+function completeImportedPptCardImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLDivElement>(
+    "[data-imported-presentation-template-media]",
+  );
+  const slot = image.dataset.importedPresentationTemplateImage;
+  if (
+    media === null ||
+    (slot !== "a" && slot !== "b") ||
+    image.getAttribute("src") !== media.dataset.desiredImageUrl
+  ) {
+    return;
+  }
+  image.dataset.loadedImageUrl = media.dataset.desiredImageUrl;
+  activateImportedPptCardImage(media, slot);
+}
+
+function failImportedPptCardImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLDivElement>(
+    "[data-imported-presentation-template-media]",
+  );
+  if (
+    media !== null &&
+    image.dataset.importedPresentationTemplateImage ===
+      media.dataset.activeImageSlot
+  ) {
+    delete image.dataset.loadedImageUrl;
+    setImportedPptCardPlaceholder(media, "error");
+  }
+}
+
+function syncImportedPptCardImage(
+  media: HTMLDivElement | null,
+  imageUrl: string | null,
+  label: string,
+): void {
+  if (media === null) {
+    return;
+  }
+  const activeSlot = media.dataset.activeImageSlot === "b" ? "b" : "a";
+  const inactiveSlot = activeSlot === "a" ? "b" : "a";
+  const active = importedPptCardImage(media, activeSlot);
+  const inactive = importedPptCardImage(media, inactiveSlot);
+  if (active === null || inactive === null) {
+    return;
+  }
+  media.dataset.activeImageSlot = activeSlot;
+  media.dataset.imageLabel = label;
+  media.dataset.desiredImageUrl = imageUrl ?? "";
+  active.dataset.active = "true";
+  active.alt = label;
+  active.title = label;
+  active.removeAttribute("aria-hidden");
+  inactive.dataset.active = "false";
+  inactive.alt = "";
+  inactive.removeAttribute("title");
+  inactive.setAttribute("aria-hidden", "true");
+
+  if (imageUrl === null) {
+    active.removeAttribute("src");
+    inactive.removeAttribute("src");
+    setImportedPptCardPlaceholder(media, "error");
+    return;
+  }
+  if (active.getAttribute("src") === imageUrl) {
+    if (
+      active.dataset.loadedImageUrl === imageUrl ||
+      (active.complete && active.naturalWidth > 0)
+    ) {
+      setImportedPptCardPlaceholder(media, "hidden");
+    }
+    return;
+  }
+  if (
+    inactive.getAttribute("src") === imageUrl &&
+    (inactive.dataset.loadedImageUrl === imageUrl ||
+      (inactive.complete && inactive.naturalWidth > 0))
+  ) {
+    activateImportedPptCardImage(media, inactiveSlot);
+    return;
+  }
+  if (active.getAttribute("src") === null) {
+    active.loading = "eager";
+    active.fetchPriority = "high";
+    delete active.dataset.loadedImageUrl;
+    setImportedPptCardPlaceholder(media, "loading");
+    active.src = imageUrl;
+    return;
+  }
+  if (inactive.getAttribute("src") !== imageUrl) {
+    inactive.loading = "eager";
+    inactive.fetchPriority = "high";
+    delete inactive.dataset.loadedImageUrl;
+    inactive.src = imageUrl;
+  }
+}
+
 function ImportedPptCardMedia({
   template,
   selected,
@@ -5033,6 +5175,10 @@ function ImportedPptCardMedia({
 }) {
   return (
     <div
+      ref={(media) => {
+        syncImportedPptCardImage(media, activeImageUrl, label);
+      }}
+      data-imported-presentation-template-media=""
       className={cn(
         TEMPLATE_TILE_MEDIA,
         TEMPLATE_TILE_RING,
@@ -5056,17 +5202,45 @@ function ImportedPptCardMedia({
         onHover(null);
       }}
     >
-      {activeImageUrl === null ? null : (
-        <img
-          alt={label}
-          title={label}
-          src={activeImageUrl}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          className="pointer-events-none h-full w-full bg-background object-cover"
-        />
-      )}
+      <img
+        alt=""
+        aria-hidden="true"
+        data-imported-presentation-template-image="a"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+        draggable={false}
+        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
+        onLoad={(event) => {
+          completeImportedPptCardImage(event.currentTarget);
+        }}
+        onError={(event) => {
+          failImportedPptCardImage(event.currentTarget);
+        }}
+      />
+      <img
+        alt=""
+        aria-hidden="true"
+        data-imported-presentation-template-image="b"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+        draggable={false}
+        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
+        onLoad={(event) => {
+          completeImportedPptCardImage(event.currentTarget);
+        }}
+        onError={(event) => {
+          failImportedPptCardImage(event.currentTarget);
+        }}
+      />
+      <div
+        data-imported-presentation-template-image-placeholder=""
+        data-state="loading"
+        className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-muted/60 text-muted-foreground data-[state=loading]:animate-pulse"
+      >
+        <ImageIcon size={24} aria-hidden="true" />
+      </div>
       <ImportedPptCardMediaControls
         template={template}
         selected={selected}
@@ -6684,11 +6858,11 @@ function ComposerTemplateAttachmentSync({
     importedTemplates.flatMap((template) => {
       return template.coverUrl === null ? [] : [template.coverUrl];
     }),
-  ).slice(0, TEMPLATE_PREWARM_IMAGE_COUNT);
+  );
   const importedTemplatePagePreloads =
     selectImportedPresentationTemplatePagePreloads(
       importedTemplateResources,
-      TEMPLATE_PREWARM_IMAGE_COUNT - importedTemplateCoverUrls.length,
+      TEMPLATE_PREWARM_IMAGE_COUNT,
     );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
@@ -6727,7 +6901,7 @@ function ComposerTemplateAttachmentSync({
               src={coverUrl}
               loading="eager"
               decoding="async"
-              fetchPriority="low"
+              fetchPriority="high"
             />
           );
         })}
