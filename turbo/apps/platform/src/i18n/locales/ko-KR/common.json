@@ -1016,7 +1016,12 @@
       "signUp": "회원가입"
     },
     "loading": "인증 중",
-    "toggleTheme": "테마 전환"
+    "toggleTheme": "테마 전환",
+    "v2": {
+      "continueToSignIn": "현재 로그인으로 계속",
+      "continueToSignUp": "현재 회원가입으로 계속",
+      "unavailable": "새 인증 화면은 아직 사용할 수 없습니다."
+    }
   },
   "authorization": {
     "browser": {
@@ -1557,6 +1562,8 @@
       "loadingFile": "{{filename}} 불러오는 중",
       "previewFile": "{{filename}} 미리보기",
       "title": "첨부파일",
+      "unavailable": "{{filename}}을(를) 더 이상 사용할 수 없습니다. 보내려면 다시 업로드하세요.",
+      "unavailableCount_other": "첨부파일 {{count}}개를 더 이상 사용할 수 없습니다. 보내려면 다시 업로드하세요.",
       "uploadFailed": "{{filename}} 업로드 실패",
       "uploadFailedRetry": "{{filename}} 업로드 실패. 다시 시도하세요.",
       "uploadsFailed": "일부 첨부파일 업로드에 실패했습니다. 다시 시도하세요."

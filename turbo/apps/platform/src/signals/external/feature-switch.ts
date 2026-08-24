@@ -69,6 +69,16 @@ export const composerSubmitDomReconcileEnabled$ = computed((get): boolean => {
   );
 });
 
+export const composerRestoredAttachmentValidationEnabled$ = computed(
+  (get): boolean => {
+    return (
+      get(featureSwitch$)[
+        FeatureSwitchKey.ComposerRestoredAttachmentValidation
+      ] ?? false
+    );
+  },
+);
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
