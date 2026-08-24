@@ -88,7 +88,7 @@ console.log(
 );
 
 const child = spawn(executablePath, [], {
-  env: { ...process.env, VM0_DESKTOP_SMOKE_TEST: "1" },
+  env: { ...process.env, OKOU_DESKTOP_SMOKE_TEST: "1" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
