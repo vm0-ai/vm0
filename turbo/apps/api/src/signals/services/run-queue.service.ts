@@ -119,7 +119,6 @@ type PromoteQueuedCandidateResult =
       readonly pendingActivation: PreparedPendingRunActivation;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
       readonly transactionReturnedAt: number;
-      readonly timing: ApiDispatchTimingCollector;
     }
   | PromoteQueuedCandidateNonPromotedResult;
 
@@ -289,10 +288,18 @@ async function promoteQueuedCandidate(
   if (result.status !== "promoted") {
     return result;
   }
+  const runnerNotification = result.pendingActivation.runnerNotification;
+  // Promotion is durable now; later side-effect failures must not suppress it.
+  timing.flush({
+    runId: runnerNotification.runId,
+    runnerGroup: runnerNotification.runnerGroup,
+    profile: runnerNotification.profile,
+    dispatchPath: "direct",
+    dimensions: { activation_origin: "promotion" },
+  });
   return {
     ...result,
     transactionReturnedAt,
-    timing,
   };
 }
 
@@ -444,15 +451,6 @@ async function promoteQueuedCandidateWithSideEffects(
     queueMarkerNotification: result.queueMarkerNotification,
   });
   const promotionSideEffectsRegisteredAt = now();
-  const runnerNotification = result.pendingActivation.runnerNotification;
-  // Keep optional telemetry submission outside the existing side-effect metric.
-  result.timing.flush({
-    runId: runnerNotification.runId,
-    runnerGroup: runnerNotification.runnerGroup,
-    profile: runnerNotification.profile,
-    dispatchPath: "direct",
-    dimensions: { activation_origin: "promotion" },
-  });
   return {
     status: "drained",
     pendingActivation: {
