@@ -1260,7 +1260,8 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     );
     let err = result.err().unwrap();
     assert!(
-        err.to_string().contains("register VM in proxy registry"),
+        err.to_string()
+            .contains("register sandbox in proxy registry"),
         "got: {err}"
     );
     assert_eq!(

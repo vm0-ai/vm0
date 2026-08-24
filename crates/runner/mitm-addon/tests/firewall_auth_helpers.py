@@ -77,13 +77,13 @@ def _allow_current_firewall_authorization() -> bool:
 async def handle_firewall_request_without_upstream_admission(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> auth.FirewallAuthHandlingResult:
     """Exercise firewall auth independently of production upstream admission."""
     return await auth.handle_firewall_request(
         flow,
         allow,
-        vm_info,
+        sandbox_info,
         revalidate_current_firewall_authorization=_allow_current_firewall_authorization,
     )
 
@@ -91,13 +91,13 @@ async def handle_firewall_request_without_upstream_admission(
 async def apply_requestheaders_auth_without_upstream_admission(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> auth.FirewallHeaderPhaseAuthResult:
     """Exercise early firewall auth independently of production admission."""
     return await auth.try_apply_stream_safe_firewall_auth_for_requestheaders(
         flow,
         allow,
-        vm_info,
+        sandbox_info,
         revalidate_current_firewall_authorization=_allow_current_firewall_authorization,
     )
 

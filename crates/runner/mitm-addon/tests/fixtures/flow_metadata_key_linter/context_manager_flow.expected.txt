@@ -1,7 +1,7 @@
-context_manager_flow.py:8: use metadata_keys.VM_RUN_ID for flow.metadata access
+context_manager_flow.py:8: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
 context_manager_flow.py:14: use metadata_keys.FIREWALL_NAME for flow.metadata access
 context_manager_flow.py:21: use metadata_keys.ORIGINAL_URL for flow.metadata access
-context_manager_flow.py:31: use metadata_keys.VM_PROXY_LOG_PATH for flow.metadata access
+context_manager_flow.py:31: use metadata_keys.SANDBOX_PROXY_LOG_PATH for flow.metadata access
 context_manager_flow.py:40: use metadata_keys.CAPTURE_BODY for flow.metadata access
 context_manager_flow.py:98: use metadata_keys.FIREWALL_BASE for flow.metadata access
 context_manager_flow.py:118: use metadata_keys.AUTH_REFRESHED_CONNECTORS for flow.metadata access

@@ -13,6 +13,7 @@ import {
   type ImageLoadSignals,
 } from "../image-load.ts";
 import { apiClient$ } from "../api-client.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import type {
@@ -21,9 +22,11 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
+import { composerRestoredAttachmentValidationEnabled$ } from "../external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -402,14 +405,26 @@ export interface DraftSignals {
   attachments$: Computed<ZeroChatAttachment[]>;
   attachmentUploadsReady$: Computed<boolean>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
-  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
+  /**
+   * Adds persisted attachments to the draft. When restored-attachment
+   * validation is enabled, drops the ones whose artifact no longer resolves
+   * for this account.
+   */
+  restoreAttachments$: Command<
+    Promise<boolean>,
+    [PersistedAttachment[], AbortSignal]
+  >;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
   /** Reset all draft state (input, template, attachments). Called after send. */
   clear$: Command<void, []>;
-  /** Seed draft from persisted server data. Only called when local cache was empty. */
-  seed$: Command<void, [DraftSeed]>;
+  /**
+   * Seed draft from persisted server data. Only called when local cache was
+   * empty. The draft is visible immediately; when validation is enabled, the
+   * returned promise settles once unresolvable attachments have been dropped.
+   */
+  seed$: Command<Promise<boolean>, [DraftSeed, AbortSignal]>;
 }
 
 interface DraftSeed {
@@ -426,17 +441,38 @@ export interface DraftInputSyncTarget {
 
 /**
  * Reconstructs a ZeroChatAttachment from persisted attachment metadata.
- * The fileInfo$ resolves immediately since the file was already uploaded.
+ *
+ * The persisted id is an externally managed reference: the artifact is stored
+ * per user, so a saved draft, a forwarded message, or a pasted chat payload can
+ * carry an id the current account cannot read. With restored-attachment
+ * validation enabled, `fileInfo$` resolves it once against the current account
+ * and reports `null` when it no longer resolves, instead of asserting the file
+ * is still reachable. The disabled path preserves the persisted file info.
+ *
  */
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
 ): ZeroChatAttachment {
-  const fileInfo$ = computed((): Promise<FileInfo | null> => {
-    return Promise.resolve({
-      id: persisted.id,
-      url: persisted.url,
-      contentType: persisted.contentType,
-    });
+  const persistedInfo: FileInfo = {
+    id: persisted.id,
+    url: persisted.url,
+    contentType: persisted.contentType,
+  };
+  const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
+    if (!get(composerRestoredAttachmentValidationEnabled$)) {
+      return persistedInfo;
+    }
+    const signal = get(rootSignal$);
+    const client = get(apiClient$)(webFilesContract);
+    const resolved = await accept(
+      client.fileUrl({
+        query: { file_id: persisted.id },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      signal,
+    );
+    return resolved.status === 404 ? null : persistedInfo;
   });
 
   const cancel$ = command(() => {
@@ -458,6 +494,33 @@ export function createRestoredAttachment(
     cancel$,
     upload$,
   };
+}
+
+/** Fixed id so repeated restores replace the toast instead of stacking. */
+const UNAVAILABLE_ATTACHMENT_TOAST_ID = "chat-attachment-unavailable";
+
+/**
+ * Tells the user which attachments no longer resolve and returns the message so
+ * a caller can reuse it to abort. Re-uploading is the only fix, so the copy
+ * says that rather than offering a retry.
+ */
+function reportUnavailableAttachments(filenames: readonly string[]): string {
+  const message =
+    filenames.length === 1
+      ? i18n.t(
+          ($) => {
+            return $.chat.attachments.unavailable;
+          },
+          { filename: filenames[0] },
+        )
+      : i18n.t(
+          ($) => {
+            return $.chat.attachments.unavailableCount;
+          },
+          { count: filenames.length },
+        );
+  toast.warning(message, { id: UNAVAILABLE_ATTACHMENT_TOAST_ID });
+  return message;
 }
 
 function createDraftInputSignals() {
@@ -541,18 +604,69 @@ function createDraftDocumentSignals() {
   };
 }
 
+/**
+ * Drops restored attachments whose artifact no longer resolves for this
+ * account. Leaving them in place strands the composer: the chip waits on a file
+ * it can never load and every send is rejected, so removing them and saying so
+ * is the only state the user can act on.
+ */
+function createPruneUnavailableAttachments(
+  internalAttachments$: State<ZeroChatAttachment[]>,
+): Command<Promise<boolean>, [readonly ZeroChatAttachment[], AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      candidates: readonly ZeroChatAttachment[],
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (candidates.length === 0) {
+        return false;
+      }
+      const infos = await Promise.all(
+        candidates.map((attachment) => {
+          return get(attachment.fileInfo$);
+        }),
+      );
+      signal.throwIfAborted();
+      const currentAttachments = get(internalAttachments$);
+      const unavailable = candidates.filter((attachment, index) => {
+        return infos[index] === null && currentAttachments.includes(attachment);
+      });
+      if (unavailable.length === 0) {
+        return false;
+      }
+      set(internalAttachments$, (prev) => {
+        return prev.filter((attachment) => {
+          return !unavailable.includes(attachment);
+        });
+      });
+      reportUnavailableAttachments(
+        unavailable.map((attachment) => {
+          return attachment.filename;
+        }),
+      );
+      return true;
+    },
+  );
+}
+
 function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
+  pruneUnavailableAttachments$,
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ZeroChatAttachment[]>;
   internalDragOver$: State<boolean>;
+  pruneUnavailableAttachments$: Command<
+    Promise<boolean>,
+    [readonly ZeroChatAttachment[], AbortSignal]
+  >;
 }) {
   const clear$ = command(({ get, set }) => {
     set(draftInput.setInput$, "");
@@ -569,19 +683,26 @@ function createDraftLifecycleSignals({
     set(internalDragOver$, false);
   });
 
-  const seed$ = command(({ set }, value: DraftSeed) => {
-    set(draftDocument.setEditorDocument$, null);
-    set(draftDocument.setRestoredUserMessage$, value.userMessage);
-    set(internalGenerationTemplate$, value.generationTemplate);
-    set(internalAttachments$, value.attachments);
-    set(draftInput.setInput$, value.content);
-    if (
-      value.userMessage &&
-      set(draftInput.syncUserMessage$, value.userMessage)
-    ) {
-      set(draftDocument.takeRestoredUserMessage$);
-    }
-  });
+  const seed$ = command(
+    async (
+      { set },
+      value: DraftSeed,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      set(draftDocument.setEditorDocument$, null);
+      set(draftDocument.setRestoredUserMessage$, value.userMessage);
+      set(internalGenerationTemplate$, value.generationTemplate);
+      set(internalAttachments$, value.attachments);
+      set(draftInput.setInput$, value.content);
+      if (
+        value.userMessage &&
+        set(draftInput.syncUserMessage$, value.userMessage)
+      ) {
+        set(draftDocument.takeRestoredUserMessage$);
+      }
+      return await set(pruneUnavailableAttachments$, value.attachments, signal);
+    },
+  );
 
   return { clear$, seed$ };
 }
@@ -640,15 +761,23 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
+  const pruneUnavailableAttachments$ =
+    createPruneUnavailableAttachments(internalAttachments$);
+
   const restoreAttachments$ = command(
-    ({ set }, persisted: PersistedAttachment[]) => {
+    async (
+      { set },
+      persisted: PersistedAttachment[],
+      signal: AbortSignal,
+    ): Promise<boolean> => {
       if (persisted.length === 0) {
-        return;
+        return false;
       }
       const restored = persisted.map(createRestoredAttachment);
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
+      return await set(pruneUnavailableAttachments$, restored, signal);
     },
   );
 
@@ -676,6 +805,7 @@ export function createDraftSignals(): DraftSignals {
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
+    pruneUnavailableAttachments$,
   });
 
   return {

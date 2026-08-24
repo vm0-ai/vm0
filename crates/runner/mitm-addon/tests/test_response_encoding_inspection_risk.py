@@ -39,8 +39,8 @@ class TestResponseEncodingInspectionRisk:
         )
         flow.metadata.update(
             {
-                metadata_keys.VM_RUN_ID: "run-encoding-risk",
-                metadata_keys.VM_PROXY_LOG_PATH: str(tmp_path / "proxy.jsonl"),
+                metadata_keys.SANDBOX_RUN_ID: "run-encoding-risk",
+                metadata_keys.SANDBOX_PROXY_LOG_PATH: str(tmp_path / "proxy.jsonl"),
                 metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
                 metadata_keys.FIREWALL_BILLABLE: True,
                 metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",

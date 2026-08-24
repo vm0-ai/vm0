@@ -270,7 +270,7 @@ class TestRegisteredWebSocketRetention:
         from_client: bool,
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         message_count = 32
         message_size = 4096
         total_bytes = 0
@@ -344,7 +344,7 @@ class TestRegisteredWebSocketRetention:
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         append_websocket_message(flow, from_client=False, content=b"server")
 
         mitm_addon.websocket_message(flow)
@@ -364,8 +364,8 @@ class TestRegisteredWebSocketRetention:
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
         flow.error = Error("connection reset by peer")
         append_websocket_message(flow, from_client=True, content=b"client")

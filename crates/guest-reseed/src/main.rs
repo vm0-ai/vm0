@@ -10,8 +10,13 @@
 //!
 //! Usage: guest-reseed < entropy-bytes
 //!
-//! Entropy is written to /dev/urandom, then the CRNG is force-reseeded via
-//! RNDRESEEDCRNG ioctl. Requires CAP_SYS_ADMIN (run as root).
+//! The command accepts no arguments after the executable name and reads raw
+//! entropy bytes from stdin. Input must contain 1 through 65,536 bytes.
+//!
+//! Entropy is written to /dev/urandom, then the CRNG is force-reseeded via the
+//! RNDRESEEDCRNG ioctl. Requires CAP_SYS_ADMIN (run as root). The command
+//! returns 0 on success and 1 for argument, input, or reseed failures; stderr
+//! receives diagnostics.
 
 fn main() {
     std::process::exit(guest_reseed::run_cli(

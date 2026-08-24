@@ -24,8 +24,9 @@ use super::support::{
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
-    RUNNER_CONCURRENCY_FACTOR_ENV, RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV, RUNNER_DISK_IOPS_ENV,
-    RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV, LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_DISK_IOPS_ENV, LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
@@ -633,11 +634,14 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             r#"{"bad":true}"#.into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
-        (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
-        (RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
+        (
+            LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(),
+            "999".into(),
+        ),
+        (LEGACY_RUNNER_DISK_IOPS_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
         (
             guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
             "claude-code".into(),
@@ -709,11 +713,11 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
-        RUNNER_CONCURRENCY_FACTOR_ENV,
-        RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-        RUNNER_DISK_IOPS_ENV,
-        RUNNER_NET_RX_MIB_PER_SEC_ENV,
-        RUNNER_NET_TX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
+        LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_DISK_IOPS_ENV,
+        LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
