@@ -44,8 +44,9 @@ function uniqueOrgUser(prefix: string): UserModelProviderFixture {
 }
 
 // ===========================================================================
-// JWT helpers ported inline from web's test file (apps/web/app/api/zero/me/
-// model-providers/__tests__/route.test.ts:417-466). Used by codex-oauth tests.
+// JWT helpers ported inline from the model-providers route test in the
+// removed `apps/web` app. That file no longer exists in the tree, so there
+// is nothing left to keep in sync. Used by codex-oauth tests.
 // ===========================================================================
 
 function base64UrlEncode(input: string): string {
