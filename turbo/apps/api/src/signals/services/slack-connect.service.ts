@@ -97,7 +97,7 @@ async function upsertSlackConnection(
 }
 
 /**
- * The API version draining after migrations 0978/0979 can still explicitly
+ * The API version draining after migrations 0981/0982 can still explicitly
  * write its request-flow brand onto the shared installation row. Repair that
  * DB/API rollout state (observed for up to about 102 minutes) while old and
  * retained rollback writers exist; remove this bridge after #28937 closes its
