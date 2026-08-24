@@ -1023,6 +1023,25 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._replace_current_aliases(exit_aliases)
         return body_falls_through or orelse_falls_through
 
+    def _visit_loop_else_and_join_exits(
+        self,
+        orelse: list[ast.stmt],
+        exhaustion_aliases: set[str],
+        loop_control_state: _LoopControlAliasState,
+    ) -> bool:
+        if orelse:
+            orelse_aliases, orelse_falls_through = self._visit_branch_body(
+                orelse, exhaustion_aliases
+            )
+        else:
+            orelse_aliases = exhaustion_aliases
+            orelse_falls_through = True
+        loop_exit_aliases = set(loop_control_state.break_aliases)
+        if orelse_falls_through:
+            loop_exit_aliases.update(orelse_aliases)
+        self._replace_current_aliases(loop_exit_aliases)
+        return loop_control_state.may_break or orelse_falls_through
+
     def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> bool:
         self._record_metadata_merge_key_violations(node.iter)
         self.visit(node.iter)
@@ -1055,18 +1074,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if iteration_may_raise and (body_falls_through or loop_control_state.may_continue):
             self._record_implicit_exception_aliases(later_iteration_aliases)
         exhaustion_aliases = base_aliases | later_iteration_aliases
-        if node.orelse:
-            orelse_aliases, orelse_falls_through = self._visit_branch_body(
-                node.orelse, exhaustion_aliases
-            )
-        else:
-            orelse_aliases = exhaustion_aliases
-            orelse_falls_through = True
-        loop_exit_aliases = set(loop_control_state.break_aliases)
-        if orelse_falls_through:
-            loop_exit_aliases.update(orelse_aliases)
-        self._replace_current_aliases(loop_exit_aliases)
-        return loop_control_state.may_break or orelse_falls_through
+        return self._visit_loop_else_and_join_exits(
+            node.orelse, exhaustion_aliases, loop_control_state
+        )
 
     def visit_For(self, node: ast.For) -> bool:
         return self._visit_for_statement(node)
@@ -1102,18 +1112,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             else set()
         )
         exhaustion_aliases = base_aliases | later_test_aliases
-        if node.orelse:
-            orelse_aliases, orelse_falls_through = self._visit_branch_body(
-                node.orelse, exhaustion_aliases
-            )
-        else:
-            orelse_aliases = exhaustion_aliases
-            orelse_falls_through = True
-        loop_exit_aliases = set(loop_control_state.break_aliases)
-        if orelse_falls_through:
-            loop_exit_aliases.update(orelse_aliases)
-        self._replace_current_aliases(loop_exit_aliases)
-        return loop_control_state.may_break or orelse_falls_through
+        return self._visit_loop_else_and_join_exits(
+            node.orelse, exhaustion_aliases, loop_control_state
+        )
 
     def _visit_with_items(self, items: list[ast.withitem], body: list[ast.stmt]) -> bool:
         item, *remaining_items = items
