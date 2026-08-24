@@ -563,6 +563,8 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
     proxy_log_path = tmp_path / "shutdown-timeout.jsonl"
     rejected_log_path = tmp_path / "shutdown-timeout-rejected.jsonl"
     release_delivery = threading.Event()
+    executor_shutdown_started = threading.Event()
+    continue_shutdown = threading.Event()
     for _ in range(_REPORT_WORKERS):
         model_provider_failure_api.queue_response(204, release_event=release_delivery)
     flows = [
@@ -571,21 +573,48 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
 
     assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
 
+    original_shutdown = ThreadPoolExecutor.shutdown
+
+    def pause_after_executor_shutdown(
+        executor: ThreadPoolExecutor,
+        wait: bool = True,
+        *,
+        cancel_futures: bool = False,
+    ) -> None:
+        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        executor_shutdown_started.set()
+        if not continue_shutdown.wait(timeout=1):
+            raise AssertionError("failure reporter shutdown test did not release executor shutdown")
+
     shutdown_thread = ThreadUnderTest(target=model_provider_failure.shutdown)
     try:
-        with patch.object(model_provider_failure, "_REPORT_TIMEOUT_SECONDS", 0.01):
+        with (
+            patch.object(model_provider_failure, "_REPORT_TIMEOUT_SECONDS", 0.01),
+            patch.object(ThreadPoolExecutor, "shutdown", pause_after_executor_shutdown),
+        ):
             shutdown_thread.start()
+            wait_for_event(
+                executor_shutdown_started,
+                timeout=1,
+                threads=(shutdown_thread,),
+                message="failure reporter did not begin executor shutdown",
+            )
+            assert shutdown_thread.is_alive()
+
+            rejected_flow = _enqueue_provider_unavailable(real_flow, rejected_log_path)
+            assert model_provider_failure_api.request_count == _REPORT_WORKERS
+            _assert_single_report_omission(
+                rejected_log_path,
+                flow_id=rejected_flow.id,
+                reason="reporting_not_configured",
+            )
+
+            continue_shutdown.set()
             shutdown_thread.join_and_raise(timeout=1)
 
         assert not release_delivery.is_set()
-        rejected_flow = _enqueue_provider_unavailable(real_flow, rejected_log_path)
-        assert model_provider_failure_api.request_count == _REPORT_WORKERS
-        _assert_single_report_omission(
-            rejected_log_path,
-            flow_id=rejected_flow.id,
-            reason="reporting_not_configured",
-        )
     finally:
+        continue_shutdown.set()
         release_delivery.set()
         shutdown_thread.join(timeout=1)
         model_provider_failure.drain_reports_for_tests()
