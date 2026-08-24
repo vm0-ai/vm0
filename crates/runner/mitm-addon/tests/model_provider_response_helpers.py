@@ -332,13 +332,13 @@ def set_common_model_metadata(
     proxy_log_path: Path | None = None,
     run_id: str = "run-abc-123",
 ) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
     if proxy_log_path is not None:
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = billable
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
 
 
 def set_model_provider_metadata(

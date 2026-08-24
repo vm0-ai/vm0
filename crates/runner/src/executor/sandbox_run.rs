@@ -1141,7 +1141,7 @@ async fn create_started_sandbox(
                     warn!(
                         run_id = %context.run_id,
                         error = %unregister_error,
-                        "failed to unregister VM from proxy after sandbox start failure"
+                        "failed to unregister sandbox from proxy after sandbox start failure"
                     );
                     false
                 }
@@ -1225,7 +1225,7 @@ async fn create_started_sandbox(
                         warn!(
                             run_id = %context.run_id,
                             error = %unregister_error,
-                            "failed to unregister VM from proxy after workspace mount failure"
+                            "failed to unregister sandbox from proxy after workspace mount failure"
                         );
                         false
                     }
@@ -1574,7 +1574,7 @@ fn normalize_guest_cli_agent_session_id(
     }
 }
 
-/// Register a VM in the proxy registry and network log manager.
+/// Register a sandbox in the proxy registry and network log manager.
 pub(super) async fn register_proxy(
     config: &ExecutorConfig,
     context: &ExecutionContext,
@@ -1584,7 +1584,7 @@ pub(super) async fn register_proxy(
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
-    let registration = proxy::VmRegistration {
+    let registration = proxy::SandboxRegistration {
         run_id: &run_id_str,
         cli_agent_type,
         sandbox_token: &context.sandbox_token,
@@ -1603,9 +1603,9 @@ pub(super) async fn register_proxy(
     };
     config
         .registry
-        .register_vm(source_ip, &registration)
+        .register_sandbox(source_ip, &registration)
         .await
-        .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("register sandbox in proxy registry: {e}")))?;
     let network_log_session = config
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
@@ -1674,7 +1674,7 @@ pub(super) fn log_proxy_register_failure(
     );
 }
 
-/// Unregister a VM from the proxy registry.
+/// Unregister a sandbox from the proxy registry.
 pub(super) async fn unregister_proxy_registry(
     config: &ExecutorConfig,
     source_ip: &str,
@@ -1682,9 +1682,9 @@ pub(super) async fn unregister_proxy_registry(
 ) -> RunnerResult<()> {
     let result = config
         .registry
-        .unregister_vm(source_ip)
+        .unregister_sandbox(source_ip)
         .await
-        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
+        .map_err(|e| RunnerError::Internal(format!("unregister sandbox from proxy registry: {e}")));
     if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
         runtime_sync.unregister_run(run_id).await;
     }

@@ -54,7 +54,7 @@ def _anthropic_messages_sse_flow(
         firewall_name="model-provider:anthropic-api-key",
         model_usage_provider="claude-sonnet-4-6",
     )
-    flow.metadata[metadata_keys.VM_RUN_ID] = "00000000-0000-0000-0000-000000025133"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "00000000-0000-0000-0000-000000025133"
     return flow
 
 
@@ -326,9 +326,9 @@ class TestAnthropicMessagesSseUsage:
         usage_webhook_server: UsageWebhookServer,
     ) -> None:
         first_flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
-        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-retained"
+        first_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-retained"
         overflow_flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
-        overflow_flow.metadata[metadata_keys.VM_RUN_ID] = "run-overflow"
+        overflow_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-overflow"
         executor = QueuedUsageExecutor()
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -361,7 +361,7 @@ class TestAnthropicMessagesSseUsage:
             overflow_entries = [
                 entry
                 for entry in read_jsonl_entries_after_flush(
-                    Path(overflow_flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                    Path(overflow_flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
                 )
                 if entry.get("reason") == "anthropic_accounting_retention_saturated"
             ]

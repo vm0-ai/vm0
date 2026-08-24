@@ -1,2 +1,2 @@
-keyword_only_default_aliases.py:2: use metadata_keys.VM_RUN_ID for flow.metadata access
+keyword_only_default_aliases.py:2: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
 keyword_only_default_aliases.py:4: use metadata_keys.FIREWALL_NAME for flow.metadata access
