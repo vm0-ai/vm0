@@ -174,6 +174,9 @@ describe("getAllFeatureStates", () => {
     expect(
       bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(true);
+    expect(bingjieStates[FeatureSwitchKey.ComposerNoteStructureRepair]).toBe(
+      true,
+    );
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -185,6 +188,9 @@ describe("getAllFeatureStates", () => {
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(false);
+    expect(otherStaffStates[FeatureSwitchKey.ComposerNoteStructureRepair]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

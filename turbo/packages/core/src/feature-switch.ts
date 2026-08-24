@@ -387,6 +387,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.ComposerNoteStructureRepair]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Let the composer notice damage to the feedback note's DOM: skip redundant note renders, stop ignoring mutations outside the note content, and reattach the note wrappers WebKit removes during an IME composition so text typed afterwards is no longer silently dropped from submissions.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:

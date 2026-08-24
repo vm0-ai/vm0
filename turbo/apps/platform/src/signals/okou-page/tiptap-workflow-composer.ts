@@ -32,7 +32,10 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { composerSubmitDomReconcileEnabled$ } from "../external/feature-switch.ts";
+import {
+  composerNoteStructureRepairEnabled$,
+  composerSubmitDomReconcileEnabled$,
+} from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { sentryLogContext } from "../../lib/sentry-config.ts";
 import { onRef, resetSignal } from "../utils.ts";
@@ -639,14 +642,13 @@ function createComposerIcon(
   return icon;
 }
 
-function createFeedbackItemNodeView(
-  node: ProseMirrorNode,
-  removeFeedback: (id: number) => void,
-  localizedUi: Set<() => void>,
-): NodeView {
-  const dom = document.createElement("div");
-  dom.dataset.feedbackItem = "";
+interface FeedbackQuoteChip {
+  readonly quoteDom: HTMLDivElement;
+  readonly quoteText: HTMLSpanElement;
+  readonly removeButton: HTMLButtonElement;
+}
 
+function createFeedbackQuoteChip(): FeedbackQuoteChip {
   const quoteDom = document.createElement("div");
   quoteDom.className = "flex";
   quoteDom.contentEditable = "false";
@@ -678,6 +680,19 @@ function createFeedbackItemNodeView(
   );
   quoteChip.append(quoteIconContainer, quoteText, removeButton);
   quoteDom.append(quoteChip);
+  return { quoteDom, quoteText, removeButton };
+}
+
+function createFeedbackItemNodeView(
+  node: ProseMirrorNode,
+  removeFeedback: (id: number) => void,
+  localizedUi: Set<() => void>,
+  structureRepairEnabled: () => boolean,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.feedbackItem = "";
+
+  const { quoteDom, quoteText, removeButton } = createFeedbackQuoteChip();
 
   const noteDom = document.createElement("div");
   const placeholderDom = document.createElement("span");
@@ -709,15 +724,35 @@ function createFeedbackItemNodeView(
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
     // The top padding is breathing room for the dashed divider, so only the
     // items that draw one get it. The first item keeps the editor's own pt-4.
-    dom.className = `flex flex-col gap-1.5 pb-1.5${
+    const domClass = `flex flex-col gap-1.5 pb-1.5${
       showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
     }`;
-    noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
-    placeholderDom.hidden = nodeText(nextNode).length > 0;
-    contentDOM.className =
+    const noteDomClass = `relative${fill ? " min-h-[96px]" : ""}`;
+    const placeholderHidden = nodeText(nextNode).length > 0;
+    const contentDomClass =
       "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
       `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
-    quoteText.textContent = quote;
+    // Assigning an unchanged value still queues an observer record, and with
+    // the repair switch on the record for contentDOM is no longer ignored —
+    // it would force a whole-node re-parse per keystroke and break a live
+    // composition. Write only real changes there; keep the legacy writes
+    // byte-for-byte when the switch is off.
+    const skipUnchanged = structureRepairEnabled();
+    if (!skipUnchanged || dom.className !== domClass) {
+      dom.className = domClass;
+    }
+    if (!skipUnchanged || noteDom.className !== noteDomClass) {
+      noteDom.className = noteDomClass;
+    }
+    if (!skipUnchanged || placeholderDom.hidden !== placeholderHidden) {
+      placeholderDom.hidden = placeholderHidden;
+    }
+    if (!skipUnchanged || contentDOM.className !== contentDomClass) {
+      contentDOM.className = contentDomClass;
+    }
+    if (!skipUnchanged || quoteText.textContent !== quote) {
+      quoteText.textContent = quote;
+    }
   }
   removeButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -746,14 +781,91 @@ function createFeedbackItemNodeView(
         quoteDom.contains(event.target)
       );
     },
-    ignoreMutation(mutation) {
-      return (
-        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
-      );
-    },
+    ignoreMutation: createFeedbackItemIgnoreMutation({
+      dom,
+      quoteDom,
+      noteDom,
+      placeholderDom,
+      contentDOM,
+      structureRepairEnabled,
+    }),
     destroy() {
       localizedUi.delete(localize);
     },
+  };
+}
+
+interface FeedbackItemMutationContext {
+  readonly dom: HTMLElement;
+  readonly quoteDom: HTMLElement;
+  readonly noteDom: HTMLElement;
+  readonly placeholderDom: HTMLElement;
+  readonly contentDOM: HTMLElement;
+  readonly structureRepairEnabled: () => boolean;
+}
+
+// The legacy branch ignores everything outside contentDOM — including the
+// record for WebKit removing the note wrappers, after which the structure is
+// never repaired and every later keystroke is silently dropped from
+// submissions (#27787). The repaired branch hides only what the node view
+// writes itself and keeps all other damage visible to ProseMirror.
+function createFeedbackItemIgnoreMutation(
+  context: FeedbackItemMutationContext,
+): NonNullable<NodeView["ignoreMutation"]> {
+  const {
+    dom,
+    quoteDom,
+    noteDom,
+    placeholderDom,
+    contentDOM,
+    structureRepairEnabled,
+  } = context;
+
+  /**
+   * WebKit can tear the note wrappers out of the item mid-composition and
+   * leave a bare <br> behind (#27787). The detached subtree still holds
+   * contentDOM and every text node, so reattaching it restores screen =
+   * document with nothing lost; whatever the browser put in the gap was never
+   * part of the document. Returns false for stranger damage so the caller
+   * hands it to ProseMirror's own dirty-node redraw.
+   */
+  function repairNoteStructure(): boolean {
+    if (!noteDom.contains(contentDOM)) {
+      return false;
+    }
+    for (const child of Array.from(dom.childNodes)) {
+      if (child !== quoteDom && child !== noteDom) {
+        child.remove();
+      }
+    }
+    dom.append(noteDom);
+    return true;
+  }
+
+  return (mutation) => {
+    if (!structureRepairEnabled()) {
+      return (
+        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
+      );
+    }
+    if (mutation.type === "selection") {
+      return false;
+    }
+    if (!dom.contains(contentDOM)) {
+      return repairNoteStructure();
+    }
+    if (quoteDom.contains(mutation.target)) {
+      return true;
+    }
+    if (
+      mutation.type === "attributes" &&
+      (mutation.target === dom ||
+        mutation.target === noteDom ||
+        mutation.target === placeholderDom)
+    ) {
+      return true;
+    }
+    return placeholderDom.contains(mutation.target);
   };
 }
 
@@ -1606,6 +1718,8 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
+  /** Resolved ComposerNoteStructureRepair switch, set while mounted. */
+  noteStructureRepair: boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1777,6 +1891,9 @@ function createFeedbackItemNode(
             runtime.removeFeedback(id);
           },
           runtime.localizedUi,
+          () => {
+            return runtime.noteStructureRepair;
+          },
         );
       };
     },
@@ -1940,6 +2057,7 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.blur = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
+  runtime.noteStructureRepair = false;
 }
 
 function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
@@ -2156,6 +2274,7 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
+      runtime.noteStructureRepair = get(composerNoteStructureRepairEnabled$);
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2566,6 +2685,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
+    noteStructureRepair: false,
   };
 }
 

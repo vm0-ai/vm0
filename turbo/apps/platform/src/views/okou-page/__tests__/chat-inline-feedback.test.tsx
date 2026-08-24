@@ -418,6 +418,112 @@ async function submitWithStrandedComposerText(
   return { assistantReply, sentMessage };
 }
 
+// Reproduce the WebKit collapse traced in #27787 with the DOM observer live:
+// the wrappers between the item and its note are torn out, taking the note
+// text with them, and a bare <br> is left in their place.
+function collapseNoteStructure(item: HTMLElement, note: HTMLElement): void {
+  const wrapper = note.parentElement;
+  if (!(wrapper instanceof HTMLElement) || wrapper === item) {
+    throw new Error("Feedback note wrapper not found");
+  }
+  wrapper.remove();
+  item.append(document.createElement("br"));
+}
+
+async function submitAfterNoteStructureCollapse(
+  repairEnabled: boolean,
+  caseName: string,
+): Promise<{
+  readonly assistantReply: string;
+  readonly sentMessage: RunCreateCapture;
+}> {
+  const user = userEvent.setup({ delay: null });
+  const assistantReply = "The rollout dates are unclear in this summary.";
+  const sentMessages: RunCreateCapture[] = [];
+
+  mockChatLifecycle(context, {
+    threadId: FEEDBACK_THREAD_ID,
+    threadTitle: "Feedback review",
+    chatEvents: [
+      {
+        id: `msg-feedback-collapse-${caseName}-user`,
+        role: "user",
+        content: "Review this launch summary",
+        runId: `run-feedback-collapse-${caseName}`,
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: `msg-feedback-collapse-${caseName}-assistant`,
+        role: "assistant",
+        content: assistantReply,
+        runId: `run-feedback-collapse-${caseName}`,
+        createdAt: "2026-06-09T10:01:00Z",
+      },
+    ],
+    onRunCreate: (body) => {
+      sentMessages.push(body);
+    },
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${FEEDBACK_THREAD_ID}`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerNoteStructureRepair]: repairEnabled,
+    },
+  });
+
+  await findComposerEditor();
+  selectTextForInlineFeedback(await screen.findByText(assistantReply));
+  await user.click(await screen.findByText("Quote"));
+
+  const feedbackComment = await findFeedbackNote();
+  await user.click(feedbackComment);
+  pastePlainText(feedbackComment, "Make the dates");
+  await waitFor(() => {
+    expect(feedbackComment).toHaveTextContent("Make the dates");
+  });
+
+  const [feedbackItem] = await findFeedbackItems(1);
+  if (!feedbackItem) {
+    throw new Error("Feedback item not found");
+  }
+  collapseNoteStructure(feedbackItem, feedbackComment);
+
+  if (repairEnabled) {
+    const repairedNote = await waitFor(() => {
+      const note = document.querySelector("[data-feedback-note]");
+      if (!(note instanceof HTMLElement)) {
+        throw new Error("Feedback note was not repaired");
+      }
+      expect(note).toHaveTextContent("Make the dates");
+      return note;
+    });
+    await user.click(repairedNote);
+    pastePlainText(repairedNote, " explicit");
+    await waitFor(() => {
+      expect(repairedNote).toHaveTextContent("explicit");
+    });
+  } else {
+    await waitFor(() => {
+      expect(document.querySelector("[data-feedback-note]")).toBeNull();
+    });
+    // Later typing lands directly in the collapsed block, the shape the
+    // device capture shows; the legacy ignoreMutation discards it.
+    feedbackItem.append(document.createTextNode(" explicit"));
+  }
+
+  await user.click(screen.getByLabelText("Send"));
+  await waitFor(() => {
+    expect(sentMessages).toHaveLength(1);
+  });
+  const [sentMessage] = sentMessages;
+  if (!sentMessage) {
+    throw new Error("Submission was not captured");
+  }
+  return { assistantReply, sentMessage };
+}
+
 async function replaceFeedbackNote(
   note: HTMLElement,
   value: string,
@@ -1690,6 +1796,24 @@ describe("chat inline feedback", () => {
         },
       ],
     });
+  });
+
+  it("repairs a collapsed note structure and keeps later input when the repair switch is enabled", async () => {
+    const { sentMessage } = await submitAfterNoteStructureCollapse(
+      true,
+      "enabled",
+    );
+    expect(sentMessage.prompt).toContain("Make the dates");
+    expect(sentMessage.prompt).toContain("explicit");
+  });
+
+  it("keeps dropping input after a note collapse with the repair switch disabled", async () => {
+    const { sentMessage } = await submitAfterNoteStructureCollapse(
+      false,
+      "disabled",
+    );
+    expect(sentMessage.prompt).toContain("Make the dates");
+    expect(sentMessage.prompt).not.toContain("explicit");
   });
 
   it("waits until mouseup before showing the inline feedback toolbar", async () => {
