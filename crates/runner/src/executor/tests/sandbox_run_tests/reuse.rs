@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 use tokio_util::sync::CancellationToken;
 
@@ -64,14 +66,18 @@ async fn execute_job_reuse_bypasses_fresh_pre_spawn_admission() {
     let (idle_sandbox, _budget_lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
 
-    let (outcome, telemetry) = execute_job_reuse(
-        idle_sandbox,
-        minimal_context(),
-        &config,
-        &default_params(),
-        CancellationToken::new(),
+    let (outcome, telemetry) = tokio::time::timeout(
+        Duration::from_secs(2),
+        execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            CancellationToken::new(),
+        ),
     )
-    .await;
+    .await
+    .expect("exact reuse must not wait for fresh pre-spawn admission");
 
     assert_eq!(outcome.exit_code(), 0);
     assert_no_telemetry_action(&telemetry, "runner_fresh_pre_spawn_admission_wait");

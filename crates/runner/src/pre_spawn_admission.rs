@@ -243,11 +243,9 @@ mod tests {
 
     #[tokio::test]
     async fn local_mixed_weight_waiters_keep_fifo_order() {
-        let (dir, admission, _other) = admissions(2);
-        let home = HomePaths::with_root(dir.path().to_path_buf());
-        let turnstile = lock::acquire(home.pre_spawn_admission_turnstile_lock())
-            .await
-            .unwrap();
+        let (_dir, admission, other) = admissions(2);
+        let holder_cancel = CancellationToken::new();
+        let holder = other.acquire(1, &holder_cancel).await.unwrap();
         let first_cancel = CancellationToken::new();
         let mut first = tokio::spawn({
             let admission = admission.clone();
@@ -255,20 +253,36 @@ mod tests {
             async move { admission.acquire(2, &cancel).await }
         });
         wait_for_local_turn(&admission).await;
+        tokio::time::timeout(TEST_TIMEOUT, async {
+            loop {
+                match lock::try_acquire_or_busy(
+                    admission.inner.home.pre_spawn_admission_token_lock(1),
+                )
+                .await
+                .unwrap()
+                {
+                    TryLock::Busy => break,
+                    TryLock::Acquired(token) => drop(token),
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
         let second_cancel = CancellationToken::new();
         let second = tokio::spawn({
             let admission = admission.clone();
             let cancel = second_cancel.clone();
             async move { admission.acquire(1, &cancel).await }
         });
-        drop(turnstile);
+        tokio::task::yield_now().await;
+        drop(holder);
 
         let first_lease = tokio::time::timeout(TEST_TIMEOUT, &mut first)
             .await
             .unwrap()
             .unwrap()
             .unwrap();
-        tokio::task::yield_now().await;
         assert!(
             !second.is_finished(),
             "later light waiter bypassed the earlier weighted waiter"
