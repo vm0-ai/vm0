@@ -34,10 +34,7 @@ export const chatTeamsContext = pgTable("chat_teams_context", {
   serviceUrl: text("service_url"),
   teamsAppId: text("teams_app_id"),
   /** Product brand derived from the Teams webhook hostname at ingress. */
-  publicBrand: text("public_brand")
-    .$type<PublicBrand>()
-    .default("vm0")
-    .notNull(),
+  publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
   senderUserId: text("sender_user_id"),
   senderDisplayName: text("sender_display_name"),
   senderPrincipalName: text("sender_principal_name"),

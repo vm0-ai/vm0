@@ -24,8 +24,7 @@ export const teamsDeliveryTargetSchema = z.object({
   teamsUserPrincipalName: z.string().nullable(),
   botId: z.string().nullable(),
   botName: z.string().nullable(),
-  // Optional only for callbacks persisted before webhook-host branding.
-  publicBrand: publicBrandSchema.optional(),
+  publicBrand: publicBrandSchema,
   files: z.array(teamsChatCallbackFileSchema).optional(),
 });
 
