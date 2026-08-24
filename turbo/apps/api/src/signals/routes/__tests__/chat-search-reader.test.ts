@@ -160,7 +160,7 @@ describe("GET /api/chat/search durable reader", () => {
     await updateChatSearchSourceThreadFixture({
       chatThreadId: primary.threadId,
       userId: peer.userId,
-      agentComposeId: replacement.agentId,
+      agentId: replacement.agentId,
     });
 
     const byProjectedAgent = await chat.searchChat(owner, keyword, {

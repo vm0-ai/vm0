@@ -2822,7 +2822,7 @@ describe("connector catalog valid lifecycle", () => {
         await connectorsApi.deleteCustomConnector(actor, customConnectorId);
       }
       await cleanupConnector();
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     const connected = await connectorsApi.connectManualGrant(
       actor,
@@ -2976,7 +2976,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const client = setupApp({ context, routes: userPermissionGrantsRoutes })(
@@ -3135,7 +3135,7 @@ describe("connector catalog valid lifecycle", () => {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
       }
       await connectorsApi.deleteCustomConnector(actor, custom.id);
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
@@ -3402,7 +3402,7 @@ describe("connector catalog valid lifecycle", () => {
           return skill.skill.storageId;
         }),
       );
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
 
     for (const [index, skill] of skills.entries()) {
@@ -3547,7 +3547,7 @@ describe("connector catalog valid lifecycle", () => {
         runtimeStorage.storageId,
       ]);
       await cleanupConnector();
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
       actor,
@@ -4182,7 +4182,7 @@ describe("connector catalog valid lifecycle", () => {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
       if (created.agentId) {
-        await bdd.deleteVersionFreeAgent(actor, created.agentId);
+        await bdd.deleteAgent(actor, created.agentId);
       }
       await deleteOrgPlanEntitlementFixture(orgId);
     });
@@ -4442,7 +4442,7 @@ describe("connector catalog valid lifecycle", () => {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
       if (created.agentId) {
-        await bdd.deleteVersionFreeAgent(actor, created.agentId);
+        await bdd.deleteAgent(actor, created.agentId);
       }
       await deleteOrgPlanEntitlementFixture(orgId);
     });

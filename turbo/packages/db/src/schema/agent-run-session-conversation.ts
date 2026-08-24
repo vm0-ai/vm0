@@ -253,14 +253,12 @@ export const agentSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentComposeId: uuid("agent_compose_id")
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
+    agentComposeId: uuid("agent_compose_id").references(
+      () => {
+        return agentComposes.id;
+      },
+      { onDelete: "cascade" },
+    ),
     agentId: uuid("agent_id").references(
       () => {
         return agents.id;
@@ -290,7 +288,7 @@ export const agentSessions = pgTable(
       index("idx_agent_sessions_org").on(table.orgId),
       check(
         "agent_sessions_agent_reference_match",
-        sql`${table.agentId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
+        sql`${table.agentId} IS NULL OR ${table.agentComposeId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
       ),
     ];
   },

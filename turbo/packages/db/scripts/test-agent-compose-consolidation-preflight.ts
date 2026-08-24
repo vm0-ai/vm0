@@ -4156,12 +4156,13 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
   ]);
 
-  const service = await fs.readFile(
-    path.join(
-      repositoryRoot,
-      "turbo/apps/api/src/signals/services/agent-compose.service.ts",
+  await assert.rejects(
+    fs.access(
+      path.join(
+        repositoryRoot,
+        "turbo/apps/api/src/signals/services/agent-compose.service.ts",
+      ),
     ),
-    "utf8",
   );
   const contentOwner = await fs.readFile(
     path.join(
@@ -4177,11 +4178,6 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     ),
     "utf8",
   );
-  assert.equal(
-    service.includes("function buildZeroAgentComposeContent"),
-    false,
-  );
-  assert.equal(service.includes("function computeComposeVersionId"), false);
   assert.equal(
     contentOwner.match(/function buildZeroAgentComposeContent/gu)?.length,
     1,

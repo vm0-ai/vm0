@@ -6,7 +6,7 @@ import {
   activeInputDeliveries,
   activeInputDeliveryItems,
 } from "@okouai/db/schema/active-input-delivery";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -209,14 +209,11 @@ export const seedRetentionRun$ = command(
     const [owner] = await database
       .select({
         userId: chatThreads.userId,
-        orgId: agentComposes.orgId,
-        agentComposeId: chatThreads.agentComposeId,
+        orgId: agents.orgId,
+        agentId: chatThreads.agentId,
       })
       .from(chatThreads)
-      .innerJoin(
-        agentComposes,
-        eq(agentComposes.id, chatThreads.agentComposeId),
-      )
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(eq(chatThreads.id, args.chatThreadId))
       .limit(1);
     signal.throwIfAborted();
@@ -228,7 +225,7 @@ export const seedRetentionRun$ = command(
       .values({
         userId: owner.userId,
         orgId: owner.orgId,
-        agentComposeId: owner.agentComposeId,
+        agentId: owner.agentId,
       })
       .returning({ id: agentSessions.id });
     signal.throwIfAborted();

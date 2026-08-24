@@ -574,7 +574,7 @@ describe("GET /api/artifacts/catalog", () => {
     ).toHaveLength(1);
 
     await flushWaitUntilForTest();
-    await bdd.deleteVersionFreeAgent(owner.actor, owner.agentId);
+    await bdd.deleteAgent(owner.actor, owner.agentId);
 
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
       artifacts: [],

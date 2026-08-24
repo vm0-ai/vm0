@@ -576,7 +576,7 @@ const handleExistingInstallation$ = command(
           featureSwitchContext,
         ),
         webhookSecret,
-        defaultComposeId: resolvedAgent.agentId,
+        defaultAgentId: resolvedAgent.agentId,
         publicBrand: args.publicBrand,
         updatedAt: nowDate(),
       })
@@ -696,7 +696,7 @@ export const registerTelegramBot$ = command(
           featureSwitchContext,
         ),
         webhookSecret,
-        defaultComposeId: resolvedAgent.agentId,
+        defaultAgentId: resolvedAgent.agentId,
         ownerUserId: auth.userId,
         orgId: auth.orgId,
         publicBrand: args.publicBrand,

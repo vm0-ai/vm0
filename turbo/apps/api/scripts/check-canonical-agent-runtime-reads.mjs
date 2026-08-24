@@ -82,81 +82,185 @@ const legacyReferenceExports = new Map([
   ],
 ]);
 
-// Stage 7 owns these writes. A new legacy identity-table writer must be added
-// deliberately here; reads are never admitted merely because a file writes.
-const stage7IdentityWriters = new Set([
-  "turbo/apps/api/src/signals/routes/agents.ts|upsertZeroAgentAfterCompose|zeroAgents|insert",
-  "turbo/apps/api/src/signals/routes/agents.ts|createAgentInner$|zeroAgents|insert",
-  "turbo/apps/api/src/signals/routes/agents.ts|updateAgentMetadataInner$|zeroAgents|update",
-  "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|deleteClerkAgentLifecycleData|agentComposes|delete",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|recomposeAgentIfStale$|agentComposeVersions|insert",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|recomposeAgentIfStale$|agentComposes|update",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|createServerSideZeroAgentCompose$|agentComposes|insert",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|createServerSideZeroAgentCompose$|agentComposeVersions|insert",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|createServerSideZeroAgentCompose$|agentComposes|update",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|serverSideZeroAgentCompose$|agentComposeVersions|insert",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|serverSideZeroAgentCompose$|agentComposes|update",
-  "turbo/apps/api/src/signals/services/compose-data.service.ts|deleteComposeInTransaction|agentComposes|delete",
-  "turbo/apps/api/src/signals/services/org-limited-free-bootstrap.service.ts|ensureBootstrapComposeRow|agentComposes|insert",
-  "turbo/apps/api/src/signals/services/org-limited-free-bootstrap.service.ts|finalizeBootstrap|zeroAgents|insert",
-  "turbo/apps/api/src/signals/services/webhooks-clerk-cleanup.service.ts|deleteOrgData|zeroAgents|delete",
-  "turbo/apps/api/src/signals/services/webhooks-clerk-cleanup.service.ts|deleteUserData|agentComposeVersions|update",
+const referenceConstraintContracts = new Map([
+  [
+    "agentSessions",
+    { canonicalProperties: new Set(["agentId"]), kind: "immutable-equality" },
+  ],
+  [
+    "chatThreads",
+    { canonicalProperties: new Set(["agentId"]), kind: "immutable-equality" },
+  ],
+  [
+    "chatThreadEvents",
+    { canonicalProperties: new Set(["agentId"]), kind: "immutable-equality" },
+  ],
+  [
+    "chatEventSearchMessages",
+    { canonicalProperties: new Set(["agentId"]), kind: "immutable-equality" },
+  ],
+  [
+    "telegramInstallations",
+    {
+      canonicalProperties: new Set(["defaultAgentId"]),
+      kind: "mutable-required",
+    },
+  ],
+  [
+    "feishuOrgInstallations",
+    {
+      canonicalProperties: new Set(["defaultAgentId"]),
+      kind: "mutable-required",
+    },
+  ],
+  [
+    "githubInstallations",
+    {
+      canonicalProperties: new Set(["defaultAgentId"]),
+      kind: "immutable-equality",
+    },
+  ],
+  [
+    "slackUserAgentPreferences",
+    {
+      canonicalProperties: new Set(["selectedAgentId"]),
+      kind: "mutable-nullable",
+    },
+  ],
+  [
+    "teamsUserAgentPreferences",
+    {
+      canonicalProperties: new Set(["selectedAgentId"]),
+      kind: "mutable-nullable",
+    },
+  ],
+  [
+    "agentphoneUserAgentPreferences",
+    {
+      canonicalProperties: new Set(["selectedAgentId"]),
+      kind: "immutable-equality",
+    },
+  ],
+  [
+    "telegramUserAgentPreferences",
+    {
+      canonicalProperties: new Set(["selectedAgentId"]),
+      kind: "mutable-nullable",
+    },
+  ],
+  [
+    "feishuUserAgentPreferences",
+    {
+      canonicalProperties: new Set(["selectedAgentId"]),
+      kind: "mutable-nullable",
+    },
+  ],
 ]);
 
-// Stage 7 also owns legacy dependent-reference writes. Each entry identifies
-// one exact production scope and write operation; populate only from the
-// refreshed writer inventory.
-const stage7ReferenceWriters = new Set([
-  "turbo/apps/api/src/signals/routes/integrations-telegram-bot-id.ts|updateCustomBot$|telegramInstallations|update|defaultComposeId",
-  "turbo/apps/api/src/signals/routes/integrations-telegram-bot-id.ts|updateOfficialBot$|telegramUserAgentPreferences|insert|selectedComposeId",
-  "turbo/apps/api/src/signals/services/agentphone-chat-ingress.service.ts|createCanonicalAgentPhoneChatThread|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/chat-events.command.ts|createChatThread|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/chat-thread-event.service.ts|appendChatThreadEvent|chatThreadEvents|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/chat-thread.service.ts|createChatThread$|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/feishu-chat-ingress.service.ts|ensureFeishuChatThreadRoute|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/feishu-connect.service.ts|persistFeishuInstallation|feishuOrgInstallations|insert|defaultComposeId",
-  "turbo/apps/api/src/signals/services/feishu-connect.service.ts|persistFeishuInstallation|feishuOrgInstallations|update|defaultComposeId",
-  "turbo/apps/api/src/signals/services/feishu-connect.service.ts|updateFeishuInstallationAgent$|feishuOrgInstallations|update|defaultComposeId",
-  "turbo/apps/api/src/signals/services/feishu-dispatch.service.ts|setUserAgentPreference|feishuUserAgentPreferences|insert|selectedComposeId",
-  "turbo/apps/api/src/signals/services/github-oauth.service.ts|createOrActivateGithubInstallation|githubInstallations|insert|defaultComposeId",
-  "turbo/apps/api/src/signals/services/github-oauth.service.ts|tryLinkGithubFromRemoteInstallations|githubInstallations|insert|defaultComposeId",
-  "turbo/apps/api/src/signals/services/goal.service.ts|createGoalThread|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/slack-chat-ingress.service.ts|ensureCanonicalSlackChatThreadRoute|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/slack-webhooks.service.ts|setUserAgentPreference|slackUserAgentPreferences|insert|selectedComposeId",
-  "turbo/apps/api/src/signals/services/teams-chat-ingress.service.ts|createCanonicalTeamsChatThread|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/teams-dispatch.service.ts|setUserAgentPreference|teamsUserAgentPreferences|insert|selectedComposeId",
-  "turbo/apps/api/src/signals/services/telegram-chat-ingress.service.ts|createCanonicalTelegramChatThread|chatThreads|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/telegram-post.service.ts|handleExistingInstallation$|telegramInstallations|update|defaultComposeId",
-  "turbo/apps/api/src/signals/services/telegram-post.service.ts|registerTelegramBot$|telegramInstallations|insert|defaultComposeId",
-  "turbo/apps/api/src/signals/services/workflow-user-automation-thread.service.ts|createAutomationChatThread|chatThreads|insert|agentComposeId",
+const expectedCanonicalReferenceMutationOccurrences = new Map([
+  ["telegramInstallations|update|defaultAgentId", 2],
+  ["feishuOrgInstallations|update|defaultAgentId", 2],
+  ["slackUserAgentPreferences|upsert|selectedAgentId", 1],
+  ["teamsUserAgentPreferences|upsert|selectedAgentId", 1],
+  ["telegramUserAgentPreferences|upsert|selectedAgentId", 1],
+  ["feishuUserAgentPreferences|upsert|selectedAgentId", 1],
 ]);
 
-// These write calls receive a typed payload built outside the Drizzle call,
-// so the validator enumerates the exact opaque write boundary separately.
-const stage7IndirectReferenceWriters = new Set([
-  "turbo/apps/api/src/signals/services/agent-run-create.service.ts|buildAtomicLaunchCteContext|agentSessions|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/agent-run-create.service.ts|insertLaunchRunRows|agentSessions|insert|agentComposeId",
-  "turbo/apps/api/src/signals/services/cron-project-chat-event-search.service.ts|insertSearchMessages|chatEventSearchMessages|insert|agentComposeId",
-]);
+const referenceConstraintSchemaContracts = [
+  [
+    "turbo/packages/db/src/schema/agent-run-session-conversation.ts",
+    "agent_sessions_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/chat-thread.ts",
+    "chat_threads_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/chat-thread-event.ts",
+    "chat_thread_events_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/chat-event-search.ts",
+    "chat_event_search_messages_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/telegram-installation.ts",
+    "telegram_installations_agent_reference_match",
+    "mutable-required",
+  ],
+  [
+    "turbo/packages/db/src/schema/feishu-org-installation.ts",
+    "feishu_org_installations_agent_reference_match",
+    "mutable-required",
+  ],
+  [
+    "turbo/packages/db/src/schema/github-installation.ts",
+    "github_installations_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/slack-user-agent-preference.ts",
+    "slack_user_agent_preferences_agent_reference_match",
+    "mutable-nullable",
+  ],
+  [
+    "turbo/packages/db/src/schema/teams-user-agent-preference.ts",
+    "teams_user_agent_preferences_agent_reference_match",
+    "mutable-nullable",
+  ],
+  [
+    "turbo/packages/db/src/schema/agentphone-user-agent-preference.ts",
+    "agentphone_user_agent_preferences_agent_reference_match",
+    "immutable-equality",
+  ],
+  [
+    "turbo/packages/db/src/schema/telegram-user-agent-preference.ts",
+    "telegram_user_agent_preferences_agent_reference_match",
+    "mutable-nullable",
+  ],
+  [
+    "turbo/packages/db/src/schema/feishu-user-agent-preference.ts",
+    "feishu_user_agent_preferences_agent_reference_match",
+    "mutable-nullable",
+  ],
+];
 
-// These bounded reads are part of a Stage 7 write transaction: a lock and
-// optimistic guard, a delete safety veto, and insert-conflict resolution.
-const stage7WriterGuardReads = new Set([
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|readAgentComposeHeadForWriterGuard|agentComposes",
-  "turbo/apps/api/src/signals/services/agent-compose.service.ts|recomposeAgentIfStale$|agentComposes",
-  "turbo/apps/api/src/signals/services/compose-data.service.ts|lockAgentLifecycleForDeletion|agentComposes",
-  "turbo/apps/api/src/signals/services/compose-data.service.ts|lockAgentLifecycleForDeletion|agentComposeVersions",
-  "turbo/apps/api/src/signals/services/org-limited-free-bootstrap.service.ts|ensureBootstrapComposeRow|agentComposes",
+// Stage 7 permits only exact lifecycle teardown and privacy de-identification
+// against legacy identity/config tables. Canonical create/update authority is
+// never admitted here, and reads are not admitted merely because a file writes.
+const stage7IdentityWriterExpectedOccurrences = new Map([
+  [
+    "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|deleteClerkAgentLifecycleData|agentComposes|delete",
+    2,
+  ],
+  [
+    "turbo/apps/api/src/signals/services/compose-data.service.ts|deleteAgentInTransaction|agentComposes|delete",
+    1,
+  ],
+  [
+    "turbo/apps/api/src/signals/services/webhooks-clerk-cleanup.service.ts|deleteUserData|agentComposeVersions|update",
+    2,
+  ],
 ]);
+const stage7IdentityWriters = new Set(
+  stage7IdentityWriterExpectedOccurrences.keys(),
+);
 
-// Stage 4 retained agent_runs.agent_compose_version_id as nullable physical
-// rollback material. This exact helper reads only the current physical version
-// reference to preserve that legacy dependent writer; it cannot supply Agent
-// identity or configuration.
-const legacyDependentWriterSupportReads = new Set([
-  "turbo/apps/api/src/signals/services/agent-run-create.service.ts|readLegacyRunVersionProvenanceForWrite|agentComposes",
-  "turbo/apps/api/src/signals/services/agent-run-create.service.ts|readLegacyRunVersionProvenanceForWrite|agentComposeVersions",
-]);
+// Stage 7 has no legacy dependent-reference writers.
+const stage7ReferenceWriters = new Set([]);
+
+// Opaque legacy dependent-reference payloads are also forbidden.
+const stage7IndirectReferenceWriters = new Set([]);
+
+// Stage 7 has no legacy writer guards.
+const stage7WriterGuardReads = new Set([]);
+
+// Stage 7 has no Run-version dependent-writer support reads.
+const legacyDependentWriterSupportReads = new Set([]);
 
 // This exact runtime probe verifies the retained legacy provenance FK before
 // a lifecycle delete. It is schema/FK compatibility evidence, not Agent data.
@@ -179,6 +283,90 @@ function normalizePath(filePath) {
 
 function relativePath(filePath) {
   return normalizePath(path.relative(repositoryRoot, filePath));
+}
+
+function referenceConstraintContractViolations() {
+  const violations = [];
+  for (const [
+    file,
+    constraintName,
+    kind,
+  ] of referenceConstraintSchemaContracts) {
+    const absolutePath = path.resolve(repositoryRoot, file);
+    const sourceText = fs.readFileSync(absolutePath, "utf8");
+    const sourceFile = ts.createSourceFile(
+      file,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const matchingChecks = [];
+    const visit = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "check" &&
+        node.arguments[0] &&
+        ts.isStringLiteral(node.arguments[0]) &&
+        node.arguments[0].text === constraintName
+      ) {
+        matchingChecks.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+
+    const add = (node, message) => {
+      violations.push({
+        file,
+        ...(node ? location(sourceFile, node) : { line: 1, column: 1 }),
+        message,
+      });
+    };
+    if (kind === "mutable-nullable") {
+      for (const checkNode of matchingChecks) {
+        add(
+          checkNode,
+          `mutable nullable reference must not retain ${constraintName}`,
+        );
+      }
+      continue;
+    }
+    if (matchingChecks.length !== 1) {
+      add(
+        matchingChecks[0],
+        `${kind} reference must define ${constraintName} exactly once; found ${matchingChecks.length}`,
+      );
+      continue;
+    }
+
+    const checkNode = matchingChecks[0];
+    const expression = checkNode.arguments[1]?.getText(sourceFile) ?? "";
+    const nullCount = (expression.match(/\bIS NULL\b/gu) ?? []).length;
+    const notNullCount = (expression.match(/\bIS NOT NULL\b/gu) ?? []).length;
+    const distinctCount = (expression.match(/\bIS NOT DISTINCT FROM\b/gu) ?? [])
+      .length;
+    if (
+      kind === "immutable-equality" &&
+      (nullCount !== 2 || notNullCount !== 0 || distinctCount !== 1)
+    ) {
+      add(
+        checkNode,
+        `${constraintName} must use the symmetric immutable equality contract`,
+      );
+    }
+    if (
+      kind === "mutable-required" &&
+      (nullCount !== 0 || notNullCount !== 2 || distinctCount !== 0)
+    ) {
+      add(
+        checkNode,
+        `${constraintName} must require at least one mutable reference sibling`,
+      );
+    }
+  }
+  return violations;
 }
 
 function isNonRuntimeSupport(filePath) {
@@ -254,9 +442,17 @@ function namedImports(sourceFile) {
         .get(moduleName)
         ?.get(exportedName);
       if (legacyProperties) {
+        const constraintContract =
+          referenceConstraintContracts.get(exportedName);
+        if (!constraintContract) {
+          throw new Error(
+            `missing Stage 7 reference constraint contract for ${exportedName}`,
+          );
+        }
         referenceBindings.set(localName, {
           exportedName,
           legacyProperties,
+          ...constraintContract,
         });
       }
     }
@@ -428,17 +624,169 @@ function legacyReferencePayloadFields(node, legacyProperties) {
   return fields;
 }
 
+function opaquePayloadExpressions(node) {
+  const expressions = [];
+  const collect = (candidate) => {
+    while (
+      ts.isParenthesizedExpression(candidate) ||
+      ts.isAsExpression(candidate) ||
+      ts.isTypeAssertionExpression(candidate)
+    ) {
+      candidate = candidate.expression;
+    }
+    if (ts.isObjectLiteralExpression(candidate)) {
+      for (const property of candidate.properties) {
+        if (ts.isSpreadAssignment(property)) {
+          collect(property.expression);
+        }
+      }
+      return;
+    }
+    if (ts.isConditionalExpression(candidate)) {
+      collect(candidate.whenTrue);
+      collect(candidate.whenFalse);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(candidate)) {
+      for (const element of candidate.elements) {
+        if (ts.isSpreadElement(element)) {
+          expressions.push(element.expression);
+        } else {
+          collect(element);
+        }
+      }
+      return;
+    }
+    expressions.push(candidate);
+  };
+  for (const argument of node.arguments) {
+    collect(argument);
+  }
+  return expressions;
+}
+
 function hasOpaqueWritePayload(node) {
-  return node.arguments.some((argument) => {
-    if (ts.isObjectLiteralExpression(argument)) {
-      return false;
-    }
-    if (ts.isArrayLiteralExpression(argument)) {
-      return argument.elements.some((element) => {
-        return !ts.isObjectLiteralExpression(element);
+  return opaquePayloadExpressions(node).length > 0;
+}
+
+function enclosingParameterType(identifier) {
+  let current = identifier.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current)
+    ) {
+      const parameter = current.parameters.find((candidate) => {
+        return (
+          ts.isIdentifier(candidate.name) &&
+          candidate.name.text === identifier.text
+        );
       });
+      return parameter?.type;
     }
-    return true;
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function declaredPayloadTypeName(typeNode) {
+  let current = typeNode;
+  while (current && ts.isTypeOperatorNode(current)) {
+    current = current.type;
+  }
+  if (current && ts.isArrayTypeNode(current)) {
+    current = current.elementType;
+  }
+  if (
+    current &&
+    ts.isTypeReferenceNode(current) &&
+    ts.isIdentifier(current.typeName)
+  ) {
+    return current.typeName.text;
+  }
+  return undefined;
+}
+
+function declaredPayloadFields(sourceFile, typeName) {
+  const declaration = sourceFile.statements.find((statement) => {
+    return (
+      (ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement)) &&
+      statement.name.text === typeName
+    );
+  });
+  const members =
+    declaration && ts.isInterfaceDeclaration(declaration)
+      ? declaration.members
+      : declaration &&
+          ts.isTypeAliasDeclaration(declaration) &&
+          ts.isTypeLiteralNode(declaration.type)
+        ? declaration.type.members
+        : undefined;
+  if (!members || members.length === 0) {
+    return undefined;
+  }
+  const fields = new Set();
+  for (const member of members) {
+    if (
+      !ts.isPropertySignature(member) ||
+      (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))
+    ) {
+      return undefined;
+    }
+    fields.add(member.name.text);
+  }
+  return fields;
+}
+
+function functionReturnType(sourceFile, functionName) {
+  const declaration = sourceFile.statements.find((statement) => {
+    return (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name?.text === functionName
+    );
+  });
+  return declaration?.type;
+}
+
+function payloadTypeNode(expression, sourceFile) {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current)
+  ) {
+    current = current.expression;
+  }
+  if (ts.isIdentifier(current)) {
+    return enclosingParameterType(current);
+  }
+  if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
+    return functionReturnType(sourceFile, current.expression.text);
+  }
+  return undefined;
+}
+
+function canonicalOpaquePayloadShape(node, sourceFile, legacyProperties) {
+  const opaqueExpressions = opaquePayloadExpressions(node);
+  if (opaqueExpressions.length === 0) {
+    return false;
+  }
+  return opaqueExpressions.every((expression) => {
+    const typeName = declaredPayloadTypeName(
+      payloadTypeNode(expression, sourceFile),
+    );
+    const fields = typeName
+      ? declaredPayloadFields(sourceFile, typeName)
+      : undefined;
+    return (
+      fields !== undefined &&
+      [...legacyProperties].every((field) => {
+        return !fields.has(field);
+      })
+    );
   });
 }
 
@@ -464,6 +812,11 @@ function analyzeIdentityCall(args) {
       args.add(
         args.node,
         `legacy identity write is not an enumerated Stage 7 writer: ${exportedName}.${method}`,
+      );
+    } else if (args.observedWriterOccurrences) {
+      args.observedWriterOccurrences.set(
+        writerKey,
+        (args.observedWriterOccurrences.get(writerKey) ?? 0) + 1,
       );
     }
     return;
@@ -518,10 +871,20 @@ function analyzeReferenceWriteCall(args) {
     message: "legacy reference write is not an enumerated Stage 7 writer",
     add: args.add,
   });
+  analyzeCanonicalReferenceMutation({
+    ...args,
+    method,
+    target,
+  });
   if (
     !["values", "set"].includes(method) ||
     fields.size > 0 ||
-    !hasOpaqueWritePayload(args.node)
+    !hasOpaqueWritePayload(args.node) ||
+    canonicalOpaquePayloadShape(
+      args.node,
+      args.sourceFile,
+      target.legacyProperties,
+    )
   ) {
     return;
   }
@@ -535,6 +898,80 @@ function analyzeReferenceWriteCall(args) {
       "opaque legacy reference write is not an enumerated Stage 7 writer",
     add: args.add,
   });
+}
+
+function upsertHasOpaqueSet(node) {
+  const [options] = node.arguments;
+  if (!options || !ts.isObjectLiteralExpression(options)) {
+    return true;
+  }
+  const setProperty = options.properties.find((property) => {
+    return (
+      ts.isPropertyAssignment(property) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+      property.name.text === "set"
+    );
+  });
+  return (
+    !setProperty ||
+    !ts.isPropertyAssignment(setProperty) ||
+    !ts.isObjectLiteralExpression(setProperty.initializer) ||
+    setProperty.initializer.properties.some((property) => {
+      return ts.isSpreadAssignment(property);
+    })
+  );
+}
+
+function analyzeCanonicalReferenceMutation(args) {
+  const mutationKind =
+    args.method === "set" && args.target.method === "update"
+      ? "update"
+      : args.method === "onConflictDoUpdate" && args.target.method === "insert"
+        ? "upsert"
+        : undefined;
+  if (!mutationKind) {
+    return;
+  }
+
+  const fields = legacyReferencePayloadFields(
+    args.node,
+    args.target.canonicalProperties,
+  );
+  const opaque =
+    mutationKind === "upsert"
+      ? upsertHasOpaqueSet(args.node)
+      : hasOpaqueWritePayload(args.node) &&
+        !canonicalOpaquePayloadShape(
+          args.node,
+          args.sourceFile,
+          args.target.canonicalProperties,
+        );
+  if (fields.size === 0) {
+    if (opaque) {
+      args.add(
+        args.node,
+        `opaque canonical reference ${mutationKind} cannot be classified for ${args.target.exportedName}`,
+      );
+    }
+    return;
+  }
+
+  for (const field of fields) {
+    const key = `${args.target.exportedName}|${mutationKind}|${field}`;
+    if (args.target.kind === "immutable-equality") {
+      args.add(
+        args.node,
+        `canonical mutation violates immutable reference classification: ${key}`,
+      );
+      continue;
+    }
+    if (args.observedCanonicalReferenceMutations) {
+      args.observedCanonicalReferenceMutations.set(
+        key,
+        (args.observedCanonicalReferenceMutations.get(key) ?? 0) + 1,
+      );
+    }
+  }
 }
 
 function analyzePropertyAccess(args) {
@@ -629,14 +1066,18 @@ function analyzeSource(args) {
         identityUses,
         stage7Reads: args.stage7Reads,
         stage7Writers: args.stage7Writers,
+        observedWriterOccurrences: args.observedWriterOccurrences,
         add,
       });
       analyzeReferenceWriteCall({
         node,
+        sourceFile,
         file: args.file,
         referenceBindings,
         stage7IndirectReferenceWriters: args.stage7IndirectReferenceWriters,
         stage7ReferenceWriters: args.stage7ReferenceWriters,
+        observedCanonicalReferenceMutations:
+          args.observedCanonicalReferenceMutations,
         add,
       });
     }
@@ -671,7 +1112,7 @@ function analyzeSource(args) {
   return violations;
 }
 
-function assertReferenceWriterSelfTests(violations, fixturePath) {
+function assertLegacyReferenceWriterSelfTests(violations, fixturePath) {
   const writerKey = `${fixturePath}|writeThread|chatThreads|insert|agentComposeId`;
   const directWriter = `
     import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -704,6 +1145,117 @@ function assertReferenceWriterSelfTests(violations, fixturePath) {
   ) {
     throw new Error(
       "validator self-test failed to enumerate opaque legacy reference writers",
+    );
+  }
+}
+
+function assertReferenceWriterSelfTests(violations, fixturePath) {
+  assertLegacyReferenceWriterSelfTests(violations, fixturePath);
+
+  const canonicalTypedPayload = `
+    import { chatThreads } from "@okouai/db/schema/chat-thread";
+    interface CanonicalThreadInsert { readonly agentId: string; }
+    function writeThread(payload: readonly CanonicalThreadInsert[]) {
+      return db.insert(chatThreads).values([...payload]);
+    }
+  `;
+  if (violations(canonicalTypedPayload).length > 0) {
+    throw new Error(
+      "validator self-test rejected a typed canonical opaque payload",
+    );
+  }
+
+  const legacyTypedPayload = `
+    import { chatThreads } from "@okouai/db/schema/chat-thread";
+    interface LegacyThreadInsert { readonly agentComposeId: string; }
+    function writeThread(payload: readonly LegacyThreadInsert[]) {
+      return db.insert(chatThreads).values([...payload]);
+    }
+  `;
+  if (violations(legacyTypedPayload).length === 0) {
+    throw new Error(
+      "validator self-test accepted a typed legacy opaque payload",
+    );
+  }
+
+  const canonicalHelperPayload = `
+    import { chatThreads } from "@okouai/db/schema/chat-thread";
+    interface CanonicalThreadInsert { readonly agentId: string; }
+    function threadValues(): CanonicalThreadInsert {
+      return { agentId: id };
+    }
+    function writeThread() {
+      return db.insert(chatThreads).values({ ...threadValues() });
+    }
+  `;
+  if (violations(canonicalHelperPayload).length > 0) {
+    throw new Error(
+      "validator self-test rejected a typed canonical helper payload",
+    );
+  }
+
+  const legacyHelperPayload = `
+    import { chatThreads } from "@okouai/db/schema/chat-thread";
+    interface LegacyThreadInsert { readonly agentComposeId: string; }
+    function threadValues(): LegacyThreadInsert {
+      return { agentComposeId: id };
+    }
+    function writeThread() {
+      return db.insert(chatThreads).values({ ...threadValues() });
+    }
+  `;
+  if (violations(legacyHelperPayload).length === 0) {
+    throw new Error(
+      "validator self-test accepted a typed legacy helper payload",
+    );
+  }
+
+  const immutableMutation = `
+    import { chatThreads } from "@okouai/db/schema/chat-thread";
+    db.update(chatThreads).set({ agentId: nextAgentId });
+  `;
+  if (violations(immutableMutation).length === 0) {
+    throw new Error(
+      "validator self-test accepted a canonical mutation of an immutable reference",
+    );
+  }
+
+  const observedMutations = new Map();
+  const mutableMutation = `
+    import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
+    db.update(telegramInstallations).set({ defaultAgentId: nextAgentId });
+  `;
+  if (
+    violations(mutableMutation, {
+      observedCanonicalReferenceMutations: observedMutations,
+    }).length > 0 ||
+    observedMutations.get("telegramInstallations|update|defaultAgentId") !== 1
+  ) {
+    throw new Error(
+      "validator self-test failed to inventory a mutable canonical update",
+    );
+  }
+
+  observedMutations.clear();
+  const mutableUpsert = `
+    import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
+    db.insert(slackUserAgentPreferences)
+      .values({ userId, orgId, selectedAgentId })
+      .onConflictDoUpdate({
+        target: [slackUserAgentPreferences.userId],
+        set: { selectedAgentId },
+      });
+  `;
+  if (
+    violations(mutableUpsert, {
+      observedCanonicalReferenceMutations: observedMutations,
+    }).length > 0 ||
+    observedMutations.get(
+      "slackUserAgentPreferences|upsert|selectedAgentId",
+    ) !== 1
+  ) {
+    throw new Error(
+      "validator self-test failed to inventory a mutable canonical upsert",
     );
   }
 }
@@ -773,6 +1325,16 @@ function assertSelfTests() {
 
   const writerKey = `${fixturePath}|<module>|agentComposes|insert`;
   if (
+    violations(`
+      import { agentComposes } from "@okouai/db/schema/agent-compose";
+      db.insert(agentComposes).values({ name: "writer" });
+    `).length === 0
+  ) {
+    throw new Error(
+      "validator self-test failed to reject an unenumerated legacy identity writer",
+    );
+  }
+  if (
     violations(
       `
         import { agentComposes } from "@okouai/db/schema/agent-compose";
@@ -837,6 +1399,8 @@ const allowedLegacyWriterReads = new Set([
   ...stage7WriterGuardReads,
   ...legacyDependentWriterSupportReads,
 ]);
+const observedIdentityWriterOccurrences = new Map();
+const observedCanonicalReferenceMutations = new Map();
 const violations = runtimeFiles.flatMap((filePath) => {
   return analyzeSource({
     file: relativePath(filePath),
@@ -845,13 +1409,62 @@ const violations = runtimeFiles.flatMap((filePath) => {
     stage7IndirectReferenceWriters,
     stage7ReferenceWriters,
     stage7Writers: stage7IdentityWriters,
+    observedWriterOccurrences: observedIdentityWriterOccurrences,
+    observedCanonicalReferenceMutations,
     schemaProbes: schemaFkRuntimeProbes,
   });
 });
 
+violations.push(...referenceConstraintContractViolations());
+
+for (const [key, expected] of stage7IdentityWriterExpectedOccurrences) {
+  const observed = observedIdentityWriterOccurrences.get(key) ?? 0;
+  if (observed !== expected) {
+    violations.push({
+      file: key.split("|")[0] ?? "<validator>",
+      line: 1,
+      column: 1,
+      message: `bounded legacy writer occurrence count drifted: expected ${expected}, observed ${observed} for ${key}`,
+    });
+  }
+}
+
+for (const [key, expected] of expectedCanonicalReferenceMutationOccurrences) {
+  const observed = observedCanonicalReferenceMutations.get(key) ?? 0;
+  if (observed !== expected) {
+    violations.push({
+      file: "<validator>",
+      line: 1,
+      column: 1,
+      message: `canonical mutable reference occurrence count drifted: expected ${expected}, observed ${observed} for ${key}`,
+    });
+  }
+}
+for (const key of observedCanonicalReferenceMutations.keys()) {
+  if (!expectedCanonicalReferenceMutationOccurrences.has(key)) {
+    violations.push({
+      file: "<validator>",
+      line: 1,
+      column: 1,
+      message: `unexpected canonical mutable reference mutation: ${key}`,
+    });
+  }
+}
+
+const expectedLegacyIdentityOccurrenceCount = [
+  ...stage7IdentityWriterExpectedOccurrences.values(),
+].reduce((sum, count) => {
+  return sum + count;
+}, 0);
+const expectedCanonicalReferenceMutationCount = [
+  ...expectedCanonicalReferenceMutationOccurrences.values(),
+].reduce((sum, count) => {
+  return sum + count;
+}, 0);
+
 if (violations.length > 0) {
   process.stderr.write(
-    "Canonical Agent runtime-read validation failed (Stage 6 reads canonical; Stage 7 retains enumerated writers):\n",
+    "Canonical Agent runtime validation failed (Stage 7 writes canonical):\n",
   );
   for (const violation of violations) {
     process.stderr.write(
@@ -861,6 +1474,6 @@ if (violations.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    `Canonical Agent runtime-read validation passed across ${runtimeFiles.length} production source files (${stage7IdentityWriters.size} Stage 7 identity writer keys, ${stage7ReferenceWriters.size} direct and ${stage7IndirectReferenceWriters.size} opaque Stage 7 reference writer keys, ${stage7WriterGuardReads.size} writer guards, ${legacyDependentWriterSupportReads.size} dependent-writer support reads, ${schemaFkRuntimeProbes.size} schema/FK probe).\n`,
+    `Canonical Agent runtime validation passed across ${runtimeFiles.length} production source files (${expectedLegacyIdentityOccurrenceCount} exact bounded legacy teardown/privacy occurrences in ${stage7IdentityWriters.size} writer keys, ${stage7ReferenceWriters.size} direct and ${stage7IndirectReferenceWriters.size} opaque legacy reference writer keys, ${stage7WriterGuardReads.size} legacy writer guards, ${legacyDependentWriterSupportReads.size} Run-version dependent-writer support reads, ${schemaFkRuntimeProbes.size} schema/FK probe; ${expectedCanonicalReferenceMutationCount} canonical mutable reference mutations in ${expectedCanonicalReferenceMutationOccurrences.size} keys; 6 immutable equality, 2 mutable required-presence, and 4 mutable nullable reference contracts).\n`,
   );
 }

@@ -180,7 +180,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       visibility: "private",
     });
 
-    await api.deleteVersionFreeAgent(admin, created.agentId);
+    await api.deleteAgent(admin, created.agentId);
     const deleted = await api.requestReadAgent(admin, created.agentId, [404]);
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
@@ -668,7 +668,7 @@ describe("ORG-03 onboarding status mapping", () => {
       },
     });
 
-    await api.deleteVersionFreeAgent(admin, agentId);
+    await api.deleteAgent(admin, agentId);
     const orphaned = await api.readOnboardingStatus(admin);
     expect(orphaned).toMatchObject({
       needsOnboarding: false,

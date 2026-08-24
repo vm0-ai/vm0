@@ -6,8 +6,8 @@ import { onTestFinished } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { isLockNotAvailable } from "../../../lib/pg-errors";
 import {
-  clearAgentRunVersionFixture,
   holdAgentComposeVersionRowFixture,
+  materializeAgentLegacyVersionFixture,
   readAgentComposeVersionProvenanceFixture,
   readAgentComposeVersionReferenceCountsFixture,
   readAgentHeadVersionIdFixture,
@@ -21,7 +21,6 @@ import {
   referenceAgentHeadFixture,
   referenceAgentRunVersionFixture,
 } from "../../../test-fixtures/agent-deletion";
-import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -83,7 +82,7 @@ async function deliverClerkDeletion(
 }
 
 describe("Agent Compose nullable transition provenance", () => {
-  it("checkpoints without legacy provenance and continues from the latest Agent head", async () => {
+  it("checkpoints and continues without legacy provenance", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);
     const agent = await bdd.createAgent(actor, {
@@ -94,7 +93,9 @@ describe("Agent Compose nullable transition provenance", () => {
       prompt: "checkpoint without legacy provenance",
       modelProvider: "anthropic-api-key",
     });
-    await clearAgentRunVersionFixture(firstRun.runId);
+    await expect(
+      readAgentRunVersionFixture(firstRun.runId),
+    ).resolves.toBeNull();
 
     const checkpoint = await webhooks.requestAgentCheckpoint(
       {
@@ -130,35 +131,18 @@ describe("Agent Compose nullable transition provenance", () => {
     );
     await flushWaitUntilForTest();
 
-    const currentHead = await readHistoricalAgentComposeHeadFixture(
-      agent.agentId,
-    );
-    const replacementHead = await runs.createHistoricalCompose(actor, {
-      version: "1",
-      agents: {
-        [currentHead.name]: {
-          framework: "claude-code",
-          instructions: "CLAUDE.md",
-          description: "latest configuration after a NULL checkpoint",
-          environment: {
-            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-          },
-        },
-      },
-    });
     const continuation = await runs.createRun(actor, {
       agentId: agent.agentId,
       sessionId: firstRun.sessionId,
-      prompt: "continue using the latest Agent configuration",
+      prompt: "continue without legacy configuration provenance",
       modelProvider: "anthropic-api-key",
     });
     const continuationRun = await runs.readRun(actor, continuation.runId);
     expect(continuation.sessionId).toBe(firstRun.sessionId);
     expect(continuationRun).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(continuation.runId)).resolves.toBe(
-      replacementHead.versionId,
-    );
+    await expect(
+      readAgentRunVersionFixture(continuation.runId),
+    ).resolves.toBeNull();
 
     await runs.requestCancelRun(actor, continuation.runId, [200]);
     await flushWaitUntilForTest();
@@ -197,6 +181,7 @@ describe("Agent Compose nullable transition provenance", () => {
       runId: survivingRun.runId,
       versionAgentId: sharedSource.agentId,
     });
+    await materializeAgentLegacyVersionFixture(unreferencedSource.agentId);
     const unreferencedVersionId = await readAgentHeadVersionIdFixture(
       unreferencedSource.agentId,
     );
@@ -256,9 +241,7 @@ describe("Agent Compose nullable transition provenance", () => {
     await expect(
       runs.readRun(survivor, newRun.runId),
     ).resolves.not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(newRun.runId)).resolves.toBe(
-      sharedVersionId,
-    );
+    await expect(readAgentRunVersionFixture(newRun.runId)).resolves.toBeNull();
 
     const history = `bdd session history ${survivingRun.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
@@ -356,6 +339,7 @@ describe("Agent Compose nullable transition provenance", () => {
     const survivingAgent = await bdd.createAgent(survivor, {
       displayName: "Cross Agent Creator Survivor",
     });
+    await materializeAgentLegacyVersionFixture(survivingAgent.agentId);
     const versionId = await readAgentHeadVersionIdFixture(
       survivingAgent.agentId,
     );
@@ -386,6 +370,7 @@ describe("Agent Compose nullable transition provenance", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Deleted Organization Version",
     });
+    await materializeAgentLegacyVersionFixture(agent.agentId);
     const versionId = await readAgentHeadVersionIdFixture(agent.agentId);
     const before = await readAgentComposeVersionProvenanceFixture(versionId);
 
@@ -423,6 +408,7 @@ describe("Agent Compose nullable transition provenance", () => {
       prompt: "remain until the transaction can commit",
       modelProvider: "anthropic-api-key",
     });
+    await materializeAgentLegacyVersionFixture(doomedAgent.agentId);
     const versionId = await readAgentHeadVersionIdFixture(doomedAgent.agentId);
     const before = await readAgentComposeVersionProvenanceFixture(versionId);
     const versionLock = await holdAgentComposeVersionRowFixture({

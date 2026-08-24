@@ -21,7 +21,7 @@ import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/chat-thread.service";
-import { agentComposeExists } from "../services/compose-data.service";
+import { agentExistsInOrg } from "../services/compose-data.service";
 import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
   resolveModelSelectionPin,
@@ -94,9 +94,9 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const exists = await get(
-    agentComposeExists({
+    agentExistsInOrg({
       orgId: auth.orgId,
-      composeId: body.data.agentId,
+      agentId: body.data.agentId,
     }),
   );
   signal.throwIfAborted();

@@ -317,7 +317,7 @@ async function persistFeishuInstallation(
         encryptedAppSecret: args.prepared.encryptedAppSecret,
         encryptedVerificationToken: args.prepared.encryptedVerificationToken,
         encryptedEncryptKey: args.prepared.encryptedEncryptKey,
-        defaultComposeId: args.input.defaultAgentId,
+        defaultAgentId: args.input.defaultAgentId,
         publicBrand: args.input.publicBrand,
         feishuTenantKey: null,
         feishuTenantName: null,
@@ -344,7 +344,7 @@ async function persistFeishuInstallation(
       encryptedAppSecret: args.prepared.encryptedAppSecret,
       encryptedVerificationToken: args.prepared.encryptedVerificationToken,
       encryptedEncryptKey: args.prepared.encryptedEncryptKey,
-      defaultComposeId: args.input.defaultAgentId,
+      defaultAgentId: args.input.defaultAgentId,
       publicBrand: args.input.publicBrand,
       encryptedTenantAccessToken: args.prepared.encryptedTenantAccessToken,
       tenantAccessTokenExpiresAt: args.prepared.tokenExpiresAt,
@@ -625,7 +625,7 @@ export const updateFeishuInstallationAgent$ = command(
     const rows = await db
       .update(feishuOrgInstallations)
       .set({
-        defaultComposeId: args.defaultAgentId,
+        defaultAgentId: args.defaultAgentId,
         ...(args.setupCompleted
           ? {
               ...(botInfo

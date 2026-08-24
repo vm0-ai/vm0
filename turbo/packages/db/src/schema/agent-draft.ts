@@ -9,7 +9,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 import type {
   AgentDraftAttachments,
@@ -21,14 +20,7 @@ export const agentDrafts = pgTable(
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     /** Canonical rich document for the agent composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<AgentDraftUserMessage>(),

@@ -238,18 +238,23 @@ async function createGoalThread(
     orgId: args.orgId,
     userId: args.userId,
   });
+  const pinColumns = chatThreadModelPinColumns(pin);
   const [thread] = await tx
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       title: args.objective,
-      ...chatThreadModelPinColumns(pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {

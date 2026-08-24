@@ -1,17 +1,9 @@
 import { command, computed, type Computed } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { storages } from "@okouai/db/schema/storage";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
-import {
-  getInstructionsStorageName,
-  VOLUME_ORG_USER_ID,
-} from "@okouai/core/storage-names";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
@@ -20,44 +12,47 @@ import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { env } from "../../lib/env";
 import { conflict } from "../../lib/error";
 import { isLockNotAvailable } from "../../lib/pg-errors";
+import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { settle } from "../utils";
+import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
-export function agentComposeExists(args: {
+export function agentExistsInOrg(args: {
   readonly orgId: string;
-  readonly composeId: string;
+  readonly agentId: string;
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const [row] = await get(db$)
       .select({ id: agents.id })
       .from(agents)
-      .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.composeId)))
+      .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.agentId)))
       .limit(1);
 
     return Boolean(row);
   });
 }
 
-type ConflictResponse = ReturnType<typeof conflict>;
-
 const DELETE_AGENT_LOCK_TIMEOUT = "100ms";
 
-interface DeleteComposeArgs {
-  readonly composeId: string;
-  readonly composeName: string;
+interface DeleteAgentArgs {
+  readonly agentId: string;
   readonly orgId: string;
+  readonly member: { readonly userId: string; readonly role: string };
 }
 
-async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteComposeArgs) {
+async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteAgentArgs) {
+  await lockCanonicalAgentMutation(tx, args.agentId);
+
   const [agent] = await tx
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.id, args.composeId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
-    )
+    .select({
+      id: agents.id,
+      name: agents.name,
+      owner: agents.owner,
+      visibility: agents.visibility,
+    })
+    .from(agents)
+    .where(and(eq(agents.id, args.agentId), eq(agents.orgId, args.orgId)))
     .for("update", { noWait: true })
     .limit(1);
 
@@ -65,22 +60,20 @@ async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteComposeArgs) {
     return { kind: "missing" as const };
   }
 
-  const [legacyVersion] = await tx
-    .select({ id: agentComposeVersions.id })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, args.composeId))
-    .limit(1);
-
-  // Temporary Stage 0 safety veto. Remove only when #26938's final
-  // version-contract stage has removed every legacy version dependency.
-  if (legacyVersion) {
-    return { kind: "legacy-version" as const };
+  const permissionError = requireAgentPermission(
+    agent.owner,
+    args.member,
+    "delete agent",
+    { visibility: agent.visibility },
+  );
+  if (permissionError) {
+    return { kind: "forbidden" as const, response: permissionError };
   }
 
   const sessions = await tx
     .select({ id: agentSessions.id, orgId: agentSessions.orgId })
     .from(agentSessions)
-    .where(eq(agentSessions.agentId, args.composeId))
+    .where(eq(agentSessions.agentId, args.agentId))
     .orderBy(asc(agentSessions.id))
     .for("update", { noWait: true });
 
@@ -129,10 +122,10 @@ async function lockAgentLifecycleForDeletion(tx: Tx, args: DeleteComposeArgs) {
     return { kind: "active-run" as const };
   }
 
-  return { kind: "ready" as const };
+  return { kind: "ready" as const, agentName: agent.name };
 }
 
-async function deleteComposeInTransaction(tx: Tx, args: DeleteComposeArgs) {
+async function deleteAgentInTransaction(tx: Tx, args: DeleteAgentArgs) {
   await tx.execute(
     sql`SELECT set_config('lock_timeout', ${DELETE_AGENT_LOCK_TIMEOUT}, true)`,
   );
@@ -152,56 +145,43 @@ async function deleteComposeInTransaction(tx: Tx, args: DeleteComposeArgs) {
     .from(workflowAutomations)
     .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
     .where(
-      and(
-        eq(workflows.orgId, args.orgId),
-        eq(workflows.agentId, args.composeId),
-      ),
+      and(eq(workflows.orgId, args.orgId), eq(workflows.agentId, args.agentId)),
     );
 
+  await tx
+    .delete(agents)
+    .where(and(eq(agents.id, args.agentId), eq(agents.orgId, args.orgId)));
+
+  // Bounded Stage 7 compatibility teardown: remove only the exact legacy
+  // identity row paired with the canonical Agent that was just deleted.
   await tx
     .delete(agentComposes)
     .where(
       and(
-        eq(agentComposes.id, args.composeId),
+        eq(agentComposes.id, args.agentId),
         eq(agentComposes.orgId, args.orgId),
       ),
     );
 
-  const storageName = getInstructionsStorageName(args.composeName);
-  const [storage] = await tx
-    .select({ id: storages.id, s3Prefix: storages.s3Prefix })
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, args.orgId),
-        eq(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.name, storageName),
-      ),
-    )
-    .limit(1);
-
-  if (storage) {
-    await tx.delete(storages).where(eq(storages.id, storage.id));
-  }
+  const s3Prefix = await removeAgentInstructionsStorageInTransaction(tx, {
+    orgId: args.orgId,
+    agentName: lifecycle.agentName,
+  });
 
   return {
     kind: "deleted" as const,
-    s3Prefix: storage?.s3Prefix ?? null,
+    s3Prefix,
     automations,
   };
 }
 
-export const deleteComposeById$ = command(
-  async (
-    { get, set },
-    args: DeleteComposeArgs,
-    signal: AbortSignal,
-  ): Promise<ConflictResponse | undefined> => {
+export const deleteAgentById$ = command(
+  async ({ get, set }, args: DeleteAgentArgs, signal: AbortSignal) => {
     const writeDb = set(writeDb$);
 
     const transaction = await settle(
       writeDb.transaction(async (tx) => {
-        return await deleteComposeInTransaction(tx, args);
+        return await deleteAgentInTransaction(tx, args);
       }),
       signal,
     );
@@ -214,12 +194,6 @@ export const deleteComposeById$ = command(
     const result = transaction.value;
     signal.throwIfAborted();
 
-    if (result.kind === "legacy-version") {
-      return conflict(
-        "Cannot delete agent while its configuration is being migrated",
-      );
-    }
-
     if (result.kind === "ownership-conflict") {
       return conflict(
         "Cannot delete agent because its lifecycle ownership is inconsistent",
@@ -228,6 +202,10 @@ export const deleteComposeById$ = command(
 
     if (result.kind === "active-run") {
       return conflict("Cannot delete agent: agent is currently running");
+    }
+
+    if (result.kind === "forbidden") {
+      return result.response;
     }
 
     if (result.kind === "missing") {

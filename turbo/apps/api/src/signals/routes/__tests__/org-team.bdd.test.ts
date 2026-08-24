@@ -984,9 +984,8 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     expect(typeof defaultEntry?.updatedAt).toBe("string");
 
-    // The current Agent API always creates a zero-agent row, so direct
-    // historical construction is required to verify that a Compose-only row
-    // never appears in the Agent team list.
+    // Direct historical construction verifies that a Compose-only row never
+    // appears in the canonical Agent team list.
     if (!admin.orgId) {
       throw new Error("Historical Compose fixtures require an organization");
     }
@@ -1032,7 +1031,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
 
     // Deleting the default agent clears the FK, then onboarding status lazily
     // restores a usable org default for admins.
-    await api.deleteVersionFreeAgent(admin, defaultAgentId);
+    await api.deleteAgent(admin, defaultAgentId);
     const restored = await api.readOnboardingStatus(admin);
     expect(restored.defaultAgentId).toBeTruthy();
     expect(restored.defaultAgentId).not.toBe(defaultAgentId);

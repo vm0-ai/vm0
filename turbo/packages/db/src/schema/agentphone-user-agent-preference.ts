@@ -40,7 +40,7 @@ export const agentphoneUserAgentPreferences = pgTable(
       primaryKey({ columns: [table.userId, table.orgId] }),
       check(
         "agentphone_user_agent_preferences_agent_reference_match",
-        sql`${table.selectedAgentId} IS NULL OR ${table.selectedAgentId} IS NOT DISTINCT FROM ${table.selectedComposeId}`,
+        sql`${table.selectedAgentId} IS NULL OR ${table.selectedComposeId} IS NULL OR ${table.selectedAgentId} IS NOT DISTINCT FROM ${table.selectedComposeId}`,
       ),
     ];
   },

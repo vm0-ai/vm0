@@ -97,7 +97,7 @@ export async function appendChatThreadEvent(
       seqId,
       chatThreadId: args.chatThreadId,
       kind: args.kind,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentComposeId,
       title: args.title ?? null,
       selectedModel: args.selectedModel ?? null,
       serviceTier: args.serviceTier ?? null,

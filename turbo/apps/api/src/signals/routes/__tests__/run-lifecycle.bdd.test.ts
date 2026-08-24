@@ -84,7 +84,10 @@ import {
   replaceHistoricalAgentComposeHeadFixture,
   setHistoricalAgentComposeHeadFixture,
 } from "../../../test-fixtures/historical-agent-composes";
-import { readAgentRunVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
+import {
+  materializeAgentLegacyVersionFixture,
+  readAgentRunVersionFixture,
+} from "../../../test-fixtures/agent-compose-provenance";
 import {
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
@@ -221,8 +224,8 @@ function runnerPreference(job: RunnerJob | null | undefined) {
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const MCP_CONNECTOR_PROMPT_HEADING = "# MCP Custom Connectors";
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
-const MISSING_AGENT_CONFIGURATION_MESSAGE =
-  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+const MISSING_DIRECT_AGENT_VALUES_MESSAGE =
+  "Missing required values: vars.OKOU_AGENT_ID, secrets.OKOU_TOKEN";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
@@ -1432,6 +1435,7 @@ async function entitledRunActor(): Promise<{
     description: "Exercises the full run lifecycle.",
     visibility: "private",
   });
+  await materializeAgentLegacyVersionFixture(agent.agentId);
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
@@ -1624,7 +1628,7 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("returns a current remediation when a direct Agent has no compose version", async () => {
+  it("resolves a direct canonical Agent when its legacy compose has no version", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
     await setAgentComposeVersionlessFixture(context, agentId);
@@ -1640,11 +1644,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      MISSING_AGENT_CONFIGURATION_MESSAGE,
+      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
     );
   });
 
-  it("returns the same remediation when a Session Agent loses its compose version", async () => {
+  it("resolves a Session canonical Agent when its legacy compose loses its version", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
     const first = await api.createDirectRun(actor, {
@@ -1667,7 +1671,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      MISSING_AGENT_CONFIGURATION_MESSAGE,
+      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
     );
   });
 
@@ -4853,7 +4857,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const currentHead = await readHistoricalAgentComposeHeadFixture(agentId);
     const continuationOnlyMarker = `continuation-persisted-\${{ secrets.CONTINUATION_CONTENT_SECRET }}`;
-    const replacementHead = await api.createHistoricalCompose(actor, {
+    await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
         [currentHead.name]: {
@@ -4878,9 +4882,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.resumeSession).toBeNull();
     expect(resumedClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBe(
-      replacementHead.versionId,
-    );
+    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBeNull();
     expect(JSON.stringify(resumedClaim)).not.toContain(continuationOnlyMarker);
     expect(JSON.stringify(resumedClaim)).not.toContain(
       "CONTINUATION_CONTENT_SECRET",
@@ -13689,8 +13691,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(agentId).not.toBe(foreignAgentId);
 
+    await materializeAgentLegacyVersionFixture(foreignAgentId);
+    await materializeAgentLegacyVersionFixture(agentId);
     const foreignCompose =
       await readHistoricalAgentComposeHeadFixture(foreignAgentId);
+    await setHistoricalAgentComposeHeadFixture(
+      agentId,
+      foreignCompose.headVersionId,
+      context.signal,
+    );
     const currentCompose = await readHistoricalAgentComposeHeadFixture(agentId);
     expect(foreignCompose.headVersionId).toStrictEqual(expect.any(String));
     expect(currentCompose.headVersionId).toBe(foreignCompose.headVersionId);
@@ -13952,9 +13961,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(poll.body.job).not.toHaveProperty("agentComposeVersionId");
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(run.runId)).resolves.toBe(
-      parityHead.versionId,
-    );
+    await expect(readAgentRunVersionFixture(run.runId)).resolves.toBeNull();
 
     expectCanonicalOkouRunEnvironment({
       environment: claim.environment,
@@ -14078,9 +14085,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(firstPoll.body.job).not.toHaveProperty("agentComposeVersionId");
     const firstClaim = await api.claimRunnerJob(first.runId);
     expect(firstClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(first.runId)).resolves.toBe(
-      missingFrameworkHead.versionId,
-    );
+    await expect(readAgentRunVersionFixture(first.runId)).resolves.toBeNull();
     expect(firstClaim.cliAgentType).toBe("codex");
     expect(firstClaim.environment).toMatchObject({
       OPENAI_MODEL: "gpt-5.6-sol",
@@ -14158,9 +14163,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(resumedPoll.body.job).not.toHaveProperty("agentComposeVersionId");
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBe(
-      unsupportedFrameworkHead.versionId,
-    );
+    await expect(readAgentRunVersionFixture(resumed.runId)).resolves.toBeNull();
     expect(resumedClaim.cliAgentType).toBe("codex");
     expect(runContextSnapshotForRun(resumed.runId)).not.toHaveProperty(
       "agentExecutionAuthority",
@@ -14379,9 +14382,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       { run: fresh, claim: freshClaim },
     ]) {
       expect(claim).not.toHaveProperty("agentComposeVersionId");
-      await expect(readAgentRunVersionFixture(run.runId)).resolves.toBe(
-        historicalHead.versionId,
-      );
+      await expect(readAgentRunVersionFixture(run.runId)).resolves.toBeNull();
       expect(claim.cliAgentType).toBe("claude-code");
       expect(claim.environment).toMatchObject({
         ANTHROPIC_API_KEY: modelProviderPlaceholder(
@@ -14617,15 +14618,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       throw new Error("The legacy compose fixture requires an organization");
     }
 
-    const canonicalCompose =
+    const initialLegacyCompose =
       await readHistoricalAgentComposeHeadFixture(agentId);
-    const canonicalAgent = Object.values(
-      canonicalCompose.content?.agents ?? {},
+    const initialLegacyAgent = Object.values(
+      initialLegacyCompose.content?.agents ?? {},
     )[0];
-    expect(canonicalAgent?.environment).toStrictEqual({
-      OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-      OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-    });
+    expect(initialLegacyAgent?.environment).toBeUndefined();
 
     const legacyEnvironment = {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
@@ -14634,7 +14632,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const legacyCompose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
-        [canonicalCompose.name]: {
+        [initialLegacyCompose.name]: {
           framework: "claude-code",
           environment: legacyEnvironment,
         },
@@ -14657,9 +14655,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const historicalClaim = await api.claimRunnerJob(historical.runId);
     expect(historicalClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(historical.runId)).resolves.toBe(
-      legacyCompose.versionId,
-    );
+    await expect(
+      readAgentRunVersionFixture(historical.runId),
+    ).resolves.toBeNull();
     expect(historicalClaim.environment).toMatchObject({
       ZERO_AGENT_ID: agentId,
       ZERO_TOKEN: historicalOkouToken,
@@ -14682,9 +14680,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const currentClaim = await api.claimRunnerJob(current.runId);
     expect(currentClaim).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(current.runId)).resolves.toBe(
-      legacyCompose.versionId,
-    );
+    await expect(readAgentRunVersionFixture(current.runId)).resolves.toBeNull();
     expect(runContextSnapshotForRun(current.runId)).not.toHaveProperty(
       "agentExecutionAuthority",
     );

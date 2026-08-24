@@ -21,7 +21,6 @@ import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-pr
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
-import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agent-deletion";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { agentsRoutes } from "../../agents";
@@ -461,16 +460,7 @@ export function createBddApi(context: TestContext) {
       return response.body;
     },
 
-    /**
-     * Constructs the legacy-version-free cohort needed to exercise the
-     * transitional successful-delete path. Conflict tests must call
-     * requestDeleteAgent so the production preconditions remain observable.
-     */
-    async deleteVersionFreeAgent(
-      nextUser: ApiTestUser,
-      agentId: string,
-    ): Promise<void> {
-      await removeAgentLegacyVersionsFixture(agentId);
+    async deleteAgent(nextUser: ApiTestUser, agentId: string): Promise<void> {
       await accept(
         agentsByIdClient().delete({
           params: { id: agentId },

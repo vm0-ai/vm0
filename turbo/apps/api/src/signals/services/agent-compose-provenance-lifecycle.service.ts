@@ -1,9 +1,12 @@
+import { agents } from "@okouai/db/schema/agent";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
+import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 
 export const AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT = "100ms";
 
@@ -69,16 +72,68 @@ export async function deleteClerkAgentLifecycleData(
       sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
     await assertAgentComposeProvenanceSchemaAvailable(tx);
+    const ownedAgents = await tx
+      .select({ id: agents.id, name: agents.name, orgId: agents.orgId })
+      .from(agents)
+      .where(
+        scope.kind === "organization"
+          ? eq(agents.orgId, scope.orgId)
+          : eq(agents.owner, scope.userId),
+      )
+      .orderBy(asc(agents.id));
+
+    for (const agent of ownedAgents) {
+      await lockCanonicalAgentMutation(tx, agent.id);
+    }
+
     if (scope.kind === "organization") {
       await tx.delete(agentRuns).where(eq(agentRuns.orgId, scope.orgId));
+      if (ownedAgents.length === 0) {
+        return;
+      }
+      const agentIds = ownedAgents.map((agent) => {
+        return agent.id;
+      });
+      await tx
+        .delete(agents)
+        .where(
+          and(eq(agents.orgId, scope.orgId), inArray(agents.id, agentIds)),
+        );
+      // Bounded compatibility teardown for those exact canonical Agent IDs.
       await tx
         .delete(agentComposes)
-        .where(eq(agentComposes.orgId, scope.orgId));
+        .where(
+          and(
+            eq(agentComposes.orgId, scope.orgId),
+            inArray(agentComposes.id, agentIds),
+          ),
+        );
       return;
     }
     await tx.delete(agentRuns).where(eq(agentRuns.userId, scope.userId));
+    if (ownedAgents.length === 0) {
+      return;
+    }
+    const agentIds = ownedAgents.map((agent) => {
+      return agent.id;
+    });
+    for (const agent of ownedAgents) {
+      await removeAgentInstructionsStorageInTransaction(tx, {
+        orgId: agent.orgId,
+        agentName: agent.name,
+      });
+    }
+    await tx
+      .delete(agents)
+      .where(and(eq(agents.owner, scope.userId), inArray(agents.id, agentIds)));
+    // Bounded compatibility teardown for those exact canonical Agent IDs.
     await tx
       .delete(agentComposes)
-      .where(eq(agentComposes.userId, scope.userId));
+      .where(
+        and(
+          eq(agentComposes.userId, scope.userId),
+          inArray(agentComposes.id, agentIds),
+        ),
+      );
   });
 }

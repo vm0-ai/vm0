@@ -87,7 +87,7 @@ async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
       return;
     }
     case "agent": {
-      await bdd.deleteVersionFreeAgent(fixture.actor, fixture.agentId);
+      await bdd.deleteAgent(fixture.actor, fixture.agentId);
       return;
     }
   }

@@ -12,6 +12,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
@@ -639,12 +640,12 @@ async function defaultAgentFor(
   }
   const [row] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      orgId: zeroAgents.orgId,
+      id: agents.id,
+      name: agents.name,
+      orgId: agents.orgId,
     })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, defaultAgentId))
+    .from(agents)
+    .where(eq(agents.id, defaultAgentId))
     .limit(1);
   return row ?? null;
 }

@@ -13,6 +13,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -21,7 +22,7 @@ import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { storages } from "@okouai/db/schema/storage";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, or } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { badRequestMessage, notFound } from "../lib/error";
@@ -30,6 +31,7 @@ import {
   createAgentRun$,
   type CreateAgentRunArgs,
 } from "../signals/services/agent-run-create.service";
+import { buildZeroAgentComposeContent } from "../signals/services/agent-compose-content";
 import { agentRunList } from "../signals/services/agent-runs.service";
 import {
   isCompressedSessionHistoryBlobEncoding,
@@ -106,42 +108,75 @@ async function resolveLegacyDirectAgentRun(
   args: LegacyDirectRunResolverArgs,
   agentId: string,
 ): Promise<LegacyDirectRunResolution> {
-  const [row] = await measureLegacyDirectResolution(
+  const [canonical, legacy] = await measureLegacyDirectResolution(
     args.timing,
     "api_dispatch_resolve_compose_lookup_agent",
     async () => {
-      return await args.db
-        .select({
-          composeId: agentComposes.id,
-          composeName: agentComposes.name,
-          composeOrgId: agentComposes.orgId,
-          composeUserId: agentComposes.userId,
-          headVersionId: agentComposes.headVersionId,
-          versionId: agentComposeVersions.id,
-          versionContent: agentComposeVersions.content,
-        })
-        .from(agentComposes)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentComposeVersions.id, agentComposes.headVersionId),
-        )
-        .where(eq(agentComposes.id, agentId))
-        .limit(1);
+      return await Promise.all([
+        args.db
+          .select({
+            agentId: agents.id,
+            agentName: agents.name,
+            agentOrgId: agents.orgId,
+            agentOwner: agents.owner,
+            versionContent: agentComposeVersions.content,
+          })
+          .from(agents)
+          .leftJoin(agentComposes, eq(agentComposes.id, agents.id))
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposeVersions.id, agentComposes.headVersionId),
+          )
+          .where(eq(agents.id, agentId))
+          .limit(1),
+        args.db
+          .select({
+            composeId: agentComposes.id,
+            composeName: agentComposes.name,
+            composeOrgId: agentComposes.orgId,
+            composeUserId: agentComposes.userId,
+            headVersionId: agentComposes.headVersionId,
+            versionId: agentComposeVersions.id,
+            versionContent: agentComposeVersions.content,
+          })
+          .from(agentComposes)
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposeVersions.id, agentComposes.headVersionId),
+          )
+          .where(eq(agentComposes.id, agentId))
+          .limit(1),
+      ]);
     },
   );
-  if (!row) {
+  const canonicalRow = canonical[0];
+  if (canonicalRow) {
+    return {
+      composeId: canonicalRow.agentId,
+      composeUserId: canonicalRow.agentOwner,
+      agentName: canonicalRow.agentName || undefined,
+      orgId: canonicalRow.agentOrgId,
+      content:
+        (canonicalRow.versionContent as
+          | LegacyResolvedCompose["content"]
+          | null) ?? buildZeroAgentComposeContent(canonicalRow.agentName),
+      artifacts: [],
+    };
+  }
+
+  const legacyRow = legacy[0];
+  if (!legacyRow) {
     return notFound("Agent compose not found");
   }
-  if (!row.headVersionId || !row.versionId) {
+  if (!legacyRow.headVersionId || !legacyRow.versionId) {
     return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
   }
   return {
-    agentComposeVersionId: row.versionId,
-    composeId: row.composeId,
-    composeUserId: row.composeUserId,
-    agentName: row.composeName || undefined,
-    orgId: row.composeOrgId,
-    content: row.versionContent as LegacyResolvedCompose["content"],
+    composeId: legacyRow.composeId,
+    composeUserId: legacyRow.composeUserId,
+    agentName: legacyRow.composeName || undefined,
+    orgId: legacyRow.composeOrgId,
+    content: legacyRow.versionContent as LegacyResolvedCompose["content"],
     artifacts: [],
   };
 }
@@ -159,6 +194,12 @@ async function loadLegacyDirectSessionSnapshot(
           session: {
             id: agentSessions.id,
             storageMounts: agentSessions.storageMounts,
+          },
+          agent: {
+            id: agents.id,
+            name: agents.name,
+            orgId: agents.orgId,
+            owner: agents.owner,
           },
           compose: {
             id: agentComposes.id,
@@ -189,9 +230,13 @@ async function loadLegacyDirectSessionSnapshot(
           },
         })
         .from(agentSessions)
+        .leftJoin(agents, eq(agentSessions.agentId, agents.id))
         .leftJoin(
           agentComposes,
-          eq(agentSessions.agentComposeId, agentComposes.id),
+          or(
+            eq(agentSessions.agentId, agentComposes.id),
+            eq(agentSessions.agentComposeId, agentComposes.id),
+          ),
         )
         .leftJoin(
           agentComposeVersions,
@@ -226,10 +271,13 @@ async function resolveLegacyDirectSessionRun(
   if (!snapshot) {
     return notFound("Agent session not found");
   }
-  if (!snapshot.compose) {
+  if (!snapshot.agent && !snapshot.compose) {
     return notFound("Agent compose not found");
   }
-  if (!snapshot.compose.headVersionId || !snapshot.version) {
+  if (
+    !snapshot.agent &&
+    (!snapshot.compose?.headVersionId || !snapshot.version)
+  ) {
     return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
   }
   if (snapshot.session.storageMounts === null) {
@@ -251,13 +299,25 @@ async function resolveLegacyDirectSessionRun(
         },
       )
     : undefined;
+  const identity = snapshot.agent
+    ? {
+        id: snapshot.agent.id,
+        userId: snapshot.agent.owner,
+        name: snapshot.agent.name,
+        orgId: snapshot.agent.orgId,
+      }
+    : snapshot.compose;
+  if (!identity) {
+    throw new Error("Expected a direct-run Agent identity");
+  }
   return {
-    agentComposeVersionId: snapshot.version.id,
-    composeId: snapshot.compose.id,
-    composeUserId: snapshot.compose.userId,
-    agentName: snapshot.compose.name || undefined,
-    orgId: snapshot.compose.orgId,
-    content: snapshot.version.content as LegacyResolvedCompose["content"],
+    composeId: identity.id,
+    composeUserId: identity.userId,
+    agentName: identity.name || undefined,
+    orgId: identity.orgId,
+    content:
+      (snapshot.version?.content as LegacyResolvedCompose["content"] | null) ??
+      buildZeroAgentComposeContent(identity.name),
     artifacts: projectLegacyWritebackArtifacts(snapshot.session.storageMounts),
     persistedStorageMounts: snapshot.session.storageMounts,
     vars:

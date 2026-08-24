@@ -11,7 +11,6 @@ import {
   foreignKey,
   integer,
 } from "drizzle-orm/pg-core";
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
 
@@ -23,14 +22,7 @@ export const threadGoals = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     ownerUserId: text("owner_user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     chatThreadId: uuid("chat_thread_id")
       .notNull()
       .references(

@@ -31,14 +31,12 @@ export const telegramInstallations = pgTable(
     webhookSecret: varchar("webhook_secret", { length: 255 }).notNull(),
     // Bot default agent — always set at registration time.
     // Must reference a compose whose orgId matches this row's orgId.
-    defaultComposeId: uuid("default_compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    defaultComposeId: uuid("default_compose_id").references(
+      () => {
+        return agentComposes.id;
+      },
+      { onDelete: "cascade" },
+    ),
     defaultAgentId: uuid("default_agent_id").references(
       () => {
         return agents.id;
@@ -62,7 +60,7 @@ export const telegramInstallations = pgTable(
       index("idx_telegram_installations_org").on(table.orgId),
       check(
         "telegram_installations_agent_reference_match",
-        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
+        sql`${table.defaultAgentId} IS NOT NULL OR ${table.defaultComposeId} IS NOT NULL`,
       ),
     ];
   },
