@@ -1,6 +1,6 @@
 {
-  "id": "7e88727e-99a0-4130-94f9-d6e21c6ae97c",
-  "prevId": "16a06867-9325-4c16-a9d2-711997a1aefe",
+  "id": "27df933f-f38c-4e1e-971d-dbaf1223d431",
+  "prevId": "99e84620-8c40-4fc3-8be8-051ff0efaf3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5896,6 +5896,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "message_text": {
           "name": "message_text",
           "type": "text",
@@ -10619,6 +10625,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(16)",
@@ -10869,6 +10881,12 @@
         "feishu_user_name": {
           "name": "feishu_user_name",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

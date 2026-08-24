@@ -30,6 +30,7 @@ interface SeedValues {
   readonly slackWorkspaceId?: string;
   readonly slackUserId?: string;
   readonly installationOrgId?: string | null;
+  readonly publicBrand?: PublicBrand;
 }
 
 interface SlackConnection {
@@ -166,6 +167,7 @@ export const seedSlackConnectOrg$ = command(
       user_id: userId,
       bot_token: "xoxb-test-bot-token",
       bot_user_id: "U_BOT_TEST",
+      public_brand: values.publicBrand,
       installation_org_id:
         values.installationOrgId === undefined
           ? orgId
