@@ -12,7 +12,10 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
@@ -21,12 +24,17 @@ import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
-import { apiClient$ } from "../../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { singleAccountConnectorMutation } from "../../connector-domain.ts";
+import {
+  connectorAccountMutationCompleted,
+  readConnectorAccountMutationVersion,
+  type ConnectorAccountMutationVersion,
+} from "./connector-accounts.ts";
 
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
@@ -368,6 +376,8 @@ const setCustomConnectorValuesForTarget$ = command(
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
+      readonly account?: ConnectorAccountMutationIntent;
+      readonly authorizeTarget?: boolean;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -377,7 +387,7 @@ const setCustomConnectorValuesForTarget$ = command(
       client.set({
         params: { id: args.id },
         body: {
-          account: singleAccountConnectorMutation,
+          account: args.account ?? singleAccountConnectorMutation,
           values: [...args.values],
         },
         fetchOptions: { signal },
@@ -389,6 +399,9 @@ const setCustomConnectorValuesForTarget$ = command(
     set(bumpReload$);
     if (!connector.connected) {
       return { connected: false, targetAuthorized: false };
+    }
+    if (args.authorizeTarget === false) {
+      return { connected: true, targetAuthorized: false };
     }
     let targetAuthorized: boolean;
     if (connector.permissionBundleRef) {
@@ -460,6 +473,28 @@ export const setCustomConnectorValuesForAgent$ = command(
   },
 );
 
+export const setCustomConnectorAccountValues$ = command(
+  async (
+    { set },
+    args: {
+      readonly id: string;
+      readonly values: readonly CustomConnectorValueInput[];
+      readonly account: ConnectorAccountMutationIntent;
+    },
+    signal: AbortSignal,
+  ): Promise<CustomConnectorConnectionResult> => {
+    return await set(
+      setCustomConnectorValuesForTarget$,
+      {
+        ...args,
+        authorizationTarget: { kind: "visible-agents" },
+        authorizeTarget: false,
+      },
+      signal,
+    );
+  },
+);
+
 export const disconnectCustomConnector$ = command(
   async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
     const createClient = get(apiClient$);
@@ -483,12 +518,36 @@ export const disconnectCustomConnector$ = command(
   },
 );
 
+async function customConnectorAccountMutationCompleted(
+  createClient: ApiClientFactory,
+  connectorId: string,
+  account: ConnectorAccountMutationIntent | undefined,
+  initialVersion: ConnectorAccountMutationVersion | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!account || account.intent === "single-account") {
+    return true;
+  }
+  const currentVersion = await readConnectorAccountMutationVersion(
+    createClient,
+    { kind: "custom", customConnectorId: connectorId },
+    account,
+    signal,
+  );
+  return (
+    initialVersion !== undefined &&
+    connectorAccountMutationCompleted(account, initialVersion, currentVersion)
+  );
+}
+
 const connectCustomConnectorOAuth2ForTarget$ = command(
   async (
     { get, set },
     args: {
       readonly id: string;
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
+      readonly account?: ConnectorAccountMutationIntent;
+      readonly authorizeTarget?: boolean;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -502,16 +561,25 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     }
     authWindow.opener = null;
     let navigated = false;
+    let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
     await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
+        initialAccountVersion = args.account
+          ? await readConnectorAccountMutationVersion(
+              createClient,
+              { kind: "custom", customConnectorId: args.id },
+              args.account,
+              signal,
+            )
+          : undefined;
         const client = createClient(customConnectorOAuth2Contract, {
           apiBase: "api",
         });
         const result = await accept(
           client.start({
             params: { id: args.id },
-            body: { account: singleAccountConnectorMutation },
+            body: { account: args.account ?? singleAccountConnectorMutation },
             fetchOptions: { signal },
           }),
           [200],
@@ -535,6 +603,16 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       signal,
     );
     signal.throwIfAborted();
+    const accountCompleted = await customConnectorAccountMutationCompleted(
+      get(apiClient$),
+      args.id,
+      args.account,
+      initialAccountVersion,
+      signal,
+    );
+    if (!accountCompleted) {
+      return { connected: false, targetAuthorized: false };
+    }
     set(bumpReload$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
@@ -542,7 +620,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       return candidate.id === args.id;
     });
     let targetAuthorized = false;
-    if (connector?.connected) {
+    if (connector?.connected && args.authorizeTarget !== false) {
       if (!connector.permissionBundleRef) {
         await set(
           authorizeCustomConnectorForTarget$,
@@ -596,6 +674,27 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
       {
         id: args.id,
         authorizationTarget: { kind: "agent", agentId: args.agentId },
+      },
+      signal,
+    );
+  },
+);
+
+export const connectCustomConnectorAccountOAuth2$ = command(
+  async (
+    { set },
+    args: {
+      readonly id: string;
+      readonly account: ConnectorAccountMutationIntent;
+    },
+    signal: AbortSignal,
+  ): Promise<CustomConnectorConnectionResult> => {
+    return await set(
+      connectCustomConnectorOAuth2ForTarget$,
+      {
+        ...args,
+        authorizationTarget: { kind: "visible-agents" },
+        authorizeTarget: false,
       },
       signal,
     );

@@ -14,6 +14,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorScopeDiffContract,
   connectorExternalCodeSessionContract,
@@ -63,6 +64,11 @@ import {
   type PlatformConnector,
   type PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
+import {
+  connectorAccountMutationCompleted,
+  readConnectorAccountMutationVersion,
+  type ConnectorAccountMutationVersion,
+} from "./connector-accounts.ts";
 
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
@@ -71,10 +77,18 @@ type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
+  readonly account?: ConnectorAccountMutationIntent;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
   readonly connectorIcon: PublicConnectorCatalogIcon;
 };
+
+function shouldAuthorizeAgent(options: PostConnectOptions): boolean {
+  return (
+    options.account === undefined ||
+    Boolean(options.authorizeVisibleAgents || options.agentId)
+  );
+}
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
@@ -906,9 +920,11 @@ export const submitManualGrant$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: singleAccountConnectorMutation,
+              account: options.account ?? singleAccountConnectorMutation,
               authMethod,
-              authorizeAgent: true,
+              ...(shouldAuthorizeAgent(options)
+                ? { authorizeAgent: true as const }
+                : {}),
               ...(options.agentId ? { agentId: options.agentId } : {}),
               values: sanitizeTokenInputRecord(inputValues),
             },
@@ -980,9 +996,11 @@ export const connectConnectorNoAuth$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: singleAccountConnectorMutation,
+              account: options.account ?? singleAccountConnectorMutation,
               authMethod,
-              authorizeAgent: true,
+              ...(shouldAuthorizeAgent(options)
+                ? { authorizeAgent: true as const }
+                : {}),
               ...(options.agentId ? { agentId: options.agentId } : {}),
             },
             fetchOptions: { signal },
@@ -1169,9 +1187,11 @@ function connectorOAuthDeviceAuthStartBody(
 ) {
   const optionEntries = Object.entries(args.startOptions ?? {});
   return {
-    account: singleAccountConnectorMutation,
+    account: args.options.account ?? singleAccountConnectorMutation,
     authMethod: args.authMethod,
-    authorizeAgent: true as const,
+    ...(shouldAuthorizeAgent(args.options)
+      ? { authorizeAgent: true as const }
+      : {}),
     ...(args.options.agentId ? { agentId: args.options.agentId } : {}),
     ...(optionEntries.length > 0
       ? { options: Object.fromEntries(optionEntries) }
@@ -1653,6 +1673,8 @@ type ConnectConnectorExternalCodeParams = {
   readonly connectorSlug: ConnectorSlug;
   readonly authMethod: ConnectorAuthMethodId;
   readonly agentId?: string;
+  readonly account?: ConnectorAccountMutationIntent;
+  readonly authorizeVisibleAgents?: boolean;
 };
 
 type CompleteConnectorExternalCodeParams = {
@@ -1790,9 +1812,11 @@ export const connectConnectorExternalCode$ = command(
             client.create({
               params: { connectorSlug },
               body: {
-                account: singleAccountConnectorMutation,
+                account: args.account ?? singleAccountConnectorMutation,
                 authMethod,
-                authorizeAgent: true,
+                ...(shouldAuthorizeAgent(args)
+                  ? { authorizeAgent: true as const }
+                  : {}),
                 ...(args.agentId ? { agentId: args.agentId } : {}),
               },
               fetchOptions: { signal: flowSignal },
@@ -2056,14 +2080,33 @@ function createConnectorOAuthAuthCodeChangedCommand(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
+  account: ConnectorAccountMutationIntent,
 ) {
   // Snapshot taken on the first body invocation: `null` marks "no connector
   // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
   // change". The snapshot must happen inside the loop body so we start from the
   // freshest server state, not a cached signal value.
   let initialUpdatedAt: string | null | undefined;
+  let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
 
   return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
+    if (account.intent !== "single-account") {
+      const currentVersion = await readConnectorAccountMutationVersion(
+        get(apiClient$),
+        { kind: "builtin", connectorSlug },
+        account,
+        sig,
+      );
+      if (initialAccountVersion === undefined) {
+        initialAccountVersion = currentVersion;
+        return false;
+      }
+      return connectorAccountMutationCompleted(
+        account,
+        initialAccountVersion,
+        currentVersion,
+      );
+    }
     const client = get(apiClient$)(connectorsMainContract);
     const result = await accept(
       client.list({ fetchOptions: { signal: sig } }),
@@ -2111,6 +2154,8 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       readonly connectorLabel: string;
       readonly connectorIcon: PublicConnectorCatalogIcon;
       readonly agentId: string | undefined;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly authorizeAgent: boolean;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
     },
     signal: AbortSignal,
@@ -2167,9 +2212,11 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 }).start({
                   params: { connectorSlug: args.connectorSlug },
                   body: {
-                    account: singleAccountConnectorMutation,
+                    account: args.account,
                     authMethod: args.method.id,
-                    authorizeAgent: true,
+                    ...(args.authorizeAgent
+                      ? { authorizeAgent: true as const }
+                      : {}),
                     ...(args.agentId ? { agentId: args.agentId } : {}),
                   },
                   fetchOptions: { signal },
@@ -2182,9 +2229,11 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 }).start({
                   params: { connectorSlug: args.connectorSlug },
                   body: {
-                    account: singleAccountConnectorMutation,
+                    account: args.account,
                     authMethod: args.method.id,
-                    authorizeAgent: true,
+                    ...(args.authorizeAgent
+                      ? { authorizeAgent: true as const }
+                      : {}),
                     ...(isConnectorAppOauthCallbackEnabled(args.connectorSlug)
                       ? { callbackTarget: "app" as const }
                       : {}),
@@ -2258,6 +2307,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           connectorSlug,
           method.id,
           options.agentId,
+          options.account ?? singleAccountConnectorMutation,
         );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
@@ -2267,6 +2317,8 @@ export const connectConnectorOAuthAuthCode$ = command(
             connectorLabel: options.connectorLabel ?? connectorSlug,
             connectorIcon: options.connectorIcon,
             agentId: options.agentId,
+            account: options.account ?? singleAccountConnectorMutation,
+            authorizeAgent: shouldAuthorizeAgent(options),
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
             },
