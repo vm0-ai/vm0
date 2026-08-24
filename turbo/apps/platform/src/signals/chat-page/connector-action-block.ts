@@ -15,16 +15,16 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-} from "../zero-page/settings/connectors.ts";
+} from "../okou-page/settings/connectors.ts";
 import {
   customConnectorAuthorizedAgentsById$,
   customConnectors$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorAgentAuthorization$,
-} from "../zero-page/settings/custom-connectors.ts";
+} from "../okou-page/settings/custom-connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
-import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
+import { isAgentConnectorAuthorized } from "../okou-page/agent-connector-authorizations.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,

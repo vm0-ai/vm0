@@ -9,14 +9,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { testContext } from "./test-helpers.ts";
-import { createDraftSignals } from "../zero-page/chat-draft.ts";
-import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import { createDraftSignals } from "../okou-page/chat-draft.ts";
+import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
 import {
   editorDocToMessageDocument,
   messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 
 const context = testContext();
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";

@@ -12,9 +12,9 @@ import {
   apiTierToBillingTier,
   billingStatusAsync$,
   type BillingTier,
-} from "../zero-page/billing.ts";
-import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
-import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
+} from "../okou-page/billing.ts";
+import { setBillingSubPage$ } from "../okou-page/settings/workspace-settings-state.ts";
+import { openSettingsDialogAt$ } from "../okou-page/settings/settings-dialog.ts";
 import { logger } from "../log.ts";
 import {
   bestEffort,

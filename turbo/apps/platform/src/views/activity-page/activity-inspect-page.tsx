@@ -9,7 +9,7 @@ import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import type {
   LogStatus,
   TriggerSource,
-} from "../../signals/zero-page/log-types.ts";
+} from "../../signals/okou-page/log-types.ts";
 import {
   formatLogTime,
   formatDuration,
@@ -18,7 +18,7 @@ import { eventGroupMatchesSearch } from "../../signals/activity-page/log-detail-
 import {
   ActivityHeaderCard,
   StepsList,
-} from "../zero-page/zero-activity-detail-page.tsx";
+} from "../okou-page/activity-detail-page.tsx";
 import {
   inspectLogData$,
   inspectLogLoadError$,
@@ -30,8 +30,8 @@ import {
 } from "../../signals/activity-page/inspect-log-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
-import { ContextContent } from "../zero-page/components/context-content.tsx";
-import { NetworkContent } from "../zero-page/components/network-content.tsx";
+import { ContextContent } from "../okou-page/components/context-content.tsx";
+import { NetworkContent } from "../okou-page/components/network-content.tsx";
 import { formatAppNumber } from "../../i18n/format.ts";
 
 type InspectTab = "steps" | "context" | "network";

@@ -57,7 +57,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
-import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
+import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";

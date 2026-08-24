@@ -44,7 +44,7 @@ import {
   OnboardingFooter,
   OnboardingShell,
 } from "./onboarding-shell.tsx";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 
 const CATEGORY_ICONS: Readonly<

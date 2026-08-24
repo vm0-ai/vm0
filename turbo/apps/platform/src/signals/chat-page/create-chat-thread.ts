@@ -42,8 +42,8 @@ import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
-} from "../zero-page/chat-draft.ts";
-import { buildDraftPersistencePayload } from "../zero-page/draft-persistence.ts";
+} from "../okou-page/chat-draft.ts";
+import { buildDraftPersistencePayload } from "../okou-page/draft-persistence.ts";
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
@@ -80,7 +80,7 @@ import {
   revokedChatEventIds,
 } from "@okouai/api-contracts/contracts/chat-events";
 
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -94,7 +94,7 @@ import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
-} from "../zero-page/clipboard.ts";
+} from "../okou-page/clipboard.ts";
 import type {
   EnrichedChatEvent,
   ChatEventGroup,
@@ -183,11 +183,11 @@ import {
   computerUseHosts$,
   selectedComputerUseHostId,
   subscribeComputerUseHostsChanged$,
-} from "../zero-page/computer-use-hosts.ts";
-import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
-import { personalModelProvider$ } from "../zero-page/model-first-personal-oauth.ts";
-import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
-import { openCodexDeviceAuthDialogPersonal$ } from "../zero-page/settings/codex-device-auth.ts";
+} from "../okou-page/computer-use-hosts.ts";
+import { isCodexFastModeAvailableForSelection } from "../okou-page/model-default-selection.ts";
+import { personalModelProvider$ } from "../okou-page/model-first-personal-oauth.ts";
+import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../okou-page/settings/claude-code-device-auth.ts";
+import { openCodexDeviceAuthDialogPersonal$ } from "../okou-page/settings/codex-device-auth.ts";
 import type {
   MessageListSignals,
   ChatPanelSignals,
@@ -197,7 +197,7 @@ import type {
   SendMessageOptions,
   ThinkingIndicatorMode,
 } from "./chat-panel-signals.ts";
-import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-composer.ts";
+import { reloadMountedComposerWorkflows$ } from "../okou-page/tiptap-workflow-composer.ts";
 import {
   createMailDraftCardSignalsRegistry,
   type MailDraftCardSignalsRegistry,
@@ -211,13 +211,13 @@ import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.
 import {
   messageDocumentToPrompt,
   textToMessageDocument,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 import { locale$ } from "../locale.ts";
 import {
   createComposerSignals,
   type ComposerSignals,
   type ComposerSubmission,
-} from "../zero-page/composer-signals.ts";
+} from "../okou-page/composer-signals.ts";
 import {
   openChatThreadGoalDialog$,
   pauseChatThreadGoal$,

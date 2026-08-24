@@ -1,10 +1,10 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroConnectorsPage } from "../../views/zero-page/zero-connectors-page.tsx";
+import { ZeroConnectorsPage } from "../../views/okou-page/connectors-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupConnectorsPage$ = command(

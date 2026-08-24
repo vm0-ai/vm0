@@ -4,7 +4,7 @@ import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-id
 import { useTranslation } from "react-i18next";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 
 const ZERO_AVATAR_HEAD_IMG = platformStaticAssetUrl(

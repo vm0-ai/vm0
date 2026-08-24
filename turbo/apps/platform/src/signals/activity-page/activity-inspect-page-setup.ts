@@ -4,7 +4,7 @@ import { ActivityInspectPage } from "../../views/activity-page/activity-inspect-
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { i18n } from "../../i18n/index.ts";
 
 export const setupActivityInspectPage$ = command(

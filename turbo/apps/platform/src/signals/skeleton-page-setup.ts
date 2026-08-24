@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { AppSkeleton } from "../views/zero-page/app-skeleton.tsx";
+import { AppSkeleton } from "../views/okou-page/app-skeleton.tsx";
 import { DefaultErrorFallback } from "../views/default-error-boundary.tsx";
 import { updatePage$ } from "./react-router.ts";
 import { hideAppSkeleton$ } from "./app-skeleton.ts";

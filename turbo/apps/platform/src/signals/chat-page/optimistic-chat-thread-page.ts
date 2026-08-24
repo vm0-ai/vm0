@@ -20,8 +20,8 @@ import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import { talkDraft$, type DraftSignals } from "../zero-page/chat-draft.ts";
-import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
+import { talkDraft$, type DraftSignals } from "../okou-page/chat-draft.ts";
+import { clearAgentDraftById$ } from "../okou-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
@@ -35,7 +35,7 @@ import { sendChatEvent } from "./chat-event-api.ts";
 import {
   isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+} from "../okou-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -49,17 +49,17 @@ import {
   runOptionsFromModelProviderSelection,
   withSelectedModelAnnotation,
 } from "./model-selection-request.ts";
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
-import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
+import { chatPageModelSelection$ } from "../okou-page/chat-page.ts";
+import { selectedModelAvailable$ } from "../okou-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
 import { withOptimisticAgentRunSource } from "./chat-event-signals.ts";
 

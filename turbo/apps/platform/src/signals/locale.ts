@@ -11,7 +11,7 @@ import { localStorageSignals } from "./external/local-storage.ts";
 import {
   updateUserPreference$,
   userPreferences$,
-} from "./zero-page/settings/user-preferences.ts";
+} from "./okou-page/settings/user-preferences.ts";
 
 const internalLocale$ = state<SupportedLocale>(DEFAULT_LOCALE);
 

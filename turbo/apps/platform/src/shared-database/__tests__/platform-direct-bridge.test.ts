@@ -28,7 +28,7 @@ import {
   setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
 import { selectSharedDatabaseMode$ } from "../../signals/shared-database-mode.ts";
-import { okouDebugRealtimeIndicator$ } from "../../signals/zero-page/realtime-status.ts";
+import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");

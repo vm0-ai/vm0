@@ -473,7 +473,12 @@ def release_flow(flow: http.HTTPFlow) -> None:
 
 
 def shutdown() -> None:
-    """Stop admitting reports and drain already-submitted best-effort work."""
+    """Stop admitting reports, cancel queued work, and give running deliveries a bounded wait.
+
+    Reports still queued in the executor are cancelled. Reports already running get at most
+    ``_REPORT_TIMEOUT_SECONDS`` to finish; cancellation or timeout may leave a failure report
+    undelivered, so proxy shutdown does not wait indefinitely for it.
+    """
     global _reporter_shut_down
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:

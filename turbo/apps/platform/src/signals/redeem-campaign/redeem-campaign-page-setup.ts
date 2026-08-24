@@ -13,7 +13,7 @@ import {
   setRedeemResponse$,
   setRedeemStripeSuccess$,
 } from "./redeem-campaign-signals.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 
 /**
  * Setup command for the unified `/redeem/:campaign` route.
