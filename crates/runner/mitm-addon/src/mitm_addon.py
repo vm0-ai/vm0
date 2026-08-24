@@ -1960,8 +1960,10 @@ def done():
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer
     shutdown is also bounded and best-effort; if it times out, process shutdown
-    continues with accepted log entries possibly still pending. Model-provider
-    failure delivery stops admission and receives one bounded drain window.
+    continues with accepted log entries possibly still pending. After joining
+    the usage executor, retained billing and diagnostic work is drained through
+    synchronous delivery. Model-provider failure delivery stops admission and
+    receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
@@ -1969,7 +1971,7 @@ def done():
         try:
             try:
                 usage.webhook.usage_executor.shutdown(wait=True)
-                usage.drain_usage_events_after_executor_shutdown()
+                runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)
         finally:

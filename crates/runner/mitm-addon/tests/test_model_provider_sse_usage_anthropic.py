@@ -2,6 +2,7 @@
 
 import gzip
 import json
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -27,11 +28,13 @@ from tests.model_provider_sse_usage_helpers import (
     run_response,
 )
 from tests.pending_helpers import assert_current_pending, assert_pending
+from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
     CapturedWebhookRequest,
     UsageWebhookServer,
     compact_observation_quantities,
+    fresh_usage_executor_context,
 )
 from tests.webhook_test_helpers import (
     QueuedUsageExecutor,
@@ -317,6 +320,89 @@ class TestAnthropicMessagesSseUsage:
             if captured.path != "/filler"
         ] == ["/usage-priority", _TELEMETRY_PATH]
         assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
+    def test_done_retries_incomplete_anthropic_accounting_after_executor_join(
+        self,
+        tmp_path: Path,
+        real_flow,
+        mitm_ctx,
+        usage_webhook_server: UsageWebhookServer,
+    ) -> None:
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        pending_path = tmp_path / "usage-pending"
+        filler_log_path = tmp_path / "filler.jsonl"
+        release_fillers = threading.Event()
+        executor_shutdown_started = threading.Event()
+        usage.set_pending_path(str(pending_path))
+
+        for _ in range(usage.webhook.USAGE_WEBHOOK_WORKERS):
+            usage_webhook_server.queue_response(204, release_event=release_fillers)
+
+        with fresh_usage_executor_context() as executor:
+            original_shutdown = executor.shutdown
+
+            def shutdown_executor(*, wait: bool) -> None:
+                executor_shutdown_started.set()
+                original_shutdown(wait=wait)
+
+            with (
+                mitm_ctx(api_url=usage_webhook_server.api_url),
+                patch.object(executor, "shutdown", side_effect=shutdown_executor),
+                patch.object(
+                    mitm_addon.auth_base_forwarder,
+                    "shutdown_forward_request_workers",
+                ),
+                patch.object(mitm_addon, "shutdown_log_writer"),
+            ):
+                done_thread = ThreadUnderTest(target=mitm_addon.done)
+                try:
+                    for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
+                        assert usage.webhook.enqueue_webhook_delivery(
+                            usage_webhook_server.url("/filler"),
+                            "tok-xyz",
+                            {"runId": f"filler-{index}", "events": []},
+                            str(filler_log_path),
+                            "usage_event",
+                        )
+                    assert usage_webhook_server.wait_for_request_count(
+                        usage.webhook.USAGE_WEBHOOK_WORKERS
+                    )
+
+                    _feed_incomplete_anthropic_sse_without_recoverable_usage(flow)
+                    mitm_addon.response(flow)
+                    assert _anthropic_accounting_requests(usage_webhook_server) == []
+                    assert_current_pending(
+                        pending_path,
+                        flows=0,
+                        buffered=1,
+                        reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+                    )
+
+                    done_thread.start()
+                    wait_for_event(
+                        executor_shutdown_started,
+                        timeout=1,
+                        threads=(done_thread,),
+                        message="done did not begin executor shutdown",
+                    )
+                    assert done_thread.is_alive()
+                    release_fillers.set()
+                    done_thread.join_and_raise(timeout=2)
+                finally:
+                    release_fillers.set()
+                    done_thread.join(timeout=2)
+
+        [request] = _anthropic_accounting_requests(usage_webhook_server)
+        assert request.json_body()["runId"] == "00000000-0000-0000-0000-000000025133"
+        [operation] = _anthropic_accounting_operations(usage_webhook_server)
+        assert operation["action_type"] == "anthropic_sse_incomplete_no_recoverable_usage"
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+        )
 
     def test_incomplete_anthropic_accounting_retention_overflow_is_action_specific(
         self,
