@@ -129,6 +129,82 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   });
 
+  it("subscribes an org-scoped loop to the active organization channel", async () => {
+    mockSignedInUser();
+    const topic = "test:org-pending-resolve";
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return true;
+    });
+
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        scope: "org",
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+    await context.store.set(setupRealtime$, context.signal);
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel("org:test-org-123", topic),
+      ).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel("user:test-user-123", topic),
+    ).toBeFalsy();
+    context.mocks.ably.triggerOnChannel("org:test-org-123", topic);
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(1);
+  });
+
+  it("keeps user realtime available with a legacy user-only token", async () => {
+    mockSignedInUser();
+    context.mocks.api(platformRealtimeTokenContract.create, ({ respond }) => {
+      return respond(200, {
+        keyName: "mock-key",
+        clientId: "test-user-123",
+        timestamp: now(),
+        capability: '{"user:test-user-123":["subscribe"]}',
+        nonce: "mock-nonce",
+        mac: "mock-mac",
+      });
+    });
+    const subscriber = testSubscriber();
+    const orgTopic = "test:legacy-org-capability";
+    const userTopic = "test:legacy-user-capability";
+    const orgLoopPromise = context.store.set(
+      setAblyLoop$,
+      { scope: "org", topic: orgTopic, loopCommand$: keepAliveLoop$ },
+      subscriber.signal,
+    );
+    const userLoopPromise = context.store.set(
+      setAblyLoop$,
+      { topic: userTopic, loopCommand$: keepAliveLoop$ },
+      subscriber.signal,
+    );
+    context.track(orgLoopPromise);
+    context.track(userLoopPromise);
+
+    await setupAuthAndRealtime();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel(
+          "user:test-user-123",
+          userTopic,
+        ),
+      ).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel("org:test-org-123", orgTopic),
+    ).toBeFalsy();
+  });
+
   it("removes and rejects a pending loop when the subscriber aborts", async () => {
     mockSignedInUser();
     const topic = "test:pending-abort";

@@ -23,6 +23,10 @@ export interface ImportedPresentationTemplateResource {
 }
 
 const presentationTemplatesVersion$ = state(0);
+const deletedPresentationTemplateIds$ = state<ReadonlySet<string>>(new Set());
+const importedPresentationTemplateDeletedIds$ = computed((get) => {
+  return get(deletedPresentationTemplateIds$);
+});
 const PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS =
   (PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000 * 2) / 3;
 
@@ -40,15 +44,31 @@ interface ImportedPresentationTemplateCatalog {
  * `accept` would surface that as an error toast on a dialog the user opened to
  * browse built-in templates.
  */
+const importedPresentationTemplateCatalog$ = computed(
+  async (get): Promise<ImportedPresentationTemplateCatalog> => {
+    if (!get(presentationTemplateImportEnabled$)) {
+      return { templates: [], loadedAtMs: now() };
+    }
+    get(presentationTemplatesVersion$);
+    const client = get(apiClient$)(presentationTemplatesContract);
+    const result = await accept(client.list(), [200]);
+    return { templates: result.body, loadedAtMs: now() };
+  },
+);
+
 /** Refetch the catalog after a mutation or realtime catch-up. */
 const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 
-const refreshPresentationTemplatesFromRealtime$ = command(({ set }) => {
-  set(refreshPresentationTemplates$);
-  return false;
-});
+const refreshPresentationTemplatesFromRealtime$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    set(refreshPresentationTemplates$);
+    await get(importedPresentationTemplateCatalog$);
+    signal.throwIfAborted();
+    return false;
+  },
+);
 
 /**
  * A template is published by the analysis runner, outside any composer or
@@ -58,36 +78,40 @@ const refreshPresentationTemplatesFromRealtime$ = command(({ set }) => {
  */
 export const subscribePresentationTemplatesChanged$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(
-      setAblyLoop$,
-      {
-        topic: "presentationTemplatesChanged",
-        loopCommand$: refreshPresentationTemplatesFromRealtime$,
-        options: { runOnSubscribe: true },
-      },
-      signal,
-    );
+    await Promise.all([
+      set(
+        setAblyLoop$,
+        {
+          topic: "presentationTemplatesChanged",
+          loopCommand$: refreshPresentationTemplatesFromRealtime$,
+          options: { runOnSubscribe: true },
+        },
+        signal,
+      ),
+      set(
+        setAblyLoop$,
+        {
+          scope: "org",
+          topic: "presentationTemplatesChanged",
+          loopCommand$: refreshPresentationTemplatesFromRealtime$,
+          options: { runOnForegroundCatchUp: false },
+        },
+        signal,
+      ),
+    ]);
   },
 );
 
-function createImportedPresentationTemplateCatalog$() {
-  return computed(async (get): Promise<ImportedPresentationTemplateCatalog> => {
-    if (!get(presentationTemplateImportEnabled$)) {
-      return { templates: [], loadedAtMs: now() };
-    }
-    get(presentationTemplatesVersion$);
-    const client = get(apiClient$)(presentationTemplatesContract);
-    const result = await accept(client.list(), [200]);
-    return { templates: result.body, loadedAtMs: now() };
-  });
-}
-
 function createImportedPresentationTemplates$(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
+  deletedTemplateIds$: State<ReadonlySet<string>>,
 ) {
   return computed(
     async (get): Promise<readonly PresentationTemplateSummary[]> => {
-      return (await get(catalog$)).templates;
+      const deletedTemplateIds = get(deletedTemplateIds$);
+      return (await get(catalog$)).templates.filter((template) => {
+        return !deletedTemplateIds.has(template.id);
+      });
     },
   );
 }
@@ -169,12 +193,15 @@ function createImportedPresentationTemplateUrlRefreshSignals(
     },
   );
   const refreshImportedPresentationTemplateUrlsAfterPickerOpen$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
       // Let the picker mount the last resolved catalog before catch-up makes
       // the catalog pending, so a suspended tab still opens without a blank
       // first frame.
       await delay(0, { signal });
-      await set(refreshImportedPresentationTemplateUrlsIfStale$, signal);
+      set(internalRequestedAtMs$, now());
+      set(refreshPresentationTemplates$);
+      await get(catalog$);
+      signal.throwIfAborted();
     },
   );
   const importedPresentationTemplateUrlRefreshLifecycleRef$ = onRef(
@@ -256,9 +283,11 @@ function createImportedPresentationTemplateDetailSignals(
 
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
 export function createImportedPresentationTemplateSignals() {
-  const catalog$ = createImportedPresentationTemplateCatalog$();
-  const importedPresentationTemplates$ =
-    createImportedPresentationTemplates$(catalog$);
+  const catalog$ = importedPresentationTemplateCatalog$;
+  const importedPresentationTemplates$ = createImportedPresentationTemplates$(
+    catalog$,
+    deletedPresentationTemplateIds$,
+  );
   const internalDetailVersion$ = state(0);
   const urlRefresh =
     createImportedPresentationTemplateUrlRefreshSignals(catalog$);
@@ -342,6 +371,9 @@ export function createImportedPresentationTemplateSignals() {
         [204],
       );
       signal.throwIfAborted();
+      set(deletedPresentationTemplateIds$, (deletedTemplateIds) => {
+        return new Set([...deletedTemplateIds, templateId]);
+      });
       set(internalPreviewTemplateId$, null);
       set(internalPreviewSlideIndex$, 0);
       set(internalRequestedTemplateId$, null);
@@ -359,6 +391,7 @@ export function createImportedPresentationTemplateSignals() {
 
   return {
     importedPresentationTemplates$,
+    importedPresentationTemplateDeletedIds$,
     importedPresentationTemplateResources$,
     ...detailSignals,
     ...urlRefresh,
