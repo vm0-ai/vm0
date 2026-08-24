@@ -5,11 +5,11 @@
 //! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
-//! The `VM0_` namespace is runner-owned, including keys defined in sibling
-//! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
-//! filtering should treat current, future, and retired `VM0_` keys as
-//! protected. Canonical bootstrap keys outside that retired namespace are
-//! listed explicitly below; the whole `OKOU_` namespace is not protected.
+//! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
+//! in sibling modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`].
+//! User env filtering should treat current and future `OKOU_` keys plus current,
+//! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
+//! namespaces are listed explicitly below.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -434,11 +434,20 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `VM0_` key, including future and retired names, plus the
-/// explicit bootstrap keys required by established runner, guest-agent, or
-/// integration contracts. Runner and local-submit code use this predicate to
+/// This covers every `OKOU_` and `VM0_` key, including future and retired names,
+/// plus the explicit bootstrap keys required by established runner, guest-agent,
+/// or integration contracts. Runner and local-submit code use this predicate to
 /// scrub or reject user-provided env keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("OKOU_") || is_pre_platform_environment_runner_owned_env_key(key)
+}
+
+/// Returns whether `key` was runner-owned before `platformEnvironment` claims.
+///
+/// New runners use this only for old API claims or legitimately stored pre-field
+/// contexts. Remove it after previous API rollback targets, supported pre-field
+/// contexts, and old runners/sandboxes pass the #28914 drain gates.
+pub fn is_pre_platform_environment_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("VM0_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
@@ -678,9 +687,26 @@ mod tests {
         ] {
             assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
         }
-        assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
-        assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
+        assert!(is_runner_owned_env_key("OKOU_TOKEN"));
+        assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
+    }
+
+    #[test]
+    fn pre_platform_environment_detection_preserves_previous_ownership() {
+        assert!(is_pre_platform_environment_runner_owned_env_key(RUN_ID_ENV));
+        assert!(is_pre_platform_environment_runner_owned_env_key(
+            "VM0_FUTURE_RUNNER_KEY"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "OKOU_TOKEN"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "OKOU_UNRELATED"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "CUSTOM_ENV"
+        ));
     }
 
     #[test]
@@ -773,7 +799,7 @@ mod tests {
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep the VM0_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep an OKOU_/VM0_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }

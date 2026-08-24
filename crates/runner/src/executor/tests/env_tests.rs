@@ -594,30 +594,44 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 }
 
 #[test]
-fn dual_carried_platform_environment_preserves_effective_agent_environment() {
+fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_last() {
     let mut ctx = minimal_context();
-    let platform_environment = HashMap::from([
-        ("OKOU_TOKEN".into(), "trusted-token".into()),
-        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+    ctx.environment = Some(HashMap::from([
+        ("CUSTOM_ENV".into(), "kept".into()),
+        ("DUPLICATE".into(), "untrusted".into()),
+        ("OKOU_TOKEN".into(), "untrusted-token".into()),
+        ("OKOU_FUTURE_PLATFORM_KEY".into(), "untrusted".into()),
+        ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
         (
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
-            "trusted-bypass".into(),
+            "untrusted-bypass".into(),
         ),
-    ]);
-    ctx.environment = Some(HashMap::from([
-        ("USER_VALUE".into(), "user-value".into()),
+    ]));
+    ctx.platform_environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "trusted".into()),
         ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
         ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
         (
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
             "trusted-bypass".into(),
         ),
     ]));
-    let previous_runner_environment = build_user_env_json(&ctx);
 
-    ctx.platform_environment = Some(platform_environment);
-
-    assert_eq!(build_user_env_json(&ctx), previous_runner_environment);
+    assert_eq!(
+        build_user_env_json(&ctx),
+        HashMap::from([
+            ("CUSTOM_ENV".into(), "kept".into()),
+            ("DUPLICATE".into(), "trusted".into()),
+            ("OKOU_TOKEN".into(), "trusted-token".into()),
+            ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
+            ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+            (
+                guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+                "trusted-bypass".into(),
+            ),
+        ])
+    );
 }
 
 #[test]
@@ -640,12 +654,13 @@ fn platform_environment_overlays_legacy_environment() {
 }
 
 #[test]
-fn build_env_json_scrubs_user_provided_runner_owned_env() {
+fn fieldless_context_preserves_pre_platform_environment_filtering() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_ENV".into(), "kept".into()),
         ("OKOU_TOKEN".into(), "legitimate-okou-token".into()),
+        ("OKOU_UNRELATED".into(), "legacy-okou-value".into()),
         (
             guest_contracts::env::RUN_ID_ENV.into(),
             "user-controlled-run-id".into(),
@@ -748,6 +763,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
+    assert_eq!(user_env.get("OKOU_UNRELATED").unwrap(), "legacy-okou-value");
     for key in [
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::PI_SESSION_ID_ENV,
@@ -845,8 +861,8 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
             "explicit runner key {key} should be runner-owned"
         );
     }
-    assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
-    assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
+    assert!(is_runner_owned_env_key("OKOU_TOKEN"));
+    assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
 }
 
 #[test]
