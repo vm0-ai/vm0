@@ -1275,7 +1275,7 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy API Production
+      - name: Stage API Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
@@ -1289,8 +1289,26 @@ jobs:
             rm -rf .vercel/output
             cp -R turbo/apps/api/.vercel/output .vercel/output
           environment-file: ${{ steps.api-production-env.outputs.file }}
+          skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
+          skip-setup: "true"
+
+      - name: Reconcile staged API connector catalog
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bash .github/scripts/reconcile-api-connector-catalog.sh "$API_DEPLOYMENT_URL" strict
+
+      - name: Promote API Production
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
           skip-setup: "true"
 
       - name: Verify production App and API domains

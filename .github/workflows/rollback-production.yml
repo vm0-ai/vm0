@@ -357,6 +357,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           ref: main
       - uses: ./.github/actions/toolchain-init
 
@@ -380,6 +381,30 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Production* ⏪ rolling API back to `${{ needs.resolve-target.outputs.target_commit }}`..."
+
+      # The first rollout of #29091 can select retained deployments whose cron
+      # response predates runtimeProjection. Projection V2 already awaits the
+      # same reconciliation before returning. Remove this baseline and legacy
+      # response mode after every retained rollback target contains #29091.
+      - name: Verify rollback connector catalog compatibility
+        shell: bash
+        env:
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+        run: |
+          set -euo pipefail
+          projection_v2_baseline=f40d5ea90b2fc4649cd336d083ce9d97573fb9ed
+          if ! git merge-base --is-ancestor "$projection_v2_baseline" "$TARGET_COMMIT"; then
+            echo "::error::Rollback target predates connector runtime projection V2: ${TARGET_COMMIT}"
+            exit 1
+          fi
+
+      - name: Reconcile rollback API connector catalog
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ needs.resolve-target.outputs.api_deployment_url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bash .github/scripts/reconcile-api-connector-catalog.sh "$API_DEPLOYMENT_URL" allow-legacy
 
       - name: Promote target API deployment
         uses: ./.github/actions/vercel-promote

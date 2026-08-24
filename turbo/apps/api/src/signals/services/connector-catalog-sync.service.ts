@@ -80,7 +80,7 @@ type ConnectorCatalogRawSyncStatus = Omit<
 >;
 type ConnectorCatalogRawSyncResponse = Omit<
   ConnectorCatalogSyncResponse,
-  "filtering" | "credentialStorage"
+  "filtering" | "credentialStorage" | "runtimeProjection"
 >;
 
 interface SyncStateSnapshot {

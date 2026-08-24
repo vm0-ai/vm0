@@ -133,7 +133,7 @@ describe("release-please API deployment graph", () => {
     );
   });
 
-  it("builds the API before migrations and deploys it afterward", () => {
+  it("builds and migrates the API before staged reconciliation and promotion", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const promoteApiProductionJob = workflowJobBlock(
       workflow,
@@ -161,7 +161,16 @@ describe("release-please API deployment graph", () => {
       "- name: Initialize API deployment toolchain",
     );
     const deploymentStep = promoteApiProductionJob.indexOf(
-      "- name: Deploy API Production",
+      "- name: Stage API Production",
+    );
+    const reconciliationStep = promoteApiProductionJob.indexOf(
+      "- name: Reconcile staged API connector catalog",
+    );
+    const promotionStep = promoteApiProductionJob.indexOf(
+      "- name: Promote API Production",
+    );
+    const domainVerificationStep = promoteApiProductionJob.indexOf(
+      "- name: Verify production App and API domains",
     );
 
     expect(promoteApiProductionJob).toContain(
@@ -175,6 +184,9 @@ describe("release-please API deployment graph", () => {
     ).toHaveLength(1);
     expect(
       promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-deploy/g),
+    ).toHaveLength(1);
+    expect(
+      promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-promote/g),
     ).toHaveLength(1);
     expect(
       promoteApiProductionJob.match(/pnpm --dir turbo\/apps\/api build/g),
@@ -197,7 +209,24 @@ describe("release-please API deployment graph", () => {
     expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
     expect(migrationStep).toBeGreaterThan(migrationSmokeStep);
     expect(deploymentStep).toBeGreaterThan(migrationStep);
+    expect(reconciliationStep).toBeGreaterThan(deploymentStep);
+    expect(promotionStep).toBeGreaterThan(reconciliationStep);
+    expect(domainVerificationStep).toBeGreaterThan(promotionStep);
     expect(promoteApiProductionJob).toContain('prebuilt: "true"');
+    expect(
+      promoteApiProductionJob.slice(deploymentStep, reconciliationStep),
+    ).toContain('skip-domain: "true"');
+    expect(
+      promoteApiProductionJob.slice(reconciliationStep, promotionStep),
+    ).toContain(
+      'bash .github/scripts/reconcile-api-connector-catalog.sh "$API_DEPLOYMENT_URL" strict',
+    );
+    expect(
+      promoteApiProductionJob.slice(reconciliationStep, promotionStep),
+    ).toContain(`API_DEPLOYMENT_URL: \${{ steps.deploy.outputs.url }}`);
+    expect(
+      promoteApiProductionJob.slice(promotionStep, domainVerificationStep),
+    ).toContain(`deployment-url: \${{ steps.deploy.outputs.url }}`);
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
   });
 

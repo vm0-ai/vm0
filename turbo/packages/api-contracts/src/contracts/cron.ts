@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorCatalogDiagnosticsSchema } from "./connector-catalog-diagnostics";
+import {
+  connectorCatalogDiagnosticsSchema,
+  connectorCatalogRuntimeProjectionReadinessSchema,
+} from "./connector-catalog-diagnostics";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -219,6 +222,7 @@ const cronSyncSkillsResponseSchema = z.object({
 const connectorCatalogSyncResponseSchema =
   connectorCatalogDiagnosticsSchema.extend({
     outcome: z.enum(["accepted", "unchanged", "rejected"]),
+    runtimeProjection: connectorCatalogRuntimeProjectionReadinessSchema,
   });
 
 export type ConnectorCatalogSyncResponse = z.infer<

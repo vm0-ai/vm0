@@ -49,8 +49,10 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
+  deleteApiTestConnectorCatalogRuntimeProjectionRow,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   invalidateApiTestConnectorCatalogCompatibility,
@@ -60,6 +62,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -1668,6 +1671,7 @@ describe("connector catalog valid lifecycle", () => {
         stale: false,
         filteredAuthMethods: [],
       },
+      runtimeProjection: { state: "ready" },
     });
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
@@ -1687,7 +1691,11 @@ describe("connector catalog valid lifecycle", () => {
 
     const callsBeforeStatus = context.mocks.s3.send.mock.calls.length;
     expect((await readStatus()).body).toStrictEqual(
-      (({ outcome: _outcome, ...status }) => {
+      (({
+        outcome: _outcome,
+        runtimeProjection: _runtimeProjection,
+        ...status
+      }) => {
         return status;
       })(acceptedFirst.body),
     );
@@ -1711,6 +1719,7 @@ describe("connector catalog valid lifecycle", () => {
         stale: false,
         filteredAuthMethods: [],
       },
+      runtimeProjection: { state: "ready" },
     });
     expect(context.mocks.s3.send.mock.calls.length - callsBeforeUnchanged).toBe(
       1,
@@ -1729,6 +1738,17 @@ describe("connector catalog valid lifecycle", () => {
       connectorSlugs: [first.connectorSlug],
     });
 
+    await deleteApiTestConnectorCatalogRuntimeProjectionRow(
+      first.connectorSlug,
+    );
+    mockNow(new Date("2026-07-15T08:01:30.000Z"));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "unchanged",
+      state: "current",
+      active: { catalogVersion: first.version },
+      runtimeProjection: { state: "ready" },
+    });
+
     await expireApiTestConnectorCatalogRuntimeProjectionAuthority();
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
@@ -1741,6 +1761,7 @@ describe("connector catalog valid lifecycle", () => {
       outcome: "unchanged",
       state: "current",
       active: { catalogVersion: first.version },
+      runtimeProjection: { state: "ready" },
     });
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
@@ -1788,6 +1809,33 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforePublicCatalog,
     );
+  });
+
+  it("reports a bounded non-ready result when projection identity changes after reconciliation", async () => {
+    configureSource();
+    const release = buildRelease({ version: "2026-07-15.3" });
+    serveObjects(catalogObjects([release], release));
+    expect((await syncCatalog()).body.runtimeProjection).toStrictEqual({
+      state: "ready",
+    });
+
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements([
+      `api-test-readiness-replacement-${randomUUID()}`,
+    ]);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    mockNow(new Date("2026-07-15T08:01:00.000Z"));
+    expect((await syncCatalog()).body.runtimeProjection).toStrictEqual({
+      state: "not-ready",
+      reason: "incomplete",
+    });
+
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    mockNow(new Date("2026-07-15T08:02:00.000Z"));
+    expect((await syncCatalog()).body.runtimeProjection).toStrictEqual({
+      state: "ready",
+    });
   });
 
   it("serves every public catalog surface from accepted database state", async () => {
@@ -6961,7 +7009,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
 
     const callsBeforeStatus = context.mocks.s3.send.mock.calls.length;
     expect((await readStatus()).body).toStrictEqual(
-      (({ outcome: _outcome, ...status }) => {
+      (({
+        outcome: _outcome,
+        runtimeProjection: _runtimeProjection,
+        ...status
+      }) => {
         return status;
       })(rejected.body),
     );

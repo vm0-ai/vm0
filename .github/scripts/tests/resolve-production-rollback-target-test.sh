@@ -321,6 +321,34 @@ ruby -e '
   rollback_app_step = rollback.fetch("rollback-app").fetch("steps").find { |step| step["id"] == "app" }
   raise "rollback App deployment must use the shared artifact fetcher" unless rollback_app_step.fetch("run").include?(artifact_fetch_helper)
 
+  reconcile_helper = ".github/scripts/reconcile-api-connector-catalog.sh"
+  preview_api_steps = turbo.fetch("deploy-api").fetch("steps")
+  preview_reconcile_index = preview_api_steps.index { |step| step["name"] == "Reconcile preview connector catalog" }
+  preview_alias_index = preview_api_steps.index { |step| step["name"] == "Create API Vercel Alias" }
+  raise "preview connector reconciliation step is missing" unless preview_reconcile_index
+  raise "preview connector reconciliation must run before alias" unless preview_alias_index && preview_reconcile_index < preview_alias_index
+  preview_reconcile = preview_api_steps.fetch(preview_reconcile_index)
+  raise "preview must use the shared strict connector gate" unless preview_reconcile.fetch("run").include?(reconcile_helper) && preview_reconcile.fetch("run").end_with?(" strict")
+
+  rollback_api_steps = rollback.fetch("rollback-api").fetch("steps")
+  rollback_checkout = rollback_api_steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
+  raise "rollback API must fetch full history for target baseline validation" unless rollback_checkout.dig("with", "fetch-depth") == 0
+  rollback_compatibility_index = rollback_api_steps.index { |step| step["name"] == "Verify rollback connector catalog compatibility" }
+  rollback_reconcile_index = rollback_api_steps.index { |step| step["name"] == "Reconcile rollback API connector catalog" }
+  rollback_promote_index = rollback_api_steps.index { |step| step["name"] == "Promote target API deployment" }
+  raise "rollback connector compatibility gate is missing" unless rollback_compatibility_index
+  raise "rollback connector reconcile gate is missing" unless rollback_reconcile_index
+  raise "rollback API promotion is missing" unless rollback_promote_index
+  unless rollback_compatibility_index < rollback_reconcile_index && rollback_reconcile_index < rollback_promote_index
+    raise "rollback API must verify target, reconcile it, then promote it"
+  end
+  rollback_compatibility = rollback_api_steps.fetch(rollback_compatibility_index)
+  raise "rollback compatibility must validate the projection V2 baseline" unless rollback_compatibility.fetch("run").include?("f40d5ea90b2fc4649cd336d083ce9d97573fb9ed")
+  rollback_reconcile = rollback_api_steps.fetch(rollback_reconcile_index)
+  expected_rollback_url = "$" + "{{ needs.resolve-target.outputs.api_deployment_url }}"
+  raise "rollback reconcile must use the resolved target URL" unless rollback_reconcile.fetch("env").fetch("API_DEPLOYMENT_URL") == expected_rollback_url
+  raise "rollback must use the shared legacy-compatible connector gate" unless rollback_reconcile.fetch("run").include?(reconcile_helper) && rollback_reconcile.fetch("run").end_with?(" allow-legacy")
+
   artifact_upload_step = turbo.fetch("deploy-app").fetch("steps").find { |step| step["name"] == "Upload canonical app artifact" }
   artifact_upload_run = artifact_upload_step.fetch("run")
   raise "deploy-app must upload the archived App artifact" unless artifact_upload_run.include?("/dist.tar.gz")

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
+import type {
+  ConnectorCatalogRuntimeProjectionReadiness,
+  ConnectorCatalogRuntimeProjectionReadinessReason,
+} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorCatalogActiveSnapshot,
@@ -468,6 +472,64 @@ export async function readConnectorCatalogRuntimeProjectionIdentity(
   db: ReadonlyDb,
 ): Promise<ConnectorCatalogRuntimeProjectionIdentityRead> {
   return await readProjectionIdentity(db);
+}
+
+function connectorCatalogRuntimeProjectionReadinessReason(
+  reason: Extract<
+    ConnectorCatalogRuntimeProjectionIdentityRead,
+    { readonly kind: "fallback" }
+  >["reason"],
+): ConnectorCatalogRuntimeProjectionReadinessReason {
+  switch (reason) {
+    case "schema_unavailable": {
+      return "schema-unavailable";
+    }
+    case "not_ready": {
+      return "projection-not-ready";
+    }
+    case "unsupported": {
+      return "unsupported";
+    }
+    case "compatibility_not_ready": {
+      return "compatibility-not-ready";
+    }
+    case "invalid_compatibility": {
+      return "invalid-compatibility";
+    }
+  }
+}
+
+export async function readConnectorCatalogRuntimeProjectionReadiness(args: {
+  readonly db: ReadonlyDb;
+  readonly active: {
+    readonly catalogVersion: string;
+    readonly catalogDigest: string;
+  } | null;
+  readonly capabilityDigest: string;
+}): Promise<ConnectorCatalogRuntimeProjectionReadiness> {
+  const result = await readProjectionIdentity(args.db);
+  if (result.kind === "fallback") {
+    return {
+      state: "not-ready",
+      reason: connectorCatalogRuntimeProjectionReadinessReason(result.reason),
+    };
+  }
+  const identity = result.projection.identity;
+  if (
+    args.active === null ||
+    identity.catalogVersion !== args.active.catalogVersion ||
+    identity.catalogDigest !== args.active.catalogDigest ||
+    identity.capabilityDigest !== args.capabilityDigest
+  ) {
+    return { state: "not-ready", reason: "identity-changed" };
+  }
+  const actualCount = await countConnectorCatalogRuntimeProjectionRows({
+    db: args.db,
+    identity,
+  });
+  return actualCount === identity.connectorCount
+    ? { state: "ready" }
+    : { state: "not-ready", reason: "incomplete" };
 }
 
 function projectionIdentityWhere(

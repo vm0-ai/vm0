@@ -2,9 +2,13 @@ import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cr
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
+import { db$ } from "../external/db";
 import { reconcileConnectorCatalogCompatibility$ } from "../services/connector-catalog-compatibility.service";
 import { connectorCatalogDiagnostics$ } from "../services/connector-catalog-diagnostics.service";
-import { reconcileConnectorCatalogRuntimeProjection$ } from "../services/connector-catalog-runtime-projection.service";
+import {
+  readConnectorCatalogRuntimeProjectionReadiness,
+  reconcileConnectorCatalogRuntimeProjection$,
+} from "../services/connector-catalog-runtime-projection.service";
 import { syncConnectorCatalog$ } from "../services/connector-catalog-sync.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -18,11 +22,19 @@ const syncConnectorCatalogRoute$ = command(
     await set(reconcileConnectorCatalogCompatibility$, signal);
     await set(reconcileConnectorCatalogRuntimeProjection$, signal);
     const diagnostics = await set(connectorCatalogDiagnostics$, signal);
+    const runtimeProjection =
+      await readConnectorCatalogRuntimeProjectionReadiness({
+        db: get(db$),
+        active: diagnostics.active,
+        capabilityDigest: diagnostics.filtering.capabilityDigest,
+      });
+    signal.throwIfAborted();
     return {
       status: 200 as const,
       body: {
         outcome: result.outcome,
         ...diagnostics,
+        runtimeProjection,
       },
     };
   },

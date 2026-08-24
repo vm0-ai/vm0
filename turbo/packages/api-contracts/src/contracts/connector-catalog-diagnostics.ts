@@ -51,6 +51,25 @@ export const connectorCredentialStorageReadinessSchema = z.object({
   unresolvedBridgeCredentials: z.number().int().nonnegative(),
 });
 
+export const connectorCatalogRuntimeProjectionReadinessReasonSchema = z.enum([
+  "schema-unavailable",
+  "projection-not-ready",
+  "unsupported",
+  "compatibility-not-ready",
+  "invalid-compatibility",
+  "incomplete",
+  "identity-changed",
+]);
+
+export const connectorCatalogRuntimeProjectionReadinessSchema =
+  z.discriminatedUnion("state", [
+    z.object({ state: z.literal("ready") }),
+    z.object({
+      state: z.literal("not-ready"),
+      reason: connectorCatalogRuntimeProjectionReadinessReasonSchema,
+    }),
+  ]);
+
 export const connectorCatalogDiagnosticsSchema = z.object({
   state: z.enum(["never-synced", "current", "stale"]),
   active: z
@@ -100,6 +119,12 @@ export type ConnectorCatalogFilteringStatus = z.infer<
 >;
 export type ConnectorCredentialStorageReadiness = z.infer<
   typeof connectorCredentialStorageReadinessSchema
+>;
+export type ConnectorCatalogRuntimeProjectionReadinessReason = z.infer<
+  typeof connectorCatalogRuntimeProjectionReadinessReasonSchema
+>;
+export type ConnectorCatalogRuntimeProjectionReadiness = z.infer<
+  typeof connectorCatalogRuntimeProjectionReadinessSchema
 >;
 export type ConnectorCatalogDiagnostics = z.infer<
   typeof connectorCatalogDiagnosticsSchema
