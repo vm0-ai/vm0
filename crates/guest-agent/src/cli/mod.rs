@@ -2159,6 +2159,8 @@ mod tests {
         expected: Option<(&str, super::CodexServiceTierSource)>,
         expected_fast_mode: bool,
     ) {
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        guest_common::log::clear_system_log_file();
         assert_eq!(
             super::resolve_codex_service_tier(&user_env).unwrap(),
             expected
