@@ -952,7 +952,6 @@ python3 - "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
 import os
 import signal
 import sys
-import time
 from pathlib import Path
 
 for handled in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
@@ -962,7 +961,7 @@ ready_path = Path(sys.argv[1])
 ready_path.parent.mkdir(parents=True, exist_ok=True)
 ready_path.write_text(sys.argv[2], encoding="utf-8")
 while True:
-    time.sleep(60)
+    signal.pause()
 PY
 wait "$!"
 "#,
