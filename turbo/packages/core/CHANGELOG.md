@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.584.0](https://github.com/vm0-ai/vm0/compare/core-v8.583.1...core-v8.584.0) (2026-08-24)
+
+
+### Features
+
+* **cli:** centralize presentation image batches ([#28702](https://github.com/vm0-ai/vm0/issues/28702)) ([20d4d4a](https://github.com/vm0-ai/vm0/commit/20d4d4ab952501195939c64236dab143bbbdd159))
+* **presentation:** refresh the built-in template archives to 71ff2fb ([#28728](https://github.com/vm0-ai/vm0/issues/28728)) ([6053443](https://github.com/vm0-ai/vm0/commit/605344368e64757a5ac2ce9fe113d2a20fd2369c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.0
+
 ## [8.583.1](https://github.com/vm0-ai/vm0/compare/core-v8.583.0...core-v8.583.1) (2026-08-23)
 
 

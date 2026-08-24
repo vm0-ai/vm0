@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.281.0](https://github.com/vm0-ai/vm0/compare/cli-v9.280.0...cli-v9.281.0) (2026-08-24)
+
+
+### Features
+
+* **cli:** centralize presentation image batches ([#28702](https://github.com/vm0-ai/vm0/issues/28702)) ([20d4d4a](https://github.com/vm0-ai/vm0/commit/20d4d4ab952501195939c64236dab143bbbdd159))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.356.0
+    * @okouai/core bumped to 8.584.0
+
 ## [9.280.0](https://github.com/vm0-ai/vm0/compare/cli-v9.279.4...cli-v9.280.0) (2026-08-23)
 
 

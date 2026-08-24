@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.479.0](https://github.com/vm0-ai/vm0/compare/api-v1.478.4...api-v1.479.0) (2026-08-24)
+
+
+### Features
+
+* **cli:** centralize presentation image batches ([#28702](https://github.com/vm0-ai/vm0/issues/28702)) ([20d4d4a](https://github.com/vm0-ai/vm0/commit/20d4d4ab952501195939c64236dab143bbbdd159))
+* **platform:** show managed model cooldown diagnostics ([#28733](https://github.com/vm0-ai/vm0/issues/28733)) ([f86c836](https://github.com/vm0-ai/vm0/commit/f86c836c2f5275ca97b288a757a3d5e118ca0566))
+* **presentation:** refresh the built-in template archives to 71ff2fb ([#28728](https://github.com/vm0-ai/vm0/issues/28728)) ([6053443](https://github.com/vm0-ai/vm0/commit/605344368e64757a5ac2ce9fe113d2a20fd2369c))
+
+
+### Refactoring
+
+* **agent:** make canonical agent writes authoritative ([#28721](https://github.com/vm0-ai/vm0/issues/28721)) ([64660cf](https://github.com/vm0-ai/vm0/commit/64660cfe57097da7209d0182e132158374292ac8))
+* **api:** make connector authorization state writers explicit ([#28731](https://github.com/vm0-ai/vm0/issues/28731)) ([7e2222b](https://github.com/vm0-ai/vm0/commit/7e2222b56632c337a62328b924315e530df98f8e))
+* remove expired deployment compatibility ([#28737](https://github.com/vm0-ai/vm0/issues/28737)) ([0cc15e9](https://github.com/vm0-ai/vm0/commit/0cc15e956208123c66769827f83d827f73f781ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.0
+    * @okouai/core bumped to 8.584.0
+    * @okouai/db bumped to 1.218.5
+
 ## [1.478.4](https://github.com/vm0-ai/vm0/compare/api-v1.478.3...api-v1.478.4) (2026-08-23)
 
 
