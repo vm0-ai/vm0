@@ -370,7 +370,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
   // #28422: the per-artifact catalog read, logs, the platform realtime token,
   // and the run reads. The slice also covered the catalog collection, push
-  // subscriptions and the agent telemetry write; #28916 removed those three
+  // subscriptions and the agent telemetry read; #28916 removed those three
   // rows because the platform build that held their branded forms cut over
   // mid-window and the branded traffic stopped dead.
   "/api/artifacts/catalog/:artifactId": [
@@ -486,10 +486,11 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // and code redemption. #28916 removed six of the slice's rows — plan
   // checkout, invoices, `usage-pack-catalog`, `usage-pack-credits`,
   // `usage-pack-migration` and `usage-pack-subscription` — because
-  // the platform build that held their branded forms cut over on 08-21 and the
-  // branded traffic went to zero. Every caller derives its URL from the
-  // contract, so nothing in this repository asks for a branded form, but
-  // released builds still do: an
+  // the platform build that held their branded forms cut over mid-window and
+  // the branded traffic went to zero; the last branded request on any of the
+  // six was `billing/checkout` at 2026-08-22 20:08 UTC. Every caller derives
+  // its URL from the contract, so nothing in this repository asks for a branded
+  // form, but released builds still do: an
   // already-loaded platform tab keeps calling the `okou` path it was built
   // against for the ~2 day old-web-client window in `docs/fallback.md` section
   // 7, and a CLI package pinned by an execution context's `CLI_PKG_URL` embeds
