@@ -263,12 +263,23 @@ pub struct StartArgs {
     /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config)
-    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
+    #[arg(
+        long,
+        env = crate::runner_token::clap_environment_name(),
+        hide_env_values = true
+    )]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
+}
+
+#[cfg(test)]
+impl StartArgs {
+    pub(crate) fn token_for_test(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
 }
 
 struct LiveRunnerPublishResources<'a> {
@@ -399,7 +410,7 @@ async fn run_start_with_home(
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
         ));
     }
 
