@@ -7,7 +7,7 @@ import urllib.parse
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from mitmproxy import http
 
@@ -27,6 +27,9 @@ from usage.json_selective import (
 )
 from usage.json_selective import Path as JsonPath
 from usage.sse import SseUsageScanner
+
+if TYPE_CHECKING:
+    from usage.openai_responses import OpenAIResponsesServerFailureEvidence
 
 FailureKind = Literal[
     "authentication",
@@ -382,16 +385,24 @@ def observe_websocket_client_event(
     flow_state.pending_intent = "prewarm" if is_prewarm else "normal"
 
 
-def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
+def should_observe_websocket_server_event(flow: http.HTTPFlow) -> bool:
+    """Return whether an admitted failure state still needs server evidence."""
+    flow_state = _websocket_flow_state(flow)
+    return flow_state is not None and not flow_state.websocket_ambiguous
+
+
+def observe_websocket_server_event(
+    flow: http.HTTPFlow,
+    evidence: "OpenAIResponsesServerFailureEvidence",
+) -> None:
     flow_state = _websocket_flow_state(flow)
     if flow_state is None or flow_state.websocket_ambiguous:
         return
-    result = _extract_json(body)
-    if not result.complete:
+    if not evidence.is_valid:
         _mark_websocket_ambiguous(flow, flow_state, "invalid_server_event")
         return
-    event_type = _string_value(result.values, ("type",))
-    response_id = _string_value(result.values, ("response", "id"))
+    event_type = evidence.event_type
+    response_id = evidence.response_id
     if event_type == openai_responses_events.SERVER_CREATED_EVENT:
         if (
             response_id is None
@@ -405,10 +416,16 @@ def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
         flow_state.pending_intent = None
         return
     if event_type in openai_responses_events.TERMINAL_EVENTS:
-        _settle_websocket_terminal(flow, flow_state, event_type, response_id, result)
+        _settle_websocket_terminal(
+            flow,
+            flow_state,
+            event_type,
+            response_id,
+            evidence.failure_codes,
+        )
         return
     if event_type == openai_responses_events.SERVER_ERROR_EVENT:
-        _settle_websocket_error(flow, flow_state, result)
+        _settle_websocket_error(flow, flow_state, evidence.failure_codes)
 
 
 def finish_websocket(flow: http.HTTPFlow) -> None:
@@ -672,24 +689,33 @@ def _outcome_from_json(protocol: _Protocol, result: JsonExtractionResult) -> _Ou
 
 
 def _failure_from_result(result: JsonExtractionResult) -> Failure | None:
-    for path in _FAILURE_CODE_PATHS:
-        code = _string_value(result.values, path)
-        if code is None:
-            continue
-        failure_kind = _failure_kind_from_code(code)
-        if failure_kind is not None:
-            return Failure(failure_kind)
+    codes = tuple(
+        code
+        for path in _FAILURE_CODE_PATHS
+        if (code := _string_value(result.values, path)) is not None
+    )
     if _string_value(result.values, ("type",)) == "error":
         code = _string_value(result.values, ("code",))
         if code is not None:
-            failure_kind = _failure_kind_from_code(code)
-            if failure_kind is not None:
-                return Failure(failure_kind)
+            codes = (*codes, code)
+    return _failure_from_codes(codes)
+
+
+def _failure_from_codes(codes: tuple[str, ...]) -> Failure | None:
+    for code in codes:
+        failure_kind = _failure_kind_from_code(code)
+        if failure_kind is not None:
+            return Failure(failure_kind)
     return None
 
 
 def _failure_or_unknown(result: JsonExtractionResult) -> _Outcome:
     failure = _failure_from_result(result)
+    return _Outcome("failure", failure) if failure is not None else _unknown_outcome()
+
+
+def _failure_or_unknown_from_codes(codes: tuple[str, ...]) -> _Outcome:
+    failure = _failure_from_codes(codes)
     return _Outcome("failure", failure) if failure is not None else _unknown_outcome()
 
 
@@ -803,7 +829,7 @@ def _settle_websocket_terminal(
     flow_state: _FlowState,
     event_type: str,
     response_id: str | None,
-    result: JsonExtractionResult,
+    failure_codes: tuple[str, ...],
 ) -> None:
     if (
         response_id is None
@@ -821,7 +847,7 @@ def _settle_websocket_terminal(
     if event_type in ("response.completed", "response.done"):
         _apply_outcome(flow, flow_state, _success_outcome())
     elif event_type == "response.failed":
-        _apply_outcome(flow, flow_state, _failure_or_unknown(result))
+        _apply_outcome(flow, flow_state, _failure_or_unknown_from_codes(failure_codes))
     else:
         _apply_outcome(flow, flow_state, _unknown_outcome())
 
@@ -829,7 +855,7 @@ def _settle_websocket_terminal(
 def _settle_websocket_error(
     flow: http.HTTPFlow,
     flow_state: _FlowState,
-    result: JsonExtractionResult,
+    failure_codes: tuple[str, ...],
 ) -> None:
     intent = flow_state.active_intent or flow_state.pending_intent
     if intent is None:
@@ -838,7 +864,7 @@ def _settle_websocket_error(
     flow_state.active_intent = None
     flow_state.active_response_id = None
     if intent == "normal":
-        _apply_outcome(flow, flow_state, _failure_or_unknown(result))
+        _apply_outcome(flow, flow_state, _failure_or_unknown_from_codes(failure_codes))
 
 
 def _mark_websocket_ambiguous(

@@ -1583,12 +1583,27 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         model_websocket_usage.observe_client_event(flow, event)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
-    model_provider_failure.observe_websocket_server_event(flow, body)
-    if not model_websocket_usage.is_enabled(flow):
+    failure_enabled = model_provider_failure.should_observe_websocket_server_event(flow)
+    usage_enabled = model_websocket_usage.is_enabled(flow)
+    if not failure_enabled and not usage_enabled:
         return
     event = usage.inspect_openai_responses_event_json(body)
-    codex_output_timing.observe_server_event(flow, event.event_type)
-    model_websocket_usage.feed_usage(flow, event)
+    if usage_enabled:
+        codex_output_timing.observe_server_event(flow, event.event_type)
+    inspection = usage.inspect_openai_responses_server_event(
+        event,
+        include_lifecycle=(
+            model_websocket_usage.should_inspect_server_lifecycle(flow, event)
+            if usage_enabled
+            else False
+        ),
+        include_usage=usage_enabled,
+        include_failure=failure_enabled,
+    )
+    if failure_enabled:
+        model_provider_failure.observe_websocket_server_event(flow, inspection.failure)
+    if usage_enabled:
+        model_websocket_usage.feed_usage(flow, inspection)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -1654,6 +1669,13 @@ def websocket_end(flow: http.HTTPFlow) -> None:
         _release_terminal_flow_state(flow, release_tracking=True)
 
 
+def _should_retain_model_websocket_tracking(flow: http.HTTPFlow) -> bool:
+    return response_streaming.is_confirmed_websocket_upgrade_response(flow) and (
+        model_websocket_usage.is_enabled(flow)
+        or model_provider_failure.should_observe_websocket_server_event(flow)
+    )
+
+
 def response(flow: http.HTTPFlow) -> Awaitable[None] | None:
     try:
         continuation = _handle_response(flow)
@@ -1669,7 +1691,7 @@ def response(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     release_tracking = True
     try:
-        release_tracking = not model_websocket_usage.is_enabled(flow)
+        release_tracking = not _should_retain_model_websocket_tracking(flow)
     finally:
         _release_terminal_flow_state(
             flow,
@@ -1686,7 +1708,7 @@ async def _complete_response(
     release_tracking = True
     try:
         await continuation
-        release_tracking = not model_websocket_usage.is_enabled(flow)
+        release_tracking = not _should_retain_model_websocket_tracking(flow)
     finally:
         _release_terminal_flow_state(
             flow,

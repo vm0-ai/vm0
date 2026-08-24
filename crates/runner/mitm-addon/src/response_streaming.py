@@ -99,7 +99,7 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
         return False
     if http_response_classification.has_event_stream_media_type(response):
         return False
-    return not _is_confirmed_websocket_upgrade_response(flow)
+    return not is_confirmed_websocket_upgrade_response(flow)
 
 
 def _make_response_decode_session(
@@ -190,7 +190,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     if (
         is_observable_model_provider
         and model_protocol == "openai_responses"
-        and _is_confirmed_websocket_upgrade_response(flow)
+        and is_confirmed_websocket_upgrade_response(flow)
     ):
         model_websocket_usage.activate(flow)
         return _ResponseUsageStreamSetup(None, False)
@@ -346,7 +346,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     return _ResponseUsageStreamSetup(None, False)
 
 
-def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     response = flow.response
     if response is None:
         return False

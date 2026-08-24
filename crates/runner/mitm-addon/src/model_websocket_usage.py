@@ -206,22 +206,15 @@ def _observe_server_lifecycle(
         )
 
 
-def feed_usage(
+def should_inspect_server_lifecycle(
     flow: http.HTTPFlow,
     event: usage.OpenAIResponsesEvent,
-) -> None:
-    """Merge model-provider usage from one server WebSocket frame.
-
-    Called from ``websocket_message()`` only for server-originated frames after
-    provider event inspection. Temporarily writes per-response sources while
-    attempting a source-preserving report, then releases them from flow
-    metadata. Frames without a response ID fall back to the per-flow usage
-    accumulator. Callers must feed each server frame exactly once.
-    """
+) -> bool:
+    """Return whether usage correlation needs lifecycle evidence for this frame."""
     if not is_enabled(flow):
-        return
+        return False
     prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
-    should_inspect_lifecycle = (
+    return (
         isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
         and not prewarm_state.ambiguous
         and (
@@ -232,10 +225,23 @@ def feed_usage(
             or event.event_type in openai_responses_events.SERVER_LIFECYCLE_EVENTS
         )
     )
-    inspection = usage.inspect_openai_responses_server_event(
-        event,
-        include_lifecycle=should_inspect_lifecycle,
-    )
+
+
+def feed_usage(
+    flow: http.HTTPFlow,
+    inspection: usage.OpenAIResponsesServerEventInspection,
+) -> None:
+    """Merge inspected model-provider usage from one server WebSocket frame.
+
+    Called from ``websocket_message()`` only for server-originated frames after
+    shared provider event inspection. Temporarily writes per-response sources
+    while attempting a source-preserving report, then releases them from flow
+    metadata. Frames without a response ID fall back to the per-flow usage
+    accumulator. Callers must feed each server frame exactly once.
+    """
+    if not is_enabled(flow):
+        return
+    prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
     lifecycle = inspection.lifecycle
     if lifecycle is not None and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
         _observe_server_lifecycle(flow, prewarm_state, lifecycle)

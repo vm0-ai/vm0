@@ -15,7 +15,8 @@ model-provider usage billing:
   ``inspect_openai_responses_event_json``, and
   ``inspect_openai_responses_server_event``, consumed by ``mitm_addon.py`` and
   ``model_websocket_usage.py`` for client request intent, event-type timing,
-  shared server lifecycle correlation, and usage received over upgrades.
+  shared server failure evidence, lifecycle correlation, and usage received
+  over upgrades.
   ``extract_openai_responses_usage_from_event`` retains the usage-only facade.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` for terminal SSE events and
@@ -40,6 +41,7 @@ from .json_selective import (
     JsonSelectiveExtractor,
     ScalarField,
 )
+from .json_selective import Path as JsonPath
 from .model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -112,12 +114,23 @@ class OpenAIResponsesServerLifecycle:
 
 
 @dataclass(frozen=True)
+class OpenAIResponsesServerFailureEvidence:
+    """Bounded machine evidence consumed by trusted failure reporting."""
+
+    event_type: str | None
+    response_id: str | None
+    failure_codes: tuple[str, ...]
+    is_valid: bool = False
+
+
+@dataclass(frozen=True)
 class OpenAIResponsesServerEventInspection:
-    """Shared lifecycle and usage observations from one server frame."""
+    """Shared failure, lifecycle, and usage observations from one server frame."""
 
     lifecycle: OpenAIResponsesServerLifecycle | None
     usage: dict | None
     usage_error: str | None
+    failure: OpenAIResponsesServerFailureEvidence
 
 
 @dataclass(frozen=True)
@@ -158,6 +171,29 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
+_RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS = {
+    **_RESPONSES_RESPONSE_SCALAR_FIELDS,
+    ("usage", "input_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "output_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField("int", max_bytes=128),
+}
+_RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS = {
+    **_RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS,
+    **{
+        ("response", *path): field
+        for path, field in _RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS.items()
+    },
+}
+_RESPONSES_WEBSOCKET_SSE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    **_RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS,
+}
+_RESPONSES_WEBSOCKET_USAGE_QUANTITY_PATHS = tuple(
+    path
+    for path, field in _RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS.items()
+    if field.kind == "int"
+)
 _RESPONSES_CLIENT_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("generate",): ScalarField("bool"),
@@ -166,6 +202,26 @@ _RESPONSES_LIFECYCLE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("response", "id"): ScalarField("string", max_bytes=1024),
 }
+_RESPONSES_FAILURE_CODE_PATHS = (
+    ("error", "metadata", "error_type"),
+    ("error", "error_type"),
+    ("response", "error_type"),
+    ("response", "error", "error_type"),
+    ("error_type",),
+    ("response", "error", "code"),
+    ("error", "code"),
+    ("response", "error", "type"),
+    ("error", "type"),
+)
+_RESPONSES_FAILURE_SCALAR_FIELDS = {
+    **_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
+    ("code",): ScalarField("string", max_bytes=128, overflow_policy="discard"),
+    **{
+        path: ScalarField("string", max_bytes=128, overflow_policy="discard")
+        for path in _RESPONSES_FAILURE_CODE_PATHS
+    },
+}
+_UNAVAILABLE_FAILURE_EVIDENCE = OpenAIResponsesServerFailureEvidence(None, None, ())
 
 
 def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesClientEvent:
@@ -208,9 +264,9 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
 
     The returned ``event_type`` is only the bounded-prefix observation; this
     function does not fully parse or validate the frame. Pass the returned event
-    to ``inspect_openai_responses_server_event`` for shared lifecycle and usage
-    inspection, or to ``extract_openai_responses_usage_from_event`` when only
-    usage is needed.
+    to ``inspect_openai_responses_server_event`` for shared failure, lifecycle,
+    and usage inspection, or to ``extract_openai_responses_usage_from_event``
+    when only usage is needed.
     """
     result = _probe_responses_event_type(body)
     return OpenAIResponsesEvent(
@@ -270,6 +326,14 @@ def _usage_from_extraction(
             error = result.error
         return None, error
 
+    if any(
+        isinstance(value := result.values.get(path), int)
+        and not isinstance(value, bool)
+        and value > MAX_USAGE_QUANTITY
+        for path in _RESPONSES_WEBSOCKET_USAGE_QUANTITY_PATHS
+    ):
+        return None, JSON_INTEGER_VALUE_LIMIT_EXCEEDED
+
     extracted_usage: dict = {}
     _store_sse_result_values(
         result.values,
@@ -282,10 +346,42 @@ def _usage_from_extraction(
     return extracted_usage, None
 
 
+def _failure_from_extraction(
+    result: JsonExtractionResult,
+) -> OpenAIResponsesServerFailureEvidence:
+    if not result.complete:
+        return OpenAIResponsesServerFailureEvidence(None, None, (), False)
+
+    event_type_value = result.values.get(("type",))
+    event_type = event_type_value if isinstance(event_type_value, str) else None
+    response_id_value = result.values.get(("response", "id"))
+    response_id = response_id_value if isinstance(response_id_value, str) else None
+    failure_codes = tuple(
+        value
+        for path in _RESPONSES_FAILURE_CODE_PATHS
+        if isinstance((value := result.values.get(path)), str)
+    )
+    top_level_code = result.values.get(("code",))
+    if event_type == openai_responses_events.SERVER_ERROR_EVENT and isinstance(top_level_code, str):
+        failure_codes = (*failure_codes, top_level_code)
+    return OpenAIResponsesServerFailureEvidence(
+        event_type,
+        response_id,
+        failure_codes,
+        True,
+    )
+
+
+def _failure_from_prefix(event: OpenAIResponsesEvent) -> OpenAIResponsesServerFailureEvidence:
+    return OpenAIResponsesServerFailureEvidence(event.event_type, None, (), True)
+
+
 def inspect_openai_responses_server_event(
     event: OpenAIResponsesEvent,
     *,
     include_lifecycle: bool,
+    include_usage: bool = True,
+    include_failure: bool = False,
 ) -> OpenAIResponsesServerEventInspection:
     """Inspect one server frame with at most one bounded full-body parse."""
     lifecycle: OpenAIResponsesServerLifecycle | None = None
@@ -298,19 +394,27 @@ def inspect_openai_responses_server_event(
         lifecycle = OpenAIResponsesServerLifecycle(event.event_type, None, True)
         needs_lifecycle_parse = False
 
-    needs_usage_parse = event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
-    if not needs_lifecycle_parse and not needs_usage_parse:
-        return OpenAIResponsesServerEventInspection(lifecycle, None, None)
+    needs_usage_parse = include_usage and event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
+    needs_failure_parse = include_failure and (
+        event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
+        or event.event_type in openai_responses_events.SERVER_LIFECYCLE_EVENTS
+    )
+    if not needs_lifecycle_parse and not needs_usage_parse and not needs_failure_parse:
+        failure = _failure_from_prefix(event) if include_failure else _UNAVAILABLE_FAILURE_EVIDENCE
+        return OpenAIResponsesServerEventInspection(lifecycle, None, None, failure)
 
     data_event_type = _resolved_data_event_type(event._classification)
+    scalar_fields: dict[JsonPath, ScalarField] = {}
     if needs_usage_parse:
-        scalar_fields = (
-            _RESPONSES_SSE_SCALAR_FIELDS
+        scalar_fields.update(
+            _RESPONSES_WEBSOCKET_SSE_SCALAR_FIELDS
             if data_event_type is None or needs_lifecycle_parse
-            else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
+            else _RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS
         )
-    else:
-        scalar_fields = _RESPONSES_LIFECYCLE_SCALAR_FIELDS
+    if needs_lifecycle_parse:
+        scalar_fields.update(_RESPONSES_LIFECYCLE_SCALAR_FIELDS)
+    if needs_failure_parse:
+        scalar_fields.update(_RESPONSES_FAILURE_SCALAR_FIELDS)
 
     consistency_paths = {("type",), ("response", "id")} if needs_lifecycle_parse else None
     extractor = JsonSelectiveExtractor(
@@ -326,7 +430,10 @@ def inspect_openai_responses_server_event(
     usage_result, usage_error = (
         _usage_from_extraction(result, data_event_type) if needs_usage_parse else (None, None)
     )
-    return OpenAIResponsesServerEventInspection(lifecycle, usage_result, usage_error)
+    failure = (
+        _failure_from_extraction(result) if needs_failure_parse else _UNAVAILABLE_FAILURE_EVIDENCE
+    )
+    return OpenAIResponsesServerEventInspection(lifecycle, usage_result, usage_error, failure)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
