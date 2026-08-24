@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use sandbox::EXEC_OUTPUT_LIMIT_7_MIB;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
@@ -25,7 +26,6 @@ use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate}
 use crate::park_coordinator::{ParkCoordinator, RunControlMismatch, TerminateAdmission};
 use crate::runtime_dirs::set_private_runtime_socket_mode;
 
-const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 const RUN_CONTROL_MISMATCH_ERROR: &str = "run control target is no longer assigned to this sandbox";
@@ -483,8 +483,8 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
                 env,
                 sudo,
                 label: "runner-exec",
-                stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-                stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                stdout_limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes,
+                stderr_limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes,
                 expected_exit_codes: &[],
                 stdin_bytes: None,
                 wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
