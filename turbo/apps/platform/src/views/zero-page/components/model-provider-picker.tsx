@@ -1042,7 +1042,12 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       onClick={option.onSelect}
     >
       {option.icon}
-      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+      {/* Not `flex-1`: run-model rows sit inside a shrink-to-fit `SelectItem`
+          text slot, so their price badge trails the model name instead of
+          parking at the row's right edge. These rows are plain buttons that do
+          span the row, so the label must stay shrink-to-fit for the badge to
+          land in the same place. */}
+      <span className="min-w-0 truncate">{option.label}</span>
       <PriceTierBadge
         tier={option.priceTier}
         description={getMediaModelPriceTierLabel(option.priceTier)}
