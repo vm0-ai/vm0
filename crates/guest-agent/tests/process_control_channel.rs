@@ -159,7 +159,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
 
     common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
-    let command = guest_agent_wrapper_command(guest_agent);
+    let command = canonical_process_control_guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
     let mut handle = connection
         .host()
@@ -497,6 +497,20 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
 
 fn guest_agent_wrapper_command(guest_agent: &str) -> String {
     quote_shell_arg(guest_agent)
+}
+
+fn canonical_process_control_guest_agent_wrapper_command(guest_agent: &str) -> String {
+    // The test process can itself run under vm0 and inherit an incomplete
+    // cgroup bootstrap pair. Keep this unmanaged fixture isolated from it.
+    format!(
+        "export {}=\"${}\"; unset {} {} {}; exec {}",
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+        process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::BOOTSTRAP_ENV,
+        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+        quote_shell_arg(guest_agent)
+    )
 }
 
 fn needs_sudo_for_canonical_workspace() -> bool {

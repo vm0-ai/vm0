@@ -235,6 +235,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
         paths: fixture.paths().clone(),
         http,
         workload_containment: None,
+        process_control_endpoint: None,
     };
     let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
         thread_id,
