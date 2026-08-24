@@ -683,7 +683,7 @@ function CustomAccountDialogs({
           onSuccess={(connectionId) => {
             reloadAccountSummaries();
             reloadAccountList();
-            if (connectionId) {
+            if (accountConnect.mode.kind === "add" && connectionId) {
               openAccountNamePrompt({
                 target: {
                   kind: "custom",

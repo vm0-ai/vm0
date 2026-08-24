@@ -2086,6 +2086,11 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Stripe" })).toBeNull();
     });
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Name your Stripe account",
+      }),
+    ).toBeNull();
     expect(submittedAccount).toStrictEqual({
       intent: "reconnect",
       connectionId: personalAccount.id,
@@ -6399,6 +6404,17 @@ describe("connectors page", () => {
         nextCursor: null,
       });
     });
+    let submittedAccount: unknown;
+    context.mocks.api(
+      customConnectorValuesContract.set,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        return respond(200, {
+          ...connector,
+          connectedAccountId: existingAccount.id,
+        });
+      },
+    );
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
@@ -6421,6 +6437,24 @@ describe("connectors page", () => {
     expect(dialog).not.toHaveTextContent("Configured");
     await fill(within(dialog).getByLabelText("Secret"), "new-secret");
     expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: `Connect ${connector.displayName}`,
+        }),
+      ).toBeNull();
+    });
+    expect(
+      screen.queryByRole("dialog", {
+        name: `Name your ${connector.displayName} account`,
+      }),
+    ).toBeNull();
+    expect(submittedAccount).toStrictEqual({
+      intent: "reconnect",
+      connectionId: existingAccount.id,
+    });
   });
 
   it("keeps MCP account connection actions disabled with the MCP feature off", async () => {

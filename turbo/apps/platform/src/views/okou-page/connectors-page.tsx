@@ -1330,7 +1330,18 @@ export function ZeroConnectorsPage() {
             closeAccountConnect();
           }}
           onSuccess={(connectionId) => {
-            finishExplicitAccountAdd(accountConnect.connector, connectionId);
+            reloadAccountSummaries();
+            reloadAccountList();
+            if (accountConnect.mode.kind === "add" && connectionId) {
+              openAccountNamePrompt({
+                target: {
+                  kind: "builtin",
+                  connectorSlug: accountConnect.connector.slug,
+                },
+                connectionId,
+                connectorLabel: accountConnect.connector.label,
+              });
+            }
           }}
         />
       )}
