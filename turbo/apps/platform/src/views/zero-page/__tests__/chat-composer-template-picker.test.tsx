@@ -69,6 +69,27 @@ function sentInlineTemplate(
   return undefined;
 }
 
+async function loadImportedTemplateCardImage(
+  media: HTMLElement,
+  url: string,
+): Promise<HTMLImageElement> {
+  const image = await waitFor(() => {
+    const found = Array.from(
+      media.querySelectorAll<HTMLImageElement>(
+        "[data-imported-presentation-template-image]",
+      ),
+    ).find((candidate) => {
+      return candidate.getAttribute("src") === url;
+    });
+    if (found === undefined) {
+      throw new Error(`Imported template image was not requested: ${url}`);
+    }
+    return found;
+  });
+  fireEvent.load(image);
+  return image;
+}
+
 function createAvatarFirstPage() {
   return Array.from({ length: 24 }, (_, index) => {
     const id = index + 1;
@@ -3410,10 +3431,19 @@ describe("chat composer templates", () => {
     });
     expect(within(card).getByText("Brand system")).toBeInTheDocument();
     expect(within(card).getByText("18 slides")).toBeInTheDocument();
-    expect(within(card).getByRole("img")).toHaveAttribute(
+    const coverImage = within(card).getByRole("img");
+    expect(coverImage).toHaveAttribute(
       "src",
       "https://example.com/imported-cover.png",
     );
+    expect(coverImage).toHaveAttribute("loading", "eager");
+    expect(coverImage).toHaveAttribute("fetchpriority", "high");
+    const coverPlaceholder = card.querySelector(
+      "[data-imported-presentation-template-image-placeholder]",
+    );
+    expect(coverPlaceholder).not.toHaveAttribute("hidden");
+    fireEvent.load(coverImage);
+    expect(coverPlaceholder).toHaveAttribute("hidden");
 
     // Grid order is the import tile, then this user's decks, then the
     // built-ins: a returning user looks for their own deck first.
@@ -3603,13 +3633,23 @@ describe("chat composer templates", () => {
         return new DOMRect(0, 0, 300, 160);
       },
     });
+    fireEvent.load(within(preview).getByRole("img"));
     fireEvent.mouseEnter(preview);
     fireEvent.mouseMove(preview, { clientX: 4, clientY: 80 });
+    await loadImportedTemplateCardImage(
+      preview,
+      "https://example.com/prefetch-primary-page-2.png",
+    );
 
+    expect(within(preview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-2.png",
+    );
+    fireEvent.mouseLeave(preview);
     await waitFor(() => {
       expect(within(preview).getByRole("img")).toHaveAttribute(
         "src",
-        "https://example.com/prefetch-primary-page-2.png",
+        "https://example.com/prefetch-primary-page-1.png",
       );
     });
     expect(catalogRequestCount).toBe(1);
@@ -3641,6 +3681,7 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/prefetch-primary-page-1.png",
     );
+    fireEvent.load(within(refreshingCard).getByRole("img"));
 
     releaseRefreshCatalog.resolve();
     await refreshedPrimaryDetailRequested.promise;
@@ -3651,6 +3692,31 @@ describe("chat composer templates", () => {
     if (!refreshedPreview) {
       throw new Error("Refreshed imported template preview not found");
     }
+    const renewedCover = await waitFor(() => {
+      const found = Array.from(
+        refreshedPreview.querySelectorAll<HTMLImageElement>(
+          "[data-imported-presentation-template-image]",
+        ),
+      ).find((candidate) => {
+        return (
+          candidate.getAttribute("src") ===
+          "https://example.com/renewed-primary-page-1.png"
+        );
+      });
+      if (found === undefined) {
+        throw new Error("Renewed uploaded template cover was not requested");
+      }
+      return found;
+    });
+    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-1.png",
+    );
+    fireEvent.load(renewedCover);
+    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/renewed-primary-page-1.png",
+    );
     Object.defineProperty(refreshedPreview, "getBoundingClientRect", {
       configurable: true,
       value: () => {
@@ -3659,13 +3725,15 @@ describe("chat composer templates", () => {
     });
     fireEvent.mouseEnter(refreshedPreview);
     fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
+    await loadImportedTemplateCardImage(
+      refreshedPreview,
+      "https://example.com/renewed-primary-page-100.png",
+    );
 
-    await waitFor(() => {
-      expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
-        "src",
-        "https://example.com/renewed-primary-page-100.png",
-      );
-    });
+    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/renewed-primary-page-100.png",
+    );
     expect(catalogRequestCount).toBe(2);
     expect(primaryDetailRequestCount).toBe(2);
     expect(secondaryDetailRequestCount).toBe(0);
@@ -3805,14 +3873,17 @@ describe("chat composer templates", () => {
         return new DOMRect(0, 0, 300, 160);
       },
     });
+    fireEvent.load(within(preview).getByRole("img"));
     fireEvent.mouseEnter(preview);
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
-    await waitFor(() => {
-      expect(within(preview).getByRole("img")).toHaveAttribute(
-        "src",
-        "https://example.com/imported-page-2.png",
-      );
-    });
+    await loadImportedTemplateCardImage(
+      preview,
+      "https://example.com/imported-page-2.png",
+    );
+    expect(within(preview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-2.png",
+    );
 
     click(previewButton);
     const detailImage = await screen.findByTestId(
