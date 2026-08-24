@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LoadableState } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -46,10 +47,25 @@ type ConnectionConnectorCardProps = {
   readonly onReviewScopes?: () => void;
 };
 
+export type ConnectorAccountSummaryStatus = "loading" | "unavailable" | "ready";
+
+export function connectorAccountSummaryStatus(
+  state: LoadableState,
+): ConnectorAccountSummaryStatus {
+  if (state === "hasData") {
+    return "ready";
+  }
+  if (state === "hasError") {
+    return "unavailable";
+  }
+  return "loading";
+}
+
 type AccountsConnectorCardProps = {
   readonly variant: "accounts";
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly summary: ConnectorAccountSummary | undefined;
+  readonly summaryStatus: ConnectorAccountSummaryStatus;
   readonly busy: boolean;
   readonly manageAccess?: ReactNode;
   readonly onAdd: () => void;
@@ -349,14 +365,34 @@ function ConnectionConnectorCard({
 
 export function ConnectorAccountSummaryText({
   summary,
+  status,
   connectorLabel,
   className,
 }: {
   readonly summary: ConnectorAccountSummary | undefined;
+  readonly status: ConnectorAccountSummaryStatus;
   readonly connectorLabel: string;
   readonly className?: string;
 }) {
   const { t } = useTranslation();
+  if (status === "loading") {
+    return (
+      <span className={className}>
+        {t(($) => {
+          return $.connectors.accounts.loading;
+        })}
+      </span>
+    );
+  }
+  if (status === "unavailable") {
+    return (
+      <span className={className}>
+        {t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+      </span>
+    );
+  }
   const accountCount = summary?.accountCount ?? 0;
   let summaryText =
     accountCount === 0
@@ -404,6 +440,7 @@ export function ConnectorAccountSummaryText({
 function AccountsConnectorCard({
   connector,
   summary,
+  summaryStatus,
   busy,
   manageAccess,
   onAdd,
@@ -427,6 +464,7 @@ function AccountsConnectorCard({
       <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
         <ConnectorAccountSummaryText
           summary={summary}
+          status={summaryStatus}
           connectorLabel={connector.label}
           className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
         />

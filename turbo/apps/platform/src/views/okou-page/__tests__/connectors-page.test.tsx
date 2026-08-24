@@ -1344,6 +1344,67 @@ describe("connectors page", () => {
     ]);
   });
 
+  it("distinguishes unavailable account summaries from no accounts", async () => {
+    mockConnectors([]);
+    const connector = customConnector({});
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    let summariesRequestStarted = false;
+    let resolveSummaries = (): void => {
+      throw new Error("Account summaries request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.summaries,
+      async ({ deferred, respond }) => {
+        const summariesDeferred = deferred<void>();
+        resolveSummaries = () => {
+          summariesDeferred.resolve();
+        };
+        summariesRequestStarted = true;
+        await summariesDeferred.promise;
+        return respond(404, {
+          error: {
+            message: "Account summaries unavailable",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(summariesRequestStarted).toBeTruthy();
+      const card = connectorCardByLabel("Ahrefs");
+      expect(within(card).getByText("Loading accounts…")).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+
+    resolveSummaries();
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Ahrefs");
+      expect(
+        within(card).getByText("Accounts are unavailable for this connector."),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+
+    click(tabByText("Custom"));
+
+    await waitFor(() => {
+      const card = connectorCardByLabel(connector.displayName);
+      expect(
+        within(card).getByText("Accounts are unavailable for this connector."),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+  });
+
   it("requires a label for feature-on manual account additions", async () => {
     mockConnectors([]);
     let submittedAccount: unknown;

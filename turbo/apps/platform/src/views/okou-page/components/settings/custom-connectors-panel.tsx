@@ -55,7 +55,11 @@ import {
   settingsConnectorAccounts,
 } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
-import { ConnectorAccountSummaryText } from "./connector-card.tsx";
+import {
+  ConnectorAccountSummaryText,
+  connectorAccountSummaryStatus,
+  type ConnectorAccountSummaryStatus,
+} from "./connector-card.tsx";
 import {
   closeCustomAccountConnectDialog$,
   closeCustomAccountManager$,
@@ -81,6 +85,7 @@ interface CustomConnectorRowProps {
   readonly onManageAccess: () => void;
   readonly onDelete: () => void;
   readonly accountSummary?: ConnectorAccountSummary;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
   readonly accountManagement: boolean;
   readonly canAddAccount: boolean;
   readonly onManageAccounts: () => void;
@@ -125,6 +130,7 @@ interface CustomConnectorCardContentProps {
   readonly onConnect: () => void;
   readonly onManageAccess: () => void;
   readonly accountSummary?: ConnectorAccountSummary;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
   readonly accountManagement: boolean;
   readonly canAddAccount: boolean;
   readonly onManageAccounts: () => void;
@@ -234,6 +240,7 @@ function CustomConnectorCardFooter({
   onConnect,
   onManageAccess,
   accountSummary,
+  accountSummaryStatus,
   accountManagement,
   canAddAccount,
   onManageAccounts,
@@ -248,6 +255,7 @@ function CustomConnectorCardFooter({
       {accountManagement ? (
         <ConnectorAccountSummaryText
           summary={accountSummary}
+          status={accountSummaryStatus}
           connectorLabel={connector.displayName}
           className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
         />
@@ -316,6 +324,7 @@ function CustomConnectorRow({
   onManageAccess,
   onDelete,
   accountSummary,
+  accountSummaryStatus,
   accountManagement,
   canAddAccount,
   onManageAccounts,
@@ -337,6 +346,7 @@ function CustomConnectorRow({
       onConnect={onConnect}
       onManageAccess={onManageAccess}
       accountSummary={accountSummary}
+      accountSummaryStatus={accountSummaryStatus}
       accountManagement={accountManagement}
       canAddAccount={canAddAccount}
       onManageAccounts={onManageAccounts}
@@ -479,6 +489,9 @@ function CustomConnectorGrid({
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
   );
+  const accountSummaryStatus = connectorAccountSummaryStatus(
+    accountSummariesLoadable.state,
+  );
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
@@ -532,6 +545,7 @@ function CustomConnectorGrid({
               return openDelete(connector);
             }}
             accountSummary={accountSummary}
+            accountSummaryStatus={accountSummaryStatus}
             accountManagement={connectorAccountsEnabled}
             canAddAccount={
               connectorAccountsEnabled &&

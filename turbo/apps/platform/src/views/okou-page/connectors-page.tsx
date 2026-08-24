@@ -67,7 +67,11 @@ import {
 } from "../../signals/okou-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorCard,
+  connectorAccountSummaryStatus,
+  type ConnectorAccountSummaryStatus,
+} from "./components/settings/connector-card.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
@@ -886,6 +890,7 @@ interface SettingsConnectorCardProps {
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly accountManagement: boolean;
   readonly accountSummary: ConnectorAccountSummary | undefined;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
   readonly connected: boolean;
   readonly busy: boolean;
   readonly disconnecting: boolean;
@@ -945,6 +950,7 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
         variant="accounts"
         connector={props.connector}
         summary={props.accountSummary}
+        summaryStatus={props.accountSummaryStatus}
         busy={props.busy}
         onAdd={props.onAdd}
         onManage={props.onManageAccounts}
@@ -990,6 +996,9 @@ export function ZeroConnectorsPage() {
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
+  );
+  const accountSummaryStatus = connectorAccountSummaryStatus(
+    accountSummariesLoadable.state,
   );
   const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
   const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
@@ -1124,6 +1133,7 @@ export function ZeroConnectorsPage() {
         connector={c}
         accountManagement={connectorAccountsEnabled}
         accountSummary={summary}
+        accountSummaryStatus={accountSummaryStatus}
         connected={isConnected}
         busy={isPolling}
         disconnecting={disconnecting}
