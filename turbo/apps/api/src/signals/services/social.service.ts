@@ -294,7 +294,7 @@ function providerResult(
 }
 
 function runIdForUsage(auth: AuthContext): string | undefined {
-  return auth.tokenType === "zero" || auth.tokenType === "sandbox"
+  return auth.tokenType === "agent" || auth.tokenType === "sandbox"
     ? auth.runId
     : undefined;
 }

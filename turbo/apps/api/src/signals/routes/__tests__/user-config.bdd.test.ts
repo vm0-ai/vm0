@@ -639,7 +639,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(memberProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroMember.userId,
       orgId: zeroMember.orgId,
       orgRole: "member",
@@ -656,7 +656,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(adminProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroAdmin.userId,
       orgId: zeroAdmin.orgId,
       orgRole: "admin",
@@ -673,7 +673,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(orphanProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroOrphan.userId,
       runId: orphanZero.runId,
       publicBrand: "vm0",

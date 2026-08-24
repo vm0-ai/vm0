@@ -918,7 +918,7 @@ const copyWorkflowInner$ = command(
 
     const writeDb = set(writeDb$);
     let inheritedAutonomyBudget: number | undefined;
-    if (auth.tokenType === "zero") {
+    if (auth.tokenType === "agent") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
         runId: auth.runId,
         orgId: auth.orgId,

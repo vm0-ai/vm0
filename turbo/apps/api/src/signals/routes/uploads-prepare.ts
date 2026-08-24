@@ -59,7 +59,7 @@ const prepareUploadInner$ = command(
         userId: auth.userId,
         filename,
         publicBrand:
-          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       },
       signal,
     );

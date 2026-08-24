@@ -11,7 +11,7 @@ const recognitionBody$ = bodyResultOf(imageRecognitionContract.recognize);
 
 const recognizeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     throw new Error("Image recognition route requires run authentication");
   }
   const bodyResult = await get(recognitionBody$);
@@ -27,7 +27,7 @@ export const imageRecognitionRoutes: readonly RouteEntry[] = [
     route: imageRecognitionContract.recognize,
     handler: authRoute(
       {
-        accept: ["zero"],
+        accept: ["agent"],
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "image-recognition:write",

@@ -28,7 +28,7 @@ const prepareBody$ = bodyResultOf(hostContract.prepare);
 const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
 
   const bodyResult = await get(prepareBody$);
   signal.throwIfAborted();

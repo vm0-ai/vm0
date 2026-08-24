@@ -121,7 +121,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
   }
   const callerRunId =
-    auth.tokenType === "sandbox" || auth.tokenType === "zero"
+    auth.tokenType === "sandbox" || auth.tokenType === "agent"
       ? auth.runId
       : undefined;
   const inherited = await inheritedRunChatSettings(writeDb, callerRunId);

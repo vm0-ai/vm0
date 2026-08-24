@@ -192,11 +192,11 @@ const postGenerateInner$ = command(
     );
     signal.throwIfAborted();
     const runId =
-      auth.tokenType === "zero" || auth.tokenType === "sandbox"
+      auth.tokenType === "agent" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const admission = await set(
       startRunBuiltInAdmission$,
       { runId, kind: "video" },

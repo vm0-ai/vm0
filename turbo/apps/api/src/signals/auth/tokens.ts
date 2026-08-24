@@ -16,10 +16,10 @@ import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import {
+  AgentAuth,
   CliAuth,
   ComposeJobAuth,
   SandboxAuth,
-  ZeroAuth,
 } from "../../types/auth";
 import { singleton } from "../../lib/singleton";
 
@@ -262,7 +262,7 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
   };
 }
 
-export function verifyOkouToken(token: string): ZeroAuth | null {
+export function verifyOkouToken(token: string): AgentAuth | null {
   const parsed = okouTokenPayloadSchema.safeParse(
     verifyPrefixedToken(token, SANDBOX_TOKEN_PREFIX),
   );

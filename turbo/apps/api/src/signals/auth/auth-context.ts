@@ -10,7 +10,7 @@ import {
 } from "./tokens";
 import { clerkSessionAuth$ } from "./clerk-session";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
+import { AgentAuthContext, AuthContext, CliAuth } from "../../types/auth";
 import {
   cliTokenRecord,
   getMemberRoleAndUpdateCache$,
@@ -116,15 +116,15 @@ function resolveSandboxAuth(
   return null;
 }
 
-const zeroAuth$ = command(
+const agentAuth$ = command(
   async (
     { set },
     token: string,
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
-    const zeroAuth = verifyOkouToken(token);
-    if (!zeroAuth) {
+    const agentAuth = verifyOkouToken(token);
+    if (!agentAuth) {
       return null;
     }
 
@@ -132,7 +132,7 @@ const zeroAuth$ = command(
       if (!options.requiredCapability) {
         return null;
       }
-      const hasCapability = zeroAuth.capabilities.some((capability) => {
+      const hasCapability = agentAuth.capabilities.some((capability) => {
         return capability === options.requiredCapability;
       });
       if (!hasCapability) {
@@ -140,27 +140,27 @@ const zeroAuth$ = command(
       }
     }
 
-    const result: ZeroAuthContext = {
-      tokenType: "zero",
-      userId: zeroAuth.userId,
-      orgId: zeroAuth.orgId,
-      runId: zeroAuth.runId,
-      capabilities: [...zeroAuth.capabilities],
-      publicBrand: zeroAuth.publicBrand,
-      ...(zeroAuth.computerUseHostId
-        ? { computerUseHostId: zeroAuth.computerUseHostId }
+    const result: AgentAuthContext = {
+      tokenType: "agent",
+      userId: agentAuth.userId,
+      orgId: agentAuth.orgId,
+      runId: agentAuth.runId,
+      capabilities: [...agentAuth.capabilities],
+      publicBrand: agentAuth.publicBrand,
+      ...(agentAuth.computerUseHostId
+        ? { computerUseHostId: agentAuth.computerUseHostId }
         : {}),
     };
 
     const membership = await set(
       getMemberRoleAndUpdateCache$,
-      zeroAuth.orgId,
-      zeroAuth.userId,
+      agentAuth.orgId,
+      agentAuth.userId,
       signal,
     );
     if (!membership) {
       return {
-        tokenType: "zero" as const,
+        tokenType: "agent" as const,
         userId: result.userId,
         runId: result.runId,
         publicBrand: result.publicBrand,
@@ -178,9 +178,9 @@ const sandboxTokenAuth$ = command(
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
-    const zeroResult = await set(zeroAuth$, token, options, signal);
-    if (zeroResult) {
-      return zeroResult;
+    const agentResult = await set(agentAuth$, token, options, signal);
+    if (agentResult) {
+      return agentResult;
     }
 
     if (!options.requiredCapability && !options.acceptAnySandboxCapability) {
@@ -282,8 +282,8 @@ function sandboxTokenAuthError(
   }
 
   const sandboxAuth = verifySandboxToken(token);
-  const zeroAuth = sandboxAuth ? null : verifyOkouToken(token);
-  if (!sandboxAuth && !zeroAuth) {
+  const agentAuth = sandboxAuth ? null : verifyOkouToken(token);
+  if (!sandboxAuth && !agentAuth) {
     return null;
   }
 

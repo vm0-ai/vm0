@@ -343,7 +343,7 @@ const sendAgentPhoneVerificationText$ = command(
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -478,7 +478,7 @@ const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const bodyResult = await get(connectBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
