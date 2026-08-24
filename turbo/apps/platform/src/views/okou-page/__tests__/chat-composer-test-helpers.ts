@@ -284,7 +284,6 @@ export function mockAgent(options?: {
       description: null,
       sound: null,
       avatarUrl: null,
-      headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
     ...(options?.includeOtherAgent
@@ -295,7 +294,6 @@ export function mockAgent(options?: {
             description: null,
             sound: null,
             avatarUrl: null,
-            headVersionId: "version_2",
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]

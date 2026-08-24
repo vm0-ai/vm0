@@ -72,7 +72,7 @@ import {
 type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly draftUserMessage: UserMessageInputDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
@@ -155,7 +155,7 @@ function ownedChatThread(
       .select({
         id: chatThreads.id,
         title: chatThreads.title,
-        agentComposeId: agents.id,
+        agentId: agents.id,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -177,14 +177,14 @@ function ownedChatThread(
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
       .limit(1);
 
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return null;
     }
 
     return {
       id: thread.id,
       title: thread.title,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
@@ -319,7 +319,7 @@ export function chatThreadDetail(args: {
  */
 export function chatThreadUnreads(args: {
   readonly userId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -334,7 +334,7 @@ export function chatThreadUnreads(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          eq(chatThreads.agentId, args.agentComposeId),
+          eq(chatThreads.agentId, args.agentId),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -635,7 +635,7 @@ export const createChatThread$ = command(
     args: {
       readonly userId: string;
       readonly orgId: string;
-      readonly agentComposeId: string;
+      readonly agentId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
       readonly eventId: string | undefined;
@@ -666,7 +666,7 @@ export const createChatThread$ = command(
         await prepareChatThreadConnectorSelections(tx, {
           orgId: args.orgId,
           userId: args.userId,
-          agentId: args.agentComposeId,
+          agentId: args.agentId,
           selections: args.connectorSelections ?? [],
         });
       if (preparedConnectorSelections.kind === "invalid") {
@@ -682,7 +682,7 @@ export const createChatThread$ = command(
             ? { id: args.clientThreadId }
             : {}),
           userId: args.userId,
-          agentId: args.agentComposeId,
+          agentId: args.agentId,
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
           modelProviderId: args.modelProviderId,
@@ -706,7 +706,7 @@ export const createChatThread$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: createdThread.id,
-        agentComposeId: args.agentComposeId,
+        agentId: args.agentId,
         eventId: args.eventId,
         title: args.title ?? null,
         selectedModel: args.selectedModel,
@@ -792,7 +792,7 @@ export const deleteChatThread$ = command(
       const [ownedThread] = await tx
         .select({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         })
         .from(chatThreads)
         .where(
@@ -802,7 +802,7 @@ export const deleteChatThread$ = command(
           ),
         )
         .for("update");
-      if (!ownedThread?.agentComposeId) {
+      if (!ownedThread?.agentId) {
         return {
           deleted: false,
           activeRuns: [] as readonly ThreadRunToCancel[],
@@ -815,7 +815,7 @@ export const deleteChatThread$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: ownedThread.id,
-        agentComposeId: ownedThread.agentComposeId,
+        agentId: ownedThread.agentId,
         eventId: args.eventId,
       });
 

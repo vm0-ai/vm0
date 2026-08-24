@@ -261,7 +261,7 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   const unreads = await get(
     chatThreadUnreads({
       userId: auth.userId,
-      agentComposeId: query.agentId,
+      agentId: query.agentId,
     }),
   );
 

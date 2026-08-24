@@ -83,7 +83,7 @@ async function seedActor(): Promise<TranslationActor> {
   });
   const api = createRunsApi(context);
   const name = `translation-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createHistoricalCompose(actor, {
+  const compose = await api.createDirectAgent(actor, {
     version: "1.0",
     agents: {
       [name]: {
@@ -93,7 +93,7 @@ async function seedActor(): Promise<TranslationActor> {
     },
   });
   const run = await api.createDirectRun(actor, {
-    agentId: compose.composeId,
+    agentId: compose.agentId,
     prompt: "Translate text",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({

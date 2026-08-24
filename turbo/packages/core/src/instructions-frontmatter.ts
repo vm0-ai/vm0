@@ -94,7 +94,7 @@ function stripLegacyFrontmatter(content: string): string {
  *
  * Kept for transition: existing S3 archives may still have baked-in
  * `[AGENT_PROFILE]` blocks from before metadata was moved to the
- * `zero_agents` table. Once all instructions have been re-uploaded
+ * canonical Agent table. Once all instructions have been re-uploaded
  * without the block, this function can be removed entirely.
  */
 export function stripMetadataFrontmatter(content: string): string {

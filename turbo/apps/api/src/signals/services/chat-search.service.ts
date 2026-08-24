@@ -100,7 +100,7 @@ async function chatSearchIndexedMatches(
   const indexedMatches = db
     .select({
       ...searchMessageColumns,
-      agentComposeId: chatEventSearchMessages.agentId,
+      agentId: chatEventSearchMessages.agentId,
     })
     .from(chatEventSearchMessages)
     .where(
@@ -131,7 +131,7 @@ async function chatSearchIndexedMatches(
       agentName: agents.name,
     })
     .from(indexedMatches)
-    .innerJoin(agents, eq(indexedMatches.agentComposeId, agents.id))
+    .innerJoin(agents, eq(indexedMatches.agentId, agents.id))
     .orderBy(desc(indexedMatches.createdAt));
 }
 

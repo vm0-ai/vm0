@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
+
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -8,10 +9,6 @@ import {
   testSlackStateContract,
   type TestSlackStatePostBody,
 } from "@okouai/api-contracts/contracts/test-slack-state";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -24,7 +21,6 @@ import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { variables } from "@okouai/db/schema/variable";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -68,8 +64,6 @@ const SLACK_BOT_SCOPES = JSON.stringify([
   "files:read",
   "files:write",
 ]);
-const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
-const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 const SLACK_E2E_FIXTURES = {
   botUserId: "U_E2E_BOT",
   botToken: "xoxb-e2e-test-bot-token",
@@ -80,13 +74,6 @@ type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();
-}
-
-function contentKeys(value: unknown): string[] {
-  if (value && typeof value === "object") {
-    return Object.keys(value);
-  }
-  return [];
 }
 
 interface UpsertSlackInstallationInput {
@@ -172,32 +159,21 @@ interface SeedDefaultAgentInput {
 async function seedDefaultAgent(
   db: Db,
   input: SeedDefaultAgentInput,
-): Promise<{ composeId: string; versionId: string; agentId: string }> {
-  const compose = await getOrInsertCompose(db, input);
-  const composeId = compose.id;
-  const versionId = await ensureComposeVersion(
-    db,
-    composeId,
-    input.userId,
-    input.name,
-    compose.headVersionId,
-  );
-
-  await db
-    .insert(zeroAgents)
+): Promise<{ agentId: string }> {
+  const [inserted] = await db
+    .insert(agents)
     .values({
-      id: composeId,
+      id: randomUUID(),
       orgId: input.orgId,
       owner: input.userId,
       name: input.name,
       displayName: input.displayName ?? null,
     })
-    // Telegram can seed this shared agent at the same time. Handle either
-    // unique key as the arbiter before updating the canonical compose row.
-    .onConflictDoNothing();
+    .onConflictDoNothing({ target: [agents.orgId, agents.name] })
+    .returning({ id: agents.id });
 
   const [agent] = await db
-    .update(zeroAgents)
+    .update(agents)
     .set({
       owner: input.userId,
       displayName: input.displayName ?? null,
@@ -205,12 +181,12 @@ async function seedDefaultAgent(
     })
     .where(
       and(
-        eq(zeroAgents.id, composeId),
-        eq(zeroAgents.orgId, input.orgId),
-        eq(zeroAgents.name, input.name),
+        inserted ? eq(agents.id, inserted.id) : sql`true`,
+        eq(agents.orgId, input.orgId),
+        eq(agents.name, input.name),
       ),
     )
-    .returning({ id: zeroAgents.id });
+    .returning({ id: agents.id });
   if (!agent) {
     throw new Error("Failed to resolve seeded default agent");
   }
@@ -219,42 +195,38 @@ async function seedDefaultAgent(
     await ensureStarterCreditGrant(tx, input.orgId);
     await tx
       .insert(orgMetadata)
-      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .values({ orgId: input.orgId, defaultAgentId: agent.id })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, updatedAt: nowDate() },
+        set: { defaultAgentId: agent.id, updatedAt: nowDate() },
       });
   });
 
-  await seedVm0ManagedKeys(db, composeId);
+  await seedVm0ManagedKeys(db, agent.id);
 
-  return { composeId, versionId, agentId: composeId };
+  return { agentId: agent.id };
 }
 
-async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await acquireManagedModelKeyFixture(
-    db,
-    composeId,
-    vm0ManagedKeyRows(composeId),
-  );
+async function seedVm0ManagedKeys(db: Db, agentId: string): Promise<void> {
+  await acquireManagedModelKeyFixture(db, agentId, vm0ManagedKeyRows(agentId));
 }
 
-function vm0ManagedKeyRows(composeId: string) {
+function vm0ManagedKeyRows(agentId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      apiKey: `vm0-key-default-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-default-${agentId}`,
+      label: agentId,
     },
     {
       vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-anthropic-${agentId}`,
+      label: agentId,
     },
     {
       vendor: "moonshot",
-      apiKey: `vm0-key-moonshot-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-moonshot-${agentId}`,
+      label: agentId,
     },
   ];
 }
@@ -263,156 +235,17 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
-  const [compose] = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, orgId),
-        eq(agentComposes.name, DEFAULT_AGENT_NAME),
-      ),
-    )
+  const [agent] = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.name, DEFAULT_AGENT_NAME)))
     .limit(1);
 
-  if (!compose) {
+  if (!agent) {
     return;
   }
 
-  await releaseManagedModelKeyFixture(db, compose.id);
-}
-
-async function getOrInsertCompose(
-  db: Db,
-  input: SeedDefaultAgentInput,
-): Promise<{ id: string; headVersionId: string | null }> {
-  const [inserted] = await db
-    .insert(agentComposes)
-    .values({
-      userId: input.userId,
-      orgId: input.orgId,
-      name: input.name,
-    })
-    .onConflictDoNothing({
-      target: [agentComposes.orgId, agentComposes.name],
-    })
-    .returning({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    });
-
-  if (inserted) {
-    return inserted;
-  }
-
-  const [existing] = await db
-    .select({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, input.orgId),
-        eq(agentComposes.name, input.name),
-      ),
-    )
-    .limit(1);
-
-  if (!existing) {
-    throw new Error("Failed to resolve agent compose after conflict");
-  }
-  return existing;
-}
-
-async function ensureComposeVersion(
-  db: Db,
-  composeId: string,
-  userId: string,
-  name: string,
-  headVersionId: string | null,
-): Promise<string> {
-  if (headVersionId) {
-    return headVersionId;
-  }
-
-  const content = defaultAgentContent(name);
-  const versionId = createHash("sha256")
-    .update(JSON.stringify(content) + composeId)
-    .digest("hex");
-  await db
-    .insert(agentComposeVersions)
-    .values({
-      id: versionId,
-      composeId,
-      content,
-      createdBy: userId,
-    })
-    .onConflictDoNothing();
-
-  const [updated] = await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId, updatedAt: nowDate() })
-    .where(
-      and(eq(agentComposes.id, composeId), isNull(agentComposes.headVersionId)),
-    )
-    .returning({ headVersionId: agentComposes.headVersionId });
-  if (updated?.headVersionId) {
-    return updated.headVersionId;
-  }
-
-  const [compose] = await db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  if (compose?.headVersionId) {
-    return compose.headVersionId;
-  }
-
-  throw new Error("Failed to resolve agent compose head version");
-}
-
-function defaultAgentContent(name: string) {
-  return {
-    version: "1.0",
-    agents: {
-      [name]: {
-        framework: "claude-code",
-        environment: {
-          ANTHROPIC_API_KEY: "",
-          ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
-          ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
-        },
-      },
-    },
-  };
-}
-
-async function setComposeHeadVersion(
-  db: Db,
-  args: {
-    readonly composeId: string;
-    readonly userId: string;
-    readonly content: unknown;
-  },
-): Promise<string> {
-  const versionId = createHash("sha256")
-    .update(JSON.stringify(args.content) + args.composeId)
-    .digest("hex");
-  await db
-    .insert(agentComposeVersions)
-    .values({
-      id: versionId,
-      composeId: args.composeId,
-      content: args.content,
-      createdBy: args.userId,
-    })
-    .onConflictDoNothing();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId, updatedAt: nowDate() })
-    .where(eq(agentComposes.id, args.composeId));
-  return versionId;
+  await releaseManagedModelKeyFixture(db, agent.id);
 }
 
 async function ensureStarterCreditGrant(
@@ -642,51 +475,6 @@ async function defaultAgentFor(
   );
 }
 
-async function defaultComposeFor(
-  db: ReadonlyDb,
-  defaultAgentId: string | null | undefined,
-) {
-  if (!defaultAgentId) {
-    return null;
-  }
-
-  return (
-    (
-      await db
-        .select({
-          id: agentComposes.id,
-          name: agentComposes.name,
-          headVersionId: agentComposes.headVersionId,
-        })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, defaultAgentId))
-        .limit(1)
-    )[0] ?? null
-  );
-}
-
-async function defaultComposeVersionFor(
-  db: ReadonlyDb,
-  headVersionId: string | null | undefined,
-) {
-  if (!headVersionId) {
-    return null;
-  }
-
-  return (
-    (
-      await db
-        .select({
-          id: agentComposeVersions.id,
-          content: agentComposeVersions.content,
-        })
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, headVersionId))
-        .limit(1)
-    )[0] ?? null
-  );
-}
-
 async function upsertOrgCacheForTest(
   db: Db,
   args: {
@@ -804,11 +592,6 @@ const getSlackState$ = computed(async (get) => {
   const recentRuns = await recentSlackRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
   const defaultAgent = await defaultAgentFor(db, orgMeta?.defaultAgentId);
-  const compose = await defaultComposeFor(db, orgMeta?.defaultAgentId);
-  const composeVersion = await defaultComposeVersionFor(
-    db,
-    compose?.headVersionId,
-  );
   return {
     status: 200 as const,
     body: {
@@ -845,13 +628,6 @@ const getSlackState$ = computed(async (get) => {
       }),
       org_metadata: orgMeta,
       default_agent: defaultAgent,
-      default_compose: compose,
-      default_compose_version: composeVersion
-        ? {
-            id: composeVersion.id,
-            content_keys: contentKeys(composeVersion.content),
-          }
-        : null,
     },
   };
 });
@@ -965,7 +741,7 @@ async function maybeSeedDefaultAgentForPost(
   db: Db,
   body: TestSlackStatePostBody,
   actor: { readonly orgId: string; readonly userId: string },
-): Promise<{ readonly composeId: string } | undefined> {
+): Promise<{ readonly agentId: string } | undefined> {
   if (!body.seed_default_agent) {
     return undefined;
   }
@@ -975,13 +751,6 @@ async function maybeSeedDefaultAgentForPost(
     name: body.default_agent_name ?? DEFAULT_AGENT_NAME,
     displayName: body.default_agent_display_name,
   });
-  if (body.compose_content !== undefined) {
-    await setComposeHeadVersion(db, {
-      composeId: defaultAgent.composeId,
-      userId: actor.userId,
-      content: body.compose_content,
-    });
-  }
   return defaultAgent;
 }
 
@@ -1078,7 +847,7 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       org_id: actor.orgId,
       user_id: actor.userId,
       connection_id: connectionId ?? null,
-      default_agent_id: defaultAgent?.composeId ?? null,
+      default_agent_id: defaultAgent?.agentId ?? null,
     },
   };
 });
@@ -1188,25 +957,23 @@ async function deleteSlackRunsForOrg(
   signal.throwIfAborted();
 }
 
-async function deleteSlackComposesForOrg(
+async function deleteSlackAgentsForOrg(
   db: Db,
   orgId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const composeRows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(eq(agentComposes.orgId, orgId));
+  const agentRows = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(eq(agents.orgId, orgId));
   signal.throwIfAborted();
-  const composeIds = composeRows.map((row) => {
+  const agentIds = agentRows.map((row) => {
     return row.id;
   });
-  if (composeIds.length === 0) {
+  if (agentIds.length === 0) {
     return;
   }
-  await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-  signal.throwIfAborted();
-  await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
+  await db.delete(agents).where(inArray(agents.id, agentIds));
   signal.throwIfAborted();
 }
 
@@ -1221,7 +988,7 @@ async function deleteSlackOrgState(
   signal.throwIfAborted();
   await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
   signal.throwIfAborted();
-  await deleteSlackComposesForOrg(db, orgId, signal);
+  await deleteSlackAgentsForOrg(db, orgId, signal);
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
 }

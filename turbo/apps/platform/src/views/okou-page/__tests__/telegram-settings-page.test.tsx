@@ -22,7 +22,6 @@ function zeroAgent(): TeamComposeItem {
     description: null,
     sound: null,
     avatarUrl: null,
-    headVersionId: "version_1",
     updatedAt: "2024-01-01T00:00:00Z",
   };
 }
@@ -34,7 +33,6 @@ function supportAgent(): TeamComposeItem {
     description: null,
     sound: null,
     avatarUrl: null,
-    headVersionId: "version_2",
     updatedAt: "2024-01-02T00:00:00Z",
   };
 }

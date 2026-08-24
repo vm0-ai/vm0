@@ -5,7 +5,6 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 
 /**
@@ -13,19 +12,13 @@ import { agents } from "./agent";
  *
  * Overrides the org default agent for a single user across every Slack
  * workspace they are connected to in that org. A missing row (or
- * selected_compose_id = null) means "use org default".
+ * selected_agent_id = null) means "use org default".
  */
 export const slackUserAgentPreferences = pgTable(
   "slack_user_agent_preferences",
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    selectedComposeId: uuid("selected_compose_id").references(
-      () => {
-        return agentComposes.id;
-      },
-      { onDelete: "set null" },
-    ),
     selectedAgentId: uuid("selected_agent_id").references(
       () => {
         return agents.id;
