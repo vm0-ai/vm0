@@ -257,14 +257,17 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
   const localization = getClerkLocalization(authBrand.brandName, locale, t);
   const translatedCopy = {
     legacySignIn: t(($) => {
-      return $.auth.v2.continueToSignIn;
+      return $.auth.v2.signIn.action;
     }),
     loading: t(($) => {
       return $.auth.loading;
     }),
-    signInTitle: t(($) => {
-      return $.auth.documentTitles.signIn;
-    }),
+    signInTitle: t(
+      ($) => {
+        return $.auth.v2.signIn.title;
+      },
+      { brandName: authBrand.brandName },
+    ),
   };
   return {
     ...formCopy(localization),

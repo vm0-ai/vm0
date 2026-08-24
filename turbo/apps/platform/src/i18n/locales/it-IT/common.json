@@ -503,6 +503,28 @@
       "zoomIn": "Ingrandisci",
       "zoomOut": "Rimpicciolisci"
     },
+    "annotation": {
+      "attach": "Allega segni",
+      "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
+      "open": "Annota",
+      "redo": "Ripeti",
+      "removeMark": "Rimuovi segno",
+      "subtitle_one": "{{count}} segno",
+      "subtitle_many": "{{count}} segni",
+      "subtitle_other": "{{count}} segni",
+      "tools": {
+        "arrow": "Freccia",
+        "box": "Rettangolo",
+        "crop": "Ritaglia",
+        "highlight": "Evidenzia",
+        "pen": "Disegna",
+        "redact": "Oscura",
+        "select": "Seleziona",
+        "text": "Testo"
+      },
+      "undo": "Annulla"
+    },
     "attachments": {
       "cancelUpload": "Annulla caricamento {{filename}}",
       "download": "Scarica {{filename}}",
@@ -1033,12 +1055,23 @@
       "signIn": "Accedi",
       "signUp": "Iscriviti"
     },
+    "homeLink": "Vai alla home di {{brandName}}",
     "loading": "Caricamento dell'autenticazione",
+    "theme": {
+      "darkEnabled": "Tema scuro attivato",
+      "lightEnabled": "Tema chiaro attivato"
+    },
     "toggleTheme": "Cambia tema",
     "v2": {
-      "continueToSignIn": "Continua per accedere",
-      "continueToSignUp": "Continua per registrarti",
-      "unavailable": "La nuova esperienza di autenticazione non è ancora disponibile."
+      "signIn": {
+        "action": "Usa l'accesso attuale",
+        "title": "Accedi a {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usa la registrazione attuale",
+        "description": "La nuova esperienza di registrazione non è ancora disponibile.",
+        "title": "Crea il tuo account {{brandName}}"
+      }
     }
   },
   "authorization": {

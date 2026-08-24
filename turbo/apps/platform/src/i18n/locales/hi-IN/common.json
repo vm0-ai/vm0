@@ -489,6 +489,27 @@
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट"
     },
+    "annotation": {
+      "attach": "चिह्न संलग्न करें",
+      "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
+      "open": "टिप्पणी करें",
+      "redo": "फिर से करें",
+      "removeMark": "चिह्न हटाएँ",
+      "subtitle_one": "{{count}} चिह्न",
+      "subtitle_other": "{{count}} चिह्न",
+      "tools": {
+        "arrow": "तीर",
+        "box": "बॉक्स",
+        "crop": "काटें",
+        "highlight": "हाइलाइट",
+        "pen": "बनाएँ",
+        "redact": "छिपाएँ",
+        "select": "चुनें",
+        "text": "टेक्स्ट"
+      },
+      "undo": "पूर्ववत करें"
+    },
     "attachments": {
       "cancelUpload": "अपलोड {{filename}} रद्द करें",
       "download": "{{filename}} डाउनलोड करें",
@@ -1015,12 +1036,23 @@
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
     },
+    "homeLink": "{{brandName}} होम पर जाएं",
     "loading": "प्रमाणीकरण लोड हो रहा है",
+    "theme": {
+      "darkEnabled": "डार्क थीम चालू है",
+      "lightEnabled": "लाइट थीम चालू है"
+    },
     "toggleTheme": "थीम टॉगल करें",
     "v2": {
-      "continueToSignIn": "साइन इन जारी रखें",
-      "continueToSignUp": "साइन अप जारी रखें",
-      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+      "signIn": {
+        "action": "मौजूदा साइन-इन का उपयोग करें",
+        "title": "{{brandName}} में साइन इन करें"
+      },
+      "signUp": {
+        "action": "मौजूदा साइन-अप का उपयोग करें",
+        "description": "नया साइन-अप अनुभव अभी उपलब्ध नहीं है।",
+        "title": "अपना {{brandName}} खाता बनाएं"
+      }
     }
   },
   "authorization": {

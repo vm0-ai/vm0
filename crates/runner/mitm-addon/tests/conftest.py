@@ -499,7 +499,7 @@ def sync_usage_executor():
             self._futures.append(future)
             try:
                 result = fn(*args, **kwargs)
-            except Exception as error:
+            except BaseException as error:
                 future.set_exception(error)
             else:
                 future.set_result(result)

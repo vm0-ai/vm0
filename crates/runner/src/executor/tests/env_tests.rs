@@ -465,6 +465,26 @@ fn build_env_json_required_keys() {
             .is_ok()
     );
     assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
+    assert_eq!(
+        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
+            .unwrap(),
+        "sandboxReused"
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::API_START_TIME_ENV).unwrap(),
+        ""
+    );
+    for canonical_key in [
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    ] {
+        assert!(
+            !env.contains_key(canonical_key),
+            "reader Stage 1 must not emit canonical key {canonical_key}"
+        );
+    }
 }
 
 #[test]

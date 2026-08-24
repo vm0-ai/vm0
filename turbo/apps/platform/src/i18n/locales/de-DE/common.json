@@ -489,6 +489,27 @@
       "zoomIn": "Vergrößern",
       "zoomOut": "Herauszoomen"
     },
+    "annotation": {
+      "attach": "Markierungen anhängen",
+      "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "open": "Markieren",
+      "redo": "Wiederholen",
+      "removeMark": "Markierung entfernen",
+      "subtitle_one": "{{count}} Markierung",
+      "subtitle_other": "{{count}} Markierungen",
+      "tools": {
+        "arrow": "Pfeil",
+        "box": "Rechteck",
+        "crop": "Zuschneiden",
+        "highlight": "Hervorheben",
+        "pen": "Zeichnen",
+        "redact": "Schwärzen",
+        "select": "Auswählen",
+        "text": "Text"
+      },
+      "undo": "Rückgängig"
+    },
     "attachments": {
       "cancelUpload": "Hochladen abbrechen {{filename}}",
       "download": "{{filename}} herunterladen",
@@ -1015,12 +1036,23 @@
       "signIn": "Anmelden",
       "signUp": "Registrieren"
     },
+    "homeLink": "Zur {{brandName}}-Startseite",
     "loading": "Authentifizierung wird geladen",
+    "theme": {
+      "darkEnabled": "Dunkles Design aktiviert",
+      "lightEnabled": "Helles Design aktiviert"
+    },
     "toggleTheme": "Design wechseln",
     "v2": {
-      "continueToSignIn": "Weiter zur Anmeldung",
-      "continueToSignUp": "Weiter zur Registrierung",
-      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+      "signIn": {
+        "action": "Aktuelle Anmeldung verwenden",
+        "title": "Bei {{brandName}} anmelden"
+      },
+      "signUp": {
+        "action": "Aktuelle Registrierung verwenden",
+        "description": "Die neue Registrierungsoberfläche ist noch nicht verfügbar.",
+        "title": "Ihr {{brandName}}-Konto erstellen"
+      }
     }
   },
   "authorization": {

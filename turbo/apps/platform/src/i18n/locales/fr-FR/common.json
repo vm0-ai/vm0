@@ -503,6 +503,28 @@
       "zoomIn": "Zoomer",
       "zoomOut": "Dézoomer"
     },
+    "annotation": {
+      "attach": "Joindre les annotations",
+      "draftOnly": "Les annotations restent dans le brouillon — modifiables jusqu'à l'envoi",
+      "notePlaceholder": "Dites ce qui doit changer ici",
+      "open": "Annoter",
+      "redo": "Rétablir",
+      "removeMark": "Supprimer l'annotation",
+      "subtitle_one": "{{count}} annotation",
+      "subtitle_many": "{{count}} annotations",
+      "subtitle_other": "{{count}} annotations",
+      "tools": {
+        "arrow": "Flèche",
+        "box": "Rectangle",
+        "crop": "Rogner",
+        "highlight": "Surligner",
+        "pen": "Dessiner",
+        "redact": "Masquer",
+        "select": "Sélectionner",
+        "text": "Texte"
+      },
+      "undo": "Annuler"
+    },
     "attachments": {
       "cancelUpload": "Annuler le téléchargement {{filename}}",
       "download": "Télécharger {{filename}}",
@@ -1033,12 +1055,23 @@
       "signIn": "Se connecter",
       "signUp": "S'inscrire"
     },
+    "homeLink": "Accéder à l'accueil de {{brandName}}",
     "loading": "Chargement de l'authentification",
+    "theme": {
+      "darkEnabled": "Thème sombre activé",
+      "lightEnabled": "Thème clair activé"
+    },
     "toggleTheme": "Changer de thème",
     "v2": {
-      "continueToSignIn": "Continuer vers la connexion",
-      "continueToSignUp": "Continuer vers l'inscription",
-      "unavailable": "La nouvelle expérience d'authentification n'est pas encore disponible."
+      "signIn": {
+        "action": "Utiliser la connexion actuelle",
+        "title": "Se connecter à {{brandName}}"
+      },
+      "signUp": {
+        "action": "Utiliser l'inscription actuelle",
+        "description": "La nouvelle expérience d'inscription n'est pas encore disponible.",
+        "title": "Créer votre compte {{brandName}}"
+      }
     }
   },
   "authorization": {

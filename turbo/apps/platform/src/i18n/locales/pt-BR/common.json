@@ -503,6 +503,28 @@
       "zoomIn": "Ampliar zoom",
       "zoomOut": "Reduzir zoom"
     },
+    "annotation": {
+      "attach": "Anexar marcações",
+      "draftOnly": "As marcações ficam no rascunho — você pode alterá-las até enviar",
+      "notePlaceholder": "Diga o que deve mudar aqui",
+      "open": "Anotar",
+      "redo": "Refazer",
+      "removeMark": "Remover marcação",
+      "subtitle_one": "{{count}} marcação",
+      "subtitle_many": "{{count}} marcações",
+      "subtitle_other": "{{count}} marcações",
+      "tools": {
+        "arrow": "Seta",
+        "box": "Retângulo",
+        "crop": "Recortar",
+        "highlight": "Destacar",
+        "pen": "Desenhar",
+        "redact": "Ocultar",
+        "select": "Selecionar",
+        "text": "Texto"
+      },
+      "undo": "Desfazer"
+    },
     "attachments": {
       "cancelUpload": "Cancelar envio de {{filename}}",
       "download": "Baixar {{filename}}",
@@ -1033,12 +1055,23 @@
       "signIn": "Entrar",
       "signUp": "Criar conta"
     },
+    "homeLink": "Ir para a página inicial do {{brandName}}",
     "loading": "Carregando autenticação",
+    "theme": {
+      "darkEnabled": "Tema escuro ativado",
+      "lightEnabled": "Tema claro ativado"
+    },
     "toggleTheme": "Alternar tema",
     "v2": {
-      "continueToSignIn": "Continuar para entrar",
-      "continueToSignUp": "Continuar para criar uma conta",
-      "unavailable": "A nova experiência de autenticação ainda não está disponível."
+      "signIn": {
+        "action": "Usar o login atual",
+        "title": "Entrar no {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usar o cadastro atual",
+        "description": "A nova experiência de cadastro ainda não está disponível.",
+        "title": "Criar sua conta do {{brandName}}"
+      }
     }
   },
   "authorization": {

@@ -30,6 +30,8 @@ import { GrowthEntryHeader } from "./growth-entry.tsx";
 import { homeStartCardsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { relatedCatalogItems$ } from "../../signals/okou-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
+import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
+import { annotationSessionActive$ } from "../../signals/okou-page/image-annotation.ts";
 import {
   chatPageTaglineIndex$,
   suggestedPrompts$,
@@ -522,6 +524,7 @@ export function AgentChatPage() {
   );
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const annotationSessionActive = useGet(annotationSessionActive$);
 
   const handleInputChange = (value: string) => {
     setInput(value);
@@ -560,6 +563,9 @@ export function AgentChatPage() {
       <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />
       {lightboxUrl && <AttachmentLightbox />}
+      {/* Mounted beside the viewer rather than inside it: opening the editor
+          closes the lightbox, so nesting would unmount the editor immediately. */}
+      {annotationSessionActive && <ImageAnnotationEditor />}
     </div>
   );
 }

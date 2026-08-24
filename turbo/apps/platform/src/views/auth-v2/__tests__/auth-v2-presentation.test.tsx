@@ -1,0 +1,140 @@
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+function setBrowserUrl(url: string): void {
+  context.mocks.browser.url(url);
+}
+
+function useJapaneseLocale(): void {
+  document.documentElement.lang = "ja-JP";
+  context.mocks.data.userPreferences({
+    locale: "ja-JP",
+    supportedLocales: ["en-US", "ja-JP"],
+  });
+}
+
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Link not found: ${text}`);
+  }
+  return link;
+}
+
+function linkByLabel(label: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Link not found: ${label}`);
+  }
+  return link;
+}
+
+function buttonByLabel(label: string): HTMLButtonElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${label}`);
+  }
+  return button;
+}
+
+describe("auth v2 presentation", () => {
+  it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
+    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+
+    detachedSetupPage({ context, path: "/v2/sign-in" });
+
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Sign in to VM0",
+    });
+    await waitFor(() => {
+      expect(heading).toHaveFocus();
+    });
+
+    expect(screen.getByRole("main")).toContainElement(heading);
+    expect(
+      screen.getByRole("region", { name: "Sign in to VM0" }),
+    ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
+    expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
+
+    const announcer = screen.getByTestId("auth-v2-announcer");
+    expect(announcer).toHaveAttribute("aria-atomic", "true");
+    expect(announcer).toHaveAttribute("aria-live", "polite");
+
+    expect(linkByText("Use current sign-in")).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
+  });
+
+  it("toggles themes with pointer and keyboard input while preserving focus", async () => {
+    const user = userEvent.setup();
+    context.mocks.browser.matchMedia(false);
+    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+
+    detachedSetupPage({ context, path: "/v2/sign-in" });
+
+    await screen.findByRole("heading", {
+      name: "Sign in to VM0",
+    });
+    const themeToggle = buttonByLabel("Toggle theme");
+    expect(themeToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(themeToggle);
+
+    expect(themeToggle).toHaveFocus();
+    expect(themeToggle).toHaveAttribute("aria-pressed", "true");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
+    expect(screen.getByAltText("VM0")).toHaveAttribute(
+      "src",
+      platformVm0LogoImg,
+    );
+
+    await user.keyboard("{Enter}");
+
+    expect(themeToggle).toHaveAttribute("aria-pressed", "false");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
+  });
+
+  it("localizes the Okou presentation boundary through platform resources", async () => {
+    useJapaneseLocale();
+    setBrowserUrl("https://app.okou.ai/v2/sign-up");
+
+    detachedSetupPage({ context, path: "/v2/sign-up" });
+
+    const heading = await screen.findByRole("heading", {
+      level: 1,
+      name: "Okou アカウントを作成",
+    });
+    expect(
+      screen.getByRole("region", { name: "Okou アカウントを作成" }),
+    ).toHaveAccessibleDescription(
+      "新しいサインアップ画面はまだ利用できません。",
+    );
+    expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
+    expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
+      "href",
+      "/sign-up",
+    );
+    expect(heading).toBeVisible();
+    expect(document.title).toBe("サインアップ | Okou");
+  });
+});
