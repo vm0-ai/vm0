@@ -19,6 +19,12 @@ import { clerk$ } from "../auth.ts";
 import { locale$ } from "../locale.ts";
 import { logger } from "../log.ts";
 import { createDeferredPromise, onRef, settle, withCleanup } from "../utils.ts";
+import type { AuthV2Navigation } from "./navigation.ts";
+import {
+  discoverAuthV2SignUpExternalCapabilities,
+  recoverAuthV2GoogleSignUp,
+  startAuthV2GoogleSignUp,
+} from "./sign-up-external-strategies.ts";
 
 const L = logger("AuthV2SignUp");
 
@@ -111,6 +117,8 @@ export interface AuthV2SignUpError {
 }
 
 export interface AuthV2SignUpFlowDependencies {
+  readonly isOAuthCallbackRoute: boolean;
+  readonly navigation: AuthV2Navigation;
   readonly resolveRedirectUrl: () => string;
 }
 
@@ -122,6 +130,7 @@ export interface AuthV2SignUpSignals {
   readonly emailAddress$: Computed<string>;
   readonly error$: Computed<AuthV2SignUpError | null>;
   readonly firstName$: Computed<string>;
+  readonly googleOAuthAvailable$: Computed<boolean>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly lastName$: Computed<string>;
   readonly legalAccepted$: Computed<boolean>;
@@ -136,6 +145,7 @@ export interface AuthV2SignUpSignals {
   readonly setLegalAccepted$: Command<void, [boolean]>;
   readonly setPassword$: Command<void, [string]>;
   readonly state$: Computed<AuthV2SignUpState>;
+  readonly startGoogleOAuth$: Command<Promise<void>, [AbortSignal]>;
   readonly submit$: Command<Promise<void>, [AbortSignal]>;
 }
 
@@ -179,6 +189,7 @@ interface SignUpFlowAtoms {
   readonly error$: State<AuthV2SignUpError | null>;
   readonly fatalState$: State<AuthV2SignUpUnknownState | null>;
   readonly firstName$: State<string>;
+  readonly googleOAuthAvailable$: State<boolean>;
   readonly lastName$: State<string>;
   readonly legalAccepted$: State<boolean>;
   readonly password$: State<string>;
@@ -205,6 +216,21 @@ type ApplySignUpResourceCommand = Command<
   Promise<void>,
   [SignUpResource, AbortSignal]
 >;
+type CompleteSignUpSessionCommand = Command<
+  Promise<void>,
+  [string, string | null, AbortSignal]
+>;
+type PrepareEmailVerificationCommand = Command<
+  Promise<void>,
+  [SignUpResource, boolean, AbortSignal]
+>;
+
+interface SignUpResourceCommands {
+  readonly applyResource$: ApplySignUpResourceCommand;
+  readonly completeSession$: CompleteSignUpSessionCommand;
+  readonly initialize$: Command<Promise<void>, [AbortSignal]>;
+  readonly prepareEmailVerification$: PrepareEmailVerificationCommand;
+}
 
 function fieldRequirement(
   field: SupportedSignUpField,
@@ -505,6 +531,7 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
   const emailAddress$ = state("");
   const password$ = state("");
   const firstName$ = state("");
+  const googleOAuthAvailable$ = state(false);
   const lastName$ = state("");
   const legalAccepted$ = state(false);
   const code$ = state("");
@@ -529,6 +556,7 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
     error$,
     fatalState$,
     firstName$,
+    googleOAuthAvailable$,
     lastName$,
     legalAccepted$,
     password$,
@@ -716,21 +744,121 @@ function createActivateSessionCommand(
   );
 }
 
+function createCompleteSessionCommand(
+  atoms: SignUpFlowAtoms,
+  runtime: SignUpFlowRuntime,
+  dependencies: AuthV2SignUpFlowDependencies,
+): CompleteSignUpSessionCommand {
+  const activateSession$ = createActivateSessionCommand(runtime, dependencies);
+  return command(
+    async (
+      { set },
+      sessionId: string,
+      clerkStatus: string | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const activation = await settle(
+        set(activateSession$, sessionId, signal),
+        signal,
+      );
+      if (!activation.ok) {
+        L.error("Auth v2 sign-up activation failed", clerkStatus);
+        set(atoms.fatalState$, {
+          clerkStatus,
+          reason: "activation-failed",
+          status: "unknown",
+        });
+      }
+    },
+  );
+}
+
+function createInitializeCommand(
+  atoms: SignUpFlowAtoms,
+  dependencies: AuthV2SignUpFlowDependencies,
+  applyResource$: ApplySignUpResourceCommand,
+  completeSession$: CompleteSignUpSessionCommand,
+  prepareEmailVerification$: PrepareEmailVerificationCommand,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.client) {
+      throw new Error(
+        "Loaded Clerk instance did not provide a client resource",
+      );
+    }
+    let resource = clerk.client.signUp;
+    let recoveredSessionId: string | null = null;
+    if (dependencies.isOAuthCallbackRoute) {
+      set(atoms.error$, null);
+      const recovery = await settle(recoverAuthV2GoogleSignUp(clerk), signal);
+      if (recovery.ok) {
+        if (recovery.value.status === "sign-in") {
+          window.location.assign(
+            dependencies.navigation.href(
+              "sign-in",
+              recovery.value.stepPath ?? undefined,
+            ),
+          );
+          return;
+        }
+        resource = recovery.value.resource;
+        if (recovery.value.status === "complete") {
+          recoveredSessionId = recovery.value.sessionId;
+        } else if (recovery.value.status === "error") {
+          const error = normalizeClerkError(
+            { errors: [recovery.value.error] },
+            "general",
+          );
+          L.warn(
+            "Auth v2 Google sign-up callback returned an error",
+            error.clerkCode ?? error.code,
+          );
+          set(atoms.error$, error);
+        }
+      } else {
+        const error = normalizeClerkError(recovery.error, "general");
+        L.warn(
+          "Auth v2 Google sign-up callback recovery failed",
+          error.clerkCode ?? error.code,
+        );
+        set(atoms.error$, error);
+        resource = clerk.client.signUp;
+      }
+    }
+    set(
+      atoms.googleOAuthAvailable$,
+      discoverAuthV2SignUpExternalCapabilities(clerk, resource).googleOAuth,
+    );
+    set(atoms.emailAddress$, resource.emailAddress ?? "");
+    set(atoms.firstName$, resource.firstName ?? "");
+    set(atoms.lastName$, resource.lastName ?? "");
+    set(atoms.legalAccepted$, resource.legalAcceptedAt !== null);
+    if (recoveredSessionId) {
+      await set(completeSession$, recoveredSessionId, "complete", signal);
+      signal.throwIfAborted();
+      return;
+    }
+    await set(applyResource$, resource, signal);
+    signal.throwIfAborted();
+    await set(prepareEmailVerification$, resource, true, signal);
+    signal.throwIfAborted();
+  });
+}
+
 function createResourceCommands(
   atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
   dependencies: AuthV2SignUpFlowDependencies,
-): {
-  readonly applyResource$: ApplySignUpResourceCommand;
-  readonly initialize$: Command<Promise<void>, [AbortSignal]>;
-  readonly prepareEmailVerification$: Command<
-    Promise<void>,
-    [SignUpResource, boolean, AbortSignal]
-  >;
-} {
+): SignUpResourceCommands {
   const scheduleExpiry$ = createScheduleExpiryCommand(atoms, runtime);
   const startCooldown$ = createStartCooldownCommand(atoms, runtime);
-  const activateSession$ = createActivateSessionCommand(runtime, dependencies);
+  const completeSession$ = createCompleteSessionCommand(
+    atoms,
+    runtime,
+    dependencies,
+  );
 
   const applyResource$ = command(
     async (
@@ -751,18 +879,13 @@ function createResourceCommands(
       ) {
         return;
       }
-      const activation = await settle(
-        set(activateSession$, snapshot.createdSessionId, signal),
+      await set(
+        completeSession$,
+        snapshot.createdSessionId,
+        snapshot.clerkStatus,
         signal,
       );
-      if (!activation.ok) {
-        L.error("Auth v2 sign-up activation failed", snapshot.clerkStatus);
-        set(atoms.fatalState$, {
-          clerkStatus: snapshot.clerkStatus,
-          reason: "activation-failed",
-          status: "unknown",
-        });
-      }
+      signal.throwIfAborted();
     },
   );
 
@@ -814,22 +937,20 @@ function createResourceCommands(
     },
   );
 
-  const initialize$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const resource = await get(clerkSignUpResource$);
-      signal.throwIfAborted();
-      set(atoms.emailAddress$, resource.emailAddress ?? "");
-      set(atoms.firstName$, resource.firstName ?? "");
-      set(atoms.lastName$, resource.lastName ?? "");
-      set(atoms.legalAccepted$, resource.legalAcceptedAt !== null);
-      await set(applyResource$, resource, signal);
-      signal.throwIfAborted();
-      await set(prepareEmailVerification$, resource, true, signal);
-      signal.throwIfAborted();
-    },
+  const initialize$ = createInitializeCommand(
+    atoms,
+    dependencies,
+    applyResource$,
+    completeSession$,
+    prepareEmailVerification$,
   );
 
-  return { applyResource$, initialize$, prepareEmailVerification$ };
+  return {
+    applyResource$,
+    completeSession$,
+    initialize$,
+    prepareEmailVerification$,
+  };
 }
 
 function createCoalescedOperation(
@@ -851,6 +972,60 @@ function createCoalescedOperation(
       });
     });
     signal.throwIfAborted();
+  });
+}
+
+function createGoogleOAuthOperation(
+  atoms: SignUpFlowAtoms,
+  dependencies: AuthV2SignUpFlowDependencies,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.client) {
+      throw new Error(
+        "Loaded Clerk instance did not provide a client resource",
+      );
+    }
+    const resource = clerk.client.signUp;
+    const capabilities = discoverAuthV2SignUpExternalCapabilities(
+      clerk,
+      resource,
+    );
+    set(atoms.googleOAuthAvailable$, capabilities.googleOAuth);
+    if (!capabilities.googleOAuth) {
+      set(atoms.error$, { code: "unknown", field: "general" });
+      return;
+    }
+
+    const flowState = get(atoms.state$);
+    const snapshot = get(atoms.snapshot$);
+    if (
+      !snapshot ||
+      flowState.status !== "incomplete" ||
+      flowState.step !== "details"
+    ) {
+      return;
+    }
+    const legalAccepted = get(atoms.legalAccepted$);
+    if (snapshot.legal.required && !legalAccepted) {
+      set(atoms.error$, { code: "legal-required", field: "legal" });
+      return;
+    }
+
+    set(atoms.error$, null);
+    const started = await settle(
+      startAuthV2GoogleSignUp(resource, dependencies.navigation, legalAccepted),
+      signal,
+    );
+    if (!started.ok) {
+      const error = normalizeClerkError(started.error, "general");
+      L.warn(
+        "Auth v2 Google sign-up redirect failed",
+        error.clerkCode ?? error.code,
+      );
+      set(atoms.error$, error);
+    }
   });
 }
 
@@ -1168,6 +1343,7 @@ export function createAuthV2SignUpSignals(
     runtime,
     applyResource$,
   );
+  const googleOAuthOperation$ = createGoogleOAuthOperation(atoms, dependencies);
   const formCommands = createFormCommands(atoms);
   return {
     ...formCommands,
@@ -1187,7 +1363,10 @@ export function createAuthV2SignUpSignals(
     firstName$: computed((get) => {
       return get(atoms.firstName$);
     }),
-    initialize$,
+    googleOAuthAvailable$: computed((get) => {
+      return get(atoms.googleOAuthAvailable$);
+    }),
+    initialize$: createCoalescedOperation(runtime, initialize$),
     lastName$: computed((get) => {
       return get(atoms.lastName$);
     }),
@@ -1203,6 +1382,7 @@ export function createAuthV2SignUpSignals(
     }),
     restart$: createCoalescedOperation(runtime, restartOperation$),
     state$: atoms.state$,
+    startGoogleOAuth$: createCoalescedOperation(runtime, googleOAuthOperation$),
     submit$: createCoalescedOperation(runtime, submitOperation$),
   };
 }

@@ -320,19 +320,46 @@ function DetailsStep({
 }) {
   const pageSignal = useGet(pageSignal$);
   const legalAccepted = useGet(signals.legalAccepted$);
+  const googleOAuthAvailable = useGet(signals.googleOAuthAvailable$);
   const captchaState = useGet(signals.captchaState$);
   const error = useGet(signals.error$);
   const setLegalAccepted = useSet(signals.setLegalAccepted$);
   const captchaRef = useSet(signals.captchaRef$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
+  const [googleOAuthLoadable, startGoogleOAuth] = useLoadableSet(
+    signals.startGoogleOAuth$,
+  );
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign up");
   };
   const retrying = captchaState === "error" || captchaState === "expired";
+  const operationPending =
+    submitLoadable.state === "loading" ||
+    googleOAuthLoadable.state === "loading";
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <FlowErrorAlert copy={copy} signals={signals} signInHref={signInHref} />
+      {googleOAuthAvailable ? (
+        <Button
+          className="w-full"
+          disabled={operationPending}
+          type="button"
+          variant="outline"
+          onClick={() => {
+            detach(
+              startGoogleOAuth(pageSignal),
+              Reason.DomCallback,
+              "start auth v2 Google sign up",
+            );
+          }}
+        >
+          {googleOAuthLoadable.state === "loading" ? (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          ) : null}
+          {copy.googleMethod}
+        </Button>
+      ) : null}
       <FieldList copy={copy} fields={state.fields} signals={signals} />
       {state.legal.required ? (
         <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
@@ -360,6 +387,7 @@ function DetailsStep({
       <CaptchaStatus copy={copy} signals={signals} signInHref={signInHref} />
       <SubmitButton
         busy={submitLoadable.state === "loading"}
+        disabled={operationPending}
         label={retrying ? copy.retry : copy.continue}
       />
     </form>

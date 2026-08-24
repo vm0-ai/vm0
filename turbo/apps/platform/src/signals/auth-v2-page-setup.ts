@@ -16,6 +16,7 @@ import {
   createAuthV2SignUpSignals,
   type AuthV2SignUpSignals,
 } from "./auth-v2/sign-up-flow.ts";
+import { AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH } from "./auth-v2/sign-up-external-strategies.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 import { ROUTES } from "./route-paths.ts";
@@ -43,6 +44,10 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       );
     } else {
       signUpSignals = createAuthV2SignUpSignals({
+        isOAuthCallbackRoute:
+          location.pathname ===
+          `${ROUTES.signUpV2}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`,
+        navigation: platformContext.navigation,
         resolveRedirectUrl: () => {
           return platformContext.navigation.completionRedirectUrl;
         },
