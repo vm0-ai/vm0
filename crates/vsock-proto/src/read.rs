@@ -57,6 +57,20 @@ pub(crate) fn ensure_u32_len(field: &'static str, len: usize) -> Result<u32, Pro
     Ok(len as u32)
 }
 
+pub(crate) fn ensure_u16_count(field: &'static str, count: usize) -> Result<u16, ProtocolError> {
+    if count > u16::MAX as usize {
+        return Err(ProtocolError::PayloadCountTooLarge(field, count));
+    }
+    Ok(count as u16)
+}
+
+pub(crate) fn ensure_u32_count(field: &'static str, count: usize) -> Result<u32, ProtocolError> {
+    if count > u32::MAX as usize {
+        return Err(ProtocolError::PayloadCountTooLarge(field, count));
+    }
+    Ok(count as u32)
+}
+
 pub(crate) fn read_u8(
     payload: &[u8],
     offset: &mut usize,

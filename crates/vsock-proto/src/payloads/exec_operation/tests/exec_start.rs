@@ -458,7 +458,7 @@ fn exec_start_rejects_env_count_above_limit() {
     .unwrap_err();
     assert!(matches!(
         err,
-        ProtocolError::PayloadTooLarge("env_count", size) if size == MAX_EXEC_ENV_VARS + 1
+        ProtocolError::PayloadCountTooLarge("env_count", size) if size == MAX_EXEC_ENV_VARS + 1
     ));
 
     let mut payload = exec_start_payload("", &[], "");
@@ -709,7 +709,7 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
     .unwrap_err();
     assert!(matches!(
         err,
-        ProtocolError::PayloadTooLarge("expected_exit_count", _)
+        ProtocolError::PayloadCountTooLarge("expected_exit_count", _)
     ));
 
     let mut payload = default_exec_start_payload();
