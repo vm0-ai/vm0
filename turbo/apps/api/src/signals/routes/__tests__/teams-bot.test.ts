@@ -1780,7 +1780,7 @@ describe("POST /api/zero/teams/bot", () => {
       routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: fileId ?? "",
       }).toString()}`,
       {
@@ -1867,7 +1867,7 @@ describe("POST /api/zero/teams/bot", () => {
       routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: fileId ?? "",
       }).toString()}`,
       {
@@ -1894,7 +1894,7 @@ describe("POST /api/zero/teams/bot", () => {
       contentType: "image/png",
     });
     const legacyDownloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: legacyFileId,
       }).toString()}`,
       {
