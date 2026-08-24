@@ -2627,8 +2627,8 @@
         "connectTitle": "Slack に接続します",
         "invalidDescription": "このページは、Slack 接続リンクから開かれるように設計されています。",
         "open": "Slack を開く",
-        "successDescription": "チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
-        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
+        "successDescription": "チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
+        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
         "successTitle": "Slack に接続しました!"
       },
       "teams": {

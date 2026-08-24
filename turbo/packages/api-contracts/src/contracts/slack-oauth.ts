@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -11,12 +12,14 @@ export const slackOauthInstallQuerySchema = z.object({
   userId: z.string().optional(),
   reinstall: z.string().optional(),
   prompt: z.string().optional(),
+  publicBrand: publicBrandSchema.optional(),
 });
 
 export const slackOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
   userId: z.string().optional(),
   prompt: z.string().optional(),
+  publicBrand: publicBrandSchema.optional(),
 });
 
 export const slackOauthCallbackQuerySchema = z.object({

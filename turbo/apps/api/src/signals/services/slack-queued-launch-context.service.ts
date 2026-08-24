@@ -97,7 +97,7 @@ async function loadSlackLaunchContext(
       channelType: chatSlackContext.channelType,
       threadTs: chatSlackContext.threadTs,
       routeThreadTs: chatSlackContext.routeThreadTs,
-      publicBrand: slackOrgInstallations.publicBrand,
+      publicBrand: chatSlackContext.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
