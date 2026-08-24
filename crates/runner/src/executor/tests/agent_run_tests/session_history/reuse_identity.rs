@@ -263,6 +263,11 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
             call.env_keys,
             vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
         );
+        assert!(
+            !call.env_keys.iter().any(|key| {
+                key == guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
+            })
+        );
         assert!(!call.sudo);
         assert!(call.stdin_bytes.is_none());
     }

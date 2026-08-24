@@ -356,9 +356,17 @@ impl GuestConfigRaw {
     /// contains conflicting values.
     pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
-            std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from);
+            guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
+                .map_err(|error| format!("failed to resolve guest runtime paths: {error}"))?;
+        Self::from_process_env_with_guest_runtime_dir(guest_runtime_dir)
+    }
+
+    /// Capture all remaining startup values after the runtime-directory alias
+    /// pair was resolved at the outer single-threaded bootstrap boundary.
+    pub(crate) fn from_process_env_with_guest_runtime_dir(
+        guest_runtime_dir: guest_contracts::runtime_paths::GuestRuntimeDirEnvResolution,
+    ) -> Result<Self, String> {
+        let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
 
         let (user_env_file, user_env_file_source) = private_payload_file_env(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
