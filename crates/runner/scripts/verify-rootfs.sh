@@ -67,6 +67,7 @@ fi
 # test in cmd/build.rs at compile time.
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 CLAUDE_TOOL_HOOK_DEST="/etc/claude-code/managed-settings.d/90-tool-containment.json"
+CLAUDE_CLI_DEST="/usr/local/bin/claude"
 CODEX_TOOL_HOOK_DEST="/etc/codex/requirements.toml"
 
 # ---------------------------------------------------------------------------
@@ -330,6 +331,11 @@ check_bin "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" "Noto Color Emoji"
 check_required_executable "/usr/local/bin/agent-browser" "agent-browser CLI"
 
 # Check CLIs
+check_required_executable "$CLAUDE_CLI_DEST" "Claude Code CLI"
+check_required_file_contains "$CLAUDE_CLI_DEST" \
+  '--append-system-prompt-file' \
+  "Claude Code append-system-prompt-file support"
+
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
   echo "  gh CLI: found"
 else

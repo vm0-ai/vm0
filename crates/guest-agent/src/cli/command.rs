@@ -20,7 +20,8 @@ pub(super) fn build_claude_command_for_runtime(
         ClaudeArgsConfig {
             model: runtime.anthropic_model.as_ref(),
             resume_id: runtime.resume_session_id.as_ref(),
-            append_system_prompt: runtime.append_system_prompt.as_ref(),
+            append_system_prompt_file: (!runtime.append_system_prompt.is_empty())
+                .then_some(runtime.claude_append_system_prompt_file.as_ref()),
             disallowed_tools: runtime.disallowed_tools.as_ref(),
             tools: runtime.tools.as_ref(),
             settings: runtime.settings.as_ref(),
@@ -49,7 +50,7 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 struct ClaudeArgsConfig<'a> {
     model: &'a str,
     resume_id: &'a str,
-    append_system_prompt: &'a str,
+    append_system_prompt_file: Option<&'a str>,
     disallowed_tools: &'a str,
     tools: &'a str,
     settings: &'a str,
@@ -78,9 +79,9 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         log_info!(LOG_TAG, "Starting new session");
     }
 
-    if !config.append_system_prompt.is_empty() {
-        args.push("--append-system-prompt".to_string());
-        args.push(config.append_system_prompt.to_string());
+    if let Some(path) = config.append_system_prompt_file {
+        args.push("--append-system-prompt-file".to_string());
+        args.push(path.to_string());
     }
 
     push_comma_separated_flag_values(&mut args, "--disallowed-tools", config.disallowed_tools);
@@ -132,6 +133,8 @@ fn build_claude_command_with_config(
 mod tests {
     use super::*;
 
+    const TEST_APPEND_SYSTEM_PROMPT_FILE: &str = "/tmp/claude-append-system-prompt";
+
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
     }
@@ -166,7 +169,8 @@ mod tests {
         build_claude_args(ClaudeArgsConfig {
             model: "",
             resume_id,
-            append_system_prompt,
+            append_system_prompt_file: (!append_system_prompt.is_empty())
+                .then_some(TEST_APPEND_SYSTEM_PROMPT_FILE),
             disallowed_tools,
             tools,
             settings,
@@ -187,7 +191,7 @@ mod tests {
             ClaudeArgsConfig {
                 model: "",
                 resume_id: "",
-                append_system_prompt: "",
+                append_system_prompt_file: None,
                 disallowed_tools: "",
                 tools: "",
                 settings: "",
@@ -202,7 +206,7 @@ mod tests {
         build_claude_args(ClaudeArgsConfig {
             model,
             resume_id: "",
-            append_system_prompt: "",
+            append_system_prompt_file: None,
             disallowed_tools: "",
             tools: "",
             settings: "",
@@ -231,6 +235,7 @@ mod tests {
         assert_claude_prompt_is_not_positional(&args, "hello world");
         assert!(args.contains(&"--replay-user-messages".to_string()));
         assert!(!args.contains(&"--append-system-prompt".to_string()));
+        assert!(!args.contains(&"--append-system-prompt-file".to_string()));
         assert!(!args.contains(&"--resume".to_string()));
     }
 
@@ -245,9 +250,10 @@ mod tests {
         let args = build_claude_args_for_test("", "Your name is Aria.", "", "", "");
         let asp_idx = args
             .iter()
-            .position(|a| a == "--append-system-prompt")
+            .position(|a| a == "--append-system-prompt-file")
             .unwrap();
-        assert_eq!(args[asp_idx + 1], "Your name is Aria.");
+        assert_eq!(args[asp_idx + 1], TEST_APPEND_SYSTEM_PROMPT_FILE);
+        assert!(!args.iter().any(|arg| arg == "Your name is Aria."));
         assert_claude_prompt_is_not_positional(&args, "analyze this");
     }
 
@@ -255,6 +261,7 @@ mod tests {
     fn build_claude_args_empty_append_system_prompt_omitted() {
         let args = build_claude_args_for_test("", "", "", "", "");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
+        assert!(!args.contains(&"--append-system-prompt-file".to_string()));
     }
 
     #[test]
@@ -267,7 +274,7 @@ mod tests {
         let args = build_claude_args(ClaudeArgsConfig {
             model: "",
             resume_id: "sess-secret-123",
-            append_system_prompt: "",
+            append_system_prompt_file: None,
             disallowed_tools: "",
             tools: "",
             settings: "",
@@ -286,7 +293,7 @@ mod tests {
     fn build_claude_args_with_resume_and_append() {
         let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "");
         assert!(args.contains(&"--resume".to_string()));
-        assert!(args.contains(&"--append-system-prompt".to_string()));
+        assert!(args.contains(&"--append-system-prompt-file".to_string()));
         assert_claude_prompt_is_not_positional(&args, "prompt");
     }
 
@@ -389,8 +396,8 @@ mod tests {
         for expected in [
             "--resume",
             "sess-abc",
-            "--append-system-prompt",
-            "Be concise.",
+            "--append-system-prompt-file",
+            TEST_APPEND_SYSTEM_PROMPT_FILE,
             "--disallowed-tools",
             "CronCreate",
             "CronDelete",
