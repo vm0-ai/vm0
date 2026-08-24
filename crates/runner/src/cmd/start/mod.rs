@@ -616,7 +616,7 @@ async fn run_start_with_home(
         }
     }
 
-    // Idle sandbox pool for VM reuse across conversation turns.
+    // Idle sandbox pool for sandbox reuse across conversation turns.
     let parking_gate = ParkingGate::new_open();
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
         IdlePoolConfig { max_idle },
@@ -997,7 +997,7 @@ enum StartLoopEvent {
     FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, reuse_key: String },
+    SandboxParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -1178,7 +1178,7 @@ impl StartLoopTestObserver {
     }
 
     fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
+        self.record(StartLoopEvent::SandboxParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1264,8 +1264,8 @@ impl StartLoopTestObserver {
     }
 
     async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
-        self.wait_for(timeout, "VM parked for reuse", |event| match event {
-            StartLoopEvent::VmParkedForReuse {
+        self.wait_for(timeout, "sandbox parked for reuse", |event| match event {
+            StartLoopEvent::SandboxParkedForReuse {
                 run_id: observed_run_id,
                 reuse_key,
             } if *observed_run_id == run_id => Some(reuse_key.clone()),
@@ -2167,8 +2167,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.event("drop_discover_fut");
     drop(workspace_cache_change_fut);
 
-    // Drain idle pool first — these VMs hold budget reservations. This
-    // also clears `idle_vms` in status.json so the final snapshot is
+    // Drain idle pool first — these sandboxes hold budget reservations. This
+    // also clears `idle_sandboxes` in status.json so the final snapshot is
     // consistent with the empty pool.
     lifecycle.close_parking();
     let phase = teardown.phase_start("drain_idle_pool");

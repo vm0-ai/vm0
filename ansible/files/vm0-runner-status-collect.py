@@ -69,7 +69,8 @@ def parse_status(path: Path) -> tuple[str, list[tuple[str, str]]]:
             )
         sandbox_states.append((sandbox_id, state))
 
-    for entry in parse_collection(status, "idle_vms"):
+    idle_field = "idle_sandboxes" if "idle_sandboxes" in status else "idle_vms"
+    for entry in parse_collection(status, idle_field):
         _, sandbox_id = parse_sandbox_entry(entry)
         sandbox_states.append((sandbox_id, "idle"))
 

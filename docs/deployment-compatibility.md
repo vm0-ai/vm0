@@ -153,6 +153,32 @@ runner can also survive briefly talking to an old backend.
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
+Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
+network-policy, and operator concepts. Use **VM** only for concrete
+Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
+pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
+The VM0 brand, established environment-variable namespace, and fixed paths are
+not lifecycle terminology and remain unchanged.
+
+Each runner version's `status.json` is a host-local persisted cross-version
+boundary. Current runner maintenance commands can inspect status files written
+by previous runner versions, rollback can expose an older command to a newer
+status writer, and the independently deployed host monitoring collector scans
+every versioned runner directory. Status schema changes must cover those
+old/new combinations rather than treating the file as process-private state.
+
+During the idle-status terminology migration, current writers publish the same
+non-empty collection under canonical `idle_sandboxes` and temporary legacy
+`idle_vms`; both fields are omitted when the collection is empty. Current
+readers and the host collector select `idle_sandboxes` whenever that key is
+present, even when it is empty, and fall back to `idle_vms` only when the
+canonical key is absent. They never concatenate the fields. Remove the writer
+mirror only after the updated collector is installed on every runner host, the
+new runner rollout is complete, the previous-runner rollback window is closed,
+and no supported old maintenance command still needs `idle_vms` (tracked by
+#28926). Legacy read fallback is a separate decision because stopped old runner
+directories can remain supported inputs.
+
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and
 registry at startup, and keeps them in its version-specific base directory.
@@ -160,6 +186,12 @@ Their registry schema and process-local flow metadata can therefore change
 atomically in one runner release without fallback keys or cross-version readers.
 This exemption does not extend to registry data persisted outside that runner
 artifact or consumed by an independently deployed component.
+
+Runner sandbox-operation telemetry uses open string action names rather than a
+versioned enum. Historical rows keep `vm_create`; new fresh-sandbox creation
+events use `sandbox_create`. Readers that compare periods across this boundary
+must query both historical and current names rather than expecting rows to be
+rewritten or dual-emitted.
 
 Each sandbox is owned exclusively by the runner process that created it. A
 different runner never adopts that sandbox, and stopping the owning runner also

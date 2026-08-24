@@ -581,7 +581,7 @@ async fn finalize_sandbox_for_completion_inner(
                 run_id = %run_id,
                 reuse_key_fingerprint = %reuse_key_fingerprint,
                 reuse_key_kind = reuse_kind,
-                "job hard-cancelled while parking, destroying VM"
+                "job hard-cancelled while parking, destroying sandbox"
             );
             let destroy_result = destroy_active_owned_idle_payload(
                 payload,
@@ -671,7 +671,7 @@ async fn finalize_sandbox_for_completion_inner(
                         guest_swap_free_bytes = guest.map(|snapshot| snapshot.swap_free_bytes),
                         reason = reason.as_str(),
                         admission_action = "reject_and_destroy",
-                        "sandbox parked with severe memory retention, destroying VM"
+                        "sandbox parked with severe memory retention, destroying sandbox"
                     );
                 }
             }
@@ -824,7 +824,7 @@ async fn finalize_sandbox_for_completion_inner(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
                             reuse_key_kind = reuse_kind,
-                            "job hard-cancelled before idle pool ownership transfer, destroying VM"
+                            "job hard-cancelled before idle pool ownership transfer, destroying sandbox"
                         );
                         drop(transfer_guard);
                         let (payload, budget_lease) = candidate.into_active_destroy_parts();
@@ -857,7 +857,7 @@ async fn finalize_sandbox_for_completion_inner(
                         run_id = %run_id,
                         reuse_key_fingerprint = %reuse_key_fingerprint,
                         reuse_key_kind = reuse_kind,
-                        "job hard-cancelled before idle pool ownership transfer, destroying VM"
+                        "job hard-cancelled before idle pool ownership transfer, destroying sandbox"
                     );
                     drop(transfer_guard);
                     drop(pool);
@@ -887,7 +887,7 @@ async fn finalize_sandbox_for_completion_inner(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
                             reuse_key_kind = reuse_kind,
-                            "VM parked for reuse"
+                            "sandbox parked for reuse"
                         );
                         #[cfg(test)]
                         test_observer.notify_vm_parked_for_reuse(run_id, reuse_key.clone());
@@ -924,7 +924,7 @@ async fn finalize_sandbox_for_completion_inner(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
                             reuse_key_kind = reuse_kind,
-                            "VM parked, evicting previous"
+                            "sandbox parked, evicting previous"
                         );
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
@@ -946,7 +946,7 @@ async fn finalize_sandbox_for_completion_inner(
                         reuse_state_changed = true;
                         telemetry.record_idle_publication(true, None);
                         reuse_state_notify.notify_one();
-                        // The replaced VM was park()ed when it entered the
+                        // The replaced sandbox was park()ed when it entered the
                         // pool; destroying a parked sandbox is safe — Drop
                         // aborts any leftover handles and the FC process is
                         // killed regardless of balloon state.
@@ -961,7 +961,7 @@ async fn finalize_sandbox_for_completion_inner(
                             run_id = %run_id,
                             reuse_key_fingerprint = %reuse_key_fingerprint,
                             reuse_key_kind = reuse_kind,
-                            "idle parking rejected, destroying VM"
+                            "idle parking rejected, destroying sandbox"
                         );
                         drop(transfer_guard);
                         drop(pool);
@@ -1730,14 +1730,14 @@ mod tests {
             .iter()
             .filter(|event| {
                 event.fields.get("message").is_some_and(|message| {
-                    message == "sandbox parked with severe memory retention, destroying VM"
+                    message == "sandbox parked with severe memory retention, destroying sandbox"
                 })
             })
             .collect();
         assert_eq!(matching_events.len(), 1, "captured={events:#?}");
         let event = captured_event(
             &events,
-            "sandbox parked with severe memory retention, destroying VM",
+            "sandbox parked with severe memory retention, destroying sandbox",
         );
         assert_eq!(event.level, Level::WARN);
         assert_event_field(event, "run_id", &run_id.to_string());

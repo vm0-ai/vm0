@@ -1894,7 +1894,7 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
 ///
 /// The executor calls this after workspace-image selection fixes the plan and
 /// before sandbox creation, allowing eligible full-archive fetches to overlap
-/// VM startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
+/// sandbox startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
 /// groups, admits at most `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each
 /// admission from the shared `FRESH_DELIVERY_RUNNER_LIMIT`.
 ///

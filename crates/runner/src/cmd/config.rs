@@ -34,7 +34,7 @@ pub struct ConfigArgs {
     #[arg(long)]
     runner_dirname: String,
 
-    /// Maximum concurrent VMs (0 = auto-detect from host CPU/memory)
+    /// Maximum concurrent sandboxes (0 = auto-detect from host CPU/memory)
     #[arg(long, default_value_t = DEFAULT_MAX_CONCURRENT)]
     max_concurrent: usize,
     /// Overcommit factor for auto-detected concurrency (must be > 0)

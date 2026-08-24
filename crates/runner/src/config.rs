@@ -1,7 +1,7 @@
 //! Runner YAML config (`runner.yaml`) — the schema the operator writes.
 //!
 //! The file is loaded once at startup via [`load`], validated, and then
-//! consumed by the rest of the runner. For each VM spawn, a profile is
+//! consumed by the rest of the runner. For each sandbox spawn, a profile is
 //! turned into a [`sandbox::FactoryConfig`] via
 //! [`RunnerConfig::factory_config`].
 //!
@@ -78,7 +78,7 @@ pub struct RunnerConfig {
     /// runners on the server and to build on-disk paths; validated by
     /// [`crate::group::validate_or_err`].
     pub group: String,
-    /// Runtime data root for this runner — holds per-VM workspaces, COW
+    /// Runtime data root for this runner — holds per-sandbox workspaces, COW
     /// devices, sockets, etc. Locked exclusively on startup so two runner
     /// processes can't share the same directory.
     pub base_dir: PathBuf,
@@ -133,19 +133,19 @@ pub struct ProfileConfig {
     pub workspace_disk_mb: u32,
 }
 
-/// Sandbox-level knobs for concurrency and the idle-VM pool.
+/// Sandbox-level knobs for concurrency and the idle-sandbox pool.
 ///
 /// All fields accept defaults via `#[serde(default)]`, so the whole
 /// `sandbox:` block may be omitted from the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
-    /// Hard cap on concurrent VMs. `0` auto-detects from host CPU and
+    /// Hard cap on concurrent sandboxes. `0` auto-detects from host CPU and
     /// memory at startup (see [`DEFAULT_MAX_CONCURRENT`]).
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
+    /// Maximum number of idle sandboxes to keep (0 = no limit, default: 0).
     pub max_idle: usize,
 }
 

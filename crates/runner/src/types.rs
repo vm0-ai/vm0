@@ -205,7 +205,7 @@ impl Firewall {
     /// Validates an unresolved builtin firewall before cache publication.
     ///
     /// This gate checks the structural and syntax invariants available before
-    /// per-VM resolution. Catalog API IDs must be empty because the Python
+    /// per-sandbox resolution. Catalog API IDs must be empty because the Python
     /// registry resolver assigns run-scoped IDs after resolving the entries.
     ///
     /// The Python consumer still independently validates the cache file,
@@ -1664,7 +1664,7 @@ pub struct CompleteRequest {
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
-/// means the VM was unparked from the idle pool; the other variants describe
+/// means the sandbox was unparked from the idle pool; the other variants describe
 /// why reuse did not happen. Wire name: `sandboxReuseResult`.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

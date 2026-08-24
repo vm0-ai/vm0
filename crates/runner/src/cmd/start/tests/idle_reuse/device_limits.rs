@@ -51,7 +51,7 @@ async fn configured_io_limiter_capacity_applies_limits_on_fresh_create() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn absent_io_limiter_capacity_reuses_unlimited_idle_vm() {
+async fn absent_io_limiter_capacity_reuses_unlimited_idle_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
@@ -97,7 +97,7 @@ async fn absent_io_limiter_capacity_reuses_unlimited_idle_vm() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn device_limit_mismatch_destroys_idle_vm_and_fresh_creates() {
+async fn device_limit_mismatch_destroys_idle_sandbox_and_fresh_creates() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
