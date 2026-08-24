@@ -245,10 +245,6 @@ async function validateRuntimeCallerIsolation(): Promise<void> {
       "builtInModelKeyId|built_in_model_key_id",
       runtimePathspecs,
     ),
-    [],
-  );
-  assert.deepEqual(
-    trackedFilesWithPattern("vm0ModelKeyId|vm0_model_key_id", runtimePathspecs),
     [
       "turbo/apps/api/src/signals/routes/__tests__/chat-events.bdd.test.ts",
       "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
@@ -257,6 +253,10 @@ async function validateRuntimeCallerIsolation(): Promise<void> {
       "turbo/apps/api/src/signals/services/agent-run-metadata-write.service.ts",
       "turbo/apps/api/src/test-fixtures/agent-runs.ts",
     ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern("vm0ModelKeyId|vm0_model_key_id", runtimePathspecs),
+    [],
   );
   assert.deepEqual(
     trackedFilesWithPattern(
@@ -279,6 +279,8 @@ async function validateRuntimeCallerIsolation(): Promise<void> {
   const statementEnd = selectionSource.length;
   assert.ok(statementStart >= 0 && statementEnd > statementStart);
   const statementSource = selectionSource.slice(statementStart, statementEnd);
+  assert.equal(statementSource.includes("vm0ModelKeyId"), false);
+  assert.equal(statementSource.includes("vm0_model_key_id"), false);
   assert.equal(statementSource.includes("builtInModelKeyId"), false);
   assert.equal(statementSource.includes("built_in_model_key_id"), false);
 

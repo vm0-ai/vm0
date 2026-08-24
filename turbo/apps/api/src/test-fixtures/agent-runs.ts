@@ -539,13 +539,13 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
       selectedModel: agentRuns.selectedModel,
       modelRuntimeProvider: agentRuns.modelRuntimeProvider,
       modelRuntimeModel: agentRuns.modelRuntimeModel,
-      vm0ModelKeyId: agentRuns.vm0ModelKeyId,
-      modelKeyVendor: builtInModelKeys.vendor,
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
+      builtInModelKeyVendor: builtInModelKeys.vendor,
     })
     .from(agentRuns)
     .leftJoin(
       builtInModelKeys,
-      eq(builtInModelKeys.id, agentRuns.vm0ModelKeyId),
+      eq(builtInModelKeys.id, agentRuns.builtInModelKeyId),
     )
     .where(eq(agentRuns.id, runId))
     .limit(1);

@@ -6184,26 +6184,26 @@ function launchRunValues(
   };
 }
 
-type Vm0LaunchMetadataValues = Pick<
+type BuiltInModelLaunchMetadataValues = Pick<
   RunMetadataValues,
-  "modelRuntimeProvider" | "modelRuntimeModel" | "vm0ModelKeyId"
+  "modelRuntimeProvider" | "modelRuntimeModel" | "builtInModelKeyId"
 >;
 
-function vm0LaunchMetadataValues(
+function builtInModelLaunchMetadataValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
-): Vm0LaunchMetadataValues {
+): BuiltInModelLaunchMetadataValues {
   const runtimeRoute = modelProvider?.builtInModelRuntimeRoute;
   if (!runtimeRoute) {
     return {
       modelRuntimeProvider: null,
       modelRuntimeModel: null,
-      vm0ModelKeyId: null,
+      builtInModelKeyId: null,
     };
   }
   return {
     modelRuntimeProvider: runtimeRoute.providerType,
     modelRuntimeModel: runtimeRoute.upstreamModel,
-    vm0ModelKeyId: runtimeRoute.modelKeyId,
+    builtInModelKeyId: runtimeRoute.modelKeyId,
   };
 }
 
@@ -6234,7 +6234,7 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
     modelProviderId: modelPin.modelProviderId,
     modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
     selectedModel: modelPin.selectedModel,
-    ...vm0LaunchMetadataValues(args.modelProvider),
+    ...builtInModelLaunchMetadataValues(args.modelProvider),
     selectedVideoModel: args.selectedVideoModel,
     selectedImageModel: args.selectedImageModel,
     chatThreadId: args.chatThreadId ?? null,
