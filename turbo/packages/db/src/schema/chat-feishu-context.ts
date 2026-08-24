@@ -1,4 +1,5 @@
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   boolean,
   jsonb,
@@ -26,6 +27,11 @@ export const chatFeishuContext = pgTable("chat_feishu_context", {
    * must continue to project only the explicitly required columns.
    */
   conversationHistory: text("conversation_history"),
+  /** Product brand snapshotted from the webhook ingress. */
+  publicBrand: text("public_brand")
+    .$type<PublicBrand>()
+    .default("vm0")
+    .notNull(),
   messageText: text("message_text"),
   messageFiles: jsonb("message_files").$type<ChatFeishuMessageFiles>(),
   chatType: text("chat_type").$type<"group" | "p2p" | "topic_group">(),

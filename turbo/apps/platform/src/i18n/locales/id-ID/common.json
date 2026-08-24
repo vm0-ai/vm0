@@ -2680,12 +2680,12 @@
         "copied": "{{label}} disalin",
         "copy": "Salin",
         "create": {
-          "descriptionAfter": ", buat aplikasi kustom enterprise bernama {{brandName}}, unggah ikon {{brandName}}, lalu tambahkan kemampuan Bot.",
+          "descriptionAfter": ", buat aplikasi kustom enterprise dengan nama dan ikon yang Anda pilih, lalu tambahkan kemampuan Bot.",
           "descriptionBefore": "Di ",
-          "downloadIcon": "Unduh ikon {{brandName}}",
-          "iconAlt": "Ikon aplikasi {{brandName}}",
+          "downloadIcon": "Unduh ikon {{brandName}} opsional",
+          "iconAlt": "Ikon aplikasi {{brandName}} opsional",
           "iconHint": ", atau gunakan ikon apa pun yang Anda suka.",
-          "iconTitle": "Ikon aplikasi {{brandName}}",
+          "iconTitle": "Ikon aplikasi {{brandName}} opsional",
           "imageAlt": "Formulir pembuatan aplikasi Feishu dengan nama aplikasi, ikon, dan tombol Create disorot",
           "title": "Buat aplikasi kustom enterprise"
         },

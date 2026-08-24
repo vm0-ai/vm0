@@ -2681,12 +2681,12 @@
         "copied": "{{label}} कॉपी किया गया",
         "copy": "प्रतिलिपि",
         "create": {
-          "descriptionAfter": ", {{brandName}} नामक एक एंटरप्राइज़ कस्टम ऐप बनाएं, {{brandName}} आइकन अपलोड करें, फिर बॉट क्षमता जोड़ें।",
+          "descriptionAfter": ", अपनी पसंद के नाम और आइकन के साथ एक एंटरप्राइज़ कस्टम ऐप बनाएं, फिर बॉट क्षमता जोड़ें।",
           "descriptionBefore": "में",
-          "downloadIcon": "{{brandName}} आइकन डाउनलोड करें",
-          "iconAlt": "{{brandName}} ऐप आइकन",
+          "downloadIcon": "वैकल्पिक {{brandName}} आइकन डाउनलोड करें",
+          "iconAlt": "वैकल्पिक {{brandName}} ऐप आइकन",
           "iconHint": ", या अपनी पसंद के किसी भी आइकन का उपयोग करें।",
-          "iconTitle": "{{brandName}} ऐप आइकन",
+          "iconTitle": "वैकल्पिक {{brandName}} ऐप आइकन",
           "imageAlt": "Feishu ऐप निर्माण फॉर्म जिसमें ऐप का नाम, आइकन और क्रिएट बटन हाइलाइट किया गया है",
           "title": "एक एंटरप्राइज़ कस्टम ऐप बनाएं"
         },

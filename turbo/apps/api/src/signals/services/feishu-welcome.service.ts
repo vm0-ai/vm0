@@ -27,11 +27,22 @@ export async function notifyFeishuConnect(
     .select({
       agentName: agents.name,
       agentDisplayName: agents.displayName,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      botName: feishuOrgInstallations.botName,
+      publicBrand: feishuOrgConnections.publicBrand,
     })
-    .from(feishuOrgInstallations)
+    .from(feishuOrgConnections)
+    .innerJoin(
+      feishuOrgInstallations,
+      eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
+    )
     .leftJoin(agents, eq(agents.id, feishuOrgInstallations.defaultAgentId))
-    .where(eq(feishuOrgInstallations.id, args.installationId))
+    .where(
+      and(
+        eq(feishuOrgConnections.id, args.connectionId),
+        eq(feishuOrgConnections.installationId, args.installationId),
+        eq(feishuOrgConnections.feishuOpenId, args.openId),
+      ),
+    )
     .limit(1);
   signal.throwIfAborted();
   if (!installation) {
@@ -45,6 +56,7 @@ export async function notifyFeishuConnect(
       receiveId: args.openId,
       message: buildFeishuWelcomeMessage({
         agentName: installation.agentDisplayName ?? installation.agentName,
+        botName: installation.botName,
         publicBrand: installation.publicBrand,
       }),
       idempotencyKey: args.connectionId,

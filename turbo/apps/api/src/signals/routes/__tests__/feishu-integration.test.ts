@@ -35,6 +35,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { server } from "../../../mocks/server";
 import {
+  findFeishuChatEventByPromptFixture,
   findPendingChatEventByPromptFixture,
   readChatEventContextFixture,
 } from "../../../test-fixtures/chat-events";
@@ -96,7 +97,7 @@ const runsApi = createRunsApi(context);
 const storagesApi = createStoragesBddApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
-const FEISHU_CALLBACK_ORIGIN = "https://www.vm0.test";
+const FEISHU_CALLBACK_ORIGIN = "https://api.vm0.ai";
 const ENCRYPT_KEY = "feishu-test-encrypt-key";
 const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
@@ -503,6 +504,15 @@ async function postEvent(
     headers,
     body,
   });
+}
+
+function feishuCallbackUrlForBrand(
+  callbackUrl: string,
+  publicBrand: PublicBrand,
+): string {
+  const branded = new URL(callbackUrl);
+  branded.hostname = publicBrand === "okou" ? "api.okou.ai" : "api.vm0.ai";
+  return branded.toString();
 }
 
 async function requestFeishuConfigurationFailure(args: {
@@ -1068,6 +1078,7 @@ describe("Feishu integration", () => {
       headers: {
         "content-type": "application/json",
         cookie: "__session=opaque",
+        origin: new URL(connectUrl).origin,
       },
       body: JSON.stringify(feishuConnectBody(connectUrl)),
     });
@@ -2340,7 +2351,7 @@ describe("Feishu integration", () => {
       new URL(
         legacyConnectResponse.headers.get("location") ?? "",
       ).searchParams.get("redirect_uri"),
-    ).toBe("https://www.vm0.test/api/integrations/feishu/oauth/callback");
+    ).toBe(`${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`);
 
     const appConnectUrl = new URL(connectUrl);
     appConnectUrl.searchParams.set("callbackTarget", "app");
@@ -2413,7 +2424,7 @@ describe("Feishu integration", () => {
     expectCustomConnectorInvalidations([member.userId]);
     expect(oauthTokenRedirectUris).toStrictEqual([
       `${APP_ORIGIN}/connectors/feishu/callback`,
-      "https://www.vm0.test/api/integrations/feishu/oauth/callback",
+      `${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`,
     ]);
     await flushWaitUntilForTest();
 
@@ -2517,6 +2528,7 @@ describe("Feishu integration", () => {
 
   it("preserves Okou through signed Feishu and persisted connector state", async () => {
     const fixture = await setupFeishuRunFixture({ publicBrand: "okou" });
+    expect(new URL(fixture.callbackUrl).origin).toBe("https://api.okou.ai");
     mocks.clerk.session(
       fixture.actor.userId,
       fixture.actor.orgId,
@@ -2800,8 +2812,46 @@ describe("Feishu integration", () => {
     expect(loginReplies).toHaveLength(1);
   });
 
-  it("brands unconnected and connected output from an Okou installation", async () => {
-    const fixture = await setupFeishuRunFixture({ publicBrand: "okou" });
+  it("derives product branding from the webhook Host without renaming the provider bot", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    server.use(
+      http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
+        return HttpResponse.json({
+          code: 0,
+          bot: {
+            open_id: BOT_OPEN_ID,
+            app_name: "Owner Managed Bot",
+            avatar_url: "https://example.com/owner-managed-bot.png",
+          },
+        });
+      }),
+    );
+    const vm0Fixture = await setupFeishuRunFixture();
+    const fixture = {
+      ...vm0Fixture,
+      callbackUrl: feishuCallbackUrlForBrand(vm0Fixture.callbackUrl, "okou"),
+    };
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+      }),
+      [200],
+    );
+    expect(status.body.publicBrand).toBe("okou");
+    expect(status.body.installations?.[0]).toMatchObject({
+      publicBrand: "vm0",
+      botName: "Owner Managed Bot",
+      callbackUrl: vm0Fixture.callbackUrl,
+    });
 
     await postEvent(
       fixture.callbackUrl,
@@ -2815,7 +2865,7 @@ describe("Feishu integration", () => {
     );
     await flushWaitUntilForTest();
     const unconnectedContent = outboundMessages.map(messageContent).join("\n");
-    expect(unconnectedContent).toContain("Okou commands");
+    expect(unconnectedContent).toContain("Owner Managed Bot commands");
     expect(unconnectedContent).toContain("To use Okou in Feishu");
     const connectUrl = requireValue(
       unconnectedContent.match(/https:\/\/[^"\\]+/u)?.[0],
@@ -2837,7 +2887,7 @@ describe("Feishu integration", () => {
     );
     await flushWaitUntilForTest();
     const connectedContent = outboundMessages.map(messageContent).join("\n");
-    expect(connectedContent).toContain("Okou commands");
+    expect(connectedContent).toContain("Owner Managed Bot commands");
     expect(connectedContent).toContain(
       "Your Feishu account is already connected to Okou",
     );
@@ -2848,9 +2898,7 @@ describe("Feishu integration", () => {
       fixture.actor.orgRole,
     );
     await accept(
-      setupApp({ context, routes: feishuConnectRoutes })(
-        feishuConnectContract,
-      ).removeInstallation({
+      client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
         params: { installationId: fixture.installationId },
       }),
@@ -2858,11 +2906,14 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("uses the Okou identity for the system default agent run", async () => {
-    const fixture = await setupFeishuRunFixture({
-      publicBrand: "okou",
+  it("persists the webhook Host brand through the run and asynchronous delivery", async () => {
+    const vm0Fixture = await setupFeishuRunFixture({
       useSystemDefaultIdentity: true,
     });
+    const fixture = {
+      ...vm0Fixture,
+      callbackUrl: feishuCallbackUrlForBrand(vm0Fixture.callbackUrl, "okou"),
+    };
     await connectFixtureUser(fixture);
     const prompt = "run with the Okou default identity";
 
@@ -2872,12 +2923,163 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
 
     const run = await findRun(fixture.actor, prompt);
+    const inputEvent = requireValue(
+      await findFeishuChatEventByPromptFixture({
+        userId: fixture.actor.userId,
+        prompt,
+      }),
+      "Expected the Host-branded Feishu input event",
+    );
+    await expect(
+      readChatEventContextFixture(inputEvent.eventId),
+    ).resolves.toMatchObject({ feishuPublicBrand: "okou" });
     await runsApi.heartbeatRunner(fixture.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.appendSystemPrompt).toContain("Your name is Okou.");
     expect(claim.appendSystemPrompt).not.toContain("Your name is Zero.");
-    await runsApi.requestCancelRun(fixture.actor, run.id, [200]);
+    outboundMessages = [];
+    await completeRunSession({
+      runId: run.id,
+      sandboxToken: claim.sandboxToken,
+      sessionId: `bdd-feishu-host-brand-${run.id}`,
+      history: `bdd Feishu host brand history ${run.id}`,
+      assistantText: "Host-branded Feishu response",
+    });
     await flushWaitUntilForTest();
+    const delivered = requireValue(
+      outboundMessages.find((message) => {
+        return messageContent(message).includes("Host-branded Feishu response");
+      }),
+      "Expected the asynchronous Feishu response",
+    );
+    expect(messageContent(delivered)).toContain('"content":"Okou"');
+  });
+
+  it("preserves an existing custom app identity and connection on an unchanged setup retry", async () => {
+    const fixture = await setupFeishuRunFixture();
+    await connectFixtureUser(fixture);
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const customConnectorClient = setupApp({
+      context,
+      routes: customConnectorsRoutes,
+    })(customConnectorsContract);
+    const before = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const connectorBefore = requireValue(
+      before.body.connectors[0],
+      "Expected the managed Feishu connector",
+    );
+
+    const retried = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+        body: {
+          installationId: fixture.installationId,
+          appId: fixture.appId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          encryptKey: ENCRYPT_KEY,
+          defaultAgentId: fixture.defaultAgentId,
+        },
+      }),
+      [200],
+    );
+    expect(retried.body.publicBrand).toBe("okou");
+    expect(retried.body.installations?.[0]).toMatchObject({
+      id: fixture.installationId,
+      publicBrand: "vm0",
+      botName: "Okou Feishu",
+      callbackUrl: fixture.callbackUrl,
+      callbackVerified: true,
+      setupCompleted: true,
+      isConnected: true,
+    });
+
+    const after = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(after.body.connectors).toStrictEqual([
+      expect.objectContaining({
+        id: connectorBefore.id,
+        storageVersion: connectorBefore.storageVersion,
+        oauthConfig: expect.objectContaining({ clientId: fixture.appId }),
+      }),
+    ]);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("rejects an in-place setup update that resolves to a different provider bot", async () => {
+    const fixture = await setupFeishuRunFixture();
+    server.use(
+      http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
+        return HttpResponse.json({
+          code: 0,
+          bot: {
+            open_id: "ou_replacement_bot",
+            app_name: "Replacement Bot",
+            avatar_url: "https://example.com/replacement-bot.png",
+          },
+        });
+      }),
+    );
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const rejected = await accept(
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+        body: {
+          defaultAgentId: fixture.defaultAgentId,
+          setupCompleted: true,
+        },
+      }),
+      [409],
+    );
+    expect(rejected.body.error.message).toContain("different bot identity");
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.installations?.[0]).toMatchObject({
+      botName: "Okou Feishu",
+      botAvatarUrl: "https://example.com/okou-feishu.png",
+    });
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
   });
 
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
@@ -3124,7 +3326,7 @@ describe("Feishu integration", () => {
     expect(replacementResults).toStrictEqual(
       expect.arrayContaining([
         expect.stringContaining("Connect your account"),
-        expect.stringContaining("Zero commands"),
+        expect.stringContaining("Okou Feishu commands"),
       ]),
     );
 
@@ -3179,14 +3381,14 @@ describe("Feishu integration", () => {
       .map(messageContent);
     const helpReply = requireValue(
       outboundMessages.find((message) => {
-        return messageContent(message).includes("Zero commands");
+        return messageContent(message).includes("Okou Feishu commands");
       }),
       "Expected Feishu help reply",
     );
     expect(helpReply.msgType).toBe("text");
     expect(
       commandReplies.some((content) => {
-        return content.includes("Zero commands");
+        return content.includes("Okou Feishu commands");
       }),
     ).toBeTruthy();
     expect(
@@ -4216,7 +4418,7 @@ describe("Feishu integration", () => {
       return (
         message.kind === "reply" &&
         message.target === threadHelpMessageId &&
-        messageContent(message).includes("Zero commands")
+        messageContent(message).includes("Okou Feishu commands")
       );
     });
     expect(threadHelpReply?.replyInThread).toBeTruthy();
@@ -4646,7 +4848,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     expect(
       outboundMessages.some((message) => {
-        return messageContent(message).includes("Zero commands");
+        return messageContent(message).includes("Okou Feishu commands");
       }),
     ).toBeTruthy();
 

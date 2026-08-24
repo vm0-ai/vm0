@@ -2681,12 +2681,12 @@
         "copied": "{{label}} copied",
         "copy": "Copy",
         "create": {
-          "descriptionAfter": ", create an enterprise custom app named {{brandName}}, upload the {{brandName}} icon, then add the Bot capability.",
+          "descriptionAfter": ", create an enterprise custom app using the name and icon you want, then add the Bot capability.",
           "descriptionBefore": "In the ",
-          "downloadIcon": "Download the {{brandName}} icon",
-          "iconAlt": "{{brandName}} app icon",
+          "downloadIcon": "Download the optional {{brandName}} icon",
+          "iconAlt": "Optional {{brandName}} app icon",
           "iconHint": ", or use any icon you prefer.",
-          "iconTitle": "{{brandName}} app icon",
+          "iconTitle": "Optional {{brandName}} app icon",
           "imageAlt": "Feishu app creation form with the app name, icon, and Create button highlighted",
           "title": "Create an enterprise custom app"
         },

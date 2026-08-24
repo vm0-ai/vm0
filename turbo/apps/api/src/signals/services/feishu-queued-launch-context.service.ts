@@ -36,11 +36,11 @@ type FeishuLaunchContextRow = Pick<
   | "senderOpenId"
   | "connectionId"
   | "installationId"
+  | "publicBrand"
 > & {
   readonly tenantKey: string | null;
   readonly routeThreadId: string;
   readonly feishuDisplayName: string | null;
-  readonly publicBrand: PublicBrand;
   readonly connectorSourceId: string | null;
 };
 
@@ -108,7 +108,7 @@ async function loadFeishuLaunchContext(
       installationId: chatFeishuContext.installationId,
       routeThreadId: feishuChatThreadRoutes.threadId,
       feishuDisplayName: feishuOrgConnections.feishuUserName,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      publicBrand: chatFeishuContext.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(

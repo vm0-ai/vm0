@@ -1191,6 +1191,13 @@
       "when": 1787543128609,
       "tag": "0977_rename_zero_debug_feature_switch_key",
       "breakpoints": true
+    },
+    {
+      "idx": 978,
+      "version": "7",
+      "when": 1787560374056,
+      "tag": "0978_peaceful_stick",
+      "breakpoints": true
     }
   ]
 }

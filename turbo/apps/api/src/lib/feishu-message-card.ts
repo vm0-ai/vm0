@@ -74,11 +74,10 @@ export function buildFeishuLoginMessage(args: {
 
 export function buildFeishuWelcomeMessage(args: {
   readonly agentName: string | null;
+  readonly botName: string | null;
   readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
-  const { assistantName, brandName } = publicBrandPresentation(
-    args.publicBrand,
-  );
+  const { brandName } = publicBrandPresentation(args.publicBrand);
   const agentLine = args.agentName
     ? `\n\nYour current agent is **${args.agentName}**.`
     : "";
@@ -89,7 +88,7 @@ export function buildFeishuWelcomeMessage(args: {
     elements: [
       {
         tag: "markdown",
-        content: `👋 **Hi! I'm ${assistantName}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
+        content: `👋 **Hi! I'm ${args.botName ?? "your Feishu bot"}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
       },
       {
         tag: "hr",
@@ -103,15 +102,16 @@ export function buildFeishuWelcomeMessage(args: {
   });
 }
 
-export function buildFeishuHelpMessage(
-  publicBrand: PublicBrand,
-): FeishuOutboundMessage {
-  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
+export function buildFeishuHelpMessage(args: {
+  readonly publicBrand: PublicBrand;
+  readonly botName: string | null;
+}): FeishuOutboundMessage {
+  const { brandName } = publicBrandPresentation(args.publicBrand);
   return {
     msgType: "text",
     content: {
       text: [
-        `${assistantName} commands`,
+        `${args.botName ?? "Feishu bot"} commands`,
         "",
         "/help — Show this help",
         `/connect — Connect your ${brandName} account`,

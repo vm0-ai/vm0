@@ -2725,12 +2725,12 @@
         "copied": "{{label}} copiato",
         "copy": "Copia",
         "create": {
-          "descriptionAfter": ", crea un'app aziendale personalizzata denominata {{brandName}}, carica l'icona {{brandName}}, quindi aggiungi la funzionalità Bot.",
+          "descriptionAfter": ", crea un'app aziendale personalizzata con il nome e l'icona che preferisci, quindi aggiungi la funzionalità Bot.",
           "descriptionBefore": "Nel ",
-          "downloadIcon": "Scarica l'icona {{brandName}}",
-          "iconAlt": "{{brandName}} icona dell'app",
+          "downloadIcon": "Scarica l'icona {{brandName}} facoltativa",
+          "iconAlt": "Icona facoltativa dell'app {{brandName}}",
           "iconHint": "oppure utilizza l'icona che preferisci.",
-          "iconTitle": "{{brandName}} icona dell'app",
+          "iconTitle": "Icona facoltativa dell'app {{brandName}}",
           "imageAlt": "Feishu modulo di creazione dell'app con il nome dell'app, l'icona e il pulsante Crea evidenziati",
           "title": "Creare un'app aziendale personalizzata"
         },

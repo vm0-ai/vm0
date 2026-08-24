@@ -2725,12 +2725,12 @@
         "copied": "Copiado: {{label}}",
         "copy": "Copiar",
         "create": {
-          "descriptionAfter": ", crie um app personalizado empresarial chamado {{brandName}}, envie o ícone do {{brandName}} e adicione o recurso Bot.",
+          "descriptionAfter": ", crie um app personalizado empresarial com o nome e o ícone que preferir e adicione o recurso Bot.",
           "descriptionBefore": "No ",
-          "downloadIcon": "Baixar o ícone do {{brandName}}",
-          "iconAlt": "Ícone do app {{brandName}}",
+          "downloadIcon": "Baixar o ícone opcional do {{brandName}}",
+          "iconAlt": "Ícone opcional do app {{brandName}}",
           "iconHint": " ou use qualquer ícone de sua preferência.",
-          "iconTitle": "Ícone do app {{brandName}}",
+          "iconTitle": "Ícone opcional do app {{brandName}}",
           "imageAlt": "Formulário de criação de app do Feishu com o nome, o ícone e o botão Criar destacados",
           "title": "Criar um app personalizado empresarial"
         },

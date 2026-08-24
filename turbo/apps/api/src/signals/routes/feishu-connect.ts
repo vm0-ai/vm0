@@ -229,6 +229,11 @@ const updateInstallation$ = command(
     if (updated.kind === "installation_not_found") {
       return notFound("Feishu integration not found");
     }
+    if (updated.kind === "bot_identity_mismatch") {
+      return conflict(
+        "The Feishu app now resolves to a different bot identity. Restore the original app credentials or configure a separate installation.",
+      );
+    }
     const status = await get(
       feishuConnectStatus({
         orgId: auth.orgId,

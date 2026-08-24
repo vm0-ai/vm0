@@ -2725,12 +2725,12 @@
         "copied": "{{label}} copié",
         "copy": "Copier",
         "create": {
-          "descriptionAfter": ", créez une application personnalisée d'entreprise nommée {{brandName}}, téléchargez l'icône {{brandName}}, puis ajoutez la capacité Bot.",
+          "descriptionAfter": ", créez une application personnalisée d'entreprise avec le nom et l'icône de votre choix, puis ajoutez la capacité Bot.",
           "descriptionBefore": "Dans le",
-          "downloadIcon": "Téléchargez l'icône {{brandName}}",
-          "iconAlt": "Icône de l'application {{brandName}}",
+          "downloadIcon": "Téléchargez l'icône {{brandName}} facultative",
+          "iconAlt": "Icône facultative de l'application {{brandName}}",
           "iconHint": ", ou utilisez toute icône de votre choix.",
-          "iconTitle": "Icône de l'application {{brandName}}",
+          "iconTitle": "Icône facultative de l'application {{brandName}}",
           "imageAlt": "Formulaire de création de l'application Feishu avec le nom de l'application, l'icône et le bouton Créer mis en évidence",
           "title": "Créer une application personnalisée d'entreprise"
         },

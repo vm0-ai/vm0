@@ -142,8 +142,9 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
       defaultAgentId: feishuOrgInstallations.defaultAgentId,
+      botName: feishuOrgInstallations.botName,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      publicBrand: feishuChatIngress.publicBrand,
     })
     .from(feishuChatIngress)
     .innerJoin(
@@ -269,6 +270,7 @@ interface CanonicalFeishuLaunchContext {
   readonly senderOpenId: string;
   readonly connectionId: string;
   readonly installationId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 function canonicalFeishuLaunchContext(args: {
@@ -277,6 +279,7 @@ function canonicalFeishuLaunchContext(args: {
   readonly reactionId: string | undefined;
   readonly conversationHistory: string;
   readonly files: readonly FeishuPromptFile[];
+  readonly publicBrand: PublicBrand;
 }): CanonicalFeishuLaunchContext {
   return {
     conversationHistory: args.conversationHistory,
@@ -305,6 +308,7 @@ function canonicalFeishuLaunchContext(args: {
     senderOpenId: args.message.openId,
     connectionId: args.connectionId,
     installationId: args.message.installationId,
+    publicBrand: args.publicBrand,
   };
 }
 
@@ -408,7 +412,7 @@ async function persistCanonicalFeishuIngress(
     chatThreadId: route.chatThreadId,
     message: args.message,
     receivedAt: args.ingress.createdAt,
-    publicBrand: args.installation.publicBrand,
+    publicBrand: args.ingress.publicBrand,
   };
 }
 
@@ -468,6 +472,7 @@ async function finishUnconnectedFeishuIngress(
     readonly ingressId: string;
     readonly message: FeishuInboundMessage;
     readonly publicBrand: PublicBrand;
+    readonly botName: string | null;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -476,6 +481,7 @@ async function finishUnconnectedFeishuIngress(
       db: args.db,
       message: args.message,
       publicBrand: args.publicBrand,
+      botName: args.botName,
     },
     signal,
   );
@@ -518,6 +524,7 @@ async function loadFeishuIngressDispatchContext(
     orgId: ingress.orgId,
     ownerUserId: ingress.ownerUserId,
     defaultAgentId: ingress.defaultAgentId,
+    botName: ingress.botName,
     messageReceivedAt: ingress.messageReceivedAt,
     publicBrand: ingress.publicBrand,
   };
@@ -569,6 +576,7 @@ async function processClaimedIngress(
         ingressId: ingress.ingressId,
         message,
         publicBrand: installation.publicBrand,
+        botName: installation.botName,
       },
       signal,
     );
@@ -651,6 +659,7 @@ async function processClaimedIngress(
       reactionId,
       conversationHistory: history.text,
       files: history.files,
+      publicBrand: ingress.publicBrand,
     }),
   };
   return await persistCanonicalFeishuIngress(persistInput, signal);

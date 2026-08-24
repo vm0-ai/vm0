@@ -45,9 +45,10 @@ export const feishuOrgData$ = computed(
 
 export interface FeishuBotInstallation extends Omit<
   FeishuInstallationStatus,
-  "connectUrl" | "id" | "oauthRedirectUrl" | "setupCompleted"
+  "connectUrl" | "id" | "oauthRedirectUrl" | "publicBrand" | "setupCompleted"
 > {
   readonly id: string | null;
+  readonly publicBrand: NonNullable<FeishuInstallationStatus["publicBrand"]>;
   readonly connectUrl: string | null;
   readonly oauthRedirectUrl: string | null;
   readonly setupCompleted: boolean;
@@ -62,6 +63,7 @@ export const feishuInstallations$ = computed(
       return data.installations.map((installation) => {
         return {
           ...installation,
+          publicBrand: installation.publicBrand ?? data.publicBrand ?? "vm0",
           connectUrl: installation.connectUrl ?? null,
           oauthRedirectUrl: installation.oauthRedirectUrl ?? null,
           setupCompleted:
@@ -80,6 +82,7 @@ export const feishuInstallations$ = computed(
     return [
       {
         id: data.installationId ?? null,
+        publicBrand: data.publicBrand ?? "vm0",
         isConnected: data.isConnected,
         connectedUserName: data.connectedUserName ?? null,
         appId: data.appId,

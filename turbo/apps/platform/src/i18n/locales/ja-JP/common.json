@@ -2680,12 +2680,12 @@
         "copied": "{{label}} がコピーされました",
         "copy": "コピー",
         "create": {
-          "descriptionAfter": "、{{brandName}} という名前のエンタープライズ カスタム アプリを作成し、{{brandName}} アイコンをアップロードしてから、ボット機能を追加します。",
+          "descriptionAfter": "、任意の名前とアイコンでエンタープライズ カスタム アプリを作成してから、ボット機能を追加します。",
           "descriptionBefore": "で ",
-          "downloadIcon": "{{brandName}} アイコンをダウンロードします",
-          "iconAlt": "{{brandName}} アプリ アイコン",
+          "downloadIcon": "任意の {{brandName}} アイコンをダウンロードします",
+          "iconAlt": "任意の {{brandName}} アプリ アイコン",
           "iconHint": "、またはお好みのアイコンを使用してください。",
-          "iconTitle": "{{brandName}} アプリ アイコン",
+          "iconTitle": "任意の {{brandName}} アプリ アイコン",
           "imageAlt": "Feishu アプリ名、アイコン、および [作成] ボタンが強調表示されたアプリ作成フォーム",
           "title": "エンタープライズカスタムアプリを作成する"
         },
