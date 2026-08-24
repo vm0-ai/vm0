@@ -2704,7 +2704,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("routes a server-authored connector from its catalog grant metadata", async () => {
+  it("routes a feature-on OpenID account addition from catalog metadata", async () => {
     const connectorSlug = "server-authored-steam";
     const authMethod = "partner-openid";
     mockConnectors([]);
@@ -2735,8 +2735,9 @@ describe("connectors page", () => {
       connectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe(connectorSlug);
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authMethod).toBe(authMethod);
+        expect(body.authorizeAgent).toBeUndefined();
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
         });
@@ -2746,7 +2747,11 @@ describe("connectors page", () => {
       return never();
     });
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
 
     await fill(
       await screen.findByPlaceholderText("Find connectors"),
@@ -2756,16 +2761,17 @@ describe("connectors page", () => {
       "src",
       "https://icons.example.test/partner-steam.svg",
     );
-    click(await screen.findByLabelText("Connect Partner Steam"));
+    click(buttonByText("Add", connectorCardByLabel("Partner Steam")));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Partner Steam",
+    });
+    click(buttonByText("Connect", dialog));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
         "https://openid.test/partner-steam/authorize",
       );
     });
-    expect(
-      screen.queryByRole("dialog", { name: "Partner Steam" }),
-    ).not.toBeInTheDocument();
   });
 
   it("ignores duplicate direct OAuth starts while a connector is polling", async () => {
@@ -3158,6 +3164,73 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("requires a label for feature-on no-auth account additions", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "stripe",
+        label: "Public Stripe",
+        authMethods: [
+          {
+            id: "api",
+            label: "Public catalog",
+            description: "Enable public catalog data.",
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let submittedAccount: unknown;
+    let submittedAuthorizeAgent: true | undefined;
+    context.mocks.api(
+      connectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        submittedAccount = body.account;
+        submittedAuthorizeAgent = body.authorizeAgent;
+        return respond(200, {
+          id: crypto.randomUUID(),
+          slug: params.connectorSlug,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("Public Stripe");
+    });
+    click(buttonByText("Add", card));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Public Stripe",
+    });
+    expect(buttonByText("Enable Public Stripe", dialog)).toBeDisabled();
+    await fill(within(dialog).getByLabelText("Account name"), "Work");
+    click(buttonByText("Enable Public Stripe", dialog));
+
+    await waitFor(() => {
+      expect(submittedAccount).toStrictEqual({
+        intent: "add",
+        displayName: "Work",
+      });
+    });
+    expect(submittedAuthorizeAgent).toBeUndefined();
+  });
+
   it("shows a no-auth method in the multi-method connect dialog", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -3291,7 +3364,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("submits public device-auth start option ids", async () => {
+  it("submits feature-on device-auth add intent and start option ids", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -3328,7 +3401,8 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         startCount += 1;
         expect(params.connectorSlug).toBe("stripe");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
+        expect(body.authorizeAgent).toBeUndefined();
         capturedOptions = body.options ?? null;
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
@@ -3345,10 +3419,14 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
-    click(await screen.findByLabelText("Connect Stripe"));
+    click(buttonByText("Add", connectorCardByLabel("Stripe")));
 
     const dialog = await screen.findByRole("dialog", { name: "Stripe" });
     const connectButton = buttonByText("Connect Stripe", dialog);
@@ -3979,14 +4057,15 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("connects AWS without a post-connect permission dialog", async () => {
+  it("connects a feature-on AWS account without changing permissions", async () => {
     mockConnectors([]);
     context.mocks.browser.open(createMockAuthWindow());
     context.mocks.api(
       connectorExternalCodeSessionContract.create,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("aws");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
+        expect(body.authorizeAgent).toBeUndefined();
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000002",
           sessionToken: "mock-aws-external-code-session-token",
@@ -4001,6 +4080,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -4010,7 +4090,7 @@ describe("connectors page", () => {
     });
 
     await fill(screen.getByPlaceholderText("Find connectors"), "aws");
-    click(await screen.findByLabelText("Connect AWS"));
+    click(buttonByText("Add", connectorCardByLabel("AWS")));
 
     const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
     expect(
@@ -4045,15 +4125,10 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectorCardByLabel("AWS")).getByText(
-          /@arn:aws:iam::000000000000:user\/mock-aws/u,
+          "1 account · arn:aws:iam::000000000000:user/mock-aws",
         ),
       ).toBeInTheDocument();
     });
-    expect(
-      within(connectorCardByLabel("AWS")).getByTitle(
-        "@arn:aws:iam::000000000000:user/mock-aws",
-      ),
-    ).toHaveTextContent("@arn:aws:iam::000000000000:user/mock-aws");
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
