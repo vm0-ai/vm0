@@ -606,41 +606,35 @@ export const apiConnectorsHandlers = [
     },
   ),
 
-  mockApi(
-    connectorManualGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
+  mockApi(connectorManualGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    if (body.account?.intent === "add") {
+      mockConnectorAccountDisplayNames.set(
+        connector.id,
+        body.account.displayName ?? null,
       );
-      if (body.account?.intent === "add") {
-        mockConnectorAccountDisplayNames.set(
-          connector.id,
-          body.account.displayName ?? null,
-        );
-      }
-      upsertMockConnector(connector);
-      return respond(200, connector);
-    },
-  ),
+    }
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
 
-  mockApi(
-    connectorNoAuthGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
+  mockApi(connectorNoAuthGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    if (body.account?.intent === "add") {
+      mockConnectorAccountDisplayNames.set(
+        connector.id,
+        body.account.displayName ?? null,
       );
-      if (body.account?.intent === "add") {
-        mockConnectorAccountDisplayNames.set(
-          connector.id,
-          body.account.displayName ?? null,
-        );
-      }
-      upsertMockConnector(connector);
-      return respond(200, connector);
-    },
-  ),
+    }
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
 
   mockApi(connectorScopeDiffContract.getScopeDiff, ({ respond }) => {
     return respond(200, {
