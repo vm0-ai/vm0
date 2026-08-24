@@ -180,7 +180,7 @@ function prepareOverflowingPinnedAgents(targetContext = context): string[] {
   const team = prepareAgentTeam(targetContext);
   targetContext.mocks.data.team([
     ...team,
-    ...OVERFLOW_PINNED_AGENTS.map((agent, index) => {
+    ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
         ...team[1]!,
         id: agent.id,
