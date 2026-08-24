@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.171.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.10...runner-rs-v0.171.11) (2026-08-24)
+
+
+### Refactoring
+
+* **runner:** remove legacy idle status mirror ([#29072](https://github.com/vm0-ai/vm0/issues/29072)) ([3677fcf](https://github.com/vm0-ai/vm0/commit/3677fcf6f9a4fb92105e5c97d15b92775e6236e0))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+
 ## [0.171.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.9...runner-rs-v0.171.10) (2026-08-24)
 
 ## [0.171.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.8...runner-rs-v0.171.9) (2026-08-24)

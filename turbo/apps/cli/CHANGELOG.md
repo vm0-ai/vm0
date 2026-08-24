@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.282.2](https://github.com/vm0-ai/vm0/compare/cli-v9.282.1...cli-v9.282.2) (2026-08-24)
+
+
+### Refactoring
+
+* migrate built-in model terminology ([#29079](https://github.com/vm0-ai/vm0/issues/29079)) ([4de6522](https://github.com/vm0-ai/vm0/commit/4de65229d749c81d2b27b5fdc15320e3da5d91ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.360.0
+    * @okouai/core bumped to 8.587.2
+
 ## [9.282.1](https://github.com/vm0-ai/vm0/compare/cli-v9.282.0...cli-v9.282.1) (2026-08-24)
 
 
