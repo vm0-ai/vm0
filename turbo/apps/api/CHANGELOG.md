@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.479.3](https://github.com/vm0-ai/vm0/compare/api-v1.479.2...api-v1.479.3) (2026-08-24)
+
+
+### Bug Fixes
+
+* **api:** remove redundant axiom reduction log ([#28786](https://github.com/vm0-ai/vm0/issues/28786)) ([4371cb2](https://github.com/vm0-ai/vm0/commit/4371cb2d8a3d939ca8d473d88567fd2ef8b5235f))
+* **api:** stop logging expected unknown connector misses ([#28803](https://github.com/vm0-ai/vm0/issues/28803)) ([e7897f5](https://github.com/vm0-ai/vm0/commit/e7897f5a93a4687edfda96433a350005955510e1))
+
+
+### Refactoring
+
+* clean up public brand rollout fallbacks ([#28804](https://github.com/vm0-ai/vm0/issues/28804)) ([4eb7221](https://github.com/vm0-ai/vm0/commit/4eb72219ad77a7f47692861ae20dbb274c02bbfb))
+* **contracts:** neutralize custom connector and feature switch contract naming ([#28206](https://github.com/vm0-ai/vm0/issues/28206)) ([0610293](https://github.com/vm0-ai/vm0/commit/0610293ab1acdae01334925c81c79846c11a2009)), closes [#28190](https://github.com/vm0-ai/vm0/issues/28190)
+* **core:** rename zeroDebug feature switch to okouDebug ([#28816](https://github.com/vm0-ai/vm0/issues/28816)) ([9d86a26](https://github.com/vm0-ai/vm0/commit/9d86a26650ef5c7ac400356fb9f0fc6c173611e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.1
+    * @okouai/core bumped to 8.584.2
+    * @okouai/db bumped to 1.218.7
+
 ## [1.479.2](https://github.com/vm0-ai/vm0/compare/api-v1.479.1...api-v1.479.2) (2026-08-24)
 
 
