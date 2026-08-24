@@ -1,4 +1,10 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import {
+  bankingUserContract,
+  type BankingAccessRequestStatusResponse,
+  type BankingAgentGrantRequest,
+  type BankingConnectSessionRequest,
+} from "@okouai/api-contracts/contracts/banking";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorManualGrantContract,
@@ -360,6 +366,266 @@ function selectMailText(element: HTMLElement): void {
 }
 
 describe("chat event action cards", () => {
+  it("renders an unconnected banking request with the compact action card layout", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000005";
+    const reason = "Review recent expenses";
+    const bankingUrl = `${window.location.origin}/agents/${AGENT_ID}/banking?reason=${encodeURIComponent(reason)}&threadId=${threadId}&callbackPrompt=Continue+the+expense+review`;
+    const status: BankingAccessRequestStatusResponse = {
+      agent: { id: AGENT_ID, name: "Zero" },
+      connection: null,
+      session: null,
+      grant: null,
+    };
+    context.mocks.api(
+      bankingUserContract.accessRequestStatus,
+      ({ respond }) => {
+        return respond(200, status);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Banking access",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: bankingUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.Banking]: true },
+    });
+
+    const card = await screen.findByTestId("banking-action-card");
+    expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
+    expect(card).toHaveTextContent("Banking access request");
+    expect(card).toHaveTextContent(`Zero · ${reason}`);
+    expect(buttonByText("Connect a bank", card)).toHaveClass("h-9");
+  });
+
+  it("starts a banking connect session in a popup and renders the pending state", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000006";
+    const connectionId = "a4000000-0000-4000-a000-000000000001";
+    const sessionId = "a4000000-0000-4000-a000-000000000002";
+    const reason = "Review recent expenses";
+    const connectUrl = "https://connect.example.test/session";
+    const bankingUrl = `${window.location.origin}/agents/${AGENT_ID}/banking?reason=${encodeURIComponent(reason)}&threadId=${threadId}&callbackPrompt=Continue+the+expense+review`;
+    let status: BankingAccessRequestStatusResponse = {
+      agent: { id: AGENT_ID, name: "Zero" },
+      connection: null,
+      session: null,
+      grant: null,
+    };
+    let createBody: BankingConnectSessionRequest | null = null;
+
+    context.mocks.api(
+      bankingUserContract.accessRequestStatus,
+      ({ respond }) => {
+        return respond(200, status);
+      },
+    );
+    context.mocks.api(
+      bankingUserContract.createConnectSession,
+      ({ body, respond }) => {
+        createBody = body;
+        status = {
+          ...status,
+          connection: {
+            id: connectionId,
+            status: "active",
+            accounts: [],
+            repairInstitutions: [],
+          },
+          session: {
+            id: sessionId,
+            mode: "connect",
+            status: "pending",
+            institutionLoginId: null,
+          },
+        };
+        return respond(200, { sessionId, url: connectUrl });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Banking connect",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: bankingUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.Banking]: true },
+    });
+
+    const card = await screen.findByTestId("banking-action-card");
+    const popup = new Window();
+    Object.defineProperty(popup, "opener", {
+      configurable: true,
+      value: window,
+      writable: true,
+    });
+    const open = vi.spyOn(window, "open").mockReturnValue(popup);
+
+    await user.click(buttonByText("Connect a bank", card));
+
+    await waitFor(() => {
+      expect(createBody).toStrictEqual({
+        agentId: AGENT_ID,
+        mode: "connect",
+      });
+      expect(open).toHaveBeenCalledWith("about:blank", "_blank");
+      expect(popup.location.href).toBe(connectUrl);
+      expect(card).toHaveTextContent("Waiting for Mastercard Data Connect");
+    });
+    popup.close();
+  });
+
+  it("grants, continues, and revokes banking access through the action card", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000007";
+    const connectionId = "a4000000-0000-4000-a000-000000000003";
+    const accountId = "a4000000-0000-4000-a000-000000000004";
+    const reason = "Review recent expenses";
+    const callbackPrompt = "Continue the expense review";
+    const bankingUrl = `${window.location.origin}/agents/${AGENT_ID}/banking?reason=${encodeURIComponent(reason)}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    let status: BankingAccessRequestStatusResponse = {
+      agent: { id: AGENT_ID, name: "Zero" },
+      connection: {
+        id: connectionId,
+        status: "active",
+        accounts: [
+          {
+            id: accountId,
+            name: "Everyday Checking",
+            institutionName: "Example Bank",
+            type: "checking",
+            last4: "6789",
+            repairRequired: false,
+          },
+        ],
+        repairInstitutions: [],
+      },
+      session: {
+        id: "a4000000-0000-4000-a000-000000000005",
+        mode: "connect",
+        status: "completed",
+        institutionLoginId: null,
+      },
+      grant: null,
+    };
+    let savedBody: BankingAgentGrantRequest | null = null;
+    let revokedAgentId: string | null = null;
+    const sentPrompts: string[] = [];
+
+    context.mocks.api(
+      bankingUserContract.accessRequestStatus,
+      ({ respond }) => {
+        return respond(200, status);
+      },
+    );
+    context.mocks.api(
+      bankingUserContract.saveAgentGrant,
+      ({ body, respond }) => {
+        savedBody = body;
+        status = {
+          ...status,
+          grant: {
+            status: "active",
+            accountIds: [accountId],
+            purpose: reason,
+            expiresAt: "2026-08-31T10:00:00.000Z",
+          },
+        };
+        return respond(200, status);
+      },
+    );
+    context.mocks.api(
+      bankingUserContract.revokeAgentGrant,
+      ({ body, respond }) => {
+        revokedAgentId = body.agentId;
+        status = {
+          ...status,
+          grant: {
+            status: "revoked",
+            accountIds: [accountId],
+            purpose: reason,
+            expiresAt: "2026-08-31T10:00:00.000Z",
+          },
+        };
+        return respond(200, status);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Banking grant",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: bankingUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.Banking]: true },
+    });
+
+    const card = await screen.findByTestId("banking-action-card");
+    await user.click(
+      within(card).getByRole("checkbox", { name: /Everyday Checking/u }),
+    );
+    await user.click(buttonByText("Grant access", card));
+
+    await waitFor(() => {
+      expect(savedBody).toStrictEqual({
+        agentId: AGENT_ID,
+        accountIds: [accountId],
+        duration: "7d",
+        purpose: reason,
+      });
+      expect(card).toHaveTextContent("Access active for 1 account");
+    });
+
+    await user.click(buttonByText("Continue", card));
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+    });
+
+    await user.click(buttonByText("Revoke", card));
+    expect(card).toHaveTextContent("Revoke this Agent's banking access?");
+    await user.click(buttonByText("Revoke", card));
+
+    await waitFor(() => {
+      expect(revokedAgentId).toBe(AGENT_ID);
+      expect(card).toHaveTextContent("Select accounts");
+      expect(buttonByText("Grant access", card)).toBeDisabled();
+    });
+  });
+
   it("keeps connector action card height stable while catalog metadata loads", async () => {
     const threadId = "e4000000-0000-4000-a000-000000000002";
     const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
