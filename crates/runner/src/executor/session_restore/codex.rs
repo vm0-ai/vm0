@@ -91,12 +91,12 @@ async fn cleanup_existing_codex_session_files(
 ) -> RunnerResult<Option<String>> {
     let cleanup_cmd = codex_session_cleanup_command(CANONICAL_CODEX_HOME_DIR);
     let env = [
-        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("OKOU_CODEX_RESTORE_SESSION_ID", session_id),
         (
-            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
             session_filename_key,
         ),
-        ("VM0_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
+        ("OKOU_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
     ];
     let result = sandbox
         .exec_with_diagnostic_label(
@@ -293,7 +293,7 @@ mod tests {
 
     fn run_cleanup_with_budget(codex_home: &Path, restore_path: &Path, budget: &str) -> Output {
         cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
-            .env("VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
+            .env("OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
             .output()
             .unwrap()
     }
@@ -310,13 +310,13 @@ mod tests {
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
-            .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
+            .env("OKOU_CODEX_RESTORE_SESSION_ID", session_id)
             .env(
-                "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+                "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
                 session_filename_key,
             )
             .env(
-                "VM0_CODEX_RESTORE_SESSION_PATH",
+                "OKOU_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
             );
         command
