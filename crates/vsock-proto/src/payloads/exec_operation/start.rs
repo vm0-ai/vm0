@@ -1,7 +1,8 @@
 use crate::error::ProtocolError;
 use crate::read::{
-    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
-    expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32,
+    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_count, ensure_u16_len,
+    ensure_u32_count, ensure_u32_len, expect_consumed, read_i32, read_slice, read_str, read_u8,
+    read_u16, read_u32,
 };
 use crate::wire::EXEC_FLAG_SUDO;
 
@@ -335,18 +336,18 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let cmd = request.command.as_bytes();
     let label_bytes = request.label.as_bytes();
     let cmd_len = ensure_u32_len("command", cmd.len())?;
-    let env_count = ensure_u32_len("env_count", request.env.len())?;
+    let env_count = ensure_u32_count("env_count", request.env.len())?;
     if request.env.len() > MAX_EXEC_ENV_VARS {
-        return Err(ProtocolError::PayloadTooLarge(
+        return Err(ProtocolError::PayloadCountTooLarge(
             "env_count",
             request.env.len(),
         ));
     }
     let label_len = ensure_u16_len("label", label_bytes.len())?;
     let expected_exit_count =
-        ensure_u16_len("expected_exit_count", request.expected_exit_codes.len())?;
+        ensure_u16_count("expected_exit_count", request.expected_exit_codes.len())?;
     if request.expected_exit_codes.len() > MAX_EXEC_EXPECTED_EXIT_CODES {
-        return Err(ProtocolError::PayloadTooLarge(
+        return Err(ProtocolError::PayloadCountTooLarge(
             "expected_exit_count",
             request.expected_exit_codes.len(),
         ));

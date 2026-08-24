@@ -7,8 +7,10 @@ pub enum ProtocolError {
     MessageTooSmall(usize),
     /// Payload contents were structurally invalid.
     InvalidPayload(&'static str),
-    /// Named payload field exceeded its encoded size or count limit.
+    /// Named payload field exceeded its encoded byte-length limit.
     PayloadTooLarge(&'static str, usize),
+    /// Named payload field exceeded its element-count limit.
+    PayloadCountTooLarge(&'static str, usize),
 }
 
 impl std::fmt::Display for ProtocolError {
@@ -19,6 +21,9 @@ impl std::fmt::Display for ProtocolError {
             Self::InvalidPayload(msg) => write!(f, "invalid payload: {msg}"),
             Self::PayloadTooLarge(field, size) => {
                 write!(f, "payload field too large: {field} ({size} bytes)")
+            }
+            Self::PayloadCountTooLarge(field, count) => {
+                write!(f, "payload field too large: {field} ({count} elements)")
             }
         }
     }
