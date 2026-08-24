@@ -16,8 +16,9 @@ use super::super::telemetry::{
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, FinalizingHandoffOutcome, NewSandboxDispatch,
-    RunnerPreSpawnOperationTiming, RunnerPreSpawnTiming, SessionHistoryRestorePlan, execute_job,
-    execute_job_reuse, execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
+    RunnerPreSpawnConcurrency, RunnerPreSpawnOperationTiming, RunnerPreSpawnTiming,
+    SessionHistoryRestorePlan, execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
+    execute_job_with_prepared_notifier,
 };
 use super::support::{
     default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
@@ -27,7 +28,7 @@ use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::provider::ApiClaimTiming;
 use crate::run_cancellation::RunCancellationSignals;
-use crate::telemetry::{JobTelemetry, RunnerStartupPath};
+use crate::telemetry::{JobTelemetry, RunnerPreSpawnConcurrencyBucket, RunnerStartupPath};
 use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
 #[test]
@@ -542,6 +543,13 @@ fn assert_pre_spawn_phase_actions_succeeded(telemetry: &JobTelemetry) {
 }
 
 fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
+    let concurrency = RunnerPreSpawnConcurrency::default();
+    pre_spawn_timing_with_phases_and_concurrency(&concurrency)
+}
+
+fn pre_spawn_timing_with_phases_and_concurrency(
+    concurrency: &RunnerPreSpawnConcurrency,
+) -> RunnerPreSpawnTiming {
     let mut timing = RunnerPreSpawnTiming::start_at(
         Instant::now(),
         Some(ApiClaimTiming::new(
@@ -549,6 +557,7 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
             Duration::from_millis(7),
             Duration::from_millis(3),
         )),
+        concurrency,
     );
     for (phase, duration_ms) in [
         (RunnerPreSpawnPhase::ResumeSessionValidation, 1),
@@ -566,6 +575,22 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
     timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Accepted);
     timing.mark_task_enqueued();
     timing
+}
+
+fn assert_pre_spawn_concurrency_bucket(
+    telemetry: &JobTelemetry,
+    action: &str,
+    expected: Option<RunnerPreSpawnConcurrencyBucket>,
+) {
+    let operations = telemetry.pending_ops_with_runner_startup_snapshot();
+    let matching: Vec<_> = operations
+        .iter()
+        .filter(|operation| operation.action_type == action)
+        .collect();
+    let [operation] = matching.as_slice() else {
+        panic!("expected one {action} operation, got {operations:?}");
+    };
+    assert_eq!(operation.runner_pre_spawn_concurrency_bucket, expected);
 }
 
 fn pre_spawn_timing_with_exact_reuse_speculation() -> RunnerPreSpawnTiming {
@@ -795,6 +820,81 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membership() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let concurrency = RunnerPreSpawnConcurrency::default();
+    let held_timing = RunnerPreSpawnTiming::start_at(Instant::now(), None, &concurrency);
+
+    let mut overlapping_context = minimal_context();
+    overlapping_context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, overlapping_telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        overlapping_context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases_and_concurrency(&concurrency)),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    for action in [
+        "runner_claim_to_executor_start",
+        "runner_fresh_sandbox_prepare",
+        "runner_agent_start_process",
+        "api_to_spawn",
+    ] {
+        assert_pre_spawn_concurrency_bucket(
+            &overlapping_telemetry,
+            action,
+            Some(RunnerPreSpawnConcurrencyBucket::Two),
+        );
+    }
+    assert_pre_spawn_concurrency_bucket(&overlapping_telemetry, "agent_execute", None);
+
+    drop(held_timing);
+
+    let mut baseline_context = minimal_context();
+    baseline_context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, baseline_telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        baseline_context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases_and_concurrency(&concurrency)),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    assert_pre_spawn_concurrency_bucket(
+        &baseline_telemetry,
+        "api_to_spawn",
+        Some(RunnerPreSpawnConcurrencyBucket::One),
+    );
 }
 
 #[tokio::test]
@@ -1128,6 +1228,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 async fn start_process_failure_records_phase_failure_without_spawn_completion() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
+    let concurrency = RunnerPreSpawnConcurrency::default();
     let overrides = std::sync::Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_start_process_stdout_chunks(vec![
         ProcessOutputChunk {
@@ -1152,7 +1253,11 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
-            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_at(
+                Instant::now(),
+                None,
+                &concurrency,
+            )),
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         },
     )
@@ -1163,4 +1268,37 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
     assert_lacks_api_claim_timing(&telemetry);
     assert_lacks_action(&telemetry, "runner_executor_start_to_spawn");
     assert_lacks_action(&telemetry, "runner_claim_to_spawn");
+    assert_pre_spawn_concurrency_bucket(
+        &telemetry,
+        "runner_agent_start_process",
+        Some(RunnerPreSpawnConcurrencyBucket::One),
+    );
+
+    let mut recovery_context = minimal_context();
+    recovery_context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let recovery_factory = MockSandboxFactory::new();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, recovery_telemetry) = execute_job_with_prepared_notifier(
+        &recovery_factory,
+        recovery_context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases_and_concurrency(&concurrency)),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+    assert_pre_spawn_concurrency_bucket(
+        &recovery_telemetry,
+        "api_to_spawn",
+        Some(RunnerPreSpawnConcurrencyBucket::One),
+    );
 }

@@ -2077,7 +2077,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
-  it("attributes sandbox operation telemetry to the optional runner name", async () => {
+  it("attributes sandbox operation telemetry to optional runner dimensions", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,
     );
@@ -2093,6 +2093,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
             action_type: "runner_name_attribution",
             duration_ms: 12,
             success: true,
+            runner_pre_spawn_concurrency_bucket: "3_4",
           },
         ],
       },
@@ -2108,6 +2109,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
           run_id: runId,
           op_type: "runner_name_attribution",
           runner_name: "v0.168.14",
+          runner_pre_spawn_concurrency_bucket: "3_4",
         }),
       ],
     );
@@ -2135,6 +2137,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
       [
         expect.not.objectContaining({
           runner_name: expect.anything(),
+          runner_pre_spawn_concurrency_bucket: expect.anything(),
         }),
       ],
     );

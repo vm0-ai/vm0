@@ -1,6 +1,9 @@
 //! Executor telemetry marker helpers.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use guest_contracts::epoch_milliseconds::{
@@ -10,11 +13,64 @@ use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::provider::ApiClaimTiming;
-use crate::telemetry::{JobTelemetry, RunnerStartupPath};
+use crate::telemetry::{
+    JobTelemetry, RunnerPreSpawnAttribution, RunnerPreSpawnConcurrencyBucket, RunnerStartupPath,
+};
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Tracks only post-claim jobs that have not yet spawned a guest process.
+#[derive(Clone, Default)]
+pub(crate) struct RunnerPreSpawnConcurrency {
+    active: Arc<AtomicUsize>,
+}
+
+struct RunnerPreSpawnConcurrencyGuard {
+    active: Arc<AtomicUsize>,
+    attribution: RunnerPreSpawnAttribution,
+    preserve_attribution_on_drop: bool,
+}
+
+impl RunnerPreSpawnConcurrency {
+    fn enter(&self) -> RunnerPreSpawnConcurrencyGuard {
+        let existing = self.active.fetch_add(1, Ordering::Relaxed);
+        let bucket = match existing {
+            0 => RunnerPreSpawnConcurrencyBucket::One,
+            1 => RunnerPreSpawnConcurrencyBucket::Two,
+            2..=3 => RunnerPreSpawnConcurrencyBucket::ThreeToFour,
+            4..=7 => RunnerPreSpawnConcurrencyBucket::FiveToEight,
+            _ => RunnerPreSpawnConcurrencyBucket::NinePlus,
+        };
+        RunnerPreSpawnConcurrencyGuard {
+            active: Arc::clone(&self.active),
+            attribution: RunnerPreSpawnAttribution::new(bucket),
+            preserve_attribution_on_drop: false,
+        }
+    }
+}
+
+impl RunnerPreSpawnConcurrencyGuard {
+    fn attribution(&self) -> RunnerPreSpawnAttribution {
+        self.attribution.clone()
+    }
+
+    fn preserve_attribution_after_spawn(&mut self) {
+        // Live membership ends when this guard drops at spawn. The immutable
+        // cohort remains valid for the immediately following api_to_spawn row.
+        self.preserve_attribution_on_drop = true;
+    }
+}
+
+impl Drop for RunnerPreSpawnConcurrencyGuard {
+    fn drop(&mut self) {
+        self.active.fetch_sub(1, Ordering::Relaxed);
+        if !self.preserve_attribution_on_drop {
+            self.attribution.deactivate();
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum RunnerPreSpawnPhase {
@@ -158,6 +214,7 @@ impl RunnerPreSpawnPhaseDurations {
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
     api_claim_timing: Option<ApiClaimTiming>,
+    concurrency: RunnerPreSpawnConcurrencyGuard,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
@@ -188,16 +245,18 @@ pub(super) struct RunnerSpawnTiming {
 impl RunnerPreSpawnTiming {
     #[cfg(test)]
     pub(crate) fn start_after_claim() -> Self {
-        Self::start_at(Instant::now(), None)
+        Self::start_at(Instant::now(), None, &RunnerPreSpawnConcurrency::default())
     }
 
     pub(crate) fn start_at(
         claim_returned_at: Instant,
         api_claim_timing: Option<ApiClaimTiming>,
+        concurrency: &RunnerPreSpawnConcurrency,
     ) -> Self {
         Self {
             claim_returned_at,
             api_claim_timing,
+            concurrency: concurrency.enter(),
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
@@ -231,6 +290,14 @@ impl RunnerPreSpawnTiming {
 
     fn elapsed_at(&self, at: Instant) -> Duration {
         at.saturating_duration_since(self.claim_returned_at)
+    }
+
+    fn concurrency_attribution(&self) -> RunnerPreSpawnAttribution {
+        self.concurrency.attribution()
+    }
+
+    fn preserve_concurrency_attribution_after_spawn(&mut self) {
+        self.concurrency.preserve_attribution_after_spawn();
     }
 
     fn record_collected_phases(&self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
@@ -333,6 +400,8 @@ impl RunnerSpawnTiming {
 
     pub(super) fn record_claim_to_executor_start(&self, telemetry: &mut JobTelemetry) {
         if let Some(pre_spawn_timing) = self.pre_spawn_timing.as_ref() {
+            telemetry
+                .start_runner_pre_spawn_attribution(pre_spawn_timing.concurrency_attribution());
             telemetry.record(
                 "runner_claim_to_executor_start",
                 pre_spawn_timing.elapsed_at(self.executor_started_at),
@@ -344,7 +413,7 @@ impl RunnerSpawnTiming {
     }
 
     pub(super) fn record_spawn_success_at(
-        &self,
+        mut self,
         telemetry: &mut JobTelemetry,
         spawned_at: Instant,
     ) {
@@ -361,6 +430,9 @@ impl RunnerSpawnTiming {
                 true,
                 None,
             );
+        }
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing.as_mut() {
+            pre_spawn_timing.preserve_concurrency_attribution_after_spawn();
         }
     }
 }
@@ -421,6 +493,7 @@ pub(super) fn record_api_to_spawn(
     if let Some(duration) = api_latency_duration("api_to_spawn", context) {
         telemetry.record_api_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
     }
+    telemetry.finish_runner_pre_spawn_attribution();
 }
 
 fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
