@@ -4855,7 +4855,7 @@
           "description": "Prüfen Sie integrierte Modellrouten, die vorübergehend von der Fallback-Auswahl ausgeschlossen sind.",
           "disabled": "deaktiviert",
           "disabledExplanation": "Der Fallback für integrierte Modelle ist für diesen Workspace deaktiviert. Daher werden diese globalen Cooldowns hier derzeit ignoriert.",
-          "empty": "Derzeit befinden sich keine verwalteten Modellrouten im globalen Cooldown.",
+          "empty": "Derzeit befinden sich keine integrierten Modellrouten im globalen Cooldown.",
           "enabled": "aktiviert",
           "globalActive": "aktive globale Cooldowns",
           "globalExplanation": "Cooldowns sind ein globaler Betriebszustand. Sie können diesen Workspace nur beeinflussen, wenn der Fallback für integrierte Modelle hier aktiviert ist.",
