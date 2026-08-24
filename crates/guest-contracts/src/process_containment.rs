@@ -52,9 +52,23 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
+/// Canonical reader alias for [`WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV`].
+///
+/// `vsock-guest` keeps writing the legacy alias until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// are complete.
+pub const CANONICAL_WORKLOAD_CGROUP_PROCS_ENV: &str = "OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT";
+
 /// Runner-owned endpoint used by [`TOOL_EXEC_PATH`] to request a unique tool
 /// cgroup before it executes user code.
 pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
+
+/// Canonical reader alias for [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`].
+///
+/// Guest Agent keeps writing the legacy alias to managed CLI children until
+/// the deployed reader floor, sandbox drain, rollback window, and
+/// legacy-read-zero gates in #28914 are complete.
+pub const CANONICAL_TOOL_CGROUP_PROCS_ENV: &str = "OKOU_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count validated for workload containment.
 pub const MIN_PROFILE_VCPU: u32 = 1;
@@ -289,6 +303,26 @@ impl WorkloadResourcePolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cgroup_placement_environment_contracts_preserve_legacy_writers() {
+        assert_eq!(
+            WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT"
+        );
+        assert_eq!(
+            CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            "OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT"
+        );
+        assert_eq!(
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            "VM0_TOOL_CGROUP_PROCS_ENDPOINT"
+        );
+        assert_eq!(
+            CANONICAL_TOOL_CGROUP_PROCS_ENV,
+            "OKOU_TOOL_CGROUP_PROCS_ENDPOINT"
+        );
+    }
 
     #[test]
     fn derives_default_profile_policy() {

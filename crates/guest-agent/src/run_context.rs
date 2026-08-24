@@ -71,6 +71,14 @@ impl GuestRuntime {
                 source.label()
             );
         }
+        if let Some(containment) = &workload_containment {
+            for (key, source) in containment.env_source_evidence() {
+                guest_common::log_info!(
+                    LOG_TAG,
+                    "cgroup_placement_env_source key={key} source={source}"
+                );
+            }
+        }
 
         let config = GuestConfig::from_raw(raw)?;
         let http = HttpClient::for_config(&config).map_err(|error| error.to_string())?;

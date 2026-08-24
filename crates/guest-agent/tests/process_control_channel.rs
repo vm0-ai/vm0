@@ -503,11 +503,13 @@ fn canonical_process_control_guest_agent_wrapper_command(guest_agent: &str) -> S
     // The test process can itself run under vm0 and inherit an incomplete
     // cgroup bootstrap pair. Keep this unmanaged fixture isolated from it.
     format!(
-        "export {}=\"${}\"; unset {} {} {}; exec {}",
+        "export {}=\"${}\"; unset {} {} {} {} {}; exec {}",
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         quote_shell_arg(guest_agent)
     )
