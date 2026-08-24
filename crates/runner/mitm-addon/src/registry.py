@@ -395,10 +395,6 @@ def _validate_connector_routing_variables(vm: dict) -> None:
     if not isinstance(routing_variables, dict):
         raise TypeError("proxy registry VM entry connectorRoutingVariables must be an object")
     for identity, values in routing_variables.items():
-        if not isinstance(identity, str):
-            raise TypeError(
-                "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
-            )
         if not identity.startswith(("builtin:", "custom:")):
             raise ValueError(
                 "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
@@ -409,7 +405,7 @@ def _validate_connector_routing_variables(vm: dict) -> None:
                 "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
             )
         if not isinstance(values, dict) or any(
-            not isinstance(key, str) or not isinstance(value, str) for key, value in values.items()
+            not isinstance(value, str) for value in values.values()
         ):
             raise TypeError(
                 "proxy registry VM entry connectorRoutingVariables values must be string maps"

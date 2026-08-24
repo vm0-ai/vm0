@@ -67,6 +67,166 @@ class TestLoadRegistry:
         assert state.invalid_vms["10.200.0.6"].reason == "empty_run_id"
         assert state.invalid_vms["10.200.0.7"].reason == "invalid_run_id"
 
+    @pytest.mark.parametrize(
+        ("vm_fields", "expected_reason", "expected_message"),
+        [
+            pytest.param(
+                {"omittedBuiltinFirewalls": "github"},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                id="builtin-omissions-not-list",
+            ),
+            pytest.param(
+                {"omittedBuiltinFirewalls": [""]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                id="builtin-omissions-empty-member",
+            ),
+            pytest.param(
+                {"omittedBuiltinFirewalls": [1]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+                id="builtin-omissions-non-string-member",
+            ),
+            pytest.param(
+                {"omittedBuiltinFirewalls": ["github", "github"]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedBuiltinFirewalls must be unique",
+                id="builtin-omissions-duplicate",
+            ),
+            pytest.param(
+                {"omittedCustomConnectorIds": "connector-1"},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                id="custom-omissions-not-list",
+            ),
+            pytest.param(
+                {"omittedCustomConnectorIds": [""]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                id="custom-omissions-empty-member",
+            ),
+            pytest.param(
+                {"omittedCustomConnectorIds": [1]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedCustomConnectorIds must be a string list",
+                id="custom-omissions-non-string-member",
+            ),
+            pytest.param(
+                {"omittedCustomConnectorIds": ["connector-1", "connector-1"]},
+                "invalid_omitted_intents",
+                "proxy registry VM entry omittedCustomConnectorIds must be unique",
+                id="custom-omissions-duplicate",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": []},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables must be an object",
+                id="routing-variables-not-object",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"github": {}}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                id="routing-identity-unsupported",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"builtin:": {}}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                id="builtin-routing-identity-empty",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"custom:": {}}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+                id="custom-routing-identity-empty",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"builtin:github": []}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                id="routing-variable-map-not-object",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"builtin:github": {"HOST": 1}}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                id="routing-variable-value-not-string",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"builtin:github": {"": "example.test"}}},
+                "invalid_connector_routing_variables",
+                "proxy registry VM entry connectorRoutingVariables values must be string maps",
+                id="routing-variable-key-empty",
+            ),
+        ],
+    )
+    def test_rejects_invalid_routing_metadata(
+        self,
+        tmp_path,
+        vm_fields,
+        expected_reason,
+        expected_message,
+    ):
+        path = tmp_path / "registry.json"
+        vm = {
+            "runId": "run-active",
+            "billableFirewalls": [],
+            "cliAgentType": "claude-code",
+            **vm_fields,
+        }
+        path.write_text(json.dumps({"vms": {"10.200.0.1": vm}, "updatedAt": 0}))
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.vms == {}
+        assert set(state.invalid_vms) == {"10.200.0.1"}
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == expected_reason
+        assert invalid_vm.message == expected_message
+
+    @pytest.mark.parametrize(
+        "vm_fields",
+        [
+            pytest.param({}, id="metadata-absent"),
+            pytest.param(
+                {
+                    "omittedBuiltinFirewalls": [],
+                    "omittedCustomConnectorIds": [],
+                    "connectorRoutingVariables": {},
+                },
+                id="metadata-empty",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"builtin:github": {"HOST": "example.test"}}},
+                id="builtin-routing-identity",
+            ),
+            pytest.param(
+                {"connectorRoutingVariables": {"custom:connector-1": {"HOST": "example.test"}}},
+                id="custom-routing-identity",
+            ),
+        ],
+    )
+    def test_accepts_valid_routing_metadata(self, tmp_path, vm_fields):
+        path = tmp_path / "registry.json"
+        vm = {
+            "runId": "run-active",
+            "billableFirewalls": [],
+            "cliAgentType": "claude-code",
+            **vm_fields,
+        }
+        path.write_text(json.dumps({"vms": {"10.200.0.1": vm}, "updatedAt": 0}))
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.vms) == {"10.200.0.1"}
+        assert state.invalid_vms == {}
+
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
