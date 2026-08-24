@@ -233,7 +233,11 @@ impl MitmProxy {
         }
     }
 
-    /// The port mitmdump is listening on.
+    /// The selected mitmdump port.
+    ///
+    /// Initial startup may replace this port while recovering from a bind
+    /// collision. Call this after [`Self::start`] before publishing the port
+    /// to sandbox network configuration.
     pub fn port(&self) -> u16 {
         self.port
     }
