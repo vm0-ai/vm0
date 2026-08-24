@@ -54,7 +54,7 @@ fi
 if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
   fail "real Claude E2E must not retain the Sonnet 4.6 pin"
 fi
-grep -Fq 'VM0_MITM_RUNNER_TOKEN' "$MANAGED_FALLBACK_TEST" ||
+grep -Fq 'OKOU_MITM_RUNNER_TOKEN' "$MANAGED_FALLBACK_TEST" ||
   fail "managed fallback E2E must require trusted failure authentication"
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
@@ -495,7 +495,7 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
   raise "runner E2E tests must receive the preview bypass secret"
 end
 expected_failure_token = "${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}"
-unless run_step.dig("env", "VM0_MITM_RUNNER_TOKEN") == expected_failure_token
+unless run_step.dig("env", "OKOU_MITM_RUNNER_TOKEN") == expected_failure_token
   raise "only the managed fallback shard may receive trusted failure authentication"
 end
 unless runner.fetch("steps").any? do |step|

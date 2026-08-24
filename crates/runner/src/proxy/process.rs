@@ -30,7 +30,7 @@ const ADDON_READY_FILENAME: &str = "addon-ready";
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const RUNNER_TOKEN_ENV: &str = "VM0_MITM_RUNNER_TOKEN";
+const RUNNER_TOKEN_ENV: &str = "OKOU_MITM_RUNNER_TOKEN";
 
 #[derive(Debug)]
 enum MitmdumpStartupFailure {
@@ -877,7 +877,7 @@ mod tests {
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 printf '%s\n%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" \
-  "${VM0_MITM_RUNNER_TOKEN-}" > "$0.env"
+  "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
 port=""
 ready_path=""
 usage_state_id=""
