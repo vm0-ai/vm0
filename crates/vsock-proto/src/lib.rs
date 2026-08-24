@@ -133,6 +133,17 @@
 //!
 //! Present stdin is bounded by `MAX_EXEC_STDIN_BYTES`.
 //!
+//! ### Process termination
+//!
+//! Exec, guest DNS readiness, and guest storage-manifest results share the same
+//! process termination encoding:
+//!
+//! - `0x00`: exited, followed by signed `[4B exit_code]`.
+//! - `0x01`: timed out.
+//! - `0x02`: cancelled.
+//! - `0x03`: start failed.
+//! - `0x04`: wait failed.
+//!
 //! ### `exec_result`
 //!
 //! ```text
@@ -143,13 +154,7 @@
 //! [2B diagnostic_len][diagnostic]
 //! ```
 //!
-//! `termination` values:
-//!
-//! - `0x00`: exited, followed by signed `[4B exit_code]`.
-//! - `0x01`: timed out.
-//! - `0x02`: cancelled.
-//! - `0x03`: start failed.
-//! - `0x04`: wait failed.
+//! `termination` uses the shared process termination encoding above.
 //!
 //! `stdout` and `stderr` use the same tagged captured-output payload:
 //!
@@ -168,13 +173,8 @@
 //! [2B diagnostic_len][diagnostic]
 //! ```
 //!
-//! `termination` values:
-//!
-//! - `0x00`: exited, followed by signed `[4B exit_code]`.
-//! - `0x01`: timed out.
-//! - `0x02`: cancelled by connection teardown.
-//! - `0x03`: start failed.
-//! - `0x04`: wait failed.
+//! `termination` uses the shared process termination encoding above. For DNS
+//! readiness, `cancelled` means cancellation by connection teardown.
 //!
 //! Result `flags` currently uses `OUTPUT_TRUNCATED=0x01`. `answer` is raw
 //! resolver stdout bounded by [`GUEST_DNS_READINESS_MAX_ANSWER_BYTES`], while
