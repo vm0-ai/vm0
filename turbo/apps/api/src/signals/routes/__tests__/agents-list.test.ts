@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { materializeAgentLegacyVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
 import { overrideCanonicalAgentAuthorityFixture } from "../../../test-fixtures/canonical-agent-authority";
 import { createRouteMocks } from "./helpers/route-test";
@@ -178,37 +178,5 @@ describe("GET /api/agents", () => {
       visibility: "private",
     });
     expect(canonicalOwnerList.body[1]?.agentId).toBe(second.body.agentId);
-  });
-
-  // #28461 moved this contract to its neutral path, which removed both branded
-  // registrations. `MIGRATED_BRANDED_PATHS` gives them back for the released
-  // CLI and browser builds that still ask for them; this is the executed
-  // request that proves they answer, rather than only that they are registered.
-  it("still answers the branded paths released callers hold", async () => {
-    const user = newOrgUser();
-    mocks.clerk.session(user.userId, user.orgId);
-    context.mocks.s3.send.mockResolvedValue({});
-
-    const created = await accept(
-      apiClient().create({
-        headers: authHeaders(),
-        body: { displayName: "Branded Path Agent" },
-      }),
-      [201],
-    );
-
-    const rawRequest = setupRawAppRequest({ context, routes: agentsRoutes });
-    const statuses: number[] = [];
-    for (const brandedPath of ["/api/okou/agents", "/api/zero/agents"]) {
-      const branded = await rawRequest(brandedPath, {
-        method: "GET",
-        headers: authHeaders(),
-      });
-      statuses.push(branded.status);
-      expect(branded.body).toStrictEqual([
-        expect.objectContaining({ agentId: created.body.agentId }),
-      ]);
-    }
-    expect(statuses).toStrictEqual([200, 200]);
   });
 });

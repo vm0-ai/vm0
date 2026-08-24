@@ -421,7 +421,7 @@ end
 raise "missing real Codex account bootstrap" unless codex_step
 codex_script = codex_step.fetch("run")
 %w[
-  /api/okou/model-providers
+  /api/model-providers
   /api/okou/model-policies
   /api/okou/feature-switches
   gpt-5.6-luna

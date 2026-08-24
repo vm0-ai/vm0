@@ -532,9 +532,11 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/mark-unread",
     paramName: "id",
   },
+  // Neutral rather than branded, for the same reason as `rename` below: #28916
+  // retired this row's branded forms.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/model-selection",
+    path: "/api/chat-threads/:id/model-selection",
     paramName: "id",
   },
   {

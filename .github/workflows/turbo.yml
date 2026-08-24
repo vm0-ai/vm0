@@ -2594,7 +2594,7 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
+            "${E2E_API_URL}/api/model-providers" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap mock Claude account
@@ -2621,7 +2621,7 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/okou/model-providers")
+            "${api_url}/api/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
