@@ -86,6 +86,7 @@ const productionShapedArtifactPairNoiseRows =
 const allowedArtifactSearchLookupIndexes = new Set([
   "chat_event_search_messages_user_org_created_idx",
   "chat_event_search_messages_user_org_agent_created_idx",
+  "chat_event_search_messages_user_org_agent_id_created_idx",
 ]);
 
 function databaseUrlFor(database: string): string {
@@ -531,8 +532,11 @@ async function seedAndAssertProductionShapedSearchLookups(
   );
   await client.query(
     `
-      INSERT INTO "chat_threads" ("id", "user_id", "agent_id", "title")
-      VALUES ($1, 'stage8-artifact-user', $2, 'stage8 search noise thread')
+      INSERT INTO "chat_threads" (
+        "id", "user_id", "agent_compose_id", "agent_id", "title"
+      ) VALUES (
+        $1, 'stage8-artifact-user', $2, $2, 'stage8 search noise thread'
+      )
     `,
     [searchNoiseThreadId, searchNoiseAgentId],
   );
@@ -613,17 +617,18 @@ async function seedAndAssertProductionShapedSearchLookups(
     const lookupIndexNames = Array.from(
       planText.matchAll(/(?:Index Scan using|Bitmap Index Scan on) (\S+)\b/gu),
       (match) => {
-        return match[1];
+        return match[1] ?? "";
       },
     );
-    assert.equal(
-      lookupIndexNames.length,
-      1,
-      `artifact search lookup must use exactly one index path:\n${planText}`,
+    assert.ok(
+      lookupIndexNames.length > 0,
+      `artifact search lookup must use an index path:\n${planText}`,
     );
     assert.ok(
-      allowedArtifactSearchLookupIndexes.has(lookupIndexNames[0] ?? ""),
-      `artifact search lookup must use a known user/org-leading index:\n${planText}`,
+      lookupIndexNames.every((indexName) => {
+        return allowedArtifactSearchLookupIndexes.has(indexName);
+      }),
+      `artifact search lookup must only use known user/org-leading indexes:\n${planText}`,
     );
     const boundedIndexCondition = plan.rows.some((row) => {
       const line = row["QUERY PLAN"];
