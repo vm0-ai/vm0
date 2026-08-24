@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.4...guest-reseed-v0.3.5) (2026-08-24)
+
+
+### Documentation
+
+* **rust:** document guest-reseed library CLI contract ([#28940](https://github.com/vm0-ai/vm0/issues/28940)) ([667210d](https://github.com/vm0-ai/vm0/commit/667210dd67608598c351ba7393d6f90d4d6be5b5))
+
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.3...guest-reseed-v0.3.4) (2026-07-16)
 
 
