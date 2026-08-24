@@ -107,15 +107,15 @@ func nonEmptyEnvironmentValue(_ key: String) -> String? {
 }
 
 func startSentry() {
-    guard let dsn = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_DSN")
+    guard let dsn = nonEmptyEnvironmentValue("OKOU_DESKTOP_SENTRY_DSN")
         ?? nonEmptyEnvironmentValue("SENTRY_DSN_DESKTOP")
     else {
         return
     }
 
-    let releaseName = nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_RELEASE")
+    let releaseName = nonEmptyEnvironmentValue("OKOU_DESKTOP_SENTRY_RELEASE")
     let environment =
-        nonEmptyEnvironmentValue("VM0_DESKTOP_SENTRY_ENVIRONMENT") ?? "production"
+        nonEmptyEnvironmentValue("OKOU_DESKTOP_SENTRY_ENVIRONMENT") ?? "production"
 
     SentrySDK.start { options in
         options.dsn = dsn
