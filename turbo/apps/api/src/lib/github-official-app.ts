@@ -29,10 +29,11 @@ export function resolveGithubAppIdentity(args: {
   const configuredAppSlug = normalizedProviderValue(args.configuredAppSlug);
   const installationAppId = normalizedProviderValue(args.installationAppId);
   const installationAppSlug = normalizedProviderValue(args.installationAppSlug);
-  // Rows created before migration 0979 have no provider identity. Keep the
-  // configured official identity until #27750 reconciliation proves no active
-  // installation still has null App metadata; user-managed rows remain keyed
-  // by their distinct provider App ID and never take this branch.
+  // Historical rows written before the App identity columns were deployed have
+  // no provider identity. Keep the configured official identity until #27750
+  // reconciliation proves no active installation still has null App metadata;
+  // user-managed rows remain keyed by their distinct provider App ID and never
+  // take this branch.
   const isOfficialInstallation =
     installationAppId === undefined || installationAppId === configuredAppId;
 
