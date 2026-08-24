@@ -778,12 +778,6 @@ async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     let cache = WorkspaceImageCache::new(runner_paths.clone());
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
-    let admission_dir = tempfile::tempdir().unwrap();
-    config.pre_spawn_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
-        crate::paths::HomePaths::with_root(admission_dir.path().to_path_buf()),
-        2,
-    )
-    .unwrap();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_start_result(Err(SandboxError::GuestDnsReadiness {
         reason: SandboxGuestDnsReadinessReason::DnsPath,

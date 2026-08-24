@@ -567,7 +567,7 @@ async fn run_start_with_home(
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
     let pre_spawn_vcpu_tokens = host::pre_spawn_cpu_capacity()?;
-    let pre_spawn_admission = PreSpawnAdmission::new(home.clone(), pre_spawn_vcpu_tokens)?;
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
         host_memory_mb as u32,

@@ -2,9 +2,19 @@ use super::*;
 use crate::error::RunnerError;
 use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
 
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use async_trait::async_trait;
 use sandbox::SandboxConfig;
 use tokio_util::sync::CancellationToken;
+
+fn assert_future_pending<T>(future: Pin<&mut impl Future<Output = T>>) {
+    let waker = futures_util::task::noop_waker();
+    let mut context = Context::from_waker(&waker);
+    assert!(matches!(future.poll(&mut context), Poll::Pending));
+}
 
 struct CreateGateFactory {
     inner: MockSandboxFactory,
@@ -54,13 +64,12 @@ impl SandboxFactory for CreateGateFactory {
 async fn fresh_pre_spawn_admission_cancels_before_factory_create() {
     let dir = tempfile::tempdir().unwrap();
     let config = Arc::new(test_executor_config(dir.path()).await);
-    let external_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
-        config.home.clone(),
-        config.pre_spawn_admission.total_tokens(),
-    )
-    .unwrap();
     let holder_cancel = CancellationToken::new();
-    let holder = external_admission.acquire(2, &holder_cancel).await.unwrap();
+    let holder = config
+        .pre_spawn_admission
+        .acquire(2, &holder_cancel)
+        .await
+        .unwrap();
     let factory = Arc::new(CreateGateFactory::new());
     let cancel = CancellationToken::new();
     let task = tokio::spawn({
@@ -142,33 +151,23 @@ async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
         .wait_entered(1, Duration::from_secs(2))
         .await
         .unwrap();
-    for token in 0..total_tokens {
-        assert!(matches!(
-            crate::lock::try_acquire_or_busy(config.home.pre_spawn_admission_token_lock(token))
-                .await
-                .unwrap(),
-            crate::lock::TryLock::Busy
-        ));
-    }
+    let probe_cancel = CancellationToken::new();
+    let mut admission_probe = Box::pin(
+        config
+            .pre_spawn_admission
+            .acquire(total_tokens, &probe_cancel),
+    );
+    assert_future_pending(admission_probe.as_mut());
 
     start_gate.release_one();
     wait_gate
         .wait_entered(1, Duration::from_secs(2))
         .await
         .unwrap();
-    let mut released_tokens = Vec::new();
-    for token in 0..total_tokens {
-        match crate::lock::try_acquire_or_busy(config.home.pre_spawn_admission_token_lock(token))
-            .await
-            .unwrap()
-        {
-            crate::lock::TryLock::Acquired(lock) => released_tokens.push(lock),
-            crate::lock::TryLock::Busy => {
-                panic!("fresh admission remained held after process spawn")
-            }
-        }
-    }
-    drop(released_tokens);
+    tokio::time::timeout(Duration::from_secs(2), admission_probe)
+        .await
+        .expect("fresh admission remained held after process spawn")
+        .unwrap();
     wait_gate.release_one();
 
     let (result, telemetry) = tokio::time::timeout(Duration::from_secs(2), task)
@@ -732,14 +731,11 @@ async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
         captured_events_named(&events, "guest DNS readiness replacement completed").is_empty(),
         "events={events:#?}"
     );
-    let external_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
-        config.home.clone(),
-        config.pre_spawn_admission.total_tokens(),
-    )
-    .unwrap();
     tokio::time::timeout(
         Duration::from_secs(2),
-        external_admission.acquire(2, &CancellationToken::new()),
+        config
+            .pre_spawn_admission
+            .acquire(2, &CancellationToken::new()),
     )
     .await
     .unwrap()

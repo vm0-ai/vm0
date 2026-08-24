@@ -43,11 +43,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
             .unwrap(),
-        pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(
-            HomePaths::with_root(dir.to_path_buf()),
-            2,
-        )
-        .unwrap(),
+        pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(2).unwrap(),
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }

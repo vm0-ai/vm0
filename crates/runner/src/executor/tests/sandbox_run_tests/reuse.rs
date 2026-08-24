@@ -51,12 +51,8 @@ async fn execute_job_reuse_succeeds() {
 async fn execute_job_reuse_bypasses_fresh_pre_spawn_admission() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let external_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
-        config.home.clone(),
-        config.pre_spawn_admission.total_tokens(),
-    )
-    .unwrap();
-    let holder = external_admission
+    let holder = config
+        .pre_spawn_admission
         .acquire(2, &CancellationToken::new())
         .await
         .unwrap();
