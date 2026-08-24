@@ -4060,7 +4060,7 @@ describe("chat composer templates", () => {
       return screen.getByLabelText("Import your own deck");
     });
     // A deck saved in the legacy format is not filtered out of the file
-    // picker; the run converts it before following the guide.
+    // picker.
     expect(importInput).toHaveAttribute(
       "accept",
       expect.stringContaining(".ppt,"),

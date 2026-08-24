@@ -12,9 +12,7 @@ import type { ComposerSignals } from "./composer-signals.ts";
  * `.ppt` is here because a deck old enough to still be saved in the legacy
  * binary format is exactly the deck whose visual language is worth reusing,
  * and a picker that greys it out reads as "not supported" rather than "export
- * it first". The guide's readers only take `.pptx` and `.pdf`, so the run
- * converts a binary `.ppt` before following them; the instruction it is sent
- * with says so.
+ * it first".
  */
 export const PRESENTATION_TEMPLATE_IMPORT_ACCEPT = ".pptx,.ppt,.pdf";
 
