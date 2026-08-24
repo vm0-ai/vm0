@@ -128,6 +128,24 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       );
     },
 
+    async resetPersonalModelProviderAccount(
+      actor: ApiTestUser,
+      id: string,
+      idempotencyKey: string,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        authDeviceSupportApp(context)(
+          personalModelProviderAccountsByIdContract,
+        ).resetSubscriptionUsage({
+          headers: authenticate(context, actor),
+          params: { id },
+          body: { idempotencyKey },
+        }),
+        statuses,
+      );
+    },
+
     async deletePersonalModelProviderAccount(
       actor: ApiTestUser,
       id: string,

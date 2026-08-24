@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -771,6 +773,78 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       id: completedC.body.provider.id,
       isActive: true,
     });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+  });
+
+  it("refreshes and resets the requested inactive Codex account", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+    const currentSeconds = Math.floor(now() / 1000);
+    const requestedAccountId = await connectPersonalCodexTestAccount(member, {
+      accessTokenExpiresAt: currentSeconds - 60,
+      accountId: "codex-reset-requested-account",
+      refreshToken: "rt_codex_reset_requested_account",
+      workspaceName: "Reset Requested Account",
+    });
+    const activeAccountId = await connectPersonalCodexTestAccount(member, {
+      accessTokenExpiresAt: currentSeconds + 7200,
+      accountId: "codex-reset-active-account",
+      refreshToken: "rt_codex_reset_active_account",
+      workspaceName: "Reset Active Account",
+    });
+    await support.activatePersonalModelProviderAccount(member, activeAccountId);
+
+    const idempotencyKey = randomUUID();
+    const refreshedAccessToken = "fresh-requested-reset-access-token";
+    let refreshCalls = 0;
+    let consumeCalls = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+        refreshCalls += 1;
+        await expect(request.json()).resolves.toMatchObject({
+          grant_type: "refresh_token",
+          refresh_token: "rt_codex_reset_requested_account",
+        });
+        return HttpResponse.json({
+          access_token: refreshedAccessToken,
+          refresh_token: "rotated-requested-reset-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+      http.post(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+        async ({ request }) => {
+          consumeCalls += 1;
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${refreshedAccessToken}`,
+          );
+          expect(request.headers.get("chatgpt-account-id")).toBe(
+            "codex-reset-requested-account",
+          );
+          await expect(request.json()).resolves.toStrictEqual({
+            redeem_request_id: idempotencyKey,
+          });
+          return HttpResponse.json({ code: "reset", windows_reset: 2 });
+        },
+      ),
+    );
+
+    const reset = await support.resetPersonalModelProviderAccount(
+      member,
+      requestedAccountId,
+      idempotencyKey,
+      [200],
+    );
+    expect(reset.body).toStrictEqual({ outcome: "reset" });
+    expect(refreshCalls).toBe(1);
+    expect(consumeCalls).toBe(1);
 
     await support.deletePersonalModelProvider(
       member,
