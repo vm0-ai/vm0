@@ -178,7 +178,7 @@ is reachable. Use the removal gate for the owning surface.
 | Surface                   | Removal gate                                                                     |
 | ------------------------- | -------------------------------------------------------------------------------- |
 | DB vs API                 | Release and schema state; see `docs/deployment-compatibility.md`.                |
-| Existing runner / sandbox | Old instances drain, up to 2 hours.                                              |
+| Existing runner / sandbox | Old instances finish draining.                                                   |
 | Old web/app -> API        | The replacement app is live and the client-version floor excludes the old build. |
 | New web/app -> old API    | The old API is no longer serving or retained as a rollback target.               |
 
@@ -202,16 +202,13 @@ How to use them:
   Remove a fallback only after its direction is safe. New-code fallbacks require
   a successful release and the expected schema. Old-code fallbacks require the
   outgoing API to finish draining and retained rollback targets to remain
-  compatible without the fallback; rollback does not restore the database.
+  compatible without the fallback; rollback does not restore the database
+  schema.
 
-- **Old runner or sandbox (up to 2h).** The backend must accept the old runner
-  protocol for the full drain. The bound is the guest runtime budget,
-  `JOB_TIMEOUT = Duration::from_secs(7200)` in
-  `crates/runner/src/executor/mod.rs`: a draining runner can still be finishing
-  a claimed run for that long. Runner-facing endpoints, payload variants, and
-  event shapes cannot be deleted in the same PR that stops emitting them; the
-  removal is a follow-up after the window closes. Newly created runners and
-  sandboxes are already on the new version, so no fallback is needed for them.
+- **Old runner or sandbox.** The backend must accept the old runner protocol
+  until old instances finish draining. A claimed run has a two-hour guest
+  runtime budget plus bounded finalization. Remove runner-facing endpoints,
+  payload variants, and event shapes only after the drain completes.
 - **Old web or app clients.** Keep their API contract until the replacement app
   is live and the client-version floor excludes the old build. An open page
   discovers the floor on its next handled API request and receives `426 Upgrade

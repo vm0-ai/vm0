@@ -256,15 +256,16 @@ Schema changes have two independent compatibility directions:
   value, relation, constraint, or function until the migration is complete.
 
 The normal production release enforces migration-before-promotion in
-`promote-api-production`: it builds one API artifact, migrates the Neon
-`production` database, and deploys that exact artifact only after the migration
-succeeds. A failed migration stops the job before API promotion.
+`promote-api-production`: it builds one API artifact, runs required migrations
+against the Neon `production` database, and deploys that exact artifact only
+after the migrations succeed. A failed migration stops the job before API
+promotion.
 
 For a successful normal release, this closes the new-code-before-migration gate
 for its release target. Old code after migration remains a separate boundary:
 outgoing, draining, and retained rollback API targets must stay compatible with
-the current schema. The production rollback workflow promotes application
-artifacts; it does not restore an older database schema.
+the current schema. The production rollback workflow promotes App, Runner, and
+API artifacts; it does not restore an older database schema.
 
 The ChatEvent schema-contraction releases from July 27-29, 2026 provide concrete
 examples:
