@@ -1,0 +1,14 @@
+{
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "fc829f4a9a67aa3908a2ab369291175f5045cd98",
+    "directory": "reverse-template"
+  },
+  "resource": {
+    "id": "skill:presentation-reverse-template",
+    "slug": "reverse-template",
+    "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
+    "expectedVersionId": "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
+    "expectedSha256": "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5"
+  }
+}
