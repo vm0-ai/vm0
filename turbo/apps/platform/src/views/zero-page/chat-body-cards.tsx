@@ -39,7 +39,10 @@ import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { publicAttachmentUrl } from "./zero-attachment-url";
 import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
-import type { FirewallPolicyValue } from "@okouai/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicyValue,
+} from "@okouai/connectors/firewall-types";
 import { r2ImageTransformUrl } from "@okouai/core";
 import { Skeleton, cn } from "@okouai/ui";
 import {
@@ -663,6 +666,19 @@ function permissionActionVerb(action: PermissionAction): string {
     : i18n.t(($) => {
         return $.chat.permissions.deny;
       });
+}
+
+function permissionActionPermissionLabel(
+  permission: { name: string } | undefined,
+  fallback: string,
+): string {
+  const permissionName = permission?.name ?? fallback;
+  if (permissionName === UNKNOWN_PERMISSION_GRANT) {
+    return i18n.t(($) => {
+      return $.chat.permissions.otherEndpoints;
+    });
+  }
+  return permissionName;
 }
 
 function permissionActionStatusText(
@@ -1314,7 +1330,10 @@ function PermissionActionCardForTarget({
       icon={permissionMetadata?.icon}
       connectorLabel={permissionMetadata?.label ?? signals.connectorSlug}
       actionLabel={actionState.actionLabel}
-      permissionName={actionState.focusedPermission?.name ?? signals.permission}
+      permissionName={permissionActionPermissionLabel(
+        actionState.focusedPermission,
+        signals.permission,
+      )}
       status={actionState.status}
       expirationAvailable={expirationAvailable}
       expiresIn={expiresIn}

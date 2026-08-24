@@ -1088,7 +1088,6 @@
         "updatedTitle": "Permissions updated"
       },
       "saving": "Saving...",
-      "unknownEndpoints": "Unknown endpoints",
       "userFallback": "there",
       "wouldLike": "Would like to"
     }
@@ -1851,6 +1850,7 @@
       "expiresInHours_one": "Expires in {{count}} hour",
       "expiresInHours_other": "Expires in {{count}} hours",
       "loadFailed": "Couldn't load permission status",
+      "otherEndpoints": "other endpoints",
       "unknown": "Unknown permission",
       "updated": "Permissions updated",
       "updateFailed": "Couldn't update permissions"

@@ -1088,7 +1088,6 @@
         "updatedTitle": "अनुमतियाँ अद्यतन की गईं"
       },
       "saving": "सहेजा जा रहा है...",
-      "unknownEndpoints": "अज्ञात समापनबिंदु",
       "userFallback": "वहाँ",
       "wouldLike": "करना चाहेंगे"
     }
@@ -1851,6 +1850,7 @@
       "expiresInHours_one": "{{count}} घंटे में समाप्त होता है",
       "expiresInHours_other": "{{count}} घंटे में समाप्त होता है",
       "loadFailed": "अनुमति स्थिति लोड नहीं की जा सकी",
+      "otherEndpoints": "अन्य समापन बिंदु",
       "unknown": "अज्ञात अनुमति",
       "updated": "अनुमतियाँ अद्यतन की गईं",
       "updateFailed": "अनुमतियाँ अपडेट नहीं की जा सकीं"

@@ -666,8 +666,10 @@ describe("permission allow page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Cloudflare")).toBeInTheDocument();
-    expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
-    expect(screen.getByText(UNKNOWN_PERMISSION_GRANT)).toBeInTheDocument();
+    expect(screen.getByText("Other endpoints")).toBeInTheDocument();
+    expect(
+      screen.queryByText(UNKNOWN_PERMISSION_GRANT),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByText("Confirm"));
 

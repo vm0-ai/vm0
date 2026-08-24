@@ -1088,7 +1088,6 @@
         "updatedTitle": "Berechtigungen aktualisiert"
       },
       "saving": "Speichern...",
-      "unknownEndpoints": "Unbekannte Endpunkte",
       "userFallback": "Dort",
       "wouldLike": "Würde gerne"
     }
@@ -1851,6 +1850,7 @@
       "expiresInHours_one": "Läuft in {{count}} Stunde ab",
       "expiresInHours_other": "Läuft in {{count}} Stunden ab",
       "loadFailed": "Berechtigungsstatus konnte nicht geladen werden",
+      "otherEndpoints": "andere Endpunkte",
       "unknown": "Unbekannte Berechtigung",
       "updated": "Berechtigungen aktualisiert",
       "updateFailed": "Berechtigungen konnten nicht aktualisiert werden"

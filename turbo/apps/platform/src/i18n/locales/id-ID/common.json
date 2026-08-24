@@ -1088,7 +1088,6 @@
         "updatedTitle": "Izin diperbarui"
       },
       "saving": "Menyimpan...",
-      "unknownEndpoints": "Endpoint tidak dikenal",
       "userFallback": "di sana",
       "wouldLike": "Ingin"
     }
@@ -1851,6 +1850,7 @@
       "expiresInHours_one": "Kedaluwarsa dalam {{count}} jam",
       "expiresInHours_other": "Kedaluwarsa dalam {{count}} jam",
       "loadFailed": "Tidak dapat memuat status izin",
+      "otherEndpoints": "endpoint lainnya",
       "unknown": "Izin tidak dikenal",
       "updated": "Izin diperbarui",
       "updateFailed": "Tidak dapat memperbarui izin"

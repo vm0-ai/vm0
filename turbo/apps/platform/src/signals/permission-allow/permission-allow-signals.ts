@@ -88,7 +88,7 @@ export function findPermissionInMetadata(
     return {
       name: UNKNOWN_PERMISSION_GRANT,
       description: i18n.t(($) => {
-        return $.authorization.permission.unknownEndpoints;
+        return $.connectors.permissions.otherEndpoints;
       }),
     };
   }

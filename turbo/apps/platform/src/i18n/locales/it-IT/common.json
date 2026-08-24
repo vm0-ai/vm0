@@ -1108,7 +1108,6 @@
         "updatedTitle": "Autorizzazioni aggiornate"
       },
       "saving": "Salvataggio...",
-      "unknownEndpoints": "Endpoint sconosciuti",
       "userFallback": "lì",
       "wouldLike": "Mi piacerebbe"
     }
@@ -1883,6 +1882,7 @@
       "expiresInHours_many": "Scade tra {{count}} ore",
       "expiresInHours_other": "Scade tra {{count}} ore",
       "loadFailed": "Impossibile caricare lo stato dell'autorizzazione",
+      "otherEndpoints": "altri endpoint",
       "unknown": "Autorizzazione sconosciuta",
       "updated": "Autorizzazioni aggiornate",
       "updateFailed": "Impossibile aggiornare le autorizzazioni"
