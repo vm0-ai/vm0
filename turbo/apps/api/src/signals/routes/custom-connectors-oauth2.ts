@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
@@ -42,7 +43,6 @@ import {
   clearConnectorOAuthCookies,
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
@@ -218,9 +218,7 @@ async function persistCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
-    readonly account?: ReturnType<
-      typeof parseStoredConnectorAccountMutationIntent
-    >;
+    readonly account: ConnectorAccountMutationIntent;
   },
   signal: AbortSignal,
 ): Promise<
@@ -377,9 +375,7 @@ const completeOAuth2Callback$ = command(
             storageVersion: connector.storageVersion,
             token,
             featureContext,
-            account: parseStoredConnectorAccountMutationIntent(
-              claimed.state.accountMutation,
-            ),
+            account: claimed.state.accountMutation,
           },
           signal,
         );

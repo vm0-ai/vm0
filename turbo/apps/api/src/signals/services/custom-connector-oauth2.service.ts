@@ -66,10 +66,7 @@ import {
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -836,7 +833,7 @@ export async function storeCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
   },
   signal: AbortSignal,
 ): Promise<
@@ -857,7 +854,7 @@ export async function storeCustomConnectorOAuth2Connection(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "custom", customConnectorId: args.connectorId },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
       allowSiblings:
         !isIntegrationManagedCustomConnectorProviderAdapter(
           contract.providerAdapter,

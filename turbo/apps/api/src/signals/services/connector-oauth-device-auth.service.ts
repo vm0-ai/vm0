@@ -24,7 +24,6 @@ import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
 } from "@okouai/connectors/auth-providers/provider-flow-types";
-import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorOauthDeviceAuthorizationSessions } from "@okouai/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -61,7 +60,6 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
@@ -91,7 +89,7 @@ const deviceAuthSessionSelection = Object.freeze({
   encryptedProviderState:
     connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorOauthDeviceAuthorizationSessions,
+    connectorOauthDeviceAuthorizationSessions.accountMutation,
   ),
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
   verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
@@ -106,12 +104,8 @@ const deviceAuthSessionSelection = Object.freeze({
   completedAt: connectorOauthDeviceAuthorizationSessions.completedAt,
 });
 
-type DeviceAuthSessionRow = Omit<
-  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
-  "accountMutation"
-> & {
-  readonly accountMutation: StoredConnectorAccountMutation | null;
-};
+type DeviceAuthSessionRow =
+  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,
@@ -1311,9 +1305,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
               oauthScopes: result.token.scopes,
               expiresIn: result.token.expiresIn,
               extraConnectorSecrets: result.token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              account: claimedSession.accountMutation,
             },
             signal,
           );
