@@ -2,6 +2,7 @@ import {
   teamContract,
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/team";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -39,14 +40,12 @@ describe("settings deep-link handoff", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing&billingView=plans",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await teamRequestStarted.promise;
     expect(
-      screen.queryByRole("dialog", { name: "Settings" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Compare plans" }),
+      screen.queryByRole("dialog", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
 
     releaseTeamRequest.resolve(undefined);
@@ -55,10 +54,7 @@ describe("settings deep-link handoff", () => {
       expect(pathname()).toBe(`/agents/${DEFAULT_AGENT.id}/chat`);
     });
     await expect(
-      screen.findByRole("dialog", { name: "Settings" }),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("dialog", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 
