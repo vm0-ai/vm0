@@ -820,6 +820,7 @@ function createFeedbackItemIgnoreMutation(
     contentDOM,
     structureRepairEnabled,
   } = context;
+  let reportedCollapse = false;
 
   /**
    * WebKit can tear the note wrappers out of the item mid-composition and
@@ -852,7 +853,17 @@ function createFeedbackItemIgnoreMutation(
       return false;
     }
     if (!dom.contains(contentDOM)) {
-      return repairNoteStructure();
+      const repaired = repairNoteStructure();
+      // Field evidence for how often WebKit collapses the note and whether
+      // the reattachment holds; never includes composer content.
+      if (!reportedCollapse) {
+        reportedCollapse = true;
+        L.error(
+          "composer feedback note structure collapsed",
+          sentryLogContext({ tags: { repaired } }),
+        );
+      }
+      return repaired;
     }
     if (quoteDom.contains(mutation.target)) {
       return true;

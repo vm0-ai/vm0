@@ -1799,12 +1799,24 @@ describe("chat inline feedback", () => {
   });
 
   it("repairs a collapsed note structure and keeps later input when the repair switch is enabled", async () => {
+    // The collapse report goes through L.error; the strict test console turns
+    // unexpected console.error calls into failures, so capture it here and
+    // assert the report below.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
     const { sentMessage } = await submitAfterNoteStructureCollapse(
       true,
       "enabled",
     );
     expect(sentMessage.prompt).toContain("Make the dates");
     expect(sentMessage.prompt).toContain("explicit");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[E][WorkflowComposer]",
+      "composer feedback note structure collapsed",
+      expect.anything(),
+    );
   });
 
   it("keeps dropping input after a note collapse with the repair switch disabled", async () => {
