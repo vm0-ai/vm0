@@ -633,7 +633,7 @@
       "illustration": "Ilustração",
       "illustrationPreview": "Visualização da ilustração {{title}}",
       "importDeck": "Importe sua própria apresentação",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",

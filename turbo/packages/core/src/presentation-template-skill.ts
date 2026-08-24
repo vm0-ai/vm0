@@ -20,13 +20,14 @@ const PRESENTATION_TEMPLATE_SKILL_PATH = "reverse-template";
 /**
  * Tell a run how to reach the guide.
  *
- * One sentence pair, used both by the import message the template picker sends
+ * A few sentences, used both by the import message the template picker sends
  * and by the standing agent-tools prompt, so a deck dropped in the chat box
  * reaches the same instructions as one picked through the dialog.
  */
 export function presentationTemplateSkillInstruction(): string {
   return [
-    `Turning an uploaded deck (.pptx or .pdf) into a reusable presentation template follows the ${PRESENTATION_TEMPLATE_SKILL_PATH} guide, which is not mounted as a skill.`,
+    `Turning an uploaded deck (.pptx, .ppt, or .pdf) into a reusable presentation template follows the ${PRESENTATION_TEMPLATE_SKILL_PATH} guide, which is not mounted as a skill.`,
     `Clone it first with \`gh repo clone ${PRESENTATION_TEMPLATE_SKILL_REPO} <dir> -- --depth 1 -b ${PRESENTATION_TEMPLATE_SKILL_BRANCH}\`, read \`<dir>/${PRESENTATION_TEMPLATE_SKILL_PATH}/SKILL.md\`, and follow it exactly, including its page-rendering and publish steps.`,
+    `The guide's readers cover .pptx and .pdf only, so convert a legacy binary .ppt to one of those first and run the guide on the converted deck.`,
   ].join(" ");
 }

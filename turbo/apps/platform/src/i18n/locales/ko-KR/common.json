@@ -616,7 +616,7 @@
       "illustration": "일러스트레이션",
       "illustrationPreview": "{{title}} 일러스트레이션 미리보기",
       "importDeck": "내 덱 가져오기",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}}장",
       "importedSlides_other": "{{count}}장",
       "multiAccent": "다중 악센트",

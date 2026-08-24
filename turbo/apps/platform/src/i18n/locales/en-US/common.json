@@ -616,7 +616,7 @@
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} illustration preview",
       "importDeck": "Import your own deck",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Multi-accent",
