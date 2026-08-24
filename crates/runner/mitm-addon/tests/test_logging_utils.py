@@ -1,6 +1,7 @@
 """Tests for mitm addon logging utilities."""
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,19 +17,25 @@ def _read_jsonl_entries_without_flush(path):
 
 
 class TestLogNetworkEntry:
-    def test_writes_jsonl(self, tmp_path):
+    def test_writes_jsonl_with_current_utc_timestamp(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
         entry = {"action": "ALLOW", "host": "example.com"}
+        current_time = datetime(2026, 8, 24, 2, 16, 45, 678_901, tzinfo=UTC)
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+        with (
+            patch.object(logging_utils, "datetime") as clock,
+            patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
+        ):
+            clock.now.return_value = current_time
             logging_utils.log_network_entry(log_path, entry)
 
         entries = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert len(entries) == 1
         parsed = entries[0]
+        clock.now.assert_called_once_with(UTC)
         assert parsed["action"] == "ALLOW"
         assert parsed["host"] == "example.com"
-        assert_utc_millisecond_timestamp(parsed["timestamp"])
+        assert parsed["timestamp"] == "2026-08-24T02:16:45.678Z"
         assert "timestamp" not in entry
 
     def test_timestamp_is_authoritative(self, tmp_path):
