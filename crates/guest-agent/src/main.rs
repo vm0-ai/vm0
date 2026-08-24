@@ -1174,6 +1174,7 @@ mod tests {
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
             guest_contracts::env::RESUME_SESSION_ID_ENV,
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             guest_contracts::env::API_START_TIME_ENV,
             guest_contracts::env::CANONICAL_API_START_TIME_ENV,
             guest_contracts::env::SECRET_VALUES_ENV,
