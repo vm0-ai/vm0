@@ -1,6 +1,6 @@
 {
-  "id": "43470047-9955-4e72-9c8e-6d16e3bcbb64",
-  "prevId": "bbaa8977-ae1c-4b6d-94a6-afe8e1c9e5dc",
+  "id": "f3d93585-eca1-4153-bf7d-b8eab06814f9",
+  "prevId": "bff63962-bd84-4fba-8444-6520c56ba747",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1633,6 +1633,12 @@
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "agentphone_user_link_id": {
           "name": "agentphone_user_link_id",
@@ -4750,6 +4756,12 @@
         },
         "agentphone_agent_id": {
           "name": "agentphone_agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
           "type": "text",
           "primaryKey": false,
           "notNull": false

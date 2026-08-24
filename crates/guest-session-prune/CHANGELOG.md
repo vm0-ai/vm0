@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.30](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.29...guest-session-prune-v0.3.30) (2026-08-24)
+
+
+### Documentation
+
+* **guest-session-prune:** document open-file Claude selector contract ([#28972](https://github.com/vm0-ai/vm0/issues/28972)) ([e710b9e](https://github.com/vm0-ai/vm0/commit/e710b9e1e42222a0e2d141a05810e51398336626))
+
 ## [0.3.29](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.28...guest-session-prune-v0.3.29) (2026-08-24)
 
 ## [0.3.28](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.27...guest-session-prune-v0.3.28) (2026-08-23)
