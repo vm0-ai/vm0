@@ -83,6 +83,15 @@ export const composerRestoredAttachmentValidationEnabled$ = computed(
   },
 );
 
+export const composerNoteEditableIsolationEnabled$ = computed(
+  (get): boolean => {
+    return (
+      get(featureSwitch$)[FeatureSwitchKey.ComposerNoteEditableIsolation] ??
+      false
+    );
+  },
+);
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
