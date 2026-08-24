@@ -18,7 +18,6 @@ export interface AuthV2ExternalCapabilities {
 export interface AuthV2ExistingAccount {
   readonly displayName: string;
   readonly identifier: string | null;
-  readonly imageUrl: string | null;
   readonly sessionId: string;
 }
 
@@ -92,6 +91,9 @@ function loadGoogleIdentityApi(
   const cleanup = (): void => {
     script.removeEventListener("load", handleLoad);
     script.removeEventListener("error", handleError);
+    if (!googleIdentityApi()) {
+      script.remove();
+    }
   };
 
   script.addEventListener("load", handleLoad, { once: true });
@@ -162,7 +164,6 @@ export function discoverAuthV2ExistingAccounts(
     return {
       displayName,
       identifier: emailAddress,
-      imageUrl: session.user.imageUrl || null,
       sessionId: session.id,
     };
   });

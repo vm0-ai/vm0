@@ -116,6 +116,13 @@ async function waitForRoleElement(
   return element;
 }
 
+function createStalledGoogleOneTapScript(): HTMLScriptElement {
+  const script = document.createElement("script");
+  script.dataset.authV2GoogleOneTap = "true";
+  document.head.appendChild(script);
+  return script;
+}
+
 async function submitIdentifier(
   identifier: string,
   factors: readonly MockedSignInFactor[],
@@ -341,29 +348,81 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
+  it("retries Google One Tap after a script failure and back navigation", async () => {
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    const failedScript = createStalledGoogleOneTapScript();
+    setupSignInPage({ status: "needs_identifier" });
+
+    // Script loading is a browser resource boundary and cannot be triggered
+    // through a rendered control, so dispatch its terminal event directly.
+    await screen.findByLabelText("Email address or username");
+    fireEvent.error(failedScript);
+
+    await waitFor(() => {
+      expect(failedScript).not.toBeInTheDocument();
+    });
+    await expect(screen.findByRole("alert")).resolves.toBeVisible();
+
+    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    await expect(
+      screen.findByTestId("clerk-sign-in"),
+    ).resolves.toBeInTheDocument();
+
+    const retryScript = createStalledGoogleOneTapScript();
+    act(() => {
+      window.history.back();
+    });
+    await screen.findByLabelText("Email address or username");
+    expect(retryScript).not.toBe(failedScript);
+
+    mockGoogleOneTapCredential("retry-google-one-tap-token");
+    mockedClerk.clientSignInCreate.mockImplementation((params) => {
+      if (params.strategy === "google_one_tap") {
+        return Promise.resolve(
+          moveSignInTo({
+            createdSessionId: "session_one_tap_retry",
+            status: "complete",
+          }),
+        );
+      }
+      return Promise.resolve(currentSignInResource());
+    });
+    fireEvent.load(retryScript);
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+        signUpIfMissing: false,
+        strategy: "google_one_tap",
+        token: "retry-google-one-tap-token",
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it.each([
     {
       clerkError: {
-        errors: [{ code: "passkey_retrieval_cancelled" }],
+        code: "passkey_retrieval_cancelled",
+        message: "The passkey request was cancelled.",
       },
-      expectedMessage: "Passkey verification was cancelled or timed out.",
+      expectedMessage: "The passkey request was cancelled.",
       name: "user cancellation",
     },
     {
       clerkError: {
-        errors: [{ code: "passkey_not_supported" }],
+        code: "passkey_not_supported",
+        message: "This device does not support passkeys.",
       },
-      expectedMessage: "Passkeys are not supported on this device.",
+      expectedMessage: "This device does not support passkeys.",
       name: "an unavailable device",
     },
     {
       clerkError: {
-        errors: [
-          {
-            code: "passkey_verification_failed",
-            longMessage: "Your passkey could not be verified.",
-          },
-        ],
+        code: "passkey_retrieval_failed",
+        message: "Your passkey could not be verified.",
       },
       expectedMessage: "Your passkey could not be verified.",
       name: "a verification error",

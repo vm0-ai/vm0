@@ -14,8 +14,7 @@ import {
 } from "ccstate";
 
 import { clerk$ } from "../auth.ts";
-import { pageSignal$ } from "../page-signal.ts";
-import { onRef, settle, withCleanup } from "../utils.ts";
+import { settle, withCleanup } from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
@@ -124,10 +123,6 @@ export interface AuthV2SignInSignals {
   readonly code$: Computed<string>;
   readonly confirmPassword$: Computed<string>;
   readonly error$: Computed<AuthV2SignInError | null>;
-  readonly googleOneTapLifecycleRef$: Command<
-    (() => void) | undefined,
-    [HTMLDivElement | null]
-  >;
   readonly identifier$: Computed<string>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly newPassword$: Computed<string>;
@@ -312,28 +307,33 @@ function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInError {
-  if (isRecord(error) && Array.isArray(error.errors)) {
-    const firstError = error.errors.find(isRecord);
-    if (firstError) {
-      const clerkCode = stringProperty(firstError, "code");
-      const message =
-        stringProperty(firstError, "longMessage") ??
-        stringProperty(firstError, "message");
-      const code =
-        clerkCode === "passkey_retrieval_cancelled"
-          ? "passkey-cancelled"
-          : clerkCode === "passkey_not_supported" ||
-              clerkCode === "passkey_pa_not_supported"
-            ? "passkey-unavailable"
-            : "clerk";
-      return {
-        code,
-        field: clerkErrorField(firstError, fallbackField),
-        ...(message ? { message } : {}),
-      };
-    }
+  if (!isRecord(error)) {
+    return { code: "unknown", field: fallbackField };
   }
-  return { code: "unknown", field: fallbackField };
+  const apiError = Array.isArray(error.errors)
+    ? error.errors.find(isRecord)
+    : null;
+  const normalizedError = apiError ?? error;
+  const clerkCode = stringProperty(normalizedError, "code");
+  if (!apiError && !clerkCode) {
+    return { code: "unknown", field: fallbackField };
+  }
+  const message =
+    stringProperty(normalizedError, "longMessage") ??
+    stringProperty(normalizedError, "message");
+  const code =
+    clerkCode === "passkey_retrieval_cancelled" ||
+    clerkCode === "passkey_operation_aborted"
+      ? "passkey-cancelled"
+      : clerkCode === "passkey_not_supported" ||
+          clerkCode === "passkey_pa_not_supported"
+        ? "passkey-unavailable"
+        : "clerk";
+  return {
+    code,
+    field: clerkErrorField(normalizedError, fallbackField),
+    ...(message ? { message } : {}),
+  };
 }
 
 function selectedFactorForSnapshot(
@@ -1174,17 +1174,13 @@ export function createAuthV2SignInSignals(
     applyResource$,
     dependencies,
   );
-  const googleOneTapLifecycleRef$ = onRef(
-    command(
-      async (
-        { get, set },
-        _element: HTMLDivElement,
-        signal: AbortSignal,
-      ): Promise<void> => {
-        await set(runGoogleOneTap$, get(pageSignal$));
-        signal.throwIfAborted();
-      },
-    ),
+  const initializeWithExternalStrategies$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(initialize$, signal);
+      signal.throwIfAborted();
+      await set(runGoogleOneTap$, signal);
+      signal.throwIfAborted();
+    },
   );
   return {
     ...formCommands,
@@ -1197,11 +1193,10 @@ export function createAuthV2SignInSignals(
     error$: computed((get) => {
       return get(atoms.error$);
     }),
-    googleOneTapLifecycleRef$,
     identifier$: computed((get) => {
       return get(atoms.identifier$);
     }),
-    initialize$,
+    initialize$: initializeWithExternalStrategies$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
     }),

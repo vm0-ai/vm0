@@ -310,6 +310,11 @@ function clearMockedAuth() {
   internalMockedGoogleOneTapCredential = null;
   internalMockedGoogleOneTapCallback = null;
   Reflect.deleteProperty(globalThis, "google");
+  for (const script of document.querySelectorAll(
+    "script[data-auth-v2-google-one-tap]",
+  )) {
+    script.remove();
+  }
   mockedGoogleOneTap.cancel.mockReset();
   mockedGoogleOneTap.initialize.mockReset();
   mockedGoogleOneTap.initialize.mockImplementation(
