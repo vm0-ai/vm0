@@ -115,6 +115,9 @@ function parseBrandState(
   publicBrandSignature: string | undefined,
 ): ParsedBrandState | undefined {
   if (publicBrand === undefined && publicBrandSignature === undefined) {
+    // Old Platform -> new API rollout compatibility for links issued before
+    // brand-bound state. Remove with #27750 after the client floor excludes
+    // this Platform version and the final eligible ten-minute link has expired.
     return {};
   }
   if (

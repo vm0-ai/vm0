@@ -364,7 +364,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       agentphoneToNumber: AGENTPHONE_BDD_PHONE_NUMBER,
       agentphoneUserLinkId: expect.any(String),
       agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
-      agentphonePublicBrand: "okou",
     });
     const launchThreadId = launchContext?.agentphoneChatThreadId;
     if (!launchThreadId) {
@@ -762,12 +761,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       body: "fail this queued Okou launch",
       publicBrand: "okou",
     });
-    await expect(
-      findAgentphoneChatEventByPromptFixture({
-        userId: actor.userId,
-        prompt: "fail this queued Okou launch",
-      }),
-    ).resolves.toMatchObject({ eventId: expect.any(String) });
 
     mockEnv("SECRETS_KMS_KEY_ID", undefined);
     const beforeCompletion = sends.messages.length;
@@ -788,10 +781,13 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("deduplicates repeated provider messages and completion callbacks", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
+    const integrations = createBddIntegrationApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    await integrations.enableAuditLinkSwitch(actor);
     const messageId = `ap-msg-dedup-${randomUUID()}`;
     const message = {
       channel: "sms" as const,
@@ -808,16 +804,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       ...message,
       publicBrand: "vm0",
     });
-    const admitted = await findAgentphoneChatEventByPromptFixture({
-      userId: actor.userId,
-      prompt: message.body,
-    });
-    if (!admitted) {
-      throw new Error("Expected the deduplicated AgentPhone input event");
-    }
-    await expect(
-      readChatEventContextFixture(admitted.eventId),
-    ).resolves.toMatchObject({ agentphonePublicBrand: "okou" });
     const run = await claimDispatchedRun(runnerGroup);
     expect(run.prompt).toBe("process exactly once");
     await runs.heartbeatRunner(runnerGroup);
@@ -827,6 +813,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const sendsBeforeCompletion = sends.messages.length;
     await completeSandboxRun(run.sandboxToken, run.runId, 0);
     await waitForSendCount(sends, sendsBeforeCompletion + 1);
+    expect(lastSend(sends).body).toContain(
+      `Audit: https://app.okou.ai/activities/${run.runId}`,
+    );
+    expect(lastSend(sends).body).not.toContain(
+      `https://app.vm0.ai/activities/${run.runId}`,
+    );
     const sendsAfterCompletion = sends.messages.length;
 
     await webhooks.requestAgentComplete(

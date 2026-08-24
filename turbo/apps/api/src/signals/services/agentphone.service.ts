@@ -253,11 +253,11 @@ function isLegacyBrandlessAgentPhoneConnectAllowed(timestamp: number): boolean {
     return false;
   }
 
-  // A platform version deployed before branded connect state can omit both
-  // brand fields. Accept only links issued by the old API at or before the
-  // rollout cutoff; new links stripped after that point must fail closed so
-  // they cannot be moved to another brand host. Remove with #27750 after the
-  // platform/API rollback window and the ten-minute link TTL have drained.
+  // Old Platform -> new API rollout compatibility: an old client can omit both
+  // brand fields. Accept only links issued at or before the operator cutoff;
+  // newer stripped links fail closed so they cannot move to another brand Host.
+  // Remove with #27750 after the client floor excludes the old Platform and the
+  // final cutoff-eligible link's ten-minute TTL has elapsed.
   return timestamp <= cutoff;
 }
 
@@ -362,6 +362,10 @@ export function buildAgentPhoneConnectUrl(params: {
     handle: phoneHandle,
     agent: params.agentphoneAgentId,
     ts: String(timestamp),
+    // New Platform -> old API rollback compatibility: the old API validates
+    // this Provider-identity signature and ignores the additive brand fields.
+    // Remove with #27750 after that API is no longer serving or retained for
+    // rollback.
     sig: signAgentPhoneConnectParams({
       phoneHandle,
       agentphoneAgentId: params.agentphoneAgentId,

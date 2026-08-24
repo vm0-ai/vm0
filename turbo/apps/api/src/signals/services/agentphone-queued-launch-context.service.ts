@@ -168,7 +168,10 @@ export async function loadAgentPhoneQueuedLaunchMaterial(
       },
       context.threadContext,
     ),
-    // Contexts written before webhook-host branding fall back to their link.
+    // DB/API rollout compatibility: an old API can write NULL after the
+    // additive migration, and that queued context can outlive the API deploy.
+    // Remove with #27750 after old/rollback APIs can no longer write NULL and
+    // every pre-rollout AgentPhone queue item has drained.
     publicBrand: context.publicBrand ?? context.legacyPublicBrand,
     agentphoneDelivery: agentphoneDeliveryTargetSchema.parse({
       messageId: context.messageId,

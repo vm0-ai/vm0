@@ -327,6 +327,9 @@ async function deliverClaimedAgentPhoneChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  // API/backend persisted-callback rollout compatibility: callbacks created by
+  // an old API have no snapshot. Remove with #27750 after old/rollback APIs and
+  // every pre-rollout AgentPhone callback have drained.
   const publicBrand = payload.publicBrand ?? binding.publicBrand;
 
   const presentation = await resolveAgentPhonePresentation(

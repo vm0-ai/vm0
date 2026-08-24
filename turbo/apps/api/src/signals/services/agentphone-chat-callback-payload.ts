@@ -22,6 +22,8 @@ export type AgentPhoneDeliveryTarget = z.infer<
 export const agentphoneChatCallbackPayloadSchema =
   agentphoneDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
-    // Optional only for callbacks persisted before webhook-host branding.
+    // API/backend persisted-callback rollout compatibility: an old API omitted
+    // this field. Remove with #27750 after old/rollback APIs are gone and every
+    // pre-rollout AgentPhone delivery callback has drained.
     publicBrand: publicBrandSchema.optional(),
   });
