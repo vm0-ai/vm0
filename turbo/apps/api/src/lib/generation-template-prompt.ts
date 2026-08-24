@@ -28,6 +28,7 @@ import {
   PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
+import { WEBSITE_IMAGE_BATCH_RULE } from "@okouai/core/website-generation-instructions";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -384,11 +385,7 @@ function buildWebsiteTemplatePackagePrompt(
       `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
       ...(latestWebsiteTemplatesEnabled
-        ? [
-            "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
-            "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
-            "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
-          ]
+        ? [`- ${WEBSITE_IMAGE_BATCH_RULE}`]
         : [
             `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
           ]),

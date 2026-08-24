@@ -536,14 +536,28 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
-    expect(result.prompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Images are VM0-owned.");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
     );
-    expect(result.prompt).toContain(
-      "Keep at most 3 image generations in flight at once",
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
     );
-    expect(result.prompt).toContain(
-      "Embed the `Embed this URL in HTML` value returned by the generator",
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("keep batch state outside the site");
+    expect(imageWorkflow).toContain(
+      "Seedream 4 PNG, max-3 concurrency and one retry",
+    );
+    expect(imageWorkflow).toContain("never use per-image generation");
+    expect(imageWorkflow).toContain("or a template wrapper");
+    expect(imageWorkflow).toContain(
+      "only when the selected slots need no generated images",
     );
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
@@ -577,6 +591,10 @@ describe("buildGenerationTemplatePrompt", () => {
       }
       expect(result.prompt).toContain(`Template package id: ${resourceId}`);
       expect(result.prompt).toContain(`Package resource: ${resourceId}`);
+      expect(result.prompt).toContain("Images are VM0-owned.");
+      expect(result.prompt).toContain(
+        "okou generate image-batch start <manifest.tsv> <state-dir>",
+      );
       expect(result.prompt).toContain(
         `./generated/resources/${item.sourcePath}/render.mjs`,
       );
@@ -610,6 +628,7 @@ describe("buildGenerationTemplatePrompt", () => {
       `Template archive SHA-256: ${previousPackage.source.archive.sha256}`,
     );
     expect(result.prompt).toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("okou generate image-batch start");
     expect(result.prompt).not.toContain("use `seedream4` by default");
     expect(result.prompt).not.toContain("Keep at most 3 image generations");
     expect(result.prompt).not.toContain("Embed this URL in HTML");
