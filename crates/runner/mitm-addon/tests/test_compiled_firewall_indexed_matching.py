@@ -202,10 +202,12 @@ def _generated_permissions(rule_variant, name_prefix="target"):
                 "GET /items/{id}",
             )
         ], "/items/7"
-    return [
-        firewall_permission(f"{name_prefix}-first", "GET /items/{id}"),
-        firewall_permission(f"{name_prefix}-second", "GET /items/{item}"),
-    ], "/items/7"
+    if rule_variant == "competing-specificity":
+        return [
+            firewall_permission(f"{name_prefix}-first", "GET /items/{id}"),
+            firewall_permission(f"{name_prefix}-second", "GET /items/{item}"),
+        ], "/items/7"
+    raise AssertionError(f"unknown generated rule variant: {rule_variant}")
 
 
 def _generated_firewalls(base, request_prefix, permissions, topology, malformed):
@@ -213,7 +215,9 @@ def _generated_firewalls(base, request_prefix, permissions, topology, malformed)
     target_firewall = firewall_entry("target", target_api)
     firewalls = [target_firewall]
 
-    if topology == "unrelated-owner":
+    if topology == "single-owner":
+        pass
+    elif topology == "unrelated-owner":
         firewalls.insert(
             0,
             firewall_entry(
@@ -265,8 +269,12 @@ def _generated_firewalls(base, request_prefix, permissions, topology, malformed)
                 firewall_api(base, deepcopy(permissions), auth_label="secondary"),
             )
         )
+    else:
+        raise AssertionError(f"unknown generated topology variant: {topology}")
 
-    if malformed == "auth":
+    if malformed == "none":
+        pass
+    elif malformed == "auth":
         target_api["auth"] = {"headers": None}
     elif malformed == "rule":
         target_api["permissions"][0]["rules"].insert(0, None)
@@ -274,6 +282,8 @@ def _generated_firewalls(base, request_prefix, permissions, topology, malformed)
         target_api["base"] = f"{base}?source=malformed"
     elif malformed == "firewall-name":
         target_firewall["name"] = ""
+    else:
+        raise AssertionError(f"unknown generated malformed variant: {malformed}")
 
     return firewalls, request_prefix
 
@@ -308,13 +318,15 @@ def _generated_policies(firewalls, policy_variant):
             policy = network_policy(unknown_policy="deny")
         elif policy_variant == "unknown-ask":
             policy = network_policy(unknown_policy="ask")
-        else:
+        elif policy_variant == "malformed-permissions":
             policy = {
                 "allow": permission_names[0],
                 "deny": [],
                 "ask": [],
                 "unknownPolicy": "allow",
             }
+        else:
+            raise AssertionError(f"unknown generated policy variant: {policy_variant}")
         policies[name] = policy
     return policies
 
@@ -334,7 +346,9 @@ def _generated_request(request_variant, request_prefix, matching_suffix):
         return f"{request_prefix}/items/acme%2Fteam", "GET", False
     if request_variant == "unsafe-path":
         return f"{request_prefix}/items/%2e%2e/secret", "GET", False
-    return request_prefix, "OPTIONS", True
+    if request_variant == "asterisk-form":
+        return request_prefix, "OPTIONS", True
+    raise AssertionError(f"unknown generated request variant: {request_variant}")
 
 
 def _generated_match_case(variants):
