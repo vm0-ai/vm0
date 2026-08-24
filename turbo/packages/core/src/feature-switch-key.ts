@@ -58,7 +58,6 @@ export enum FeatureSwitchKey {
   ManagedModelProviderFallback = "managedModelProviderFallback",
   ChatForward = "chatForward",
   ResponsiveFollowupCards = "responsiveFollowupCards",
-  HomeStartCards = "homeStartCards",
   HomeGrowthEntry = "homeGrowthEntry",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
@@ -83,5 +82,7 @@ export enum FeatureSwitchKey {
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
   ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
+  ComposerImageAnnotation = "composerImageAnnotation",
   ComposerRestoredAttachmentValidation = "composerRestoredAttachmentValidation",
+  ComposerNoteEditableIsolation = "composerNoteEditableIsolation",
 }

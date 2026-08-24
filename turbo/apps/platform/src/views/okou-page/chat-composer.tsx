@@ -110,6 +110,7 @@ import { agents$ } from "../../signals/agent.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
+  ImageAnnotation,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
@@ -8325,6 +8326,7 @@ function toPersistedAttachments(
     filename: string;
     contentType: string;
     size: number;
+    annotation?: ImageAnnotation;
   }[],
 ): PersistedAttachment[] {
   return attachments
@@ -8338,6 +8340,9 @@ function toPersistedAttachments(
         filename: attachment.filename,
         contentType: attachment.contentType,
         size: attachment.size,
+        // Copying a message and pasting it elsewhere should carry the marks
+        // with it; this mapper rebuilds the object, so it has to say so.
+        ...(attachment.annotation ? { annotation: attachment.annotation } : {}),
       };
     });
 }

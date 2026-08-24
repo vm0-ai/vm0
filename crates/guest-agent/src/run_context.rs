@@ -33,7 +33,7 @@ impl GuestRuntime {
     /// callers must not retry it in the same process.
     pub fn from_process_env() -> Result<Self, String> {
         let workload_containment = WorkloadContainment::from_process_env()?;
-        let raw = GuestConfigRaw::from_process_env();
+        let raw = GuestConfigRaw::from_process_env()?;
         raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
         guest_common::log::set_system_log_file(paths.system_log_file());

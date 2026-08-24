@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.787.0](https://github.com/vm0-ai/vm0/compare/app-v0.786.0...app-v0.787.0) (2026-08-24)
+
+
+### Features
+
+* annotate an attached image in the composer ([#28976](https://github.com/vm0-ai/vm0/issues/28976)) ([19096b6](https://github.com/vm0-ai/vm0/commit/19096b6c2ef65e8d885cbadbf0f6f7cc81ef4508))
+* **auth:** add auth v2 navigation context ([#28999](https://github.com/vm0-ai/vm0/issues/28999)) ([8cfed8c](https://github.com/vm0-ai/vm0/commit/8cfed8cd93cde210d039b37c3b293fd11029f5be))
+* **auth:** refine v2 presentation shell ([#28993](https://github.com/vm0-ai/vm0/issues/28993)) ([c9b2e6f](https://github.com/vm0-ai/vm0/commit/c9b2e6ff28254cc5e952c5e22345f3dd75015048))
+* **banking:** add chat-based mastercard connect flow ([#28832](https://github.com/vm0-ai/vm0/issues/28832)) ([faf1021](https://github.com/vm0-ai/vm0/commit/faf10210ffc1a956a1c3f077e3410bcc27ae4cb8))
+* **platform:** add multi-account connector settings ([#28904](https://github.com/vm0-ai/vm0/issues/28904)) ([e8d0c2a](https://github.com/vm0-ai/vm0/commit/e8d0c2acb679ccd23b218a694aaf1a6893f97791))
+* pull presentation reverse-template from r2 ([#29043](https://github.com/vm0-ai/vm0/issues/29043)) ([5da72eb](https://github.com/vm0-ai/vm0/commit/5da72eb706544d50731cab880c4d006979b63afe))
+* **teams:** separate provider identity from public brand ([#28938](https://github.com/vm0-ai/vm0/issues/28938)) ([6e717c5](https://github.com/vm0-ai/vm0/commit/6e717c58fad35281b0e30e296ea135ed9487d363))
+
+
+### Bug Fixes
+
+* **composer:** keep the feedback note chrome outside the editable flow ([#29037](https://github.com/vm0-ai/vm0/issues/29037)) ([05d6dcc](https://github.com/vm0-ai/vm0/commit/05d6dcca4a00acbac33b98d031790da594a0e7a1))
+* **platform:** keep the model picker measurement row hidden on category switch ([#29046](https://github.com/vm0-ai/vm0/issues/29046)) ([4771a6f](https://github.com/vm0-ai/vm0/commit/4771a6fe681d674fb16d80120a19541597a63866))
+* **platform:** preserve composer state during feature hydration ([#29026](https://github.com/vm0-ai/vm0/issues/29026)) ([65b1577](https://github.com/vm0-ai/vm0/commit/65b1577d45cfd95f7df3355d8f5507ec9df9ce92))
+* **video:** default to a video model the picker offers ([#29045](https://github.com/vm0-ai/vm0/issues/29045)) ([33a6dba](https://github.com/vm0-ai/vm0/commit/33a6dba91522f57fc231773833d1cac9ad88a2e4))
+
+
+### Refactoring
+
+* remove home start cards feature switch ([#29044](https://github.com/vm0-ai/vm0/issues/29044)) ([6f777ef](https://github.com/vm0-ai/vm0/commit/6f777ef3e3560c76b4924fb05801ec8937b6800a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.358.0
+    * @okouai/core bumped to 8.587.0
+
+## [0.786.0](https://github.com/vm0-ai/vm0/compare/app-v0.785.1...app-v0.786.0) (2026-08-24)
+
+
+### Features
+
+* **auth:** scaffold versioned authentication routes ([#28950](https://github.com/vm0-ai/vm0/issues/28950)) ([2d3a789](https://github.com/vm0-ai/vm0/commit/2d3a789095f63f44886788dfe9fdfb2bf9c3d227))
+
+
+### Bug Fixes
+
+* **platform:** remove unavailable restored attachments ([#28871](https://github.com/vm0-ai/vm0/issues/28871)) ([16a3f22](https://github.com/vm0-ai/vm0/commit/16a3f2278db41669f27e3af909312f80429b782e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.2
+    * @okouai/core bumped to 8.586.2
+
 ## [0.785.1](https://github.com/vm0-ai/vm0/compare/app-v0.785.0...app-v0.785.1) (2026-08-24)
 
 

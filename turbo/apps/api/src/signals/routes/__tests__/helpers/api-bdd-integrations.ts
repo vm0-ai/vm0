@@ -252,8 +252,10 @@ interface SlackCommandRequest {
   readonly teamId: string;
   readonly userId: string;
   readonly text: string;
+  readonly command?: "/okou" | "/zero";
   readonly channelId?: string;
   readonly triggerId?: string;
+  readonly publicBrand?: PublicBrand;
 }
 
 interface SlackPickerSubmissionArgs {
@@ -285,7 +287,7 @@ function slackCommandRequestBody(args: SlackCommandRequest): string {
     channel_name: "general",
     user_id: args.userId,
     user_name: "bdduser",
-    command: "/zero",
+    command: args.command ?? "/okou",
     text: args.text,
     response_url: "https://hooks.slack.com/commands/bdd/response",
     trigger_id: args.triggerId ?? "trigger-bdd",
@@ -416,12 +418,17 @@ async function requestRawSlackIngress(
   path: SlackIngressPath,
   body: string,
   headers: SlackSignatureHeaders,
-  contentType: string,
+  publicBrand: PublicBrand,
 ): Promise<SlackIngressResponse> {
+  const origin =
+    publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai";
+  const contentType = path.endsWith("/events")
+    ? "application/json"
+    : "application/x-www-form-urlencoded";
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(path, {
+  }).request(`${origin}${path}`, {
     method: "POST",
     headers: {
       "content-type": contentType,
@@ -558,7 +565,7 @@ async function requestRawSlackDownloadFile(
     signal: context.signal,
     routes: TEST_APP_ROUTES,
   }).request(
-    `/api/okou/integrations/slack/download-file${query ? `?${query}` : ""}`,
+    `/api/integrations/slack/download-file${query ? `?${query}` : ""}`,
     {
       method: "GET",
       headers: extraHeaders(headers),
@@ -1093,6 +1100,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async postSlackEvent(
       teamId: string,
       event: Record<string, unknown>,
+      publicBrand: PublicBrand = "okou",
     ): Promise<unknown> {
       const body = JSON.stringify({
         type: "event_callback",
@@ -1106,7 +1114,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/events",
           body,
           signedSlackHeaders(body),
-          "application/json",
+          publicBrand,
         ),
         [200],
       );
@@ -1121,7 +1129,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/commands",
           body,
           signedSlackHeaders(body),
-          "application/x-www-form-urlencoded",
+          args.publicBrand ?? "okou",
         ),
         [200],
       );
@@ -1130,6 +1138,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async postSlackInteractive(
       payload: Record<string, unknown>,
+      publicBrand: PublicBrand = "okou",
     ): Promise<unknown> {
       const body = new URLSearchParams({
         payload: JSON.stringify(payload),
@@ -1140,7 +1149,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/interactive",
           body,
           signedSlackHeaders(body),
-          "application/x-www-form-urlencoded",
+          publicBrand,
         ),
         [200],
       );
@@ -1178,6 +1187,16 @@ export function createBddIntegrationApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async redriveLegacySlackChatCallback(runId: string): Promise<void> {
+      const client = setupApp({ context, routes: testSlackStateRoutes })(
+        testSlackStateContract,
+      );
+      await accept(
+        client.redriveLegacyCallback({ body: { run_id: runId } }),
+        [200],
+      );
     },
 
     async deleteSlackTestState(teamId: string): Promise<void> {
@@ -1279,6 +1298,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly SlackIngressStatus[],
+      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1286,7 +1306,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/events",
           body,
           headers,
-          "application/json",
+          publicBrand,
         ),
         statuses,
       );
@@ -1296,6 +1316,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly (200 | 400 | 401 | 503)[],
+      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1303,7 +1324,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/commands",
           body,
           headers,
-          "application/x-www-form-urlencoded",
+          publicBrand,
         ),
         statuses,
       );
@@ -1313,6 +1334,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly (200 | 400 | 401 | 503)[],
+      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1320,7 +1342,7 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/zero/slack/interactive",
           body,
           headers,
-          "application/x-www-form-urlencoded",
+          publicBrand,
         ),
         statuses,
       );

@@ -814,7 +814,11 @@ const resolveIncomingAttachFileMetadata$ = command(
             wave.map(async (file) => {
               const object = await set(
                 resolveArtifactObject$,
-                { userId: args.userId, id: file.fileId },
+                {
+                  userId: args.userId,
+                  id: file.fileId,
+                  filenameHint: file.filenameSnapshot,
+                },
                 signal,
               );
               return { file, object };

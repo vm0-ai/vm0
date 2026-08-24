@@ -126,9 +126,9 @@ enum Command {
     Build(cmd::BuildArgs),
     /// Generate runner.yaml from a pre-built image hash
     Config(cmd::ConfigArgs),
-    /// Run a single bash command in a VM for benchmarking
+    /// Run a single bash command in a sandbox for benchmarking
     Benchmark(cmd::BenchmarkArgs),
-    /// Execute a command inside a running VM for debugging
+    /// Execute a command inside a running sandbox for debugging
     Exec(cmd::ExecArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
     Start(Box<cmd::StartArgs>),
@@ -473,6 +473,26 @@ mod tests {
         assert!(normalized_help.contains(
             "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
         ));
+    }
+
+    #[test]
+    fn service_wait_running_help_describes_stdout_contract() {
+        let error = Cli::try_parse_from(["runner", "service", "wait-running", "--help"])
+            .err()
+            .expect("service wait-running --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let normalized_help = error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(
+            normalized_help.contains(
+                "Wait until a runner service is active and job-admitting. On success, emit the resolved max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go to stderr"
+            ),
+            "unexpected help output: {normalized_help}"
+        );
     }
 
     #[tokio::test]

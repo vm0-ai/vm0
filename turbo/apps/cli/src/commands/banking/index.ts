@@ -6,6 +6,12 @@ import {
   type BankingResponse,
 } from "../../lib/api/domains/banking";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../lib/okou-env";
+import {
+  addRequestedCallbackSearchParams,
+  printCallbackTurnInstruction,
+} from "../connector/action-url";
+import { getPlatformOrigin } from "../doctor/platform-url";
 
 interface JsonOption {
   readonly json?: boolean;
@@ -20,6 +26,11 @@ interface TransactionsOptions extends JsonOption {
   readonly from: string;
   readonly to: string;
   readonly limit: number;
+}
+
+interface AccessRequestOptions {
+  readonly reason: string;
+  readonly callbackPrompt: string;
 }
 
 function parseLimit(value: string): number {
@@ -65,6 +76,45 @@ async function runBankingRequest(
   }
   renderBankingResponse(label, response);
 }
+
+const accessRequestCommand = new Command()
+  .name("access-request")
+  .description("Ask the current web chat user to grant banking access")
+  .requiredOption("--reason <purpose>", "Why banking data is needed")
+  .requiredOption(
+    "--callback-prompt <prompt>",
+    "Start the next chat round with this prompt after the user continues",
+  )
+  .action(
+    withErrorHandler(async (options: AccessRequestOptions) => {
+      const agentId = getOkouAgentId()?.trim();
+      if (!agentId) {
+        throw new Error(
+          "banking access-request is only available to the current web chat agent",
+        );
+      }
+      const reason = options.reason.trim();
+      if (!reason) {
+        throw new Error("--reason cannot be empty");
+      }
+      if (reason.length > 500) {
+        throw new Error("--reason cannot exceed 500 characters");
+      }
+
+      const params = new URLSearchParams({ reason });
+      addRequestedCallbackSearchParams(params, options.callbackPrompt, agentId);
+      const origin = await getPlatformOrigin();
+      const url = new URL(
+        `/agents/${encodeURIComponent(agentId)}/banking`,
+        origin,
+      );
+      url.search = params.toString();
+
+      console.log("Banking access requires user approval:");
+      console.log(url.toString());
+      printCallbackTurnInstruction();
+    }),
+  );
 
 const accountsCommand = new Command()
   .name("accounts")
@@ -132,6 +182,7 @@ const transactionsCommand = new Command()
 export const bankingCommand = new Command()
   .name("banking")
   .description("Use managed Okou banking services")
+  .addCommand(accessRequestCommand)
   .addCommand(accountsCommand)
   .addCommand(balancesCommand)
   .addCommand(transactionsCommand)
@@ -139,11 +190,15 @@ export const bankingCommand = new Command()
     "after",
     `
 Examples:
+  Request access:     okou banking access-request --reason "Review recent expenses" --callback-prompt "Banking access is ready; continue the expense review"
   List accounts:      okou banking accounts --json
   Get balance:        okou banking balances --account-id <id> --json
   Get transactions:   okou banking transactions --account-id <id> --from 2026-01-01 --to 2026-01-31 --json
 
 Notes:
+  - access-request only works for the current agent in the current web chat
+  - The user selects accounts and an expiration before access is granted
+  - Banking grants never apply to automation runs
   - Authenticates via OKOU_TOKEN (requires banking:read capability)
   - Finicity credentials and app tokens stay on the Okou API server
   - Access is limited to accounts enabled for the current agent`,

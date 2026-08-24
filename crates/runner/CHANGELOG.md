@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.171.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.8...runner-rs-v0.171.9) (2026-08-24)
+
+
+### Documentation
+
+* **runner:** document wait-running stdout contract ([#29003](https://github.com/vm0-ai/vm0/issues/29003)) ([1c98e0a](https://github.com/vm0-ai/vm0/commit/1c98e0a5dfe057e981593970cb04716f38cb7401))
+* **runner:** remove retired compose contract reference ([#29013](https://github.com/vm0-ai/vm0/issues/29013)) ([8e85227](https://github.com/vm0-ai/vm0/commit/8e852273c1d008c8a8a4d7fe08b92c2cc73ee200))
+* **rust:** document session-history CPU pool invariants ([#29025](https://github.com/vm0-ai/vm0/issues/29025)) ([21a07e5](https://github.com/vm0-ai/vm0/commit/21a07e53497f3b1d89ffd0fdbb330f8c8652529a))
+
+
+### Refactoring
+
+* **runner:** dual-read and dual-write mitmdump runtime markers ([#29030](https://github.com/vm0-ai/vm0/issues/29030)) ([29b82dd](https://github.com/vm0-ai/vm0/commit/29b82dd28d8693471db0a7a00800be0830650ae3))
+* **runner:** migrate status to sandbox terminology ([#29010](https://github.com/vm0-ai/vm0/issues/29010)) ([6bead98](https://github.com/vm0-ai/vm0/commit/6bead98eb35336befe162e76e862da608d1fb1b6))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+* **runtime:** reserve okou namespace in cloud execution ([#29040](https://github.com/vm0-ai/vm0/issues/29040)) ([233bc7e](https://github.com/vm0-ai/vm0/commit/233bc7eb29e9c03b4391e91f1fe15ce48d576de6))
+
+## [0.171.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.7...runner-rs-v0.171.8) (2026-08-24)
+
+
+### Bug Fixes
+
+* **python:** drain retained diagnostics after webhook shutdown ([#28981](https://github.com/vm0-ai/vm0/issues/28981)) ([6eae21b](https://github.com/vm0-ai/vm0/commit/6eae21bde1096293028cf6a6d1161a2e0e6ae7dd))
+* **python:** reject negative x response counts ([#28985](https://github.com/vm0-ai/vm0/issues/28985)) ([f6d0ec2](https://github.com/vm0-ai/vm0/commit/f6d0ec2054fa004fffef60619afd1466eac61876))
+* **runner:** continue cleanup after bounded stop errors ([#28947](https://github.com/vm0-ai/vm0/issues/28947)) ([4b0161f](https://github.com/vm0-ai/vm0/commit/4b0161f361f512444e8a532cf9bdac8d1f13e8da))
+
+
+### Refactoring
+
+* **runner:** dual-read canonical host tuning environment aliases ([#28964](https://github.com/vm0-ai/vm0/issues/28964)) ([88cf421](https://github.com/vm0-ai/vm0/commit/88cf42132c3150a1f116d888049f083010fd598f))
+* **runner:** dual-read runner token environment aliases ([#28977](https://github.com/vm0-ai/vm0/issues/28977)) ([a9164f6](https://github.com/vm0-ai/vm0/commit/a9164f6aa4129610eb268c90773879b4d4af4b17))
+* **runner:** reject reserved OKOU keys in local user environment ([#28971](https://github.com/vm0-ai/vm0/issues/28971)) ([3bff5c4](https://github.com/vm0-ai/vm0/commit/3bff5c4998d0a692212ef2abc44513e09c0ba3f1))
+* **runner:** rename embedded mitm credential key ([#28952](https://github.com/vm0-ai/vm0/issues/28952)) ([fecae1b](https://github.com/vm0-ai/vm0/commit/fecae1b8917fc01eec9afe9b4395b002ea016c5c))
+* **runner:** rename private codex cleanup environment keys ([#28959](https://github.com/vm0-ai/vm0/issues/28959)) ([4e8fec7](https://github.com/vm0-ai/vm0/commit/4e8fec7512e82f44ddc683d30f7014a600fea002)), closes [#28922](https://github.com/vm0-ai/vm0/issues/28922)
+* **runner:** rename proxy registry and mitm-addon sandbox contract ([#28967](https://github.com/vm0-ai/vm0/issues/28967)) ([cdc2220](https://github.com/vm0-ai/vm0/commit/cdc2220859e38b82058424e3b7cd05d846cfb2ca))
+* **runtime:** add a trusted platform environment channel ([#28970](https://github.com/vm0-ai/vm0/issues/28970)) ([7d6e40b](https://github.com/vm0-ai/vm0/commit/7d6e40b7a8da820582587d96479f4da9f02932b6))
+
+
+### Performance Improvements
+
+* **mitm-addon:** reuse x unicode label classification ([#28983](https://github.com/vm0-ai/vm0/issues/28983)) ([49fd493](https://github.com/vm0-ai/vm0/commit/49fd493137938781ddadd667ad2707a426d7b8cc))
+* **runner:** bound burst pre-spawn concurrency ([#28882](https://github.com/vm0-ai/vm0/issues/28882)) ([97bcd42](https://github.com/vm0-ai/vm0/commit/97bcd42706fb53c60d6dd101fb69a96362bc6b14))
+
 ## [0.171.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.6...runner-rs-v0.171.7) (2026-08-24)
 
 

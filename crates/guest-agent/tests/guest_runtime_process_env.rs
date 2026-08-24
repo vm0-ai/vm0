@@ -8,11 +8,19 @@ mod common;
 use std::time::Duration;
 
 #[test]
-fn runtime_bootstrap_installs_system_log_and_sandbox_ops_paths() {
+fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
     let tmp = tempfile::tempdir().unwrap();
     let runtime_dir = tmp.path().join("runtime");
 
     unsafe {
+        std::env::remove_var(process_control_ipc::BOOTSTRAP_ENV);
+        std::env::remove_var(
+            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        );
+        std::env::set_var(
+            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            "inherited-tool-placement",
+        );
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
@@ -52,6 +60,7 @@ fn runtime_bootstrap_installs_system_log_and_sandbox_ops_paths() {
 
     let runtime = guest_agent::run_context::GuestRuntime::from_process_env().unwrap();
 
+    assert!(runtime.workload_containment.is_none());
     assert_eq!(runtime.paths.runtime_dir(), runtime_dir.as_path());
 
     guest_common::log_info!(

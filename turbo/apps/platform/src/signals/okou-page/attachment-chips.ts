@@ -19,6 +19,7 @@ import {
   type ObjectUrlResource,
 } from "../object-url-resource.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import type { AnnotationTarget } from "./image-annotation.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -66,6 +67,12 @@ type AttachmentDocumentLightboxInput =
 type AttachmentImageLightboxInput = {
   readonly url: string;
   readonly file?: File;
+  /**
+   * Present only for an image the viewer is allowed to mark up — a composer
+   * draft. Artifacts and sent messages open the same lightbox without it, so
+   * the annotate affordance simply is not there for something immutable.
+   */
+  readonly annotationTarget?: AnnotationTarget;
   readonly filename?: string;
   readonly threadId?: string;
   readonly artifact?: AttachmentArtifactMetadata;

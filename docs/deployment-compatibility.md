@@ -153,6 +153,20 @@ runner can also survive briefly talking to an old backend.
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
+Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
+network-policy, and operator concepts. Use **VM** only for concrete
+Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
+pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
+The VM0 brand, established environment-variable namespace, and fixed paths are
+not lifecycle terminology and remain unchanged.
+
+Each runner version's `status.json` is a host-local persisted cross-version
+boundary. Current runner maintenance commands can inspect status files written
+by previous runner versions, rollback can expose an older command to a newer
+status writer, and the independently deployed host monitoring collector scans
+every versioned runner directory. Status schema changes must cover those
+old/new combinations rather than treating the file as process-private state.
+
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and
 registry at startup, and keeps them in its version-specific base directory.

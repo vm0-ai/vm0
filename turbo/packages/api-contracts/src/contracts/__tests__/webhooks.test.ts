@@ -335,7 +335,7 @@ describe("webhook telemetry contract", () => {
         }),
         {
           ts: "2026-01-15T10:00:00.000Z",
-          action_type: "vm_create",
+          action_type: "sandbox_create",
           duration_ms: 5,
           success: true,
         },

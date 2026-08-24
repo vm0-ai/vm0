@@ -193,4 +193,5 @@ cd "$API_APP_DIR"
 env \
   VM0_DEBUG='*' \
   FEISHU_CALLBACK_BASE_URL="$TUNNEL_URL" \
+  FINICITY_WEBHOOK_BASE_URL="$TUNNEL_URL" \
   tsx watch --env-file=.env.local src/server.ts

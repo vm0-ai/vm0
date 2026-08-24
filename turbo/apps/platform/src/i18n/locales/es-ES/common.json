@@ -503,6 +503,28 @@
       "zoomIn": "Acercar",
       "zoomOut": "Alejar"
     },
+    "annotation": {
+      "attach": "Adjuntar marcas",
+      "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
+      "notePlaceholder": "Di qué debería cambiar aquí",
+      "open": "Anotar",
+      "redo": "Rehacer",
+      "removeMark": "Eliminar marca",
+      "subtitle_one": "{{count}} marca",
+      "subtitle_many": "{{count}} marcas",
+      "subtitle_other": "{{count}} marcas",
+      "tools": {
+        "arrow": "Flecha",
+        "box": "Rectángulo",
+        "crop": "Recortar",
+        "highlight": "Resaltar",
+        "pen": "Dibujar",
+        "redact": "Ocultar",
+        "select": "Seleccionar",
+        "text": "Texto"
+      },
+      "undo": "Deshacer"
+    },
     "attachments": {
       "cancelUpload": "Cancelar la subida {{filename}}",
       "download": "Descargar {{filename}}",
@@ -1033,12 +1055,24 @@
       "signIn": "Iniciar sesión",
       "signUp": "Crear una cuenta"
     },
+    "homeLink": "Ir al inicio de {{brandName}}",
     "loading": "Cargando autenticación",
+    "theme": {
+      "darkEnabled": "Tema oscuro activado",
+      "lightEnabled": "Tema claro activado"
+    },
     "toggleTheme": "Cambiar tema",
     "v2": {
-      "continueToSignIn": "Continuar para iniciar sesión",
-      "continueToSignUp": "Continuar para crear una cuenta",
-      "unavailable": "La nueva experiencia de autenticación aún no está disponible."
+      "signIn": {
+        "action": "Usar el inicio de sesión actual",
+        "description": "La nueva experiencia de inicio de sesión aún no está disponible.",
+        "title": "Iniciar sesión en {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usar el registro actual",
+        "description": "La nueva experiencia de registro aún no está disponible.",
+        "title": "Crea tu cuenta de {{brandName}}"
+      }
     }
   },
   "authorization": {
@@ -1694,6 +1728,38 @@
       "weeklyAt": "Cada semana a {{time}}",
       "weeklyOnAt": "Cada semana, el {{days}} a las {{time}}"
     },
+    "banking": {
+      "accountFallback": "Cuenta bancaria",
+      "actionFailed": "La acción bancaria falló",
+      "active_one": "Acceso activo para {{count}} cuenta",
+      "active_many": "Acceso activo para {{count}} cuentas",
+      "active_other": "Acceso activo para {{count}} cuentas",
+      "automationOff": "El acceso de solo lectura no está disponible para ejecuciones de automatización.",
+      "cancel": "Cancelar",
+      "change": "Cambiar",
+      "connect": "Conectar un banco",
+      "continue": "Continuar",
+      "duration": "Duración del acceso",
+      "expiresAt": "Vence el {{time}}",
+      "grant": "Conceder acceso",
+      "institutionFallback": "Institución financiera",
+      "loadFailed": "No se pudo cargar el acceso bancario",
+      "noAccounts": "No hay cuentas activas disponibles. Vuelve a conectar o repara la institución primero.",
+      "oneDay": "24 horas",
+      "oneHour": "1 hora",
+      "popupBlocked": "Permite las ventanas emergentes de Zero y vuelve a intentarlo.",
+      "readOnly": "Cuentas, saldos y transacciones · solo lectura",
+      "repair": "Reparar",
+      "repairRequired": "{{institution}} necesita reparación",
+      "retry": "Reintentar",
+      "revoke": "Revocar",
+      "revokeConfirm": "¿Revocar el acceso bancario de este Agente?",
+      "selectAccounts": "Seleccionar cuentas",
+      "sevenDays": "7 días",
+      "thirtyDays": "30 días",
+      "title": "Solicitud de acceso bancario",
+      "waiting": "Esperando a Mastercard Data Connect. Completa el proceso allí y luego vuelve al Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Añade créditos para seguir charlando con {{assistantName}}.",
       "askAdminCredits": "Pide a un administrador de espacio de trabajo que añada créditos para que puedas seguir hablando con {{assistantName}}.",
@@ -2179,6 +2245,47 @@
       "title": "Gestionar el acceso a {{connector}}",
       "unnamedAgent": "Sin nombre"
     },
+    "accounts": {
+      "accountName": "Nombre de la cuenta",
+      "accountsUnavailable": "Las cuentas no están disponibles para este conector.",
+      "actions": "Acciones de la cuenta",
+      "add": "Añadir",
+      "addAccount": "Añadir cuenta",
+      "connected": "Conectada",
+      "default": "Predeterminada",
+      "deleteAccount": "Eliminar cuenta",
+      "deleteDescription": "Los hilos que usan esta cuenta volverán a la herencia predeterminada.",
+      "deleteDescriptionWithCount": "{{value}} hilos volverán a la herencia predeterminada.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "¿Eliminar {{account}}?",
+      "find": "Buscar cuentas",
+      "loading": "Cargando cuentas…",
+      "loadingMore": "Cargando…",
+      "loadMore": "Cargar más",
+      "makeDefault": "Establecer como predeterminada",
+      "manage": "Gestionar",
+      "managerTitle": "Gestionar cuentas de {{connector}}",
+      "noAccounts": "Sin cuentas",
+      "noAccountsFound": "No se encontraron cuentas",
+      "reconnectRequired": "Se requiere volver a conectar",
+      "rename": "Cambiar nombre",
+      "summaryMany": "{{value}} cuentas",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} cuenta",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} requieren atención",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Cuenta de trabajo"
+    },
     "actions": {
       "apply": "Aplicar",
       "authorize": "Autorizar",
@@ -2579,8 +2686,8 @@
         "connectTitle": "Conectar con Slack",
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Slack.",
         "open": "Abrir Slack",
-        "successDescription": "Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
-        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescription": "Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
         "successTitle": "¡Conectado a Slack!"
       },
       "teams": {
@@ -2590,7 +2697,7 @@
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Microsoft Teams.",
         "open": "Abrir Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Tienes conexión con {{team}}. Menciona a @Zero en Teams para empezar a chatear.",
+        "successDescription": "Tienes conexión con {{team}}. Menciona a @{{botName}} en Teams para empezar a chatear.",
         "successTitle": "Conectado a Microsoft Teams"
       },
       "telegram": {

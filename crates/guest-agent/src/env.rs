@@ -14,7 +14,7 @@ use api_contracts::generated::{
 };
 
 use crate::constants;
-use guest_common::log_warn;
+use guest_common::{log_info, log_warn};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
@@ -27,6 +27,86 @@ const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "VM0_TEST_CODEX_HOME_DIR";
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
+}
+
+/// Resolve the sensitive runner-to-guest API token at the single process-env
+/// capture boundary. Both aliases are reader-only during #28914 migration
+/// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
+fn api_token_env_or_empty() -> Result<String, String> {
+    let canonical_key = guest_contracts::env::CANONICAL_API_TOKEN_ENV;
+    let legacy_key = guest_contracts::env::API_TOKEN_ENV;
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting API token environment aliases: canonical_key={canonical_key} \
+                 legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "api_token_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
+#[derive(Clone, Copy)]
+enum RunMetadataEnvSource {
+    CanonicalOnly,
+    LegacyOnly,
+    Dual,
+}
+
+impl RunMetadataEnvSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CanonicalOnly => "canonical-only",
+            Self::LegacyOnly => "legacy-only",
+            Self::Dual => "dual",
+        }
+    }
+}
+
+/// Resolve Stage 1 compatibility between an existing runner or sandbox and a
+/// new guest reader. #28914 owns the follow-up writer-cutover and reader-removal
+/// issues; remove the legacy branch only after the reader floor, sandbox drain,
+/// rollback window, and legacy-read-zero gates are complete.
+fn run_metadata_env_or_empty(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<String, String> {
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, RunMetadataEnvSource::CanonicalOnly),
+        (None, Some(value)) => (value, RunMetadataEnvSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, RunMetadataEnvSource::Dual)
+        }
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting run metadata environment aliases: canonical_key={canonical_key} \
+                 legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "run_metadata_env_source key={canonical_key} source={}",
+        source.label()
+    );
+    Ok(value)
 }
 
 /// CLI framework dispatched by the runner via `CLI_AGENT_TYPE`. Unknown
@@ -208,22 +288,37 @@ pub struct GuestConfigRaw {
 
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
-    pub fn from_process_env() -> Self {
+    ///
+    /// Returns an error when a canonical and legacy bootstrap alias pair
+    /// contains conflicting values.
+    pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
             std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from);
 
-        Self {
+        Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
-            api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
-            sandbox_id: env_or_empty(guest_contracts::env::SANDBOX_ID_ENV),
-            sandbox_reuse_result: env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV),
-            workspace_reuse_result: env_or_empty(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV),
+            api_token: api_token_env_or_empty()?,
+            sandbox_id: run_metadata_env_or_empty(
+                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+                guest_contracts::env::SANDBOX_ID_ENV,
+            )?,
+            sandbox_reuse_result: run_metadata_env_or_empty(
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+                guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            )?,
+            workspace_reuse_result: run_metadata_env_or_empty(
+                guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+                guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+            )?,
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
-            api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
+            api_start_time: run_metadata_env_or_empty(
+                guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+                guest_contracts::env::API_START_TIME_ENV,
+            )?,
             agent_execution_timeout_secs: env_or_empty(
                 guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             ),
@@ -257,7 +352,7 @@ impl GuestConfigRaw {
             post_result_sigkill_grace_secs: env_or_empty(
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ),
-        }
+        })
     }
 
     pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {
@@ -312,7 +407,7 @@ pub struct GuestConfig {
 impl GuestConfig {
     /// Build an owned config from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
-        let raw = GuestConfigRaw::from_process_env();
+        let raw = GuestConfigRaw::from_process_env()?;
         raw.require_run_payload_file()?;
         Self::from_raw(raw)
     }

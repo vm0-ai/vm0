@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.35](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.34...vsock-proto-v0.18.35) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** centralize process termination codec ([#28973](https://github.com/vm0-ai/vm0/issues/28973)) ([6c15cd8](https://github.com/vm0-ai/vm0/commit/6c15cd8f5056d98f40d751cbe445840e4248445e))
+
 ## [0.18.34](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.33...vsock-proto-v0.18.34) (2026-08-24)
 
 

@@ -58,6 +58,7 @@ function buildSlackInstallUrl(args: {
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   if (args.reinstall) {
     url.searchParams.set("reinstall", "1");
   }
@@ -78,6 +79,7 @@ function buildSlackConnectUrl(args: {
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   return url.toString();
 }
 

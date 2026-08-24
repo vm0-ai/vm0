@@ -1,5 +1,6 @@
 import {
   useGet,
+  useLoadable,
   useLastLoadable,
   useLastResolved,
   useSet,
@@ -18,6 +19,8 @@ import {
   isIntegrationManagedCustomConnector,
   type CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
@@ -31,7 +34,10 @@ import {
   openCustomConnectorEditDialog$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
+import {
+  customConnectorMcpEnabled$,
+  featureSwitch$,
+} from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
@@ -43,6 +49,25 @@ import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx"
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
+import {
+  connectorAccountSummaryByTarget$,
+  reloadConnectorAccountSummaries$,
+  settingsConnectorAccounts,
+} from "../../../../signals/okou-page/settings/connector-accounts.ts";
+import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
+import {
+  ConnectorAccountSummaryText,
+  connectorAccountSummaryStatus,
+  type ConnectorAccountSummaryStatus,
+} from "./connector-card.tsx";
+import {
+  closeCustomAccountConnectDialog$,
+  closeCustomAccountManager$,
+  customAccountConnectDialog$,
+  customAccountManager$,
+  openCustomAccountConnectDialog$,
+  openCustomAccountManager$,
+} from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
@@ -59,6 +84,11 @@ interface CustomConnectorRowProps {
   readonly onEdit: () => void;
   readonly onManageAccess: () => void;
   readonly onDelete: () => void;
+  readonly accountSummary?: ConnectorAccountSummary;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
+  readonly accountManagement: boolean;
+  readonly canAddAccount: boolean;
+  readonly onManageAccounts: () => void;
 }
 
 function CustomConnectorAgentAccess({
@@ -92,20 +122,24 @@ function CustomConnectorAgentAccess({
   );
 }
 
-function CustomConnectorCardContent({
-  connector,
-  hasActions,
-  canConnect,
-  allowAccessIncrease,
-  onConnect,
-  onManageAccess,
-}: {
+interface CustomConnectorCardContentProps {
   readonly connector: CustomConnectorResponse;
   readonly hasActions: boolean;
   readonly canConnect: boolean;
   readonly allowAccessIncrease: boolean;
   readonly onConnect: () => void;
   readonly onManageAccess: () => void;
+  readonly accountSummary?: ConnectorAccountSummary;
+  readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
+  readonly accountManagement: boolean;
+  readonly canAddAccount: boolean;
+  readonly onManageAccounts: () => void;
+}
+
+function CustomConnectorHeaderContent({
+  connector,
+}: {
+  readonly connector: CustomConnectorResponse;
 }) {
   const { t } = useTranslation();
   const connectorType =
@@ -117,7 +151,7 @@ function CustomConnectorCardContent({
           return $.connectors.custom.create.httpType;
         });
   const connectorTarget = customConnectorTarget(connector);
-  const headerContent = (
+  return (
     <>
       <CustomConnectorIcon
         id={connector.id}
@@ -144,54 +178,138 @@ function CustomConnectorCardContent({
       </span>
     </>
   );
+}
+
+function CustomConnectorCardHeader({
+  connector,
+  canConnect,
+  onConnect,
+}: Pick<
+  CustomConnectorCardContentProps,
+  "connector" | "canConnect" | "onConnect"
+>) {
+  const { t } = useTranslation();
+  const content = <CustomConnectorHeaderContent connector={connector} />;
+  return !connector.connected && canConnect ? (
+    <button
+      type="button"
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.displayName },
+      )}
+      className="flex h-14 w-full cursor-pointer items-center gap-2.5 px-5 text-left"
+      onClick={onConnect}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="flex h-14 items-center gap-2.5 px-5">{content}</div>
+  );
+}
+
+function CustomConnectorConnectionStatus({
+  connected,
+}: {
+  readonly connected: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          connected ? "bg-emerald-500" : "bg-muted-foreground/50"
+        }`}
+      />
+      {connected
+        ? t(($) => {
+            return $.connectors.custom.statusConnected;
+          })
+        : t(($) => {
+            return $.connectors.catalog.filters.notConnected;
+          })}
+    </span>
+  );
+}
+
+function CustomConnectorCardFooter({
+  connector,
+  hasActions,
+  allowAccessIncrease,
+  onConnect,
+  onManageAccess,
+  accountSummary,
+  accountSummaryStatus,
+  accountManagement,
+  canAddAccount,
+  onManageAccounts,
+}: Omit<CustomConnectorCardContentProps, "canConnect">) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
+        hasActions ? "pr-12" : "pr-2"
+      }`}
+    >
+      {accountManagement ? (
+        <ConnectorAccountSummaryText
+          summary={accountSummary}
+          status={accountSummaryStatus}
+          connectorLabel={connector.displayName}
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+        />
+      ) : (
+        <CustomConnectorConnectionStatus connected={connector.connected} />
+      )}
+      {connector.connected || accountManagement ? (
+        <CustomConnectorAgentAccess
+          connector={connector}
+          allowAccessIncrease={allowAccessIncrease}
+          onManageAccess={onManageAccess}
+        />
+      ) : null}
+      {accountManagement ? (
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={!canAddAccount}
+            onClick={onConnect}
+          >
+            {t(($) => {
+              return $.connectors.accounts.add;
+            })}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={(accountSummary?.accountCount ?? 0) === 0}
+            onClick={onManageAccounts}
+          >
+            {t(($) => {
+              return $.connectors.accounts.manage;
+            })}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CustomConnectorCardContent(props: CustomConnectorCardContentProps) {
   return (
     <>
-      {!connector.connected && canConnect ? (
-        <button
-          type="button"
-          aria-label={t(
-            ($) => {
-              return $.connectors.card.connectAria;
-            },
-            { connector: connector.displayName },
-          )}
-          className="flex h-14 w-full cursor-pointer items-center gap-2.5 px-5 text-left"
-          onClick={onConnect}
-        >
-          {headerContent}
-        </button>
-      ) : (
-        <div className="flex h-14 items-center gap-2.5 px-5">
-          {headerContent}
-        </div>
-      )}
-      <div
-        className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
-          hasActions ? "pr-12" : "pr-2"
-        }`}
-      >
-        <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              connector.connected ? "bg-emerald-500" : "bg-muted-foreground/50"
-            }`}
-          />
-          {connector.connected
-            ? t(($) => {
-                return $.connectors.custom.statusConnected;
-              })
-            : t(($) => {
-                return $.connectors.catalog.filters.notConnected;
-              })}
-        </span>
-        {connector.connected ? (
-          <CustomConnectorAgentAccess
-            connector={connector}
-            allowAccessIncrease={allowAccessIncrease}
-            onManageAccess={onManageAccess}
-          />
-        ) : null}
-      </div>
+      <CustomConnectorCardHeader
+        connector={props.connector}
+        canConnect={props.canConnect}
+        onConnect={props.onConnect}
+      />
+      <CustomConnectorCardFooter {...props} />
     </>
   );
 }
@@ -205,12 +323,18 @@ function CustomConnectorRow({
   onEdit,
   onManageAccess,
   onDelete,
+  accountSummary,
+  accountSummaryStatus,
+  accountManagement,
+  canAddAccount,
+  onManageAccounts,
 }: CustomConnectorRowProps) {
   const { t } = useTranslation();
   const adminCanDelete = isAdmin;
   const mcpActionsEnabled = connector.kind === "http" || mcpEnabled;
   const adminCanEdit = adminCanDelete && mcpActionsEnabled;
-  const canConnect = !connector.connected && mcpActionsEnabled;
+  const canConnect =
+    mcpActionsEnabled && !accountManagement && !connector.connected;
   const hasActions = connector.connected || adminCanDelete;
   const directOAuth = connectsDirectlyWithOAuth(connector);
   const cardContent = (
@@ -221,6 +345,11 @@ function CustomConnectorRow({
       allowAccessIncrease={mcpActionsEnabled}
       onConnect={onConnect}
       onManageAccess={onManageAccess}
+      accountSummary={accountSummary}
+      accountSummaryStatus={accountSummaryStatus}
+      accountManagement={accountManagement}
+      canAddAccount={canAddAccount}
+      onManageAccounts={onManageAccounts}
     />
   );
 
@@ -257,7 +386,7 @@ function CustomConnectorRow({
                   })}
                 </DropdownMenuModalItem>
               )}
-              {connector.connected && (
+              {connector.connected && !accountManagement && (
                 <DropdownMenuItem onClick={onDisconnect}>
                   {t(($) => {
                     return $.connectors.actions.disconnect;
@@ -322,14 +451,47 @@ function CustomConnectorDialogs({
   );
 }
 
-export function CustomConnectorsPanel() {
+function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
   const { t } = useTranslation();
-  const connectors = useLastResolved(customConnectors$);
-  const userManagedConnectors = connectors?.filter((connector) => {
-    return !isIntegrationManagedCustomConnector(connector);
-  });
-  const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
-  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  return (
+    <div className="zero-card py-12 flex flex-col items-center gap-3">
+      <img
+        src={noConnectorImg}
+        alt={t(($) => {
+          return $.connectors.catalog.noConnectorsAlt;
+        })}
+        className="h-20 w-20 object-contain opacity-80"
+      />
+      <p className="text-sm text-muted-foreground text-center">
+        {isAdmin
+          ? t(($) => {
+              return $.connectors.custom.emptyAdmin;
+            })
+          : t(($) => {
+              return $.connectors.custom.emptyMember;
+            })}
+      </p>
+    </div>
+  );
+}
+
+function CustomConnectorGrid({
+  connectors,
+  isAdmin,
+  mcpEnabled,
+}: {
+  readonly connectors: readonly CustomConnectorResponse[];
+  readonly isAdmin: boolean;
+  readonly mcpEnabled: boolean;
+}) {
+  const connectorAccountsEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
+  const accountSummariesLoadable = useLoadable(
+    connectorAccountSummaryByTarget$,
+  );
+  const accountSummaryStatus = connectorAccountSummaryStatus(
+    accountSummariesLoadable.state,
+  );
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
@@ -337,73 +499,145 @@ export function CustomConnectorsPanel() {
   const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
   const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
-
+  const openAccountManager = useSet(openCustomAccountManager$);
+  const openAccountConnect = useSet(openCustomAccountConnectDialog$);
   const handleDisconnect = (connector: CustomConnectorResponse) => {
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
   const handleConnect = (connector: CustomConnectorResponse) => {
+    if (connectorAccountsEnabled) {
+      openAccountConnect(connector, { kind: "add" });
+      return;
+    }
     if (connectsDirectlyWithOAuth(connector)) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;
     }
     openConnect(connector);
   };
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {connectors.map((connector) => {
+        const accountSummary =
+          accountSummariesLoadable.state === "hasData"
+            ? accountSummariesLoadable.data.get(`custom:${connector.id}`)
+            : undefined;
+        return (
+          <CustomConnectorRow
+            key={connector.id}
+            connector={connector}
+            isAdmin={isAdmin}
+            mcpEnabled={mcpEnabled}
+            onConnect={() => {
+              return handleConnect(connector);
+            }}
+            onDisconnect={() => {
+              return handleDisconnect(connector);
+            }}
+            onEdit={() => {
+              return openEdit(connector);
+            }}
+            onManageAccess={() => {
+              return openAccess(connector);
+            }}
+            onDelete={() => {
+              return openDelete(connector);
+            }}
+            accountSummary={accountSummary}
+            accountSummaryStatus={accountSummaryStatus}
+            accountManagement={connectorAccountsEnabled}
+            canAddAccount={
+              connectorAccountsEnabled &&
+              (connector.kind === "http" || mcpEnabled)
+            }
+            onManageAccounts={() => {
+              return openAccountManager(connector);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CustomAccountDialogs({
+  mcpEnabled,
+}: {
+  readonly mcpEnabled: boolean;
+}) {
+  const managedAccounts = useGet(customAccountManager$);
+  const accountConnect = useGet(customAccountConnectDialog$);
+  const closeAccountManager = useSet(closeCustomAccountManager$);
+  const closeAccountConnect = useSet(closeCustomAccountConnectDialog$);
+  const openAccountConnect = useSet(openCustomAccountConnectDialog$);
+  const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
+  const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
+  return (
+    <>
+      {accountConnect ? (
+        <CustomConnectorConnectDialog
+          connector={accountConnect.connector}
+          accountMode={accountConnect.mode}
+          onClose={closeAccountConnect}
+          onSuccess={() => {
+            reloadAccountSummaries();
+            reloadAccountList();
+          }}
+        />
+      ) : null}
+      {managedAccounts ? (
+        <ConnectorAccountManagerDialog
+          target={{ kind: "custom", customConnectorId: managedAccounts.id }}
+          connectorLabel={managedAccounts.displayName}
+          icon={
+            <CustomConnectorIcon
+              id={managedAccounts.id}
+              displayName={managedAccounts.displayName}
+              size={20}
+            />
+          }
+          connectionActionsEnabled={
+            managedAccounts.kind === "http" || mcpEnabled
+          }
+          onClose={closeAccountManager}
+          onAdd={() => {
+            openAccountConnect(managedAccounts, { kind: "add" });
+          }}
+          onReconnect={(account) => {
+            openAccountConnect(managedAccounts, {
+              kind: "reconnect",
+              account,
+            });
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export function CustomConnectorsPanel() {
+  const connectors = useLastResolved(customConnectors$);
+  const userManagedConnectors = connectors?.filter((connector) => {
+    return !isIntegrationManagedCustomConnector(connector);
+  });
+  const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
 
   return (
     <section className="flex flex-col gap-3">
-      {userManagedConnectors && userManagedConnectors.length === 0 && (
-        <div className="zero-card py-12 flex flex-col items-center gap-3">
-          <img
-            src={noConnectorImg}
-            alt={t(($) => {
-              return $.connectors.catalog.noConnectorsAlt;
-            })}
-            className="h-20 w-20 object-contain opacity-80"
-          />
-          <p className="text-sm text-muted-foreground text-center">
-            {isAdmin
-              ? t(($) => {
-                  return $.connectors.custom.emptyAdmin;
-                })
-              : t(($) => {
-                  return $.connectors.custom.emptyMember;
-                })}
-          </p>
-        </div>
-      )}
-
-      {userManagedConnectors && userManagedConnectors.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {userManagedConnectors.map((c) => {
-            return (
-              <CustomConnectorRow
-                key={c.id}
-                connector={c}
-                isAdmin={isAdmin}
-                mcpEnabled={mcpEnabled}
-                onConnect={() => {
-                  return handleConnect(c);
-                }}
-                onDisconnect={() => {
-                  return handleDisconnect(c);
-                }}
-                onEdit={() => {
-                  return openEdit(c);
-                }}
-                onManageAccess={() => {
-                  return openAccess(c);
-                }}
-                onDelete={() => {
-                  return openDelete(c);
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-
+      {userManagedConnectors?.length === 0 ? (
+        <CustomConnectorEmptyState isAdmin={isAdmin} />
+      ) : null}
+      {userManagedConnectors && userManagedConnectors.length > 0 ? (
+        <CustomConnectorGrid
+          connectors={userManagedConnectors}
+          isAdmin={isAdmin}
+          mcpEnabled={mcpEnabled}
+        />
+      ) : null}
       <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
+      <CustomAccountDialogs mcpEnabled={mcpEnabled} />
     </section>
   );
 }

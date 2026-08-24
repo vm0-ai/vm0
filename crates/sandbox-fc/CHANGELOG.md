@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.37.241](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.240...sandbox-fc-v0.37.241) (2026-08-24)
+
+## [0.37.240](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.239...sandbox-fc-v0.37.240) (2026-08-24)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound command cleanup after timeout ([#28975](https://github.com/vm0-ai/vm0/issues/28975)) ([13f87fd](https://github.com/vm0-ai/vm0/commit/13f87fd5c7967c5e09550418070b499917fc8c8c))
+
 ## [0.37.239](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.238...sandbox-fc-v0.37.239) (2026-08-24)
 
 ## [0.37.238](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.237...sandbox-fc-v0.37.238) (2026-08-24)

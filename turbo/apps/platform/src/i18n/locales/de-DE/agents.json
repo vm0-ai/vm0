@@ -465,11 +465,6 @@
     },
     "chat": "Chatten",
     "description": "Klicken Sie auf eine beliebige Karte, um eine Unterhaltung zu beginnen. Es könnte sich um eine On-Demand-Aufgabe, einen wiederkehrenden Workflow oder einen Sub-Agenten handeln.",
-    "entry": {
-      "description": "Durchsuchen Sie Anwendungsfälle über alle Integrationen hinweg",
-      "title": "Ideen und Anwendungsfälle",
-      "viewAll": "Alle anzeigen"
-    },
     "search": {
       "accessibilityLabel": "Anwendungsfälle suchen",
       "empty": "Zu Ihrer Suche passen keine Anwendungsfälle.",

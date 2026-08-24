@@ -51,10 +51,6 @@ export const imageRecognitionAvailable$ = computed((): boolean => {
   return true;
 });
 
-export const homeStartCardsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.HomeStartCards] ?? false;
-});
-
 export const videoModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
 });
@@ -69,12 +65,25 @@ export const composerSubmitDomReconcileEnabled$ = computed((get): boolean => {
   );
 });
 
+export const composerImageAnnotationEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
+});
+
 export const composerRestoredAttachmentValidationEnabled$ = computed(
   (get): boolean => {
     return (
       get(featureSwitch$)[
         FeatureSwitchKey.ComposerRestoredAttachmentValidation
       ] ?? false
+    );
+  },
+);
+
+export const composerNoteEditableIsolationEnabled$ = computed(
+  (get): boolean => {
+    return (
+      get(featureSwitch$)[FeatureSwitchKey.ComposerNoteEditableIsolation] ??
+      false
     );
   },
 );
