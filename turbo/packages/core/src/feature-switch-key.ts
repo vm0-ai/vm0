@@ -51,7 +51,6 @@ export enum FeatureSwitchKey {
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
-  SavedBillingCreditPurchase = "savedBillingCreditPurchase",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

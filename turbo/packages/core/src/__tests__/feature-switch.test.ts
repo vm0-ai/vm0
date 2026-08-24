@@ -125,9 +125,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -159,9 +156,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
   });
 
   it("should enable composer submit DOM reconciliation only for Bingjie", () => {

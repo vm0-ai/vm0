@@ -59,7 +59,6 @@ import {
 } from "../services/usage-pack-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -534,15 +533,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     trialDays,
     adAttribution,
   } = bodyResult.data;
-  const previewEnabled = await set(
-    billingPurchasePreviewEnabled$,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      requested: supportsInAppPreview === true,
-    },
-    signal,
-  );
+  const previewEnabled = supportsInAppPreview === true;
   const clerk = get(clerk$);
   const resolvedAttribution = await checkoutAttribution(
     clerk,
@@ -751,15 +742,7 @@ const usagePackCheckoutAuthed$ = command(
     signal.throwIfAborted();
 
     const body = bodyResult.data;
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: body.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = body.supportsInAppPreview === true;
     const clerk = get(clerk$);
     const resolvedAttribution = await checkoutAttribution(
       clerk,
@@ -1005,15 +988,7 @@ const usagePackChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: access.auth.orgId,
-        userId: access.auth.userId,
-        requested: bodyResult.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!bodyResult.data.returnUrl ||
@@ -1518,15 +1493,7 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: access.auth.orgId,
-        userId: access.auth.userId,
-        requested: bodyResult.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!bodyResult.data.returnUrl ||

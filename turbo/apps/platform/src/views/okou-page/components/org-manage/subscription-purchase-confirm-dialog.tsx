@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@okouai/core";
 import type {
   PlanPurchasePreviewResponse,
   UsagePackPurchasePreviewResponse,
@@ -17,7 +16,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {
@@ -186,12 +184,9 @@ function SubscriptionPurchaseConfirmDialogContent({
 }
 
 export function SubscriptionPurchaseConfirmDialog() {
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
-    false;
   const state = useGet(subscriptionPurchasePreview$);
 
-  if (!enabled || !state) {
+  if (!state) {
     return null;
   }
 
