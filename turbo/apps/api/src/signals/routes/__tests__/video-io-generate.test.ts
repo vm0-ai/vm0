@@ -38,7 +38,7 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const VIDEO_IO_MODEL = "dreamina-seedance-2-0-260128";
 const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
 const SEEDANCE_2_0_MINI_MODEL = "dreamina-seedance-2-0-mini-260615";
 const BYTEPLUS_VIDEO_TASKS_URL =
@@ -532,8 +532,7 @@ describe("POST /api/video-io/generate", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message:
-          "Unsupported video duration for dreamina-seedance-2.0-fast: 3s",
+        message: "Unsupported video duration for dreamina-seedance-2.0: 3s",
         code: "BAD_REQUEST",
       },
     });
@@ -1387,7 +1386,7 @@ describe("POST /api/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 865,
+      creditsCharged: 1081,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -1450,7 +1449,7 @@ describe("POST /api/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
   });
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {

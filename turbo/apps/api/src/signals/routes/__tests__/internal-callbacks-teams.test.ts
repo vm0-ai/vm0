@@ -704,6 +704,7 @@ describe("Teams chat callbacks", () => {
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: teams.fixture.teamsAppId,
+      teamsPublicBrand: "vm0",
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
       teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
@@ -1129,7 +1130,7 @@ describe("Teams chat callbacks", () => {
       "Task completed successfully.",
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[Audit](https://app.okou.ai/activities/${runId})`,
+      `[Audit](https://app.vm0.ai/activities/${runId})`,
     );
     expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
     expect(teamsApi.reactionRequests).toStrictEqual([

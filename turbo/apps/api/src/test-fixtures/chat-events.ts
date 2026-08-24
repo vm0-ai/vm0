@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 import type {
@@ -143,6 +144,7 @@ interface ChatEventContextFixture {
   readonly teamsThreadId: string | null;
   readonly teamsServiceUrl: string | null;
   readonly teamsAppId: string | null;
+  readonly teamsPublicBrand: PublicBrand | null;
   readonly teamsSenderUserId: string | null;
   readonly teamsSenderDisplayName: string | null;
   readonly teamsSenderPrincipalName: string | null;
@@ -242,6 +244,7 @@ export async function readChatEventContextFixture(
       teamsThreadId: chatTeamsContext.threadId,
       teamsServiceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
+      teamsPublicBrand: chatTeamsContext.publicBrand,
       teamsSenderUserId: chatTeamsContext.senderUserId,
       teamsSenderDisplayName: chatTeamsContext.senderDisplayName,
       teamsSenderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -362,6 +365,7 @@ const annotationProjectionInputs = [
         threadId: "activity-1",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
+        publicBrand: "vm0",
         senderUserId: "29:user-1",
         senderDisplayName: "Ada Lovelace",
         senderPrincipalName: "ada@example.com",
@@ -387,6 +391,7 @@ const annotationProjectionInputs = [
         threadId: "direct-message:agent-1:default",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-1",
+        publicBrand: "vm0",
         senderUserId: "29:user-1",
         senderDisplayName: null,
         senderPrincipalName: null,
@@ -625,6 +630,7 @@ export async function seedChatEventAnnotationProjectionFixture(
         threadId: "activity-rejected",
         serviceUrl: "https://smba.trafficmanager.net/amer/",
         teamsAppId: "teams-app-2",
+        publicBrand: "vm0",
         senderUserId: "29:user-2",
         senderDisplayName: "Grace Hopper",
         senderPrincipalName: "grace@example.com",

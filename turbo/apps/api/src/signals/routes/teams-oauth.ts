@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
@@ -101,6 +102,7 @@ function settingsErrorRedirect(
 function settingsSuccessRedirect(args: {
   readonly tenantName?: string | null;
   readonly teamName?: string | null;
+  readonly botName?: string | null;
   readonly publicBrand: PublicBrand;
 }): Response {
   const params = new URLSearchParams({ status: "connected" });
@@ -110,6 +112,7 @@ function settingsSuccessRedirect(args: {
   if (args.teamName) {
     params.set("teamName", args.teamName);
   }
+  params.set("botName", teamsBotDisplayName(args.botName));
   return redirectResponse(
     appUrl(`/settings/teams?${params.toString()}`, args.publicBrand),
   );
@@ -367,7 +370,6 @@ const connectOauth$ = command(({ get }) => {
 });
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const request = get(request$).raw;
   const credentials = microsoftCredentials();
   if (!credentials) {
     return jsonErrorResponse(
@@ -475,6 +477,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   return settingsSuccessRedirect({
     tenantName: result.installation.teamsTenantName,
     teamName: result.installation.teamsTeamName,
+    botName: result.installation.botName,
     publicBrand: state.publicBrand,
   });
 });

@@ -4012,9 +4012,13 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(sentPrompt).toContain("reusable presentation template");
       // The guide is not a mounted skill, so the message has to carry the
-      // pointer; without it the thread opens with nothing to follow.
-      expect(sentPrompt).toContain("vm0-ai/Template-artifact");
-      expect(sentPrompt).toContain("reverse-template");
+      // private resource pull and its extracted entrypoint.
+      expect(sentPrompt).toContain(
+        "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
+      );
+      expect(sentPrompt).toContain(
+        "./generated/resources/reverse-template/SKILL.md",
+      );
       expect(sentMessage?.parts).toContainEqual(
         expect.objectContaining({
           type: "file",
