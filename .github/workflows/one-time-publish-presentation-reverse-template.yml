@@ -22,31 +22,23 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: vm0-ai/Template-artifact
-          ref: fc829f4a9a67aa3908a2ab369291175f5045cd98
-          path: template-artifact
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24.19.0
-      - name: Build and verify pinned archive
+      - name: Verify pinned release bundle
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C template-artifact rev-parse HEAD)" = "fc829f4a9a67aa3908a2ab369291175f5045cd98"
           release_dir="$RUNNER_TEMP/presentation-reverse-template-release"
           output_dir="$RUNNER_TEMP/presentation-reverse-template-output"
           mkdir -p "$release_dir" "$output_dir"
           cp .github/presentation-reverse-template-release/publish.mjs "$release_dir/publish.mjs"
           cp .github/presentation-reverse-template-release/presentation-reverse-template-release.json "$release_dir/presentation-reverse-template-release.json"
+          cp .github/presentation-reverse-template-release/prebuilt/* "$output_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-audit --no-fund \
             @aws-sdk/client-s3@3.1106.0 postgres@3.4.9 tar@7.5.22
-          node publish.mjs build \
-            --source-dir "$GITHUB_WORKSPACE/template-artifact" \
-            --output-dir "$output_dir"
           node publish.mjs verify --output-dir "$output_dir"
       - name: Upload verified release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

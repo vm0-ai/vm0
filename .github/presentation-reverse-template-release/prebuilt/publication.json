@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "fc829f4a9a67aa3908a2ab369291175f5045cd98",
+    "directory": "reverse-template"
+  },
+  "resource": {
+    "id": "skill:presentation-reverse-template",
+    "slug": "reverse-template",
+    "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
+    "versionId": "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
+    "archive": {
+      "path": "reverse-template.tar.gz",
+      "sha256": "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+      "byteSize": 82804
+    },
+    "totalSize": 270821,
+    "fileCount": 17,
+    "files": [
+      {
+        "path": "reverse-template/scripts/bootstrap.sh",
+        "hash": "3b5ce70193e68b94425a5633e7ee55056fbcf75a70b2940e739955d798e7c726",
+        "size": 2619
+      },
+      {
+        "path": "reverse-template/scripts/canvas-helper.mjs",
+        "hash": "6e8da22234e67603578465abc00c8dddbc6f79e0f55ac7a37d35a4da8afe9d4b",
+        "size": 1802
+      },
+      {
+        "path": "reverse-template/scripts/derive-assets.mjs",
+        "hash": "e31b396b907a096bbfc297d9fd344d192950d5f34eb7933061c2a74eb7605572",
+        "size": 18626
+      },
+      {
+        "path": "reverse-template/scripts/derive-candidates.mjs",
+        "hash": "769be2182def179074c0e0b7961888776e20dce20a7895f08bb6c74fffc1a5d5",
+        "size": 5390
+      },
+      {
+        "path": "reverse-template/scripts/derive-layouts.mjs",
+        "hash": "4e87b433983d42d5aa8f51b4e9690fda94aaa5f3f4c4a614d9b61093af76ff60",
+        "size": 26413
+      },
+      {
+        "path": "reverse-template/scripts/derive-shell.mjs",
+        "hash": "f390307b4c19156c119e8e4eb354034e2f75661a9ff210bdde5b811353d25562",
+        "size": 14348
+      },
+      {
+        "path": "reverse-template/scripts/derive-tokens.mjs",
+        "hash": "c7cc162c3ec59c4e869362ed5f930114ca0d49373908748981fd42293f850de9",
+        "size": 41813
+      },
+      {
+        "path": "reverse-template/scripts/extract-html.mjs",
+        "hash": "ce95c246de485f6d49535a43193ffa88dd5151307ca61ea8461674d7c205ef5f",
+        "size": 14661
+      },
+      {
+        "path": "reverse-template/scripts/extract-pdf.mjs",
+        "hash": "2df063345ec284226c9a0dcde95853f97fc9d1a36518e1c6456b10777f36a3ed",
+        "size": 30308
+      },
+      {
+        "path": "reverse-template/scripts/extract-pixels.mjs",
+        "hash": "b5908d3402f7541e504eb80797d6673dc6217b9335db9c641c8c02945f097792",
+        "size": 6124
+      },
+      {
+        "path": "reverse-template/scripts/extract-pptx.py",
+        "hash": "464eb58bb7d3c8593dd9afd7c570ce18fc2ea0affeaee6a6112dca6e130992ec",
+        "size": 28204
+      },
+      {
+        "path": "reverse-template/scripts/ingest.mjs",
+        "hash": "23ccd669cf88577e5efcb7a4ef7264c73465114b760f3087b57477d1e54a9a97",
+        "size": 11350
+      },
+      {
+        "path": "reverse-template/scripts/libreoffice.mjs",
+        "hash": "30009bbc46117f797e179db3a75e408618cf76c2ca0d50de1fb5ead8b5e52d6f",
+        "size": 13826
+      },
+      {
+        "path": "reverse-template/scripts/reconstruct.mjs",
+        "hash": "ae67e3d61d7c50b8d1b6f389c6fe5b2770a0c32b3a59a1546942f6771360b67a",
+        "size": 13687
+      },
+      {
+        "path": "reverse-template/scripts/render-pages.mjs",
+        "hash": "555aa7e1b138bc07225a04f5d32d46f618a35838f7bb3662e8cc0a1a6b892306",
+        "size": 5783
+      },
+      {
+        "path": "reverse-template/scripts/scaffold.mjs",
+        "hash": "c65b4c4b91dce5c0416e5d8b4f0d17a8a2a16c0c1d4452aa9a9eff185999b8e4",
+        "size": 22916
+      },
+      {
+        "path": "reverse-template/SKILL.md",
+        "hash": "7ab1077911bd1c05b35de741fe11a9019f653c0f65728be1f420871a272c986a",
+        "size": 12951
+      }
+    ]
+  }
+}
