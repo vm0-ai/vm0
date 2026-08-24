@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.33](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.32...vsock-proto-v0.18.33) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.31...vsock-proto-v0.18.32) (2026-08-21)
 
 

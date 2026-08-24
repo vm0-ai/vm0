@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.784.1](https://github.com/vm0-ai/vm0/compare/app-v0.784.0...app-v0.784.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* align media model price badge with run model rows ([#28741](https://github.com/vm0-ai/vm0/issues/28741)) ([ba56392](https://github.com/vm0-ai/vm0/commit/ba56392f325975292ed67ddef0db6d7737c34671))
+* **platform:** preserve cooldown diagnostics during refresh ([#28748](https://github.com/vm0-ai/vm0/issues/28748)) ([bec8623](https://github.com/vm0-ai/vm0/commit/bec862314a87002697cfcf89efb9ea94dc59af9c))
+
 ## [0.784.0](https://github.com/vm0-ai/vm0/compare/app-v0.783.1...app-v0.784.0) (2026-08-24)
 
 

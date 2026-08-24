@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.479.1](https://github.com/vm0-ai/vm0/compare/api-v1.479.0...api-v1.479.1) (2026-08-24)
+
+
+### Refactoring
+
+* **auth:** rename the zero token type to agent ([#28755](https://github.com/vm0-ai/vm0/issues/28755)) ([d95079d](https://github.com/vm0-ai/vm0/commit/d95079d894b290d602e2c62f7dff7da26527cccf)), closes [#28746](https://github.com/vm0-ai/vm0/issues/28746)
+
 ## [1.479.0](https://github.com/vm0-ai/vm0/compare/api-v1.478.4...api-v1.479.0) (2026-08-24)
 
 
