@@ -255,11 +255,28 @@ Schema changes have two independent compatibility directions:
   visible to it. New readers and writers must not require the new column, enum
   value, relation, constraint, or function until the migration is complete.
 
-The production workflow must continue to order required migrations before API
-traffic promotion, but intended ordering is not a substitute for compatibility.
-Promotion drift, rollback, draining instances, and other environments can expose
-either direction. A compatibility object that protects old code after migration
-does not by itself protect new code before migration.
+The normal production release enforces migration-before-promotion in
+`promote-api-production`: it builds one API artifact, smoke-tests the migration
+on an expiring branch cloned from production, runs the migration against the
+Neon `production` database, and deploys that exact artifact only after the
+migration succeeds. A failed migration stops the job before API promotion. The
+rollback dashboard is updated only after all applicable production promotions
+succeed.
+
+This ordering is direct evidence that a successful normal release closed the
+new-code-before-migration gate for its release target. It is not a reason to
+write incompatible migrations: promotion drift, draining instances,
+nonstandard deployment paths, and old code after migration remain reachable
+conditions. The production rollback workflow promotes App, Runner, and API
+artifacts and requires an explicit compatibility confirmation; it does not
+restore an older database schema. Retained rollback API targets must therefore
+remain compatible with the current schema.
+
+Do not replace these event-based gates with a fixed wait. Verify the release
+run, current schema, and retained target compatibility directly. A compatibility
+object that protects old code after migration does not by itself protect new
+code before migration, and migration-before-promotion does not protect an
+outgoing API whose statements become invalid after the migration.
 
 The ChatEvent schema-contraction releases from July 27-29, 2026 provide concrete
 examples:
@@ -268,7 +285,9 @@ examples:
   added `event_type`. From about 09:11 to 10:52 UTC on July 27 (102 minutes),
   new App reads, crons, and the automation poller queried it before the migration
   ran and received PostgreSQL error `42703` (`column does not exist`). An
-  additive column still breaks a new reader when code wins the race.
+  additive column still breaks a new reader when code wins the race. This is a
+  historical failure duration from before the current release ordering was
+  hardened, not a mandatory wait after a successful release.
 - The [PR #23252](https://github.com/vm0-ai/vm0/pull/23252)-era migration
   `0700` added the `teams_user_message` enum value. From about 00:38 to 00:47 UTC
   on July 28 (10 minutes), new code used the value before the migration ran and
