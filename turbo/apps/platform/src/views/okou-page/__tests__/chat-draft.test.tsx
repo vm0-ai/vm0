@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -572,7 +573,9 @@ describe("chat drafts", () => {
     );
   });
 
-  it("restores a saved server draft with attachments on first thread open", async () => {
+  it("keeps restored attachments untouched when validation is disabled", async () => {
+    let validationRequests = 0;
+    const toastWarning = vi.spyOn(toast, "warning");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
       serviceTier: null,
@@ -610,6 +613,12 @@ describe("chat drafts", () => {
         ],
       });
     });
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      validationRequests += 1;
+      return respond(404, {
+        error: { message: "File not found", code: "NOT_FOUND" },
+      });
+    });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
@@ -617,6 +626,8 @@ describe("chat drafts", () => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
+    expect(validationRequests).toBe(0);
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 
   it("drops and clears a saved attachment whose artifact no longer resolves", async () => {
@@ -671,7 +682,13 @@ describe("chat drafts", () => {
       return respond(204);
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ONE_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
@@ -1839,7 +1856,13 @@ describe("chat drafts", () => {
       return respond(204);
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
+      },
+    });
 
     const input = await waitFor(() => {
       return textarea();
