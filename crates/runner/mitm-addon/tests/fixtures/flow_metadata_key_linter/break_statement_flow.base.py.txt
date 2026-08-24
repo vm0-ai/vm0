@@ -140,3 +140,24 @@ def unreachable_handler_break_does_not_escape(flow, rows, condition):
                 metadata = flow.metadata
                 break
     metadata["vm_run_id"] = "run-1"
+
+
+def break_bypasses_while_else(flow, condition, stop):
+    metadata = {}
+    while condition:
+        if stop:
+            metadata = flow.metadata
+            break
+    else:
+        metadata = {}
+    metadata["suppress_request_body_capture"] = True
+
+
+def break_alias_does_not_enter_while_else(flow, condition, stop):
+    metadata = {}
+    while condition:
+        if stop:
+            metadata = flow.metadata
+            break
+    else:
+        metadata["vm_run_id"] = "run-1"
