@@ -542,13 +542,37 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "Assemble the page once with `node tools/compose.mjs <section-ids...>`",
     );
-    expect(result.prompt).toContain(
-      "Generate page images with `node tools/generate-images.mjs <jobs.json>`",
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow: use supplied images first;");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain(
+      "one outside-site TSV row per selected real slot",
     );
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
+    );
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("<state-dir>/results.tsv");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain("keep its state outside the site");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(imageWorkflow).toContain("never call `okou generate image`");
+    expect(imageWorkflow).toContain("or a template image wrapper directly");
+    expect(imageWorkflow).not.toContain("a fourth is rejected");
     expect(result.prompt).toContain("until it prints QA_READY");
     expect(result.prompt).toContain("okou host ./publish --site <slug>");
     expect(result.prompt).toContain("checks/verify-published.sh <url>");
     expect(result.prompt).not.toContain("render.mjs");
+    expect(result.prompt).not.toContain("tools/generate-images.mjs");
     expect(result.prompt).toContain("built-in R2-backed package");
     expect(result.prompt).not.toContain("okou generate website --template");
   });
@@ -580,6 +604,10 @@ describe("buildGenerationTemplatePrompt", () => {
       expect(result.prompt).toContain(
         `Read ./generated/resources/${item.sourcePath}/SKILL.md before authoring`,
       );
+      expect(result.prompt).toContain(
+        "okou generate image-batch start <manifest.tsv> <state-dir>",
+      );
+      expect(result.prompt).not.toContain("tools/generate-images.mjs");
     }
   });
 
@@ -616,6 +644,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
     expect(result.prompt).not.toContain("tools/compose.mjs");
     expect(result.prompt).not.toContain("tools/generate-images.mjs");
+    expect(result.prompt).not.toContain("okou generate image-batch start");
   });
 
   it("rejects unknown workflow templates", () => {

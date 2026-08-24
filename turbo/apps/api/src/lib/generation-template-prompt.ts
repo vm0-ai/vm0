@@ -28,6 +28,7 @@ import {
   PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
+import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -386,8 +387,8 @@ function buildWebsiteTemplatePackagePrompt(
       ...(latestWebsiteTemplatesEnabled
         ? [
             `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
-            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. A second compose pass is refused and discards authored work.",
-            "- Generate page images with `node tools/generate-images.mjs <jobs.json>`: it defaults to `seedream4`, keeps at most 3 generations in flight because a fourth is rejected with HTTP 429, and records each raster's `data-generation-size`.",
+            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
+            `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
             "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
             "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
             "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
