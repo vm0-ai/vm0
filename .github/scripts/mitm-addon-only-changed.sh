@@ -28,7 +28,7 @@ for changed_file in "${changed_files[@]}"; do
   case "$changed_file" in
     crates/runner/mitm-addon/*) ;;
     *)
-      echo "Non-addon path changed: ${changed_file}" >&2
+      echo "Change set includes paths outside mitm-addon" >&2
       exit 1
       ;;
   esac

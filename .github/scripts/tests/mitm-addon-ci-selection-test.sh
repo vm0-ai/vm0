@@ -99,6 +99,23 @@ assert_path_status 1 crates/runner/build.rs "runner build script"
 assert_path_status 1 crates/Cargo.toml "Cargo workspace configuration"
 assert_path_status 1 .github/workflows/crates.yml "shared workflow"
 
+untrusted_base=$(git -C "$repo" rev-parse HEAD)
+untrusted_path=$'.github/workflows/untrusted\n::warning::forged-command.yml'
+printf 'name: untrusted\n' > "${repo}/${untrusted_path}"
+git -C "$repo" add -- "$untrusted_path"
+git -C "$repo" commit -qm "untrusted path"
+if untrusted_output=$(run_classifier "$untrusted_base" 2>&1); then
+  untrusted_status=0
+else
+  untrusted_status=$?
+fi
+if [ "$untrusted_status" -ne 1 ]; then
+  fail "untrusted path: expected status 1, got ${untrusted_status}: ${untrusted_output}"
+fi
+if [[ "$untrusted_output" == *"::warning::forged-command"* ]]; then
+  fail "untrusted path must not be emitted into workflow logs"
+fi
+
 mixed_base=$(git -C "$repo" rev-parse HEAD)
 printf '\n# mixed addon\n' >> "${repo}/crates/runner/mitm-addon/src/addon.py"
 printf '\n// mixed Rust\n' >> "${repo}/crates/runner/src/main.rs"
