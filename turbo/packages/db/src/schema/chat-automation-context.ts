@@ -1,4 +1,5 @@
 import type { JsonObject } from "@okouai/db/jsonb-contracts/shared";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   index,
   jsonb,
@@ -34,6 +35,10 @@ export const chatAutomationContext = pgTable(
      * recorded source is no longer usable.
      */
     connectorSourceId: uuid("connector_source_id"),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     /**
      * Server-private workflow automation launch material retained permanently.
      * Raw third-party content is intentionally retained as its only database

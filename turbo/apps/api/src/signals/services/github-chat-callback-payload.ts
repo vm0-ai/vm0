@@ -18,5 +18,9 @@ export type GitHubDeliveryTarget = z.infer<typeof githubDeliveryTargetSchema>;
 export const githubChatCallbackPayloadSchema =
   githubDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
-    publicBrand: publicBrandSchema,
+    // Callbacks persisted before GitHub ingress branding did not carry this.
+    // Old runners can create them for up to two hours, while persisted retries
+    // have no time bound. Remove under #27750 only after stored pending rows are
+    // proven branded and the pre-brand rollback target is retired.
+    publicBrand: publicBrandSchema.optional(),
   });
