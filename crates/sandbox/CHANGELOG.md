@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.51](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.50...sandbox-v0.19.51) (2026-08-24)
+
+
+### Documentation
+
+* **rust:** document SandboxControlError variant semantics ([#28869](https://github.com/vm0-ai/vm0/issues/28869)) ([6a8caef](https://github.com/vm0-ai/vm0/commit/6a8caefc2c9542161219300f309cc6f55ac8215a))
+
 ## [0.19.50](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.49...sandbox-v0.19.50) (2026-08-24)
 
 

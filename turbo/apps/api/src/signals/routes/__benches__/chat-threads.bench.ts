@@ -2,10 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -18,7 +15,6 @@ import { connectors } from "@okouai/db/schema/connector";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
@@ -123,7 +119,7 @@ const personalModelProvidersClient = setupApp({
 interface BenchChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
-  readonly composeId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -446,26 +442,13 @@ async function seedBackgroundLoad(): Promise<void> {
   const db = store.set(writeDb$);
   const bgUserId = `bg_user_${randomUUID()}`;
   const bgOrgId = `bg_org_${randomUUID()}`;
-  const bgComposeId = randomUUID();
-  const bgVersionId = randomUUID();
+  const bgAgentId = randomUUID();
 
-  await db.insert(agentComposes).values({
-    id: bgComposeId,
-    userId: bgUserId,
-    orgId: bgOrgId,
-    name: "bench-bg",
-  });
-  await db.insert(zeroAgents).values({
-    id: bgComposeId,
+  await db.insert(agents).values({
+    id: bgAgentId,
     orgId: bgOrgId,
     owner: bgUserId,
     name: "bench-bg",
-  });
-  await db.insert(agentComposeVersions).values({
-    id: bgVersionId,
-    composeId: bgComposeId,
-    content: { version: "1.0", agents: {} },
-    createdBy: bgUserId,
   });
 
   const threadIds: string[] = [];
@@ -480,7 +463,7 @@ async function seedBackgroundLoad(): Promise<void> {
       return {
         id,
         userId: bgUserId,
-        agentComposeId: bgComposeId,
+        agentId: bgAgentId,
         title: "bg",
       };
     }),
@@ -494,7 +477,7 @@ async function seedBackgroundLoad(): Promise<void> {
         id,
         userId: bgUserId,
         orgId: bgOrgId,
-        agentComposeId: bgComposeId,
+        agentId: bgAgentId,
       };
     }),
     (chunk) => {
@@ -514,7 +497,6 @@ async function seedBackgroundLoad(): Promise<void> {
         id: runId,
         userId: bgUserId,
         orgId: bgOrgId,
-        agentComposeVersionId: bgVersionId,
         sessionId: sessionIds[t]!,
         status: STATUSES[r % STATUSES.length]!,
         prompt: "bg",
@@ -531,26 +513,20 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
   const db = store.set(writeDb$);
   const userId = `user_${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
-  const composeId = randomUUID();
+  const agentId = randomUUID();
   const threadId = randomUUID();
   const title = "bench";
 
-  await db.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    orgId,
-    name: `compose-${composeId.slice(0, 8)}`,
-  });
-  await db.insert(zeroAgents).values({
-    id: composeId,
+  await db.insert(agents).values({
+    id: agentId,
     orgId,
     owner: userId,
-    name: `agent-${composeId.slice(0, 8)}`,
+    name: `agent-${agentId.slice(0, 8)}`,
   });
   await db.insert(chatThreads).values({
     id: threadId,
     userId,
-    agentComposeId: composeId,
+    agentId,
     title,
   });
   await db.transaction(async (tx) => {
@@ -559,32 +535,24 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
       orgId,
       chatThreadId: threadId,
       kind: "created",
-      agentComposeId: composeId,
+      agentId,
       title,
     });
   });
 
-  return { userId, orgId, composeId, threadId };
+  return { userId, orgId, agentId, threadId };
 }
 
 async function seedTargetThreadRuns(
   fixture: BenchChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
-  const versionId = randomUUID();
-  await db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: fixture.composeId,
-    content: { version: "1.0", agents: {} },
-    createdBy: fixture.userId,
-  });
-
   const [session] = await db
     .insert(agentSessions)
     .values({
       userId: fixture.userId,
       orgId: fixture.orgId,
-      agentComposeId: fixture.composeId,
+      agentId: fixture.agentId,
     })
     .returning({ id: agentSessions.id });
   if (!session) {
@@ -613,7 +581,6 @@ async function seedTargetThreadRuns(
       id: runId,
       userId: fixture.userId,
       orgId: fixture.orgId,
-      agentComposeVersionId: versionId,
       sessionId: session.id,
       status: STATUSES[i % STATUSES.length]!,
       prompt: `bench prompt ${String(i)}`,
@@ -694,7 +661,7 @@ async function seedSideEffectFreeGetData(
     orgId: fixture.orgId,
     userId: fixture.userId,
     timezone: "America/Los_Angeles",
-    pinnedAgentIds: [fixture.composeId],
+    pinnedAgentIds: [fixture.agentId],
     sendMode: "cmd-enter",
     captureNetworkBodiesRemaining: 3,
   });

@@ -48,7 +48,7 @@ interface CandidateThread {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }
 
 interface ThreadProjectionStats {
@@ -286,7 +286,7 @@ function searchMessage(
     runId: row.runId,
     orgId: thread.orgId,
     userId: thread.userId,
-    agentId: thread.agentComposeId,
+    agentId: thread.agentId,
     role: projection.role,
     createdAt: row.createdAt,
     text: projection.text,
@@ -461,7 +461,7 @@ async function loadCandidateThreads(
       chatThreadId: chatThreads.id,
       userId: chatThreads.userId,
       orgId: agents.orgId,
-      agentComposeId: agents.id,
+      agentId: agents.id,
     })
     .from(chatThreads)
     .innerJoin(agents, eq(chatThreads.agentId, agents.id))

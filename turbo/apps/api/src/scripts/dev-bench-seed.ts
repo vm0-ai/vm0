@@ -8,10 +8,7 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
@@ -19,7 +16,6 @@ import {
   type ChatEventUsagePayload,
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
@@ -52,7 +48,6 @@ export interface BuiltProfileRows {
 export interface BuildProfileRowsArgs {
   readonly userId: string;
   readonly orgId: string;
-  readonly versionId: string;
   readonly threadId: string;
   readonly sessionId: string;
   readonly profile: ThreadProfile;
@@ -514,7 +509,7 @@ async function cleanupExistingBenchThreads(
     .where(
       and(
         eq(chatThreads.userId, args.userId),
-        eq(chatThreads.agentComposeId, args.agentId),
+        eq(chatThreads.agentId, args.agentId),
         inArray(
           chatThreads.title,
           DEV_BENCH_THREAD_PROFILES.map((profile) => {
@@ -579,53 +574,15 @@ async function getAgentOrgId(
   agentId: string,
 ): Promise<string> {
   const [row] = await database
-    .select({
-      composeOrgId: agentComposes.orgId,
-      zeroAgentOrgId: zeroAgents.orgId,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, agentId))
+    .select({ orgId: agents.orgId })
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
 
   if (!row) {
-    throw new Error(`Agent compose ${agentId} does not exist`);
+    throw new Error(`Agent ${agentId} does not exist`);
   }
-  if (!row.zeroAgentOrgId) {
-    throw new Error(
-      `zero_agents row for ${agentId} does not exist; choose a Zero agent id`,
-    );
-  }
-  if (row.zeroAgentOrgId !== row.composeOrgId) {
-    throw new Error(
-      `Agent ${agentId} has mismatched org ids between agent_composes and zero_agents`,
-    );
-  }
-  return row.zeroAgentOrgId;
-}
-
-async function ensureComposeVersion(
-  database: Database,
-  args: {
-    readonly userId: string;
-    readonly agentId: string;
-  },
-): Promise<string> {
-  const versionId = stableHash(`${SCRIPT_MARKER}:${args.agentId}:compose-v1`);
-  await database
-    .insert(agentComposeVersions)
-    .values({
-      id: versionId,
-      composeId: args.agentId,
-      content: {
-        version: "1.0",
-        source: SCRIPT_MARKER,
-        purpose: "local chat-thread performance benchmark",
-      },
-      createdBy: args.userId,
-    })
-    .onConflictDoNothing({ target: agentComposeVersions.id });
-  return versionId;
+  return row.orgId;
 }
 
 function appendRunEvents(
@@ -682,7 +639,6 @@ function appendRunEvents(
     id: runId,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeVersionId: args.versionId,
     sessionId: args.sessionId,
     status: failed ? "failed" : "completed",
     prompt,
@@ -995,7 +951,6 @@ async function seedProfile(
     readonly userId: string;
     readonly orgId: string;
     readonly agentId: string;
-    readonly versionId: string;
     readonly profile: ThreadProfile;
   },
 ): Promise<{ readonly threadId: string; readonly eventCount: number }> {
@@ -1010,13 +965,13 @@ async function seedProfile(
     id: sessionId,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
   });
 
   await database.insert(chatThreads).values({
     id: threadId,
     userId: args.userId,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.profile.title,
     selectedModel: args.profile.selectedModel,
     pinnedAt,
@@ -1052,7 +1007,6 @@ async function seedDevBench(args: {
   assertLocalDatabase();
   const database = db();
   const orgId = await getAgentOrgId(database, args.agentId);
-  const versionId = await ensureComposeVersion(database, args);
   const removed = await cleanupExistingBenchThreads(database, args);
   if (removed > 0) {
     writeLine(`Removed ${String(removed)} existing dev bench thread(s)`);
@@ -1063,7 +1017,6 @@ async function seedDevBench(args: {
     const result = await seedProfile(database, {
       ...args,
       orgId,
-      versionId,
       profile,
     });
     seeded.push({ profile, ...result });

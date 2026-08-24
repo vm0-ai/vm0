@@ -23,7 +23,7 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [thread] = await writeDb
     .select({
       lastReadAt: chatThreads.lastReadAt,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
     })
     .from(chatThreads)
     .where(
@@ -32,16 +32,16 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .limit(1);
   signal.throwIfAborted();
 
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
-  const agentId = thread.agentComposeId;
+  const agentId = thread.agentId;
 
   const agentUnreads = async () => {
     const unreads = await get(
       chatThreadUnreads({
         userId: auth.userId,
-        agentComposeId: agentId,
+        agentId: agentId,
       }),
     );
     return [...unreads];

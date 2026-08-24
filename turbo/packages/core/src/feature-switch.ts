@@ -108,11 +108,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.JoggAiBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: true,
-  },
   [FeatureSwitchKey.ManagedSocialKit]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable vm0-managed SocialKit data and analysis operations",
@@ -347,12 +342,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview purchases with saved billing and confirm them in the app.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -396,12 +385,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatMarkUnread]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Show the Mark unread action in the chat thread sidebar menu.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

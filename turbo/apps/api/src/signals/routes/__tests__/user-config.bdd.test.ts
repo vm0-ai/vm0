@@ -6,10 +6,6 @@ import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/co
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
-import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
@@ -19,7 +15,7 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, agents, composes); the only mocks are the Clerk
+CLI auth, and agents); the only mocks are the Clerk
 SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
 bearers are minted with the exported test token signers (api-bdd-github and
 api-bdd-computer-use precedent).
@@ -266,48 +262,6 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
     );
     expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
-  });
-
-  it("rejects a stale compose-only connector target without recomposing", async () => {
-    const admin = api.user();
-    await onboardAdmin(admin, { slug: slug("bdd-uc-b1c") });
-    if (!admin.orgId) {
-      throw new Error("Historical Compose fixtures require an organization");
-    }
-    const composeName = slug("bdd-uc-compose");
-    // The current Agent API always creates a zero-agent row, so direct
-    // historical construction is required to exercise this stale Compose-only
-    // recompose arm.
-    const created = await createHistoricalAgentComposeFixture({
-      actor: { userId: admin.userId, orgId: admin.orgId },
-      content: {
-        version: "1",
-        agents: { [composeName]: { framework: "claude-code" } },
-      },
-      signal: context.signal,
-    });
-
-    const update = await cfg.requestUpdateUserConnectors(
-      admin,
-      created.composeId,
-      [],
-      [404],
-    );
-    expectApiError(update.body);
-    expect(update.body.error.code).toBe("NOT_FOUND");
-
-    const compose = await readHistoricalAgentComposeHeadFixture(
-      created.composeId,
-    );
-    expect(compose.headVersionId).toBe(created.versionId);
-
-    const getOnCompose = await cfg.requestReadUserConnectors(
-      admin,
-      created.composeId,
-      [404],
-    );
-    expectApiError(getOnCompose.body);
-    expect(getOnCompose.body.error.code).toBe("NOT_FOUND");
   });
 });
 

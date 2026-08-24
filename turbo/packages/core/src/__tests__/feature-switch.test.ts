@@ -13,7 +13,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.BoxConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
   });
 
@@ -105,7 +104,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -127,9 +125,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -140,7 +135,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -162,9 +156,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
   });
 
   it("should enable composer submit DOM reconciliation only for Bingjie", () => {

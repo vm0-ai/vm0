@@ -1206,6 +1206,22 @@ async function cardEdgeAppearance(locator: Locator) {
   });
 }
 
+async function segmentFill(locator: Locator) {
+  return locator.evaluate(async (element) => {
+    // Segments cross-fade when the selection moves, so read them settled.
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+}
+
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -1251,10 +1267,10 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const sevenModels = await openModelPickerAndReadGeometry(page);
   expect(sevenModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 288,
     optionCount: 7,
     rowStep: 36,
-    scrollHeight: 300,
+    scrollHeight: 288,
   });
 
   boundary.showEightModels();
@@ -1262,14 +1278,41 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 288,
     optionCount: 8,
     rowStep: 36,
-    scrollHeight: 336,
+    scrollHeight: 324,
   });
   expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
     eightModels.rowStep,
   );
+});
+
+test("model picker category switch marks its selection without a raised shadow", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const categorySwitch = page.getByRole("radiogroup", { name: "Models" });
+  const chatCategory = categorySwitch.getByRole("radio", { name: "Chat" });
+  const imageCategory = categorySwitch.getByRole("radio", { name: "Image" });
+  await imageCategory.click();
+  await expect(imageCategory).toBeChecked();
+
+  // The switch sits straight on the popover surface with no track to lift off,
+  // so the selection is a flat state layer: readable against its neighbours,
+  // and carrying none of the raised segment's shadow.
+  const [selected, unselected] = await Promise.all([
+    segmentFill(imageCategory),
+    segmentFill(chatCategory),
+  ]);
+  expect(selected.boxShadow).toBe("none");
+  expect(selected.backgroundColor).not.toBe(unselected.backgroundColor);
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
@@ -1832,14 +1875,6 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/feature-switches", async (route) => {
-    await route.fulfill({
-      json: {
-        switches: {},
-        effectiveSwitches: { joggAiBuiltIn: true },
-      },
-    });
-  });
   await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {

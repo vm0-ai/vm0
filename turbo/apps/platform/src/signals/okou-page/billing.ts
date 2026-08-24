@@ -795,14 +795,11 @@ export const startCheckout$ = command(
     cancelUrl.searchParams.set("billing", "canceled");
     set(applyStoredAdAttribution$, cancelUrl);
     const adAttribution = set(readStoredAdAttributionMetadata$);
-    const supportsInAppPreview =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
-
     const createClient = get(apiClient$);
     const client = createClient(billingCheckoutContract);
     const request: CheckoutRequest = {
       tier,
-      ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
+      supportsInAppPreview: true,
       successUrl: stripeSuccessUrl,
       cancelUrl: cancelUrl.toString(),
       ...(options?.trialDays === undefined
@@ -866,14 +863,11 @@ export const startUsagePackCheckout$ = command(
     cancelUrl.searchParams.set("billing", "canceled");
     set(applyStoredAdAttribution$, cancelUrl);
     const adAttribution = set(readStoredAdAttributionMetadata$);
-    const supportsInAppPreview =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
-
     const createClient = get(apiClient$);
     const client = createClient(billingUsagePackCheckoutContract);
     const request: UsagePackCheckoutRequest = {
       tier: args.tier,
-      ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
+      supportsInAppPreview: true,
       memberUsagePacks: [...args.memberUsagePacks],
       successUrl: stripeSuccessUrl,
       cancelUrl: cancelUrl.toString(),
@@ -1164,19 +1158,13 @@ export const previewUsagePackSubscriptionChange$ = command(
   ) => {
     const createClient = get(apiClient$);
     const client = createClient(billingUsagePackManagementContract);
-    const supportsInAppPreview =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const preview = await accept(
       client.previewSubscriptionChange({
         body: {
           targetTier: args.targetTier,
           memberUsagePacks: [...args.memberUsagePacks],
-          ...(supportsInAppPreview
-            ? {
-                supportsInAppPreview: true,
-                returnUrl: checkoutReturnUrl().toString(),
-              }
-            : {}),
+          supportsInAppPreview: true,
+          returnUrl: checkoutReturnUrl().toString(),
         },
         fetchOptions: { signal },
       }),
@@ -1267,16 +1255,12 @@ export const startCreditCheckout$ = command(
 
     const createClient = get(apiClient$);
     const client = createClient(billingCreditCheckoutContract);
-    const savedBillingCreditPurchaseEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.create({
         body: {
           credits: selection.credits,
           ...(selection.customAmount === true ? { customAmount: true } : {}),
-          ...(savedBillingCreditPurchaseEnabled
-            ? { supportsInAppPreview: true }
-            : {}),
+          supportsInAppPreview: true,
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
         },
@@ -1292,10 +1276,7 @@ export const startCreditCheckout$ = command(
       });
       return;
     }
-    // Hosted Checkout is the canonical response when saved billing is absent.
-    // During rollout it also lets a switched-on app tolerate an API from before
-    // preview support for the ~2-day old-client window. Remove that rollout-only
-    // responsibility after #26842; the unavailable-billing path remains.
+    // Hosted Checkout remains the fallback when saved billing is unavailable.
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -1402,16 +1383,13 @@ export const openConcurrencyPurchaseReview$ = command(
   ): Promise<void> => {
     const createClient = get(apiClient$);
     const client = createClient(billingConcurrencyCheckoutContract);
-    const supportsInAppPreview =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const returnUrl = checkoutReturnUrl().toString();
     const result = await accept(
       client.preview({
         body: {
           quantity,
-          ...(supportsInAppPreview
-            ? { supportsInAppPreview: true, returnUrl }
-            : {}),
+          supportsInAppPreview: true,
+          returnUrl,
         },
         fetchOptions: { signal },
       }),
@@ -1450,19 +1428,13 @@ const loadConcurrencySubscriptionChangePreview$ = command(
   ): Promise<ConcurrencySubscriptionChangePreviewResponse | null> => {
     const createClient = get(apiClient$);
     const client = createClient(billingConcurrencySubscriptionContract);
-    const supportsInAppPreview =
-      get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
       client.previewChange({
         params: { subscriptionId: args.subscriptionId },
         body: {
           quantity: args.quantity,
-          ...(supportsInAppPreview
-            ? {
-                supportsInAppPreview: true,
-                returnUrl: checkoutReturnUrl().toString(),
-              }
-            : {}),
+          supportsInAppPreview: true,
+          returnUrl: checkoutReturnUrl().toString(),
         },
         fetchOptions: { signal },
       }),

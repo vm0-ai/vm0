@@ -21,7 +21,6 @@ const DEFAULT_AGENT = {
   description: null,
   sound: null,
   avatarUrl: null,
-  headVersionId: "version_1",
   updatedAt: "2026-08-18T00:00:00Z",
 } satisfies TeamComposeItem;
 

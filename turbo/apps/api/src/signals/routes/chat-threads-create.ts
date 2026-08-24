@@ -21,7 +21,7 @@ import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/chat-thread.service";
-import { agentExistsInOrg } from "../services/compose-data.service";
+import { agentExistsInOrg } from "../services/agent-deletion.service";
 import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
   resolveModelSelectionPin,
@@ -180,7 +180,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       orgId: auth.orgId,
-      agentComposeId: body.data.agentId,
+      agentId: body.data.agentId,
       title: body.data.title,
       clientThreadId: body.data.clientThreadId,
       eventId: body.data.eventId,

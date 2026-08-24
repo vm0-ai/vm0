@@ -899,7 +899,6 @@ describe("POST /api/telegram/register", () => {
     const state = await readTelegramState(telegramBotId);
     const installation = stateRecord(state.installation);
     expect(installation?.defaultAgentId).toBe(fixture.composeId);
-    expect(installation?.defaultComposeId).toBeNull();
     expect(installation?.botUsername).toBe("registered_bot");
   });
 

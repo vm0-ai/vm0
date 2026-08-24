@@ -8,7 +8,7 @@ import {
 } from "../runs";
 
 describe("get run response contract", () => {
-  it("omits the retired Compose version field", () => {
+  it("parses the current Run response", () => {
     const response = getRunResponseSchema.parse({
       runId: "run-1",
       status: "pending",
@@ -17,9 +17,6 @@ describe("get run response contract", () => {
       createdAt: "2026-08-21T00:00:00.000Z",
     });
 
-    expect(getRunResponseSchema.shape).not.toHaveProperty(
-      "agentComposeVersionId",
-    );
     expect(response).toStrictEqual({
       runId: "run-1",
       status: "pending",
@@ -66,20 +63,6 @@ describe("unified run request contract", () => {
         prompt: "continue a matching Agent Session",
       }).success,
     ).toBe(true);
-  });
-
-  it("strictly rejects caller-selected legacy compose identity", () => {
-    for (const legacyIdentity of [
-      { agentComposeId: "compose-1" },
-      { agentComposeVersionId: "version-1" },
-    ]) {
-      expect(
-        unifiedRunRequestSchema.safeParse({
-          ...legacyIdentity,
-          prompt: "start a legacy run",
-        }).success,
-      ).toBe(false);
-    }
   });
 
   it("rejects checkpoint resume requests", () => {

@@ -186,7 +186,6 @@ import {
 import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
-  avatarTemplatesEnabled$,
   imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
@@ -7090,7 +7089,7 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
-  const hasAvatarTab = useGet(avatarTemplatesEnabled$);
+  const hasAvatarTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   const prepareTemplateInsertion = useSet(

@@ -1,9 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
-
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -15,7 +9,6 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { createDeferredPromise } from "../signals/utils";
-import { materializeAgentLegacyVersionFixture } from "./agent-compose-provenance";
 
 // These fixtures construct transitional and concurrent database states that
 // the production API cannot pause or create. Route tests must opt into their
@@ -75,52 +68,6 @@ function boundaryFromPid(args: {
       return await directBlockedWaiterCount(args.pid);
     },
   };
-}
-
-async function agentHeadVersionId(agentId: string): Promise<string> {
-  await materializeAgentLegacyVersionFixture(agentId);
-  const [agent] = await db()
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentId))
-    .limit(1);
-  if (!agent?.headVersionId) {
-    throw new Error("Expected an agent head version");
-  }
-  return agent.headVersionId;
-}
-
-export async function referenceAgentRunVersionFixture(args: {
-  readonly runId: string;
-  readonly versionAgentId: string;
-}): Promise<string> {
-  const versionId = await agentHeadVersionId(args.versionAgentId);
-  const rows = await db()
-    .update(agentRuns)
-    .set({ agentComposeVersionId: versionId })
-    .where(eq(agentRuns.id, args.runId))
-    .returning({ id: agentRuns.id });
-  if (rows.length !== 1) {
-    throw new Error("Expected one agent Run version reference to change");
-  }
-  return versionId;
-}
-
-export async function referenceAgentHeadFixture(args: {
-  readonly agentId: string;
-  readonly versionAgentId: string;
-}): Promise<string> {
-  await materializeAgentLegacyVersionFixture(args.agentId);
-  const versionId = await agentHeadVersionId(args.versionAgentId);
-  const rows = await db()
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, args.agentId))
-    .returning({ id: agentComposes.id });
-  if (rows.length !== 1) {
-    throw new Error("Expected one agent head reference to change");
-  }
-  return versionId;
 }
 
 export async function readAgentLifecycleIdsFixture(agentId: string): Promise<{
@@ -262,36 +209,6 @@ export async function holdAgentRunLocksFixture(args: {
         throw new Error("Expected a reverse-order Run fixture row");
       }
     }
-    started.resolve(await transactionBackendPid(tx));
-    await released.promise;
-  });
-  return boundaryFromPid({
-    pid: await started.promise,
-    released,
-    done,
-  });
-}
-
-export async function holdAgentVersionInsertFixture(args: {
-  readonly agentId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<HeldDatabaseBoundary> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const versionId = createHash("sha256")
-    .update(`agent-delete-version-${randomUUID()}`)
-    .digest("hex");
-  const done = db().transaction(async (tx) => {
-    await tx.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: args.agentId,
-      content: {
-        version: "1",
-        agents: { fixture: { framework: "claude-code" } },
-      },
-      createdBy: args.userId,
-    });
     started.resolve(await transactionBackendPid(tx));
     await released.promise;
   });

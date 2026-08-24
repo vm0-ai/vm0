@@ -877,7 +877,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       userId: owner.userId,
       orgId: owner.orgId,
       chatThreadId: threadId,
-      agentComposeId: agent.agentId,
+      agentId: agent.agentId,
     } as const;
     const held = await holdChatThreadEventInsertTransactionFixture({
       ...fixture,
@@ -3318,7 +3318,7 @@ describe("CHAT-01 chat search index", () => {
       }),
     ).toStrictEqual([threadB, recentThreadA]);
 
-    // The agent scope comes from the projected agent_compose_id, so no join
+    // The Agent scope comes from the canonical Agent reference, so no join
     // takes part in selecting rows.
     const byAgent = await chat.searchChat(owner, "水豚", {
       agentId: agentB.agentId,

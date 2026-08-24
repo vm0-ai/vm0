@@ -3221,15 +3221,26 @@ mod tests {
         let first = provider.discover().await.unwrap();
         assert!(provider.claim(first).await.is_none());
         let overflow = provider.try_discover_ready().await.unwrap();
+        let claim_started_at = tokio::time::Instant::now();
         let (claim, events) = capture_api_provider_events(provider.claim(overflow)).await;
+        let claim_finished_at = tokio::time::Instant::now();
         assert!(claim.is_none());
         let event = captured_event(&events, "claim failed, candidate cooldown capacity reached");
         assert_eq!(event_field(event, "retry_scope"), "provider");
         assert_eq!(event_field(event, "retry_after_ms"), "5000");
         assert_eq!(event_field(event, "active_cooldowns"), "1");
+        let deferred_poll_at = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_at
+            .expect("saturation should defer HTTP polling");
         assert!(
-            wakeups.snapshot().await.deferred_poll_at.is_some(),
-            "saturation should defer HTTP polling"
+            deferred_poll_at >= claim_started_at + POLL_FAST,
+            "deferred polling should use at least the fast fallback from claim start"
+        );
+        assert!(
+            deferred_poll_at <= claim_finished_at + POLL_FAST,
+            "deferred polling should use at most the fast fallback from claim completion"
         );
 
         push_direct_candidate_for_test(

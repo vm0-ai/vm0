@@ -11,7 +11,6 @@ import {
   billingCreditCheckoutContract,
   billingStatusContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { runsByIdContract } from "@okouai/api-contracts/contracts/run-routes";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
@@ -335,9 +334,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-      },
     });
 
     await waitFor(() => {

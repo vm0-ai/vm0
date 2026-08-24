@@ -301,18 +301,18 @@ async function clearComputerUseHostThreadBindings(params: {
     )
     .returning({
       id: chatThreads.id,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     });
   for (const thread of threads) {
-    if (!thread.agentComposeId) {
+    if (!thread.agentId) {
       continue;
     }
     await appendChatThreadEvent(params.tx, {
       kind: "computer_use_host_updated",
       userId: params.userId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       createdAt: now,

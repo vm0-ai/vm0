@@ -199,6 +199,8 @@ __pycache__/
 debug-*.png
 
 .claude/scheduled_tasks.lock
+# Session scratch notes. The rest of .claude/ (skills, settings.json) is tracked.
+.claude/notes/
 tmp/
 
 *.sarif

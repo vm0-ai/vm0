@@ -2,7 +2,6 @@ import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import type { CreditPurchasePreviewResponse } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core";
 import { Button } from "@okouai/ui";
 import {
   Dialog,
@@ -14,7 +13,6 @@ import {
 } from "@okouai/ui/components/ui/dialog";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCreditPurchasePreview$,
@@ -136,12 +134,9 @@ function CreditPurchaseConfirmDialogContent({
 }
 
 export function CreditPurchaseConfirmDialog() {
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
-    false;
   const preview = useGet(creditPurchasePreview$);
 
-  if (!enabled || !preview) {
+  if (!preview) {
     return null;
   }
 

@@ -189,10 +189,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("set-agent-compose-versionless"),
-    agent_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("read-thread-session-binding"),
     thread_id: z.uuid(),
   }),
