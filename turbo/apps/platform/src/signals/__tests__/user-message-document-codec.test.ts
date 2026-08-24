@@ -707,20 +707,7 @@ describe("user message document codec", () => {
       ],
     });
 
-    expect(editorDocToMessageDocument(editorDocument)).toStrictEqual({
-      version: 1,
-      parts: [
-        {
-          type: "feedback",
-          quote: "First quote",
-          note: [{ type: "text", text: "First note" }],
-        },
-      ],
-    });
-
-    const structured = editorDocToMessageDocument(editorDocument, {
-      includeQuoteOnlyFeedback: true,
-    });
+    const structured = editorDocToMessageDocument(editorDocument);
     expect(structured).toStrictEqual({
       version: 1,
       parts: [
@@ -750,9 +737,7 @@ describe("user message document codec", () => {
       throw new Error("Expected quote-only feedback document to restore");
     }
     expect(
-      editorDocToMessageDocument(workflowComposerDocument(restored), {
-        includeQuoteOnlyFeedback: true,
-      }),
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
     ).toStrictEqual(structured);
   });
 
