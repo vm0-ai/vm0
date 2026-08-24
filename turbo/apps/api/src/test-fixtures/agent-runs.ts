@@ -80,21 +80,37 @@ export async function createDirectAgentExecutionFixture(args: {
     );
   }
   const name = names[0].toLowerCase();
-  const agentId = randomUUID();
-  await db().insert(agents).values({
-    id: agentId,
-    orgId: args.orgId,
-    owner: args.userId,
-    name,
-    displayName: "Direct run fixture",
-    visibility: "private",
-  });
+  const [agent] = await db()
+    .insert(agents)
+    .values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      owner: args.userId,
+      name,
+      displayName: "Direct run fixture",
+      visibility: "private",
+    })
+    .onConflictDoUpdate({
+      target: [agents.orgId, agents.name],
+      set: {
+        owner: args.userId,
+        displayName: "Direct run fixture",
+        visibility: "private",
+      },
+    })
+    .returning({ id: agents.id });
+  if (!agent) {
+    throw new Error("Expected the direct Agent fixture to be persisted");
+  }
   args.signal.throwIfAborted();
   store.set(
     directAgentExecutionConfigs$,
-    new Map(store.get(directAgentExecutionConfigs$)).set(agentId, args.content),
+    new Map(store.get(directAgentExecutionConfigs$)).set(
+      agent.id,
+      args.content,
+    ),
   );
-  return { agentId, name };
+  return { agentId: agent.id, name };
 }
 
 async function measureDirectResolution<T>(

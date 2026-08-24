@@ -3247,7 +3247,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
     });
     expect(testEntry).toMatchObject({
       agentId: testCompose.agentId,
-      displayName: "Historical run fixture",
+      displayName: "Direct run fixture",
       triggerSource: "test",
     });
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);

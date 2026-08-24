@@ -523,6 +523,36 @@ async function seedDependencies(
   );
 }
 
+async function seedCanonicalDependencies(
+  client: Client,
+  fixture: BridgeFixture,
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "built_in_model_keys" ("id", "vendor", "api_key")
+      VALUES ($1, $2, 'agent-run-model-key-contract-test')
+    `,
+    [
+      fixture.keys.historical,
+      `contract-${fixture.keys.historical.slice(0, 8)}`,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agents" ("id", "org_id", "owner", "name", "visibility")
+      VALUES ($1, $2, $3, 'agent-run-model-key-bridge', 'private')
+    `,
+    [fixture.composeId, fixture.orgId, fixture.userId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" ("id", "user_id", "org_id", "agent_id")
+      VALUES ($1, $2, $3, $4)
+    `,
+    [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+}
+
 async function insertHistoricalOldOnly(
   client: Client,
   fixture: BridgeFixture,
@@ -1554,6 +1584,24 @@ async function cleanupFixture(
   ]);
 }
 
+async function cleanupCanonicalFixture(
+  client: Client,
+  fixture: BridgeFixture,
+): Promise<void> {
+  await client.query(`DELETE FROM "agent_runs" WHERE "session_id" = $1`, [
+    fixture.sessionId,
+  ]);
+  await client.query(`DELETE FROM "agent_sessions" WHERE "id" = $1`, [
+    fixture.sessionId,
+  ]);
+  await client.query(`DELETE FROM "agents" WHERE "id" = $1`, [
+    fixture.composeId,
+  ]);
+  await client.query(`DELETE FROM "built_in_model_keys" WHERE "id" = $1`, [
+    fixture.keys.historical,
+  ]);
+}
+
 async function bridgeObjectCount(client: Client): Promise<{
   readonly functionCount: number;
   readonly triggerCount: number;
@@ -2063,14 +2111,14 @@ export async function validateAgentRunBuiltInModelKeyContractSchema(
   const fixture = createFixture("current");
   try {
     await validateContractCatalog(client);
-    await seedDependencies(client, fixture);
+    await seedCanonicalDependencies(client, fixture);
     await insertCanonicalHistorical(client, fixture);
     await validateContractBehavior(client, fixture);
     console.log(
       "   ✅ canonical-only column, catalog, behavior, and cleanup match\n",
     );
   } finally {
-    await cleanupFixture(client, fixture);
+    await cleanupCanonicalFixture(client, fixture);
     await client.end();
   }
 }
