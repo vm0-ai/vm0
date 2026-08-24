@@ -64,7 +64,6 @@ const canonicalConversationId = "00000000-0000-4000-8700-000000980001";
 const canonicalCheckpointId = "00000000-0000-4000-8800-000000980001";
 const canonicalThreadId = "00000000-0000-4000-8300-000000980002";
 const canonicalThreadEventId = "00000000-0000-4000-9200-000000980028";
-const searchNoiseAgentId = "00000000-0000-4000-8400-000000980002";
 const searchNoiseThreadId = "00000000-0000-4000-8300-000000980003";
 const storageId = "00000000-0000-4000-8900-000000980001";
 const usageEventId = "00000000-0000-4000-8a00-000000980001";
@@ -524,21 +523,10 @@ async function seedAndAssertProductionShapedSearchLookups(
 ): Promise<void> {
   await client.query(
     `
-      INSERT INTO "agents" ("id", "org_id", "owner", "name")
-      VALUES ($1, 'stage8-artifact-org', 'stage8-artifact-user',
-        'stage8-search-noise-agent')
+      INSERT INTO "chat_threads" ("id", "user_id", "title")
+      VALUES ($1, 'stage8-artifact-user', 'stage8 search noise thread')
     `,
-    [searchNoiseAgentId],
-  );
-  await client.query(
-    `
-      INSERT INTO "chat_threads" (
-        "id", "user_id", "agent_compose_id", "agent_id", "title"
-      ) VALUES (
-        $1, 'stage8-artifact-user', $2, $2, 'stage8 search noise thread'
-      )
-    `,
-    [searchNoiseThreadId, searchNoiseAgentId],
+    [searchNoiseThreadId],
   );
   await client.query(
     `
@@ -563,20 +551,15 @@ async function seedAndAssertProductionShapedSearchLookups(
   await client.query(
     `
       INSERT INTO "chat_event_search_messages" (
-        "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
-        "agent_compose_id", "role", "created_at", "text", "text_bigram"
+        "chat_thread_id", "seq_id", "user_id", "org_id", "role",
+        "created_at", "text", "text_bigram"
       )
       SELECT
         $1, "ordinal", 'stage8-artifact-user', 'stage8-artifact-org',
-        $2, $2, 'user', now(), 'stage8 pair candidate',
-        'stage8 pair candidate'
-      FROM generate_series(1, $3) AS "ordinal"
+        'user', now(), 'stage8 pair candidate', 'stage8 pair candidate'
+      FROM generate_series(1, $2) AS "ordinal"
     `,
-    [
-      searchNoiseThreadId,
-      searchNoiseAgentId,
-      productionShapedArtifactPairNoiseRows,
-    ],
+    [searchNoiseThreadId, productionShapedArtifactPairNoiseRows],
   );
   const artifactPair = await client.query<{ count: number }>(
     `
@@ -649,32 +632,26 @@ async function assertProductionShapedSearchRowsPreserved(
   client: Client,
 ): Promise<void> {
   const result = await client.query<{
-    agentCount: number;
     protectedSearchMessageCount: number;
     threadCount: number;
     searchMessageCount: number;
   }>(
     `
       SELECT
-        (SELECT count(*)::integer FROM "agents"
-          WHERE "id" = $1
-            AND "org_id" = 'stage8-artifact-org'
-            AND "owner" = 'stage8-artifact-user') AS "agentCount",
         (SELECT count(*)::integer FROM "chat_event_search_messages"
-          WHERE "chat_thread_id" = $3) AS "protectedSearchMessageCount",
+          WHERE "chat_thread_id" = $2) AS "protectedSearchMessageCount",
         (SELECT count(*)::integer FROM "chat_threads"
-          WHERE "id" = $2
+          WHERE "id" = $1
             AND "user_id" = 'stage8-artifact-user'
-            AND "agent_id" = $1) AS "threadCount",
+            AND "agent_id" IS NULL) AS "threadCount",
         (SELECT count(*)::integer FROM "chat_event_search_messages"
-          WHERE "chat_thread_id" = $2
-            AND "agent_id" = $1) AS "searchMessageCount"
+          WHERE "chat_thread_id" = $1
+            AND "agent_id" IS NULL) AS "searchMessageCount"
     `,
-    [searchNoiseAgentId, searchNoiseThreadId, canonicalThreadId],
+    [searchNoiseThreadId, canonicalThreadId],
   );
   assert.deepEqual(result.rows, [
     {
-      agentCount: 1,
       protectedSearchMessageCount: productionShapedSearchRows + 1,
       threadCount: 1,
       searchMessageCount: productionShapedArtifactPairNoiseRows,
