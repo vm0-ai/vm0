@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.75.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.6...guest-agent-v0.75.7) (2026-08-24)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read codex service-tier environment aliases ([#29038](https://github.com/vm0-ai/vm0/issues/29038)) ([dc84c21](https://github.com/vm0-ai/vm0/commit/dc84c21c569fc9919321c27ee2af32209d319ee7))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+
 ## [0.75.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.5...guest-agent-v0.75.6) (2026-08-24)
 
 ## [0.75.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.4...guest-agent-v0.75.5) (2026-08-24)
