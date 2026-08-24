@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.784.3](https://github.com/vm0-ai/vm0/compare/app-v0.784.2...app-v0.784.3) (2026-08-24)
+
+
+### Bug Fixes
+
+* **platform:** prevent blank uploaded template covers ([#28783](https://github.com/vm0-ai/vm0/issues/28783)) ([5d256d8](https://github.com/vm0-ai/vm0/commit/5d256d842772ae2446d684d752d6f20be73d1710))
+
+
+### Refactoring
+
+* **contracts:** neutralize custom connector and feature switch contract naming ([#28206](https://github.com/vm0-ai/vm0/issues/28206)) ([0610293](https://github.com/vm0-ai/vm0/commit/0610293ab1acdae01334925c81c79846c11a2009)), closes [#28190](https://github.com/vm0-ai/vm0/issues/28190)
+* **core:** rename zeroDebug feature switch to okouDebug ([#28816](https://github.com/vm0-ai/vm0/issues/28816)) ([9d86a26](https://github.com/vm0-ai/vm0/commit/9d86a26650ef5c7ac400356fb9f0fc6c173611e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.1
+    * @okouai/core bumped to 8.584.2
+
 ## [0.784.2](https://github.com/vm0-ai/vm0/compare/app-v0.784.1...app-v0.784.2) (2026-08-24)
 
 

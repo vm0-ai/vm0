@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.281.2](https://github.com/vm0-ai/vm0/compare/cli-v9.281.1...cli-v9.281.2) (2026-08-24)
+
+
+### Refactoring
+
+* **contracts:** neutralize custom connector and feature switch contract naming ([#28206](https://github.com/vm0-ai/vm0/issues/28206)) ([0610293](https://github.com/vm0-ai/vm0/commit/0610293ab1acdae01334925c81c79846c11a2009)), closes [#28190](https://github.com/vm0-ai/vm0/issues/28190)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.356.1
+    * @okouai/core bumped to 8.584.2
+
 ## [9.281.1](https://github.com/vm0-ai/vm0/compare/cli-v9.281.0...cli-v9.281.1) (2026-08-24)
 
 

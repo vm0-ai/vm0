@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.38.70](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.69...desktop-v0.38.70) (2026-08-24)
+
+
+### Refactoring
+
+* **core:** rename zeroDebug feature switch to okouDebug ([#28816](https://github.com/vm0-ai/vm0/issues/28816)) ([9d86a26](https://github.com/vm0-ai/vm0/commit/9d86a26650ef5c7ac400356fb9f0fc6c173611e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.1
+
 ## [0.38.69](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.68...desktop-v0.38.69) (2026-08-24)
 
 
