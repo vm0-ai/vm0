@@ -774,6 +774,7 @@ describe("POST /api/me/model-providers (upsert)", () => {
       }),
       [201],
     );
+    context.mocks.axiomLogging.warn.mockClear();
     const unauthorized = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -799,6 +800,27 @@ describe("POST /api/me/model-providers (upsert)", () => {
     ).toBeUndefined();
     expect(refreshCalls).toBe(0);
     expect(usageCalls).toBe(3);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(2);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenNthCalledWith(
+      1,
+      "failed to refresh personal model provider subscription usage",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "Codex usage request failed with status 401",
+        }),
+        modelProviderAccountId: connected.body.provider.id,
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenNthCalledWith(
+      2,
+      "failed to refresh personal model provider subscription usage",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "Codex usage response shape unrecognized",
+        }),
+        modelProviderAccountId: connected.body.provider.id,
+      }),
+    );
   });
 
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
