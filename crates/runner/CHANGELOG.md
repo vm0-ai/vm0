@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.171.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.2...runner-rs-v0.171.3) (2026-08-24)
+
+
+### Bug Fixes
+
+* **runner:** log execution time limit at info ([#28750](https://github.com/vm0-ai/vm0/issues/28750)) ([9823447](https://github.com/vm0-ai/vm0/commit/9823447ca397e8ea7d15de12d6de725091987a6c))
+
+
+### Refactoring
+
+* **python:** centralize buffered auth body framing ([#28752](https://github.com/vm0-ai/vm0/issues/28752)) ([91c4e5d](https://github.com/vm0-ai/vm0/commit/91c4e5d91fb3ae3cd6caf6853df81f22ec68328e))
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.171.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.1...runner-rs-v0.171.2) (2026-08-23)
 
 

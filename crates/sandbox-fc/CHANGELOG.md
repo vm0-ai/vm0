@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.237](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.236...sandbox-fc-v0.37.237) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.37.236](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.235...sandbox-fc-v0.37.236) (2026-08-23)
 
 ## [0.37.235](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.234...sandbox-fc-v0.37.235) (2026-08-23)

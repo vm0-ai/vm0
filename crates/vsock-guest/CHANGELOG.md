@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.97](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.96...vsock-guest-v0.19.97) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.19.96](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.95...vsock-guest-v0.19.96) (2026-08-23)
 
 ## [0.19.95](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.94...vsock-guest-v0.19.95) (2026-08-21)
