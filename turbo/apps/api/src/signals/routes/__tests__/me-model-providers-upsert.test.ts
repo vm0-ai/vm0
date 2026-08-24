@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 
 import {
+  personalModelProviderAccountsByIdContract,
   personalModelProvidersByTypeContract,
   personalModelProvidersMainContract,
 } from "@okouai/api-contracts/contracts/personal-model-providers";
@@ -11,10 +12,11 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { readUserSecrets } from "./helpers/user-config-state";
+import { meModelProviderAccountRoutes } from "../me-model-provider-accounts";
 import { meModelProvidersDeleteRoutes } from "../me-model-providers-delete";
 import { meModelProvidersListRoutes } from "../me-model-providers-list";
 import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-reset-subscription";
@@ -28,6 +30,10 @@ const personalModelProvidersMainTestRoutes = Object.freeze([
 const personalModelProvidersByTypeTestRoutes = Object.freeze([
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersResetSubscriptionRoutes,
+]);
+
+const personalModelProviderAccountsByIdTestRoutes = Object.freeze([
+  ...meModelProviderAccountRoutes,
 ]);
 
 const context = testContext();
@@ -498,6 +504,236 @@ describe("POST /api/me/model-providers (upsert)", () => {
     );
 
     expect(response.body).toStrictEqual({ outcome: "reset" });
+  });
+
+  it("refreshes an expired Codex token before consuming a reset credit", async () => {
+    const fixture = uniqueOrgUser("zmmp-codex-reset-refresh");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const connectedAt = now();
+    const authJson = makeAuthJsonFixture({ accessExpiresInSeconds: 3600 });
+    const idempotencyKey = randomUUID();
+    const refreshedAccessToken = "fresh-reset-chatgpt-access-token";
+    let refreshCalls = 0;
+    let consumeCalls = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+        refreshCalls += 1;
+        await expect(request.json()).resolves.toMatchObject({
+          grant_type: "refresh_token",
+          refresh_token: authJson.refreshToken,
+        });
+        return HttpResponse.json({
+          access_token: refreshedAccessToken,
+          refresh_token: "rotated-reset-chatgpt-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+      http.get("https://chatgpt.com/backend-api/wham/usage", () => {
+        return HttpResponse.json(codexUsageResponse());
+      }),
+      http.post(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+        async ({ request }) => {
+          consumeCalls += 1;
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${refreshedAccessToken}`,
+          );
+          expect(request.headers.get("chatgpt-account-id")).toBe(
+            authJson.accountId,
+          );
+          await expect(request.json()).resolves.toStrictEqual({
+            redeem_request_id: idempotencyKey,
+          });
+          return HttpResponse.json({ code: "reset", windows_reset: 2 });
+        },
+      ),
+    );
+
+    const mainClient = setupApp({
+      context,
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
+    await accept(
+      mainClient.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: authJson.raw },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+    mockNow(connectedAt + 2 * 3_600_000);
+
+    const byTypeClient = setupApp({
+      context,
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
+    const response = await accept(
+      byTypeClient.resetSubscriptionUsage({
+        params: { type: "codex-oauth-token" },
+        body: { idempotencyKey },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ outcome: "reset" });
+    expect(refreshCalls).toBe(1);
+    expect(consumeCalls).toBe(1);
+  });
+
+  it("does not consume a reset credit after terminal Codex refresh failure", async () => {
+    const fixture = uniqueOrgUser("zmmp-codex-reset-terminal");
+    await enablePersonalModelProviderAccounts(fixture);
+    const connectedAt = now();
+    const authJson = makeAuthJsonFixture({ accessExpiresInSeconds: 3600 });
+    let refreshCalls = 0;
+    let consumeCalls = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "refresh_token_expired",
+              message: "refresh token expired",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+      http.get("https://chatgpt.com/backend-api/wham/usage", () => {
+        return HttpResponse.json(codexUsageResponse());
+      }),
+      http.post(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+        () => {
+          consumeCalls += 1;
+          return HttpResponse.json({ code: "reset", windows_reset: 2 });
+        },
+      ),
+    );
+
+    const mainClient = setupApp({
+      context,
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
+    const connected = await accept(
+      mainClient.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: authJson.raw },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+    mockNow(connectedAt + 2 * 3_600_000);
+
+    const accountClient = setupApp({
+      context,
+      routes: personalModelProviderAccountsByIdTestRoutes,
+    })(personalModelProviderAccountsByIdContract);
+    const failed = await accept(
+      accountClient.resetSubscriptionUsage({
+        params: { id: connected.body.provider.id },
+        body: { idempotencyKey: randomUUID() },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+    expect(failed.status).toBe(500);
+
+    const listed = await accept(
+      mainClient.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(listed.body.modelProviders[0]).toMatchObject({
+      id: connected.body.provider.id,
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+    });
+    expect(refreshCalls).toBe(1);
+    expect(consumeCalls).toBe(0);
+  });
+
+  it("retries reset after transient Codex refresh failure", async () => {
+    const fixture = uniqueOrgUser("zmmp-codex-reset-transient");
+    await enablePersonalModelProviderAccounts(fixture);
+    const connectedAt = now();
+    const authJson = makeAuthJsonFixture({ accessExpiresInSeconds: 3600 });
+    const idempotencyKey = randomUUID();
+    const refreshedAccessToken = "recovered-reset-chatgpt-access-token";
+    let refreshCalls = 0;
+    let consumeCalls = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        refreshCalls += 1;
+        if (refreshCalls === 1) {
+          return HttpResponse.json(
+            { error: "temporarily_unavailable" },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json({
+          access_token: refreshedAccessToken,
+          refresh_token: "recovered-reset-chatgpt-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+      http.get("https://chatgpt.com/backend-api/wham/usage", () => {
+        return HttpResponse.json(codexUsageResponse());
+      }),
+      http.post(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+        ({ request }) => {
+          consumeCalls += 1;
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${refreshedAccessToken}`,
+          );
+          return HttpResponse.json({ code: "reset", windows_reset: 2 });
+        },
+      ),
+    );
+
+    const mainClient = setupApp({
+      context,
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
+    const connected = await accept(
+      mainClient.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: authJson.raw },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+    mockNow(connectedAt + 2 * 3_600_000);
+
+    const accountClient = setupApp({
+      context,
+      routes: personalModelProviderAccountsByIdTestRoutes,
+    })(personalModelProviderAccountsByIdContract);
+    const reset = () => {
+      return accountClient.resetSubscriptionUsage({
+        params: { id: connected.body.provider.id },
+        body: { idempotencyKey },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+    };
+    const unavailable = await accept(reset(), [500]);
+    expect(unavailable.status).toBe(500);
+
+    const recovered = await accept(reset(), [200]);
+    expect(recovered.body).toStrictEqual({ outcome: "reset" });
+    expect(refreshCalls).toBe(2);
+    expect(consumeCalls).toBe(1);
   });
 
   it("coalesces concurrent refreshes for an expired Codex account", async () => {
