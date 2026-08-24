@@ -10,9 +10,9 @@ use std::time::Duration;
 use tokio::process::Command;
 
 const ISOLATED_CHILD_TEST: &str = "process_control_endpoint_is_not_inherited_by_cli_child_isolated";
-const ISOLATED_CHILD_GUARD: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_CHILD";
+const ISOLATED_CHILD_GUARD: &str = "OKOU_PROCESS_CONTROL_ENV_ISOLATED_CHILD";
 const ISOLATED_CHILD_GUARD_VALUE: &str = "1";
-const ISOLATED_CHILD_MOCK_PATH: &str = "VM0_PROCESS_CONTROL_ENV_ISOLATED_MOCK_PATH";
+const ISOLATED_CHILD_MOCK_PATH: &str = "OKOU_PROCESS_CONTROL_ENV_ISOLATED_MOCK_PATH";
 const ISOLATED_CHILD_MARKER: &str = "vm0 process-control env isolated child active";
 const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const PROCESS_CONTROL_CHILD_TIMEOUT: Duration = Duration::from_secs(30);

@@ -10,10 +10,10 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 
 const TEST_NAME: &str = "mock_build_lock_recovers_after_holder_exit";
-const HOLDER_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_HOLDER";
-const LOCK_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_PATH";
-const STARTED_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_STARTED_PATH";
-const READY_PATH_ENV: &str = "VM0_MOCK_BUILD_LOCK_TEST_READY_PATH";
+const HOLDER_ENV: &str = "OKOU_MOCK_BUILD_LOCK_TEST_HOLDER";
+const LOCK_PATH_ENV: &str = "OKOU_MOCK_BUILD_LOCK_TEST_PATH";
+const STARTED_PATH_ENV: &str = "OKOU_MOCK_BUILD_LOCK_TEST_STARTED_PATH";
+const READY_PATH_ENV: &str = "OKOU_MOCK_BUILD_LOCK_TEST_READY_PATH";
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct HolderProcess {
