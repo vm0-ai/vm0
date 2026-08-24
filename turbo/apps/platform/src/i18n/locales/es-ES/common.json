@@ -1069,7 +1069,11 @@
       },
       "signUp": {
         "action": "Usar el registro actual",
-        "description": "La nueva experiencia de registro aún no está disponible.",
+        "captchaExpired": "La verificación de bots ha caducado. Inténtalo de nuevo.",
+        "codeExpired": "Este código de verificación ha caducado. Solicita uno nuevo.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
         "title": "Crea tu cuenta de {{brandName}}"
       }
     }

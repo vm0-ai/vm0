@@ -128,9 +128,7 @@ describe("auth v2 presentation", () => {
     });
     expect(
       screen.getByRole("region", { name: "Okou アカウントを作成" }),
-    ).toHaveAccessibleDescription(
-      "新しいサインアップ画面はまだ利用できません。",
-    );
+    ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
     expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
       "href",

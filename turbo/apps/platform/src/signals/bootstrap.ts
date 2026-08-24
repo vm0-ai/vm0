@@ -179,11 +179,11 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signUpV2,
-    setup: setupSignUpV2Page$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
     path: ROUTES.signUpV2CatchAll,
-    setup: setupSignUpV2Page$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
 
   // --- New routes ---

@@ -1,3 +1,4 @@
+import type { PasswordValidation } from "@clerk/react/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -77,6 +78,31 @@ export interface MockedSignInResourceState {
   readonly supportedFirstFactors?: readonly MockedSignInFactor[] | null;
 }
 
+export interface MockedSignUpResourceState {
+  readonly createdSessionId?: string | null;
+  readonly emailAddress?: string | null;
+  readonly emailVerificationExpireAt?: Date | null;
+  readonly emailVerificationStatus?: string | null;
+  readonly emailVerificationStrategy?: string | null;
+  readonly firstName?: string | null;
+  readonly hasPassword?: boolean;
+  readonly isTransferable?: boolean;
+  readonly lastName?: string | null;
+  readonly legalAcceptedAt?: number | null;
+  readonly missingFields?: readonly string[];
+  readonly optionalFields?: readonly string[];
+  readonly requiredFields?: readonly string[];
+  readonly status: string | null;
+  readonly unverifiedFields?: readonly string[];
+}
+
+interface MockedSignUpConfiguration {
+  readonly captchaEnabled?: boolean;
+  readonly captchaWidgetType?: "invisible" | "smart" | null;
+  readonly privacyPolicyUrl?: string;
+  readonly termsUrl?: string;
+}
+
 interface MockedUser {
   id: string;
   fullName: string;
@@ -123,6 +149,33 @@ let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
   status: "needs_identifier",
   supportedFirstFactors: null,
 };
+let internalMockedSignUpResourceState: Required<MockedSignUpResourceState> = {
+  createdSessionId: null,
+  emailAddress: null,
+  emailVerificationExpireAt: null,
+  emailVerificationStatus: null,
+  emailVerificationStrategy: null,
+  firstName: null,
+  hasPassword: false,
+  isTransferable: false,
+  lastName: null,
+  legalAcceptedAt: null,
+  missingFields: ["email_address", "password"],
+  optionalFields: ["first_name", "last_name"],
+  requiredFields: ["email_address", "password"],
+  status: null,
+  unverifiedFields: [],
+};
+let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
+  captchaEnabled: false,
+  captchaWidgetType: null,
+  privacyPolicyUrl: "https://vm0.ai/privacy",
+  termsUrl: "https://vm0.ai/terms",
+};
+let internalMockedPasswordValidation: PasswordValidation = {
+  complexity: {},
+  strength: undefined,
+};
 
 export function mockSignInResource(state: MockedSignInResourceState): void {
   internalMockedSignInResourceState = {
@@ -131,6 +184,48 @@ export function mockSignInResource(state: MockedSignInResourceState): void {
     status: state.status,
     supportedFirstFactors: state.supportedFirstFactors ?? null,
   };
+}
+
+export function mockSignUpResource(state: MockedSignUpResourceState): void {
+  internalMockedSignUpResourceState = {
+    createdSessionId: state.createdSessionId ?? null,
+    emailAddress: state.emailAddress ?? null,
+    emailVerificationExpireAt: state.emailVerificationExpireAt ?? null,
+    emailVerificationStatus: state.emailVerificationStatus ?? null,
+    emailVerificationStrategy: state.emailVerificationStrategy ?? null,
+    firstName: state.firstName ?? null,
+    hasPassword: state.hasPassword ?? false,
+    isTransferable: state.isTransferable ?? false,
+    lastName: state.lastName ?? null,
+    legalAcceptedAt: state.legalAcceptedAt ?? null,
+    missingFields:
+      state.missingFields ??
+      (state.status === null ? ["email_address", "password"] : []),
+    optionalFields: state.optionalFields ?? ["first_name", "last_name"],
+    requiredFields: state.requiredFields ?? ["email_address", "password"],
+    status: state.status,
+    unverifiedFields: state.unverifiedFields ?? [],
+  };
+}
+
+export function mockSignUpConfiguration(
+  configuration: MockedSignUpConfiguration,
+): void {
+  internalMockedSignUpConfiguration = {
+    captchaEnabled: configuration.captchaEnabled ?? false,
+    captchaWidgetType:
+      configuration.captchaWidgetType ??
+      (configuration.captchaEnabled ? "smart" : null),
+    privacyPolicyUrl:
+      configuration.privacyPolicyUrl ?? "https://vm0.ai/privacy",
+    termsUrl: configuration.termsUrl ?? "https://vm0.ai/terms",
+  };
+}
+
+export function mockSignUpPasswordValidation(
+  validation: PasswordValidation,
+): void {
+  internalMockedPasswordValidation = validation;
 }
 
 export function mockAuthV2Capabilities(
@@ -327,6 +422,9 @@ function clearMockedAuth() {
   internalMockedClerkSessionTransitioning = false;
   internalMockedClerkSessionSignedOut = false;
   mockSignInResource({ status: "needs_identifier" });
+  mockSignUpResource({ status: null });
+  mockSignUpConfiguration({});
+  mockSignUpPasswordValidation({ complexity: {}, strength: undefined });
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -362,6 +460,30 @@ function clearMockedAuth() {
   mockedClerk.signInFutureReset.mockReset();
   mockedClerk.signInFutureReset.mockImplementation(
     defaultSignInFutureResetImpl,
+  );
+  mockedClerk.clientSignUpCreate.mockReset();
+  mockedClerk.clientSignUpCreate.mockImplementation(
+    defaultSignUpResourceOperationImpl,
+  );
+  mockedClerk.signUpUpdate.mockReset();
+  mockedClerk.signUpUpdate.mockImplementation(
+    defaultSignUpResourceOperationImpl,
+  );
+  mockedClerk.signUpPrepareEmailAddressVerification.mockReset();
+  mockedClerk.signUpPrepareEmailAddressVerification.mockImplementation(
+    defaultSignUpResourceOperationImpl,
+  );
+  mockedClerk.signUpAttemptEmailAddressVerification.mockReset();
+  mockedClerk.signUpAttemptEmailAddressVerification.mockImplementation(
+    defaultSignUpResourceOperationImpl,
+  );
+  mockedClerk.signUpValidatePassword.mockReset();
+  mockedClerk.signUpValidatePassword.mockImplementation(
+    defaultSignUpValidatePasswordImpl,
+  );
+  mockedClerk.signUpFutureReset.mockReset();
+  mockedClerk.signUpFutureReset.mockImplementation(
+    defaultSignUpFutureResetImpl,
   );
   mockedClerk.signInAuthenticateWithPasskey.mockReset();
   mockedClerk.signInAuthenticateWithPasskey.mockImplementation(
@@ -522,6 +644,107 @@ const mockedClientSignIn = {
     reset: signInFutureReset,
   },
 };
+
+function defaultSignUpResourceOperationImpl(_params?: unknown) {
+  return Promise.resolve(mockedClientSignUp);
+}
+
+const clientSignUpCreate = vi.fn<typeof defaultSignUpResourceOperationImpl>(
+  defaultSignUpResourceOperationImpl,
+);
+const signUpUpdate = vi.fn<typeof defaultSignUpResourceOperationImpl>(
+  defaultSignUpResourceOperationImpl,
+);
+const signUpPrepareEmailAddressVerification = vi.fn<
+  typeof defaultSignUpResourceOperationImpl
+>(defaultSignUpResourceOperationImpl);
+const signUpAttemptEmailAddressVerification = vi.fn<
+  typeof defaultSignUpResourceOperationImpl
+>(defaultSignUpResourceOperationImpl);
+
+interface MockedPasswordValidationCallbacks {
+  readonly onValidation?: (validation: PasswordValidation) => void;
+}
+
+function defaultSignUpValidatePasswordImpl(
+  _password: string,
+  callbacks?: MockedPasswordValidationCallbacks,
+): void {
+  callbacks?.onValidation?.(internalMockedPasswordValidation);
+}
+
+const signUpValidatePassword = vi.fn<typeof defaultSignUpValidatePasswordImpl>(
+  defaultSignUpValidatePasswordImpl,
+);
+
+function defaultSignUpFutureResetImpl() {
+  mockSignUpResource({ status: null });
+  return Promise.resolve({ error: null });
+}
+
+const signUpFutureReset = vi.fn<typeof defaultSignUpFutureResetImpl>(
+  defaultSignUpFutureResetImpl,
+);
+
+const mockedClientSignUp = {
+  get status() {
+    return internalMockedSignUpResourceState.status;
+  },
+  get requiredFields() {
+    return internalMockedSignUpResourceState.requiredFields;
+  },
+  get optionalFields() {
+    return internalMockedSignUpResourceState.optionalFields;
+  },
+  get missingFields() {
+    return internalMockedSignUpResourceState.missingFields;
+  },
+  get unverifiedFields() {
+    return internalMockedSignUpResourceState.unverifiedFields;
+  },
+  get emailAddress() {
+    return internalMockedSignUpResourceState.emailAddress;
+  },
+  get firstName() {
+    return internalMockedSignUpResourceState.firstName;
+  },
+  get lastName() {
+    return internalMockedSignUpResourceState.lastName;
+  },
+  get hasPassword() {
+    return internalMockedSignUpResourceState.hasPassword;
+  },
+  get legalAcceptedAt() {
+    return internalMockedSignUpResourceState.legalAcceptedAt;
+  },
+  get createdSessionId() {
+    return internalMockedSignUpResourceState.createdSessionId;
+  },
+  create: clientSignUpCreate,
+  update: signUpUpdate,
+  prepareEmailAddressVerification: signUpPrepareEmailAddressVerification,
+  attemptEmailAddressVerification: signUpAttemptEmailAddressVerification,
+  validatePassword: signUpValidatePassword,
+  verifications: {
+    emailAddress: {
+      get status() {
+        return internalMockedSignUpResourceState.emailVerificationStatus;
+      },
+      get strategy() {
+        return internalMockedSignUpResourceState.emailVerificationStrategy;
+      },
+      get expireAt() {
+        return internalMockedSignUpResourceState.emailVerificationExpireAt;
+      },
+    },
+  },
+  __internal_future: {
+    get isTransferable() {
+      return internalMockedSignUpResourceState.isTransferable;
+    },
+    reset: signUpFutureReset,
+  },
+};
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
 };
@@ -644,6 +867,12 @@ export const mockedClerk = {
   signInAuthenticateWithRedirect,
   signInResetPassword,
   signInFutureReset,
+  clientSignUpCreate,
+  signUpUpdate,
+  signUpPrepareEmailAddressVerification,
+  signUpAttemptEmailAddressVerification,
+  signUpValidatePassword,
+  signUpFutureReset,
   client: {
     get sessions() {
       return internalMockedClientSessions;
@@ -657,12 +886,33 @@ export const mockedClerk = {
       });
     },
     signIn: mockedClientSignIn,
+    signUp: mockedClientSignUp,
   },
   get __internal_environment() {
     return {
       displayConfig: {
-        googleOneTapClientId:
-          internalMockedAuthV2Capabilities.googleOneTapClientId ?? undefined,
+        get captchaWidgetType() {
+          return internalMockedSignUpConfiguration.captchaWidgetType;
+        },
+        get captchaPublicKey() {
+          return internalMockedSignUpConfiguration.captchaEnabled
+            ? "test-captcha-key"
+            : null;
+        },
+        get captchaPublicKeyInvisible() {
+          return null;
+        },
+        get googleOneTapClientId() {
+          return (
+            internalMockedAuthV2Capabilities.googleOneTapClientId ?? undefined
+          );
+        },
+        get privacyPolicyUrl() {
+          return internalMockedSignUpConfiguration.privacyPolicyUrl;
+        },
+        get termsUrl() {
+          return internalMockedSignUpConfiguration.termsUrl;
+        },
       },
       userSettings: {
         attributes: {

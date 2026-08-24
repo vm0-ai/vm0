@@ -1049,7 +1049,9 @@
       },
       "signUp": {
         "action": "現在のサインアップを使用",
-        "description": "新しいサインアップ画面はまだ利用できません。",
+        "captchaExpired": "ボット確認の有効期限が切れました。もう一度お試しください。",
+        "codeExpired": "この確認コードは期限切れです。新しいコードをリクエストしてください。",
+        "resendCodeCooldown_other": "{{resendCode}}（{{count}}秒）",
         "title": "{{brandName}} アカウントを作成"
       }
     }

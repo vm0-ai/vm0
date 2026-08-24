@@ -1049,7 +1049,9 @@
       },
       "signUp": {
         "action": "현재 회원가입 사용",
-        "description": "새 회원가입 화면은 아직 사용할 수 없습니다.",
+        "captchaExpired": "봇 인증이 만료되었습니다. 다시 시도하세요.",
+        "codeExpired": "이 인증 코드는 만료되었습니다. 새 코드를 요청하세요.",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}}초)",
         "title": "{{brandName}} 계정 만들기"
       }
     }

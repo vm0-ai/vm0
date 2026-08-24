@@ -1069,7 +1069,11 @@
       },
       "signUp": {
         "action": "Utiliser l'inscription actuelle",
-        "description": "La nouvelle expérience d'inscription n'est pas encore disponible.",
+        "captchaExpired": "La vérification anti-robot a expiré. Réessayez.",
+        "codeExpired": "Ce code de vérification a expiré. Demandez-en un nouveau.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
         "title": "Créer votre compte {{brandName}}"
       }
     }

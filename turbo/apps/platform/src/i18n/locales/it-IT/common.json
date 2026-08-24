@@ -1069,7 +1069,11 @@
       },
       "signUp": {
         "action": "Usa la registrazione attuale",
-        "description": "La nuova esperienza di registrazione non è ancora disponibile.",
+        "captchaExpired": "La verifica anti-bot è scaduta. Riprova.",
+        "codeExpired": "Questo codice di verifica è scaduto. Richiedine uno nuovo.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
         "title": "Crea il tuo account {{brandName}}"
       }
     }

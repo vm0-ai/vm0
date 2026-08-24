@@ -1049,7 +1049,9 @@
       },
       "signUp": {
         "action": "Gunakan pendaftaran saat ini",
-        "description": "Pengalaman pendaftaran baru belum tersedia.",
+        "captchaExpired": "Verifikasi bot telah kedaluwarsa. Coba lagi.",
+        "codeExpired": "Kode verifikasi ini telah kedaluwarsa. Minta kode baru.",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} dtk)",
         "title": "Buat akun {{brandName}} Anda"
       }
     }
