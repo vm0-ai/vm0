@@ -1050,7 +1050,10 @@
       },
       "signUp": {
         "action": "मौजूदा साइन-अप का उपयोग करें",
-        "description": "नया साइन-अप अनुभव अभी उपलब्ध नहीं है।",
+        "captchaExpired": "बॉट सत्यापन की समय-सीमा समाप्त हो गई है। फिर से कोशिश करें।",
+        "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} सेकंड)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} सेकंड)",
         "title": "अपना {{brandName}} खाता बनाएं"
       }
     }

@@ -1050,7 +1050,10 @@
       },
       "signUp": {
         "action": "Aktuelle Registrierung verwenden",
-        "description": "Die neue Registrierungsoberfläche ist noch nicht verfügbar.",
+        "captchaExpired": "Die Bot-Verifizierung ist abgelaufen. Versuche es erneut.",
+        "codeExpired": "Dieser Bestätigungscode ist abgelaufen. Fordere einen neuen Code an.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
         "title": "Ihr {{brandName}}-Konto erstellen"
       }
     }

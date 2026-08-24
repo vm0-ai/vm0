@@ -1,0 +1,502 @@
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import { now } from "../../../../lib/time.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../../__tests__/page-helper.ts";
+import {
+  mockedClerk,
+  mockSignUpConfiguration,
+  mockSignUpPasswordValidation,
+  mockSignUpResource,
+  type MockedSignUpResourceState,
+} from "../../../../__tests__/mock-auth.ts";
+import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../../signals/utils.ts";
+
+const context = testContext();
+
+function currentSignUpResource() {
+  return mockedClerk.client.signUp;
+}
+
+function moveSignUpTo(state: MockedSignUpResourceState) {
+  mockSignUpResource(state);
+  return currentSignUpResource();
+}
+
+function moveSignUpToAsync(
+  state: MockedSignUpResourceState,
+): Promise<ReturnType<typeof currentSignUpResource>> {
+  return Promise.resolve(moveSignUpTo(state));
+}
+
+function setupSignUpPage(
+  state: MockedSignUpResourceState,
+  options: { readonly path?: string; readonly url?: string } = {},
+): void {
+  const path = options.path ?? "/v2/sign-up";
+  mockSignUpResource(state);
+  context.mocks.browser.url(options.url ?? `https://app.vm0.ai${path}`);
+  detachedSetupPage({
+    context,
+    path,
+    session: null,
+    user: null,
+  });
+}
+
+function containingForm(element: HTMLElement): HTMLFormElement {
+  const form = element.closest("form");
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error("Expected element to be inside a form");
+  }
+  return form;
+}
+
+function roleElement(role: "button" | "link", name: string) {
+  return queryAllByRoleFast(role).find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+}
+
+async function waitForRoleElement(
+  role: "button" | "link",
+  name: string,
+): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(roleElement(role, name)).toBeDefined();
+  });
+  const element = roleElement(role, name);
+  if (!element) {
+    throw new Error(`Expected ${role} named ${name}`);
+  }
+  return element;
+}
+
+function readyEmailVerificationState(
+  overrides: Partial<MockedSignUpResourceState> = {},
+): MockedSignUpResourceState {
+  return {
+    emailAddress: "person@example.com",
+    emailVerificationExpireAt: new Date(now() + 10 * 60 * 1000),
+    emailVerificationStatus: "unverified",
+    emailVerificationStrategy: "email_code",
+    hasPassword: true,
+    missingFields: [],
+    status: "missing_requirements",
+    unverifiedFields: ["email_address"],
+    ...overrides,
+  };
+}
+
+async function fillRequiredDetails(): Promise<{
+  readonly emailInput: HTMLElement;
+  readonly passwordInput: HTMLElement;
+}> {
+  const emailInput = await screen.findByLabelText("Email address");
+  const passwordInput = screen.getByLabelText("Password");
+  fireEvent.change(emailInput, { target: { value: "person@example.com" } });
+  fireEvent.change(passwordInput, { target: { value: "valid-password" } });
+  return { emailInput, passwordInput };
+}
+
+describe("auth v2 sign-up flow", () => {
+  it("shows loading on the base route until the low-level Clerk resource is ready", async () => {
+    const clerkLoad = createDeferredPromise<void>(context.signal);
+    mockedClerk.load.mockImplementation(() => {
+      return clerkLoad.promise;
+    });
+
+    setupSignUpPage({ status: null });
+
+    const signUpCard = await screen.findByTestId("app-auth-v2");
+    expect(within(signUpCard).getByRole("status")).toHaveTextContent(
+      "Loading authentication",
+    );
+
+    await act(async () => {
+      clerkLoad.resolve(undefined);
+      await clerkLoad.promise;
+    });
+
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+  });
+
+  it("recovers a prepared progressive sign-up on a nested refresh without sending another code", async () => {
+    setupSignUpPage(readyEmailVerificationState(), {
+      path: "/v2/sign-up/verify-email-address",
+    });
+
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+    expect(
+      mockedClerk.signUpPrepareEmailAddressVerification,
+    ).not.toHaveBeenCalled();
+    expect(screen.getByText("person@example.com")).toBeVisible();
+  });
+
+  it("collects Clerk-exposed fields, validates the password, coalesces creation, and prepares exactly once", async () => {
+    const create = createDeferredPromise<
+      ReturnType<typeof currentSignUpResource>
+    >(context.signal);
+    mockedClerk.clientSignUpCreate.mockImplementation(() => {
+      return create.promise;
+    });
+    mockedClerk.signUpPrepareEmailAddressVerification.mockImplementation(() => {
+      return moveSignUpToAsync(readyEmailVerificationState());
+    });
+
+    setupSignUpPage({ status: null });
+    const { emailInput } = await fillRequiredDetails();
+    const firstNameInput = screen.getByLabelText(/First name/);
+    const lastNameInput = screen.getByLabelText(/Last name/);
+    fireEvent.change(firstNameInput, { target: { value: "Ada" } });
+    fireEvent.change(lastNameInput, { target: { value: "Lovelace" } });
+    const form = containingForm(emailInput);
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.signUpValidatePassword).toHaveBeenCalledWith(
+      "valid-password",
+      expect.objectContaining({ onValidation: expect.any(Function) }),
+    );
+    expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledWith({
+      emailAddress: "person@example.com",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      locale: "en-US",
+      password: "valid-password",
+    });
+
+    await act(async () => {
+      create.resolve(
+        moveSignUpTo(
+          readyEmailVerificationState({
+            emailVerificationExpireAt: null,
+            emailVerificationStatus: null,
+            emailVerificationStrategy: null,
+          }),
+        ),
+      );
+      await create.promise;
+    });
+
+    await waitFor(() => {
+      expect(
+        mockedClerk.signUpPrepareEmailAddressVerification,
+      ).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      mockedClerk.signUpPrepareEmailAddressVerification,
+    ).toHaveBeenCalledWith({ strategy: "email_code" });
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+  });
+
+  it("coalesces resend and code attempts, applies cooldown, preserves attribution, and activates once", async () => {
+    const resend = createDeferredPromise<
+      ReturnType<typeof currentSignUpResource>
+    >(context.signal);
+    const attempt = createDeferredPromise<
+      ReturnType<typeof currentSignUpResource>
+    >(context.signal);
+    mockedClerk.signUpPrepareEmailAddressVerification.mockImplementation(() => {
+      return resend.promise;
+    });
+    mockedClerk.signUpAttemptEmailAddressVerification.mockImplementation(() => {
+      return attempt.promise;
+    });
+    const path =
+      "/v2/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer";
+    setupSignUpPage(readyEmailVerificationState(), {
+      path,
+      url: `https://app.vm0.ai${path}`,
+    });
+
+    await screen.findByLabelText("Verification code");
+    const resendButton = await waitForRoleElement(
+      "button",
+      "Didn't receive a code? Resend",
+    );
+    fireEvent.click(resendButton);
+    fireEvent.click(resendButton);
+
+    await waitFor(() => {
+      expect(
+        mockedClerk.signUpPrepareEmailAddressVerification,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      resend.resolve(moveSignUpTo(readyEmailVerificationState()));
+      await resend.promise;
+    });
+
+    const cooldownButton = await waitForRoleElement(
+      "button",
+      "Didn't receive a code? Resend (30s)",
+    );
+    expect(cooldownButton).toBeDisabled();
+    const readyCodeInput = await screen.findByLabelText("Verification code");
+    fireEvent.change(readyCodeInput, { target: { value: "123456" } });
+    const form = containingForm(readyCodeInput);
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(
+        mockedClerk.signUpAttemptEmailAddressVerification,
+      ).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      mockedClerk.signUpAttemptEmailAddressVerification,
+    ).toHaveBeenCalledWith({ code: "123456" });
+
+    await act(async () => {
+      attempt.resolve(
+        moveSignUpTo({
+          createdSessionId: "session_sign_up",
+          hasPassword: true,
+          status: "complete",
+        }),
+      );
+      await attempt.promise;
+    });
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    const activation = mockedClerk.setActive.mock.calls[0]?.[0];
+    expect(activation?.session).toBe("session_sign_up");
+    const redirectUrl = new URL(activation?.redirectUrl ?? "");
+    expect(redirectUrl.pathname).toBe("/onboarding");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+  });
+
+  it("requires configured legal consent and rejects Clerk-invalid passwords", async () => {
+    const user = userEvent.setup();
+    mockSignUpConfiguration({
+      privacyPolicyUrl: "https://vm0.ai/legal/privacy",
+      termsUrl: "https://vm0.ai/legal/terms",
+    });
+    setupSignUpPage({
+      missingFields: ["email_address", "password", "legal_accepted"],
+      requiredFields: ["email_address", "password", "legal_accepted"],
+      status: null,
+    });
+    const { emailInput } = await fillRequiredDetails();
+    expect(roleElement("link", "Terms of Service")).toHaveAttribute(
+      "href",
+      "https://vm0.ai/legal/terms",
+    );
+    expect(roleElement("link", "Privacy Policy")).toHaveAttribute(
+      "href",
+      "https://vm0.ai/legal/privacy",
+    );
+
+    const form = containingForm(emailInput);
+    fireEvent.submit(form);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Please read and accept the terms to continue",
+    );
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+
+    const legalConsent = screen.getByRole("checkbox");
+    await user.click(legalConsent);
+    await waitFor(() => {
+      expect(legalConsent).toBeChecked();
+    });
+    mockSignUpPasswordValidation({
+      complexity: { min_length: true },
+      strength: undefined,
+    });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Your password is not strong enough.",
+      );
+    });
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+
+    mockSignUpPasswordValidation({ complexity: {}, strength: undefined });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ legalAccepted: true }),
+      );
+    });
+  });
+
+  it("shows expired verification recovery and lets the user edit the email before preparing once", async () => {
+    setupSignUpPage(
+      readyEmailVerificationState({
+        emailVerificationExpireAt: new Date(now() - 1000),
+        emailVerificationStatus: "expired",
+      }),
+    );
+
+    const editEmail = await waitForRoleElement("button", "Edit email address");
+    expect(screen.getByRole("alert")).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Didn't receive a code? Resend"),
+    ).resolves.toBeEnabled();
+    fireEvent.click(editEmail);
+
+    const emailInput = await screen.findByLabelText("Email address");
+    expect(emailInput).toHaveValue("person@example.com");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    fireEvent.change(emailInput, {
+      target: { value: "updated@example.com" },
+    });
+    mockedClerk.signUpUpdate.mockImplementation(() => {
+      return moveSignUpToAsync(
+        readyEmailVerificationState({
+          emailAddress: "updated@example.com",
+          emailVerificationExpireAt: null,
+          emailVerificationStatus: null,
+          emailVerificationStrategy: null,
+        }),
+      );
+    });
+    mockedClerk.signUpPrepareEmailAddressVerification.mockImplementation(() => {
+      return moveSignUpToAsync(
+        readyEmailVerificationState({ emailAddress: "updated@example.com" }),
+      );
+    });
+    fireEvent.submit(containingForm(emailInput));
+
+    await waitFor(() => {
+      expect(mockedClerk.signUpUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ emailAddress: "updated@example.com" }),
+      );
+      expect(
+        mockedClerk.signUpPrepareEmailAddressVerification,
+      ).toHaveBeenCalledTimes(1);
+    });
+    await expect(
+      screen.findByText("updated@example.com"),
+    ).resolves.toBeVisible();
+  });
+
+  it("surfaces Turnstile loading, blocked, expired, and retry states", async () => {
+    const create = createDeferredPromise<
+      ReturnType<typeof currentSignUpResource>
+    >(context.signal);
+    mockSignUpConfiguration({ captchaEnabled: true });
+    mockedClerk.clientSignUpCreate.mockImplementation(() => {
+      return create.promise;
+    });
+    setupSignUpPage({ status: null });
+    const { emailInput } = await fillRequiredDetails();
+    const captcha = document.querySelector("#clerk-captcha");
+    expect(captcha).toBeInstanceOf(HTMLDivElement);
+    fireEvent.submit(containingForm(emailInput));
+
+    await expect(screen.findByText("Loading…")).resolves.toBeVisible();
+    if (!(captcha instanceof HTMLDivElement)) {
+      throw new Error("Expected the Clerk CAPTCHA host");
+    }
+    captcha.dataset.clInteractive = "true";
+    await waitFor(() => {
+      expect(screen.getByText("Verifying your request")).toBeVisible();
+    });
+
+    await act(async () => {
+      create.reject({
+        errors: [
+          {
+            code: "captcha_invalid",
+            longMessage: "Bot validation expired.",
+            meta: { paramName: "captcha" },
+          },
+        ],
+      });
+      await expect(create.promise).rejects.toBeDefined();
+    });
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Bot validation expired.",
+    );
+    mockedClerk.clientSignUpCreate.mockImplementation(() => {
+      return moveSignUpToAsync({
+        createdSessionId: "session_captcha",
+        hasPassword: true,
+        status: "complete",
+      });
+    });
+    fireEvent.click(await waitForRoleElement("button", "Try again"));
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledTimes(2);
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it.each([
+    {
+      name: "a transferable identity",
+      state: readyEmailVerificationState({
+        emailVerificationExpireAt: null,
+        emailVerificationStatus: null,
+        emailVerificationStrategy: null,
+        isTransferable: true,
+      }),
+      title: "Sign in",
+    },
+    {
+      name: "an unsupported required field",
+      state: {
+        missingFields: ["phone_number"],
+        requiredFields: ["phone_number"],
+        status: "missing_requirements",
+      },
+      title: "Access restricted",
+    },
+    {
+      name: "a completed attempt without a session",
+      state: { status: "complete" },
+      title: "Access restricted",
+    },
+  ])(
+    "renders explicit transfer or recovery UI for $name",
+    async ({ state, title }) => {
+      const redirectUrl = "https://app.okou.ai/onboarding?source=sign-up";
+      setupSignUpPage(state, {
+        path: `/v2/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      });
+
+      await expect(
+        screen.findByRole(title === "Sign in" ? "link" : "heading", {
+          name: title,
+        }),
+      ).resolves.toBeVisible();
+      const signIn = roleElement("link", "Sign in");
+      expect(signIn).toHaveAttribute(
+        "href",
+        expect.stringContaining("redirect_url="),
+      );
+      expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+      expect(
+        mockedClerk.signUpPrepareEmailAddressVerification,
+      ).not.toHaveBeenCalled();
+    },
+  );
+});

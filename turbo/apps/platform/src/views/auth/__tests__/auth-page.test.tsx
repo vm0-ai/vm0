@@ -30,8 +30,10 @@ function okouBrandLink(): HTMLElement {
   return link;
 }
 
-function authV2ActionLink(): HTMLAnchorElement {
-  const link = screen.getByTestId("app-auth-v2").querySelector("a");
+function authV2ActionLink(name: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error("Auth v2 action link not found");
   }
@@ -403,7 +405,7 @@ describe("app auth pages", () => {
     expect(
       screen.getByRole("heading", { name: routeCase.heading }),
     ).toBeVisible();
-    const actionLink = authV2ActionLink();
+    const actionLink = authV2ActionLink(routeCase.action);
     expect(actionLink).toHaveTextContent(routeCase.action);
     expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
@@ -427,7 +429,7 @@ describe("app auth pages", () => {
     expect(
       screen.getByRole("heading", { name: "Sign in to Okou" }),
     ).toBeVisible();
-    const continueLink = authV2ActionLink();
+    const continueLink = authV2ActionLink("Use current sign-in");
     expect(continueLink).toHaveAttribute(
       "href",
       `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`,

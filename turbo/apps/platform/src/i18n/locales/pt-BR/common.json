@@ -1069,7 +1069,11 @@
       },
       "signUp": {
         "action": "Usar o cadastro atual",
-        "description": "A nova experiência de cadastro ainda não está disponível.",
+        "captchaExpired": "A verificação contra bots expirou. Tente novamente.",
+        "codeExpired": "Este código de verificação expirou. Solicite um novo código.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
         "title": "Criar sua conta do {{brandName}}"
       }
     }

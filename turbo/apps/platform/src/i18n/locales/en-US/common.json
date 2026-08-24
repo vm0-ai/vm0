@@ -1050,7 +1050,10 @@
       },
       "signUp": {
         "action": "Use current sign-up",
-        "description": "The new sign-up experience is not ready yet.",
+        "captchaExpired": "Bot verification expired. Try again.",
+        "codeExpired": "This verification code has expired. Request a new code.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}}s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}}s)",
         "title": "Create your {{brandName}} account"
       }
     }
