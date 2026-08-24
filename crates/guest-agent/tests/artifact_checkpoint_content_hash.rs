@@ -109,6 +109,7 @@ fn test_runtime(
         paths,
         http,
         workload_containment: None,
+        process_control_endpoint: None,
     })
 }
 

@@ -114,7 +114,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
     let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
     let command = format!(
-        "printf '%s' \"$$\" > '{}'; printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
+        "printf '%s' \"$$\" > '{}'; if [ \"${{OKOU_PROCESS_CONTROL_ENDPOINT+x}}\" = x ]; then exit 42; fi; printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
         pid_path.as_str()
     );
     let (handle, mut host_stream) = start_guest_connection();

@@ -30,6 +30,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             process_control_ipc::BOOTSTRAP_ENV,
             "runner-control-endpoint",
         );
+        std::env::set_var(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            "runner-control-endpoint",
+        );
         std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
         std::env::set_var("NODE_EXTRA_CA_CERTS", "/rootfs/vm0-proxy-ca.crt");
         std::env::set_var("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt");
@@ -173,7 +177,15 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
     assert!(!cli_env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
-    assert!(!cli_env.contains_key(process_control_ipc::BOOTSTRAP_ENV));
+    for key in [
+        process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
     assert!(
         !cli_env

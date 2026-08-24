@@ -268,10 +268,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let shutdown = CancellationToken::new();
     let cli_cancellation = CancellationToken::new();
     let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
-    let has_process_control_endpoint = matches!(
-        std::env::var(process_control_ipc::BOOTSTRAP_ENV),
-        Ok(endpoint) if !endpoint.is_empty()
-    );
+    let has_process_control_endpoint = runtime.process_control_endpoint.is_some();
     let active_input_enabled = framework_supports_active_input && has_process_control_endpoint;
     let active_input = if active_input_enabled {
         let receipt_journal_path =
@@ -302,6 +299,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
         )
     };
     let control_handle = control::ControlHandle::spawn(
+        runtime.process_control_endpoint.as_deref(),
         shutdown.clone(),
         active_input.controller(),
         cli_cancellation.clone(),
@@ -1072,6 +1070,7 @@ mod tests {
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
             workload_containment: None,
+            process_control_endpoint: None,
         }
     }
 
@@ -1196,6 +1195,7 @@ mod tests {
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
