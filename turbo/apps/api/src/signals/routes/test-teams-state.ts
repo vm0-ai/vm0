@@ -238,7 +238,7 @@ async function seedDefaultAgent(
       });
   });
 
-  await seedVm0ManagedKeys(db, agent.id);
+  await seedVm0BuiltInModelKeys(db, agent.id);
   signal.throwIfAborted();
   await ensureAgentInstructionsStorageFixture(
     db,
@@ -252,15 +252,15 @@ async function seedDefaultAgent(
   return { agentId: agent.id };
 }
 
-async function seedVm0ManagedKeys(db: Db, agentId: string): Promise<void> {
+async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
-    .values(vm0ManagedKeyRows(agentId))
+    .values(vm0BuiltInModelKeyRows(agentId))
     .onConflictDoNothing({ target: builtInModelKeys.vendor });
 }
 
-function vm0ManagedKeyRows(agentId: string) {
+function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
@@ -280,7 +280,7 @@ function vm0ManagedKeyRows(agentId: string) {
   ];
 }
 
-async function deleteVm0ManagedKeysForSeededDefaultAgent(
+async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -293,7 +293,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0ManagedKeyRows(agent.id).map((row) => {
+  const apiKeys = vm0BuiltInModelKeyRows(agent.id).map((row) => {
     return row.apiKey;
   });
   await db
@@ -906,7 +906,7 @@ const deleteTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForTeamsStateDelete(installationRows, query.org_id);
   for (const orgId of orgIds) {
-    await deleteVm0ManagedKeysForSeededDefaultAgent(db, orgId);
+    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, orgId);
     signal.throwIfAborted();
   }
 

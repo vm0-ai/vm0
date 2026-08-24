@@ -7,7 +7,7 @@ WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 REAL_CLAUDE_TEST="${RUNNER_TESTS}/run-t10-real-claude-smoke.bats"
-MANAGED_FALLBACK_TEST="${RUNNER_TESTS}/run-t24-managed-provider-fallback.bats"
+BUILT_IN_FALLBACK_TEST="${RUNNER_TESTS}/run-t24-built-in-provider-fallback.bats"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
   "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
@@ -54,8 +54,8 @@ fi
 if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
   fail "real Claude E2E must not retain the Sonnet 4.6 pin"
 fi
-grep -Fq 'OKOU_MITM_RUNNER_TOKEN' "$MANAGED_FALLBACK_TEST" ||
-  fail "managed fallback E2E must require trusted failure authentication"
+grep -Fq 'OKOU_MITM_RUNNER_TOKEN' "$BUILT_IN_FALLBACK_TEST" ||
+  fail "built-in fallback E2E must require trusted failure authentication"
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
@@ -480,7 +480,7 @@ claude_script = claude_step.fetch("run")
   /api/okou/model-policies
   /api/okou/feature-switches
   realAgentInPreview
-  managedModelProviderFallback
+  builtInModelProviderFallback
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
     raise "real Claude bootstrap must include #{required_fragment}"
@@ -497,7 +497,7 @@ if claude_script.include?("claude-sonnet-4-6")
 end
 unless claude_script.include?('defaultProviderType: "vm0"') &&
     claude_script.include?("modelProviderId: null")
-  raise "real Claude bootstrap must use the VM0-managed provider"
+  raise "real Claude bootstrap must use the built-in provider"
 end
 
 shard_step = runner.fetch("steps").find do |step|
@@ -530,9 +530,9 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
     "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
   raise "runner E2E tests must receive the preview bypass secret"
 end
-expected_failure_token = "${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}"
+expected_failure_token = "${{ contains(matrix.files, 'tests/03-runner/run-t24-built-in-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}"
 unless run_step.dig("env", "OKOU_MITM_RUNNER_TOKEN") == expected_failure_token
-  raise "only the managed fallback shard may receive trusted failure authentication"
+  raise "only the built-in fallback shard may receive trusted failure authentication"
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&

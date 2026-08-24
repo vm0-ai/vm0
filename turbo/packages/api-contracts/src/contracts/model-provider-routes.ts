@@ -12,7 +12,7 @@ const c = initContract();
 const orgUpsertModelProviderRequestSchema =
   upsertModelProviderRequestSchema.omit({ selectedModel: true });
 
-export const managedModelCooldownDiagnosticsSchema = z.object({
+export const builtInModelCooldownDiagnosticsSchema = z.object({
   fallbackEnabled: z.boolean(),
   activeCooldowns: z.array(
     z.object({
@@ -24,8 +24,8 @@ export const managedModelCooldownDiagnosticsSchema = z.object({
   ),
 });
 
-export type ManagedModelCooldownDiagnostics = z.infer<
-  typeof managedModelCooldownDiagnosticsSchema
+export type BuiltInModelCooldownDiagnostics = z.infer<
+  typeof builtInModelCooldownDiagnosticsSchema
 >;
 
 /**
@@ -72,13 +72,13 @@ export const modelProviderCooldownDiagnosticsContract = c.router({
     path: "/api/model-providers/cooldown-diagnostics",
     headers: authHeadersSchema,
     responses: {
-      200: managedModelCooldownDiagnosticsSchema,
+      200: builtInModelCooldownDiagnosticsSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get managed model cooldown diagnostics",
+    summary: "Get built-in model cooldown diagnostics",
   },
 });
 

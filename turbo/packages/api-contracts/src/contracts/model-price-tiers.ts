@@ -1,5 +1,5 @@
 /**
- * Canonical VM0-managed run models and Built-in credit price tiers.
+ * Canonical VM0 built-in run models and Built-in credit price tiers.
  *
  * Keep this module lightweight so public UI surfaces can read price tier data
  * without importing the full model provider contract schema.

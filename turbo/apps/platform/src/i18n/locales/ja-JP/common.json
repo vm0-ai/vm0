@@ -4843,6 +4843,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "フォールバック選択から一時的に除外されている内蔵モデルルートを確認します。",
+          "disabled": "無効",
+          "disabledExplanation": "このワークスペースでは内蔵モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
+          "empty": "現在、グローバルクールダウン中の内蔵モデルルートはありません。",
+          "enabled": "有効",
+          "globalActive": "有効なグローバルクールダウン",
+          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで内蔵モデルのフォールバックが有効な場合にのみ影響します。",
+          "loading": "内蔵モデルのクールダウン診断を読み込んでいます...",
+          "providerType": "プロバイダータイプ",
+          "refresh": "更新",
+          "selectedModel": "選択されたモデル",
+          "title": "内蔵モデルのフォールバック",
+          "unavailable": "内蔵モデルのクールダウン診断は利用できません。",
+          "unavailableUntil": "利用不可期限",
+          "upstreamModel": "アップストリームモデル",
+          "workspaceFallback": "ワークスペースのフォールバック"
+        },
         "capture": {
           "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
@@ -4867,24 +4885,6 @@
           "recovery": "復旧",
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
-        },
-        "managedModelCooldown": {
-          "description": "フォールバック選択から一時的に除外されている管理対象モデルルートを確認します。",
-          "disabled": "無効",
-          "disabledExplanation": "このワークスペースでは管理対象モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
-          "empty": "現在、グローバルクールダウン中の管理対象モデルルートはありません。",
-          "enabled": "有効",
-          "globalActive": "有効なグローバルクールダウン",
-          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで管理対象モデルのフォールバックが有効な場合にのみ影響します。",
-          "loading": "管理対象モデルのクールダウン診断を読み込んでいます...",
-          "providerType": "プロバイダータイプ",
-          "refresh": "更新",
-          "selectedModel": "選択されたモデル",
-          "title": "管理対象モデルのフォールバック",
-          "unavailable": "管理対象モデルのクールダウン診断は利用できません。",
-          "unavailableUntil": "利用不可期限",
-          "upstreamModel": "アップストリームモデル",
-          "workspaceFallback": "ワークスペースのフォールバック"
         },
         "tab": "デバッグ"
       },

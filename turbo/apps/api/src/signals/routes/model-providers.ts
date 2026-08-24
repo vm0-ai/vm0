@@ -11,9 +11,7 @@ import {
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
-import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
-import { asc, gt, max } from "drizzle-orm";
-import { unionAll } from "drizzle-orm/pg-core";
+import { asc, gt } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -47,7 +45,7 @@ const cooldownDiagnosticsDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Managed model cooldown diagnostics are not enabled",
+      message: "Built-in model cooldown diagnostics are not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -59,7 +57,7 @@ const listModelProvidersInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getManagedModelCooldownDiagnosticsInner$ = command(
+const getBuiltInModelCooldownDiagnosticsInner$ = command(
   async ({ get }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const overrides = await get(
@@ -77,48 +75,19 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
 
     const db = get(db$);
     const timestamp = nowDate();
-    const activeCooldownRows = db.$with("active_model_candidate_cooldowns").as(
-      unionAll(
-        db
-          .select({
-            selectedModel: managedModelCandidateCooldown.selectedModel,
-            providerType: managedModelCandidateCooldown.providerType,
-            upstreamModel: managedModelCandidateCooldown.upstreamModel,
-            unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
-          })
-          .from(managedModelCandidateCooldown)
-          .where(gt(managedModelCandidateCooldown.unavailableUntil, timestamp)),
-        db
-          .select({
-            selectedModel: builtInModelCandidateCooldown.selectedModel,
-            providerType: builtInModelCandidateCooldown.providerType,
-            upstreamModel: builtInModelCandidateCooldown.upstreamModel,
-            unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
-          })
-          .from(builtInModelCandidateCooldown)
-          .where(gt(builtInModelCandidateCooldown.unavailableUntil, timestamp)),
-      ),
-    );
     const activeCooldowns = await db
-      .with(activeCooldownRows)
       .select({
-        selectedModel: activeCooldownRows.selectedModel,
-        providerType: activeCooldownRows.providerType,
-        upstreamModel: activeCooldownRows.upstreamModel,
-        unavailableUntil: max(activeCooldownRows.unavailableUntil)
-          .mapWith(managedModelCandidateCooldown.unavailableUntil)
-          .as("unavailable_until"),
+        selectedModel: builtInModelCandidateCooldown.selectedModel,
+        providerType: builtInModelCandidateCooldown.providerType,
+        upstreamModel: builtInModelCandidateCooldown.upstreamModel,
+        unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
       })
-      .from(activeCooldownRows)
-      .groupBy(
-        activeCooldownRows.selectedModel,
-        activeCooldownRows.providerType,
-        activeCooldownRows.upstreamModel,
-      )
+      .from(builtInModelCandidateCooldown)
+      .where(gt(builtInModelCandidateCooldown.unavailableUntil, timestamp))
       .orderBy(
-        asc(activeCooldownRows.selectedModel),
-        asc(activeCooldownRows.providerType),
-        asc(activeCooldownRows.upstreamModel),
+        asc(builtInModelCandidateCooldown.selectedModel),
+        asc(builtInModelCandidateCooldown.providerType),
+        asc(builtInModelCandidateCooldown.upstreamModel),
       );
     signal.throwIfAborted();
 
@@ -126,7 +95,7 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
       status: 200 as const,
       body: {
         fallbackEnabled:
-          featureStates[FeatureSwitchKey.ManagedModelProviderFallback],
+          featureStates[FeatureSwitchKey.BuiltInModelProviderFallback],
         activeCooldowns: activeCooldowns.map((cooldown) => {
           return {
             ...cooldown,
@@ -306,7 +275,7 @@ export const modelProvidersRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
         accept: ["session"],
       },
-      getManagedModelCooldownDiagnosticsInner$,
+      getBuiltInModelCooldownDiagnosticsInner$,
     ),
   },
   {

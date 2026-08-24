@@ -361,10 +361,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ManagedModelProviderFallback]: {
+  [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
-    description:
-      "Select healthy fallback routes for VM0-managed built-in models.",
+    description: "Select healthy fallback routes for VM0 built-in models.",
     enabled: false,
   },
   [FeatureSwitchKey.SharedChatDatabase]: {

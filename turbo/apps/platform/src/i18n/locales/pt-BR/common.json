@@ -4909,6 +4909,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Inspecione as rotas de modelos integrados temporariamente excluídas da seleção de fallback.",
+          "disabled": "desativado",
+          "disabledExplanation": "O fallback de modelos integrados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
+          "empty": "Nenhuma rota de modelo integrado está em cooldown global no momento.",
+          "enabled": "ativado",
+          "globalActive": "cooldowns globais ativos",
+          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos integrados estiver ativado aqui.",
+          "loading": "Carregando diagnósticos de cooldown de modelos integrados...",
+          "providerType": "Tipo de provedor",
+          "refresh": "Atualizar",
+          "selectedModel": "Modelo selecionado",
+          "title": "Fallback de modelos integrados",
+          "unavailable": "Os diagnósticos de cooldown de modelos integrados estão indisponíveis.",
+          "unavailableUntil": "Indisponível até",
+          "upstreamModel": "Modelo upstream",
+          "workspaceFallback": "fallback do workspace"
+        },
         "capture": {
           "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
           "disabled": "Desativado",
@@ -4934,24 +4952,6 @@
           "recovery": "recuperação",
           "title": "Diagnóstico de conexão em tempo real",
           "unavailable": "indisponível"
-        },
-        "managedModelCooldown": {
-          "description": "Inspecione as rotas de modelos gerenciados temporariamente excluídas da seleção de fallback.",
-          "disabled": "desativado",
-          "disabledExplanation": "O fallback de modelos gerenciados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
-          "empty": "Nenhuma rota de modelo gerenciado está em cooldown global no momento.",
-          "enabled": "ativado",
-          "globalActive": "cooldowns globais ativos",
-          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos gerenciados estiver ativado aqui.",
-          "loading": "Carregando diagnósticos de cooldown de modelos gerenciados...",
-          "providerType": "Tipo de provedor",
-          "refresh": "Atualizar",
-          "selectedModel": "Modelo selecionado",
-          "title": "Fallback de modelos gerenciados",
-          "unavailable": "Os diagnósticos de cooldown de modelos gerenciados estão indisponíveis.",
-          "unavailableUntil": "Indisponível até",
-          "upstreamModel": "Modelo upstream",
-          "workspaceFallback": "fallback do workspace"
         },
         "tab": "Depuração"
       },

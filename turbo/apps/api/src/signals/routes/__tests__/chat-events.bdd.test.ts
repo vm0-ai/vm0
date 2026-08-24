@@ -121,7 +121,7 @@ import {
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
   readThreadSessionConversation,
-  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
@@ -452,8 +452,8 @@ async function entitledChatActor(
   return { actor, agentId: agent.agentId, runnerGroup, providerId };
 }
 
-async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -5756,7 +5756,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     await flushWaitUntilForTest();
 
-    await seedVm0ManagedModelKey("gpt-5.6-terra");
+    await seedVm0BuiltInModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-terra",
@@ -6059,7 +6059,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
-    await seedVm0ManagedModelKey("gpt-5.6-sol");
+    await seedVm0BuiltInModelKey("gpt-5.6-sol");
 
     await api.updateOrgModelPolicies(actor, [
       {
@@ -6442,7 +6442,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
-    await seedVm0ManagedModelKey("deepseek-v4-flash");
+    await seedVm0BuiltInModelKey("deepseek-v4-flash");
     const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
@@ -6532,12 +6532,12 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("selects a vm0 managed key by vendor", async () => {
+  it("selects a vm0 built-in model key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
-    await seedVm0ManagedModelKey("claude-opus-4-8");
+    await seedVm0BuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
@@ -7022,7 +7022,7 @@ describe("CHAT-02: run-level model overrides", () => {
   it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const selectedModel = "claude-sonnet-5";
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     await api.updateOrgModelPolicies(actor, [
       {
         model: selectedModel,
@@ -7035,7 +7035,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const first = await sendChatRun(actor, {
       agentId,
-      prompt: "establish a managed runtime route",
+      prompt: "establish a built-in model runtime route",
       model: selectedModel,
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -7046,7 +7046,7 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
     );
     if (!firstBinding.agent_session_id) {
-      throw new Error("Expected the managed route to bind a session");
+      throw new Error("Expected the built-in model route to bind a session");
     }
     await expect(
       readRunModelRuntimeRouteFixture(first.runId),
@@ -7062,7 +7062,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const reused = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "reuse the same managed route",
+      prompt: "reuse the same built-in model route",
     });
     const reusedBinding = await readThreadSessionBinding(
       context,

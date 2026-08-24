@@ -1,5 +1,5 @@
 import {
-  getVm0ManagedRouteCandidates,
+  getVm0BuiltInModelRouteCandidates,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -12,7 +12,6 @@ import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/co
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
-import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
@@ -43,9 +42,9 @@ import {
   settleIncludingAbort,
 } from "../utils";
 import {
-  acquireManagedModelKeyFixture,
-  releaseManagedModelKeyFixture,
-} from "../services/managed-model-key-fixture";
+  acquireBuiltInModelKeyFixture,
+  releaseBuiltInModelKeyFixture,
+} from "../services/built-in-model-key-fixture";
 import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
@@ -66,7 +65,7 @@ import {
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
+const VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;
@@ -214,7 +213,7 @@ async function readOrgAdmissionLockState(
   return state;
 }
 
-async function seedVm0ManagedDefaultModelKey(
+async function seedVm0BuiltInDefaultModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
@@ -223,44 +222,44 @@ async function seedVm0ManagedDefaultModelKey(
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0ManagedModelKey(db, fixtureId, selectedModel, signal);
+  return await seedVm0BuiltInModelKey(db, fixtureId, selectedModel, signal);
 }
 
-async function seedVm0ManagedModelKey(
+async function seedVm0BuiltInModelKey(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
   const vendor = getVm0Vendor(selectedModel);
-  await acquireManagedModelKeyFixture(db, fixtureId, [
+  await acquireBuiltInModelKeyFixture(db, fixtureId, [
     {
       vendor,
-      apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+      apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
     },
   ]);
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function seedVm0ManagedModelCandidateKeys(
+async function seedVm0BuiltInModelCandidateKeys(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
   const vendors = new Set(
-    getVm0ManagedRouteCandidates(selectedModel).map((candidate) => {
+    getVm0BuiltInModelRouteCandidates(selectedModel).map((candidate) => {
       return candidate.vendor;
     }),
   );
-  await acquireManagedModelKeyFixture(
+  await acquireBuiltInModelKeyFixture(
     db,
     fixtureId,
     [...vendors].map((vendor) => {
       return {
         vendor,
-        apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
+        apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
       };
     }),
   );
@@ -268,16 +267,16 @@ async function seedVm0ManagedModelCandidateKeys(
   return selectedModel;
 }
 
-async function deleteVm0ManagedModelKey(
+async function deleteVm0BuiltInModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await releaseManagedModelKeyFixture(db, fixtureId);
+  await releaseBuiltInModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
 }
 
-function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
+function serializeBuiltInModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   return {
     provider_type: route.providerType,
     upstream_model: route.upstreamModel,
@@ -285,128 +284,94 @@ function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   };
 }
 
-type Vm0ManagedModelAction = Extract<
+type Vm0BuiltInModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "seed-vm0-managed-default-model-key"
-      | "seed-vm0-managed-model-key"
-      | "seed-vm0-managed-model-candidate-keys"
-      | "delete-vm0-managed-model-key"
-      | "resolve-vm0-managed-model-route"
-      | "set-vm0-managed-candidate-cooldown"
-      | "delete-vm0-managed-candidate-cooldown";
+      | "seed-vm0-built-in-default-model-key"
+      | "seed-vm0-built-in-model-key"
+      | "seed-vm0-built-in-model-candidate-keys"
+      | "delete-vm0-built-in-model-key"
+      | "resolve-vm0-built-in-model-route"
+      | "set-vm0-built-in-candidate-cooldown"
+      | "delete-vm0-built-in-candidate-cooldown";
   }
 >;
 
-function isVm0ManagedModelAction(
+function isVm0BuiltInModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelAction {
+): body is Vm0BuiltInModelAction {
   return [
-    "seed-vm0-managed-default-model-key",
-    "seed-vm0-managed-model-key",
-    "seed-vm0-managed-model-candidate-keys",
-    "delete-vm0-managed-model-key",
-    "resolve-vm0-managed-model-route",
-    "set-vm0-managed-candidate-cooldown",
-    "delete-vm0-managed-candidate-cooldown",
+    "seed-vm0-built-in-default-model-key",
+    "seed-vm0-built-in-model-key",
+    "seed-vm0-built-in-model-candidate-keys",
+    "delete-vm0-built-in-model-key",
+    "resolve-vm0-built-in-model-route",
+    "set-vm0-built-in-candidate-cooldown",
+    "delete-vm0-built-in-candidate-cooldown",
   ].includes(body.action);
 }
 
-type SetVm0ManagedCandidateCooldownAction = Extract<
-  Vm0ManagedModelAction,
-  { action: "set-vm0-managed-candidate-cooldown" }
+type SetVm0BuiltInCandidateCooldownAction = Extract<
+  Vm0BuiltInModelAction,
+  { action: "set-vm0-built-in-candidate-cooldown" }
 >;
 
-async function setVm0ManagedCandidateCooldown(
+async function setVm0BuiltInCandidateCooldown(
   db: Db,
-  body: SetVm0ManagedCandidateCooldownAction,
+  body: SetVm0BuiltInCandidateCooldownAction,
 ): Promise<void> {
   const unavailableUntil = new Date(body.unavailable_until);
-  const cooldownStorage = body.cooldown_storage ?? "both";
-  await db.transaction(async (tx) => {
-    if (cooldownStorage !== "built-in") {
-      await tx
-        .insert(managedModelCandidateCooldown)
-        .values({
-          selectedModel: body.selected_model,
-          providerType: body.provider_type,
-          upstreamModel: body.upstream_model,
-          unavailableUntil,
-        })
-        .onConflictDoUpdate({
-          target: [
-            managedModelCandidateCooldown.selectedModel,
-            managedModelCandidateCooldown.providerType,
-            managedModelCandidateCooldown.upstreamModel,
-          ],
-          set: { unavailableUntil },
-        });
-    }
-    if (cooldownStorage !== "legacy") {
-      await tx
-        .insert(builtInModelCandidateCooldown)
-        .values({
-          selectedModel: body.selected_model,
-          providerType: body.provider_type,
-          upstreamModel: body.upstream_model,
-          unavailableUntil,
-        })
-        .onConflictDoUpdate({
-          target: [
-            builtInModelCandidateCooldown.selectedModel,
-            builtInModelCandidateCooldown.providerType,
-            builtInModelCandidateCooldown.upstreamModel,
-          ],
-          set: { unavailableUntil },
-        });
-    }
-  });
+  await db
+    .insert(builtInModelCandidateCooldown)
+    .values({
+      selectedModel: body.selected_model,
+      providerType: body.provider_type,
+      upstreamModel: body.upstream_model,
+      unavailableUntil,
+    })
+    .onConflictDoUpdate({
+      target: [
+        builtInModelCandidateCooldown.selectedModel,
+        builtInModelCandidateCooldown.providerType,
+        builtInModelCandidateCooldown.upstreamModel,
+      ],
+      set: { unavailableUntil },
+    });
 }
 
-type DeleteVm0ManagedCandidateCooldownAction = Extract<
-  Vm0ManagedModelAction,
-  { action: "delete-vm0-managed-candidate-cooldown" }
+type DeleteVm0BuiltInCandidateCooldownAction = Extract<
+  Vm0BuiltInModelAction,
+  { action: "delete-vm0-built-in-candidate-cooldown" }
 >;
 
-async function deleteVm0ManagedCandidateCooldown(
+async function deleteVm0BuiltInCandidateCooldown(
   db: Db,
-  body: DeleteVm0ManagedCandidateCooldownAction,
+  body: DeleteVm0BuiltInCandidateCooldownAction,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(managedModelCandidateCooldown)
-      .where(
-        and(
-          eq(managedModelCandidateCooldown.selectedModel, body.selected_model),
-          eq(managedModelCandidateCooldown.providerType, body.provider_type),
-          eq(managedModelCandidateCooldown.upstreamModel, body.upstream_model),
-        ),
-      );
-    await tx
-      .delete(builtInModelCandidateCooldown)
-      .where(
-        and(
-          eq(builtInModelCandidateCooldown.selectedModel, body.selected_model),
-          eq(builtInModelCandidateCooldown.providerType, body.provider_type),
-          eq(builtInModelCandidateCooldown.upstreamModel, body.upstream_model),
-        ),
-      );
-  });
+  await db
+    .delete(builtInModelCandidateCooldown)
+    .where(
+      and(
+        eq(builtInModelCandidateCooldown.selectedModel, body.selected_model),
+        eq(builtInModelCandidateCooldown.providerType, body.provider_type),
+        eq(builtInModelCandidateCooldown.upstreamModel, body.upstream_model),
+      ),
+    );
 }
 
-async function vm0ManagedModelActionResponse(
+async function vm0BuiltInModelActionResponse(
   db: Db,
-  body: Vm0ManagedModelAction,
+  body: Vm0BuiltInModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
-    case "seed-vm0-managed-default-model-key": {
+    case "seed-vm0-built-in-default-model-key": {
       return {
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0ManagedDefaultModelKey(
+          selected_model: await seedVm0BuiltInDefaultModelKey(
             db,
             body.fixture_id,
             signal,
@@ -414,26 +379,12 @@ async function vm0ManagedModelActionResponse(
         },
       };
     }
-    case "seed-vm0-managed-model-key": {
+    case "seed-vm0-built-in-model-key": {
       return {
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0ManagedModelKey(
-            db,
-            body.fixture_id,
-            body.selected_model,
-            signal,
-          ),
-        },
-      };
-    }
-    case "seed-vm0-managed-model-candidate-keys": {
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          selected_model: await seedVm0ManagedModelCandidateKeys(
+          selected_model: await seedVm0BuiltInModelKey(
             db,
             body.fixture_id,
             body.selected_model,
@@ -442,11 +393,25 @@ async function vm0ManagedModelActionResponse(
         },
       };
     }
-    case "delete-vm0-managed-model-key": {
-      await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+    case "seed-vm0-built-in-model-candidate-keys": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0BuiltInModelCandidateKeys(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
+    case "delete-vm0-built-in-model-key": {
+      await deleteVm0BuiltInModelKey(db, body.fixture_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "resolve-vm0-managed-model-route": {
+    case "resolve-vm0-built-in-model-route": {
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
         body.selected_model,
@@ -457,19 +422,19 @@ async function vm0ManagedModelActionResponse(
         status: 200 as const,
         body: {
           ok: true as const,
-          managed_model_route: route
-            ? serializeManagedModelRuntimeRoute(route)
+          built_in_model_route: route
+            ? serializeBuiltInModelRuntimeRoute(route)
             : null,
         },
       };
     }
-    case "set-vm0-managed-candidate-cooldown": {
-      await setVm0ManagedCandidateCooldown(db, body);
+    case "set-vm0-built-in-candidate-cooldown": {
+      await setVm0BuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "delete-vm0-managed-candidate-cooldown": {
-      await deleteVm0ManagedCandidateCooldown(db, body);
+    case "delete-vm0-built-in-candidate-cooldown": {
+      await deleteVm0BuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
@@ -1820,8 +1785,8 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0ManagedModelAction(body)) {
-      return await vm0ManagedModelActionResponse(db, body, signal);
+    if (isVm0BuiltInModelAction(body)) {
+      return await vm0BuiltInModelActionResponse(db, body, signal);
     }
     if (isCustomConnectorAuthTemplateFixtureAction(body)) {
       return await customConnectorAuthTemplateFixtureActionResponse(
