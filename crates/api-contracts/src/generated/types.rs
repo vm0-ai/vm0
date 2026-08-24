@@ -37,6 +37,99 @@ pub mod runners {
             pub model_catalog: Option<serde_json::Value>,
         }
 
+        /// Pi session checkpoint used as the first-turn base.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfigApiFirstTurnBaseSession {
+            /// Pi session identifier.
+            pub session_id: String,
+            /// Optional lowercase SHA-256 of the base session JSONL.
+            pub sha256: Option<String>,
+        }
+
+        /// API-mediated first-turn configuration for Pi.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfigApiFirstTurn {
+            /// Pi API first-turn contract version.
+            pub schema_version: i64,
+            /// Digest identifying the runtime resource snapshot.
+            pub resource_snapshot_digest: String,
+            /// URL of the first-turn resource manifest.
+            pub manifest_url: String,
+            /// URL of the first-turn session JSONL.
+            pub session_url: String,
+            /// Unix timestamp in milliseconds for first-turn expiry.
+            pub deadline_at: i64,
+            /// Checkpoint used as the base Pi session.
+            pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
+            /// First sandbox event sequence number for the resumed session.
+            pub sandbox_event_sequence_start: i64,
+        }
+
+        /// API-owned launch configuration forwarded to Pi in the sandbox.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfig {
+            /// Pi launch contract version.
+            pub schema_version: i64,
+            /// Configuration for the API-mediated first turn.
+            pub api_first_turn: PiLaunchConfigApiFirstTurn,
+        }
+
+        /// Model providers supported by the Pi runtime contract.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigProvider {
+            /// DeepSeek provider.
+            #[serde(rename = "deepseek")]
+            Deepseek,
+            /// Moonshot AI provider.
+            #[serde(rename = "moonshotai")]
+            Moonshotai,
+            /// OpenAI provider.
+            #[serde(rename = "openai")]
+            Openai,
+            /// OpenRouter provider.
+            #[serde(rename = "openrouter")]
+            Openrouter,
+            /// Vercel AI Gateway provider.
+            #[serde(rename = "vercel-ai-gateway")]
+            VercelAiGateway,
+            /// Codex provider.
+            #[serde(rename = "codex")]
+            Codex,
+        }
+
+        /// Environment variables supported for Pi provider credentials.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigApiKeyEnv {
+            /// Anthropic authentication token.
+            #[serde(rename = "ANTHROPIC_AUTH_TOKEN")]
+            ANTHROPICAUTHTOKEN,
+            /// OpenAI-compatible API key.
+            #[serde(rename = "OPENAI_API_KEY")]
+            OPENAIAPIKEY,
+            /// ChatGPT access token.
+            #[serde(rename = "CHATGPT_ACCESS_TOKEN")]
+            CHATGPTACCESSTOKEN,
+        }
+
+        /// API-owned non-secret Pi model configuration.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfig {
+            /// Model provider selected for the Pi runtime.
+            pub provider: PiModelConfigProvider,
+            /// Base URL used for model requests.
+            pub base_url: String,
+            /// Provider model identifier.
+            pub model: String,
+            /// Environment variable containing the provider key.
+            pub api_key_env: PiModelConfigApiKeyEnv,
+            /// API-owned credential secret backing the environment entry.
+            pub credential_secret_name: String,
+        }
+
         /// DTOs for durable active-input delivery.
         pub mod active_inputs {
             /// DTOs for recording active-input acceptance receipts.
