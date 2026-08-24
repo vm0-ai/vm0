@@ -2821,9 +2821,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramMocks.sentMessages[0]?.reply_markup?.inline_keyboard[0]?.[0]
         ?.url ?? "",
     );
-    expect(connectUrl.origin).toBe("https://app.okou.ai");
-    expect(connectUrl.searchParams.get("bot")).toBe(OFFICIAL_TELEGRAM_BOT_ID);
-    expect(connectUrl.searchParams.get("brand")).toBe("okou");
+    expect(connectUrl.origin).toBe("https://t.me");
+    expect(connectUrl.pathname).toBe(`/${OFFICIAL_BOT_USERNAME}`);
+    expect(connectUrl.searchParams.get("start")).toBe("connect");
   });
 
   it("starts a new official DM session when the selected model changed", async () => {
