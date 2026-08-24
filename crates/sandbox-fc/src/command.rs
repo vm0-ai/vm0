@@ -600,7 +600,7 @@ impl Drop for CommandChild {
         };
         let pid = child.id();
         let (group_kill_error, child_kill_error) = request_child_tree_kill(&mut child);
-        if let Some(error) = group_kill_error {
+        if let Some(error) = group_kill_error.filter(|error| *error != nix::errno::Errno::ESRCH) {
             warn!(
                 label = COMMAND_CHILD_LABEL,
                 ?pid,
@@ -608,7 +608,9 @@ impl Drop for CommandChild {
                 "failed to kill command process group during drop cleanup"
             );
         }
-        if let Some(error) = child_kill_error {
+        if let Some(error) =
+            child_kill_error.filter(|error| error.kind() != std::io::ErrorKind::InvalidInput)
+        {
             warn!(
                 label = COMMAND_CHILD_LABEL,
                 ?pid,
