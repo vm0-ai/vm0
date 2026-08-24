@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.15...guest-contracts-v0.11.16) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+* **runtime:** reserve okou namespace in cloud execution ([#29040](https://github.com/vm0-ai/vm0/issues/29040)) ([233bc7e](https://github.com/vm0-ai/vm0/commit/233bc7eb29e9c03b4391e91f1fe15ce48d576de6))
+
 ## [0.11.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.14...guest-contracts-v0.11.15) (2026-08-24)
 
 
