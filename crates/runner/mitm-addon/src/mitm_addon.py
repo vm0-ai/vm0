@@ -484,10 +484,12 @@ def _has_current_direct_connector_auth_binding(
     )
 
 
-def _auth_base_body_header_check(
+def _buffered_auth_body_header_check(
     flow: http.HTTPFlow,
     *,
     request_end_stream: bool | None,
+    max_body_bytes: int,
+    method_allows_missing_content_length: bool,
 ) -> _BufferedRequestBodyCheck:
     if flow.request.headers.get_all("Transfer-Encoding"):
         return _BufferedRequestBodyCheck(
@@ -497,10 +499,10 @@ def _auth_base_body_header_check(
 
     parsed_content_length = content_length.parse(
         flow.request.headers.get_all("Content-Length"),
-        max_value=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+        max_value=max_body_bytes,
     )
     if parsed_content_length.kind == "missing":
-        if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
+        if not method_allows_missing_content_length:
             return _BufferedRequestBodyCheck(
                 kind="length_required",
                 reason="missing_content_length",
@@ -514,11 +516,6 @@ def _auth_base_body_header_check(
             return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
         return _BufferedRequestBodyCheck(kind="ok")
 
-    if parsed_content_length.kind == "invalid":
-        return _BufferedRequestBodyCheck(
-            kind="length_required",
-            reason="invalid_content_length",
-        )
     if parsed_content_length.kind == "conflicting":
         return _BufferedRequestBodyCheck(
             kind="length_required",
@@ -529,7 +526,27 @@ def _auth_base_body_header_check(
             kind="too_large",
             observed_size=parsed_content_length.value,
         )
-    return _BufferedRequestBodyCheck(kind="ok", observed_size=parsed_content_length.value)
+    if parsed_content_length.kind == "valid":
+        return _BufferedRequestBodyCheck(kind="ok", observed_size=parsed_content_length.value)
+    return _BufferedRequestBodyCheck(
+        kind="length_required",
+        reason="invalid_content_length",
+    )
+
+
+def _auth_base_body_header_check(
+    flow: http.HTTPFlow,
+    *,
+    request_end_stream: bool | None,
+) -> _BufferedRequestBodyCheck:
+    return _buffered_auth_body_header_check(
+        flow,
+        request_end_stream=request_end_stream,
+        max_body_bytes=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+        method_allows_missing_content_length=(
+            flow.request.method.upper() in _AUTH_BASE_BODYLESS_METHODS
+        ),
+    )
 
 
 def _aws_sigv4_body_header_check(
@@ -537,42 +554,12 @@ def _aws_sigv4_body_header_check(
     *,
     request_end_stream: bool | None,
 ) -> _BufferedRequestBodyCheck:
-    if flow.request.headers.get_all("Transfer-Encoding"):
-        return _BufferedRequestBodyCheck(
-            kind="length_required",
-            reason="transfer_encoding",
-        )
-
-    parsed_content_length = content_length.parse(
-        flow.request.headers.get_all("Content-Length"),
-        max_value=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+    return _buffered_auth_body_header_check(
+        flow,
+        request_end_stream=request_end_stream,
+        max_body_bytes=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+        method_allows_missing_content_length=True,
     )
-    if parsed_content_length.kind == "missing":
-        if request_end_stream is True:
-            return _BufferedRequestBodyCheck(kind="ok")
-        reason = (
-            "request_stream_open"
-            if request_end_stream is False
-            else "request_end_stream_unavailable"
-        )
-        return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
-
-    if parsed_content_length.kind == "invalid":
-        return _BufferedRequestBodyCheck(
-            kind="length_required",
-            reason="invalid_content_length",
-        )
-    if parsed_content_length.kind == "conflicting":
-        return _BufferedRequestBodyCheck(
-            kind="length_required",
-            reason="conflicting_content_length",
-        )
-    if parsed_content_length.kind == "over_limit":
-        return _BufferedRequestBodyCheck(
-            kind="too_large",
-            observed_size=parsed_content_length.value,
-        )
-    return _BufferedRequestBodyCheck(kind="ok", observed_size=parsed_content_length.value)
 
 
 def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
