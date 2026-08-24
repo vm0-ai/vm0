@@ -511,7 +511,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 when ZeroDebug is disabled", async () => {
+  it("returns 403 when OkouDebug is disabled", async () => {
     const fixture = uniqueOrgUser("cooldown-disabled");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = setupApp({ context, routes: modelProvidersRoutes })(
@@ -572,7 +572,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       expiredDeadline,
     );
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
       [FeatureSwitchKey.ManagedModelProviderFallback]: false,
     });
     onTestFinished(async () => {
@@ -614,7 +614,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     ]);
 
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
       [FeatureSwitchKey.ManagedModelProviderFallback]: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);

@@ -234,7 +234,7 @@ function ActivityNotFound() {
   return (
     <div className="h-full flex flex-col min-h-0">
       <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        {features?.[FeatureSwitchKey.ZeroDebug] && (
+        {features?.[FeatureSwitchKey.OkouDebug] && (
           <>
             <ActivityBreadcrumbLabel />
             <span className="text-muted-foreground/40 select-none">/</span>
@@ -464,7 +464,7 @@ function prepareRenderData(
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
   const showSystemPrompt =
-    (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
+    (features?.[FeatureSwitchKey.OkouDebug] ?? false) &&
     appendSystemPrompt.trim().length > 0;
   return { prompt, appendSystemPrompt, showSystemPrompt };
 }
@@ -958,7 +958,7 @@ function ActivityDetailContent({
   const { t } = useTranslation();
   const params = useGet(searchParams$);
   const updateParams = useSet(updateSearchParams$);
-  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showDebugTabs = features?.[FeatureSwitchKey.OkouDebug] ?? false;
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
     showDebugTabs &&
@@ -989,7 +989,7 @@ function ActivityDetailContent({
         className="flex-1 flex flex-col min-h-0 overflow-auto"
       >
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          {features?.[FeatureSwitchKey.ZeroDebug] && (
+          {features?.[FeatureSwitchKey.OkouDebug] && (
             <>
               <ActivityBreadcrumbLabel />
               <span className="text-muted-foreground/40 select-none">/</span>
@@ -1116,7 +1116,7 @@ function ActivitySkeleton() {
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          {features?.[FeatureSwitchKey.ZeroDebug] && (
+          {features?.[FeatureSwitchKey.OkouDebug] && (
             <>
               <ActivityBreadcrumbLabel />
               <span className="text-muted-foreground/40 select-none">/</span>

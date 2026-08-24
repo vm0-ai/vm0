@@ -192,7 +192,7 @@ const getConnectorCatalogDiagnosticsInner$ = command(
   async ({ set }, signal: AbortSignal) => {
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.featureStates[FeatureSwitchKey.ZeroDebug]) {
+    if (!context.featureStates[FeatureSwitchKey.OkouDebug]) {
       return connectorCatalogDiagnosticsDisabled;
     }
 

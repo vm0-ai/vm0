@@ -884,7 +884,7 @@ describe("Feishu integration", () => {
     });
     const runnerGroup = runsApi.configureRunnerGroup();
     await enableFeishuIntegration(actor, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
@@ -3590,7 +3590,7 @@ describe("Feishu integration", () => {
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await enableFeishuIntegration(actor, {
       [FeatureSwitchKey.ConnectorAccounts]: true,
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     await connectFixtureUser(fixture);
     const orgId = requireValue(actor.orgId, "Expected an organization");
@@ -4611,7 +4611,7 @@ describe("Feishu integration", () => {
       orgRole: "org:member",
     });
     await enableFeishuIntegration(secondActor, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
 
     await postEvent(
@@ -4915,7 +4915,7 @@ describe("Feishu integration", () => {
       orgRole: "org:member",
     });
     await enableFeishuIntegration(secondActor, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     await connectFixtureUser(fixture, secondActor, secondOpenId);
     await postEvent(

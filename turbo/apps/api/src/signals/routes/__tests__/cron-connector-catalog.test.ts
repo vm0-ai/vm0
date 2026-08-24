@@ -1533,7 +1533,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
       featureSwitchesContract,
     ).update({
       headers: { authorization: "Bearer clerk-session" },
-      body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+      body: { switches: { [FeatureSwitchKey.OkouDebug]: true } },
     }),
     [200],
   );

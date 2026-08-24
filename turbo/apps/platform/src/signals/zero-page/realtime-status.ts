@@ -6,10 +6,10 @@ import { realtimeSubscriptionSnapshot$ } from "../realtime.ts";
 import { sharedDatabaseConnectionStatus$ } from "../shared-database.ts";
 import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
 
-export type ZeroDebugRealtimeIndicator = "disconnected" | "reconnecting" | null;
+export type OkouDebugRealtimeIndicator = "disconnected" | "reconnecting" | null;
 
-export const zeroDebugRealtimeIndicator$ = computed(
-  (get): ZeroDebugRealtimeIndicator => {
+export const okouDebugRealtimeIndicator$ = computed(
+  (get): OkouDebugRealtimeIndicator => {
     const diagnostics = get(connectionDiagnostics$);
     if (!diagnostics.enabled) {
       return null;

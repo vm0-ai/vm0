@@ -410,7 +410,7 @@ export function createGithubBddApi(context: TestContext) {
       await accept(
         client.update({
           headers: authenticate(actor),
-          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+          body: { switches: { [FeatureSwitchKey.OkouDebug]: true } },
         }),
         [200],
       );

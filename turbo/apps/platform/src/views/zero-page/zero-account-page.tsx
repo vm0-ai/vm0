@@ -277,7 +277,7 @@ function resolveVisiblePreferencesTab(
 export function ZeroPreferencesPage() {
   const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
-  const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showDebug = features?.[FeatureSwitchKey.OkouDebug] ?? false;
   const showModelConfiguration = true;
   const tab = useGet(preferencesTab$);
   const activeTab = resolveVisiblePreferencesTab(tab, {

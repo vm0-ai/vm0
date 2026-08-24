@@ -1184,6 +1184,13 @@
       "when": 1787539555559,
       "tag": "0976_contract_legacy_agent_run_model_key",
       "breakpoints": true
+    },
+    {
+      "idx": 977,
+      "version": "7",
+      "when": 1787543128609,
+      "tag": "0977_rename_zero_debug_feature_switch_key",
+      "breakpoints": true
     }
   ]
 }

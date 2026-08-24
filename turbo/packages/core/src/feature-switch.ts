@@ -194,7 +194,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.ZeroDebug]: {
+  [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",

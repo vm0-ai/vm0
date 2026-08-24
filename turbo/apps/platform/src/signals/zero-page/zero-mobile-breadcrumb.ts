@@ -71,7 +71,7 @@ const activityDetailBreadcrumb$ = computed(
       return $.activity.detail.activity;
     });
     const features = await get(featureSwitch$);
-    if (!features?.[FeatureSwitchKey.ZeroDebug]) {
+    if (!features?.[FeatureSwitchKey.OkouDebug]) {
       return null;
     }
     const params = get(pathParams$) as Params;

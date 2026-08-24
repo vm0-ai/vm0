@@ -102,7 +102,7 @@ describe("activity paged events", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await secondPageStarted.promise;
@@ -372,7 +372,7 @@ describe("activity paged events", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await expect(

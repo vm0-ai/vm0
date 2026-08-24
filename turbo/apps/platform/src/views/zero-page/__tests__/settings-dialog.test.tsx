@@ -52,7 +52,7 @@ async function openDialog(
     context,
     path: `/?settings=${section}`,
     featureSwitches:
-      section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {},
+      section === "debug" ? { [FeatureSwitchKey.OkouDebug]: true } : {},
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();

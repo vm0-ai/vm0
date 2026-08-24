@@ -69,7 +69,7 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
       userId: auth.userId,
       overrides,
     });
-    if (!featureStates[FeatureSwitchKey.ZeroDebug]) {
+    if (!featureStates[FeatureSwitchKey.OkouDebug]) {
       return cooldownDiagnosticsDisabled;
     }
 

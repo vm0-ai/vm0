@@ -421,7 +421,7 @@ export async function deliverSlackChatAdmissionFailure(
   if (mentionerCount > 1) {
     footerParts.push(`Reply to <@${binding.slackUserId}>`);
   }
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), binding.publicBrand)}/activities`
     : undefined;
   const botToken = await decryptPersistentSecretValue(

@@ -454,7 +454,7 @@ async function resolveTelegramPresentation(
   ]);
   signal.throwIfAborted();
   return {
-    logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+    logsUrl: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
       ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
       : undefined,
     footerText,

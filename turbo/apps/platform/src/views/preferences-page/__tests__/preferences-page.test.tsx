@@ -143,7 +143,7 @@ describe("preferences page", () => {
     detachedSetupPage({
       context,
       path: "/settings?tab=debug",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await waitFor(() => {

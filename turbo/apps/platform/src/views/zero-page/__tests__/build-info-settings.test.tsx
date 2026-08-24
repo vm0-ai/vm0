@@ -13,7 +13,7 @@ describe("build information settings", () => {
       context,
       path: "/?settings=debug",
       featureSwitches: {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     });
 
@@ -32,7 +32,7 @@ describe("build information settings", () => {
       context,
       path: "/?settings=debug",
       featureSwitches: {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     });
 

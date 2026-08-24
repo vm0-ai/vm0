@@ -1,7 +1,7 @@
 import type { DesktopDeveloperToolsState } from "./desktop-bridge";
 import { latestWinsSingleFlight } from "./desktop-async-control";
 
-const ZERO_DEBUG_FEATURE_SWITCH_KEY = "zeroDebug";
+const OKOU_DEBUG_FEATURE_SWITCH_KEY = "okouDebug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
   "computerUseDesktopPlugins";
 
@@ -119,7 +119,7 @@ export class DeveloperToolsController {
     }
     const body: unknown = await response.json();
     this.setAvailability(
-      featureSwitchEnabledFromBody(body, ZERO_DEBUG_FEATURE_SWITCH_KEY),
+      featureSwitchEnabledFromBody(body, OKOU_DEBUG_FEATURE_SWITCH_KEY),
     );
     this.setFilesystemPluginFeatureEnabled(
       featureSwitchEnabledFromBody(

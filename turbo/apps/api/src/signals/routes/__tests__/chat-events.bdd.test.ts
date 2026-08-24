@@ -11018,7 +11018,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       context,
       { ...actor, orgId },
       {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     );
     const installation = await github.installGithubApp(actor, agentId);

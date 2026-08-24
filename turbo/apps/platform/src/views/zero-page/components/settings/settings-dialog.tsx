@@ -106,7 +106,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
   const usagePackPlansEnabled =
     features[FeatureSwitchKey.UsagePackPlans] ?? false;
   const showUsage = isAdmin || usagePackPlansEnabled;

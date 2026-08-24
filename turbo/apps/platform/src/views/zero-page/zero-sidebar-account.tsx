@@ -73,8 +73,8 @@ import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import {
-  zeroDebugRealtimeIndicator$,
-  type ZeroDebugRealtimeIndicator,
+  okouDebugRealtimeIndicator$,
+  type OkouDebugRealtimeIndicator,
 } from "../../signals/zero-page/realtime-status.ts";
 
 interface SessionAccount {
@@ -170,7 +170,7 @@ function accountDisplayFrom(
 function RealtimeStatusIcon({
   status,
 }: {
-  status: Exclude<ZeroDebugRealtimeIndicator, null>;
+  status: Exclude<OkouDebugRealtimeIndicator, null>;
 }) {
   const label =
     status === "disconnected"
@@ -218,7 +218,7 @@ function RealtimeStatusIcon({
 function renderAccountTrigger(
   display: AccountDisplay,
   collapsed: boolean,
-  realtimeIndicator: ZeroDebugRealtimeIndicator,
+  realtimeIndicator: OkouDebugRealtimeIndicator,
   avatarShape: "circle" | "square",
 ) {
   if (collapsed) {
@@ -869,7 +869,7 @@ export function AccountDropdown({
     (features?.[FeatureSwitchKey.ThreeColumnNav] ?? false)
       ? "square"
       : "circle";
-  const realtimeIndicator = useGet(zeroDebugRealtimeIndicator$);
+  const realtimeIndicator = useGet(okouDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
     setPendingAccountMenuSettingsSection$,
