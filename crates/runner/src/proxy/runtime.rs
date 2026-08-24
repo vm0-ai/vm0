@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nix::fcntl::Flock;
-use nix::sys::signal::Signal;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
@@ -204,7 +203,7 @@ impl MitmdumpRuntime {
             } else {
                 consecutive_empty_scans = 0;
                 for process in &snapshot.processes {
-                    signal_stable_process(process.identity).await?;
+                    signal_stable_process(&self.root, exact_path, process.identity).await?;
                 }
                 wait_for_processes_exit(target, &snapshot).await?;
             }
@@ -486,44 +485,212 @@ fn process_exit_timeout_error(
     ))
 }
 
-async fn signal_stable_process(process: ProcessIdentity) -> RunnerResult<()> {
-    let current = match crate::process::read_process_stat_checked(process.pid).await {
+async fn signal_stable_process(
+    root: &Path,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<()> {
+    let Some(pidfd) = open_pidfd(process.pid)? else {
+        return Ok(());
+    };
+    if !marked_process_matches_after_pidfd_open(root, exact_path, process).await? {
+        return Ok(());
+    }
+    match rustix::process::pidfd_send_signal(&pidfd, rustix::process::Signal::KILL) {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "pidfd signal mitmdump runtime owner pid {}: {error}",
+            process.pid
+        ))),
+    }
+}
+
+fn open_pidfd(pid: u32) -> RunnerResult<Option<std::os::fd::OwnedFd>> {
+    let raw_pid = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "convert mitmdump cleanup pid {pid} to a positive process id"
+            ))
+        })?;
+    match rustix::process::pidfd_open(raw_pid, rustix::process::PidfdFlags::empty()) {
+        Ok(pidfd) => Ok(Some(pidfd)),
+        Err(rustix::io::Errno::SRCH) => Ok(None),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "open pidfd for mitmdump runtime owner pid {pid}: {error}"
+        ))),
+    }
+}
+
+async fn marked_process_matches_after_pidfd_open(
+    root: &Path,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<bool> {
+    let before = match crate::process::read_process_stat_checked(process.pid).await {
         ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
-        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(()),
-        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(()),
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
         ProcessStatRead::Unreadable(error) => {
             return Err(RunnerError::Internal(format!(
-                "recheck /proc/{}/stat before mitmdump cleanup signal: {error}",
+                "recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
                 process.pid
             )));
         }
         ProcessStatRead::Invalid => {
             return Err(RunnerError::Internal(format!(
-                "reparse /proc/{}/stat before mitmdump cleanup signal",
+                "reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
                 process.pid
             )));
         }
     };
-    if current.starttime != process.starttime {
-        return Ok(());
+    if before.starttime != process.starttime {
+        return Ok(false);
     }
-    let pid = i32::try_from(process.pid).map_err(|error| {
-        RunnerError::Internal(format!(
-            "convert mitmdump cleanup pid {}: {error}",
-            process.pid
-        ))
-    })?;
-    match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), Signal::SIGKILL) {
-        Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(()),
-        Err(error) => Err(RunnerError::Internal(format!(
-            "kill mitmdump runtime owner pid {}: {error}",
-            process.pid
-        ))),
+
+    let environ = match tokio::fs::read(format!("/proc/{}/environ", process.pid)).await {
+        Ok(environ) => environ,
+        Err(error) if process_disappeared(&error) => return Ok(false),
+        Err(error) => {
+            return Err(RunnerError::Internal(format!(
+                "recheck /proc/{}/environ after opening mitmdump cleanup pidfd: {error}",
+                process.pid
+            )));
+        }
+    };
+    let Some(marker) = runtime_marker(&environ) else {
+        return Ok(false);
+    };
+    let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
+    if !is_launch_path(root, marker_path)
+        || exact_path.is_some_and(|expected| marker_path != expected)
+    {
+        return Ok(false);
     }
+
+    let after = match crate::process::read_process_stat_checked(process.pid).await {
+        ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
+        ProcessStatRead::Unreadable(error) => {
+            return Err(RunnerError::Internal(format!(
+                "final recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
+                process.pid
+            )));
+        }
+        ProcessStatRead::Invalid => {
+            return Err(RunnerError::Internal(format!(
+                "final reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
+                process.pid
+            )));
+        }
+    };
+    Ok(before.procfs_generation() == after.procfs_generation()
+        && after.starttime == process.starttime)
 }
 
 pub(super) fn preserve_launch(launch: tempfile::TempDir, error: &impl std::fmt::Display) {
     let path = launch.path().to_path_buf();
     let _kept_path = launch.keep();
     warn!(path = %path.display(), error = %error, "preserving mitmdump launch directory for later reconciliation");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+    use super::*;
+
+    struct ProbeChild {
+        child: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    impl ProbeChild {
+        fn spawn(marker: Option<&Path>) -> Self {
+            let mut command = Command::new("cat");
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null());
+            if let Some(marker) = marker {
+                command.env(RUNTIME_MARKER_ENV, marker);
+            }
+            let mut child = command.spawn().unwrap();
+            let stdin = child.stdin.take().unwrap();
+            let stdout = BufReader::new(child.stdout.take().unwrap());
+            Self {
+                child,
+                stdin,
+                stdout,
+            }
+        }
+
+        fn pid(&self) -> u32 {
+            self.child.id()
+        }
+
+        fn assert_responds(&mut self) {
+            writeln!(self.stdin, "probe").unwrap();
+            self.stdin.flush().unwrap();
+            let mut response = String::new();
+            self.stdout.read_line(&mut response).unwrap();
+            assert_eq!(response, "probe\n");
+        }
+    }
+
+    impl Drop for ProbeChild {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    async fn process_identity(pid: u32) -> ProcessIdentity {
+        let ProcessStatRead::Found(stat) = crate::process::read_process_stat_checked(pid).await
+        else {
+            panic!("probe child process stat is unavailable");
+        };
+        ProcessIdentity {
+            pid,
+            starttime: stat.starttime,
+        }
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rejects_replacement_process_generation() {
+        let root = tempfile::tempdir().unwrap();
+        let launch = root.path().join("launch-stale-generation");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(Some(&launch));
+        let current = process_identity(replacement.pid()).await;
+        let stale = ProcessIdentity {
+            starttime: current.starttime.checked_add(1).unwrap(),
+            ..current
+        };
+
+        signal_stable_process(root.path(), Some(&launch), stale)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rechecks_runtime_marker() {
+        let root = tempfile::tempdir().unwrap();
+        let launch = root.path().join("launch-removed-marker");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(None);
+        let current = process_identity(replacement.pid()).await;
+
+        signal_stable_process(root.path(), Some(&launch), current)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
 }

@@ -2628,6 +2628,7 @@ dependencies = [
  "nix",
  "process-control-ipc",
  "reqwest",
+ "rustix",
  "sandbox",
  "sandbox-fc",
  "sandbox-mock",
