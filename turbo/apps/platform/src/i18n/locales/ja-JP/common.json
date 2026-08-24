@@ -1035,12 +1035,24 @@
       "signIn": "サインイン",
       "signUp": "サインアップ"
     },
+    "homeLink": "{{brandName}} のホームに移動",
     "loading": "認証を読み込み中",
+    "theme": {
+      "darkEnabled": "ダークテーマを有効にしました",
+      "lightEnabled": "ライトテーマを有効にしました"
+    },
     "toggleTheme": "テーマの切り替え",
     "v2": {
-      "continueToSignIn": "現在のサインインに進む",
-      "continueToSignUp": "現在のサインアップに進む",
-      "unavailable": "新しい認証画面はまだ利用できません。"
+      "signIn": {
+        "action": "現在のサインインを使用",
+        "description": "新しいサインイン画面はまだ利用できません。",
+        "title": "{{brandName}} にサインイン"
+      },
+      "signUp": {
+        "action": "現在のサインアップを使用",
+        "description": "新しいサインアップ画面はまだ利用できません。",
+        "title": "{{brandName}} アカウントを作成"
+      }
     }
   },
   "authorization": {
