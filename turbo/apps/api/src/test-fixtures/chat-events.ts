@@ -25,6 +25,8 @@ import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
+import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
@@ -122,6 +124,7 @@ interface ChatEventContextFixture {
   readonly slackThreadTs: string | null;
   readonly slackRouteThreadTs: string | null;
   readonly feishuConversationHistory: string | null;
+  readonly feishuPublicBrand: PublicBrand | null;
   readonly feishuMessageText: string | null;
   readonly feishuMessageFiles: ChatFeishuMessageFiles | null;
   readonly feishuChatType: "group" | "p2p" | "topic_group" | null;
@@ -222,6 +225,7 @@ export async function readChatEventContextFixture(
       slackThreadTs: chatSlackContext.threadTs,
       slackRouteThreadTs: chatSlackContext.routeThreadTs,
       feishuConversationHistory: chatFeishuContext.conversationHistory,
+      feishuPublicBrand: chatFeishuContext.publicBrand,
       feishuMessageText: chatFeishuContext.messageText,
       feishuMessageFiles: chatFeishuContext.messageFiles,
       feishuChatType: chatFeishuContext.chatType,
@@ -410,6 +414,7 @@ const annotationProjectionInputs = [
     context: {
       feishuContext: {
         conversationHistory: "",
+        publicBrand: "vm0",
         messageText: "feishu linked",
         messageFiles: [],
         chatType: "p2p",
@@ -779,6 +784,10 @@ interface TelegramChatEventByPromptFixture {
   readonly eventId: string;
 }
 
+interface FeishuChatEventByPromptFixture {
+  readonly eventId: string;
+}
+
 /**
  * Chat events live in a database shared by every parallel test worker, so a
  * prompt lookup must be scoped to the caller's own user. Matching on prompt
@@ -816,6 +825,51 @@ export async function findTelegramChatEventByPromptFixture(args: {
       eq(chatEvents.eventType, "input.prompt"),
       eq(chatEvents.contextType, "telegram"),
     ),
+  });
+}
+
+export async function findFeishuChatEventByPromptFixture(args: {
+  readonly userId: string;
+  readonly prompt: string;
+}): Promise<FeishuChatEventByPromptFixture | null> {
+  return await findOwnedChatEventByPrompt({
+    userId: args.userId,
+    prompt: args.prompt,
+    filter: and(
+      eq(chatEvents.eventType, "input.prompt"),
+      eq(chatEvents.contextType, "feishu"),
+    ),
+  });
+}
+
+/**
+ * Simulates the previous API writing a verified Feishu event after the
+ * additive public_brand migration but before that writer knew the new column.
+ * The current webhook route can then retry the same provider event and exercise
+ * the real new-reader compatibility path.
+ */
+export async function seedLegacyFeishuIngressFixture(args: {
+  readonly installationId: string;
+  readonly eventId: string;
+  readonly payload: string;
+  readonly createdAt?: Date;
+}): Promise<void> {
+  const createdAt = args.createdAt ?? nowDate();
+  await db().transaction(async (tx) => {
+    await tx.insert(feishuOrgEvents).values({
+      installationId: args.installationId,
+      eventId: args.eventId,
+      receivedAt: createdAt,
+    });
+    await tx.insert(feishuChatIngress).values({
+      installationId: args.installationId,
+      eventId: args.eventId,
+      payload: args.payload,
+      publicBrand: null,
+      status: "pending",
+      createdAt,
+      updatedAt: createdAt,
+    });
   });
 }
 

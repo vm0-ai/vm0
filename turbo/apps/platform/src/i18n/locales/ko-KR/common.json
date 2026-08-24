@@ -2781,12 +2781,12 @@
         "copied": "{{label}} 복사됨",
         "copy": "복사",
         "create": {
-          "descriptionAfter": ", {{brandName}}라는 기업 맞춤 앱을 생성하고 {{brandName}} 아이콘을 업로드한 다음 봇 기능을 추가하세요.",
+          "descriptionAfter": ", 원하는 이름과 아이콘으로 기업 맞춤 앱을 생성한 다음 봇 기능을 추가하세요.",
           "descriptionBefore": "에서 ",
-          "downloadIcon": "{{brandName}} 아이콘 다운로드",
-          "iconAlt": "{{brandName}} 앱 아이콘",
+          "downloadIcon": "선택 사항인 {{brandName}} 아이콘 다운로드",
+          "iconAlt": "선택 사항인 {{brandName}} 앱 아이콘",
           "iconHint": ", 또는 원하는 아이콘을 사용하세요.",
-          "iconTitle": "{{brandName}} 앱 아이콘",
+          "iconTitle": "선택 사항인 {{brandName}} 앱 아이콘",
           "imageAlt": "앱 이름, 아이콘, 생성 버튼이 강조된 Feishu 앱 생성 양식",
           "title": "기업 맞춤 앱 생성"
         },

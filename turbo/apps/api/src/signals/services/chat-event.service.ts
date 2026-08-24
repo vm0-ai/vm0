@@ -83,6 +83,7 @@ type ChatEventDisplayContext =
         readonly senderOpenId: string;
         readonly connectionId: string;
         readonly installationId: string;
+        readonly publicBrand: PublicBrand;
       };
       readonly teamsContext?: never;
       readonly telegramContext?: never;
@@ -479,6 +480,7 @@ type NewDisplayContext =
       readonly senderOpenId: string;
       readonly connectionId: string;
       readonly installationId: string;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "teams";
@@ -888,6 +890,7 @@ async function insertDisplayContext(
       senderOpenId: context.senderOpenId,
       connectionId: context.connectionId,
       installationId: context.installationId,
+      publicBrand: context.publicBrand,
       createdAt,
     });
     return;

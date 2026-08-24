@@ -2789,12 +2789,12 @@
         "copied": "{{label}} kopiert",
         "copy": "Kopieren",
         "create": {
-          "descriptionAfter": ", erstellen Sie eine benutzerdefinierte Unternehmensanwendung mit dem Namen {{brandName}}, laden Sie das Symbol {{brandName}} hoch und fügen Sie dann die Bot-Funktion hinzu.",
+          "descriptionAfter": ", erstellen Sie eine benutzerdefinierte Unternehmensanwendung mit dem gewünschten Namen und Symbol und fügen Sie dann die Bot-Funktion hinzu.",
           "descriptionBefore": "Im ",
-          "downloadIcon": "Laden Sie das {{brandName}}-Symbol herunter",
-          "iconAlt": "{{brandName}} App-Symbol",
+          "downloadIcon": "Laden Sie optional das {{brandName}}-Symbol herunter",
+          "iconAlt": "Optionales {{brandName}}-App-Symbol",
           "iconHint": ", oder verwenden Sie ein beliebiges Symbol Ihrer Wahl.",
-          "iconTitle": "{{brandName}} App-Symbol",
+          "iconTitle": "Optionales {{brandName}}-App-Symbol",
           "imageAlt": "Feishu-App-Erstellungsformular mit hervorgehobenem App-Namen, Symbol und Schaltfläche „Erstellen“.",
           "title": "Erstellen Sie eine benutzerdefinierte Unternehmensanwendung"
         },
