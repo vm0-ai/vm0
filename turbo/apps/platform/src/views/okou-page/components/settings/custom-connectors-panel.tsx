@@ -51,11 +51,7 @@ import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx"
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
-import {
-  connectorAccountSummaryByTarget$,
-  reloadConnectorAccountSummaries$,
-  settingsConnectorAccounts,
-} from "../../../../signals/okou-page/settings/connector-accounts.ts";
+import { connectorAccountSummaryByTarget$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
 import {
   ConnectorAccountSummaryText,
@@ -67,8 +63,8 @@ import {
   closeCustomAccountManager$,
   customAccountConnectDialog$,
   customAccountManager$,
+  finishConnectorAccountConnection$,
   openCustomAccountConnectDialog$,
-  openConnectorAccountNamePrompt$,
   openCustomAccountManager$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
@@ -570,9 +566,7 @@ function CustomConnectorGrid({
   const signal = useGet(pageSignal$);
   const openAccountManager = useSet(openCustomAccountManager$);
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
-  const openAccountNamePrompt = useSet(openConnectorAccountNamePrompt$);
-  const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
-  const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
+  const finishAccountConnection = useSet(finishConnectorAccountConnection$);
   const handleDisconnect = (connector: CustomConnectorResponse) => {
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
@@ -581,15 +575,12 @@ function CustomConnectorGrid({
     connector: CustomConnectorResponse,
     connectionId: string | null,
   ) => {
-    reloadAccountSummaries();
-    reloadAccountList();
-    if (connectionId) {
-      openAccountNamePrompt({
-        target: { kind: "custom", customConnectorId: connector.id },
-        connectionId,
-        connectorLabel: connector.displayName,
-      });
-    }
+    finishAccountConnection({
+      target: { kind: "custom", customConnectorId: connector.id },
+      connectionId,
+      connectorLabel: connector.displayName,
+      mode: { kind: "add" },
+    });
   };
   const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectorAccountsEnabled) {
@@ -668,10 +659,8 @@ function CustomAccountDialogs({
   const closeAccountManager = useSet(closeCustomAccountManager$);
   const closeAccountConnect = useSet(closeCustomAccountConnectDialog$);
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
-  const openAccountNamePrompt = useSet(openConnectorAccountNamePrompt$);
+  const finishAccountConnection = useSet(finishConnectorAccountConnection$);
   const connectAccountOAuth2 = useSet(connectCustomConnectorAccountOAuth2$);
-  const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
-  const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
   const signal = useGet(pageSignal$);
   return (
     <>
@@ -681,18 +670,15 @@ function CustomAccountDialogs({
           accountMode={accountConnect.mode}
           onClose={closeAccountConnect}
           onSuccess={(connectionId) => {
-            reloadAccountSummaries();
-            reloadAccountList();
-            if (accountConnect.mode.kind === "add" && connectionId) {
-              openAccountNamePrompt({
-                target: {
-                  kind: "custom",
-                  customConnectorId: accountConnect.connector.id,
-                },
-                connectionId,
-                connectorLabel: accountConnect.connector.displayName,
-              });
-            }
+            finishAccountConnection({
+              target: {
+                kind: "custom",
+                customConnectorId: accountConnect.connector.id,
+              },
+              connectionId,
+              connectorLabel: accountConnect.connector.displayName,
+              mode: accountConnect.mode,
+            });
           }}
         />
       ) : null}
@@ -721,18 +707,15 @@ function CustomAccountDialogs({
                     signal,
                   );
                   if (result.connected) {
-                    reloadAccountSummaries();
-                    reloadAccountList();
-                    if (result.connectionId) {
-                      openAccountNamePrompt({
-                        target: {
-                          kind: "custom",
-                          customConnectorId: managedAccounts.id,
-                        },
-                        connectionId: result.connectionId,
-                        connectorLabel: managedAccounts.displayName,
-                      });
-                    }
+                    finishAccountConnection({
+                      target: {
+                        kind: "custom",
+                        customConnectorId: managedAccounts.id,
+                      },
+                      connectionId: result.connectionId,
+                      connectorLabel: managedAccounts.displayName,
+                      mode: { kind: "add" },
+                    });
                   }
                 })(),
                 Reason.DomCallback,

@@ -99,11 +99,7 @@ import {
   Input,
 } from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
-import {
-  connectorAccountSummaryByTarget$,
-  reloadConnectorAccountSummaries$,
-  settingsConnectorAccounts,
-} from "../../signals/okou-page/settings/connector-accounts.ts";
+import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/settings/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./components/settings/connector-account-manager-dialog.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -111,7 +107,7 @@ import {
   builtinAccountManager$,
   closeBuiltinAccountConnectDialog$,
   closeBuiltinAccountManager$,
-  openConnectorAccountNamePrompt$,
+  finishConnectorAccountConnection$,
   openBuiltinAccountConnectDialog$,
   openBuiltinAccountManager$,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
@@ -1004,15 +1000,13 @@ export function ZeroConnectorsPage() {
   const accountSummaryStatus = connectorAccountSummaryStatus(
     accountSummariesLoadable.state,
   );
-  const reloadAccountSummaries = useSet(reloadConnectorAccountSummaries$);
-  const reloadAccountList = useSet(settingsConnectorAccounts.reload$);
+  const finishAccountConnection = useSet(finishConnectorAccountConnection$);
   const managedAccountConnector = useGet(builtinAccountManager$);
   const accountConnect = useGet(builtinAccountConnectDialog$);
   const openAccountManager = useSet(openBuiltinAccountManager$);
   const closeAccountManager = useSet(closeBuiltinAccountManager$);
   const openAccountConnect = useSet(openBuiltinAccountConnectDialog$);
   const closeAccountConnect = useSet(closeBuiltinAccountConnectDialog$);
-  const openAccountNamePrompt = useSet(openConnectorAccountNamePrompt$);
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -1116,15 +1110,12 @@ export function ZeroConnectorsPage() {
     connector: PlatformConnectorCatalogStatusItem,
     connectionId: string | null,
   ) => {
-    reloadAccountSummaries();
-    reloadAccountList();
-    if (connectionId) {
-      openAccountNamePrompt({
-        target: { kind: "builtin", connectorSlug: connector.slug },
-        connectionId,
-        connectorLabel: connector.label,
-      });
-    }
+    finishAccountConnection({
+      target: { kind: "builtin", connectorSlug: connector.slug },
+      connectionId,
+      connectorLabel: connector.label,
+      mode: { kind: "add" },
+    });
   };
 
   const accountConnectHandlers = (
@@ -1330,18 +1321,15 @@ export function ZeroConnectorsPage() {
             closeAccountConnect();
           }}
           onSuccess={(connectionId) => {
-            reloadAccountSummaries();
-            reloadAccountList();
-            if (accountConnect.mode.kind === "add" && connectionId) {
-              openAccountNamePrompt({
-                target: {
-                  kind: "builtin",
-                  connectorSlug: accountConnect.connector.slug,
-                },
-                connectionId,
-                connectorLabel: accountConnect.connector.label,
-              });
-            }
+            finishAccountConnection({
+              target: {
+                kind: "builtin",
+                connectorSlug: accountConnect.connector.slug,
+              },
+              connectionId,
+              connectorLabel: accountConnect.connector.label,
+              mode: accountConnect.mode,
+            });
           }}
         />
       )}

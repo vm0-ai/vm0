@@ -9,6 +9,7 @@ import type {
 import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
 import {
   connectorAccountDeletionImpact$,
+  reloadConnectorAccountSummaries$,
   settingsConnectorAccounts,
 } from "./connector-accounts.ts";
 
@@ -166,6 +167,28 @@ export const closeConnectorAccountNamePrompt$ = command(({ set }) => {
   set(internalConnectorAccountNamePrompt$, null);
   set(internalConnectorAccountNamePromptValue$, "");
 });
+
+export const finishConnectorAccountConnection$ = command(
+  (
+    { set },
+    args: Omit<ConnectorAccountNamePrompt, "connectionId"> & {
+      readonly connectionId: string | null;
+      readonly mode: ConnectorAccountConnectMode;
+    },
+  ) => {
+    set(reloadConnectorAccountSummaries$);
+    set(settingsConnectorAccounts.reload$);
+    if (args.mode.kind !== "add" || !args.connectionId) {
+      return;
+    }
+    set(internalConnectorAccountNamePromptValue$, "");
+    set(internalConnectorAccountNamePrompt$, {
+      target: args.target,
+      connectionId: args.connectionId,
+      connectorLabel: args.connectorLabel,
+    });
+  },
+);
 
 interface ConnectorAccountRenameDraft {
   readonly account: ConnectorAccountConnection;
