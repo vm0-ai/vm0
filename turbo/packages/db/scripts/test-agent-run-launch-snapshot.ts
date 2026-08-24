@@ -150,6 +150,56 @@ async function seedAgentRun(
   );
 }
 
+async function seedCanonicalAgentRun(
+  client: Client,
+  fixture: {
+    readonly agentId: string;
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly suffix: string;
+  },
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "agents" ("id", "org_id", "owner", "name")
+      VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.agentId,
+      `launch-snapshot-${fixture.suffix}-org`,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch snapshot ${fixture.suffix}`,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_id"
+      ) VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.sessionId,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch-snapshot-${fixture.suffix}-org`,
+      fixture.agentId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt"
+      ) VALUES ($1, $2, $3, $4, 'pending', $5)
+    `,
+    [
+      fixture.runId,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch-snapshot-${fixture.suffix}-org`,
+      fixture.sessionId,
+      `launch snapshot ${fixture.suffix}`,
+    ],
+  );
+}
+
 async function readAgentRunsRelationFileNode(client: Client): Promise<string> {
   const result = await client.query<{ fileNode: string }>(`
     SELECT "relfilenode"::text AS "fileNode"
@@ -606,7 +656,7 @@ export async function validateAgentRunLaunchSnapshotSchema(
       hasMissing: false,
     });
     assert.equal((await readConstraintCatalog(client)).validated, true);
-    await seedAgentRun(client, fixture);
+    await seedCanonicalAgentRun(client, fixture);
     await validateConstraintValues(client, fixture.runId);
     console.log("   ✅ fresh schema matches the nullable strict v1 contract\n");
   } finally {
