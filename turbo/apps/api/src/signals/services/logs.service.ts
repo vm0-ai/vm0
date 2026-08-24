@@ -330,6 +330,8 @@ export function logDetail(
         triggerSource: agentRuns.triggerSource,
         modelProvider: agentRuns.modelProvider,
         selectedModel: agentRuns.selectedModel,
+        modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+        modelRuntimeModel: agentRuns.modelRuntimeModel,
       })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
@@ -354,6 +356,8 @@ export function logDetail(
       triggerSource,
       modelProvider,
       selectedModel,
+      modelRuntimeProvider,
+      modelRuntimeModel,
     } = result;
     const runResult = run.result as RunResult | null;
     const agentSessionId = runResult?.agentSessionId ?? null;
@@ -370,6 +374,8 @@ export function logDetail(
       framework,
       modelProvider: modelProvider ?? null,
       selectedModel: selectedModel ?? null,
+      modelRuntimeProvider: modelRuntimeProvider ?? null,
+      modelRuntimeModel: modelRuntimeModel ?? null,
       triggerSource: normalizeTriggerSource(triggerSource),
       status: run.status as LogStatus,
       prompt: run.prompt,
