@@ -257,9 +257,10 @@ def write_metrics(textfile_dir: Path, metrics: str) -> None:
 
 
 def main() -> None:
-    # Stage 1 keeps legacy aliases available until #28914 records an all-host
-    # canonical configuration floor, completes the rollback window, and verifies
-    # that no active host has a legacy-only override.
+    # Stage 1 keeps legacy aliases for operator-managed collector process
+    # environments until #28914 records an all-host canonical configuration floor,
+    # completes the rollback window, and verifies that no active host has a
+    # legacy-only override.
     runners_dir = resolve_path_alias(
         CANONICAL_RUNNERS_DIR_ENV,
         LEGACY_RUNNERS_DIR_ENV,

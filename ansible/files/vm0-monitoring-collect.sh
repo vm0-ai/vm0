@@ -46,9 +46,10 @@ resolve_path_alias() {
     >&2
 }
 
-# Stage 1 keeps legacy aliases available until #28914 records an all-host
-# canonical configuration floor, completes the rollback window, and verifies
-# that no active host has a legacy-only override.
+# Stage 1 keeps legacy aliases for operator-managed collector process
+# environments until #28914 records an all-host canonical configuration floor,
+# completes the rollback window, and verifies that no active host has a
+# legacy-only override.
 resolve_path_alias \
   OKOU_WORKSPACE_IMAGE_CACHE_DIR \
   VM0_WORKSPACE_IMAGE_CACHE_DIR \
