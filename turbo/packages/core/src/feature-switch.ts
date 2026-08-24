@@ -478,7 +478,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple credential accounts per built-in or custom connector.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConcurrencyMemberUsage]: {
     maintainer: "ethan@vm0.ai",

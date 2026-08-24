@@ -16,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
@@ -1817,6 +1818,55 @@ describe("chat composer models", () => {
     expect(
       screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the agent chat model picker open while feature switches hydrate", async () => {
+    const user = userEvent.setup({ delay: null });
+    const featureSwitchRequestStarted = context.mocks.deferred<void>();
+    const releaseFeatureSwitchResponse = context.mocks.deferred<void>();
+
+    context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
+      featureSwitchRequestStarted.resolve();
+      await releaseFeatureSwitchResponse.promise;
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ImageModelSelection]: true },
+        effectiveSwitches: {
+          [FeatureSwitchKey.ImageModelSelection]: true,
+        },
+      });
+    });
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await featureSwitchRequestStarted.promise;
+    await waitFor(() => {
+      expect(document.title).toContain("Scout");
+    });
+    await user.click(
+      await screen.findByRole("combobox", { name: "Claude Fable 5" }),
+    );
+    await expect(
+      screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).resolves.toBeInTheDocument();
+    expect(categoryTab("Image")).toBeUndefined();
+
+    releaseFeatureSwitchResponse.resolve();
+
+    await waitFor(() => {
+      expect(categoryTab("Image")).toBeInTheDocument();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {

@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
+import type { LoadableState } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
+import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountEffectiveLabel,
+  type PlatformConnectorCatalogStatusItem,
+} from "../../../../signals/connector-domain.ts";
 import {
   Button,
   DropdownMenu,
@@ -40,6 +45,31 @@ type ConnectionConnectorCardProps = {
   readonly manageAccess?: ReactNode;
   readonly onDisconnect: () => void;
   readonly onReviewScopes?: () => void;
+};
+
+export type ConnectorAccountSummaryStatus = "loading" | "unavailable" | "ready";
+
+export function connectorAccountSummaryStatus(
+  state: LoadableState,
+): ConnectorAccountSummaryStatus {
+  if (state === "hasData") {
+    return "ready";
+  }
+  if (state === "hasError") {
+    return "unavailable";
+  }
+  return "loading";
+}
+
+type AccountsConnectorCardProps = {
+  readonly variant: "accounts";
+  readonly connector: PlatformConnectorCatalogStatusItem;
+  readonly summary: ConnectorAccountSummary | undefined;
+  readonly summaryStatus: ConnectorAccountSummaryStatus;
+  readonly busy: boolean;
+  readonly manageAccess?: ReactNode;
+  readonly onAdd: () => void;
+  readonly onManage: () => void;
 };
 
 type OnboardingConnectorCardProps = {
@@ -81,6 +111,7 @@ type PermissionConnectorCardProps = {
 type ConnectorCardProps =
   | CatalogConnectorCardProps
   | ConnectionConnectorCardProps
+  | AccountsConnectorCardProps
   | OnboardingConnectorCardProps
   | ActionConnectorCardProps
   | PermissionConnectorCardProps;
@@ -332,6 +363,141 @@ function ConnectionConnectorCard({
   );
 }
 
+export function ConnectorAccountSummaryText({
+  summary,
+  status,
+  connectorLabel,
+  className,
+}: {
+  readonly summary: ConnectorAccountSummary | undefined;
+  readonly status: ConnectorAccountSummaryStatus;
+  readonly connectorLabel: string;
+  readonly className?: string;
+}) {
+  const { t } = useTranslation();
+  if (status === "loading") {
+    return (
+      <span className={className}>
+        {t(($) => {
+          return $.connectors.accounts.loading;
+        })}
+      </span>
+    );
+  }
+  if (status === "unavailable") {
+    return (
+      <span className={className}>
+        {t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+      </span>
+    );
+  }
+  const accountCount = summary?.accountCount ?? 0;
+  let summaryText =
+    accountCount === 0
+      ? t(($) => {
+          return $.connectors.accounts.noAccounts;
+        })
+      : accountCount === 1
+        ? t(
+            ($) => {
+              return $.connectors.accounts.summaryOne;
+            },
+            { value: accountCount },
+          )
+        : t(
+            ($) => {
+              return $.connectors.accounts.summaryMany;
+            },
+            { value: accountCount },
+          );
+  if (summary?.defaultConnection) {
+    summaryText = t(
+      ($) => {
+        return $.connectors.accounts.summaryWithDefault;
+      },
+      {
+        summary: summaryText,
+        account: connectorAccountEffectiveLabel(
+          summary.defaultConnection,
+          connectorLabel,
+        ),
+      },
+    );
+  }
+  if (summary && summary.attentionCount > 0) {
+    summaryText = t(
+      ($) => {
+        return $.connectors.accounts.summaryWithAttention;
+      },
+      { summary: summaryText, value: summary.attentionCount },
+    );
+  }
+  return <span className={className}>{summaryText}</span>;
+}
+
+function AccountsConnectorCard({
+  connector,
+  summary,
+  summaryStatus,
+  busy,
+  manageAccess,
+  onAdd,
+  onManage,
+}: AccountsConnectorCardProps) {
+  const { t } = useTranslation();
+  const accountCount = summary?.accountCount ?? 0;
+  return (
+    <div className="zero-card flex flex-col">
+      <div className="flex h-14 items-center gap-2.5 px-5">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <ConnectorIcon icon={connector.icon} size={20} />
+        </span>
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+        >
+          {connector.label}
+        </span>
+      </div>
+      <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
+        <ConnectorAccountSummaryText
+          summary={summary}
+          status={summaryStatus}
+          connectorLabel={connector.label}
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+        />
+        {manageAccess}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={busy}
+          onClick={onAdd}
+        >
+          {t(($) => {
+            return $.connectors.accounts.add;
+          })}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={busy || accountCount === 0}
+          onClick={onManage}
+        >
+          {t(($) => {
+            return $.connectors.accounts.manage;
+          })}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function onboardingHelpText(
   helpText: string | undefined,
   fallback: string,
@@ -541,6 +707,9 @@ export function ConnectorCard(props: ConnectorCardProps) {
   }
   if (props.variant === "connection") {
     return <ConnectionConnectorCard {...props} />;
+  }
+  if (props.variant === "accounts") {
+    return <AccountsConnectorCard {...props} />;
   }
   if (props.variant === "onboarding") {
     return <OnboardingConnectorCard {...props} />;

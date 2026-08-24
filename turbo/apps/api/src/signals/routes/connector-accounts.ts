@@ -84,6 +84,24 @@ const connectionsInner$ = computed(async (get) => {
   };
 });
 
+const connectionInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(connectorAccountsEnabled$))) {
+    return notFound("Resource not found");
+  }
+  const params = get(pathParamsOf(connectorAccountsContract.connection));
+  const query = get(queryOf(connectorAccountsContract.connection));
+  const account = await getConnectorAccount(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    target: targetFromQuery(query),
+    connectionId: params.connectionId,
+  });
+  return account
+    ? { status: 200 as const, body: account }
+    : notFound("Connector account not found");
+});
+
 const renameInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
@@ -412,6 +430,10 @@ export const connectorAccountRoutes: readonly RouteEntry[] = [
   {
     route: connectorAccountsContract.connections,
     handler: authRoute(readAuth, connectionsInner$),
+  },
+  {
+    route: connectorAccountsContract.connection,
+    handler: authRoute(readAuth, connectionInner$),
   },
   {
     route: connectorAccountsContract.rename,
