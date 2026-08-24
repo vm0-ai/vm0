@@ -34,7 +34,6 @@ import {
 } from "../services/usage-pack-invitation-purchase.service";
 import { activeUsagePackBillingContext } from "../services/usage-pack-subscription.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -350,15 +349,7 @@ const purchasePreviewInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: body.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = body.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!body.data.returnUrl || !billingRedirectAllowed(body.data.returnUrl))

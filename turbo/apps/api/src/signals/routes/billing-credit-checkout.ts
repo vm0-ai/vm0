@@ -22,7 +22,6 @@ import {
 } from "../services/billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
-import { billingPurchasePreviewEnabled$ } from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -111,19 +110,9 @@ const creditCheckoutAuthed$ = command(
     }
 
     // This shared route also serves the commit-addressed CLI, which requires
-    // hosted Checkout, while old app builds can omit this opt-in for about two
-    // days during rollout. Remove the rollout compatibility after #26842; keep
-    // an explicit hosted-checkout contract for CLI before narrowing this field.
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested:
-          supportsInAppPreview === true || previewExistingBilling === true,
-      },
-      signal,
-    );
+    // hosted Checkout, so in-app preview remains an explicit client opt-in.
+    const previewEnabled =
+      supportsInAppPreview === true || previewExistingBilling === true;
     if (previewEnabled) {
       const preview = await set(
         previewExistingBillingCreditPurchase$,

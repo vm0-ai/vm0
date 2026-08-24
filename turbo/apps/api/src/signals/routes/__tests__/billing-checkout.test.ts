@@ -345,14 +345,6 @@ function authenticateOrg(
   mocks.clerk.session(fixture.userId, fixture.orgId, role);
 }
 
-async function enableSavedBillingPurchasePreview(
-  fixture: BillingOrgFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
-  });
-}
-
 function mockClerkOrganization(fixture: BillingOrgFixture): void {
   context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
     id: fixture.orgId,
@@ -1108,7 +1100,6 @@ describe("POST /api/billing/checkout", () => {
   it("pays a saved-card Plan preview through the rollout-safe checkout route", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
@@ -1274,7 +1265,6 @@ describe("POST /api/billing/checkout", () => {
       tier: "pro",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const periodStart = currentSecond();
@@ -1454,7 +1444,6 @@ describe("POST /api/billing/checkout", () => {
       tier: "pro",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const previewPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const replacementPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
@@ -1580,7 +1569,6 @@ describe("POST /api/billing/checkout", () => {
   it("refreshes an invalid Plan preview through the rollout-safe checkout route", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const initialPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const currentPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
@@ -1659,7 +1647,6 @@ describe("POST /api/billing/checkout", () => {
   it("allows only one of two Plan previews to create a subscription", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
@@ -1767,7 +1754,6 @@ describe("POST /api/billing/checkout", () => {
   it("uses hosted Checkout when an opted-in plan purchase has no saved card", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
@@ -2596,7 +2582,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3344,7 +3329,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3787,7 +3771,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const paymentMethodId = `pm_${randomUUID()}`;
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3879,7 +3862,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
       "https://invoice.stripe.com/usage-pack-authentication";
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3993,7 +3975,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const paymentMethodId = `pm_${randomUUID()}`;
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -4145,7 +4126,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const checkoutUrl = "https://checkout.stripe.com/session/usage-pack-retry";
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -8581,7 +8561,6 @@ describe("usage pack allocation management", () => {
   it("retries a grouped subscription change after a Stripe failure", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const sourceSubscription = managedUsagePackSubscription(
       fixture,
       new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
@@ -8681,7 +8660,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -10767,7 +10745,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -10869,7 +10846,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -13187,7 +13163,6 @@ describe("usage pack allocation management", () => {
     const paymentMethodId = `pm_invite_${randomUUID()}`;
     const invoiceId = `in_invite_${randomUUID()}`;
     const hostedInvoiceUrl = `https://invoice.stripe.test/${invoiceId}`;
-    await enableSavedBillingPurchasePreview(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       ...managedUsagePackSubscription(
         fixture,
@@ -13310,7 +13285,6 @@ describe("usage pack allocation management", () => {
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
     ]);
-    await enableSavedBillingPurchasePreview(fixture);
     const email = `setup-invite-${randomUUID()}@example.test`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -15222,7 +15196,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       expiresAt: periodEnd,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const allowanceItem = {
       id: `si_${TEST_PRICE_USAGE_ALLOWANCE}`,
@@ -15419,7 +15392,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       expiresAt: allowanceEnd,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const periodStartUnix = Math.floor(periodStart.getTime() / 1000);
     const allowanceEndUnix = Math.floor(allowanceEnd.getTime() / 1000);
@@ -17392,7 +17364,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       tier: "team",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subscriptionId,
@@ -20293,7 +20264,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("applies a customer coupon without including subscription renewal", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const couponId = `coupon_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -20458,7 +20428,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("uses a legacy subscription source when no higher-priority card exists", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const subscriptionSourceId = `card_${randomUUID().slice(0, 8)}`;
     const customerSourceId = `card_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -20569,7 +20538,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("rejects payment when the finalized invoice amount differs from the preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20677,7 +20645,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns completed when customer balance pays the invoice during finalization", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20776,7 +20743,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns the hosted invoice when saved-billing payment requires authentication", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20894,7 +20860,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("falls back to Stripe checkout when saved billing is unavailable", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
       default_payment_method: null,
@@ -20931,7 +20896,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns Checkout when all saved cards are removed after preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
