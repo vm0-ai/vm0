@@ -115,7 +115,7 @@ async function loadRuntimeSurfaces() {
   ] = await Promise.all([
     import("../signals/api-base.ts"),
     import("../signals/auth.ts"),
-    import("../views/zero-page/zero-attachment-url.ts"),
+    import("../views/okou-page/attachment-url.ts"),
     import("../signals/chat-page/user-message-files.ts"),
     import("../lib/platform-host.ts"),
     import("../lib/plausible.ts"),

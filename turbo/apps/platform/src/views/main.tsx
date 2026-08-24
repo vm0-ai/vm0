@@ -11,7 +11,7 @@ import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { handleInvitationRedirect$ } from "../signals/invitation-redirect.ts";
-import { handleBillingRedirect$ } from "../signals/zero-page/billing.ts";
+import { handleBillingRedirect$ } from "../signals/okou-page/billing.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import {
   isStandalonePwa,

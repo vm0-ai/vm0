@@ -208,20 +208,20 @@ import {
   generateRouterPath,
 } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
-import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
-import { strapiIntegrations$ } from "../../signals/zero-page/strapi.ts";
+import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
+import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
+import { strapiIntegrations$ } from "../../signals/okou-page/strapi.ts";
 import {
   githubIntegrationData$,
   type GithubIntegrationData,
-} from "../../signals/zero-page/zero-github.ts";
+} from "../../signals/okou-page/github.ts";
 import {
   atTimeInTimezone,
   buildCronExpression,
   cronWallTimeInTimezone,
   type CronTimeOption,
-} from "../../signals/zero-page/cron.ts";
-import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+} from "../../signals/okou-page/cron.ts";
+import { userPreferences$ } from "../../signals/okou-page/settings/user-preferences.ts";
 import { Link } from "../router/link.tsx";
 import {
   DetailPageBreadcrumbBar,
@@ -230,9 +230,9 @@ import {
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
-import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
-import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
-import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
+import { TiptapInstructionsEditor } from "../okou-page/tiptap-instructions-editor.tsx";
+import { ZeroUnsavedBar } from "../okou-page/unsaved-bar.tsx";
+import { InlineSettingsRow } from "../okou-page/components/inline-settings-row.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   Alert,
@@ -251,9 +251,9 @@ import {
   workflowTitle,
 } from "./workflow-shared.tsx";
 import { WorkflowHoverContent } from "./workflows-page.tsx";
-import { AutomationListIcon } from "../zero-page/workflow-automations-page.tsx";
-import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { AutomationListIcon } from "../okou-page/workflow-automations-page.tsx";
+import { emptyAutomationsImg } from "../okou-page/platform-assets.ts";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";

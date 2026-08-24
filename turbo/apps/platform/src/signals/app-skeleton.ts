@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
-import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
+import { getAvatarPresets } from "../views/okou-page/avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
 import { locale$ } from "./locale.ts";

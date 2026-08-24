@@ -12,10 +12,10 @@ import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setLoop } from "../utils.ts";
-import { billingStatusAsync$ } from "../zero-page/billing.ts";
+import { billingStatusAsync$ } from "../okou-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { reloadOnboardingStatus$ } from "../okou-page/onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
   onboardingDraft$,

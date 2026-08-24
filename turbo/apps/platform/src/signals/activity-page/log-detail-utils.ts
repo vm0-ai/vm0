@@ -1,4 +1,4 @@
-import type { AgentEvent } from "../zero-page/log-types.ts";
+import type { AgentEvent } from "../okou-page/log-types.ts";
 import { i18n } from "../../i18n/index.ts";
 import { normalizeCodexEventsForGrouping } from "./codex-activity-normalizer.ts";
 

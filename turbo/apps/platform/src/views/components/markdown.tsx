@@ -11,11 +11,11 @@ import {
   escapeHtmlTags,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
-import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
 import { theme$ } from "../../signals/theme.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
-import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
+import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 
 type MarkdownNodeProp = { node?: Element };

@@ -6,7 +6,7 @@ import type {
   UserMessageDocument,
   UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
 /**
  * Mirror the server-owned run-model annotation in the client projection. The

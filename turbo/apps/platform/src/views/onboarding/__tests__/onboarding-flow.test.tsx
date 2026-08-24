@@ -37,7 +37,7 @@ import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onb
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 

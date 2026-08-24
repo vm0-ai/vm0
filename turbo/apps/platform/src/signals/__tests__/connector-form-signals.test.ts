@@ -5,7 +5,7 @@ import {
   manualGrantFormValuesFor$,
   setConnectorOAuthDeviceAuthStartOptionValue$,
   setManualGrantFormValue$,
-} from "../zero-page/settings/connectors.ts";
+} from "../okou-page/settings/connectors.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();

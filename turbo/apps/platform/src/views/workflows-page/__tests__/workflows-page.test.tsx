@@ -35,8 +35,8 @@ import {
   patchWorkflowMetadataForm$,
   setWorkflowFileDraft$,
 } from "../../../signals/workflows-page/workflows-signals.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../okou-page/workflow-automations-page.tsx";
 import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
+import { reloadTelegramConnectLinkStatus$ } from "./okou-page/telegram-connect-signals.ts";
 import { onRef, setLoop } from "./utils.ts";
 
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.1;

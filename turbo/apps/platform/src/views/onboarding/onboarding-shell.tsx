@@ -9,17 +9,17 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
-import { AccountDropdown } from "../zero-page/zero-sidebar-account";
+import { AccountDropdown } from "../okou-page/sidebar-account";
 import {
   ZeroOrgSwitcher,
   ZeroOrgSwitcherCompact,
-} from "../zero-page/zero-org-switcher.tsx";
-import { SettingsDialog } from "../zero-page/components/settings/settings-dialog.tsx";
-import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
+} from "../okou-page/org-switcher.tsx";
+import { SettingsDialog } from "../okou-page/components/settings/settings-dialog.tsx";
+import { handleZeroAccountAction$ } from "../../signals/okou-page/nav.ts";
 import {
   closeSettingsModal$,
   settingsDialogOpen$,
-} from "../../signals/zero-page/settings/settings-dialog.ts";
+} from "../../signals/okou-page/settings/settings-dialog.ts";
 
 /**
  * Onboarding uses a softer, larger surface than the rest of the app: a wider

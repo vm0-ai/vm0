@@ -4,7 +4,7 @@ import { getModelImageInputSupport } from "@okouai/api-contracts/contracts/model
 import type {
   DraftSignals,
   ZeroChatAttachment,
-} from "../zero-page/chat-draft.ts";
+} from "../okou-page/chat-draft.ts";
 import { i18n } from "../../i18n/index.ts";
 
 /**

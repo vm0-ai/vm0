@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
-import type { AgentEvent } from "../zero-page/log-types.ts";
+import type { AgentEvent } from "../okou-page/log-types.ts";
 import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";
 import { tapError } from "../utils.ts";

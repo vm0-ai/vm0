@@ -15,7 +15,7 @@ import type {
   AgentEvent,
   AgentEventsResponse,
   LogStatus,
-} from "../zero-page/log-types.ts";
+} from "../okou-page/log-types.ts";
 import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 import {
   formatActivityClockTime,
