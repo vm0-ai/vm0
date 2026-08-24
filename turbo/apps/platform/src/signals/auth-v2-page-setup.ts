@@ -9,13 +9,11 @@ import { hideAppSkeleton$ } from "./app-skeleton.ts";
 import { resolveAuthBrandContext } from "./auth.ts";
 import { authV2SignInSignals$ } from "./auth-v2/sign-in-flow.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
-import { setPageSignal$ } from "./page-signal.ts";
 import { updatePage$ } from "./react-router.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const authBrand = resolveAuthBrandContext();
-    set(setPageSignal$, signal);
     set(updatePage$, createElement(AuthV2Page, { mode }));
     set(
       updateDocumentTitle$,
