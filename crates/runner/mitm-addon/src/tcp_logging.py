@@ -4,6 +4,7 @@ import time
 
 from mitmproxy import tcp
 
+import connection_endpoints
 import deferred_callbacks
 import flow_metadata
 import flow_metadata_keys as metadata_keys
@@ -30,7 +31,8 @@ def start(flow: tcp.TCPFlow, *, registry_path: str) -> None:
     - A valid registered VM installs the run ID, network and proxy log paths, and
       ``TCP_START_MONOTONIC``.
     """
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    client_peername = connection_endpoints.client_peername(flow.client_conn)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 

@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from mitmproxy import tcp
@@ -50,9 +51,25 @@ class TestTcpStart:
         assert metadata_keys.VM_NETWORK_LOG_PATH in flow.metadata
         assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
-    def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
+    @pytest.mark.parametrize(
+        "client_peername",
+        [
+            pytest.param(None, id="missing"),
+            pytest.param(
+                cast(tuple[str, int], ("10.200.0.1", "12345")),
+                id="string-port",
+            ),
+        ],
+    )
+    def test_skips_when_client_ip_is_unavailable(
+        self,
+        registry_file,
+        mitm_ctx,
+        real_tcp_flow,
+        client_peername: tuple[str, int] | None,
+    ):
         flow = real_tcp_flow()
-        flow.client_conn.peername = None
+        flow.client_conn.peername = client_peername
 
         with (
             mitm_ctx(registry_path=str(registry_file)),

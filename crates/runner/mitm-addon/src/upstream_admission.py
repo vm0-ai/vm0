@@ -345,7 +345,8 @@ def handle_server_connect(
     if client is None or server is None:
         return
 
-    client_ip = client.peername[0] if getattr(client, "peername", None) else None
+    client_peername = connection_endpoints.client_peername(client)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 
@@ -392,7 +393,8 @@ def handle_tls_clienthello(
     classification, not cached authorization; current request-time registry state remains
     authoritative for enforcement.
     """
-    client_ip = data.context.client.peername[0] if data.context.client.peername else None
+    client_peername = connection_endpoints.client_peername(data.context.client)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 
