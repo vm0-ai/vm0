@@ -66,10 +66,11 @@ ruby -e '
 
   release_text = File.read(ARGV[1])
   promote_text = release_text.split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
+  dollar = 36.chr
   canonical_credentials = {
-    "OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" => "$" + "{{ steps.notary-key.outputs.path }}",
-    "OKOU_DESKTOP_NOTARIZE_API_KEY_ID" => "$" + "{{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
-    "OKOU_DESKTOP_NOTARIZE_API_ISSUER" => "$" + "{{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" => dollar + "{{ steps.notary-key.outputs.path }}",
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_ID" => dollar + "{{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
+    "OKOU_DESKTOP_NOTARIZE_API_ISSUER" => dollar + "{{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
   }
   legacy_credentials = [
     "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
@@ -93,9 +94,9 @@ ruby -e '
   notarize_run = notarize_step.fetch("run")
   raise "Desktop app signing must consume the atomic API credential source" unless notarize_run.include?("sign-and-notarize-packaged-app.mjs")
   canonical_notarytool_arguments = [
-    "--key \"$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH\"",
-    "--key-id \"$OKOU_DESKTOP_NOTARIZE_API_KEY_ID\"",
-    "--issuer \"$OKOU_DESKTOP_NOTARIZE_API_ISSUER\"",
+    "--key \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_PATH\"",
+    "--key-id \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_ID\"",
+    "--issuer \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_ISSUER\"",
   ]
   raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
