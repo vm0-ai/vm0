@@ -23,6 +23,7 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
+const START_MAX_ATTEMPTS: usize = 3;
 const ADDON_READY_FILENAME: &str = "addon-ready";
 /// Short bounded retry for Linux `execve` returning ETXTBSY while a freshly
 /// installed/replaced mitmdump binary is still observed as writable.
@@ -30,6 +31,38 @@ const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RUNNER_TOKEN_ENV: &str = "VM0_MITM_RUNNER_TOKEN";
+
+#[derive(Debug)]
+enum MitmdumpStartupFailure {
+    PortInUse(RunnerError),
+    Other(RunnerError),
+}
+
+impl MitmdumpStartupFailure {
+    fn into_runner_error(self) -> RunnerError {
+        match self {
+            Self::PortInUse(error) | Self::Other(error) => error,
+        }
+    }
+
+    fn is_port_in_use(&self) -> bool {
+        matches!(self, Self::PortInUse(_))
+    }
+}
+
+impl From<RunnerError> for MitmdumpStartupFailure {
+    fn from(error: RunnerError) -> Self {
+        Self::Other(error)
+    }
+}
+
+impl std::fmt::Display for MitmdumpStartupFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PortInUse(error) | Self::Other(error) => error.fmt(formatter),
+        }
+    }
+}
 
 /// Configuration for starting the proxy.
 #[derive(Clone)]
@@ -160,22 +193,44 @@ impl MitmProxy {
                 "mitmdump process is already started".to_string(),
             ));
         }
-        let runtime = self
-            .runtime
-            .as_ref()
-            .ok_or_else(|| RunnerError::Internal("missing mitmdump runtime owner".to_string()))?;
-        let child = spawn_mitmdump(
-            &self.config,
-            runtime,
-            self.port,
-            &self.crash_tx,
-            &self.stopping,
-            &self.usage_state_id,
-        )
-        .await?;
-        self.child = Some(child);
-        info!(port = self.port, "mitmdump started");
-        Ok(())
+        let runtime =
+            Arc::clone(self.runtime.as_ref().ok_or_else(|| {
+                RunnerError::Internal("missing mitmdump runtime owner".to_string())
+            })?);
+
+        let mut attempt = 1;
+        loop {
+            let stopping = Arc::new(AtomicBool::new(false));
+            self.stopping = Arc::clone(&stopping);
+            match spawn_mitmdump(
+                &self.config,
+                &runtime,
+                self.port,
+                &self.crash_tx,
+                &stopping,
+                &self.usage_state_id,
+            )
+            .await
+            {
+                Ok(child) => {
+                    self.child = Some(child);
+                    info!(port = self.port, "mitmdump started");
+                    return Ok(());
+                }
+                Err(error) if error.is_port_in_use() && attempt < START_MAX_ATTEMPTS => {
+                    warn!(
+                        attempt,
+                        max_attempts = START_MAX_ATTEMPTS,
+                        port = self.port,
+                        error = %error,
+                        "mitmdump port was claimed before startup; retrying with a fresh port",
+                    );
+                    self.port = find_available_port()?;
+                    attempt += 1;
+                }
+                Err(error) => return Err(error.into_runner_error()),
+            }
+        }
     }
 
     /// The port mitmdump is listening on.
@@ -489,6 +544,7 @@ impl MitmRestartParams {
             &self.usage_state_id,
         )
         .await
+        .map_err(MitmdumpStartupFailure::into_runner_error)
     }
 }
 
@@ -502,7 +558,7 @@ async fn spawn_mitmdump(
     crash_tx: &mpsc::Sender<()>,
     stopping: &Arc<AtomicBool>,
     usage_state_id: &str,
-) -> RunnerResult<ManagedMitmdump> {
+) -> Result<ManagedMitmdump, MitmdumpStartupFailure> {
     let _prepared_ca = crate::ca::prepare_for_proxy(&config.ca_dir, &config.ca_lock_path).await?;
     let launch = runtime.create_launch_dir().await?;
     let launch_path = launch.path().to_path_buf();
@@ -514,7 +570,8 @@ async fn spawn_mitmdump(
             return Err(RunnerError::Internal(format!(
                 "remove stale addon ready marker {}: {error}",
                 addon_ready_path.display()
-            )));
+            ))
+            .into());
         }
     }
     let mut cmd = tokio::process::Command::new(&config.mitmdump_bin);
@@ -586,34 +643,37 @@ async fn spawn_mitmdump(
     let child = spawn_mitmdump_child(&mut cmd, &config.mitmdump_bin).await?;
     let mut child = ManagedMitmdump::new(child, launch, Arc::clone(runtime))?;
 
-    // Stream stdout to tracing; when the pipe closes (process exited),
-    // send a crash notification unless we're in a graceful stop.
-    if let Some(stdout) = child.child_mut().and_then(|child| child.stdout.take()) {
-        let crash_tx = crash_tx.clone();
-        let stopping = Arc::clone(stopping);
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    info!(target: "mitmdump", "{line}");
+    // Start draining stdout before readiness so the child cannot block on a
+    // full pipe. Crash forwarding is attached only after startup succeeds.
+    let stdout_monitor = child
+        .child_mut()
+        .and_then(|child| child.stdout.take())
+        .map(|stdout| {
+            tokio::spawn(async move {
+                let mut lines = tokio::io::BufReader::new(stdout).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if !line.is_empty() {
+                        info!(target: "mitmdump", "{line}");
+                    }
                 }
-            }
-            // Pipe closed — process exited.
-            if !stopping.load(Ordering::Acquire) {
-                let _ = crash_tx.send(()).await;
-            }
+            })
         });
-    }
-    if let Some(stderr) = child.child_mut().and_then(|child| child.stderr.take()) {
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    log_mitmdump_stderr_line(&line);
+    let stderr_monitor = child
+        .child_mut()
+        .and_then(|child| child.stderr.take())
+        .map(|stderr| {
+            tokio::spawn(async move {
+                let mut lines = tokio::io::BufReader::new(stderr).lines();
+                let mut port_in_use = false;
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if !line.is_empty() {
+                        port_in_use |= mitmdump_stderr_reports_port_in_use(&line, port);
+                        log_mitmdump_stderr_line(&line);
+                    }
                 }
-            }
+                port_in_use
+            })
         });
-    }
 
     if let Err(error) = wait_for_ready(
         child.child_mut().ok_or_else(|| {
@@ -627,11 +687,50 @@ async fn spawn_mitmdump(
     .await
     {
         stopping.store(true, Ordering::Release);
-        child.force_stop().await?;
-        return Err(error);
+        let stop_result = child.force_stop().await;
+        let stdout_result = match stdout_monitor {
+            Some(stdout_monitor) => stdout_monitor.await.map_err(|join_error| {
+                RunnerError::Internal(format!(
+                    "join mitmdump stdout monitor after startup failure: {join_error}"
+                ))
+            }),
+            None => Ok(()),
+        };
+        let port_in_use_result = match stderr_monitor {
+            Some(stderr_monitor) => stderr_monitor.await.map_err(|join_error| {
+                RunnerError::Internal(format!(
+                    "join mitmdump stderr monitor after startup failure: {join_error}"
+                ))
+            }),
+            None => Ok(false),
+        };
+        stop_result?;
+        stdout_result?;
+        if port_in_use_result? {
+            return Err(MitmdumpStartupFailure::PortInUse(error));
+        }
+        return Err(MitmdumpStartupFailure::Other(error));
+    }
+
+    if let Some(stdout_monitor) = stdout_monitor {
+        let crash_tx = crash_tx.clone();
+        let stopping = Arc::clone(stopping);
+        tokio::spawn(async move {
+            let _ = stdout_monitor.await;
+            if !stopping.load(Ordering::Acquire) {
+                let _ = crash_tx.send(()).await;
+            }
+        });
     }
 
     Ok(child)
+}
+
+fn mitmdump_stderr_reports_port_in_use(line: &str, port: u16) -> bool {
+    let line = line.to_ascii_lowercase();
+    line.contains("failed to listen on")
+        && line.contains(&format!(":{port}"))
+        && line.contains("address already in use")
 }
 
 fn is_text_file_busy(error: &std::io::Error) -> bool {
@@ -796,12 +895,19 @@ from pathlib import Path
 
 port = int(sys.argv[1])
 ready_path = Path(sys.argv[2])
-ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(sys.argv[3], encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(("127.0.0.1", port))
+try:
+    sock.bind(("127.0.0.1", port))
+except OSError as error:
+    print(
+        f"Transparent Proxy failed to listen on *:{port}: {error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from error
 sock.listen(1)
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(sys.argv[3], encoding="utf-8")
 while True:
     conn, _ = sock.accept()
     conn.close()
@@ -855,12 +961,12 @@ for handled in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(handled, signal.SIG_IGN)
 Path(sys.argv[4]).write_text(str(os.getpid()), encoding="utf-8")
 ready_path = Path(sys.argv[2])
-ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(sys.argv[3], encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(("127.0.0.1", int(sys.argv[1])))
 sock.listen(1)
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(sys.argv[3], encoding="utf-8")
 while True:
     conn, _ = sock.accept()
     conn.close()
@@ -913,12 +1019,12 @@ if descendant_pid == 0:
         time.sleep(60)
 
 signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(0))
-ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(usage_state_id, encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(("127.0.0.1", port))
 sock.listen(1)
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(usage_state_id, encoding="utf-8")
 while True:
     connection, _ = sock.accept()
     connection.close()
@@ -936,6 +1042,7 @@ while True:
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf 'attempt\n' >> "$0.attempts"
 python3 - "$0.descendant" <<'PY' &
 import os
 import signal
@@ -952,6 +1059,7 @@ PY
 while [ ! -s "$0.descendant" ]; do
   sleep 0.01
 done
+printf 'addon warning: address already in use\n' >&2
 exit 42
 "#,
         )
@@ -1152,6 +1260,38 @@ exit 42
     fn find_port_returns_nonzero() {
         let port = find_available_port().unwrap();
         assert!(port > 0, "expected non-zero port, got {port}");
+    }
+
+    #[tokio::test]
+    async fn initial_start_retries_an_occupied_selected_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        crate::ca::ensure(&home).await.unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        write_fake_listening_mitmdump(&fake_mitmdump);
+        let config = test_proxy_config(dir.path(), &home, fake_mitmdump);
+        let (mut proxy, mut crash_rx) = MitmProxy::new(config).await.unwrap();
+        let occupied_port = proxy.port();
+        let unrelated_listener = tokio::net::TcpListener::bind(("0.0.0.0", occupied_port))
+            .await
+            .unwrap();
+
+        proxy.start().await.unwrap();
+
+        assert_ne!(proxy.port(), occupied_port);
+        tokio::net::TcpStream::connect(("127.0.0.1", proxy.port()))
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                crash_rx.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "failed startup attempt must not report a crash after retry"
+        );
+
+        proxy.stop().await.unwrap();
+        drop(unrelated_listener);
     }
 
     #[test]
@@ -1637,27 +1777,26 @@ exit 42
         let fake_mitmdump = dir.path().join("failing-mitmdump");
         write_forking_failing_mitmdump(&fake_mitmdump);
         let config = test_proxy_config(dir.path(), &home, fake_mitmdump.clone());
-        let runtime = acquire_test_runtime(&config).await;
-        let (crash_tx, _crash_rx) = mpsc::channel(1);
-        let stopping = Arc::new(AtomicBool::new(false));
+        let runtime_dir = config.runtime_dir.clone();
+        let (mut proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+        let selected_port = proxy.port();
 
-        let error = spawn_mitmdump(
-            &config,
-            &runtime,
-            find_available_port().unwrap(),
-            &crash_tx,
-            &stopping,
-            "usage-state-test",
-        )
-        .await
-        .err()
-        .expect("expected startup failure");
+        let error = proxy.start().await.expect_err("expected startup failure");
 
         assert!(
             error
                 .to_string()
                 .contains("mitmdump exited immediately with 42"),
             "unexpected error: {error}"
+        );
+        assert_eq!(proxy.port(), selected_port);
+        assert_eq!(
+            std::fs::read_to_string(fake_mitmdump.with_extension("attempts"))
+                .unwrap()
+                .lines()
+                .count(),
+            1,
+            "non-port startup failures must not be retried"
         );
         let descendant_pid: u32 =
             std::fs::read_to_string(fake_mitmdump.with_extension("descendant"))
@@ -1671,7 +1810,7 @@ exit 42
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let launch_path = PathBuf::from(environment.lines().next().unwrap());
         assert!(!launch_path.exists());
-        assert_no_launch_dirs(&config.runtime_dir).await;
+        assert_no_launch_dirs(&runtime_dir).await;
     }
 
     #[tokio::test]
