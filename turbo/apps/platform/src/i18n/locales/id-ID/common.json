@@ -1015,12 +1015,24 @@
       "signIn": "Masuk",
       "signUp": "Daftar"
     },
+    "homeLink": "Buka beranda {{brandName}}",
     "loading": "Memuat autentikasi",
+    "theme": {
+      "darkEnabled": "Tema gelap diaktifkan",
+      "lightEnabled": "Tema terang diaktifkan"
+    },
     "toggleTheme": "Beralih tema",
     "v2": {
-      "continueToSignIn": "Lanjutkan untuk masuk",
-      "continueToSignUp": "Lanjutkan untuk mendaftar",
-      "unavailable": "Pengalaman autentikasi baru belum tersedia."
+      "signIn": {
+        "action": "Gunakan proses masuk saat ini",
+        "description": "Pengalaman masuk baru belum tersedia.",
+        "title": "Masuk ke {{brandName}}"
+      },
+      "signUp": {
+        "action": "Gunakan pendaftaran saat ini",
+        "description": "Pengalaman pendaftaran baru belum tersedia.",
+        "title": "Buat akun {{brandName}} Anda"
+      }
     }
   },
   "authorization": {

@@ -1033,12 +1033,24 @@
       "signIn": "Entrar",
       "signUp": "Criar conta"
     },
+    "homeLink": "Ir para a página inicial do {{brandName}}",
     "loading": "Carregando autenticação",
+    "theme": {
+      "darkEnabled": "Tema escuro ativado",
+      "lightEnabled": "Tema claro ativado"
+    },
     "toggleTheme": "Alternar tema",
     "v2": {
-      "continueToSignIn": "Continuar para entrar",
-      "continueToSignUp": "Continuar para criar uma conta",
-      "unavailable": "A nova experiência de autenticação ainda não está disponível."
+      "signIn": {
+        "action": "Usar o login atual",
+        "description": "A nova experiência de login ainda não está disponível.",
+        "title": "Entrar no {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usar o cadastro atual",
+        "description": "A nova experiência de cadastro ainda não está disponível.",
+        "title": "Criar sua conta do {{brandName}}"
+      }
     }
   },
   "authorization": {

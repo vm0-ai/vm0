@@ -1015,12 +1015,24 @@
       "signIn": "Anmelden",
       "signUp": "Registrieren"
     },
+    "homeLink": "Zur {{brandName}}-Startseite",
     "loading": "Authentifizierung wird geladen",
+    "theme": {
+      "darkEnabled": "Dunkles Design aktiviert",
+      "lightEnabled": "Helles Design aktiviert"
+    },
     "toggleTheme": "Design wechseln",
     "v2": {
-      "continueToSignIn": "Weiter zur Anmeldung",
-      "continueToSignUp": "Weiter zur Registrierung",
-      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+      "signIn": {
+        "action": "Aktuelle Anmeldung verwenden",
+        "description": "Die neue Anmeldeoberfläche ist noch nicht verfügbar.",
+        "title": "Bei {{brandName}} anmelden"
+      },
+      "signUp": {
+        "action": "Aktuelle Registrierung verwenden",
+        "description": "Die neue Registrierungsoberfläche ist noch nicht verfügbar.",
+        "title": "Ihr {{brandName}}-Konto erstellen"
+      }
     }
   },
   "authorization": {

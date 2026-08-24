@@ -1033,12 +1033,24 @@
       "signIn": "Accedi",
       "signUp": "Iscriviti"
     },
+    "homeLink": "Vai alla home di {{brandName}}",
     "loading": "Caricamento dell'autenticazione",
+    "theme": {
+      "darkEnabled": "Tema scuro attivato",
+      "lightEnabled": "Tema chiaro attivato"
+    },
     "toggleTheme": "Cambia tema",
     "v2": {
-      "continueToSignIn": "Continua per accedere",
-      "continueToSignUp": "Continua per registrarti",
-      "unavailable": "La nuova esperienza di autenticazione non è ancora disponibile."
+      "signIn": {
+        "action": "Usa l'accesso attuale",
+        "description": "La nuova esperienza di accesso non è ancora disponibile.",
+        "title": "Accedi a {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usa la registrazione attuale",
+        "description": "La nuova esperienza di registrazione non è ancora disponibile.",
+        "title": "Crea il tuo account {{brandName}}"
+      }
     }
   },
   "authorization": {
