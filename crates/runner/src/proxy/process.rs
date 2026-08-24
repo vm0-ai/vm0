@@ -871,6 +871,14 @@ mod tests {
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
 
+    // Mirrors the pre-#28989 reader retained by rollback runners. Keep this
+    // test-only so Stage 1 proves its dual writer remains legacy-readable.
+    fn legacy_only_runtime_marker(environ: &[u8]) -> Option<&[u8]> {
+        environ
+            .split(|byte| *byte == 0)
+            .find_map(|entry| entry.strip_prefix(b"VM0_MITMDUMP_RUNTIME_DIR="))
+    }
+
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
             path,
@@ -879,6 +887,7 @@ set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 printf '%s\n%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
   "$VM0_MITMDUMP_RUNTIME_DIR" "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
+cp "/proc/$$/environ" "$0.environ"
 port=""
 ready_path=""
 usage_state_id=""
@@ -1603,6 +1612,12 @@ exit 42
         assert_eq!(environment[0], environment[1]);
         assert_eq!(environment[0], environment[2]);
         assert_eq!(environment[3], "runner-token");
+        let launched_environ = std::fs::read(fake_mitmdump.with_extension("environ")).unwrap();
+        assert_eq!(
+            legacy_only_runtime_marker(&launched_environ),
+            Some(environment[0].as_bytes()),
+            "the pre-migration legacy-only reader must recognize Stage 1 launch environments"
+        );
         let launch_path = Path::new(environment[0]);
         assert_eq!(launch_path.parent(), Some(config.runtime_dir.as_path()));
         assert!(
