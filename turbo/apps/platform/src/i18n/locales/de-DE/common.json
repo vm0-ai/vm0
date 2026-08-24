@@ -1046,7 +1046,6 @@
     "v2": {
       "signIn": {
         "action": "Aktuelle Anmeldung verwenden",
-        "description": "Die neue Anmeldeoberfläche ist noch nicht verfügbar.",
         "title": "Bei {{brandName}} anmelden"
       },
       "signUp": {

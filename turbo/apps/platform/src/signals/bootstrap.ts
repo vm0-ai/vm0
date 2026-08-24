@@ -8,6 +8,7 @@ import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
+  setupPageWrapper,
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
@@ -170,11 +171,11 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signInV2,
-    setup: setupSignInV2Page$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signInV2CatchAll,
-    setup: setupSignInV2Page$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signUpV2,

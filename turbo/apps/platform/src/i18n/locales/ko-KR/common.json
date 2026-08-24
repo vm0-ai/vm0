@@ -1045,7 +1045,6 @@
     "v2": {
       "signIn": {
         "action": "현재 로그인 사용",
-        "description": "새 로그인 화면은 아직 사용할 수 없습니다.",
         "title": "{{brandName}}에 로그인"
       },
       "signUp": {

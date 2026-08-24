@@ -1045,7 +1045,6 @@
     "v2": {
       "signIn": {
         "action": "Gunakan proses masuk saat ini",
-        "description": "Pengalaman masuk baru belum tersedia.",
         "title": "Masuk ke {{brandName}}"
       },
       "signUp": {

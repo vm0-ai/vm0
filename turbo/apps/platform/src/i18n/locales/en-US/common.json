@@ -1046,7 +1046,6 @@
     "v2": {
       "signIn": {
         "action": "Use current sign-in",
-        "description": "The new sign-in experience is not ready yet.",
         "title": "Sign in to {{brandName}}"
       },
       "signUp": {

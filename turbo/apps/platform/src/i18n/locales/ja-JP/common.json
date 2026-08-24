@@ -1045,7 +1045,6 @@
     "v2": {
       "signIn": {
         "action": "現在のサインインを使用",
-        "description": "新しいサインイン画面はまだ利用できません。",
         "title": "{{brandName}} にサインイン"
       },
       "signUp": {

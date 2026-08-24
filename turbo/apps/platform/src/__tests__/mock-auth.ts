@@ -54,6 +54,22 @@ export interface MockedClientSession {
   };
 }
 
+export type MockedSignInFactor =
+  | { readonly strategy: "password" }
+  | {
+      readonly emailAddressId: string;
+      readonly safeIdentifier: string;
+      readonly strategy: "email_code" | "reset_password_email_code";
+    }
+  | { readonly strategy: string };
+
+export interface MockedSignInResourceState {
+  readonly createdSessionId?: string | null;
+  readonly isTransferable?: boolean;
+  readonly status: string | null;
+  readonly supportedFirstFactors?: readonly MockedSignInFactor[] | null;
+}
+
 interface MockedUser {
   id: string;
   fullName: string;
@@ -89,6 +105,21 @@ let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
 let internalMockedClerkLoaded = true;
 let internalMockedClerkSessionTransitioning = false;
 let internalMockedClerkSessionSignedOut = false;
+let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
+  createdSessionId: null,
+  isTransferable: false,
+  status: "needs_identifier",
+  supportedFirstFactors: null,
+};
+
+export function mockSignInResource(state: MockedSignInResourceState): void {
+  internalMockedSignInResourceState = {
+    createdSessionId: state.createdSessionId ?? null,
+    isTransferable: state.isTransferable ?? false,
+    status: state.status,
+    supportedFirstFactors: state.supportedFirstFactors ?? null,
+  };
+}
 
 export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
@@ -197,6 +228,7 @@ function clearMockedAuth() {
   internalMockedClerkLoaded = true;
   internalMockedClerkSessionTransitioning = false;
   internalMockedClerkSessionSignedOut = false;
+  mockSignInResource({ status: "needs_identifier" });
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -214,10 +246,25 @@ function clearMockedAuth() {
   mockedClerkLoad.mockReset();
   mockedClerkLoad.mockImplementation(defaultLoadImpl);
   mockedClerk.clientSignInCreate.mockReset();
-  mockedClerk.clientSignInCreate.mockResolvedValue({
-    status: "complete",
-    createdSessionId: "test-created-session-id",
-  });
+  mockedClerk.clientSignInCreate.mockImplementation(
+    defaultClientSignInCreateImpl,
+  );
+  mockedClerk.signInPrepareFirstFactor.mockReset();
+  mockedClerk.signInPrepareFirstFactor.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
+  mockedClerk.signInAttemptFirstFactor.mockReset();
+  mockedClerk.signInAttemptFirstFactor.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
+  mockedClerk.signInResetPassword.mockReset();
+  mockedClerk.signInResetPassword.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
+  mockedClerk.signInFutureReset.mockReset();
+  mockedClerk.signInFutureReset.mockImplementation(
+    defaultSignInFutureResetImpl,
+  );
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
   mockedClerk.buildUserProfileUrl.mockReset();
@@ -252,14 +299,69 @@ const defaultSessionTouchImpl: SessionTouchImpl = () => {
   return Promise.resolve();
 };
 const sessionTouch = vi.fn<SessionTouchImpl>(defaultSessionTouchImpl);
-const clientSignInCreate = vi.fn(
-  (_params: { strategy: "ticket"; ticket: string }) => {
+interface MockedSignInCreateParams {
+  readonly identifier?: string;
+  readonly strategy?: string;
+  readonly ticket?: string;
+}
+
+function defaultClientSignInCreateImpl(params: MockedSignInCreateParams) {
+  if (params.strategy === "ticket") {
     return Promise.resolve({
       status: "complete",
       createdSessionId: "test-created-session-id",
     });
-  },
+  }
+  return Promise.resolve(mockedClientSignIn);
+}
+
+const clientSignInCreate = vi.fn<typeof defaultClientSignInCreateImpl>(
+  defaultClientSignInCreateImpl,
 );
+
+function defaultSignInResourceOperationImpl(_params?: unknown) {
+  return Promise.resolve(mockedClientSignIn);
+}
+
+const signInPrepareFirstFactor = vi.fn<
+  typeof defaultSignInResourceOperationImpl
+>(defaultSignInResourceOperationImpl);
+const signInAttemptFirstFactor = vi.fn<
+  typeof defaultSignInResourceOperationImpl
+>(defaultSignInResourceOperationImpl);
+const signInResetPassword = vi.fn<typeof defaultSignInResourceOperationImpl>(
+  defaultSignInResourceOperationImpl,
+);
+
+function defaultSignInFutureResetImpl(): void {
+  mockSignInResource({ status: "needs_identifier" });
+}
+
+const signInFutureReset = vi.fn<typeof defaultSignInFutureResetImpl>(
+  defaultSignInFutureResetImpl,
+);
+
+const mockedClientSignIn = {
+  get status() {
+    return internalMockedSignInResourceState.status;
+  },
+  get supportedFirstFactors() {
+    return internalMockedSignInResourceState.supportedFirstFactors;
+  },
+  get createdSessionId() {
+    return internalMockedSignInResourceState.createdSessionId;
+  },
+  create: clientSignInCreate,
+  prepareFirstFactor: signInPrepareFirstFactor,
+  attemptFirstFactor: signInAttemptFirstFactor,
+  resetPassword: signInResetPassword,
+  __internal_future: {
+    get isTransferable() {
+      return internalMockedSignInResourceState.isTransferable;
+    },
+    reset: signInFutureReset,
+  },
+};
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
 };
@@ -308,6 +410,7 @@ export const mockedClerkLoad = vi.fn<typeof defaultLoadImpl>(defaultLoadImpl);
 
 interface MockedSetActiveParams {
   organization?: string | null;
+  redirectUrl?: string;
   session?: string | null;
   navigate?: (params: {
     session: {
@@ -322,7 +425,7 @@ interface MockedSetActiveParams {
 async function defaultSetActiveImpl(
   params: MockedSetActiveParams,
 ): Promise<void> {
-  let navigatedTo: string | null = null;
+  let navigatedTo: string | null = params.redirectUrl ?? null;
   await params.navigate?.({
     session: {},
     decorateUrl: (url) => {
@@ -375,13 +478,15 @@ export const mockedClerk = {
   sessionGetToken,
   sessionTouch,
   clientSignInCreate,
+  signInPrepareFirstFactor,
+  signInAttemptFirstFactor,
+  signInResetPassword,
+  signInFutureReset,
   client: {
     get sessions() {
       return internalMockedClientSessions;
     },
-    signIn: {
-      create: clientSignInCreate,
-    },
+    signIn: mockedClientSignIn,
   },
   signOut: vi.fn(() => {
     return Promise.resolve();
@@ -415,7 +520,7 @@ export const mockedClerk = {
   buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
     defaultBuildUserProfileUrlImpl,
   ),
-  setActive: vi.fn(defaultSetActiveImpl),
+  setActive: vi.fn<typeof defaultSetActiveImpl>(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });
   }),
