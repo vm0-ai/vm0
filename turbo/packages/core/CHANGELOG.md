@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.586.2](https://github.com/vm0-ai/vm0/compare/core-v8.586.1...core-v8.586.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **platform:** remove unavailable restored attachments ([#28871](https://github.com/vm0-ai/vm0/issues/28871)) ([16a3f22](https://github.com/vm0-ai/vm0/commit/16a3f2278db41669f27e3af909312f80429b782e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.357.2
+
 ## [8.586.1](https://github.com/vm0-ai/vm0/compare/core-v8.586.0...core-v8.586.1) (2026-08-24)
 
 

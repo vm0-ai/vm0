@@ -78,6 +78,42 @@ account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+pnpm_setup_action =
+  "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86"
+pnpm_version = "10.33.4"
+{
+  "runner E2E preparation" => account_prepare,
+  "runner E2E shards" => runner,
+  "runner E2E cleanup" => account_cleanup,
+}.each do |job_name, job|
+  steps = job.fetch("steps")
+  pnpm_setup_index = steps.index do |step|
+    step["uses"] == pnpm_setup_action
+  end
+  node_setup_index = steps.index do |step|
+    step.fetch("uses", "").start_with?("actions/setup-node@")
+  end
+  unless pnpm_setup_index && node_setup_index &&
+      pnpm_setup_index < node_setup_index
+    raise "#{job_name} must install pnpm before selecting Node.js 22"
+  end
+  pnpm_setup_step = steps.fetch(pnpm_setup_index)
+  unless pnpm_setup_step.dig("with", "version") == pnpm_version
+    raise "#{job_name} must install the pinned pnpm version"
+  end
+  if steps.any? do |step|
+      step.fetch("run", "").include?("corepack enable pnpm")
+    end
+    raise "#{job_name} must not download pnpm through Node.js 22 Corepack"
+  end
+  dependency_install = steps.find do |step|
+    step["name"] == "Install E2E dependencies"
+  end
+  unless dependency_install&.fetch("run", nil) ==
+      "cd e2e && pnpm install --frozen-lockfile"
+    raise "#{job_name} must keep the frozen E2E dependency install"
+  end
+end
 
 playwright_step_names = playwright.fetch("steps").map { |step| step["name"] }
 browser_install_index = playwright_step_names.index("Install Playwright browsers")
@@ -578,10 +614,17 @@ unless retain_step &&
   raise "failed runner work must retain reusable accounts explicitly"
 end
 
+cleanup_pnpm_setup_step = cleanup_steps.find do |step|
+  step["uses"] == pnpm_setup_action
+end
+cleanup_node_setup_step = cleanup_steps.find do |step|
+  step.fetch("uses", "").start_with?("actions/setup-node@")
+end
+
 conditional_setup_steps = [
   cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") },
-  cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/setup-node@") },
-  cleanup_steps.find { |step| step["name"] == "Install pnpm" },
+  cleanup_pnpm_setup_step,
+  cleanup_node_setup_step,
   cleanup_steps.find { |step| step["name"] == "Install E2E dependencies" },
 ]
 unless conditional_setup_steps.all? do |step|

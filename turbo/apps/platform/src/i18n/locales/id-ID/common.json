@@ -489,6 +489,26 @@
       "zoomIn": "Perbesar",
       "zoomOut": "Perkecil"
     },
+    "annotation": {
+      "attach": "Lampirkan tanda",
+      "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "notePlaceholder": "Tulis apa yang harus diubah di sini",
+      "open": "Anotasi",
+      "redo": "Ulangi",
+      "removeMark": "Hapus tanda",
+      "subtitle_other": "{{count}} tanda",
+      "tools": {
+        "arrow": "Panah",
+        "box": "Kotak",
+        "crop": "Pangkas",
+        "highlight": "Sorot",
+        "pen": "Gambar",
+        "redact": "Sensor",
+        "select": "Pilih",
+        "text": "Teks"
+      },
+      "undo": "Urungkan"
+    },
     "attachments": {
       "cancelUpload": "Batalkan unggahan {{filename}}",
       "download": "Unduh {{filename}}",
@@ -1015,12 +1035,24 @@
       "signIn": "Masuk",
       "signUp": "Daftar"
     },
+    "homeLink": "Buka beranda {{brandName}}",
     "loading": "Memuat autentikasi",
+    "theme": {
+      "darkEnabled": "Tema gelap diaktifkan",
+      "lightEnabled": "Tema terang diaktifkan"
+    },
     "toggleTheme": "Beralih tema",
     "v2": {
-      "continueToSignIn": "Lanjutkan untuk masuk",
-      "continueToSignUp": "Lanjutkan untuk mendaftar",
-      "unavailable": "Pengalaman autentikasi baru belum tersedia."
+      "signIn": {
+        "action": "Gunakan proses masuk saat ini",
+        "description": "Pengalaman masuk baru belum tersedia.",
+        "title": "Masuk ke {{brandName}}"
+      },
+      "signUp": {
+        "action": "Gunakan pendaftaran saat ini",
+        "description": "Pengalaman pendaftaran baru belum tersedia.",
+        "title": "Buat akun {{brandName}} Anda"
+      }
     }
   },
   "authorization": {
@@ -1665,6 +1697,36 @@
       "weeklyAt": "Setiap minggu pukul {{time}}",
       "weeklyOnAt": "Setiap minggu pada {{days}} pukul {{time}}"
     },
+    "banking": {
+      "accountFallback": "Rekening bank",
+      "actionFailed": "Tindakan perbankan gagal",
+      "active_other": "Akses aktif untuk {{count}} rekening",
+      "automationOff": "Akses hanya-baca tidak tersedia untuk proses otomatisasi.",
+      "cancel": "Batal",
+      "change": "Ubah",
+      "connect": "Hubungkan bank",
+      "continue": "Lanjutkan",
+      "duration": "Durasi akses",
+      "expiresAt": "Berakhir {{time}}",
+      "grant": "Berikan akses",
+      "institutionFallback": "Institusi keuangan",
+      "loadFailed": "Tidak dapat memuat akses perbankan",
+      "noAccounts": "Tidak ada rekening aktif yang tersedia. Hubungkan kembali atau perbaiki institusi terlebih dahulu.",
+      "oneDay": "24 jam",
+      "oneHour": "1 jam",
+      "popupBlocked": "Izinkan pop-up untuk Zero, lalu coba lagi.",
+      "readOnly": "Rekening, saldo, dan transaksi · hanya baca",
+      "repair": "Perbaiki",
+      "repairRequired": "{{institution}} perlu diperbaiki",
+      "retry": "Coba lagi",
+      "revoke": "Cabut",
+      "revokeConfirm": "Cabut akses perbankan Agen ini?",
+      "selectAccounts": "Pilih rekening",
+      "sevenDays": "7 hari",
+      "thirtyDays": "30 hari",
+      "title": "Permintaan akses perbankan",
+      "waiting": "Menunggu Mastercard Data Connect. Selesaikan proses di sana, lalu kembali ke Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Tambahkan kredit untuk terus mengobrol dengan {{assistantName}}.",
       "askAdminCredits": "Minta admin ruang kerja untuk menambahkan kredit agar Anda bisa terus mengobrol dengan {{assistantName}}.",
@@ -2134,6 +2196,39 @@
       "search": "Cari agen",
       "title": "Kelola akses {{connector}}",
       "unnamedAgent": "Tanpa nama"
+    },
+    "accounts": {
+      "accountName": "Nama akun",
+      "accountsUnavailable": "Akun tidak tersedia untuk konektor ini.",
+      "actions": "Tindakan akun",
+      "add": "Tambah",
+      "addAccount": "Tambah akun",
+      "connected": "Terhubung",
+      "default": "Default",
+      "deleteAccount": "Hapus akun",
+      "deleteDescription": "Thread yang menggunakan akun ini akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount": "{{value}} thread akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Hapus {{account}}?",
+      "find": "Cari akun",
+      "loading": "Memuat akun…",
+      "loadingMore": "Memuat…",
+      "loadMore": "Muat lebih banyak",
+      "makeDefault": "Jadikan default",
+      "manage": "Kelola",
+      "managerTitle": "Kelola akun {{connector}}",
+      "noAccounts": "Tidak ada akun",
+      "noAccountsFound": "Akun tidak ditemukan",
+      "reconnectRequired": "Perlu dihubungkan kembali",
+      "rename": "Ganti nama",
+      "summaryMany": "{{value}} akun",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} akun",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Akun kerja"
     },
     "actions": {
       "apply": "Terapkan",

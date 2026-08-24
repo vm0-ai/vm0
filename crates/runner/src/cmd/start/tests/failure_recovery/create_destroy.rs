@@ -38,7 +38,7 @@ async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
     shutdown(&env, run_handle).await;
 }
 
-/// Test 20: A healthy non-zero process exit remains failed but retains its VM.
+/// Test 20: A healthy non-zero process exit remains failed but retains its sandbox.
 #[tokio::test(start_paused = true)]
 async fn nonzero_job_parks_and_successor_reuses_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -69,7 +69,7 @@ async fn nonzero_job_parks_and_successor_reuses_sandbox() {
     assert_eq!(
         budget.allocated().2,
         1,
-        "parked VM should retain its budget"
+        "parked sandbox should retain its budget"
     );
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);

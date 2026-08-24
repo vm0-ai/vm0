@@ -8,8 +8,8 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousMigration = "0980_backfill_built_in_model_candidate_cooldown";
-const backfillMigration = "0982_backfill_official_slack_installation_brand";
+const previousMigration = "0981_mean_sheva_callister";
+const backfillMigration = "0983_backfill_official_slack_installation_brand";
 const testDatabase = "migration_slack_official_brand_backfill";
 
 interface InstallationBrandRow {

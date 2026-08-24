@@ -770,7 +770,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_agent_env_build",
         "runner_agent_start_process",
         "sandbox_reuse_miss",
-        "vm_create",
+        "sandbox_create",
         "workspace_drive_mount",
         "workspace_drive_mount_guest_exec",
         "agent_execute",
@@ -1076,7 +1076,7 @@ async fn execute_job_records_failed_fresh_sandbox_factory_stage_timing() {
         false,
         Some("sandbox_factory_create_failed"),
     );
-    assert_action_success(&telemetry, "vm_create", false);
+    assert_action_success(&telemetry, "sandbox_create", false);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
 }
 

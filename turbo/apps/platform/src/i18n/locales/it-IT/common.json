@@ -503,6 +503,28 @@
       "zoomIn": "Ingrandisci",
       "zoomOut": "Rimpicciolisci"
     },
+    "annotation": {
+      "attach": "Allega segni",
+      "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
+      "open": "Annota",
+      "redo": "Ripeti",
+      "removeMark": "Rimuovi segno",
+      "subtitle_one": "{{count}} segno",
+      "subtitle_many": "{{count}} segni",
+      "subtitle_other": "{{count}} segni",
+      "tools": {
+        "arrow": "Freccia",
+        "box": "Rettangolo",
+        "crop": "Ritaglia",
+        "highlight": "Evidenzia",
+        "pen": "Disegna",
+        "redact": "Oscura",
+        "select": "Seleziona",
+        "text": "Testo"
+      },
+      "undo": "Annulla"
+    },
     "attachments": {
       "cancelUpload": "Annulla caricamento {{filename}}",
       "download": "Scarica {{filename}}",
@@ -1033,12 +1055,24 @@
       "signIn": "Accedi",
       "signUp": "Iscriviti"
     },
+    "homeLink": "Vai alla home di {{brandName}}",
     "loading": "Caricamento dell'autenticazione",
+    "theme": {
+      "darkEnabled": "Tema scuro attivato",
+      "lightEnabled": "Tema chiaro attivato"
+    },
     "toggleTheme": "Cambia tema",
     "v2": {
-      "continueToSignIn": "Continua per accedere",
-      "continueToSignUp": "Continua per registrarti",
-      "unavailable": "La nuova esperienza di autenticazione non è ancora disponibile."
+      "signIn": {
+        "action": "Usa l'accesso attuale",
+        "description": "La nuova esperienza di accesso non è ancora disponibile.",
+        "title": "Accedi a {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usa la registrazione attuale",
+        "description": "La nuova esperienza di registrazione non è ancora disponibile.",
+        "title": "Crea il tuo account {{brandName}}"
+      }
     }
   },
   "authorization": {
@@ -1694,6 +1728,38 @@
       "weeklyAt": "Ogni settimana alle {{time}}",
       "weeklyOnAt": "Ogni settimana il {{days}} alle {{time}}"
     },
+    "banking": {
+      "accountFallback": "Conto bancario",
+      "actionFailed": "Operazione bancaria non riuscita",
+      "active_one": "Accesso attivo per {{count}} conto",
+      "active_many": "Accesso attivo per {{count}} conti",
+      "active_other": "Accesso attivo per {{count}} conti",
+      "automationOff": "L'accesso in sola lettura non è disponibile per le esecuzioni di automazione.",
+      "cancel": "Annulla",
+      "change": "Modifica",
+      "connect": "Collega una banca",
+      "continue": "Continua",
+      "duration": "Durata dell'accesso",
+      "expiresAt": "Scade il {{time}}",
+      "grant": "Concedi accesso",
+      "institutionFallback": "Istituto finanziario",
+      "loadFailed": "Impossibile caricare l'accesso bancario",
+      "noAccounts": "Non sono disponibili conti attivi. Ricollega o ripara prima l'istituto.",
+      "oneDay": "24 ore",
+      "oneHour": "1 ora",
+      "popupBlocked": "Consenti i popup per Zero e riprova.",
+      "readOnly": "Conti, saldi e transazioni · sola lettura",
+      "repair": "Ripara",
+      "repairRequired": "{{institution}} deve essere riparato",
+      "retry": "Riprova",
+      "revoke": "Revoca",
+      "revokeConfirm": "Revocare l'accesso bancario di questo Agente?",
+      "selectAccounts": "Seleziona conti",
+      "sevenDays": "7 giorni",
+      "thirtyDays": "30 giorni",
+      "title": "Richiesta di accesso bancario",
+      "waiting": "In attesa di Mastercard Data Connect. Completa la procedura lì, quindi torna alla Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Aggiungi crediti per continuare a chattare con {{assistantName}}.",
       "askAdminCredits": "Chiedi a un amministratore dell'area di lavoro di aggiungere crediti in modo da poter continuare a chattare con {{assistantName}}.",
@@ -2178,6 +2244,47 @@
       "search": "Trova agenti",
       "title": "Gestisci l'accesso a {{connector}}",
       "unnamedAgent": "Senza nome"
+    },
+    "accounts": {
+      "accountName": "Nome account",
+      "accountsUnavailable": "Gli account non sono disponibili per questo connettore.",
+      "actions": "Azioni account",
+      "add": "Aggiungi",
+      "addAccount": "Aggiungi account",
+      "connected": "Connesso",
+      "default": "Predefinito",
+      "deleteAccount": "Elimina account",
+      "deleteDescription": "Le conversazioni che usano questo account torneranno all’ereditarietà predefinita.",
+      "deleteDescriptionWithCount": "{{value}} conversazioni torneranno all’ereditarietà predefinita.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Eliminare {{account}}?",
+      "find": "Cerca account",
+      "loading": "Caricamento account…",
+      "loadingMore": "Caricamento…",
+      "loadMore": "Carica altro",
+      "makeDefault": "Imposta come predefinito",
+      "manage": "Gestisci",
+      "managerTitle": "Gestisci gli account di {{connector}}",
+      "noAccounts": "Nessun account",
+      "noAccountsFound": "Nessun account trovato",
+      "reconnectRequired": "Riconnessione necessaria",
+      "rename": "Rinomina",
+      "summaryMany": "{{value}} account",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} account",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} richiedono attenzione",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Account di lavoro"
     },
     "actions": {
       "apply": "Applicare",

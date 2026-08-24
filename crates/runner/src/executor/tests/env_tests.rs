@@ -457,7 +457,7 @@ fn build_env_json_required_keys() {
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
-    // checkpoint lands before VM teardown.
+    // checkpoint lands before sandbox teardown.
     assert!(
         env.get("VM0_SANDBOX_ID")
             .unwrap()
@@ -465,6 +465,26 @@ fn build_env_json_required_keys() {
             .is_ok()
     );
     assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
+    assert_eq!(
+        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
+            .unwrap(),
+        "sandboxReused"
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::API_START_TIME_ENV).unwrap(),
+        ""
+    );
+    for canonical_key in [
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    ] {
+        assert!(
+            !env.contains_key(canonical_key),
+            "reader Stage 1 must not emit canonical key {canonical_key}"
+        );
+    }
 }
 
 #[test]

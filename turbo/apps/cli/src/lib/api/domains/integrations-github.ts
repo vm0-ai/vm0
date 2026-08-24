@@ -66,7 +66,7 @@ export async function downloadGithubFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/okou/integrations/github/download-file", baseUrl);
+  const url = new URL("/api/integrations/github/download-file", baseUrl);
   url.searchParams.set("url", fileUrl);
   if (filename) {
     url.searchParams.set("filename", filename);
