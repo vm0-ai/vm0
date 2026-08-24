@@ -27,6 +27,7 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
@@ -105,6 +106,10 @@ const builtinFirewallCatalogMaxBytesDoc = [
   "Maximum builtin firewall catalog response and cache size accepted by runners.",
   "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
 ] as const;
+const builtinFirewallCatalogCacheSchemaVersionDoc = [
+  "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
+  "This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.",
+] as const;
 const runnerCancellationRecoveryGraceMsDoc = [
   "Maximum cooperative user-cancellation recovery window enforced by runners.",
   "The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.",
@@ -163,6 +168,10 @@ const clientRequestIdHeaderDoc = [
 
 function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
+}
+
+function rustU32(value: number): RustConstantValue {
+  return { kind: "u32", value };
 }
 
 function rustU64(value: number): RustConstantValue {
@@ -242,6 +251,12 @@ const expectedBindings = [
     rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
     value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
     rustDoc: activeInputControlPayloadMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION",
+    value: rustU32(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION),
+    rustDoc: builtinFirewallCatalogCacheSchemaVersionDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -553,6 +568,9 @@ describe("Rust constant bindings", () => {
       `pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = ${BUILTIN_FIREWALL_CATALOG_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
+      `pub const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = ${BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION};`,
+    );
+    expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
@@ -690,6 +708,19 @@ describe("Rust constant bindings", () => {
       ]);
     }).toThrow("invalid u64 constant value");
   });
+
+  it.each([-1, 0x1_0000_0000])(
+    "fails clearly when a u32 constant value is invalid",
+    (value: number) => {
+      expect(() => {
+        normalizeConstantBindings([
+          validBinding({
+            value: rustU32(value),
+          }),
+        ]);
+      }).toThrow("invalid u32 constant value");
+    },
+  );
 
   it("fails clearly when Rust module docs are missing", () => {
     expect(() => {

@@ -720,6 +720,16 @@ function validateConstantValue(
         throw new Error(`${label} is missing a string constant value`);
       }
       return { kind, value: rawValue };
+    case "u32":
+      if (
+        typeof rawValue !== "number" ||
+        !Number.isSafeInteger(rawValue) ||
+        rawValue < 0 ||
+        rawValue > 0xffff_ffff
+      ) {
+        throw new Error(`${label} has invalid u32 constant value`);
+      }
+      return { kind, value: rawValue };
     case "u64":
       if (
         typeof rawValue !== "number" ||
@@ -1266,8 +1276,20 @@ function renderConstant(
   switch (constant.value.kind) {
     case "string":
       return renderStringConstant(constant, indent, constant.value.value);
+    case "u32":
+      return renderUnsignedIntegerConstant(
+        constant,
+        indent,
+        constant.value.value,
+        "u32",
+      );
     case "u64":
-      return renderU64Constant(constant, indent, constant.value.value);
+      return renderUnsignedIntegerConstant(
+        constant,
+        indent,
+        constant.value.value,
+        "u64",
+      );
   }
 }
 
@@ -1290,14 +1312,15 @@ function renderStringConstant(
   ];
 }
 
-function renderU64Constant(
+function renderUnsignedIntegerConstant(
   constant: NormalizedConstantBinding,
   indent: string,
   value: number,
+  rustType: "u32" | "u64",
 ): string[] {
   return [
     ...renderOuterRustDoc(constant.rustDoc, indent),
-    `${indent}pub const ${constant.rustConstName}: u64 = ${value};`,
+    `${indent}pub const ${constant.rustConstName}: ${rustType} = ${value};`,
   ];
 }
 

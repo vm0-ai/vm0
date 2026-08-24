@@ -16,6 +16,7 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
@@ -45,6 +46,10 @@ export type RustConstantValue =
   | {
       readonly kind: "string";
       readonly value: string;
+    }
+  | {
+      readonly kind: "u32";
+      readonly value: number;
     }
   | {
       readonly kind: "u64";
@@ -203,6 +208,10 @@ function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
 }
 
+function rustU32(value: number): RustConstantValue {
+  return { kind: "u32", value };
+}
+
 function rustU64(value: number): RustConstantValue {
   return { kind: "u64", value };
 }
@@ -279,6 +288,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum serialized active-input control payload accepted by runner and guest process control.",
       "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION",
+    value: rustU32(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION),
+    rustDoc: [
+      "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
+      "This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.",
     ],
   },
   {

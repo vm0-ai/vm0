@@ -1173,6 +1173,7 @@ exit 42
             "auth_base_rewrite.py",
             "flow_metadata_keys.py",
             "generated/__init__.py",
+            "generated/builtin_firewall_cache.py",
             "generated/model_usage.py",
             "generated/public_destination_policy.py",
             "matching.py",
