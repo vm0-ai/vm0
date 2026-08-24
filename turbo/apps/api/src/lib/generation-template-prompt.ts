@@ -385,16 +385,19 @@ function buildWebsiteTemplatePackagePrompt(
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
       ...(latestWebsiteTemplatesEnabled
         ? [
-            "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
-            "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
-            "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
+            `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
+            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. A second compose pass is refused and discards authored work.",
+            "- Generate page images with `node tools/generate-images.mjs <jobs.json>`: it defaults to `seedream4`, keeps at most 3 generations in flight because a fourth is rejected with HTTP 429, and records each raster's `data-generation-size`.",
+            "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
+            "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
+            "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
           ]
         : [
             `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
+            `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
+            "- Host the finished static website: okou host <output-dir> --site <slug>",
           ]),
-      `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
-      "- Host the finished static website: okou host <output-dir> --site <slug>",
       "- Return the hosted website URL and keep the generated static site as the final deliverable.",
     ].join("\n"),
   };
