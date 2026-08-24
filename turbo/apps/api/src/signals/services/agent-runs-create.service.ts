@@ -539,7 +539,7 @@ async function loadZeroAgent(
   return agent ?? null;
 }
 
-function buildAgentRunExtraEnvironment(args: {
+function buildAgentRunPlatformEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
@@ -888,7 +888,7 @@ function buildZeroCreateAgentRunArgs(args: {
     ...(args.threadSessionResolution
       ? { threadSessionResolution: args.threadSessionResolution }
       : {}),
-    extraEnvironment: buildAgentRunExtraEnvironment({
+    platformEnvironment: buildAgentRunPlatformEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
