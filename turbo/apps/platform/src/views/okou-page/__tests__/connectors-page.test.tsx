@@ -17,15 +17,15 @@ import {
   type AgentCustomConnectorUpdate,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
-  zeroConnectorExternalCodeSessionContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorExternalCodeSessionContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorScopeDiffContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogCategoryMetadata,
@@ -33,7 +33,7 @@ import {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
@@ -812,7 +812,7 @@ describe("connectors page", () => {
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
 
@@ -1257,7 +1257,7 @@ describe("connectors page", () => {
     context.mocks.browser.open(authWindow);
     context.mocks.browser.standaloneDisplayMode(true);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("meta-ads");
         expect(body.account).toStrictEqual({ intent: "single-account" });
@@ -1390,7 +1390,7 @@ describe("connectors page", () => {
       },
     ]);
     context.mocks.api(
-      zeroConnectorScopeDiffContract.getScopeDiff,
+      connectorScopeDiffContract.getScopeDiff,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("google-ads");
         return respond(200, {
@@ -1693,7 +1693,7 @@ describe("connectors page", () => {
         });
       },
     );
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
 
@@ -1784,7 +1784,7 @@ describe("connectors page", () => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
+      userPermissionGrantsContract.list,
       ({ query, respond }) => {
         if (query.agentId === staleAgentId) {
           return respond(404, {
@@ -1914,7 +1914,7 @@ describe("connectors page", () => {
         enabledConnectorSlugs: ["cloudinary"],
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
 
@@ -1951,7 +1951,7 @@ describe("connectors page", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-maps");
         expect(body.callbackTarget).toBe("app");
@@ -1988,7 +1988,7 @@ describe("connectors page", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         return respond(200, {
           authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
@@ -2062,7 +2062,7 @@ describe("connectors page", () => {
       const authWindow = createMockAuthWindow();
       context.mocks.browser.open(authWindow);
       context.mocks.api(
-        zeroConnectorOauthStartContract.start,
+        connectorOauthStartContract.start,
         ({ body, params, respond }) => {
           expect(params.connectorSlug).toBe(connectorSlug);
           expect(body.callbackTarget).toBe("app");
@@ -2106,7 +2106,7 @@ describe("connectors page", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("slack");
         expect(body.callbackTarget).toBeUndefined();
@@ -2155,7 +2155,7 @@ describe("connectors page", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOpenIdStartContract.start,
+      connectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe(connectorSlug);
         expect(body.account).toStrictEqual({ intent: "single-account" });
@@ -2165,7 +2165,7 @@ describe("connectors page", () => {
         });
       },
     );
-    context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
       return never();
     });
 
@@ -2220,7 +2220,7 @@ describe("connectors page", () => {
     const openMock = context.mocks.browser.open(authWindow);
     let startCount = 0;
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         startCount += 1;
         return respond(200, {
@@ -2273,7 +2273,7 @@ describe("connectors page", () => {
     ]);
     const authWindow = createMockAuthWindow();
     const openMock = context.mocks.browser.open(authWindow);
-    context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
       return never();
     });
 
@@ -2319,7 +2319,7 @@ describe("connectors page", () => {
     ]);
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
-    context.mocks.api(zeroConnectorOauthStartContract.start, ({ respond }) => {
+    context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
       return respond(500, {
         error: {
           message: "OAuth authorization is unavailable",
@@ -2389,7 +2389,7 @@ describe("connectors page", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("stripe");
         expect(body?.authMethod).toBe("oauth");
@@ -2405,7 +2405,7 @@ describe("connectors page", () => {
     });
     let connectorListRequests = 0;
     const catchUpObserved = context.mocks.deferred<void>();
-    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
+    context.mocks.api(connectorsMainContract.list, ({ respond }) => {
       connectorListRequests += 1;
       if (
         context.mocks.ably.hasSubscription("connector:changed") &&
@@ -2524,7 +2524,7 @@ describe("connectors page", () => {
     const openMock = context.mocks.browser.open(authWindow);
     let connectCount = 0;
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
@@ -2610,7 +2610,7 @@ describe("connectors page", () => {
     ]);
     let connectCount = 0;
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
@@ -2747,7 +2747,7 @@ describe("connectors page", () => {
     let capturedOptions: Record<string, string> | null = null;
     let startCount = 0;
     context.mocks.api(
-      zeroConnectorOauthDeviceAuthSessionContract.create,
+      connectorOauthDeviceAuthSessionContract.create,
       ({ body, params, respond }) => {
         startCount += 1;
         expect(params.connectorSlug).toBe("stripe");
@@ -2876,7 +2876,7 @@ describe("connectors page", () => {
     let submittedValues: Record<string, string> | null = null;
     let submitCount = 0;
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         submitCount += 1;
         expect(params.connectorSlug).toBe("axiom");
@@ -2969,7 +2969,7 @@ describe("connectors page", () => {
       return respond(200, { connectors: [...catalogStatusItems] });
     });
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("axiom");
         expect(body.values).toStrictEqual({ apiToken: "xaat-test" });
@@ -3116,7 +3116,7 @@ describe("connectors page", () => {
     let submittedAuthMethod: string | null = null;
     let submittedValues: Record<string, string> | null = null;
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, respond }) => {
         submittedAuthMethod = body.authMethod;
         submittedValues = body.values;
@@ -3221,7 +3221,7 @@ describe("connectors page", () => {
       }),
     ]);
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
@@ -3336,7 +3336,7 @@ describe("connectors page", () => {
       }),
     ]);
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         return respond(200, {
           id: crypto.randomUUID(),
@@ -3406,7 +3406,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     context.mocks.browser.open(createMockAuthWindow());
     context.mocks.api(
-      zeroConnectorExternalCodeSessionContract.create,
+      connectorExternalCodeSessionContract.create,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("aws");
         expect(body.account).toStrictEqual({ intent: "single-account" });
@@ -3482,7 +3482,7 @@ describe("connectors page", () => {
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
     let completeCount = 0;
     context.mocks.api(
-      zeroConnectorExternalCodeSessionContract.complete,
+      connectorExternalCodeSessionContract.complete,
       ({ respond }) => {
         completeCount += 1;
         if (completeCount === 1) {

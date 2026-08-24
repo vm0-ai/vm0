@@ -4,7 +4,7 @@ import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type {
   WorkflowConnectorReadinessEntry,
   WorkflowConnectorReadinessResponse,

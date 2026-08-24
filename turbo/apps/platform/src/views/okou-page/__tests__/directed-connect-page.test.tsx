@@ -1,9 +1,9 @@
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
@@ -331,7 +331,7 @@ function mockConnectorOauthStart(args?: {
   });
 
   context.mocks.api(
-    zeroConnectorOauthStartContract.start,
+    connectorOauthStartContract.start,
     ({ body, params, respond }) => {
       args?.onStart?.(body.agentId, body.authorizeAgent);
       return respond(200, {
@@ -357,7 +357,7 @@ function mockConnectorOpenIdStart(args?: {
   });
 
   context.mocks.api(
-    zeroConnectorOpenIdStartContract.start,
+    connectorOpenIdStartContract.start,
     ({ params, respond }) => {
       args?.onStart?.();
       return respond(200, {
@@ -365,7 +365,7 @@ function mockConnectorOpenIdStart(args?: {
       });
     },
   );
-  context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+  context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
     return never();
   });
   context.mocks.browser.open(authWindow);
@@ -726,7 +726,7 @@ describe("directed connector connect page", () => {
     const callbackPrompt = "Re-check Stripe, then continue";
     let continuationPrompt: string | null = null;
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
@@ -884,7 +884,7 @@ describe("directed connector connect page", () => {
     const callbackPrompt = "Re-check Axiom, then continue";
     let continuationPrompt: string | null = null;
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);

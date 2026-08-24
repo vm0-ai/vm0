@@ -1,4 +1,4 @@
-import { zeroConnectorExternalCodeSessionContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorExternalCodeSessionContract } from "@okouai/api-contracts/contracts/connectors";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -19,10 +19,10 @@ const startConnectorExternalCodeSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorExternalCodeSessionContract.create),
+      pathParamsOf(connectorExternalCodeSessionContract.create),
     );
     const body = await get(
-      bodyResultOf(zeroConnectorExternalCodeSessionContract.create),
+      bodyResultOf(connectorExternalCodeSessionContract.create),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -49,10 +49,10 @@ const completeConnectorExternalCodeSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorExternalCodeSessionContract.complete),
+      pathParamsOf(connectorExternalCodeSessionContract.complete),
     );
     const body = await get(
-      bodyResultOf(zeroConnectorExternalCodeSessionContract.complete),
+      bodyResultOf(connectorExternalCodeSessionContract.complete),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -76,14 +76,14 @@ const completeConnectorExternalCodeSessionInner$ = command(
 
 export const connectorsExternalCodeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorExternalCodeSessionContract.create,
+    route: connectorExternalCodeSessionContract.create,
     handler: authRoute(
       connectorWriteAuth,
       startConnectorExternalCodeSessionInner$,
     ),
   },
   {
-    route: zeroConnectorExternalCodeSessionContract.complete,
+    route: connectorExternalCodeSessionContract.complete,
     handler: authRoute(
       connectorWriteAuth,
       completeConnectorExternalCodeSessionInner$,

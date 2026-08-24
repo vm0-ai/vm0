@@ -4,10 +4,10 @@ import type {
   ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogListResponse,
@@ -55,7 +55,7 @@ export type ConnectorCatalogPermissionDetail =
  */
 export async function listConnectors(): Promise<ZeroConnectorListResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorsMainContract, config);
+  const client = initClient(connectorsMainContract, config);
 
   const result = await client.list({ headers: {} });
 
@@ -148,7 +148,7 @@ export async function getConnector(
   connectorSlug: ConnectorSlug,
 ): Promise<Connector | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorsBySlugContract, config);
+  const client = initClient(connectorsBySlugContract, config);
 
   const result = await client.get({
     params: { connectorSlug },
@@ -171,7 +171,7 @@ export async function connectConnectorManualGrant(
   values: Record<string, string>,
 ): Promise<Connector> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorManualGrantContract, config);
+  const client = initClient(connectorManualGrantContract, config);
 
   const result = await client.connect({
     params: { connectorSlug },

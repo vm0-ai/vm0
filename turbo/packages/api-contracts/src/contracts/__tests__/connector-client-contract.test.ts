@@ -18,7 +18,7 @@ import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
 } from "../connector-check";
-import { zeroConnectorsSearchContract } from "../zero-connectors";
+import { connectorsSearchContract } from "../connectors";
 import {
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
@@ -26,7 +26,7 @@ import {
 import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
-} from "../zero-user-permission-grants";
+} from "../user-permission-grants";
 import { workflowConnectorReadinessResponseSchema } from "../workflows";
 import { initClient } from "../trpc-contract";
 
@@ -152,7 +152,7 @@ describe("connector client response contracts", () => {
       }),
     ).toMatchObject({ connectorSlug: "aws" });
     expect(
-      zeroConnectorsSearchContract.search.responses[200].parse({
+      connectorsSearchContract.search.responses[200].parse({
         connectors: [
           {
             slug: "github",

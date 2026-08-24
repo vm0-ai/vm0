@@ -9,7 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,

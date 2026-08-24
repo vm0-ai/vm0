@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorsMainContract } from "@okouai/api-contracts/contracts/connectors";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorCatalogContract,
@@ -31,7 +31,7 @@ export const connectors$ = computed(async (get) => {
   get(featureSwitch$);
 
   const createClient = get(apiClient$);
-  const client = createClient(zeroConnectorsMainContract);
+  const client = createClient(connectorsMainContract);
   const result = await accept(client.list(), [200]);
   return result.body;
 });

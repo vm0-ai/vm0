@@ -11,7 +11,7 @@ import type {
   ApplyUserPermissionGrant,
   UserPermissionGrantAction,
   UserPermissionGrantExpiresIn,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
   createPermissionDraftContext,
   materializePermissionDraftForLegacySave,

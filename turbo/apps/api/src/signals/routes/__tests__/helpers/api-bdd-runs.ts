@@ -13,11 +13,11 @@ import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/co
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
@@ -835,7 +835,7 @@ export function createRunsApi(context: TestContext) {
       } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -857,7 +857,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -874,7 +874,7 @@ export function createRunsApi(context: TestContext) {
       },
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
@@ -893,7 +893,7 @@ export function createRunsApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).list({
+        runApp(context)(userPermissionGrantsContract).list({
           headers: authenticate(context, actor),
           query: { agentId },
         }),

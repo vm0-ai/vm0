@@ -16,9 +16,9 @@ import {
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorNoAuthGrantContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -585,7 +585,7 @@ describe("chat composer connector connection", () => {
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-analytics");
         expect(body.agentId).toBe(AGENT_ID);
@@ -636,7 +636,7 @@ describe("chat composer connector connection", () => {
     ]);
     let connectCount = 0;
     context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
+      connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");

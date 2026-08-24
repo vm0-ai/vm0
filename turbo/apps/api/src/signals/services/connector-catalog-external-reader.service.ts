@@ -1,7 +1,7 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,

@@ -63,7 +63,7 @@ export const applyUserPermissionGrantsRequestSchema = z
   })
   .strict();
 
-export const zeroUserPermissionGrantsContract = c.router({
+export const userPermissionGrantsContract = c.router({
   list: {
     method: "GET",
     path: "/api/user-permission-grants",
@@ -117,5 +117,4 @@ export type ApplyUserPermissionGrant = z.infer<
 export type ApplyUserPermissionGrantsRequest = z.infer<
   typeof applyUserPermissionGrantsRequestSchema
 >;
-export type ZeroUserPermissionGrantsContract =
-  typeof zeroUserPermissionGrantsContract;
+export type UserPermissionGrantsContract = typeof userPermissionGrantsContract;

@@ -24,9 +24,9 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorOauthStartContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorOauthStartContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { describe, expect, it, vi } from "vitest";
 
@@ -700,7 +700,7 @@ describe("thread-owned utility sidebar", () => {
     let agentAuthorized = false;
     let oauthStarted = false;
     let artifactSynced = false;
-    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
+    context.mocks.api(connectorsMainContract.list, ({ respond }) => {
       return respond(200, {
         connectors: connectorConnected ? [googleDriveConnector()] : [],
         connectorProvidedBindings: [],
@@ -722,7 +722,7 @@ describe("thread-owned utility sidebar", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-drive");
         expect(body).toStrictEqual({

@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
   customConnectorByIdContract,
@@ -50,11 +50,11 @@ function accountClient() {
 }
 
 function connectorClient() {
-  return setupApp({ context, routes })(zeroConnectorManualGrantContract);
+  return setupApp({ context, routes })(connectorManualGrantContract);
 }
 
 function connectorProjectionClient() {
-  return setupApp({ context, routes })(zeroConnectorsBySlugContract);
+  return setupApp({ context, routes })(connectorsBySlugContract);
 }
 
 function featureClient() {
