@@ -859,7 +859,9 @@ async def test_message_frame_limit_counts_frames_across_read_splits(
         assert completed.index(hooks[0]) < completed.index(sends[0])
         assert accepted.flow.websocket is not None
         assert accepted.flow.websocket.timestamp_end is None
-        assert accepted.flow.websocket.messages[-1].content == accepted_content
+        assert [message.content for message in accepted.flow.websocket.messages] == [
+            accepted_content
+        ]
         assert accepted_budget.data_frames == 0
         assert accepted_budget.decoded_bytes == 0
         assert accepted_budget.aggregate_budget.decoded_bytes == len(accepted_content)
