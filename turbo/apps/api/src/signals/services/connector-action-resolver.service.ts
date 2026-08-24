@@ -125,6 +125,7 @@ function resolvedSlug(args: {
   ) {
     log.warn("Connector runtime capability is unavailable", {
       connectorSlug: args.connectorSlug,
+      reason: "missing_executable_capability",
     });
     return { ok: false, reason: "missing_executable_capability" };
   }
@@ -155,6 +156,7 @@ function executableMethod(args: {
     log.warn("Connector auth method runtime capability is unavailable", {
       connectorSlug: args.resolvedSlug.connectorSlug,
       authMethodId: args.authMethodId,
+      reason: "missing_executable_capability",
     });
     return { ok: false, reason: "missing_executable_capability" };
   }
@@ -186,9 +188,7 @@ function createConnectorActionResolver(
     });
   };
 
-  const resolveMethodCore: ConnectorActionResolver["resolveMethod"] = (
-    input,
-  ) => {
+  const resolveMethod: ConnectorActionResolver["resolveMethod"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
       snapshot,
       input.connectorSlug,
@@ -232,21 +232,6 @@ function createConnectorActionResolver(
     });
   };
 
-  const resolveMethod: ConnectorActionResolver["resolveMethod"] = (input) => {
-    const resolution = resolveMethodCore(input);
-    if (
-      !resolution.ok &&
-      resolution.reason !== "missing_executable_capability"
-    ) {
-      log.warn("Connector action runtime method is unavailable", {
-        connectorSlug: input.connectorSlug,
-        authMethodId: input.authMethodId,
-        reason: resolution.reason,
-      });
-    }
-    return resolution;
-  };
-
   return {
     resolveSlug,
     resolveMethod,
@@ -269,7 +254,7 @@ function createConnectorActionResolver(
         }
       }
 
-      return resolveMethodCore(input);
+      return resolveMethod(input);
     },
 
     resolveSlugs(input) {
