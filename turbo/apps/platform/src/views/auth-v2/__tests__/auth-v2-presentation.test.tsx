@@ -70,9 +70,7 @@ describe("auth v2 presentation", () => {
     expect(screen.getByRole("main")).toContainElement(heading);
     expect(
       screen.getByRole("region", { name: "Sign in to VM0" }),
-    ).toHaveAccessibleDescription(
-      "The new sign-in experience is not ready yet.",
-    );
+    ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
     expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
 
     const announcer = screen.getByTestId("auth-v2-announcer");

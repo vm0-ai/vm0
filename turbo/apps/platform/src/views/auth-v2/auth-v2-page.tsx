@@ -1,60 +1,64 @@
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import type { AuthV2SignInSignals } from "../../signals/auth-v2/sign-in-flow.ts";
 import { resolveAuthBrandContext } from "../../signals/auth.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { AuthShell } from "../auth/auth-shell.tsx";
 import { Link } from "../router/link.tsx";
 import { AuthV2Shell } from "./auth-v2-shell.tsx";
+import { AuthV2SignInCard } from "./sign-in/sign-in-card.tsx";
 
 export type AuthV2PageMode = "sign-in" | "sign-up";
 
-interface AuthV2PageProps {
-  mode: AuthV2PageMode;
-}
+type AuthV2PageProps =
+  | {
+      readonly mode: "sign-in";
+      readonly signInSignals: AuthV2SignInSignals;
+    }
+  | { readonly mode: "sign-up" };
 
-export function AuthV2Page({ mode }: AuthV2PageProps) {
+export function AuthV2Page(props: AuthV2PageProps) {
   const { t } = useTranslation();
   const authBrand = resolveAuthBrandContext();
-  const signIn = mode === "sign-in";
-  const legacyRoute = signIn ? ROUTES.signIn : ROUTES.signUp;
-  const title = signIn
-    ? t(
-        ($) => {
-          return $.auth.v2.signIn.title;
-        },
-        { brandName: authBrand.brandName },
-      )
-    : t(
-        ($) => {
-          return $.auth.v2.signUp.title;
-        },
-        { brandName: authBrand.brandName },
-      );
+  const title = t(
+    ($) => {
+      return $.auth.v2.signUp.title;
+    },
+    { brandName: authBrand.brandName },
+  );
   const description = t(($) => {
-    return signIn ? $.auth.v2.signIn.description : $.auth.v2.signUp.description;
+    return $.auth.v2.signUp.description;
   });
   const action = t(($) => {
-    return signIn ? $.auth.v2.signIn.action : $.auth.v2.signUp.action;
+    return $.auth.v2.signUp.action;
   });
 
   return (
     <AuthShell authBrand={authBrand} variant="v2">
-      <AuthV2Shell description={description} focusKey={mode} title={title}>
-        <Button
-          asChild
-          className="h-9 w-full bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed"
+      {props.mode === "sign-in" ? (
+        <AuthV2SignInCard signals={props.signInSignals} />
+      ) : (
+        <AuthV2Shell
+          description={description}
+          focusKey={props.mode}
+          title={title}
         >
-          <Link
-            pathname={legacyRoute}
-            options={{
-              hash: location.hash,
-              searchParams: new URLSearchParams(location.search),
-            }}
+          <Button
+            asChild
+            className="h-9 w-full bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed"
           >
-            {action}
-          </Link>
-        </Button>
-      </AuthV2Shell>
+            <Link
+              pathname={ROUTES.signUp}
+              options={{
+                hash: location.hash,
+                searchParams: new URLSearchParams(location.search),
+              }}
+            >
+              {action}
+            </Link>
+          </Button>
+        </AuthV2Shell>
+      )}
     </AuthShell>
   );
 }

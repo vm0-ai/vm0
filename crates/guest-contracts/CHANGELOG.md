@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.16...guest-contracts-v0.11.17) (2026-08-24)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+
 ## [0.11.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.15...guest-contracts-v0.11.16) (2026-08-24)
 
 

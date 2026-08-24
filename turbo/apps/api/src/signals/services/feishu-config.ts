@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
@@ -11,6 +13,7 @@ export interface FeishuInstallationConfig {
   readonly ownerUserId: string | null;
   readonly appId: string;
   readonly botOpenId: string | null;
+  readonly encryptedAppSecret: string;
   readonly appSecret: string;
   readonly verificationToken: string;
   readonly encryptKey: string;
@@ -55,6 +58,7 @@ export async function loadFeishuInstallationConfig(
     ownerUserId: installation.ownerUserId,
     appId: installation.appId,
     botOpenId: installation.botOpenId,
+    encryptedAppSecret: installation.encryptedAppSecret,
     appSecret,
     verificationToken,
     encryptKey,
@@ -66,13 +70,16 @@ export async function loadFeishuInstallationConfig(
  * The event subscription URL an operator registers in their own Feishu Open
  * Platform app. #28278 step 3 switches this producer to the final path; the
  * branded paths stay routable, so installations that already hold the old URL
- * keep delivering events. The endpoint is not brand-scoped, so the origin stays
- * FEISHU_CALLBACK_BASE_URL with no brand projection.
+ * keep delivering events. The hostname carries the installation's product
+ * brand while the path and installation ID remain provider-compatible.
  */
-export function feishuCallbackUrl(installationId: string): string {
+export function feishuCallbackUrl(
+  installationId: string,
+  publicBrand: PublicBrand,
+): string {
   return new URL(
     `/api/webhooks/feishu/events/${encodeURIComponent(installationId)}`,
-    env("FEISHU_CALLBACK_BASE_URL"),
+    apiUrlForPublicBrand(env("FEISHU_CALLBACK_BASE_URL"), publicBrand),
   ).toString();
 }
 

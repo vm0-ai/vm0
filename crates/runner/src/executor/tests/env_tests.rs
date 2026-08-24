@@ -919,9 +919,11 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert_eq!(payload.append_system_prompt, "Use terse answers.");
     assert_eq!(
-        env.get("VM0_RESUME_SESSION_ID").unwrap(),
+        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+            .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
+    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
@@ -1097,7 +1099,12 @@ fn build_env_json_with_resume_session() {
     ctx.resume_session = Some(ResumeSession::inline("sess-123".into(), "{}".into()));
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
+    assert_eq!(
+        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+            .unwrap(),
+        "sess-123"
+    );
+    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
 }
 
 #[test]

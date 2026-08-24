@@ -84,6 +84,12 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 /// The runner normalizes Codex thread ids before emitting this key.
 pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 
+/// Canonical resume-session alias accepted by guest readers during migration.
+///
+/// Runner writers keep using [`RESUME_SESSION_ID_ENV`] until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates are complete.
+pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
+
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
 ///
@@ -519,6 +525,8 @@ mod tests {
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             "OKOU_WORKSPACE_REUSE_RESULT"
         );
+        assert_eq!(RESUME_SESSION_ID_ENV, "VM0_RESUME_SESSION_ID");
+        assert_eq!(CANONICAL_RESUME_SESSION_ID_ENV, "OKOU_RESUME_SESSION_ID");
         assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
         assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
@@ -720,6 +728,8 @@ mod tests {
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            RESUME_SESSION_ID_ENV,
+            CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
