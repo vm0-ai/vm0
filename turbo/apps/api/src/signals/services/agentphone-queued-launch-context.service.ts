@@ -168,10 +168,11 @@ export async function loadAgentPhoneQueuedLaunchMaterial(
       },
       context.threadContext,
     ),
-    // DB/API rollout compatibility: an old API can write NULL after the
-    // additive migration, and that queued context can outlive the API deploy.
-    // Remove with #27750 after old/rollback APIs can no longer write NULL and
-    // every pre-rollout AgentPhone queue item has drained.
+    // DB/API rollout compatibility: mixed versions have overlapped for up to
+    // about 102 minutes. An old API can write NULL after the additive migration,
+    // and that queued context can outlive the API deploy. Remove with #27750
+    // after old/rollback APIs can no longer write NULL and every pre-rollout
+    // AgentPhone queue item has drained.
     publicBrand: context.publicBrand ?? context.legacyPublicBrand,
     agentphoneDelivery: agentphoneDeliveryTargetSchema.parse({
       messageId: context.messageId,

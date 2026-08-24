@@ -11,8 +11,9 @@ const agentPhoneConnectBodySchema = z.object({
   timestamp: z.number(),
   signature: z.string().min(1),
   channel: z.string().min(1).optional(),
-  // Old Platform -> new API rollout compatibility. Remove with #27750 after
-  // the client floor excludes the old Platform and cutoff-eligible links expire.
+  // Old Platform -> new API rollout compatibility: old web/app clients can stay
+  // active for about two days. Remove with #27750 after the client floor
+  // excludes the old Platform and cutoff-eligible ten-minute links expire.
   publicBrand: publicBrandSchema.optional(),
   publicBrandSignature: z.string().min(1).optional(),
 });
@@ -34,7 +35,8 @@ const agentPhoneLinkStatusResponseSchema = z.discriminatedUnion("linked", [
     phoneHandle: z.string(),
     agentPhoneNumber: z.string().nullable(),
     configured: z.boolean(),
-    // New Platform -> old API rollback compatibility. Remove with #27750 after
+    // New Platform -> old API compatibility for the full retained rollback
+    // lifetime, which has no fixed maximum evidenced. Remove with #27750 after
     // the old API is no longer serving or retained as a rollback target.
     publicBrand: publicBrandSchema.optional(),
   }),
@@ -42,7 +44,8 @@ const agentPhoneLinkStatusResponseSchema = z.discriminatedUnion("linked", [
     linked: z.literal(false),
     agentPhoneNumber: z.string().nullable(),
     configured: z.boolean(),
-    // New Platform -> old API rollback compatibility. Remove with #27750 after
+    // New Platform -> old API compatibility for the full retained rollback
+    // lifetime, which has no fixed maximum evidenced. Remove with #27750 after
     // the old API is no longer serving or retained as a rollback target.
     publicBrand: publicBrandSchema.optional(),
   }),

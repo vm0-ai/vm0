@@ -206,10 +206,10 @@ async function sendAgentPhoneVerificationMessage(
 }
 
 // `startLink` only ever delivers via SMS, so we hard-code the channel for
-// signing. New Platform -> old API rollback compatibility keeps the legacy
-// Provider-identity signature while new links add a brand-bound signature.
-// Remove the legacy signature with #27750 after the old API is no longer
-// serving or retained as a rollback target.
+// signing. New Platform -> old API compatibility for the full retained rollback
+// lifetime, which has no fixed maximum evidenced, keeps the legacy signature
+// over Provider identity while new links add a brand-bound signature. Remove it
+// with #27750 after the old API is no longer serving or retained for rollback.
 const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
 
 const getLinkStatus$ = computed(async (get) => {
