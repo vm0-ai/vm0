@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.784.0](https://github.com/vm0-ai/vm0/compare/app-v0.783.1...app-v0.784.0) (2026-08-24)
+
+
+### Features
+
+* **platform:** collapse connector catalog diagnostics ([#28722](https://github.com/vm0-ai/vm0/issues/28722)) ([ae8ea3e](https://github.com/vm0-ai/vm0/commit/ae8ea3e3ae743af607374bd8168f0e65651cc2b5))
+* **platform:** show managed model cooldown diagnostics ([#28733](https://github.com/vm0-ai/vm0/issues/28733)) ([f86c836](https://github.com/vm0-ai/vm0/commit/f86c836c2f5275ca97b288a757a3d5e118ca0566))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.356.0
+    * @okouai/core bumped to 8.584.0
+
 ## [0.783.1](https://github.com/vm0-ai/vm0/compare/app-v0.783.0...app-v0.783.1) (2026-08-23)
 
 
