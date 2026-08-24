@@ -1268,6 +1268,13 @@
       "when": 1787579809905,
       "tag": "0988_lyrical_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 989,
+      "version": "7",
+      "when": 1787581731852,
+      "tag": "0989_brief_crusher_hogan",
+      "breakpoints": true
     }
   ]
 }

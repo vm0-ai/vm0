@@ -324,8 +324,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
     const integrations = createBddIntegrationApi(context);
-    const { actor, phone, runnerGroup, sends } =
-      await entitledLinkedActor("okou");
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
     await integrations.enableAuditLinkSwitch(actor);
     const conversationId = uniqueConversationId();
 
@@ -336,6 +335,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       body: "summarize my inbox",
       conversationId,
       isGroup: false,
+      publicBrand: "okou",
     });
     await waitForTyping(sends, [conversationId]);
 
@@ -431,7 +431,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     ]);
 
     // Completion converts markdown output to iMessage plain text and binds
-    // the delayed audit link to the brand persisted on the phone link.
+    // the delayed audit link to the webhook-host brand, not the VM0 link.
     const beforeCompletion = sends.messages.length;
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0, {
       resultText: MARKDOWN_RUN_OUTPUT,
@@ -516,7 +516,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
   it("replies to failed linked iMessage runs", async () => {
     const ap = createAgentPhoneBddApi(context);
-    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
     const conversationId = uniqueConversationId();
 
     await ap.postAgentPhoneInboundMessage({
@@ -740,11 +740,54 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(drained.body.job).toBeNull();
   });
 
+  it("keeps the webhook brand when a queued AgentPhone launch fails", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const ap = createAgentPhoneBddApi(context);
+    const integrations = createBddIntegrationApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    await integrations.enableAuditLinkSwitch(actor);
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "finish before the branded queued launch",
+      publicBrand: "vm0",
+    });
+    const activeRun = await claimDispatchedRun(runnerGroup);
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "fail this queued Okou launch",
+      publicBrand: "okou",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const beforeCompletion = sends.messages.length;
+    await completeSandboxRun(activeRun.sandboxToken, activeRun.runId, 0);
+    await waitForSendCount(sends, beforeCompletion + 2);
+
+    const completionBodies = sends.messages
+      .slice(beforeCompletion)
+      .map((send) => {
+        return send.body ?? "";
+      });
+    expect(completionBodies).toContainEqual(
+      expect.stringContaining("https://app.vm0.ai/activities/"),
+    );
+    expect(completionBodies).toContainEqual(
+      expect.stringContaining("https://app.okou.ai/activities/"),
+    );
+  });
+
   it("deduplicates repeated provider messages and completion callbacks", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
-    const { phone, runnerGroup, sends } = await entitledLinkedActor();
+    const integrations = createBddIntegrationApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    await integrations.enableAuditLinkSwitch(actor);
     const messageId = `ap-msg-dedup-${randomUUID()}`;
     const message = {
       channel: "sms" as const,
@@ -753,8 +796,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       messageId,
     };
 
-    await ap.postAgentPhoneInboundMessage(message);
-    await ap.postAgentPhoneInboundMessage(message);
+    await ap.postAgentPhoneInboundMessage({
+      ...message,
+      publicBrand: "okou",
+    });
+    await ap.postAgentPhoneInboundMessage({
+      ...message,
+      publicBrand: "vm0",
+    });
     const run = await claimDispatchedRun(runnerGroup);
     expect(run.prompt).toBe("process exactly once");
     await runs.heartbeatRunner(runnerGroup);
@@ -764,6 +813,12 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const sendsBeforeCompletion = sends.messages.length;
     await completeSandboxRun(run.sandboxToken, run.runId, 0);
     await waitForSendCount(sends, sendsBeforeCompletion + 1);
+    expect(lastSend(sends).body).toContain(
+      `Audit: https://app.okou.ai/activities/${run.runId}`,
+    );
+    expect(lastSend(sends).body).not.toContain(
+      `https://app.vm0.ai/activities/${run.runId}`,
+    );
     const sendsAfterCompletion = sends.messages.length;
 
     await webhooks.requestAgentComplete(
@@ -774,7 +829,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await flushWaitUntilForTest();
     expect(sends.messages).toHaveLength(sendsAfterCompletion);
 
-    await ap.postAgentPhoneInboundMessage(message);
+    await ap.postAgentPhoneInboundMessage({
+      ...message,
+      publicBrand: "vm0",
+    });
     await runs.heartbeatRunner(runnerGroup);
     const lateDuplicate = await runs.pollRunner(runnerGroup);
     expect(lateDuplicate.body.job).toBeNull();
@@ -885,7 +943,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await runs.ensureOrgModelProvider(actor);
     const phone = uniquePhoneHandle();
     await ap.linkViaWebhookConnectPrompt(actor, phone, sends, "okou");
-    expect(lastSend(sends).body).toContain("Hi, I'm Okou");
+    expect(lastSend(sends).body).toContain(
+      "Your phone number is now connected to Okou.",
+    );
+    expect(lastSend(sends).body).not.toContain("I'm Okou");
 
     const SMS_RISK_WARNING =
       "Note: SMS and MMS replies may not be delivered reliably.";
@@ -896,6 +957,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         channel: "sms",
         from: phone,
         body,
+        publicBrand: "okou",
       });
       await waitForSendCount(sends, before + 1);
       const reply = lastSend(sends).body ?? "";
@@ -910,7 +972,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     const alreadyConnected = await commandReply("/connect");
     expect(alreadyConnected).toContain("You are already connected");
-    expect(alreadyConnected).toContain("chatting with Okou");
+    expect(alreadyConnected).toContain("start using Okou");
     expect(alreadyConnected).toContain(SMS_RISK_WARNING);
 
     const modelOptions = await commandReply("/model");
@@ -949,7 +1011,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(modelUnlinked).toContain("/agentphone/connect?");
 
     const plainPromptUnlinked = await commandReply("hello again");
-    expect(plainPromptUnlinked).toContain("Hi, I'm Zero, your AI coworker");
+    expect(plainPromptUnlinked).toContain(
+      "This shared AgentPhone number connects you to Okou.",
+    );
     expect(plainPromptUnlinked).toContain("/agentphone/connect?");
     expect(plainPromptUnlinked).not.toContain(SMS_RISK_WARNING);
   });
@@ -1105,14 +1169,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       (send) => {
         return (
           send.conversationId === strangerConversationId &&
-          (send.body?.includes("message Zero directly") ?? false)
+          (send.body?.includes("message this number directly") ?? false)
         );
       },
     );
     expect(dmPrompt.conversationId).toBe(strangerConversationId);
     expect(dmPrompt.replyToMessageId).toBe(strangerMessageId);
     expect(dmPrompt.toNumber).toBeUndefined();
-    expect(dmPrompt.body).toContain("message Zero directly");
+    expect(dmPrompt.body).toContain("message this number directly");
     expect(dmPrompt.body).not.toContain("/agentphone/connect?");
 
     // /connect from an unlinked sender in the linked conversation hits the
@@ -1163,7 +1227,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       (send) => {
         return (
           send.conversationId === conversationId &&
-          (send.body?.includes("message Zero directly") ?? false)
+          (send.body?.includes("message this number directly") ?? false)
         );
       },
     );
