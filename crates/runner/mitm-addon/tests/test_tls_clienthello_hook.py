@@ -1,6 +1,7 @@
 """Tests for TLS clienthello connection hooks."""
 
 import json
+from typing import cast
 
 import mitm_addon
 import registry
@@ -42,6 +43,26 @@ class TestTlsClienthello:
 
         # All registered VMs use MITM — should NOT set ignore_connection
         assert data.ignore_connection is False
+
+    def test_non_tuple_client_peer_does_not_supply_registry_identity(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        data = make_tls_data(
+            client_ip="10.200.0.1",
+            sni="pr-test-api.vm6.ai",
+            client_sni="",
+        )
+        data.context.client.peername = cast(tuple[str, int], ["10.200.0.1", 12345])
+
+        with mitm_ctx(
+            registry_path=str(registry_file),
+            api_url="https://pr-test-api.vm6.ai",
+        ):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+        assert data.context.server.address == ("203.0.113.10", 443)
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
     def test_registered_vm_retargets_api_host_from_clienthello_sni(
         self, registry_file, make_tls_data, mitm_ctx
