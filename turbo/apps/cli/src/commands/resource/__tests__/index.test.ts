@@ -56,6 +56,26 @@ describe("okou resource pull registry resolver", () => {
     );
   });
 
+  it("resolves the pull-only presentation reverse-template guide", () => {
+    expect(
+      findRegistryResourceForPull("skill:presentation-reverse-template"),
+    ).toEqual(
+      expect.objectContaining({
+        id: "skill:presentation-reverse-template",
+        kind: "skill",
+        targets: ["presentation"],
+        source: {
+          path: "reverse-template",
+          archive: {
+            type: "tar.gz",
+            sha256:
+              "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+          },
+        },
+      }),
+    );
+  });
+
   it("resolves a built-in website template package archive", () => {
     expect(findRegistryResourceForPull("template:dot-matrix")).toEqual(
       expect.objectContaining({

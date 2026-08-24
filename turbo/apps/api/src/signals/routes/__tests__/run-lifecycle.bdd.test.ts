@@ -1617,7 +1617,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     // The guide is not a mounted skill, so the prompt is the only thing that
-    // tells a run where to find it. Off, it must stay out of every run.
+    // tells a run where to pull it. Off, it must stay out of every run.
     const gatedOff = await api.createRun(actor, {
       agentId,
       prompt: "turn this deck into a template",
@@ -1627,7 +1627,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
     expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
     expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      "vm0-ai/Template-artifact",
+      "skill:presentation-reverse-template",
     );
 
     await connectors.updateFeatureSwitches(actor, {
@@ -1642,9 +1642,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
     const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain("vm0-ai/Template-artifact");
-    expect(appendSystemPrompt).toContain("reverse-template");
-    expect(appendSystemPrompt).toContain("feat/reverse-template-skill");
+    expect(appendSystemPrompt).toContain(
+      "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
+    );
+    expect(appendSystemPrompt).toContain(
+      "./generated/resources/reverse-template/SKILL.md",
+    );
+    expect(appendSystemPrompt).not.toContain("vm0-ai/Template-artifact");
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {

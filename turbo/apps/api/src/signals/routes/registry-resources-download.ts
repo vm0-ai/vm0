@@ -4,6 +4,7 @@ import {
   findColorSystem,
   findDesignSystem,
   findImageStyle,
+  findPresentationReverseTemplateResource,
   findPresentationRunbookResource,
   findSkill,
   findTemplate,
@@ -49,6 +50,9 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
+  // Presentation reverse-template guide from vm0-ai/Template-artifact@fc829f4.
+  "skill:presentation-reverse-template":
+    "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
   "color-system:bauhaus-primary":
     "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
   "color-system:berry-pop":
@@ -209,6 +213,7 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     findColorSystem(id) ??
     findImageStyle(id) ??
     findVideoTemplate(id) ??
+    findPresentationReverseTemplateResource(id) ??
     findPresentationRunbookResource(id) ??
     findWebsiteTemplateResource(id)
   );
