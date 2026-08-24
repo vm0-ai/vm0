@@ -3,7 +3,7 @@ import type {
   ConnectorCatalogDiagnostics,
   ConnectorCatalogSyncFailureCode,
 } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
-import { ChevronDown, ChevronUp, Database } from "lucide-react";
+import { ChevronDown, ChevronUp, Plug } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -230,7 +230,7 @@ function CatalogDiagnosticsSummary({
   return (
     <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-        <Database size={22} className="text-muted-foreground" />
+        <Plug size={22} className="text-muted-foreground" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
         <span
@@ -577,7 +577,7 @@ export function ConnectorCatalogDiagnosticsBlock() {
         <div className="flex items-start gap-4 p-4">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Database size={22} className="text-muted-foreground" />
+              <Plug size={22} className="text-muted-foreground" />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3">

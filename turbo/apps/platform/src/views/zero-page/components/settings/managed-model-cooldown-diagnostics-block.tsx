@@ -1,7 +1,7 @@
 import type { ManagedModelCooldownDiagnostics } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { Button } from "@okouai/ui/components/ui/button";
 import { useLastResolved, useLoadableState, useSet } from "ccstate-react";
-import { ChevronDown, ChevronUp, Database, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, Cpu, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
@@ -20,7 +20,7 @@ function CooldownDiagnosticsSummary({
   return (
     <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-        <Database size={22} className="text-muted-foreground" />
+        <Cpu size={22} className="text-muted-foreground" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
         <span
@@ -214,7 +214,7 @@ export function ManagedModelCooldownDiagnosticsBlock() {
         <div className="flex items-start gap-4 p-4">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Database size={22} className="text-muted-foreground" />
+              <Cpu size={22} className="text-muted-foreground" />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3">
