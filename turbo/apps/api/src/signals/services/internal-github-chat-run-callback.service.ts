@@ -163,6 +163,7 @@ async function loadGitHubChatDeliveryContext(
   const [installation] = await args.db
     .select({
       installationId: githubInstallations.installationId,
+      publicBrand: githubInstallations.publicBrand,
     })
     .from(githubChatThreadRoutes)
     .innerJoin(
@@ -186,7 +187,12 @@ async function loadGitHubChatDeliveryContext(
     payload,
     run: runContext,
     messageContent: event.content,
-    ghInstallationId: installation?.installationId,
+    installation: installation?.installationId
+      ? {
+          ghInstallationId: installation.installationId,
+          publicBrand: installation.publicBrand,
+        }
+      : undefined,
   };
 }
 
@@ -297,12 +303,12 @@ async function deliverClaimedGitHubChatCallback(
   signal: AbortSignal,
 ): Promise<"delivered" | "skipped_revoked"> {
   const context = await loadGitHubChatDeliveryContext(args, signal);
-  if (!context.ghInstallationId) {
+  if (!context.installation) {
     return "skipped_revoked";
   }
   const token = await githubAccessToken(
     {
-      ghInstallationId: context.ghInstallationId,
+      ghInstallationId: context.installation.ghInstallationId,
     },
     signal,
   );
@@ -313,7 +319,8 @@ async function deliverClaimedGitHubChatCallback(
       run: context.run,
       target: context.payload,
       messageContent: context.messageContent,
-      publicBrand: context.payload.publicBrand,
+      publicBrand:
+        context.payload.publicBrand ?? context.installation.publicBrand,
     },
     signal,
   );
