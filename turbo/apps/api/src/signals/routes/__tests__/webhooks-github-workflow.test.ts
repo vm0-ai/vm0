@@ -4,6 +4,7 @@ import {
   workflowAutomationsContract,
   type WorkflowAutomationCreateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -215,6 +216,7 @@ async function postGithubWebhook(args: {
     | "workflow_run";
   readonly deliveryId: string;
   readonly rawBody: string;
+  readonly publicBrand?: PublicBrand;
 }): Promise<{ readonly status: number; readonly text: string }> {
   const signature = `sha256=${createHmac("sha256", GITHUB_WEBHOOK_SECRET)
     .update(args.rawBody)
@@ -222,16 +224,19 @@ async function postGithubWebhook(args: {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request("/api/webhooks/github", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-github-event": args.event,
-      "x-github-delivery": args.deliveryId,
-      "x-hub-signature-256": signature,
+  }).request(
+    `https://api.${args.publicBrand === "okou" ? "okou.ai" : "vm0.ai"}/api/webhooks/github`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-github-event": args.event,
+        "x-github-delivery": args.deliveryId,
+        "x-hub-signature-256": signature,
+      },
+      body: args.rawBody,
     },
-    body: args.rawBody,
-  });
+  );
   return {
     status: response.status,
     text: await response.text(),
@@ -552,16 +557,20 @@ describe("POST /api/webhooks/github for workflow automations", () => {
           event: testCase.event,
           deliveryId: `delivery-${randomUUID()}`,
           rawBody: JSON.stringify(untrustedPayload),
+          publicBrand: "vm0",
         });
         expect(ignored).toStrictEqual({ status: 200, text: "OK" });
         await flushWaitUntilForTest();
       }
 
       const deliveryId = `delivery-${randomUUID()}`;
+      const webhookPublicBrand: PublicBrand =
+        testCase.event === "pull_request" ? "okou" : "vm0";
       const response = await postGithubWebhook({
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
+        publicBrand: webhookPublicBrand,
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -587,6 +596,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error(`Expected a ${testCase.name} automation run`);
       }
       const claim = await runsApi.claimRunnerJob(runId);
+      const okouToken = claim.environment?.OKOU_TOKEN;
+      if (!okouToken) {
+        throw new Error("Expected the webhook run to expose OKOU_TOKEN");
+      }
+      expect(verifyOkouToken(okouToken)?.publicBrand).toBe(webhookPublicBrand);
       expect(claim.prompt).toContain(
         `Summary: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
       );

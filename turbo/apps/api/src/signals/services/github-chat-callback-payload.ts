@@ -18,5 +18,6 @@ export type GitHubDeliveryTarget = z.infer<typeof githubDeliveryTargetSchema>;
 export const githubChatCallbackPayloadSchema =
   githubDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
-    publicBrand: publicBrandSchema,
+    // Callbacks persisted before GitHub ingress branding did not carry this.
+    publicBrand: publicBrandSchema.optional(),
   });

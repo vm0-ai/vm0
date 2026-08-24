@@ -247,6 +247,21 @@ function matchingLaunch(
   return launch?.eventId === eventId ? launch : undefined;
 }
 
+function queuedWorkflowLaunchMaterial(
+  event: PendingWorkflowQueueEvent,
+  target: DequeueTarget,
+) {
+  return buildWorkflowAutomationQueuedLaunchMaterial({
+    workflowName: event.workflowName,
+    eventType: event.workflowAutomationEventType,
+    eventPayload: event.workflowAutomationEventPayload,
+    automation: target.automation,
+    agentId: target.agentId,
+    chatThreadId: event.chatThreadId,
+    publicBrand: event.publicBrand,
+  });
+}
+
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
@@ -294,14 +309,7 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const launchMaterial = buildWorkflowAutomationQueuedLaunchMaterial({
-        workflowName: event.workflowName,
-        eventType: event.workflowAutomationEventType,
-        eventPayload: event.workflowAutomationEventPayload,
-        automation: target.automation,
-        agentId: target.agentId,
-        chatThreadId: event.chatThreadId,
-      });
+      const launchMaterial = queuedWorkflowLaunchMaterial(event, target);
       signal.throwIfAborted();
       if (!launchMaterial) {
         log.error("Consuming workflow queue event with incomplete context", {
@@ -355,6 +363,7 @@ export const drainWorkflowQueueForThread$ = command(
           queueEventId: event.id,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
+          publicBrand: event.publicBrand,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,
           ...(event.connectorSourceId

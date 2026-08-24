@@ -1,6 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -154,6 +155,7 @@ type ChatEventDisplayContext =
         readonly messageText: string;
         readonly triggerReactionId: string | null;
         readonly triggerCommentBody: string | null;
+        readonly publicBrand: PublicBrand;
       };
       readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
@@ -239,6 +241,7 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowAutomationEventType?: WorkflowAutomationEventType;
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly connectorSourceId?: string;
+    readonly publicBrand?: PublicBrand;
     readonly triggerBrief: string | null;
   };
 
@@ -528,6 +531,7 @@ type NewDisplayContext =
       readonly messageText: string;
       readonly triggerReactionId: string | null;
       readonly triggerCommentBody: string | null;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "agentphone";
@@ -555,6 +559,7 @@ type NewDisplayContext =
       readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
       readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
       readonly connectorSourceId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly triggerBrief: string | null;
     }
   | {
@@ -592,6 +597,8 @@ function newAutomationDisplayContext(
         : null,
     connectorSourceId:
       "connectorSourceId" in values ? (values.connectorSourceId ?? null) : null,
+    publicBrand:
+      "publicBrand" in values ? (values.publicBrand ?? "vm0") : "vm0",
     triggerBrief:
       "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
   };
@@ -918,6 +925,7 @@ async function insertDisplayContext(
       messageText: context.messageText,
       triggerReactionId: context.triggerReactionId,
       triggerCommentBody: context.triggerCommentBody,
+      publicBrand: context.publicBrand,
       createdAt,
     });
     return;
@@ -934,6 +942,7 @@ async function insertDisplayContext(
       eventType: context.workflowAutomationEventType,
       eventPayload: context.workflowAutomationEventPayload,
       connectorSourceId: context.connectorSourceId,
+      publicBrand: context.publicBrand,
       triggerBrief: context.triggerBrief,
       createdAt,
     });

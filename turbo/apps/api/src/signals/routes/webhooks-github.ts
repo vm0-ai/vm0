@@ -2,11 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { command } from "ccstate";
 import { webhookGithubContract } from "@okouai/api-contracts/contracts/webhooks";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../../lib/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
@@ -71,6 +72,7 @@ const postGithubWorkflowRunWebhook$ = command(
       readonly payload: unknown;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Response => {
@@ -91,6 +93,7 @@ const postGithubWorkflowRunWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt,
           },
           signal,
@@ -128,6 +131,7 @@ interface GithubBackgroundWebhookArgs {
   readonly payload: unknown;
   readonly deliveryId: string;
   readonly apiStartTime: number;
+  readonly publicBrand: PublicBrand;
 }
 
 const postGithubPullRequestWebhook$ = command(
@@ -149,6 +153,7 @@ const postGithubPullRequestWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt: now(),
           },
           signal,
@@ -181,6 +186,7 @@ const postGithubIssueCommentWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt: now(),
           },
           signal,
@@ -213,6 +219,7 @@ const postGithubWorkflowJobWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt: now(),
           },
           signal,
@@ -261,6 +268,7 @@ const postGithubPullRequestReviewWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt: now(),
           },
           signal,
@@ -295,6 +303,7 @@ const postGithubDeploymentStatusWebhook$ = command(
             payload: parsed.data,
             deliveryId: args.deliveryId,
             apiStartTime: args.apiStartTime,
+            publicBrand: args.publicBrand,
             backgroundScheduledAt: now(),
           },
           signal,
@@ -318,6 +327,7 @@ const postGithubWebhook$ = command(
     }
 
     const request = get(request$);
+    const publicBrand = get(publicBrand$);
     const headers = githubWebhookHeaders(request.raw.headers);
     if (!headers) {
       return jsonError("Missing GitHub webhook headers", 401);
@@ -354,6 +364,7 @@ const postGithubWebhook$ = command(
       payload,
       deliveryId: headers.deliveryId,
       apiStartTime,
+      publicBrand,
     };
 
     if (headers.event === "pull_request") {
@@ -391,6 +402,7 @@ const postGithubWebhook$ = command(
           payload,
           deliveryId: headers.deliveryId,
           apiStartTime,
+          publicBrand,
         },
         signal,
       );

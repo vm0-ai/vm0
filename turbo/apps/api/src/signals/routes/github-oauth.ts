@@ -692,6 +692,7 @@ const installGithubOauth$ = command(
         {
           db,
           appId,
+          appSlug,
           privateKey,
           orgId: query.orgId ?? null,
           userId,
@@ -743,13 +744,13 @@ function signInRedirect(
 const connectGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
     const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
     if (canonicalRedirectUrl) {
       return noStoreRedirect(canonicalRedirectUrl);
     }
 
     const query = get(queryOf(githubOauthContract.connect));
+    const publicBrand = query.publicBrand ?? get(publicBrand$);
     const auth = await set(
       requiredAuthContext$,
       { requireOrganization: true },

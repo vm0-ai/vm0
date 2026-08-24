@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 import type { GitHubInstallationRepoConfigs } from "@okouai/db/jsonb-contracts/github-installation";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
  * GitHub Installations table
@@ -25,9 +26,15 @@ export const githubInstallations = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     installationId: varchar("installation_id", { length: 255 }),
+    appId: varchar("app_id", { length: 255 }),
+    appSlug: varchar("app_slug", { length: 255 }),
     encryptedAccessToken: text("encrypted_access_token"),
     status: varchar("status", { length: 20 }).notNull().default("active"),
     orgId: text("org_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("okou")
+      .notNull(),
     targetType: varchar("target_type", { length: 20 }),
     targetId: varchar("target_id", { length: 255 }),
     targetName: varchar("target_name", { length: 255 }),

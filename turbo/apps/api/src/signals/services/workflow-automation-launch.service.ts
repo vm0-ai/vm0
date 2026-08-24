@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
@@ -87,6 +88,7 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly automationContext: WorkflowAutomationContext;
+  readonly publicBrand?: PublicBrand;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   /** Exact member connector that durably delivered this provider event. */
@@ -110,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
   readonly prompt: string;
+  readonly publicBrand: PublicBrand;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
   readonly connectorSourceId?: string;
@@ -168,10 +171,15 @@ export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
+  publicBrand: PublicBrand,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
   if (automation.kind !== "schedule") {
-    return buildChatOnlyWorkflowAutomationCallbacks(chatThreadId, agentId);
+    return buildChatOnlyWorkflowAutomationCallbacks(
+      chatThreadId,
+      agentId,
+      publicBrand,
+    );
   }
   if (automation.scheduleType === "loop") {
     callbacks.push({
@@ -197,7 +205,7 @@ export function buildWorkflowAutomationCallbacks(
   callbacks.push({
     internalKind: "chat",
     secret: generateCallbackSecret(),
-    payload: { threadId: chatThreadId, agentId },
+    payload: { threadId: chatThreadId, agentId, publicBrand },
   });
   return callbacks;
 }
@@ -254,6 +262,7 @@ function appendComputerUseSystemPrompt(
 export function buildChatOnlyWorkflowAutomationCallbacks(
   chatThreadId: string,
   agentId: string,
+  publicBrand: PublicBrand,
 ): InternalRunCallbackInput[] {
   return [
     {
@@ -262,6 +271,7 @@ export function buildChatOnlyWorkflowAutomationCallbacks(
       payload: {
         threadId: chatThreadId,
         agentId,
+        publicBrand,
       },
     },
   ];
@@ -658,6 +668,7 @@ export const launchQueuedWorkflowAutomation$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         ...(args.connectorSourceId

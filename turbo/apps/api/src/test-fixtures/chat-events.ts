@@ -466,6 +466,7 @@ const annotationProjectionInputs = [
         messageText: "github issue comment linked",
         triggerReactionId: null,
         triggerCommentBody: null,
+        publicBrand: "vm0",
       },
     },
   },
@@ -481,6 +482,7 @@ const annotationProjectionInputs = [
         messageText: "github pull request linked",
         triggerReactionId: null,
         triggerCommentBody: null,
+        publicBrand: "vm0",
       },
     },
   },
@@ -572,6 +574,7 @@ export async function seedChatEventAnnotationProjectionFixture(
         messageText: "claimed annotation",
         triggerReactionId: null,
         triggerCommentBody: null,
+        publicBrand: "vm0",
       },
     });
     await replaceChatEvent(tx, claimedPendingId, {
