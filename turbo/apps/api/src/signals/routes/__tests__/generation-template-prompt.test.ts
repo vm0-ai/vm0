@@ -485,6 +485,23 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
+  it("keeps workflow template guidance brand-neutral", () => {
+    for (const item of WORKFLOW_TEMPLATE_ITEMS) {
+      const result = buildGenerationTemplatePrompt({
+        type: "workflow",
+        selection: {
+          workflowTemplateId: item.id,
+        },
+      });
+
+      expect(result.status).toBe("resolved");
+      if (result.status !== "resolved") {
+        return;
+      }
+      expect(result.prompt).not.toMatch(/\b(?:Zero|Okou)\b/u);
+    }
+  });
+
   it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
     const resourceId = item.resourceId;
