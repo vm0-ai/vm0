@@ -575,6 +575,25 @@ describe("app auth pages", () => {
     expect(themeToggle.className).toContain("var(--sar)");
   });
 
+  it("keeps Clerk checkboxes out of the shared text-input styling", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    const card = document.createElement("div");
+    card.className = "cl-card";
+    const checkbox = document.createElement("input");
+    checkbox.className = "cl-formFieldInput cl-checkbox";
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    card.append(checkbox);
+    clerkSurface.append(card);
+
+    expect(getComputedStyle(checkbox).width).toBe("16px");
+    expect(getComputedStyle(checkbox).height).toBe("16px");
+  });
+
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);
