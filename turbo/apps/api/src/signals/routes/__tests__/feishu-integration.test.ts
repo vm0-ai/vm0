@@ -540,6 +540,7 @@ function v2Event(
   eventType: string,
   event: unknown,
   eventId: string = randomUUID(),
+  verificationToken: string = VERIFICATION_TOKEN,
 ): unknown {
   return {
     schema: "2.0",
@@ -548,7 +549,7 @@ function v2Event(
       event_type: eventType,
       tenant_key: TENANT_KEY,
       app_id: appId,
-      token: VERIFICATION_TOKEN,
+      token: verificationToken,
     },
     event,
   };
@@ -564,6 +565,7 @@ function directMessage(
     readonly eventId?: string;
     readonly rootId?: string;
     readonly threadId?: string;
+    readonly verificationToken?: string;
   } = {},
 ): unknown {
   return v2Event(
@@ -585,6 +587,7 @@ function directMessage(
       },
     },
     options.eventId,
+    options.verificationToken,
   );
 }
 
@@ -3024,9 +3027,16 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(fixture.actor, run.id, [200]);
   });
 
-  it("preserves an existing custom app identity and connection on an unchanged setup retry", async () => {
+  it("preserves the custom app identity and connection when callback credentials rotate", async () => {
     const fixture = await setupFeishuRunFixture();
     await connectFixtureUser(fixture);
+    const orgId = requireValue(fixture.actor.orgId, "Expected an organization");
+    const connectionBefore = await readFeishuMemberConnectorState(context, {
+      orgId,
+      userId: fixture.actor.userId,
+      installationId: fixture.installationId,
+    });
+    const rotatedVerificationToken = `rotated-${randomUUID()}`;
     mocks.clerk.session(
       fixture.actor.userId,
       fixture.actor.orgId,
@@ -3058,7 +3068,7 @@ describe("Feishu integration", () => {
           installationId: fixture.installationId,
           appId: fixture.appId,
           appSecret: APP_SECRET,
-          verificationToken: VERIFICATION_TOKEN,
+          verificationToken: rotatedVerificationToken,
           encryptKey: ENCRYPT_KEY,
           defaultAgentId: fixture.defaultAgentId,
         },
@@ -3071,7 +3081,7 @@ describe("Feishu integration", () => {
       publicBrand: "vm0",
       botName: "Okou Feishu",
       callbackUrl: fixture.callbackUrl,
-      callbackVerified: true,
+      callbackVerified: false,
       setupCompleted: true,
       isConnected: true,
     });
@@ -3089,6 +3099,26 @@ describe("Feishu integration", () => {
         oauthConfig: expect.objectContaining({ clientId: fixture.appId }),
       }),
     ]);
+    await expect(
+      readFeishuMemberConnectorState(context, {
+        orgId,
+        userId: fixture.actor.userId,
+        installationId: fixture.installationId,
+      }),
+    ).resolves.toStrictEqual(connectionBefore);
+
+    const prompt = `use the existing Feishu connection ${randomUUID()}`;
+    const eventResponse = await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, prompt, "ou_feishu_user", {
+        verificationToken: rotatedVerificationToken,
+      }),
+      { encrypted: true },
+    );
+    expect(eventResponse.status).toBe(200);
+    await flushWaitUntilForTest();
+    const run = await findRun(fixture.actor, prompt);
+    await runsApi.requestCancelRun(fixture.actor, run.id, [200]);
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },

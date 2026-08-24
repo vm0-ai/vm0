@@ -13,6 +13,7 @@ export interface FeishuInstallationConfig {
   readonly ownerUserId: string | null;
   readonly appId: string;
   readonly botOpenId: string | null;
+  readonly encryptedAppSecret: string;
   readonly appSecret: string;
   readonly verificationToken: string;
   readonly encryptKey: string;
@@ -57,6 +58,7 @@ export async function loadFeishuInstallationConfig(
     ownerUserId: installation.ownerUserId,
     appId: installation.appId,
     botOpenId: installation.botOpenId,
+    encryptedAppSecret: installation.encryptedAppSecret,
     appSecret,
     verificationToken,
     encryptKey,

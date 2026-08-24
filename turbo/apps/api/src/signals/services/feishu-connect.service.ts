@@ -316,7 +316,9 @@ async function prepareFeishuInstallation(
     encryptedEncryptKey,
     encryptedTenantAccessToken,
   ] = await Promise.all([
-    encryptPersistentSecretValue(input.appSecret, context),
+    existing && input.appSecret === existing.appSecret
+      ? Promise.resolve(existing.encryptedAppSecret)
+      : encryptPersistentSecretValue(input.appSecret, context),
     encryptPersistentSecretValue(input.verificationToken, context),
     encryptPersistentSecretValue(input.encryptKey, context),
     encryptPersistentSecretValue(tenantToken.token, context),
