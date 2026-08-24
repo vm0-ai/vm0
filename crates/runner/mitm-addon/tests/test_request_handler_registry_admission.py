@@ -318,11 +318,49 @@ async def test_invalid_billable_firewalls_blocks_before_auth_injection(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
-async def test_invalid_connector_routing_variables_block_before_auth_injection(
+@pytest.mark.parametrize(
+    ("vm_fields", "expected_reason", "expected_message"),
+    [
+        pytest.param(
+            {"omittedBuiltinFirewalls": [1]},
+            "invalid_omitted_intents",
+            "proxy registry VM entry omittedBuiltinFirewalls must be a string list",
+            id="omitted-intent-string-list",
+        ),
+        pytest.param(
+            {"omittedCustomConnectorIds": ["connector-1", "connector-1"]},
+            "invalid_omitted_intents",
+            "proxy registry VM entry omittedCustomConnectorIds must be unique",
+            id="omitted-intent-unique",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": []},
+            "invalid_connector_routing_variables",
+            "proxy registry VM entry connectorRoutingVariables must be an object",
+            id="routing-variables-object",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": {"github": {}}},
+            "invalid_connector_routing_variables",
+            "proxy registry VM entry connectorRoutingVariables keys must identify a connector",
+            id="routing-identity",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": {"builtin:github": {"HOST": 1}}},
+            "invalid_connector_routing_variables",
+            "proxy registry VM entry connectorRoutingVariables values must be string maps",
+            id="routing-variable-map",
+        ),
+    ],
+)
+async def test_invalid_routing_metadata_blocks_before_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
+    vm_fields,
+    expected_reason,
+    expected_message,
 ):
     vm_info = _single_firewall_vm(
         tmp_path,
@@ -337,7 +375,7 @@ async def test_invalid_connector_routing_variables_block_before_auth_injection(
             "ask": [],
             "unknownPolicy": "allow",
         },
-        vm_fields={"connectorRoutingVariables": {"github": {"HOST": "example.test"}}},
+        vm_fields=vm_fields,
     )
     reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
@@ -352,12 +390,17 @@ async def test_invalid_connector_routing_variables_block_before_auth_injection(
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
         "error": "invalid_registry_vm",
-        "message": (
-            "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
-        ),
-        "reason": "invalid_connector_routing_variables",
+        "message": expected_message,
+        "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
+    assert flow.request.headers.get("Authorization") is None
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.CLI_AGENT_TYPE not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
 @pytest.mark.parametrize(
