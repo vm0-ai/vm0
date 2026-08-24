@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
@@ -25,10 +26,10 @@ const migrationsDirectory = path.join(packageDirectory, "src/migrations");
 const previousMigration = "0970_wealthy_squadron_sinister";
 const expansionMigration = "0971_daily_namor";
 const backfillMigration = "0973_backfill_agent_run_built_in_model_key_ids";
+const contractMigration = "0976_contract_legacy_agent_run_model_key";
 const upgradeDatabase = "migration_agent_run_built_in_model_key_bridge";
 const metadataPresenceConstraint = "agent_runs_metadata_presence_check";
 const mirrorConflictConstraint = "agent_runs_model_key_id_mirror_check";
-let cachedMigrationOwnedBridgeStatements: readonly string[] | undefined;
 let cachedBackfillMigrationStatements: readonly string[] | undefined;
 
 export const AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME =
@@ -48,11 +49,18 @@ interface ModelKeyStorageRow extends ModelKeyRow {
   readonly transactionId: string;
 }
 
+interface CanonicalModelKeyRow {
+  readonly builtInModelKeyId: string | null;
+  readonly id: string;
+}
+
 interface BridgeFixture {
   readonly composeId: string;
   readonly keys: {
     readonly canonicalInsert: string;
     readonly canonicalUpdate: string;
+    readonly contractInsert: string;
+    readonly contractUpdate: string;
     readonly conflictCanonical: string;
     readonly conflictLegacy: string;
     readonly equalInsert: string;
@@ -64,6 +72,10 @@ interface BridgeFixture {
   readonly runIds: {
     readonly canonicalInsert: string;
     readonly canonicalOnlyPreflight: string;
+    readonly contractCanonical: string;
+    readonly contractInvalidLifecycle: string;
+    readonly contractLegacyOnly: string;
+    readonly contractLifecycleNull: string;
     readonly conflictInsert: string;
     readonly dualUpdate: string;
     readonly equalInsert: string;
@@ -85,6 +97,8 @@ function createFixture(label: string): BridgeFixture {
     keys: {
       canonicalInsert: randomUUID(),
       canonicalUpdate: randomUUID(),
+      contractInsert: randomUUID(),
+      contractUpdate: randomUUID(),
       conflictCanonical: randomUUID(),
       conflictLegacy: randomUUID(),
       equalInsert: randomUUID(),
@@ -96,6 +110,10 @@ function createFixture(label: string): BridgeFixture {
     runIds: {
       canonicalInsert: randomUUID(),
       canonicalOnlyPreflight: randomUUID(),
+      contractCanonical: randomUUID(),
+      contractInvalidLifecycle: randomUUID(),
+      contractLegacyOnly: randomUUID(),
+      contractLifecycleNull: randomUUID(),
       conflictInsert: randomUUID(),
       dualUpdate: randomUUID(),
       equalInsert: randomUUID(),
@@ -145,6 +163,22 @@ async function expectDatabaseError(
   );
 }
 
+async function expectDatabaseCode(
+  client: Client,
+  args: {
+    readonly code: string;
+    readonly query: string;
+    readonly values: readonly unknown[];
+  },
+): Promise<void> {
+  await assert.rejects(
+    client.query(args.query, [...args.values]),
+    (error: unknown) => {
+      return databaseErrorCode(error) === args.code;
+    },
+  );
+}
+
 function migrationStatements(migrationSql: string): readonly string[] {
   return migrationSql
     .split("--> statement-breakpoint")
@@ -154,6 +188,31 @@ function migrationStatements(migrationSql: string): readonly string[] {
     .filter((statement) => {
       return statement.length > 0;
     });
+}
+
+function migrationStatementAt(
+  statements: readonly string[],
+  index: number,
+): string {
+  const statement = statements[index];
+  assert.ok(statement);
+  return statement;
+}
+
+async function migrationImmediatelyBefore(
+  migrationTag: string,
+): Promise<string> {
+  const journal = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/_journal.json"),
+      "utf8",
+    ),
+  ) as { entries: { readonly tag: string }[] };
+  const migrationIndex = journal.entries.findIndex((entry) => {
+    return entry.tag === migrationTag;
+  });
+  assert.ok(migrationIndex > 0);
+  return journal.entries[migrationIndex - 1]!.tag;
 }
 
 function bridgeStatements(migrationSql: string): readonly string[] {
@@ -169,18 +228,6 @@ function bridgeStatements(migrationSql: string): readonly string[] {
   });
   assert.equal(statements.length, 2);
   return statements;
-}
-
-async function migrationOwnedBridgeStatements(): Promise<readonly string[]> {
-  if (cachedMigrationOwnedBridgeStatements) {
-    return cachedMigrationOwnedBridgeStatements;
-  }
-  const migrationSql = await fs.readFile(
-    path.join(migrationsDirectory, `${expansionMigration}.sql`),
-    "utf8",
-  );
-  cachedMigrationOwnedBridgeStatements = bridgeStatements(migrationSql);
-  return cachedMigrationOwnedBridgeStatements;
 }
 
 async function backfillMigrationStatements(): Promise<readonly string[]> {
@@ -350,10 +397,115 @@ function validateMigrationSql(migrationSql: string): void {
   assert.doesNotMatch(executableSql, /\bCOALESCE\b/iu);
 }
 
+function validateContractMigrationSql(migrationSql: string): void {
+  const statements = migrationStatements(migrationSql);
+  const executableSql = migrationSql.replace(/^--.*$/gmu, "");
+  assert.equal(statements.length, 14);
+  const preflight = migrationStatementAt(statements, 2);
+  const backfill = migrationStatementAt(statements, 3);
+  const lock = migrationStatementAt(statements, 4);
+  const stagedCheck = migrationStatementAt(statements, 5);
+  const finalGate = migrationStatementAt(statements, 7);
+  const postconditions = migrationStatementAt(statements, 13);
+  assert.equal(statements[0], "SET LOCAL lock_timeout = '1s';");
+  assert.equal(statements[1], "SET LOCAL statement_timeout = '10s';");
+  assert.match(
+    preflight,
+    /complete pre-contract catalog|Unexpected Agent Run model key column catalog/u,
+  );
+  assert.match(
+    preflight,
+    /pg_depend[\s\S]*vm0_model_key_id[\s\S]*sync_agent_run_model_key_ids_0971/u,
+  );
+  assert.match(preflight, /0cb34f89e8724080310d14f837a3b762/u);
+  assert.match(preflight, /38d10fdf70fe2d82967eb606c9283e4f/u);
+  assert.match(preflight, /found canonical-only rows before backfill/u);
+  assert.match(preflight, /found unequal dual rows before backfill/u);
+  assert.match(
+    backfill,
+    /UPDATE "agent_runs"\s+SET "built_in_model_key_id" = "vm0_model_key_id"\s+WHERE "vm0_model_key_id" IS NOT NULL\s+AND "built_in_model_key_id" IS NULL;$/u,
+  );
+  assert.match(lock, /LOCK TABLE "agent_runs" IN ACCESS EXCLUSIVE MODE/u);
+  assert.match(
+    stagedCheck,
+    /ADD CONSTRAINT "agent_runs_metadata_presence_check_0976"[\s\S]*NOT VALID;$/u,
+  );
+  assert.doesNotMatch(stagedCheck, /vm0_model_key_id/u);
+  assert.equal(
+    statements[6],
+    'ALTER TABLE "agent_runs"\nVALIDATE CONSTRAINT "agent_runs_metadata_presence_check_0976";',
+  );
+  assert.match(finalGate, /Final Agent Run model key parity failed/u);
+  assert.match(finalGate, /pg_depend/u);
+  assert.match(finalGate, /20ee7ec050f6cd8c9559505d3e7ce2a6/u);
+  assert.match(finalGate, /set_config/u);
+  assert.match(finalGate, /nonNullHash/u);
+  assert.equal(
+    statements[8],
+    'DROP TRIGGER "sync_agent_run_model_key_ids_0971" ON "agent_runs";',
+  );
+  assert.equal(
+    statements[9],
+    'DROP FUNCTION "sync_agent_run_model_key_ids_0971"();',
+  );
+  assert.equal(
+    statements[10],
+    'ALTER TABLE "agent_runs"\nDROP CONSTRAINT "agent_runs_metadata_presence_check";',
+  );
+  assert.equal(
+    statements[11],
+    'ALTER TABLE "agent_runs" DROP COLUMN "vm0_model_key_id";',
+  );
+  assert.equal(
+    statements[12],
+    'ALTER TABLE "agent_runs"\nRENAME CONSTRAINT "agent_runs_metadata_presence_check_0976"\nTO "agent_runs_metadata_presence_check";',
+  );
+  assert.match(
+    postconditions,
+    /legacy model key column remains after contract/u,
+  );
+  assert.match(postconditions, /0971 bridge objects remain/u);
+  assert.match(postconditions, /regexp_count/u);
+  assert.match(postconditions, /pg_get_functiondef/u);
+  assert.match(postconditions, /current_setting/u);
+  assert.match(
+    postconditions,
+    /canonical model key data changed during contract/u,
+  );
+  assert.match(postconditions, /20ee7ec050f6cd8c9559505d3e7ce2a6/u);
+  assert.equal(
+    statements.filter((statement) => {
+      return /LOCK TABLE "agent_runs" IN ACCESS EXCLUSIVE MODE/u.test(
+        statement,
+      );
+    }).length,
+    1,
+  );
+  assert.doesNotMatch(executableSql, /^-- vm0:non-transactional$/mu);
+  assert.doesNotMatch(executableSql, /\bCASCADE\b/iu);
+  assert.doesNotMatch(executableSql, /\b(?:DROP|ALTER)\b[^;]*\bIF EXISTS\b/iu);
+  assert.doesNotMatch(executableSql, /\bCOALESCE\b/iu);
+  assert.doesNotMatch(executableSql, /\bCREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b/iu);
+  assert.doesNotMatch(
+    executableSql,
+    /\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/iu,
+  );
+}
+
 async function seedDependencies(
   client: Client,
   fixture: BridgeFixture,
 ): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "built_in_model_keys" ("id", "vendor", "api_key")
+      VALUES ($1, $2, 'agent-run-model-key-contract-test')
+    `,
+    [
+      fixture.keys.historical,
+      `contract-${fixture.keys.historical.slice(0, 8)}`,
+    ],
+  );
   await client.query(
     `
       INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -393,19 +545,26 @@ async function insertHistoricalOldOnly(
   );
 }
 
-async function insertHistoricalOldOnlyWithBridge(
+async function insertCanonicalHistorical(
   client: Client,
   fixture: BridgeFixture,
 ): Promise<void> {
-  await client.query("BEGIN");
-  try {
-    await client.query("SET LOCAL session_replication_role = replica");
-    await insertHistoricalOldOnly(client, fixture);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  }
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt",
+        "trigger_source", "autonomy_budget", "built_in_model_key_id"
+      ) VALUES ($1, $2, $3, $4, 'completed', 'canonical historical row',
+        'chat', 0, $5)
+    `,
+    [
+      fixture.runIds.historical,
+      fixture.userId,
+      fixture.orgId,
+      fixture.sessionId,
+      fixture.keys.historical,
+    ],
+  );
 }
 
 async function readModelKeyRow(
@@ -437,6 +596,25 @@ async function readModelKeyStorageRows(
         "vm0_model_key_id"::text AS "vm0ModelKeyId",
         "built_in_model_key_id"::text AS "builtInModelKeyId",
         "xmin"::text AS "transactionId"
+      FROM "agent_runs"
+      WHERE "id" = ANY($1::uuid[])
+      ORDER BY "id"
+    `,
+    [runIds],
+  );
+  assert.equal(result.rows.length, runIds.length);
+  return result.rows;
+}
+
+async function readCanonicalModelKeyRows(
+  client: Client,
+  runIds: readonly string[],
+): Promise<CanonicalModelKeyRow[]> {
+  const result = await client.query<CanonicalModelKeyRow>(
+    `
+      SELECT
+        "id"::text AS "id",
+        "built_in_model_key_id"::text AS "builtInModelKeyId"
       FROM "agent_runs"
       WHERE "id" = ANY($1::uuid[])
       ORDER BY "id"
@@ -726,6 +904,202 @@ async function validateBridgeCatalog(client: Client): Promise<void> {
   assert.ok(functionRow.body.includes("IS DISTINCT FROM OLD"));
   assert.ok(functionRow.body.includes("ERRCODE = '23514'"));
   assert.ok(functionRow.body.includes("RETURN NEW"));
+}
+
+async function validateContractCatalog(client: Client): Promise<void> {
+  const columns = await client.query<{
+    columnDefault: string | null;
+    columnName: string;
+    formattedType: string;
+    hasMissing: boolean;
+    isGenerated: string;
+    isIdentity: string;
+    isNullable: string;
+  }>(`
+    SELECT
+      "column_row"."column_name" AS "columnName",
+      "column_row"."column_default" AS "columnDefault",
+      pg_catalog.format_type(
+        "attribute_row"."atttypid", "attribute_row"."atttypmod"
+      ) AS "formattedType",
+      "attribute_row"."atthasmissing" AS "hasMissing",
+      "column_row"."is_generated" AS "isGenerated",
+      "column_row"."is_identity" AS "isIdentity",
+      "column_row"."is_nullable" AS "isNullable"
+    FROM "information_schema"."columns" AS "column_row"
+    INNER JOIN "pg_catalog"."pg_attribute" AS "attribute_row"
+      ON "attribute_row"."attrelid" = 'public.agent_runs'::regclass
+      AND "attribute_row"."attname" = "column_row"."column_name"
+      AND NOT "attribute_row"."attisdropped"
+    WHERE "column_row"."table_schema" = 'public'
+      AND "column_row"."table_name" = 'agent_runs'
+      AND "column_row"."column_name" IN (
+        'vm0_model_key_id',
+        'built_in_model_key_id'
+      )
+    ORDER BY "column_row"."column_name"
+  `);
+  assert.deepEqual(columns.rows, [
+    {
+      columnDefault: null,
+      columnName: "built_in_model_key_id",
+      formattedType: "uuid",
+      hasMissing: false,
+      isGenerated: "NEVER",
+      isIdentity: "NO",
+      isNullable: "YES",
+    },
+  ]);
+
+  const dependencies = await client.query<{
+    foreignKeyCount: number;
+    indexCount: number;
+  }>(`
+    SELECT
+      (
+        SELECT count(*)::integer
+        FROM "pg_catalog"."pg_constraint" AS "constraint_row"
+        INNER JOIN "pg_catalog"."pg_attribute" AS "attribute_row"
+          ON "attribute_row"."attrelid" = 'public.agent_runs'::regclass
+          AND "attribute_row"."attname" = 'built_in_model_key_id'
+        WHERE "constraint_row"."contype" = 'f'
+          AND (
+            (
+              "constraint_row"."conrelid" = "attribute_row"."attrelid"
+              AND "attribute_row"."attnum" = ANY("constraint_row"."conkey")
+            ) OR (
+              "constraint_row"."confrelid" = "attribute_row"."attrelid"
+              AND "attribute_row"."attnum" = ANY("constraint_row"."confkey")
+            )
+          )
+      ) AS "foreignKeyCount",
+      (
+        SELECT count(*)::integer
+        FROM "pg_catalog"."pg_index" AS "index_row"
+        INNER JOIN "pg_catalog"."pg_attribute" AS "attribute_row"
+          ON "attribute_row"."attrelid" = "index_row"."indrelid"
+          AND "attribute_row"."attname" = 'built_in_model_key_id'
+        WHERE "index_row"."indrelid" = 'public.agent_runs'::regclass
+          AND "attribute_row"."attnum" = ANY(
+            "index_row"."indkey"::smallint[]
+          )
+      ) AS "indexCount"
+  `);
+  assert.deepEqual(dependencies.rows, [{ foreignKeyCount: 0, indexCount: 0 }]);
+
+  const metadataCheck = await client.query<{
+    columns: string[];
+    definition: string;
+    definitionHash: string;
+    validated: boolean;
+  }>(
+    `
+      SELECT
+        array_agg(
+          "attribute_row"."attname"::text
+          ORDER BY "attribute_row"."attname"
+        ) AS "columns",
+        pg_catalog.pg_get_constraintdef("constraint_row"."oid", true)
+          AS "definition",
+        pg_catalog.md5(
+          pg_catalog.pg_get_constraintdef("constraint_row"."oid", true)
+        ) AS "definitionHash",
+        "constraint_row"."convalidated" AS "validated"
+      FROM "pg_catalog"."pg_constraint" AS "constraint_row"
+      CROSS JOIN LATERAL unnest("constraint_row"."conkey")
+        AS "key_row"("attnum")
+      INNER JOIN "pg_catalog"."pg_attribute" AS "attribute_row"
+        ON "attribute_row"."attrelid" = "constraint_row"."conrelid"
+        AND "attribute_row"."attnum" = "key_row"."attnum"
+      WHERE "constraint_row"."conrelid" = 'public.agent_runs'::regclass
+        AND "constraint_row"."conname" = $1
+        AND "constraint_row"."contype" = 'c'
+      GROUP BY "constraint_row"."oid"
+    `,
+    [metadataPresenceConstraint],
+  );
+  assert.equal(metadataCheck.rows.length, 1);
+  const [metadataRow] = metadataCheck.rows;
+  assert.ok(metadataRow);
+  assert.equal(metadataRow.validated, true);
+  assert.equal(metadataRow.definitionHash, "20ee7ec050f6cd8c9559505d3e7ce2a6");
+  assert.deepEqual(metadataRow.columns, [
+    "api_started_at",
+    "autonomy_budget",
+    "built_in_model_key_id",
+    "chat_thread_id",
+    "codex_service_tier",
+    "first_assistant_event_acknowledged_at",
+    "goal_id",
+    "model_provider",
+    "model_provider_credential_scope",
+    "model_provider_id",
+    "model_runtime_model",
+    "model_runtime_provider",
+    "selected_image_model",
+    "selected_model",
+    "selected_video_model",
+    "summary",
+    "trigger_brief",
+    "trigger_source",
+    "workflow_automation_id",
+  ]);
+  assert.ok(metadataRow.definition.includes("built_in_model_key_id IS NULL"));
+  assert.equal(metadataRow.definition.includes("vm0_model_key_id"), false);
+
+  assert.deepEqual(await bridgeObjectCount(client), {
+    functionCount: 0,
+    triggerCount: 0,
+  });
+
+  const legacyReferences = await client.query<{ count: number }>(`
+    WITH "catalog_definitions" AS (
+      SELECT pg_catalog.pg_get_functiondef("function_row"."oid") AS "definition"
+      FROM "pg_catalog"."pg_proc" AS "function_row"
+      INNER JOIN "pg_catalog"."pg_namespace" AS "namespace_row"
+        ON "namespace_row"."oid" = "function_row"."pronamespace"
+      WHERE "function_row"."prokind" IN ('f', 'p')
+        AND "namespace_row"."nspname" NOT IN (
+          'pg_catalog',
+          'information_schema'
+        )
+        AND "namespace_row"."nspname" !~ '^pg_(toast_)?temp_'
+
+      UNION ALL
+
+      SELECT pg_catalog.pg_get_ruledef("rule_row"."oid", true)
+      FROM "pg_catalog"."pg_rewrite" AS "rule_row"
+      INNER JOIN "pg_catalog"."pg_class" AS "relation_row"
+        ON "relation_row"."oid" = "rule_row"."ev_class"
+      INNER JOIN "pg_catalog"."pg_namespace" AS "namespace_row"
+        ON "namespace_row"."oid" = "relation_row"."relnamespace"
+      WHERE "namespace_row"."nspname" NOT IN (
+          'pg_catalog',
+          'information_schema'
+        )
+        AND "namespace_row"."nspname" !~ '^pg_(toast_)?temp_'
+
+      UNION ALL
+
+      SELECT pg_catalog.pg_get_triggerdef("trigger_row"."oid", true)
+      FROM "pg_catalog"."pg_trigger" AS "trigger_row"
+      WHERE NOT "trigger_row"."tgisinternal"
+
+      UNION ALL
+
+      SELECT pg_catalog.pg_get_constraintdef("constraint_row"."oid", true)
+      FROM "pg_catalog"."pg_constraint" AS "constraint_row"
+
+      UNION ALL
+
+      SELECT pg_catalog.pg_get_indexdef("index_row"."indexrelid")
+      FROM "pg_catalog"."pg_index" AS "index_row"
+    )
+    SELECT count(*)::integer AS "count"
+    FROM "catalog_definitions"
+    WHERE "definition" ~* '\\mvm0_model_key_id\\M'
+  `);
+  assert.deepEqual(legacyReferences.rows, [{ count: 0 }]);
 }
 
 async function validateBridgeBehavior(
@@ -1027,12 +1401,156 @@ async function validateBridgeBehavior(
   ]);
 }
 
+async function validateContractBehavior(
+  client: Client,
+  fixture: BridgeFixture,
+): Promise<void> {
+  await validateContractCatalog(client);
+
+  const [joinedHistorical] = await drizzle(client)
+    .select({
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
+      id: agentRuns.id,
+      vendor: builtInModelKeys.vendor,
+    })
+    .from(agentRuns)
+    .leftJoin(
+      builtInModelKeys,
+      eq(agentRuns.builtInModelKeyId, builtInModelKeys.id),
+    )
+    .where(eq(agentRuns.id, fixture.runIds.historical))
+    .limit(1);
+  assert.deepEqual(joinedHistorical, {
+    builtInModelKeyId: fixture.keys.historical,
+    id: fixture.runIds.historical,
+    vendor: `contract-${fixture.keys.historical.slice(0, 8)}`,
+  });
+
+  const canonicalInsert = await client.query<CanonicalModelKeyRow>(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt",
+        "trigger_source", "autonomy_budget", "built_in_model_key_id"
+      ) VALUES ($1, $2, $3, $4, 'pending', 'contract canonical insert',
+        'chat', 0, $5)
+      RETURNING
+        "id"::text AS "id",
+        "built_in_model_key_id"::text AS "builtInModelKeyId"
+    `,
+    [
+      fixture.runIds.contractCanonical,
+      fixture.userId,
+      fixture.orgId,
+      fixture.sessionId,
+      fixture.keys.contractInsert,
+    ],
+  );
+  assert.deepEqual(canonicalInsert.rows, [
+    {
+      builtInModelKeyId: fixture.keys.contractInsert,
+      id: fixture.runIds.contractCanonical,
+    },
+  ]);
+
+  await client.query(
+    `
+      UPDATE "agent_runs"
+      SET "built_in_model_key_id" = $1
+      WHERE "id" = $2
+    `,
+    [fixture.keys.contractUpdate, fixture.runIds.contractCanonical],
+  );
+  assert.deepEqual(
+    await readCanonicalModelKeyRows(client, [fixture.runIds.contractCanonical]),
+    [
+      {
+        builtInModelKeyId: fixture.keys.contractUpdate,
+        id: fixture.runIds.contractCanonical,
+      },
+    ],
+  );
+
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt"
+      ) VALUES ($1, $2, $3, $4, 'failed', 'contract lifecycle null')
+    `,
+    [
+      fixture.runIds.contractLifecycleNull,
+      fixture.userId,
+      fixture.orgId,
+      fixture.sessionId,
+    ],
+  );
+  assert.deepEqual(
+    await readCanonicalModelKeyRows(client, [
+      fixture.runIds.contractLifecycleNull,
+    ]),
+    [
+      {
+        builtInModelKeyId: null,
+        id: fixture.runIds.contractLifecycleNull,
+      },
+    ],
+  );
+
+  await expectDatabaseError(client, {
+    code: "23514",
+    constraint: metadataPresenceConstraint,
+    query: `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt",
+        "built_in_model_key_id"
+      ) VALUES ($1, $2, $3, $4, 'failed',
+        'contract invalid lifecycle metadata', $5)
+    `,
+    values: [
+      fixture.runIds.contractInvalidLifecycle,
+      fixture.userId,
+      fixture.orgId,
+      fixture.sessionId,
+      fixture.keys.contractInsert,
+    ],
+  });
+
+  const [logDetail] = await drizzle(client)
+    .select({ run: logDetailRunSelection() })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, fixture.runIds.historical))
+    .limit(1);
+  assert.ok(logDetail);
+  assert.deepEqual(Object.keys(logDetail.run).sort(), [
+    "appendSystemPrompt",
+    "completedAt",
+    "createdAt",
+    "error",
+    "id",
+    "launchSnapshot",
+    "prompt",
+    "result",
+    "startedAt",
+    "status",
+  ]);
+  assert.equal(Reflect.has(logDetail.run, "builtInModelKeyId"), false);
+  assert.equal(Reflect.has(logDetail.run, "vm0ModelKeyId"), false);
+
+  await expectDatabaseCode(client, {
+    code: "42703",
+    query: `SELECT "vm0_model_key_id" FROM "agent_runs" WHERE "id" = $1`,
+    values: [fixture.runIds.historical],
+  });
+}
+
 async function cleanupFixture(
   client: Client,
   fixture: BridgeFixture,
 ): Promise<void> {
   await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
     fixture.composeId,
+  ]);
+  await client.query(`DELETE FROM "built_in_model_keys" WHERE "id" = $1`, [
+    fixture.keys.historical,
   ]);
 }
 
@@ -1094,6 +1612,156 @@ async function readResidualShape(client: Client): Promise<{
   `);
   assert.equal(result.rows.length, 1);
   return result.rows[0]!;
+}
+
+async function expectContractFailureBeforeMutation(
+  client: Client,
+  args: {
+    readonly expectedError: RegExp;
+    readonly protectedRunIds: readonly string[];
+    readonly statements: readonly string[];
+  },
+): Promise<void> {
+  const rowsBefore = await readModelKeyStorageRows(
+    client,
+    args.protectedRunIds,
+  );
+  const residualsBefore = await readResidualShape(client);
+  const bridgeBefore = await bridgeObjectCount(client);
+  await client.query("BEGIN");
+  try {
+    await assert.rejects(
+      executeStatements(client, args.statements),
+      args.expectedError,
+    );
+  } finally {
+    await client.query("ROLLBACK");
+  }
+  assert.deepEqual(
+    await readModelKeyStorageRows(client, args.protectedRunIds),
+    rowsBefore,
+  );
+  assert.deepEqual(await readResidualShape(client), residualsBefore);
+  assert.deepEqual(await bridgeObjectCount(client), bridgeBefore);
+}
+
+function preservedContractRunIds(fixture: BridgeFixture): readonly string[] {
+  return [fixture.runIds.historical, ...preservedBackfillRunIds(fixture)];
+}
+
+async function validateContractPreflightFailures(
+  client: Client,
+  databaseUrl: string,
+  fixture: BridgeFixture,
+  statements: readonly string[],
+): Promise<void> {
+  const preservedRunIds = preservedContractRunIds(fixture);
+
+  await insertBridgeBypassedModelKeyRow(client, {
+    builtInModelKeyId: fixture.keys.canonicalInsert,
+    fixture,
+    prompt: "contract canonical-only drift",
+    runId: fixture.runIds.canonicalOnlyPreflight,
+    vm0ModelKeyId: null,
+  });
+  await expectContractFailureBeforeMutation(client, {
+    expectedError:
+      /Agent Run model key contract found canonical-only rows before backfill/u,
+    protectedRunIds: [
+      ...preservedRunIds,
+      fixture.runIds.canonicalOnlyPreflight,
+    ],
+    statements,
+  });
+  await client.query(`DELETE FROM "agent_runs" WHERE "id" = $1`, [
+    fixture.runIds.canonicalOnlyPreflight,
+  ]);
+
+  await insertBridgeBypassedModelKeyRow(client, {
+    builtInModelKeyId: fixture.keys.conflictCanonical,
+    fixture,
+    prompt: "contract unequal drift",
+    runId: fixture.runIds.unequalPreflight,
+    vm0ModelKeyId: fixture.keys.conflictLegacy,
+  });
+  await expectContractFailureBeforeMutation(client, {
+    expectedError:
+      /Agent Run model key contract found unequal dual rows before backfill/u,
+    protectedRunIds: [...preservedRunIds, fixture.runIds.unequalPreflight],
+    statements,
+  });
+  await client.query(`DELETE FROM "agent_runs" WHERE "id" = $1`, [
+    fixture.runIds.unequalPreflight,
+  ]);
+
+  const metadataRowsBefore = await readModelKeyStorageRows(
+    client,
+    preservedRunIds,
+  );
+  await client.query("BEGIN");
+  try {
+    await client.query(
+      `ALTER TABLE "agent_runs" DROP CONSTRAINT "${metadataPresenceConstraint}"`,
+    );
+    await client.query(
+      `ALTER TABLE "agent_runs" ADD CONSTRAINT "${metadataPresenceConstraint}" CHECK (true)`,
+    );
+    await assert.rejects(
+      executeStatements(client, statements),
+      /Unexpected Agent Run metadata-presence check/u,
+    );
+  } finally {
+    await client.query("ROLLBACK");
+  }
+  assert.deepEqual(
+    await readModelKeyStorageRows(client, preservedRunIds),
+    metadataRowsBefore,
+  );
+
+  await client.query(
+    `CREATE VIEW "agent_run_model_key_contract_dependency" AS
+      SELECT "id", "vm0_model_key_id" FROM "agent_runs"`,
+  );
+  try {
+    await expectContractFailureBeforeMutation(client, {
+      expectedError: /unexpected catalog dependencies/u,
+      protectedRunIds: preservedRunIds,
+      statements,
+    });
+  } finally {
+    await client.query(`DROP VIEW "agent_run_model_key_contract_dependency"`);
+  }
+
+  await client.query(
+    `ALTER TABLE "agent_runs" DISABLE TRIGGER "${AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME}"`,
+  );
+  try {
+    await expectContractFailureBeforeMutation(client, {
+      expectedError: /requires the accepted enabled 0971 bridge identity/u,
+      protectedRunIds: preservedRunIds,
+      statements,
+    });
+  } finally {
+    await client.query(
+      `ALTER TABLE "agent_runs" ENABLE TRIGGER "${AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_NAME}"`,
+    );
+  }
+
+  const lockBlocker = new Client({ connectionString: databaseUrl });
+  await lockBlocker.connect();
+  await lockBlocker.query("BEGIN");
+  try {
+    await lockBlocker.query(`LOCK TABLE "agent_runs" IN ACCESS SHARE MODE`);
+    await expectContractFailureBeforeMutation(client, {
+      expectedError: /canceling statement due to lock timeout/u,
+      protectedRunIds: preservedRunIds,
+      statements,
+    });
+  } finally {
+    await lockBlocker.query("ROLLBACK");
+    await lockBlocker.end();
+  }
+  await validateBridgeCatalog(client);
 }
 
 async function expectBackfillFailureBeforeMutation(
@@ -1216,13 +1884,19 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     path.join(migrationsDirectory, `${backfillMigration}.sql`),
     "utf8",
   );
+  const contractSql = await fs.readFile(
+    path.join(migrationsDirectory, `${contractMigration}.sql`),
+    "utf8",
+  );
   validateMigrationSql(migrationSql);
   const backfillStatements = migrationStatements(backfillSql);
   validateBackfillMigrationSql(backfillSql, backfillStatements, {
     functionBodyHash: AGENT_RUN_MODEL_KEY_BRIDGE_FUNCTION_BODY_HASH,
     triggerDefinition: AGENT_RUN_MODEL_KEY_BRIDGE_TRIGGER_DEFINITION,
   });
-  cachedMigrationOwnedBridgeStatements = bridgeStatements(migrationSql);
+  bridgeStatements(migrationSql);
+  validateContractMigrationSql(contractSql);
+  const contractStatements = migrationStatements(contractSql);
   cachedBackfillMigrationStatements = backfillStatements;
   await validateRuntimeCallerIsolation();
 
@@ -1298,6 +1972,57 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     );
     await validateBridgeCatalog(client);
 
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      await migrationImmediatelyBefore(contractMigration),
+    );
+    await validateBridgeCatalog(client);
+    await validateContractPreflightFailures(
+      client,
+      upgradeUrl.toString(),
+      fixture,
+      contractStatements,
+    );
+
+    await insertBridgeBypassedModelKeyRow(client, {
+      builtInModelKeyId: null,
+      fixture,
+      prompt: "final legacy-only contract backfill",
+      runId: fixture.runIds.contractLegacyOnly,
+      vm0ModelKeyId: fixture.keys.historical,
+    });
+    const contractRunIds = [
+      ...preservedContractRunIds(fixture),
+      fixture.runIds.contractLegacyOnly,
+    ];
+    const canonicalBeforeContract = await readCanonicalModelKeyRows(
+      client,
+      contractRunIds,
+    );
+    const contractRelationFileNode =
+      await readAgentRunsRelationFileNode(client);
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractMigration,
+    );
+    assert.equal(
+      await readAgentRunsRelationFileNode(client),
+      contractRelationFileNode,
+    );
+    assert.deepEqual(
+      await readCanonicalModelKeyRows(client, contractRunIds),
+      canonicalBeforeContract.map((row) => {
+        if (row.id !== fixture.runIds.contractLegacyOnly) return row;
+        return {
+          builtInModelKeyId: fixture.keys.historical,
+          id: row.id,
+        };
+      }),
+    );
+    await validateContractBehavior(client, fixture);
+
     console.log("   ✅ current logDetail statement runs on the 0970 schema");
     console.log("   ✅ nullable UUID expansion preserves historical storage");
     console.log("   ✅ historical old-only rows remain unbackfilled");
@@ -1308,7 +2033,15 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
     console.log("   ✅ backfill preflight rejects conflicts before mutation");
     console.log("   ✅ historical rows backfill in an independent stage");
     console.log("   ✅ a second application performs no row updates");
-    console.log("   ✅ locked rows retry or fail at the bounded timeout\n");
+    console.log("   ✅ locked rows retry or fail at the bounded timeout");
+    console.log("   ✅ contract preflight rejects catalog and row drift");
+    console.log("   ✅ contract lock acquisition fails at the bounded timeout");
+    console.log("   ✅ final legacy-only backfill runs before contraction");
+    console.log("   ✅ canonical values survive the metadata-only contract");
+    console.log(
+      "   ✅ contracted reads, writes, joins, nulls, and checks work",
+    );
+    console.log("   ✅ legacy SQL fails with SQLSTATE 42703 after contract\n");
   } finally {
     await cleanupFixture(client, fixture);
     await client.end();
@@ -1319,42 +2052,22 @@ export async function validateAgentRunBuiltInModelKeyExpansionMigration(): Promi
   }
 }
 
-export async function validateAgentRunBuiltInModelKeyBridgeSchema(
+export async function validateAgentRunBuiltInModelKeyContractSchema(
   databaseUrl: string,
-  options: { readonly installMigrationOwnedBridge: boolean },
 ): Promise<void> {
   console.log(
-    "=== Validate Agent Run built-in model key current-schema bridge ===\n",
+    "=== Validate Agent Run built-in model key contracted schema ===\n",
   );
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
-  const fixture = createFixture(
-    options.installMigrationOwnedBridge ? "generated" : "replay",
-  );
+  const fixture = createFixture("current");
   try {
-    if (options.installMigrationOwnedBridge) {
-      assert.deepEqual(await bridgeObjectCount(client), {
-        functionCount: 0,
-        triggerCount: 0,
-      });
-      await executeStatements(client, await migrationOwnedBridgeStatements());
-    }
-    assert.deepEqual(await bridgeObjectCount(client), {
-      functionCount: 1,
-      triggerCount: 1,
-    });
-    await validateBridgeCatalog(client);
+    await validateContractCatalog(client);
     await seedDependencies(client, fixture);
-    await insertHistoricalOldOnlyWithBridge(client, fixture);
-    await validateBridgeBehavior(client, fixture);
-    const preservedBefore = await readModelKeyStorageRows(
-      client,
-      preservedBackfillRunIds(fixture),
-    );
-    await executeStatements(client, await backfillMigrationStatements());
-    await validateBackfillOutcome(client, fixture, preservedBefore);
+    await insertCanonicalHistorical(client, fixture);
+    await validateContractBehavior(client, fixture);
     console.log(
-      "   ✅ exact column, bridge, backfill behavior, and cleanup match\n",
+      "   ✅ canonical-only column, catalog, behavior, and cleanup match\n",
     );
   } finally {
     await cleanupFixture(client, fixture);
@@ -1363,10 +2076,13 @@ export async function validateAgentRunBuiltInModelKeyBridgeSchema(
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentRunBuiltInModelKeyExpansionMigration().catch(
-    (error: unknown) => {
-      console.error(error);
-      process.exitCode = 1;
-    },
-  );
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl, "DATABASE_URL is required");
+  const validation = process.argv.includes("--current-schema")
+    ? validateAgentRunBuiltInModelKeyContractSchema(databaseUrl)
+    : validateAgentRunBuiltInModelKeyExpansionMigration();
+  validation.catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
