@@ -1,5 +1,5 @@
 root="$codex_home/sessions"
-restore_path="$VM0_CODEX_RESTORE_SESSION_PATH"
+restore_path="$OKOU_CODEX_RESTORE_SESSION_PATH"
 restore_dir="${restore_path%/*}"
 case "$restore_dir" in
   "$root"/*/*/*) ;;
@@ -41,7 +41,7 @@ while [ -n "$remaining" ]; do
   current="$current/$component"
   check_restore_dir_component "$current"
 done
-id="$VM0_CODEX_RESTORE_SESSION_ID"
+id="$OKOU_CODEX_RESTORE_SESSION_ID"
 case "$id" in
   ""|*[!0123456789abcdefABCDEF-]*)
     echo "invalid codex restore session id" >&2
@@ -52,7 +52,7 @@ if [ "${#id}" -ne 36 ]; then
   echo "invalid codex restore session id" >&2
   exit 1
 fi
-id_no_dashes="$VM0_CODEX_RESTORE_SESSION_FILENAME_KEY"
+id_no_dashes="$OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY"
 case "$id_no_dashes" in
   ""|*[!0123456789abcdefABCDEF]*)
     echo "invalid codex restore session id" >&2
@@ -63,7 +63,7 @@ if [ "${#id_no_dashes}" -ne 32 ]; then
   echo "invalid codex restore session id" >&2
   exit 1
 fi
-scan_budget="${VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET:-16384}"
+scan_budget="${OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET:-16384}"
 case "$scan_budget" in
   ""|*[!0123456789]*)
     echo "invalid codex session cleanup scan budget" >&2

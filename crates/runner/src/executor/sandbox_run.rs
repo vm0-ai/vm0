@@ -61,6 +61,7 @@ const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC: &str = "workspace_drive_mount_guest_exec
 const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC_UNAVAILABLE: &str =
     "workspace_drive_mount_guest_exec_unavailable";
 const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
+const RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT: &str = "runner_fresh_pre_spawn_admission_wait";
 const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
 const RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE: &str =
     "runner_fresh_sandbox_factory_cow_pool_acquire";
@@ -457,6 +458,42 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         prepared_run_payload,
         sandbox_prepared,
     } = hooks;
+    // The gate intentionally starts before every fresh preparation stage and remains held through
+    // the real process spawn. Current production tails span both factory work and the later
+    // mount/restore/storage stages, so a narrower Firecracker-only gate would allow the same cohort
+    // to reconverge before api_to_spawn completes.
+    let admission_started = Instant::now();
+    let admission_lease = match config
+        .pre_spawn_admission
+        .acquire(params.vcpu, &controls.cancel)
+        .await
+    {
+        Ok(lease) => {
+            let elapsed = admission_started.elapsed();
+            telemetry.record(RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT, elapsed, true, None);
+            let metadata = lease.metadata();
+            info!(
+                run_id = %context.run_id,
+                requested_tokens = metadata.requested_tokens,
+                effective_tokens = metadata.effective_tokens,
+                total_tokens = metadata.total_tokens,
+                contended = metadata.contended,
+                duration_ms = duration_ms(elapsed),
+                "fresh pre-spawn admission acquired"
+            );
+            lease
+        }
+        Err(error) => {
+            telemetry.record(
+                RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT,
+                admission_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+    };
+    controls.pre_spawn_admission_lease = Some(admission_lease);
     let prepare_started = Instant::now();
     let mut workspace_image = prepare_workspace_image(
         context,
