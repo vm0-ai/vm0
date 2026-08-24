@@ -82,13 +82,15 @@ function FlowErrorAlert({ copy, signals }: SignInStepProps) {
 
 function SubmitButton({
   busy,
+  disabled = busy,
   label,
 }: {
   readonly busy: boolean;
+  readonly disabled?: boolean;
   readonly label: string;
 }) {
   return (
-    <Button className="w-full" disabled={busy} type="submit">
+    <Button className="w-full" disabled={disabled} type="submit">
       {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
       {label}
     </Button>
@@ -258,6 +260,9 @@ function CodeStep({
   const backToMethods = useSet(signals.backToMethods$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [resendLoadable, resendCode] = useLoadableSet(signals.resendCode$);
+  const submitting = submitLoadable.state === "loading";
+  const resending = resendLoadable.state === "loading";
+  const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
   const safeIdentifier =
     selectedFactor && selectedFactor.kind !== "password"
@@ -292,17 +297,18 @@ function CodeStep({
         value={code}
       />
       <SubmitButton
-        busy={submitLoadable.state === "loading"}
+        busy={submitting}
+        disabled={operationPending}
         label={copy.verify}
       />
       <Button
         className="h-auto w-full"
-        disabled={resendLoadable.state === "loading"}
+        disabled={operationPending}
         type="button"
         variant="link"
         onClick={handleResend}
       >
-        {resendLoadable.state === "loading" ? (
+        {resending ? (
           <Loader2 className="animate-spin" aria-hidden="true" />
         ) : null}
         {copy.resendCode}

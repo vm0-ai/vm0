@@ -110,7 +110,7 @@ export interface AuthV2SignInSignals {
   readonly submit$: Command<Promise<void>, [AbortSignal]>;
 }
 
-type CoalescedOperation = "prepare" | "resend" | "submit";
+type CoalescedOperation = "resource";
 type AuthV2SignInUnknownState = Extract<
   AuthV2SignInState,
   { status: "unknown" }
@@ -635,12 +635,12 @@ function createFactorSelectionCommand(
       }
 
       set(atoms.error$, null);
-      set(atoms.selectedFactor$, factor);
       set(atoms.code$, "");
       if (
         factor.kind === "password" ||
         get(runtime.preparedFactorId$) === factor.id
       ) {
+        set(atoms.selectedFactor$, factor);
         return;
       }
 
@@ -657,6 +657,7 @@ function createFactorSelectionCommand(
       set(runtime.preparedFactorId$, factor.id);
       await set(applyResource$, prepared.value, signal);
       signal.throwIfAborted();
+      set(atoms.selectedFactor$, factor);
     },
   );
 
@@ -666,7 +667,7 @@ function createFactorSelectionCommand(
       factorId: string,
       signal: AbortSignal,
     ): Promise<void> => {
-      const current = get(runtime.inFlight$).get("prepare");
+      const current = get(runtime.inFlight$).get("resource");
       if (current) {
         await current;
         signal.throwIfAborted();
@@ -674,15 +675,15 @@ function createFactorSelectionCommand(
       }
       const operation = set(prepareFactorOperation$, factorId, signal);
       set(runtime.inFlight$, (operations) => {
-        return new Map(operations).set("prepare", operation);
+        return new Map(operations).set("resource", operation);
       });
       await withCleanup(operation, () => {
         set(runtime.inFlight$, (operations) => {
-          if (operations.get("prepare") !== operation) {
+          if (operations.get("resource") !== operation) {
             return operations;
           }
           const remaining = new Map(operations);
-          remaining.delete("prepare");
+          remaining.delete("resource");
           return remaining;
         });
       });
@@ -830,12 +831,12 @@ export function createAuthV2SignInSignals(
     }),
     resendCode$: createCoalescedOperation$(
       runtime,
-      "resend",
+      "resource",
       resendCodeOperation$,
     ),
     selectFactor$: createFactorSelectionCommand(atoms, runtime, applyResource$),
     state$: atoms.state$,
-    submit$: createCoalescedOperation$(runtime, "submit", submitOperation$),
+    submit$: createCoalescedOperation$(runtime, "resource", submitOperation$),
   };
 }
 

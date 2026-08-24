@@ -221,6 +221,12 @@ describe("auth v2 sign-in flow", () => {
       emailAddressId: "email_primary",
       strategy: "email_code",
     });
+    await waitFor(() => {
+      expect(emailMethod).toBeDisabled();
+    });
+    expect(
+      screen.queryByLabelText("Verification code"),
+    ).not.toBeInTheDocument();
 
     await act(async () => {
       prepare.resolve(currentSignInResource());
@@ -238,6 +244,12 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
     });
+    const verifyButton = await waitForRoleElement("button", "Verify");
+    await waitFor(() => {
+      expect(verifyButton).toBeDisabled();
+    });
+    fireEvent.click(verifyButton);
+    expect(mockedClerk.signInAttemptFirstFactor).not.toHaveBeenCalled();
 
     await act(async () => {
       resend.resolve(currentSignInResource());
@@ -252,6 +264,11 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledTimes(1);
     });
+    await waitFor(() => {
+      expect(resendButton).toBeDisabled();
+    });
+    fireEvent.click(resendButton);
+    expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
     expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledWith({
       code: "123456",
       strategy: "email_code",
@@ -269,6 +286,32 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("keeps factor selection usable when email-code preparation fails", async () => {
+    mockedClerk.signInPrepareFirstFactor.mockRejectedValue({
+      errors: [{ longMessage: "We couldn't send a verification code." }],
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      emailCodeFactor(),
+    ]);
+
+    const emailMethod = await waitForRoleElement(
+      "button",
+      "Email code to p***@example.com",
+    );
+    fireEvent.click(emailMethod);
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "We couldn't send a verification code.",
+    );
+    expect(emailMethod).toBeVisible();
+    expect(
+      screen.queryByLabelText("Verification code"),
+    ).not.toBeInTheDocument();
   });
 
   it("runs the password-reset code and new-password sequence", async () => {
