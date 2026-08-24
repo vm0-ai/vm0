@@ -510,7 +510,7 @@ describe("billing entitlement reconciliation", () => {
       "OKOU_PRICE_USAGE_PACK_PLAN_PRO",
       "price_plan_usage-pack-subscription",
     );
-    mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
+    mockEnv("OKOU_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
     mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
     const marker = randomUUID();
     onTestFinished(async () => {
