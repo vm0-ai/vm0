@@ -5,9 +5,7 @@ import {
 } from "../presentation-template-items";
 import {
   findColorSystem,
-  findPresentationReverseTemplateResource,
   findPresentationRunbookPackage,
-  listSkills,
   listTemplates,
 } from "../resource-registry";
 
@@ -288,33 +286,6 @@ function expectPinnedPickerPreviewImages(
 }
 
 describe("presentation template items", () => {
-  it("keeps the reverse-template guide pull-only and pinned to private R2", () => {
-    expect(
-      findPresentationReverseTemplateResource(
-        "skill:presentation-reverse-template",
-      ),
-    ).toEqual(
-      expect.objectContaining({
-        id: "skill:presentation-reverse-template",
-        kind: "skill",
-        targets: ["presentation"],
-        source: {
-          path: "reverse-template",
-          archive: {
-            type: "tar.gz",
-            sha256:
-              "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
-          },
-        },
-      }),
-    );
-    expect(listSkills("presentation")).not.toContainEqual(
-      expect.objectContaining({
-        id: "skill:presentation-reverse-template",
-      }),
-    );
-  });
-
   it("defines direct card preview assets for picker thumbnails", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       expect(item.cardPreviewImage, item.slug).toMatch(

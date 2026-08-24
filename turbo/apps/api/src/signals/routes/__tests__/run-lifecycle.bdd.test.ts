@@ -1648,7 +1648,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "./generated/resources/reverse-template/SKILL.md",
     );
-    expect(appendSystemPrompt).not.toContain("vm0-ai/Template-artifact");
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {

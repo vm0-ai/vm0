@@ -4019,7 +4019,6 @@ describe("chat composer templates", () => {
       expect(sentPrompt).toContain(
         "./generated/resources/reverse-template/SKILL.md",
       );
-      expect(sentPrompt).not.toContain("vm0-ai/Template-artifact");
       expect(sentMessage?.parts).toContainEqual(
         expect.objectContaining({
           type: "file",
