@@ -408,6 +408,7 @@ async function seedLegacyCustomFeishuOAuthState(
         completionTarget: "custom",
       },
     }),
+    accountMutation: { intent: "single-account" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();

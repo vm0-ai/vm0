@@ -67,6 +67,7 @@ import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-key
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import { validateCanonicalAgentDataPlaneMigration } from "./test-canonical-agent-data-plane";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
+import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import {
@@ -11914,6 +11915,7 @@ async function main(): Promise<void> {
     await validateCheckpointAgentComposeSnapshotNullableMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
+    await validateConnectorAuthorizationAccountMutationPresence();
     await validateFeishuMemberConnectorReconciliation();
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();

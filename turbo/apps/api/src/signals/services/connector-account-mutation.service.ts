@@ -45,8 +45,8 @@ export function parseStoredConnectorAccountMutationIntent(
 }
 
 export function storedConnectorAccountMutationSelection(relation: SQLWrapper) {
-  // Keep old authorization state readable until #28589 proves its browser,
-  // state-lifetime, and API rollback gates have drained.
+  // Keep old authorization state readable through the #28726 rollout.
+  // #28727 removes this projection after the rollback window drains.
   return sql`
     to_jsonb(${relation}) -> 'account_mutation'
   `.mapWith(storedConnectorAccountMutationDecoder);

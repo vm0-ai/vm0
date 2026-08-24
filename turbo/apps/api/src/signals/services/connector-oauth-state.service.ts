@@ -1,5 +1,6 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 
@@ -30,10 +31,15 @@ const storedOAuthStateSelection = Object.freeze({
   consumedAt: connectorOauthStates.consumedAt,
 });
 
-type StoredOAuthStateRow = Pick<
-  typeof connectorOauthStates.$inferSelect,
-  keyof typeof storedOAuthStateSelection
->;
+type StoredOAuthStateRow = Omit<
+  Pick<
+    typeof connectorOauthStates.$inferSelect,
+    keyof typeof storedOAuthStateSelection
+  >,
+  "accountMutation"
+> & {
+  readonly accountMutation: StoredConnectorAccountMutation | null;
+};
 
 export type StoredBuiltinOAuthState = Omit<
   StoredOAuthStateRow,
