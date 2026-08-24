@@ -6075,6 +6075,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "vm0",
     });
 
     const invalidConnect = await integrations.requestConnectAgentPhone(
@@ -6164,6 +6165,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps AgentPhone start-link, unlink, and webhook boundaries visible through APIs", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = integrations.user();
     integrations.clearAgentPhoneProvider();
 
@@ -6215,6 +6217,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       actor,
       { phoneHandle },
       [200],
+      "okou",
     );
     expect(sent.body).toStrictEqual({
       phoneHandle,
@@ -6234,6 +6237,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected AgentPhone verification text to include a URL");
     }
     const connectParams = new URL(connectUrl).searchParams;
+    expect(new URL(connectUrl).origin).toBe("https://app.okou.ai");
+    expect(connectParams.get("publicBrand")).toBe("okou");
+    expect(connectParams.get("brandSig")).toMatch(/^[0-9a-f]{64}$/u);
     const timestamp = Number(connectParams.get("ts") ?? "");
     if (!Number.isFinite(timestamp)) {
       throw new Error("Expected AgentPhone connect URL to include timestamp");
@@ -6244,11 +6250,26 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       timestamp,
       signature: connectParams.get("sig") ?? "",
       channel: connectParams.get("channel") ?? undefined,
+      publicBrand:
+        connectParams.get("publicBrand") === "okou"
+          ? ("okou" as const)
+          : undefined,
+      publicBrandSignature: connectParams.get("brandSig") ?? undefined,
     };
+    const crossBrandConnect = await integrations.requestConnectAgentPhone(
+      actor,
+      connectBody,
+      [400],
+      "vm0",
+    );
+    expect(crossBrandConnect.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
     const connected = await integrations.requestConnectAgentPhone(
       actor,
       connectBody,
       [200],
+      "okou",
     );
     expect(connected.body).toStrictEqual({ phoneHandle });
 
@@ -6258,6 +6279,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       phoneHandle,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "okou",
     });
 
     const missingAgentMessage = await integrations.requestSendPhoneMessage(
@@ -6309,9 +6331,49 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       integrations.user(),
       connectBody,
       [409],
+      "okou",
     );
     expect(duplicateConnect.body).toMatchObject({
       error: { code: "CONFLICT" },
+    });
+
+    mockOptionalEnv(
+      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
+      String(connectBody.timestamp),
+    );
+    const legacyConnect = await integrations.requestConnectAgentPhone(
+      integrations.user(),
+      {
+        phoneHandle: connectBody.phoneHandle,
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        timestamp: connectBody.timestamp,
+        signature: connectBody.signature,
+        channel: connectBody.channel,
+      },
+      [409],
+    );
+    expect(legacyConnect.body).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
+
+    mockOptionalEnv(
+      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
+      String(connectBody.timestamp - 1),
+    );
+    const strippedNewConnect = await integrations.requestConnectAgentPhone(
+      integrations.user(),
+      {
+        phoneHandle: connectBody.phoneHandle,
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        timestamp: connectBody.timestamp,
+        signature: connectBody.signature,
+        channel: connectBody.channel,
+      },
+      [400],
+      "vm0",
+    );
+    expect(strippedNewConnect.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
 
     const alreadyLinkedStart = await integrations.requestStartAgentPhoneLink(
@@ -6334,6 +6396,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "vm0",
     });
 
     const missingUnlink = await integrations.requestUnlinkAgentPhone(

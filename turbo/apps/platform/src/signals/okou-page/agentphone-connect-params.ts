@@ -1,4 +1,5 @@
 import { i18n } from "../../i18n/index.ts";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 interface AgentPhoneConnectParams {
   phoneHandle: string;
@@ -6,6 +7,8 @@ interface AgentPhoneConnectParams {
   timestamp: number;
   signature: string;
   channel?: string;
+  publicBrand?: PublicBrand;
+  publicBrandSignature?: string;
 }
 
 interface AgentPhoneConnectParamError {
@@ -58,6 +61,12 @@ function encodeReturnPath(
   if (effectiveChannel) {
     search.set("channel", effectiveChannel);
   }
+  if (params.publicBrand) {
+    search.set("publicBrand", params.publicBrand);
+  }
+  if (params.publicBrandSignature) {
+    search.set("brandSig", params.publicBrandSignature);
+  }
   return `/agentphone/connect?${search.toString()}`;
 }
 
@@ -78,6 +87,46 @@ function invalidParams(
   };
 }
 
+function isPublicBrand(value: string | undefined): value is PublicBrand {
+  return value === "vm0" || value === "okou";
+}
+
+function isValidSignature(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value);
+}
+
+function parseTimestamp(value: string): number | undefined {
+  if (!/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const timestamp = Number(value);
+  return Number.isSafeInteger(timestamp) && timestamp > 0
+    ? timestamp
+    : undefined;
+}
+
+interface ParsedBrandState {
+  publicBrand?: PublicBrand;
+  publicBrandSignature?: string;
+}
+
+function parseBrandState(
+  publicBrand: string | undefined,
+  publicBrandSignature: string | undefined,
+): ParsedBrandState | undefined {
+  if (publicBrand === undefined && publicBrandSignature === undefined) {
+    return {};
+  }
+  if (
+    !isPublicBrand(publicBrand) ||
+    publicBrandSignature === undefined ||
+    !isValidSignature(publicBrandSignature)
+  ) {
+    return undefined;
+  }
+  return { publicBrand, publicBrandSignature };
+}
+
 export function parseAgentPhoneConnectParams(
   searchParams: SearchParams,
 ): ParsedAgentPhoneConnectParams {
@@ -86,6 +135,8 @@ export function parseAgentPhoneConnectParams(
   const tsRaw = firstParam(searchParams, "ts")?.trim();
   const signature = firstParam(searchParams, "sig")?.trim();
   const channel = firstParam(searchParams, "channel")?.trim().toLowerCase();
+  const publicBrandRaw = firstParam(searchParams, "publicBrand")?.trim();
+  const publicBrandSignature = firstParam(searchParams, "brandSig")?.trim();
 
   if (!phoneHandle || !agentphoneAgentId || !tsRaw || !signature) {
     return {
@@ -103,7 +154,8 @@ export function parseAgentPhoneConnectParams(
     };
   }
 
-  if (!/^\d+$/.test(tsRaw)) {
+  const timestamp = parseTimestamp(tsRaw);
+  if (timestamp === undefined) {
     return invalidParams(
       "invalid_timestamp",
       i18n.t(($) => {
@@ -112,17 +164,17 @@ export function parseAgentPhoneConnectParams(
     );
   }
 
-  const timestamp = Number(tsRaw);
-  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
+  if (!isValidSignature(signature)) {
     return invalidParams(
-      "invalid_timestamp",
+      "invalid_signature",
       i18n.t(($) => {
-        return $.connectors.providerConnect.agentphone.invalidTimestamp;
+        return $.connectors.providerConnect.agentphone.invalidSignature;
       }),
     );
   }
 
-  if (!/^[0-9a-f]{64}$/i.test(signature)) {
+  const brandState = parseBrandState(publicBrandRaw, publicBrandSignature);
+  if (brandState === undefined) {
     return invalidParams(
       "invalid_signature",
       i18n.t(($) => {
@@ -137,6 +189,10 @@ export function parseAgentPhoneConnectParams(
     timestamp,
     signature,
     ...(channel ? { channel } : {}),
+    ...(brandState.publicBrand ? { publicBrand: brandState.publicBrand } : {}),
+    ...(brandState.publicBrandSignature
+      ? { publicBrandSignature: brandState.publicBrandSignature }
+      : {}),
   };
 
   return {

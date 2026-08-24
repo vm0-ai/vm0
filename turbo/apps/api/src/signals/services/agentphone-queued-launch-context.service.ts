@@ -40,7 +40,8 @@ type AgentPhoneLaunchContextRow = Pick<
   | "agentphoneAgentId"
 > & {
   readonly agentId: string;
-  readonly publicBrand: PublicBrand;
+  readonly publicBrand: PublicBrand | null;
+  readonly legacyPublicBrand: PublicBrand;
 };
 
 function requiredAgentPhoneLaunchContext(
@@ -102,7 +103,8 @@ async function loadAgentPhoneLaunchContext(
       userLinkId: chatAgentphoneContext.userLinkId,
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       agentId: agents.id,
-      publicBrand: agentphoneUserLinks.publicBrand,
+      publicBrand: chatAgentphoneContext.publicBrand,
+      legacyPublicBrand: agentphoneUserLinks.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -166,7 +168,8 @@ export async function loadAgentPhoneQueuedLaunchMaterial(
       },
       context.threadContext,
     ),
-    publicBrand: context.publicBrand,
+    // Contexts written before webhook-host branding fall back to their link.
+    publicBrand: context.publicBrand ?? context.legacyPublicBrand,
     agentphoneDelivery: agentphoneDeliveryTargetSchema.parse({
       messageId: context.messageId,
       conversationId: context.conversationId,

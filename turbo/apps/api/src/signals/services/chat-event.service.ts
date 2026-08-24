@@ -1,6 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -191,6 +192,7 @@ type ChatEventDisplayContext =
         readonly toNumber: string;
         readonly userLinkId: string;
         readonly agentphoneAgentId: string;
+        readonly publicBrand: PublicBrand;
       };
     }
   | {
@@ -545,6 +547,7 @@ type NewDisplayContext =
       readonly toNumber: string;
       readonly userLinkId: string;
       readonly agentphoneAgentId: string;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "automation";
@@ -780,6 +783,7 @@ async function insertAgentphoneDisplayContext(
     toNumber: context.toNumber,
     userLinkId: context.userLinkId,
     agentphoneAgentId: context.agentphoneAgentId,
+    publicBrand: context.publicBrand,
     createdAt,
   });
 }

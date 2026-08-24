@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -10,6 +11,9 @@ const agentPhoneConnectBodySchema = z.object({
   timestamp: z.number(),
   signature: z.string().min(1),
   channel: z.string().min(1).optional(),
+  // Optional while connect links created before brand-bound state expire.
+  publicBrand: publicBrandSchema.optional(),
+  publicBrandSignature: z.string().min(1).optional(),
 });
 
 const agentPhoneConnectResponseSchema = z.object({
@@ -29,11 +33,13 @@ const agentPhoneLinkStatusResponseSchema = z.discriminatedUnion("linked", [
     phoneHandle: z.string(),
     agentPhoneNumber: z.string().nullable(),
     configured: z.boolean(),
+    publicBrand: publicBrandSchema.optional(),
   }),
   z.object({
     linked: z.literal(false),
     agentPhoneNumber: z.string().nullable(),
     configured: z.boolean(),
+    publicBrand: publicBrandSchema.optional(),
   }),
 ]);
 

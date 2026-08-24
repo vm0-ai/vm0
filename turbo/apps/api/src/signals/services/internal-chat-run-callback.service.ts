@@ -615,6 +615,7 @@ interface ChatCallbackDependencies {
       readonly agentId: string;
       readonly target: AgentPhoneDeliveryTarget;
       readonly chatEventId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -1370,6 +1371,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1399,6 +1401,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1533,6 +1536,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.agentphoneDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const githubDeliveryCallbackId = args.githubDelivery
@@ -1804,6 +1808,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.agentphoneDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const githubDeliveryCallbackId =
@@ -3783,6 +3788,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
         agentId: args.failure.agentId,
         target: args.failure.agentphoneDelivery,
         chatEventId: failed.assistantEventId,
+        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),
@@ -5002,6 +5008,7 @@ function buildQueuedChatDispatchFailedCallbacks(
     const payload = {
       threadId: args.runInput.threadId,
       agentId: args.runInput.agentId,
+      publicBrand: args.runInput.publicBrand ?? "vm0",
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,

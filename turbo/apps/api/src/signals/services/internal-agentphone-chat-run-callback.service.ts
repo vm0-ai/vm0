@@ -297,11 +297,13 @@ async function recordAgentPhoneChatDelivery(args: {
   readonly target: AgentPhoneDeliveryTarget;
   readonly sent: AgentPhoneSendResult;
   readonly body: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<void> {
   await storeOutboundAgentPhoneMessage(args.db, {
     agentphoneMessageId: args.sent.id,
     conversationId: args.target.conversationId,
     agentphoneAgentId: args.target.agentphoneAgentId,
+    publicBrand: args.publicBrand,
     userLinkId: args.target.userLinkId,
     phoneHandle: args.target.phoneHandle,
     fromNumber: args.sent.fromNumber ?? args.target.toNumber,
@@ -325,13 +327,14 @@ async function deliverClaimedAgentPhoneChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  const publicBrand = payload.publicBrand ?? binding.publicBrand;
 
   const presentation = await resolveAgentPhonePresentation(
     {
       db: args.db,
       runId: args.callback.runId,
       run,
-      publicBrand: binding.publicBrand,
+      publicBrand,
     },
     signal,
   );
@@ -352,6 +355,7 @@ async function deliverClaimedAgentPhoneChatCallback(
     target: payload,
     sent,
     body,
+    publicBrand,
   });
   return "delivered";
 }
@@ -416,6 +420,7 @@ interface AgentPhoneChatAdmissionFailureArgs {
   readonly agentId: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 export async function deliverAgentPhoneChatAdmissionFailure(
@@ -468,6 +473,7 @@ export async function deliverAgentPhoneChatAdmissionFailure(
     agentphoneMessageId: sent.id,
     conversationId: args.target.conversationId,
     agentphoneAgentId: args.target.agentphoneAgentId,
+    publicBrand: args.publicBrand,
     userLinkId: args.target.userLinkId,
     phoneHandle: args.target.phoneHandle,
     fromNumber: sent.fromNumber ?? args.target.toNumber,

@@ -159,6 +159,7 @@ interface ChatEventContextFixture {
   readonly agentphoneToNumber: string | null;
   readonly agentphoneUserLinkId: string | null;
   readonly agentphoneAgentId: string | null;
+  readonly agentphonePublicBrand: "vm0" | "okou" | null;
   readonly telegramChatId: string | null;
   readonly telegramMessageId: string | null;
   readonly telegramMessageThreadId: number | null;
@@ -257,6 +258,7 @@ export async function readChatEventContextFixture(
       agentphoneToNumber: chatAgentphoneContext.toNumber,
       agentphoneUserLinkId: chatAgentphoneContext.userLinkId,
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
+      agentphonePublicBrand: chatAgentphoneContext.publicBrand,
       telegramChatId: chatTelegramContext.chatId,
       telegramMessageId: chatTelegramContext.messageId,
       telegramMessageThreadId: chatTelegramContext.messageThreadId,

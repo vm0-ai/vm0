@@ -206,13 +206,14 @@ async function sendAgentPhoneVerificationMessage(
 }
 
 // `startLink` only ever delivers via SMS, so we hard-code the channel for
-// signing. Keep the HMAC payload format in lock-step with apps/web's
-// `signAgentPhoneConnectParams` (`<handle>:<agentId>:<ts>:<channel>`) so the
-// platform connect page can verify either origin's signature.
+// signing. The legacy signature remains unchanged for cross-version callback
+// compatibility; new links carry a second signature that binds publicBrand.
 const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
 
 const getLinkStatus$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const requestPublicBrand =
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
 
   const config = getAgentPhoneConfig();
   const [link] = await get(db$)
@@ -234,6 +235,7 @@ const getLinkStatus$ = computed(async (get) => {
         phoneHandle: link.phoneHandle,
         agentPhoneNumber: config.agentPhoneNumber,
         configured: config.configured,
+        publicBrand: link.publicBrand,
       },
     };
   }
@@ -244,6 +246,7 @@ const getLinkStatus$ = computed(async (get) => {
       linked: false as const,
       agentPhoneNumber: config.agentPhoneNumber,
       configured: config.configured,
+      publicBrand: requestPublicBrand,
     },
   };
 });
@@ -486,17 +489,21 @@ const connectAgentPhone$ = command(
     }
 
     const body = bodyResult.data;
+    const flowPublicBrand = body.publicBrand ?? publicBrand;
     const channel: AgentPhoneChannel =
       body.channel && isAgentPhoneChannel(body.channel) ? body.channel : "sms";
     const phoneHandle = normalizeAgentPhoneHandle(body.phoneHandle, channel);
     if (
       !phoneHandle ||
+      flowPublicBrand !== publicBrand ||
       !verifyAgentPhoneConnectSignature({
         phoneHandle,
         agentphoneAgentId: body.agentphoneAgentId,
         timestamp: body.timestamp,
         channel,
         signature: body.signature,
+        publicBrand: body.publicBrand,
+        publicBrandSignature: body.publicBrandSignature,
         secret: env("SECRETS_ENCRYPTION_KEY"),
       })
     ) {
@@ -511,12 +518,12 @@ const connectAgentPhone$ = command(
       channel,
       userId: auth.userId,
       orgId: auth.orgId,
-      publicBrand,
+      publicBrand: flowPublicBrand,
     });
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return connectConflict(result.reason, publicBrand);
+      return connectConflict(result.reason, flowPublicBrand);
     }
 
     await publishAgentPhoneUserChanged(auth.userId);
@@ -527,11 +534,11 @@ const connectAgentPhone$ = command(
         {
           agentphoneAgentId: body.agentphoneAgentId,
           toNumber: phoneHandle,
-          body: `Hi, I'm ${publicBrandPresentation(publicBrand).assistantName}, your AI coworker from ${publicBrandPresentation(publicBrand).brandName}.
+          body: `Your phone number is now connected to ${publicBrandPresentation(flowPublicBrand).brandName}.
 
-You can text me like a teammate and I'll actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
+You can text this number like a teammate and it will actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
 
-I'm most useful once I'm connected to the tools you already use. The ones people hook up most often are GitHub, Gmail, Notion, Google Drive / Sheets / Docs / Calendar, Slack, Sentry, and X. There are 100+ more available, and you can connect any of them whenever you need.
+It is most useful once you connect the tools you already use. The ones people hook up most often are GitHub, Gmail, Notion, Google Drive / Sheets / Docs / Calendar, Slack, Sentry, and X. There are 100+ more available, and you can connect any of them whenever you need.
 
 A few things to try right now:
 - "Summarize my unread Gmail from today"
@@ -879,6 +886,7 @@ function shouldDispatchAgentPhoneEvent(event: AgentPhoneMessageEvent): boolean {
 
 const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   const apiStartTime = now();
+  const publicBrand = get(publicBrand$);
   const config = agentPhoneWebhookConfig();
   if (!config) {
     return textResponse("Not Found", 404);
@@ -950,6 +958,7 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   const stored = await storeInboundAgentPhoneMessage(writeDb, {
     event,
     userLinkId: userLink?.id ?? null,
+    publicBrand,
   });
   signal.throwIfAborted();
   if (!stored.inserted) {
@@ -962,7 +971,11 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   waitUntil(
     tapError(
-      set(handleAgentPhoneMessage$, { event, userLink, apiStartTime }, signal),
+      set(
+        handleAgentPhoneMessage$,
+        { event, userLink, apiStartTime, publicBrand },
+        signal,
+      ),
       (error) => {
         log.error("Error handling AgentPhone webhook", { error });
       },
