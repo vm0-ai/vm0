@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.7...guest-agent-v0.75.8) (2026-08-24)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+
 ## [0.75.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.6...guest-agent-v0.75.7) (2026-08-24)
 
 
