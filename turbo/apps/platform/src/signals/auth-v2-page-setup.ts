@@ -11,19 +11,14 @@ import {
   createAuthV2SignInSignals,
   type AuthV2SignInSignals,
 } from "./auth-v2/sign-in-flow.ts";
+import { AUTH_V2_OAUTH_CALLBACK_PATH } from "./auth-v2/sign-in-external-strategies.ts";
 import {
   createAuthV2SignUpSignals,
   type AuthV2SignUpSignals,
 } from "./auth-v2/sign-up-flow.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
-
-// Redirect, brand, and attribution policy intentionally live outside the
-// flow. The parallel redirect track can replace this resolver without changing
-// Clerk operations or activation ownership.
-function resolveAuthV2SignInRedirectUrl(): string {
-  return "/";
-}
+import { ROUTES } from "./route-paths.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ set }, signal: AbortSignal) => {
@@ -32,7 +27,11 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
       signInSignals = createAuthV2SignInSignals({
-        resolveRedirectUrl: resolveAuthV2SignInRedirectUrl,
+        isBaseRoute: location.pathname === ROUTES.signInV2,
+        isOAuthCallbackRoute:
+          location.pathname ===
+          `${ROUTES.signInV2}${AUTH_V2_OAUTH_CALLBACK_PATH}`,
+        navigation: platformContext.navigation,
       });
       set(
         updatePage$,

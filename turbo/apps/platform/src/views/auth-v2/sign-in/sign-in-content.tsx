@@ -97,18 +97,55 @@ function SubmitButton({
   );
 }
 
-function IdentifierStep({ copy, signals }: SignInStepProps) {
+function IdentifierStep({
+  copy,
+  signals,
+  state,
+}: SignInStepProps & { readonly state: IncompleteSignInState }) {
   const identifier = useGet(signals.identifier$);
   const pageSignal = useGet(pageSignal$);
   const setIdentifier = useSet(signals.setIdentifier$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
+  const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
+  const externalFactors = state.factors.filter((factor) => {
+    return factor.kind === "oauth" || factor.kind === "passkey";
+  });
+  const operationPending =
+    submitLoadable.state === "loading" || selectLoadable.state === "loading";
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign in");
   };
+  const handleSelectFactor = (factorId: string): void => {
+    detach(
+      selectFactor(factorId, pageSignal),
+      Reason.DomCallback,
+      "select auth v2 sign in factor",
+    );
+  };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <FlowErrorAlert copy={copy} signals={signals} />
+      {externalFactors.length > 0 ? (
+        <div className="space-y-2">
+          {externalFactors.map((factor) => {
+            return (
+              <Button
+                className="w-full"
+                disabled={operationPending}
+                key={factor.id}
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  handleSelectFactor(factor.id);
+                }}
+              >
+                {signInFactorLabel(factor, copy)}
+              </Button>
+            );
+          })}
+        </div>
+      ) : null}
       <TextField
         autoComplete="username"
         inputMode="email"
@@ -119,9 +156,72 @@ function IdentifierStep({ copy, signals }: SignInStepProps) {
       />
       <SubmitButton
         busy={submitLoadable.state === "loading"}
+        disabled={operationPending}
         label={copy.continue}
       />
     </form>
+  );
+}
+
+function ChooseSessionStep({
+  copy,
+  signals,
+  state,
+}: SignInStepProps & { readonly state: IncompleteSignInState }) {
+  const pageSignal = useGet(pageSignal$);
+  const useAnotherAccount = useSet(signals.useAnotherAccount$);
+  const [selectionLoadable, selectSession] = useLoadableSet(
+    signals.selectSession$,
+  );
+  const selectAccount = (sessionId: string): void => {
+    detach(
+      selectSession(sessionId, pageSignal),
+      Reason.DomCallback,
+      "select existing auth v2 session",
+    );
+  };
+  return (
+    <div className="space-y-4">
+      <FlowErrorAlert copy={copy} signals={signals} />
+      <h2 className="text-base font-medium text-foreground">
+        {copy.chooseAccountTitle}
+      </h2>
+      <div className="space-y-2">
+        {state.accounts.map((account) => {
+          return (
+            <Button
+              className="h-auto w-full justify-start py-3"
+              disabled={selectionLoadable.state === "loading"}
+              key={account.sessionId}
+              type="button"
+              variant="outline"
+              onClick={() => {
+                selectAccount(account.sessionId);
+              }}
+            >
+              <span className="min-w-0 text-left">
+                <span className="block truncate">{account.displayName}</span>
+                {account.identifier &&
+                account.identifier !== account.displayName ? (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {account.identifier}
+                  </span>
+                ) : null}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+      <Button
+        className="w-full"
+        disabled={selectionLoadable.state === "loading"}
+        type="button"
+        variant="ghost"
+        onClick={useAnotherAccount}
+      >
+        {copy.addAccount}
+      </Button>
+    </div>
   );
 }
 
@@ -265,7 +365,9 @@ function CodeStep({
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
   const safeIdentifier =
-    selectedFactor && selectedFactor.kind !== "password"
+    selectedFactor &&
+    (selectedFactor.kind === "email-code" ||
+      selectedFactor.kind === "password-reset")
       ? selectedFactor.safeIdentifier
       : null;
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
@@ -450,8 +552,11 @@ export function SignInCardContent({
   if (state.status === "unknown") {
     return <UnknownStep copy={copy} signals={signals} />;
   }
+  if (state.step === "choose-session") {
+    return <ChooseSessionStep copy={copy} signals={signals} state={state} />;
+  }
   if (state.step === "identifier") {
-    return <IdentifierStep copy={copy} signals={signals} />;
+    return <IdentifierStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "choose-factor") {
     return <ChooseFactorStep copy={copy} signals={signals} state={state} />;

@@ -54,6 +54,12 @@ export interface MockedClientSession {
   };
 }
 
+export interface MockedAuthV2Capabilities {
+  readonly googleOAuth?: boolean;
+  readonly googleOneTapClientId?: string | null;
+  readonly passkey?: boolean;
+}
+
 export type MockedSignInFactor =
   | { readonly strategy: "password" }
   | {
@@ -61,6 +67,7 @@ export type MockedSignInFactor =
       readonly safeIdentifier: string;
       readonly strategy: "email_code" | "reset_password_email_code";
     }
+  | { readonly strategy: "oauth_google" | "passkey" }
   | { readonly strategy: string };
 
 export interface MockedSignInResourceState {
@@ -126,6 +133,11 @@ let internalMockedOrganization: {
 let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
+let internalMockedAuthV2Capabilities: Required<MockedAuthV2Capabilities> = {
+  googleOAuth: false,
+  googleOneTapClientId: null,
+  passkey: false,
+};
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
 let internalMockedClerkLoaded = true;
 let internalMockedClerkSessionTransitioning = false;
@@ -215,6 +227,16 @@ export function mockSignUpPasswordValidation(
   internalMockedPasswordValidation = validation;
 }
 
+export function mockAuthV2Capabilities(
+  capabilities: MockedAuthV2Capabilities,
+): void {
+  internalMockedAuthV2Capabilities = {
+    googleOAuth: capabilities.googleOAuth ?? false,
+    googleOneTapClientId: capabilities.googleOneTapClientId ?? null,
+    passkey: capabilities.passkey ?? false,
+  };
+}
+
 export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
 }
@@ -283,6 +305,62 @@ export function mockUser(
   internalMockedSession = session;
 }
 
+interface MockedGoogleOneTapInitializeOptions {
+  readonly callback: (response: { readonly credential?: string }) => void;
+  readonly client_id: string;
+}
+
+type MockedGoogleOneTapMomentCallback = (notification: {
+  isDismissedMoment(): boolean;
+  isNotDisplayed(): boolean;
+  isSkippedMoment(): boolean;
+}) => void;
+
+let internalMockedGoogleOneTapCredential: string | null = null;
+let internalMockedGoogleOneTapCallback:
+  | MockedGoogleOneTapInitializeOptions["callback"]
+  | null = null;
+
+function defaultGoogleOneTapInitializeImpl(
+  options: MockedGoogleOneTapInitializeOptions,
+): void {
+  internalMockedGoogleOneTapCallback = options.callback;
+}
+
+function defaultGoogleOneTapPromptImpl(
+  callback: MockedGoogleOneTapMomentCallback,
+): void {
+  if (internalMockedGoogleOneTapCredential) {
+    internalMockedGoogleOneTapCallback?.({
+      credential: internalMockedGoogleOneTapCredential,
+    });
+    return;
+  }
+  callback({
+    isDismissedMoment: () => false,
+    isNotDisplayed: () => true,
+    isSkippedMoment: () => false,
+  });
+}
+
+export const mockedGoogleOneTap = {
+  cancel: vi.fn<() => void>(),
+  initialize: vi.fn<typeof defaultGoogleOneTapInitializeImpl>(
+    defaultGoogleOneTapInitializeImpl,
+  ),
+  prompt: vi.fn<typeof defaultGoogleOneTapPromptImpl>(
+    defaultGoogleOneTapPromptImpl,
+  ),
+};
+
+export function mockGoogleOneTapCredential(credential: string | null): void {
+  internalMockedGoogleOneTapCredential = credential;
+  Object.defineProperty(globalThis, "google", {
+    configurable: true,
+    value: { accounts: { id: mockedGoogleOneTap } },
+  });
+}
+
 /**
  * Configure organization-related mock state for testing org selection.
  */
@@ -318,6 +396,26 @@ function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
+  internalMockedAuthV2Capabilities = {
+    googleOAuth: false,
+    googleOneTapClientId: null,
+    passkey: false,
+  };
+  internalMockedGoogleOneTapCredential = null;
+  internalMockedGoogleOneTapCallback = null;
+  Reflect.deleteProperty(globalThis, "google");
+  for (const script of document.querySelectorAll(
+    "script[data-auth-v2-google-one-tap]",
+  )) {
+    script.remove();
+  }
+  mockedGoogleOneTap.cancel.mockReset();
+  mockedGoogleOneTap.initialize.mockReset();
+  mockedGoogleOneTap.initialize.mockImplementation(
+    defaultGoogleOneTapInitializeImpl,
+  );
+  mockedGoogleOneTap.prompt.mockReset();
+  mockedGoogleOneTap.prompt.mockImplementation(defaultGoogleOneTapPromptImpl);
   internalMockedClerkLoadOptions = {};
   internalMockedClerkLoaded = true;
   internalMockedClerkSessionTransitioning = false;
@@ -386,6 +484,18 @@ function clearMockedAuth() {
   mockedClerk.signUpFutureReset.mockImplementation(
     defaultSignUpFutureResetImpl,
   );
+  mockedClerk.signInAuthenticateWithPasskey.mockReset();
+  mockedClerk.signInAuthenticateWithPasskey.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
+  mockedClerk.signInAuthenticateWithRedirect.mockReset();
+  mockedClerk.signInAuthenticateWithRedirect.mockImplementation(
+    defaultSignInAuthenticateWithRedirectImpl,
+  );
+  mockedClerk.handleRedirectCallback.mockReset();
+  mockedClerk.handleRedirectCallback.mockImplementation(
+    defaultHandleRedirectCallbackImpl,
+  );
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
   mockedClerk.buildUserProfileUrl.mockReset();
@@ -422,8 +532,10 @@ const defaultSessionTouchImpl: SessionTouchImpl = () => {
 const sessionTouch = vi.fn<SessionTouchImpl>(defaultSessionTouchImpl);
 interface MockedSignInCreateParams {
   readonly identifier?: string;
+  readonly signUpIfMissing?: boolean;
   readonly strategy?: string;
   readonly ticket?: string;
+  readonly token?: string;
 }
 
 function defaultClientSignInCreateImpl(params: MockedSignInCreateParams) {
@@ -450,6 +562,52 @@ const signInPrepareFirstFactor = vi.fn<
 const signInAttemptFirstFactor = vi.fn<
   typeof defaultSignInResourceOperationImpl
 >(defaultSignInResourceOperationImpl);
+const signInAuthenticateWithPasskey = vi.fn<
+  typeof defaultSignInResourceOperationImpl
+>(defaultSignInResourceOperationImpl);
+
+interface MockedSignInAuthenticateWithRedirectParams {
+  readonly continueSignIn?: boolean;
+  readonly continueSignUp?: boolean;
+  readonly redirectUrl: string;
+  readonly redirectUrlComplete: string;
+  readonly strategy: string;
+}
+
+function defaultSignInAuthenticateWithRedirectImpl(
+  _params: MockedSignInAuthenticateWithRedirectParams,
+) {
+  return Promise.resolve();
+}
+
+const signInAuthenticateWithRedirect = vi.fn<
+  typeof defaultSignInAuthenticateWithRedirectImpl
+>(defaultSignInAuthenticateWithRedirectImpl);
+
+interface MockedHandleRedirectCallbackParams {
+  readonly continueSignUpUrl?: string | null;
+  readonly firstFactorUrl?: string;
+  readonly reloadResource?: "signIn" | "signUp";
+  readonly resetPasswordUrl?: string;
+  readonly secondFactorUrl?: string;
+  readonly signInFallbackRedirectUrl?: string | null;
+  readonly signInForceRedirectUrl?: string | null;
+  readonly signInUrl?: string;
+  readonly signUpUrl?: string;
+  readonly transferable?: boolean;
+  readonly verifyEmailAddressUrl?: string | null;
+  readonly verifyPhoneNumberUrl?: string | null;
+}
+
+function defaultHandleRedirectCallbackImpl(
+  _params?: MockedHandleRedirectCallbackParams,
+) {
+  return Promise.resolve();
+}
+
+const handleRedirectCallback = vi.fn<typeof defaultHandleRedirectCallbackImpl>(
+  defaultHandleRedirectCallbackImpl,
+);
 const signInResetPassword = vi.fn<typeof defaultSignInResourceOperationImpl>(
   defaultSignInResourceOperationImpl,
 );
@@ -475,6 +633,8 @@ const mockedClientSignIn = {
   create: clientSignInCreate,
   prepareFirstFactor: signInPrepareFirstFactor,
   attemptFirstFactor: signInAttemptFirstFactor,
+  authenticateWithPasskey: signInAuthenticateWithPasskey,
+  authenticateWithRedirect: signInAuthenticateWithRedirect,
   resetPassword: signInResetPassword,
   __internal_future: {
     get isTransferable() {
@@ -704,6 +864,8 @@ export const mockedClerk = {
   clientSignInCreate,
   signInPrepareFirstFactor,
   signInAttemptFirstFactor,
+  signInAuthenticateWithPasskey,
+  signInAuthenticateWithRedirect,
   signInResetPassword,
   signInFutureReset,
   clientSignUpCreate,
@@ -716,30 +878,59 @@ export const mockedClerk = {
     get sessions() {
       return internalMockedClientSessions;
     },
+    get signedInSessions() {
+      return internalMockedClientSessions.filter((session) => {
+        return (
+          (session.status === "active" || session.status === "pending") &&
+          session.user !== undefined
+        );
+      });
+    },
     signIn: mockedClientSignIn,
     signUp: mockedClientSignUp,
   },
-  __internal_environment: {
-    displayConfig: {
-      get captchaWidgetType() {
-        return internalMockedSignUpConfiguration.captchaWidgetType;
+  get __internal_environment() {
+    return {
+      displayConfig: {
+        get captchaWidgetType() {
+          return internalMockedSignUpConfiguration.captchaWidgetType;
+        },
+        get captchaPublicKey() {
+          return internalMockedSignUpConfiguration.captchaEnabled
+            ? "test-captcha-key"
+            : null;
+        },
+        get captchaPublicKeyInvisible() {
+          return null;
+        },
+        get googleOneTapClientId() {
+          return (
+            internalMockedAuthV2Capabilities.googleOneTapClientId ?? undefined
+          );
+        },
+        get privacyPolicyUrl() {
+          return internalMockedSignUpConfiguration.privacyPolicyUrl;
+        },
+        get termsUrl() {
+          return internalMockedSignUpConfiguration.termsUrl;
+        },
       },
-      get captchaPublicKey() {
-        return internalMockedSignUpConfiguration.captchaEnabled
-          ? "test-captcha-key"
-          : null;
+      userSettings: {
+        attributes: {
+          passkey: {
+            enabled: internalMockedAuthV2Capabilities.passkey,
+            used_for_first_factor: internalMockedAuthV2Capabilities.passkey,
+          },
+        },
+        authenticatableSocialStrategies:
+          internalMockedAuthV2Capabilities.googleOAuth ? ["oauth_google"] : [],
+        passkeySettings: {
+          show_sign_in_button: internalMockedAuthV2Capabilities.passkey,
+        },
       },
-      get captchaPublicKeyInvisible() {
-        return null;
-      },
-      get privacyPolicyUrl() {
-        return internalMockedSignUpConfiguration.privacyPolicyUrl;
-      },
-      get termsUrl() {
-        return internalMockedSignUpConfiguration.termsUrl;
-      },
-    },
+    };
   },
+  handleRedirectCallback,
   signOut: vi.fn(() => {
     return Promise.resolve();
   }),
