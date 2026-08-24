@@ -875,7 +875,7 @@ mod tests {
         )
         .with_cli_exit_code(0)
         .with_event_delivery(EventDeliveryDiagnostic {
-            total_events: 40,
+            total_events: 43,
             total_batches: 2,
             failed_batches: 1,
             last_acknowledged_sequence: Some(7),
@@ -914,7 +914,7 @@ mod tests {
 
         let event = capture_job_failure_log(&failure);
 
-        assert_field_eq(&event, "event_delivery_total_events", "40");
+        assert_field_eq(&event, "event_delivery_total_events", "43");
         assert_field_eq(&event, "event_delivery_total_batches", "2");
         assert_field_eq(&event, "event_delivery_failed_batches", "1");
         assert_field_eq(&event, "event_delivery_last_acknowledged_sequence", "7");
