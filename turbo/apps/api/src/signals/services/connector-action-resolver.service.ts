@@ -170,7 +170,7 @@ function executableMethod(args: {
 function createConnectorActionResolver(
   snapshot: ConnectorRuntimeSnapshot,
 ): ConnectorActionResolver {
-  const resolveSlugCore: ConnectorActionResolver["resolveSlug"] = (input) => {
+  const resolveSlug: ConnectorActionResolver["resolveSlug"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
       snapshot,
       input.connectorSlug,
@@ -184,17 +184,6 @@ function createConnectorActionResolver(
       runtimeConnector,
       snapshot,
     });
-  };
-
-  const resolveSlug: ConnectorActionResolver["resolveSlug"] = (input) => {
-    const resolution = resolveSlugCore(input);
-    if (!resolution.ok && resolution.reason === "unknown_connector") {
-      log.warn("Connector runtime is unavailable", {
-        connectorSlug: input.connectorSlug,
-        reason: resolution.reason,
-      });
-    }
-    return resolution;
   };
 
   const resolveMethodCore: ConnectorActionResolver["resolveMethod"] = (
@@ -286,7 +275,7 @@ function createConnectorActionResolver(
     resolveSlugs(input) {
       const connectors: ResolvedConnectorSlug[] = [];
       for (const connectorSlug of input.connectorSlugs) {
-        const resolved = resolveSlugCore({
+        const resolved = resolveSlug({
           connectorSlug,
           requireExecutable: input.requireExecutable,
         });

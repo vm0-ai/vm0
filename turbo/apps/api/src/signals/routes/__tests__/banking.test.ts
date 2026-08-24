@@ -399,7 +399,7 @@ describe("POST /api/zero/banking/*", () => {
     ]);
   });
 
-  it("rejects zero tokens without banking capability before provider access", async () => {
+  it("rejects agent tokens without banking capability before provider access", async () => {
     const fixture = await seedBankingFixture();
     let authRequestCount = 0;
     server.use(

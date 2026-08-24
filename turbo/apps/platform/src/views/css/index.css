@@ -1303,15 +1303,6 @@ details > summary {
   transition: color 0.15s ease;
 }
 
-details > summary > span:first-child {
-  display: inline-block;
-  transition: transform 0.15s ease;
-}
-
-details[open] > summary > span:first-child {
-  transform: rotate(90deg);
-}
-
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 /* Document card body: serif for reading */

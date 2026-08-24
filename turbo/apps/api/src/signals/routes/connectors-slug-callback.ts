@@ -60,7 +60,6 @@ import {
   connectorOAuthRedirectResponse,
 } from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -79,7 +78,7 @@ type CompleteOAuthCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
 };
 
 type CompleteOpenIdCallbackInput = {
@@ -92,7 +91,7 @@ type CompleteOpenIdCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
 };
 
 type ResolveCallbackStateInput = {
@@ -119,7 +118,7 @@ type ResolvedCallbackState =
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     }
   | {
       readonly ok: false;
@@ -135,7 +134,7 @@ type ResolvedOpenIdCallbackState =
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     }
   | {
       readonly ok: false;
@@ -727,9 +726,7 @@ async function resolveCallbackState(
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
     redirectUri: args.storedState.redirectUri,
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
-    ),
+    account: args.storedState.accountMutation,
   };
 }
 
@@ -781,9 +778,7 @@ async function resolveOpenIdCallbackState(
       args.storedState.oauthContext,
       args.storedState.redirectUri,
     ),
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
-    ),
+    account: args.storedState.accountMutation,
   };
 }
 

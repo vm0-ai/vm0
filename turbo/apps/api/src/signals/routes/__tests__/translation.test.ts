@@ -285,7 +285,7 @@ describe("POST /api/translate", () => {
     });
   });
 
-  it("enforces Zero-only capability authorization before provider work", async () => {
+  it("enforces agent-only capability authorization before provider work", async () => {
     const actor = await seedActor();
 
     const unauthenticated = await requestTranslation({});

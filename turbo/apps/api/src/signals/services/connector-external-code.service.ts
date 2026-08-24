@@ -22,7 +22,6 @@ import {
   type ConnectorAuthProviderGrantResult,
 } from "@okouai/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@okouai/connectors/auth-providers/oauth/error";
-import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectorExternalCodeSessions } from "@okouai/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -58,7 +57,6 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
@@ -83,7 +81,7 @@ const externalCodeSessionSelection = Object.freeze({
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
   encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorExternalCodeSessions,
+    connectorExternalCodeSessions.accountMutation,
   ),
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
   errorCode: connectorExternalCodeSessions.errorCode,
@@ -94,12 +92,7 @@ const externalCodeSessionSelection = Object.freeze({
   completedAt: connectorExternalCodeSessions.completedAt,
 });
 
-type ExternalCodeSessionRow = Omit<
-  typeof connectorExternalCodeSessions.$inferSelect,
-  "accountMutation"
-> & {
-  readonly accountMutation: StoredConnectorAccountMutation | null;
-};
+type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -1119,9 +1112,7 @@ export const completeConnectorExternalCodeSession$ = command(
               oauthScopes: token.scopes,
               expiresIn: token.expiresIn,
               extraConnectorSecrets: token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              account: claimedSession.accountMutation,
             },
             persistSignal,
           );

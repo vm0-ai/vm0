@@ -207,7 +207,7 @@ function providerResponse() {
 }
 
 describe("okou web-search route", () => {
-  it("rejects zero tokens without web-search:read capability", async () => {
+  it("rejects agent tokens without web-search:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Web Search test actor must belong to an organization");

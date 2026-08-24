@@ -298,9 +298,8 @@ raise "missing runner E2E token generation" unless token_step
 unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
   raise "runner E2E tokens must use the public device-flow entry point"
 end
-unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}" &&
-    token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
-  raise "runner E2E token generation must emit both branded app preview URLs"
+unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
+  raise "runner E2E token generation must emit the app preview URL"
 end
 unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"

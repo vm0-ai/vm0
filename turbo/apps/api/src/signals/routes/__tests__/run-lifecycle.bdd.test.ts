@@ -6897,6 +6897,35 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    const promotionTimingEvents = [
+      "api_dispatch_queue_promotion_lock_wait",
+      "api_dispatch_queue_promotion_lock_held",
+    ].flatMap((actionType) => {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toStrictEqual([
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          dispatch_path: "direct",
+          span_kind: "nested",
+          activation_origin: "promotion",
+        }),
+      ]);
+      expect(Number(events[0]?.duration_ms)).toBeGreaterThanOrEqual(0);
+      return events;
+    });
+    expectApiDispatchTimingEventsNotToLeak(promotionTimingEvents, [
+      "queued run three",
+      agentId,
+    ]);
     const promotedStorageState = await readRunnerJobStorageState(
       context,
       third.runId,
@@ -7201,7 +7230,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   });
 });
 
-describe("RUN-01: zero run authorization and session boundaries", () => {
+describe("RUN-01: agent run authorization and session boundaries", () => {
   it("does not expose the removed Zero run creation route", async () => {
     const actor = createBddApi(context).user();
     await expect(
@@ -8376,7 +8405,7 @@ describe("RUN-02: persisted run environment resolution", () => {
 });
 
 describe("RUN-02: stored connector injection into claimed runs", () => {
-  it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
+  it("omits connected stored connectors when the agent run allowlist is empty", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -13921,7 +13950,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   });
 });
 
-describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+describe("RUN-01: agent runner context, queue promotion, and skills", () => {
   it("uses the application plan for a valid legacy head", async () => {
     const appUrl = "https://app.environment-shadow.example.test";
     mockEnv("APP_URL", appUrl);

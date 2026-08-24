@@ -1158,7 +1158,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(badJson.text()).resolves.toBe("Bad Request");
   });
 
-  it("creates a Zero run for a linked custom-bot private message", async () => {
+  it("creates an agent run for a linked custom-bot private message", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -2044,7 +2044,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(messages[0]?.text).toBe("following up");
   });
 
-  it("creates a Zero run for a linked custom-bot supergroup mention", async () => {
+  it("creates an agent run for a linked custom-bot supergroup mention", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -2112,7 +2112,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
   });
 
-  it("creates a Zero run for a linked official-bot private message", async () => {
+  it("creates an agent run for a linked official-bot private message", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
@@ -2186,7 +2186,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
   });
 
-  it("creates a Zero run for a linked official-bot group mention", async () => {
+  it("creates an agent run for a linked official-bot group mention", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
@@ -2665,7 +2665,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
   });
 
-  it("does not prompt unlinked official group replies to another bot but prompts replies to Zero", async () => {
+  it("does not prompt unlinked official group replies to another bot but prompts replies to the official bot", async () => {
     configureOfficialBotEnv();
     const telegramMocks = telegramApiMocks(OFFICIAL_BOT_TOKEN);
 

@@ -432,7 +432,7 @@ describe("managed SocialKit route", () => {
     }
   });
 
-  it("rejects zero tokens without social:read capability", async () => {
+  it("rejects agent tokens without social:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Social test actor must belong to an organization");

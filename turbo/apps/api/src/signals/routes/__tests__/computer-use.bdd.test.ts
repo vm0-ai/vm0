@@ -637,7 +637,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ]);
   });
 
-  it("scopes host discovery to the bound host for zero run tokens", async () => {
+  it("scopes host discovery to the bound host for agent run tokens", async () => {
     const actor = bdd.user();
     await api.startComputerUseHost(actor, {
       hostName: "Other Desktop",

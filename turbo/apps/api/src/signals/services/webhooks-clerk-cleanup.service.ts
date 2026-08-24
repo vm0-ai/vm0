@@ -1,4 +1,3 @@
-import { agentComposeVersions } from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -74,8 +73,8 @@ import {
 } from "./connector-data.service";
 import {
   AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT,
-  assertAgentComposeProvenanceSchemaAvailable,
   deleteClerkAgentLifecycleData,
+  scrubLegacyAgentComposeVersionCreatorInTransaction,
 } from "./agent-compose-provenance-lifecycle.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
@@ -840,11 +839,7 @@ async function deleteUserData(
     await tx.execute(
       sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await assertAgentComposeProvenanceSchemaAvailable(tx);
-    await tx
-      .update(agentComposeVersions)
-      .set({ createdBy: null })
-      .where(eq(agentComposeVersions.createdBy, userId));
+    await scrubLegacyAgentComposeVersionCreatorInTransaction(tx, userId);
   });
 
   await db
@@ -907,10 +902,7 @@ async function deleteUserData(
     // The marker, exact scrub, database invariant, and final identity DELETE
     // must stay on this transaction's connection. The statement guard also
     // serializes creator writes before it verifies the scrub postcondition.
-    await tx
-      .update(agentComposeVersions)
-      .set({ createdBy: null })
-      .where(eq(agentComposeVersions.createdBy, userId));
+    await scrubLegacyAgentComposeVersionCreatorInTransaction(tx, userId);
     await tx.delete(users).where(eq(users.id, userId));
   });
 }

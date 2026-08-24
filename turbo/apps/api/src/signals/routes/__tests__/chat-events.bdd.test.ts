@@ -4041,7 +4041,7 @@ describe("CHAT-02: admission without spendable credits", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: Zero Mail link delivery", () => {
+describe("CHAT-02: Okou Mail link delivery", () => {
   it("delivers a linked Gmail draft exactly once through the agent reply", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockGmailConnectorOAuth({
@@ -11096,7 +11096,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: run-scoped Zero-token chat launches", () => {
+describe("CHAT-02: run-scoped agent-token chat launches", () => {
   it("keeps immediate and queued runs agent-scoped without retired provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {

@@ -16,7 +16,7 @@ import {
 } from "../../lib/api/domains/browser";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
-const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
+const DEFAULT_AGENT_BROWSER_SESSION = "okou-browser";
 
 interface NewOptions {
   readonly name: string;
@@ -215,7 +215,7 @@ Examples:
   Open this thread's browser: okou browser use
   Keep it alive:              okou browser lease
   Create another browser:     okou browser new --name booking --country us
-  Use the browser:            agent-browser --session zero-browser open https://example.com
+  Use the browser:            agent-browser --session ${DEFAULT_AGENT_BROWSER_SESSION} open https://example.com
   Share live view:            okou browser view
 
 Notes:

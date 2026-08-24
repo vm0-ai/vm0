@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.218.5",
+  "version": "1.218.6",
   "private": true,
   "type": "module",
   "exports": {
@@ -30,8 +30,9 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:zero-runs-stage-6 && pnpm test:canonical-agent-write-plane && tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:zero-runs-stage-6 && pnpm test:canonical-agent-write-plane && pnpm test:agent-schema-absence-runtime-seal && tsx scripts/test-migration-consistency-schema.ts",
     "test:canonical-agent-write-plane": "tsx scripts/test-canonical-agent-write-plane.ts",
+    "test:agent-schema-absence-runtime-seal": "tsx scripts/test-agent-schema-absence-runtime-seal.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
     "test:zero-runs-stage-6": "tsx scripts/test-zero-runs-stage-6.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"

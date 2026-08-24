@@ -206,6 +206,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_concurrency_preflight_lock_wait"
   | "api_dispatch_concurrency_preflight_check"
+  | "api_dispatch_queue_promotion_lock_wait"
+  | "api_dispatch_queue_promotion_lock_held"
   | "api_dispatch_resolve_queue_first_admission"
   | "api_dispatch_claim_queue_first_message"
   | "api_dispatch_resolve_queue_first_claim_snapshot"

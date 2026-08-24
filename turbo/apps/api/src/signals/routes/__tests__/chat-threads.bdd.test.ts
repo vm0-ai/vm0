@@ -602,7 +602,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(unauthenticatedBody.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("allows chat-thread read zero tokens to sync snapshots and events", async () => {
+  it("allows chat-thread read agent tokens to sync snapshots and events", async () => {
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");

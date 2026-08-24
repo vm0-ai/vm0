@@ -137,7 +137,7 @@ describe("GET /api/billing/status", () => {
     expect(response.body.currentPeriodEnd).toBeNull();
   });
 
-  it("returns billing status for zero tokens with billing read capability", async () => {
+  it("returns billing status for agent tokens with billing read capability", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
     );
@@ -160,7 +160,7 @@ describe("GET /api/billing/status", () => {
     expect(response.body.credits).toBe(100_000);
   });
 
-  it("returns 403 for zero tokens without billing read capability", async () => {
+  it("returns 403 for agent tokens without billing read capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

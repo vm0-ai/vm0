@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.479.2](https://github.com/vm0-ai/vm0/compare/api-v1.479.1...api-v1.479.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **core:** make workflow template guidance brand-neutral ([#28778](https://github.com/vm0-ai/vm0/issues/28778)) ([a5f429a](https://github.com/vm0-ai/vm0/commit/a5f429a9063785caf6f52a0e95980cfb59bcdf81))
+
+
+### Documentation
+
+* **api:** align test descriptions with the agent vocabulary ([#28792](https://github.com/vm0-ai/vm0/issues/28792)) ([e38158d](https://github.com/vm0-ai/vm0/commit/e38158d0bc1d56b3c7379eecb2ca9962e3f273b8)), closes [#28785](https://github.com/vm0-ai/vm0/issues/28785)
+* drop dead apps/web paths from apps/api provenance comments ([#28774](https://github.com/vm0-ai/vm0/issues/28774)) ([03e7ddf](https://github.com/vm0-ai/vm0/commit/03e7ddf6fa650ddfc687636d593647c6dac69503)), closes [#28772](https://github.com/vm0-ai/vm0/issues/28772)
+
+
+### Refactoring
+
+* **auth:** rename the remaining zero capability helpers ([#28762](https://github.com/vm0-ai/vm0/issues/28762)) ([29b67a4](https://github.com/vm0-ai/vm0/commit/29b67a4f49360d77b2a9f4a05b5132f69aa615de)), closes [#28761](https://github.com/vm0-ai/vm0/issues/28761)
+* **env:** drop the remaining usage-pack price fallbacks ([#28775](https://github.com/vm0-ai/vm0/issues/28775)) ([df5580a](https://github.com/vm0-ai/vm0/commit/df5580afe6aa4bb51412c82e7c9fbc69f59a3bb0))
+* **env:** drop the unreachable price fallbacks ([#28763](https://github.com/vm0-ai/vm0/issues/28763)) ([01d023d](https://github.com/vm0-ai/vm0/commit/01d023d267d70e8f42ead04c0c5db69f569cf09a)), closes [#28758](https://github.com/vm0-ai/vm0/issues/28758)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.584.1
+    * @okouai/db bumped to 1.218.6
+
 ## [1.479.1](https://github.com/vm0-ai/vm0/compare/api-v1.479.0...api-v1.479.1) (2026-08-24)
 
 

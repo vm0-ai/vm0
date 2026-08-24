@@ -1,5 +1,4 @@
 import { command, computed, type Computed } from "ccstate";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -17,6 +16,7 @@ import { settle } from "../utils";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
+import { deleteLegacyAgentIdentitiesInTransaction } from "./agent-compose-provenance-lifecycle.service";
 
 export function agentExistsInOrg(args: {
   readonly orgId: string;
@@ -152,16 +152,11 @@ async function deleteAgentInTransaction(tx: Tx, args: DeleteAgentArgs) {
     .delete(agents)
     .where(and(eq(agents.id, args.agentId), eq(agents.orgId, args.orgId)));
 
-  // Bounded Stage 7 compatibility teardown: remove only the exact legacy
-  // identity row paired with the canonical Agent that was just deleted.
-  await tx
-    .delete(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.id, args.agentId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
-    );
+  await deleteLegacyAgentIdentitiesInTransaction(tx, {
+    kind: "organization",
+    orgId: args.orgId,
+    agentIds: [args.agentId],
+  });
 
   const s3Prefix = await removeAgentInstructionsStorageInTransaction(tx, {
     orgId: args.orgId,
