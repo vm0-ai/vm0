@@ -29,7 +29,7 @@ export const slackOrgInstallations = pgTable(
     botScopes: text("bot_scopes"),
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
-      .default("vm0")
+      .default("okou")
       .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

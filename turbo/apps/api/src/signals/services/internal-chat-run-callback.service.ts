@@ -550,6 +550,7 @@ interface ChatCallbackDependencies {
       readonly threadTs: string;
       readonly routeThreadTs?: string;
       readonly chatEventId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -1194,6 +1195,7 @@ async function insertSlackChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: SlackDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1223,6 +1225,7 @@ async function insertSlackChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1499,6 +1502,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.slackDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const feishuDeliveryCallbackId = args.feishuDelivery
@@ -1767,6 +1771,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.slackDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const feishuDeliveryCallbackId =
@@ -3604,6 +3609,7 @@ async function handleSlackQueuedMessageAdmissionFailure(
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
         chatEventId: failed.assistantEventId,
+        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),

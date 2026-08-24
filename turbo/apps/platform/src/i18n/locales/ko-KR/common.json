@@ -2627,8 +2627,8 @@
         "connectTitle": "Slack에 연결하기",
         "invalidDescription": "이 페이지는 Slack 연결 링크에서 열어야 합니다.",
         "open": "Slack 열기",
-        "successDescription": "어느 채널에서든 @Zero를 언급하거나 DM을 보내 대화를 시작하세요.",
-        "successDescriptionWorkspace": "{{workspace}}에 연결되었습니다. 어느 채널에서든 @Zero를 언급하거나 DM을 보내 대화를 시작하세요.",
+        "successDescription": "어느 채널에서든 설치된 봇을 언급하거나 DM을 보내 대화를 시작하세요.",
+        "successDescriptionWorkspace": "{{workspace}}에 연결되었습니다. 어느 채널에서든 설치된 봇을 언급하거나 DM을 보내 대화를 시작하세요.",
         "successTitle": "Slack에 연결되었습니다!"
       },
       "teams": {

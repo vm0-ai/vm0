@@ -15,7 +15,7 @@ export const slackInteractiveContract = c.router({
       401: z.object({ error: z.string() }),
       503: z.object({ error: z.string() }),
     },
-    summary: "Handle Zero Slack interactive component callbacks",
+    summary: "Handle Okou Slack interactive component callbacks",
   },
 });
 
