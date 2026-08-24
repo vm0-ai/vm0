@@ -352,7 +352,6 @@ const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
 );
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
-const IMPORTED_TEMPLATE_EAGER_COVER_COUNT = 1;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -5087,7 +5086,6 @@ function syncImportedPptCardImage(
   media: HTMLDivElement | null,
   imageUrl: string | null,
   label: string,
-  priority: boolean,
 ): void {
   if (media === null) {
     return;
@@ -5134,19 +5132,17 @@ function syncImportedPptCardImage(
     activateImportedPptCardImage(media, inactiveSlot);
     return;
   }
-  const loading = priority ? "eager" : "lazy";
-  const fetchPriority = priority ? "high" : "auto";
   if (active.getAttribute("src") === null) {
-    active.loading = loading;
-    active.fetchPriority = fetchPriority;
+    active.loading = "eager";
+    active.fetchPriority = "high";
     delete active.dataset.loadedImageUrl;
     setImportedPptCardPlaceholder(media, "loading");
     active.src = imageUrl;
     return;
   }
   if (inactive.getAttribute("src") !== imageUrl) {
-    inactive.loading = loading;
-    inactive.fetchPriority = fetchPriority;
+    inactive.loading = "eager";
+    inactive.fetchPriority = "high";
     delete inactive.dataset.loadedImageUrl;
     inactive.src = imageUrl;
   }
@@ -5158,7 +5154,6 @@ function ImportedPptCardMedia({
   activeSlideIndex,
   slideCount,
   activeImageUrl,
-  priority,
   loading,
   label,
   onRequestDetail,
@@ -5171,7 +5166,6 @@ function ImportedPptCardMedia({
   activeSlideIndex: number;
   slideCount: number;
   activeImageUrl: string | null;
-  priority: boolean;
   loading: boolean;
   label: string;
   onRequestDetail: () => void;
@@ -5182,7 +5176,7 @@ function ImportedPptCardMedia({
   return (
     <div
       ref={(media) => {
-        syncImportedPptCardImage(media, activeImageUrl, label, priority);
+        syncImportedPptCardImage(media, activeImageUrl, label);
       }}
       data-imported-presentation-template-media=""
       className={cn(
@@ -5212,9 +5206,9 @@ function ImportedPptCardMedia({
         alt=""
         aria-hidden="true"
         data-imported-presentation-template-image="a"
-        loading={priority ? "eager" : "lazy"}
+        loading="eager"
         decoding="async"
-        fetchPriority={priority ? "high" : "auto"}
+        fetchPriority="high"
         draggable={false}
         className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
         onLoad={(event) => {
@@ -5228,9 +5222,9 @@ function ImportedPptCardMedia({
         alt=""
         aria-hidden="true"
         data-imported-presentation-template-image="b"
-        loading={priority ? "eager" : "lazy"}
+        loading="eager"
         decoding="async"
-        fetchPriority={priority ? "high" : "auto"}
+        fetchPriority="high"
         draggable={false}
         className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
         onLoad={(event) => {
@@ -5293,14 +5287,12 @@ function ImportedPptCardCaption({
 
 function ImportedPptCard({
   template,
-  priority,
   selected,
   onSelect,
   onPreview,
   signals,
 }: {
   template: PresentationTemplateSummary;
-  priority: boolean;
   selected: boolean;
   onSelect: (template: PresentationTemplateSummary) => void;
   onPreview: (templateId: string, slideIndex: number) => void;
@@ -5359,7 +5351,6 @@ function ImportedPptCard({
         activeSlideIndex={activeSlideIndex}
         slideCount={slideCount}
         activeImageUrl={activeImageUrl}
-        priority={priority}
         loading={loading}
         label={label}
         onRequestDetail={() => {
@@ -5903,12 +5894,11 @@ function PptTemplateGrid({
       {importEnabled ? (
         <PptImportCard signals={signals} onImported={onImported} />
       ) : null}
-      {importedTemplates.map((template, index) => {
+      {importedTemplates.map((template) => {
         return (
           <ImportedPptCard
             key={template.id}
             template={template}
-            priority={index < IMPORTED_TEMPLATE_EAGER_COVER_COUNT}
             selected={
               value?.type === "presentation" &&
               value.selection.templateId ===

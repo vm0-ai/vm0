@@ -3633,11 +3633,11 @@ describe("chat composer templates", () => {
     );
     expect(within(secondaryCard).getByRole("img")).toHaveAttribute(
       "loading",
-      "lazy",
+      "eager",
     );
     expect(within(secondaryCard).getByRole("img")).toHaveAttribute(
       "fetchpriority",
-      "auto",
+      "high",
     );
     const previewButton = within(card).getByLabelText(
       "Preview Primary draft deck at current slide",
