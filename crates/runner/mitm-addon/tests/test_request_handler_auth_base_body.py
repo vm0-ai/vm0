@@ -14,6 +14,11 @@ import mitm_addon
 import request_classification
 import upstream_destination_binding
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.buffered_auth_body_framing_cases import (
+    BufferedAuthBodyFramingRejectionCase,
+    buffered_auth_body_framing_case_id,
+    buffered_auth_body_framing_rejection_cases,
+)
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
@@ -254,23 +259,11 @@ def test_auth_base_requestheaders_releases_new_admission_after_attach_failure(
 
 
 @pytest.mark.parametrize(
-    ("method", "request_header_pairs"),
-    [
-        ("GET", []),
-        ("HEAD", []),
-        ("POST", []),
-        ("PUT", []),
-        ("PATCH", []),
-        ("OPTIONS", []),
-        ("TRACE", []),
-        ("POST", [("Transfer-Encoding", "chunked")]),
-        ("POST", [("Content-Length", "not-a-number")]),
-        ("POST", [("Content-Length", "-1")]),
-        ("POST", [("Content-Length", "4"), ("Content-Length", "5")]),
-    ],
+    "method",
+    ["GET", "HEAD", "POST", "PUT", "PATCH", "OPTIONS", "TRACE"],
 )
-async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
-    tmp_path, real_flow, mitm_ctx, headers, method, request_header_pairs
+async def test_auth_base_requestheaders_rejects_missing_content_length(
+    tmp_path, real_flow, mitm_ctx, headers, method
 ):
     reg_path = _write_auth_base_firewall_registry(tmp_path)
     flow = real_flow(
@@ -281,7 +274,6 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
         path="/",
         request_headers=headers(
             ("Host", "placeholder.example.com"),
-            *request_header_pairs,
         ),
     )
     get_headers = AsyncMock()
@@ -299,6 +291,54 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
     assert flow.error.msg == Error.KILLED_MESSAGE
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == ("auth_base_request_body_length_required")
+
+
+@pytest.mark.parametrize(
+    "framing_case",
+    buffered_auth_body_framing_rejection_cases(
+        max_body_bytes=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES
+    ),
+    ids=buffered_auth_body_framing_case_id,
+)
+async def test_auth_base_requestheaders_rejects_shared_body_framing(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    framing_case: BufferedAuthBodyFramingRejectionCase,
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            *framing_case.header_pairs,
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    expected_error = (
+        "auth_base_request_body_too_large"
+        if framing_case.kind == "too_large"
+        else "auth_base_request_body_length_required"
+    )
+    get_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.live is False
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
 
 
 async def test_browser_auth_base_requestheaders_skips_body_framing_rejection(
