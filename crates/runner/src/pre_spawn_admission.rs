@@ -270,12 +270,16 @@ mod tests {
         .await
         .unwrap();
         let second_cancel = CancellationToken::new();
+        let (second_started_tx, second_started_rx) = tokio::sync::oneshot::channel();
         let second = tokio::spawn({
             let admission = admission.clone();
             let cancel = second_cancel.clone();
-            async move { admission.acquire(1, &cancel).await }
+            async move {
+                second_started_tx.send(()).unwrap();
+                admission.acquire(1, &cancel).await
+            }
         });
-        tokio::task::yield_now().await;
+        second_started_rx.await.unwrap();
         drop(holder);
 
         let first_lease = tokio::time::timeout(TEST_TIMEOUT, &mut first)
