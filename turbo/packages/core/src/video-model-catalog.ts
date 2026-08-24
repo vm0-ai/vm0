@@ -372,9 +372,14 @@ export const VIDEO_MODEL_ALIASES = {
   h3: "MiniMax-H3",
 } as const satisfies Readonly<Record<string, VideoModel>>;
 
-/** Applied when a generation request omits the parameter. */
+/**
+ * Applied when a generation request omits the parameter. It has to be one of
+ * `PUBLIC_VIDEO_MODELS`: the picker marks the model a run would use by matching
+ * it against the rows it offers, so a private default leaves every row unmarked
+ * while runs quietly use it anyway.
+ */
 export const DEFAULT_VIDEO_MODEL =
-  "dreamina-seedance-2-0-fast-260128" satisfies VideoModel;
+  "dreamina-seedance-2-0-260128" satisfies VideoModel;
 export const DEFAULT_VIDEO_ASPECT_RATIO = "16:9" satisfies VideoAspectRatio;
 export const DEFAULT_VIDEO_DURATION = "8s" satisfies VideoDuration;
 
