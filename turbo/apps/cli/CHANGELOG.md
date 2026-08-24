@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.281.1](https://github.com/vm0-ai/vm0/compare/cli-v9.281.0...cli-v9.281.1) (2026-08-24)
+
+
+### Refactoring
+
+* **cli:** rename the default agent-browser session to okou-browser ([#28782](https://github.com/vm0-ai/vm0/issues/28782)) ([0cb14a5](https://github.com/vm0-ai/vm0/commit/0cb14a5d591853d29d092a99dbe3f5999aa019ea)), closes [#28779](https://github.com/vm0-ai/vm0/issues/28779)
+* **e2e:** remove the unreachable zero app url fallback ([#28767](https://github.com/vm0-ai/vm0/issues/28767)) ([a3e46ba](https://github.com/vm0-ai/vm0/commit/a3e46baa221564941ff1ae94ae329e7f66f2531e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.584.1
+
 ## [9.281.0](https://github.com/vm0-ai/vm0/compare/cli-v9.280.0...cli-v9.281.0) (2026-08-24)
 
 

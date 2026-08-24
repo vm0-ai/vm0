@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.584.1](https://github.com/vm0-ai/vm0/compare/core-v8.584.0...core-v8.584.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **core:** make workflow template guidance brand-neutral ([#28778](https://github.com/vm0-ai/vm0/issues/28778)) ([a5f429a](https://github.com/vm0-ai/vm0/commit/a5f429a9063785caf6f52a0e95980cfb59bcdf81))
+
 ## [8.584.0](https://github.com/vm0-ai/vm0/compare/core-v8.583.1...core-v8.584.0) (2026-08-24)
 
 
