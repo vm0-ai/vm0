@@ -2470,11 +2470,12 @@ jobs:
       runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Install pnpm
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Generate runner E2E shard matrix
@@ -2765,11 +2766,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Install pnpm
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Download runner E2E API tokens
@@ -2902,13 +2904,14 @@ jobs:
         run: echo "Retaining runner E2E accounts until a successful rerun or fallback cleanup"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.cleanup-scope.outputs.scope != 'retain'
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: steps.cleanup-scope.outputs.scope != 'retain'
         with:
           node-version: 22
-      - name: Install pnpm
-        if: steps.cleanup-scope.outputs.scope != 'retain'
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         if: steps.cleanup-scope.outputs.scope != 'retain'
         run: cd e2e && pnpm install --frozen-lockfile
