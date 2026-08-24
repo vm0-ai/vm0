@@ -58,7 +58,7 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-function isZeroCapability(value: string): value is Capability {
+function isAgentCapability(value: string): value is Capability {
   return CAPABILITIES.some((capability) => {
     return capability === value;
   });
@@ -67,10 +67,10 @@ function isZeroCapability(value: string): value is Capability {
 // Capability names are open-ended at the token boundary so tokens issued by a
 // newer API remain valid on an older API. The validated output remains closed
 // to known capabilities so unknown names cannot grant permissions.
-const zeroCapabilitiesSchema = z
+const agentCapabilitiesSchema = z
   .array(z.string().min(1))
   .transform((capabilities) => {
-    return capabilities.filter(isZeroCapability);
+    return capabilities.filter(isAgentCapability);
   })
   .readonly();
 
@@ -78,7 +78,7 @@ const okouTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("okou"),
   runId: z.string().min(1),
   orgId: z.string().min(1),
-  capabilities: zeroCapabilitiesSchema,
+  capabilities: agentCapabilitiesSchema,
   // The public brand is presentation-only. Tokens from before this claim and
   // intentionally unbranded callers keep the permanent VM0 presentation.
   publicBrand: publicBrandSchema.optional(),
@@ -141,7 +141,7 @@ function featureSwitchForCapability(
   })?.[1];
 }
 
-function isZeroCapabilityEnabled(
+function isAgentCapabilityEnabled(
   capability: Capability,
   userId: string,
   orgId: string,
@@ -360,7 +360,7 @@ function buildOkouTokenClaims(
     if (!isCapabilityAvailableToAgent(capability, options)) {
       continue;
     }
-    if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {
+    if (isAgentCapabilityEnabled(capability, userId, orgId, overrides)) {
       capabilities.push(capability);
     }
   }
