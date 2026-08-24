@@ -109,11 +109,7 @@ async fn fresh_pre_spawn_admission_cancels_before_factory_create() {
 async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
     let dir = tempfile::tempdir().unwrap();
     let config = Arc::new(test_executor_config(dir.path()).await);
-    let external_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
-        config.home.clone(),
-        config.pre_spawn_admission.total_tokens(),
-    )
-    .unwrap();
+    let total_tokens = config.pre_spawn_admission.total_tokens();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let start_gate = MockLifecycleGate::new();
     let wait_gate = MockLifecycleGate::new();
@@ -146,30 +142,33 @@ async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
         .wait_entered(1, Duration::from_secs(2))
         .await
         .unwrap();
-    let acquire_cancel = CancellationToken::new();
-    let mut acquire_task = tokio::spawn({
-        let admission = external_admission.clone();
-        let cancel = acquire_cancel.clone();
-        async move { admission.acquire(2, &cancel).await }
-    });
-    assert!(
-        tokio::time::timeout(Duration::from_millis(50), &mut acquire_task)
-            .await
-            .is_err(),
-        "fresh admission released before process spawn completed"
-    );
+    for token in 0..total_tokens {
+        assert!(matches!(
+            crate::lock::try_acquire_or_busy(config.home.pre_spawn_admission_token_lock(token))
+                .await
+                .unwrap(),
+            crate::lock::TryLock::Busy
+        ));
+    }
 
     start_gate.release_one();
     wait_gate
         .wait_entered(1, Duration::from_secs(2))
         .await
         .unwrap();
-    let lease = tokio::time::timeout(Duration::from_secs(2), &mut acquire_task)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    drop(lease);
+    let mut released_tokens = Vec::new();
+    for token in 0..total_tokens {
+        match crate::lock::try_acquire_or_busy(config.home.pre_spawn_admission_token_lock(token))
+            .await
+            .unwrap()
+        {
+            crate::lock::TryLock::Acquired(lock) => released_tokens.push(lock),
+            crate::lock::TryLock::Busy => {
+                panic!("fresh admission remained held after process spawn")
+            }
+        }
+    }
+    drop(released_tokens);
     wait_gate.release_one();
 
     let (result, telemetry) = tokio::time::timeout(Duration::from_secs(2), task)

@@ -256,7 +256,7 @@ mod tests {
         });
         wait_for_local_turn(&admission).await;
         let second_cancel = CancellationToken::new();
-        let mut second = tokio::spawn({
+        let second = tokio::spawn({
             let admission = admission.clone();
             let cancel = second_cancel.clone();
             async move { admission.acquire(1, &cancel).await }
@@ -268,10 +268,9 @@ mod tests {
             .unwrap()
             .unwrap()
             .unwrap();
+        tokio::task::yield_now().await;
         assert!(
-            tokio::time::timeout(Duration::from_millis(50), &mut second)
-                .await
-                .is_err(),
+            !second.is_finished(),
             "later light waiter bypassed the earlier weighted waiter"
         );
         drop(first_lease);

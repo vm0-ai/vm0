@@ -1,32 +1,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use tracing::warn;
-
 use crate::error::{RunnerError, RunnerResult};
 
 const CPU_SYSFS_ROOT: &str = "/sys/devices/system/cpu";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PreSpawnCapacitySource {
-    PhysicalTopology,
-    LogicalFallback,
-}
-
-impl PreSpawnCapacitySource {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::PhysicalTopology => "physical_topology",
-            Self::LogicalFallback => "logical_fallback",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PreSpawnCpuCapacity {
-    pub(crate) vcpu_tokens: u32,
-    pub(crate) source: PreSpawnCapacitySource,
-}
 
 /// Return the number of logical CPUs available to this process.
 pub fn cpu_count() -> RunnerResult<usize> {
@@ -35,32 +12,14 @@ pub fn cpu_count() -> RunnerResult<usize> {
         .map_err(|e| RunnerError::Internal(format!("detect CPU count: {e}")))
 }
 
-pub(crate) fn pre_spawn_cpu_capacity() -> RunnerResult<PreSpawnCpuCapacity> {
-    match physical_core_count(Path::new(CPU_SYSFS_ROOT)) {
-        Ok(physical_cores) => Ok(PreSpawnCpuCapacity {
-            vcpu_tokens: u32::try_from(physical_cores).map_err(|_| {
-                RunnerError::Internal(format!(
-                    "physical CPU count {physical_cores} exceeds supported pre-spawn capacity"
-                ))
-            })?,
-            source: PreSpawnCapacitySource::PhysicalTopology,
-        }),
-        Err(error) => {
-            let logical_cpus = cpu_count()?;
-            warn!(
-                error,
-                logical_cpus, "physical CPU topology unavailable; using logical pre-spawn capacity"
-            );
-            Ok(PreSpawnCpuCapacity {
-                vcpu_tokens: u32::try_from(logical_cpus).map_err(|_| {
-                    RunnerError::Internal(format!(
-                        "logical CPU count {logical_cpus} exceeds supported pre-spawn capacity"
-                    ))
-                })?,
-                source: PreSpawnCapacitySource::LogicalFallback,
-            })
-        }
-    }
+pub(crate) fn pre_spawn_cpu_capacity() -> RunnerResult<u32> {
+    let physical_cores = physical_core_count(Path::new(CPU_SYSFS_ROOT))
+        .map_err(|error| RunnerError::Internal(format!("detect physical CPU topology: {error}")))?;
+    u32::try_from(physical_cores).map_err(|_| {
+        RunnerError::Internal(format!(
+            "physical CPU count {physical_cores} exceeds supported pre-spawn capacity"
+        ))
+    })
 }
 
 fn physical_core_count(cpu_root: &Path) -> Result<usize, String> {
