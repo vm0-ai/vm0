@@ -1,4 +1,5 @@
 use super::*;
+use tokio_util::sync::CancellationToken;
 
 // -----------------------------------------------------------------------
 // Keep-alive VM reuse integration tests
@@ -42,6 +43,39 @@ async fn execute_job_reuse_succeeds() {
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.error().is_none());
     assert!(reuse_outcome.sandbox.is_some());
+}
+
+#[tokio::test]
+async fn execute_job_reuse_bypasses_fresh_pre_spawn_admission() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let external_admission = crate::pre_spawn_admission::PreSpawnAdmission::new(
+        config.home.clone(),
+        config.pre_spawn_admission.total_tokens(),
+    )
+    .unwrap();
+    let holder = external_admission
+        .acquire(2, &CancellationToken::new())
+        .await
+        .unwrap();
+    let sandbox =
+        create_overridden_sandbox(Arc::new(sandbox_mock::MockSandboxOverrides::new())).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _budget_lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+
+    let (outcome, telemetry) = execute_job_reuse(
+        idle_sandbox,
+        minimal_context(),
+        &config,
+        &default_params(),
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_no_telemetry_action(&telemetry, "runner_fresh_pre_spawn_admission_wait");
+    drop(holder);
 }
 
 #[tokio::test]

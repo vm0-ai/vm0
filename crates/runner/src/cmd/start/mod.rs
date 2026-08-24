@@ -69,6 +69,7 @@ use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::pre_spawn_admission::PreSpawnAdmission;
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
@@ -565,6 +566,8 @@ async fn run_start_with_home(
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
+    let pre_spawn_capacity = host::pre_spawn_cpu_capacity()?;
+    let pre_spawn_admission = PreSpawnAdmission::new(home.clone(), pre_spawn_capacity.vcpu_tokens)?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
         host_memory_mb as u32,
@@ -582,6 +585,12 @@ async fn run_start_with_home(
         effective_memory_mb = budget.effective_memory_mb(),
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
+    );
+    info!(
+        pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+        capacity_source = pre_spawn_capacity.source.label(),
+        host_logical_cpus = host_cpus,
+        "pre-spawn admission initialized"
     );
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
@@ -773,6 +782,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill,
+        pre_spawn_admission,
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),

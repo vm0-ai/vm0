@@ -275,6 +275,11 @@ fn build_mock_run_config_with_runtime(
             fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
             background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
                 .unwrap(),
+            pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(
+                home.clone(),
+                2,
+            )
+            .unwrap(),
             home,
             workspace_cache: None,
         }),

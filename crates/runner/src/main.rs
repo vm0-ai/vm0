@@ -39,6 +39,7 @@ mod object_download_policy;
 mod org_name;
 mod parent_death;
 mod paths;
+mod pre_spawn_admission;
 mod prefetch;
 mod private_fs;
 mod process;

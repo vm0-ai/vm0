@@ -274,6 +274,16 @@ impl HomePaths {
         self.locks_dir().join("systemd-daemon-reload.lock")
     }
 
+    pub(crate) fn pre_spawn_admission_turnstile_lock(&self) -> PathBuf {
+        self.locks_dir()
+            .join("pre-spawn-admission-v1-turnstile.lock")
+    }
+
+    pub(crate) fn pre_spawn_admission_token_lock(&self, token: u32) -> PathBuf {
+        self.locks_dir()
+            .join(format!("pre-spawn-admission-v1-token-{token:08}.lock"))
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         self.locks_dir().join(base_dir_lock_name(base_dir))
     }
@@ -589,6 +599,20 @@ mod tests {
         assert_eq!(
             home.systemd_daemon_reload_lock(),
             PathBuf::from("/test/locks/systemd-daemon-reload.lock")
+        );
+    }
+
+    #[test]
+    fn pre_spawn_admission_lock_paths() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+
+        assert_eq!(
+            home.pre_spawn_admission_turnstile_lock(),
+            PathBuf::from("/test/locks/pre-spawn-admission-v1-turnstile.lock")
+        );
+        assert_eq!(
+            home.pre_spawn_admission_token_lock(12),
+            PathBuf::from("/test/locks/pre-spawn-admission-v1-token-00000012.lock")
         );
     }
 
