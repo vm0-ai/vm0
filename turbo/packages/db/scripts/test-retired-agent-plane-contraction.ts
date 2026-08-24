@@ -64,6 +64,8 @@ const canonicalConversationId = "00000000-0000-4000-8700-000000980001";
 const canonicalCheckpointId = "00000000-0000-4000-8800-000000980001";
 const canonicalThreadId = "00000000-0000-4000-8300-000000980002";
 const canonicalThreadEventId = "00000000-0000-4000-9200-000000980028";
+const searchNoiseAgentId = "00000000-0000-4000-8400-000000980002";
+const searchNoiseThreadId = "00000000-0000-4000-8300-000000980003";
 const storageId = "00000000-0000-4000-8900-000000980001";
 const usageEventId = "00000000-0000-4000-8a00-000000980001";
 const protectedUsageEventId = "00000000-0000-4000-8a00-000000980002";
@@ -76,6 +78,15 @@ const weeklyWindowId = "00000000-0000-4000-8e00-000000980002";
 // This keeps the focused harness practical while preserving production shape.
 const productionShapedSearchRows = 131_176;
 const productionShapedLegacySearchRows = 1_711;
+// The largest observed approved-artifact user/org pair has 132 candidates.
+const productionShapedArtifactPairCandidates = 132;
+const exactArtifactSearchRows = 2;
+const productionShapedArtifactPairNoiseRows =
+  productionShapedArtifactPairCandidates - exactArtifactSearchRows;
+const allowedArtifactSearchLookupIndexes = new Set([
+  "chat_event_search_messages_user_org_created_idx",
+  "chat_event_search_messages_user_org_agent_created_idx",
+]);
 
 function databaseUrlFor(database: string): string {
   const url = new URL(baseDatabaseUrl);
@@ -512,6 +523,21 @@ async function seedAndAssertProductionShapedSearchLookups(
 ): Promise<void> {
   await client.query(
     `
+      INSERT INTO "agents" ("id", "org_id", "owner", "name")
+      VALUES ($1, 'stage8-artifact-org', 'stage8-artifact-user',
+        'stage8-search-noise-agent')
+    `,
+    [searchNoiseAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" ("id", "user_id", "agent_id", "title")
+      VALUES ($1, 'stage8-artifact-user', $2, 'stage8 search noise thread')
+    `,
+    [searchNoiseThreadId, searchNoiseAgentId],
+  );
+  await client.query(
+    `
       INSERT INTO "chat_event_search_messages" (
         "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
         "agent_compose_id", "role", "created_at", "text", "text_bigram"
@@ -529,6 +555,36 @@ async function seedAndAssertProductionShapedSearchLookups(
       productionShapedLegacySearchRows,
       productionShapedSearchRows,
     ],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
+        "agent_compose_id", "role", "created_at", "text", "text_bigram"
+      )
+      SELECT
+        $1, "ordinal", 'stage8-artifact-user', 'stage8-artifact-org',
+        $2, $2, 'user', now(), 'stage8 pair candidate',
+        'stage8 pair candidate'
+      FROM generate_series(1, $3) AS "ordinal"
+    `,
+    [
+      searchNoiseThreadId,
+      searchNoiseAgentId,
+      productionShapedArtifactPairNoiseRows,
+    ],
+  );
+  const artifactPair = await client.query<{ count: number }>(
+    `
+      SELECT count(*)::integer AS "count"
+      FROM "chat_event_search_messages"
+      WHERE "user_id" = 'stage8-artifact-user'
+        AND "org_id" = 'stage8-artifact-org'
+    `,
+  );
+  assert.equal(
+    artifactPair.rows[0]?.count,
+    productionShapedArtifactPairCandidates,
   );
   await client.query(`ANALYZE "chat_event_search_messages"`);
 
@@ -549,15 +605,37 @@ async function seedAndAssertProductionShapedSearchLookups(
         return row["QUERY PLAN"];
       })
       .join("\n");
-    assert.match(
-      planText,
-      /chat_event_search_messages_user_org_agent_created_idx/u,
-      `artifact search lookup must use the frozen legacy composite index:\n${planText}`,
-    );
     assert.doesNotMatch(
       planText,
       /Seq Scan on chat_event_search_messages/u,
       `artifact search lookup must not scan the production-shaped table:\n${planText}`,
+    );
+    const lookupIndexNames = Array.from(
+      planText.matchAll(/(?:Index Scan using|Bitmap Index Scan on) (\S+)\b/gu),
+      (match) => {
+        return match[1];
+      },
+    );
+    assert.equal(
+      lookupIndexNames.length,
+      1,
+      `artifact search lookup must use exactly one index path:\n${planText}`,
+    );
+    assert.ok(
+      allowedArtifactSearchLookupIndexes.has(lookupIndexNames[0] ?? ""),
+      `artifact search lookup must use a known user/org-leading index:\n${planText}`,
+    );
+    const boundedIndexCondition = plan.rows.some((row) => {
+      const line = row["QUERY PLAN"];
+      return (
+        line.includes("Index Cond:") &&
+        line.includes("user_id") &&
+        line.includes("org_id")
+      );
+    });
+    assert.ok(
+      boundedIndexCondition,
+      `artifact search lookup must bind user_id and org_id in its index condition:\n${planText}`,
     );
   }
 }
@@ -565,15 +643,38 @@ async function seedAndAssertProductionShapedSearchLookups(
 async function assertProductionShapedSearchRowsPreserved(
   client: Client,
 ): Promise<void> {
-  const result = await client.query<{ count: number }>(
+  const result = await client.query<{
+    agentCount: number;
+    protectedSearchMessageCount: number;
+    threadCount: number;
+    searchMessageCount: number;
+  }>(
     `
-      SELECT count(*)::integer AS "count"
-      FROM "chat_event_search_messages"
-      WHERE "chat_thread_id" = $1
+      SELECT
+        (SELECT count(*)::integer FROM "agents"
+          WHERE "id" = $1
+            AND "org_id" = 'stage8-artifact-org'
+            AND "owner" = 'stage8-artifact-user') AS "agentCount",
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $3) AS "protectedSearchMessageCount",
+        (SELECT count(*)::integer FROM "chat_threads"
+          WHERE "id" = $2
+            AND "user_id" = 'stage8-artifact-user'
+            AND "agent_id" = $1) AS "threadCount",
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $2
+            AND "agent_id" = $1) AS "searchMessageCount"
     `,
-    [canonicalThreadId],
+    [searchNoiseAgentId, searchNoiseThreadId, canonicalThreadId],
   );
-  assert.equal(result.rows[0]?.count, productionShapedSearchRows + 1);
+  assert.deepEqual(result.rows, [
+    {
+      agentCount: 1,
+      protectedSearchMessageCount: productionShapedSearchRows + 1,
+      threadCount: 1,
+      searchMessageCount: productionShapedArtifactPairNoiseRows,
+    },
+  ]);
 }
 
 async function seedArtifactBilling(client: Client): Promise<void> {
