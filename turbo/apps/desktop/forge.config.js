@@ -61,7 +61,7 @@ const osxNotarize = desktopNotarizeOptions();
 async function signPackagedDarwinApps(_forgeConfig, packageResult) {
   if (
     packageResult.platform !== "darwin" ||
-    process.env.VM0_DESKTOP_SKIP_SIGNING === "true"
+    process.env.OKOU_DESKTOP_SKIP_SIGNING === "true"
   ) {
     return;
   }

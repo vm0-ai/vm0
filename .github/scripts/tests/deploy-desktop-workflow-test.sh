@@ -43,7 +43,7 @@ ruby -e '
   raise "deploy-desktop must use a SHA-addressed R2 prefix" unless artifact_step.fetch("run").include?(ARGV[6])
 
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
-  raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("VM0_DESKTOP_SKIP_SIGNING") == "true"
+  raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("OKOU_DESKTOP_SKIP_SIGNING") == "true"
   raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou.app")
   raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai")
 

@@ -649,7 +649,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
           SENTRY_ENVIRONMENT: production
-          VM0_DESKTOP_SKIP_SIGNING: "true"
+          OKOU_DESKTOP_SKIP_SIGNING: "true"
         working-directory: turbo
         run: |
           cleanup_runtime_config() {
