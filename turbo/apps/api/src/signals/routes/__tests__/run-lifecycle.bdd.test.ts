@@ -14074,9 +14074,25 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       orgId: actor.orgId,
       runId: run.runId,
     });
+    expect(claim.platformEnvironment).toMatchObject({
+      OKOU_APP_URL: appUrl,
+      OKOU_AGENT_ID: agent.agentId,
+      OKOU_TOKEN: claim.environment?.OKOU_TOKEN,
+      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+    });
+    for (const [key, value] of Object.entries(
+      claim.platformEnvironment ?? {},
+    )) {
+      expect(claim.environment?.[key]).toBe(value);
+    }
     const runContextSnapshot = runContextSnapshotForRun(run.runId);
     expect(runContextSnapshot.secretNames).toContain("OKOU_TOKEN");
     expect(runContextSnapshot.secretNames).not.toContain("ZERO_TOKEN");
+    expect(runContextSnapshot.environmentEntries).toContainEqual({
+      name: "OKOU_TOKEN",
+      value: "***",
+    });
     expect(claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );

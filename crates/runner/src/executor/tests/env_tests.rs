@@ -593,6 +593,52 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 }
 
 #[test]
+fn dual_carried_platform_environment_preserves_effective_agent_environment() {
+    let mut ctx = minimal_context();
+    let platform_environment = HashMap::from([
+        ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "trusted-bypass".into(),
+        ),
+    ]);
+    ctx.environment = Some(HashMap::from([
+        ("USER_VALUE".into(), "user-value".into()),
+        ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "trusted-bypass".into(),
+        ),
+    ]));
+    let previous_runner_environment = build_user_env_json(&ctx);
+
+    ctx.platform_environment = Some(platform_environment);
+
+    assert_eq!(build_user_env_json(&ctx), previous_runner_environment);
+}
+
+#[test]
+fn platform_environment_overlays_legacy_environment() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "legacy".into()),
+        ("LEGACY_ONLY".into(), "legacy-only".into()),
+    ]));
+    ctx.platform_environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "trusted".into()),
+        ("PLATFORM_ONLY".into(), "platform-only".into()),
+    ]));
+
+    let environment = build_user_env_json(&ctx);
+
+    assert_eq!(environment["DUPLICATE"], "trusted");
+    assert_eq!(environment["LEGACY_ONLY"], "legacy-only");
+    assert_eq!(environment["PLATFORM_ONLY"], "platform-only");
+}
+
+#[test]
 fn build_env_json_scrubs_user_provided_runner_owned_env() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();

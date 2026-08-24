@@ -464,15 +464,15 @@ function defaultImageModelPrompt(model: ImageModel): string {
   ].join("\n");
 }
 
-function withDefaultImageModelEnvironment(
-  environment: Record<string, string> | undefined,
+function withDefaultImageModelPlatformEnvironment(
+  platformEnvironment: Record<string, string> | undefined,
   model: ImageModel | null,
 ): Record<string, string> | undefined {
   if (model === null) {
-    return environment;
+    return platformEnvironment;
   }
   return {
-    ...environment,
+    ...platformEnvironment,
     [DEFAULT_IMAGE_MODEL_ENV]: IMAGE_MODEL_CONFIGS[model].alias,
   };
 }
@@ -973,7 +973,7 @@ export interface CreateAgentRunArgs {
   readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
-  readonly extraEnvironment?: Record<string, string>;
+  readonly platformEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
   readonly injectSkillVolumes?: {
@@ -6287,6 +6287,26 @@ function presentationRunbookArchiveVersionForRun(
     : "previous";
 }
 
+function buildStoredPlatformEnvironment(args: {
+  readonly platformEnvironment: Record<string, string> | undefined;
+  readonly okouTokenPublicBrand: PublicBrand | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly canonicalOkouRuntime: boolean;
+}): Record<string, string> {
+  const platformEnvironment = {
+    ...args.platformEnvironment,
+    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
+      args.featureSwitchContext,
+    ),
+    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
+      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
+  };
+  return args.canonicalOkouRuntime
+    ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
+    : platformEnvironment;
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6303,7 +6323,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-  readonly extraEnvironment: Record<string, string> | undefined;
+  readonly platformEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly includeOkouTokenSecret: boolean | undefined;
@@ -6326,27 +6346,27 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const expandedEnvironment = {
-    ...expandEnvironment({
-      content: args.resolved.content,
-      vars: args.body.vars,
-      secrets: executionSecrets.secrets,
-      additionalEnvironment: args.modelProvider?.environment,
-      environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
-      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
-      connectorVars: args.connectorContext.vars,
-    }),
-    ...args.extraEnvironment,
-    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
-    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
-      args.featureSwitchContext,
-    ),
-    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
-      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
+  const expandedEnvironment = expandEnvironment({
+    content: args.resolved.content,
+    vars: args.body.vars,
+    secrets: executionSecrets.secrets,
+    additionalEnvironment: args.modelProvider?.environment,
+    environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
+    storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+    connectorVars: args.connectorContext.vars,
+  });
+  const platformEnvironment = buildStoredPlatformEnvironment({
+    platformEnvironment: args.platformEnvironment,
+    okouTokenPublicBrand: args.okouTokenPublicBrand,
+    featureSwitchContext: args.featureSwitchContext,
+    canonicalOkouRuntime: args.includeOkouTokenSecret === true,
+  });
+  const environment = {
+    ...(args.includeOkouTokenSecret
+      ? withoutLegacyZeroEntries(expandedEnvironment ?? undefined)
+      : expandedEnvironment),
+    ...platformEnvironment,
   };
-  const environment = args.includeOkouTokenSecret
-    ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
-    : expandedEnvironment;
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -6362,6 +6382,7 @@ async function buildStoredExecutionContextDraft(args: {
   return {
     context: {
       environment,
+      platformEnvironment,
       secretValueEnvironmentKeys,
       vars: args.connectorContext.vars ?? null,
       resumeSession: args.resolved.resumeSession ?? null,
@@ -6783,7 +6804,7 @@ interface BuildRunnerJobPayloadInput {
   readonly okouTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
   readonly chatThreadId: string | undefined;
-  readonly extraEnvironment: Record<string, string> | undefined;
+  readonly platformEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing: ApiDispatchTimingCollector;
@@ -6962,9 +6983,9 @@ function buildRunnerJobPayload(
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
     const body = preparedRunnerJobBody(args);
-    const extraEnvironment = args.includeOkouTokenSecret
-      ? { ...args.extraEnvironment, ...okouTokenEnvironment(body) }
-      : args.extraEnvironment;
+    const platformEnvironment = args.includeOkouTokenSecret
+      ? { ...args.platformEnvironment, ...okouTokenEnvironment(body) }
+      : args.platformEnvironment;
     const storageManifestStats = new StorageManifestBuildStats();
     const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
@@ -7002,7 +7023,7 @@ function buildRunnerJobPayload(
         return await buildStoredExecutionContextDraft({
           ...args,
           body,
-          extraEnvironment,
+          platformEnvironment,
           runId: args.run.id,
         });
       },
@@ -8019,8 +8040,8 @@ function buildAtomicLaunchPayload(
     okouTokenCloudBrowserEnabled: args.createArgs.okouTokenCloudBrowserEnabled,
     imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
-    extraEnvironment: withDefaultImageModelEnvironment(
-      args.createArgs.extraEnvironment,
+    platformEnvironment: withDefaultImageModelPlatformEnvironment(
+      args.createArgs.platformEnvironment,
       args.context.selectedImageModel,
     ),
     userTimezone: args.context.userTimezone,
@@ -9721,14 +9742,14 @@ export const prepareAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     assertThreadBoundRunHasQueueAssociation(input.args);
-    // A preview request that passed the protection guard gives its sandbox CLI
-    // the same bypass through the existing user-environment channel.
+    // A preview request that passed the protection guard carries the bypass as
+    // API-authored environment while the runner preserves its existing filter.
     const previewAutomationBypass = get(previewAutomationBypass$);
     const args = previewAutomationBypass
       ? {
           ...input.args,
-          extraEnvironment: {
-            ...input.args.extraEnvironment,
+          platformEnvironment: {
+            ...input.args.platformEnvironment,
             [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
           },
         }

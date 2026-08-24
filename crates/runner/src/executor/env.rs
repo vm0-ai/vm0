@@ -372,13 +372,7 @@ fn for_each_guest_user_env_entry<'a>(
     context: &'a ExecutionContext,
     mut visit: impl FnMut(&'a str, &'a str),
 ) {
-    if let Some(user_env) = &context.environment {
-        for (key, value) in user_env {
-            if !is_runner_owned_env_key(key) {
-                visit(key, value);
-            }
-        }
-    }
+    for_each_filtered_environment_entry(context.environment.as_ref(), &mut visit);
 
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
@@ -387,6 +381,25 @@ fn for_each_guest_user_env_entry<'a>(
             .is_some_and(|env| env.contains_key("TZ"));
         if !has_tz {
             visit("TZ", tz);
+        }
+    }
+
+    // During this additive compatibility stage both channels retain today's
+    // runner-owned filtering, so dual-carried claims cannot expose a key that
+    // the previous runner scrubbed. Applying the trusted channel last still
+    // gives it deterministic precedence for effective agent environment.
+    for_each_filtered_environment_entry(context.platform_environment.as_ref(), &mut visit);
+}
+
+fn for_each_filtered_environment_entry<'a>(
+    environment: Option<&'a HashMap<String, String>>,
+    visit: &mut impl FnMut(&'a str, &'a str),
+) {
+    if let Some(environment) = environment {
+        for (key, value) in environment {
+            if !is_runner_owned_env_key(key) {
+                visit(key, value);
+            }
         }
     }
 }

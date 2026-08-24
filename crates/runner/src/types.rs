@@ -86,6 +86,9 @@ pub struct ExecutionContext {
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
+    /// Trusted API-authored agent environment. Older claim responses omit it.
+    #[serde(default)]
+    pub platform_environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
     // Plain secret values used only for redaction. These are values, not names.
@@ -1812,6 +1815,31 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000"
         });
         assert!(serde_json::from_value::<Job>(json).is_err());
+    }
+
+    #[test]
+    fn execution_context_accepts_optional_platform_environment() {
+        let previous_api_response = json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": []
+        });
+        let previous_context: ExecutionContext =
+            serde_json::from_value(previous_api_response.clone()).unwrap();
+        assert!(previous_context.platform_environment.is_none());
+
+        let mut current_api_response = previous_api_response;
+        current_api_response["platformEnvironment"] = json!({
+            "OKOU_AGENT_ID": "trusted-agent-id"
+        });
+        let current_context: ExecutionContext =
+            serde_json::from_value(current_api_response).unwrap();
+        assert_eq!(
+            current_context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
+            "trusted-agent-id"
+        );
     }
 
     #[test]
