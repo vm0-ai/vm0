@@ -1534,44 +1534,18 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     );
     expect(resultDeliveredBytes).toBeLessThanOrEqual(900_000);
 
-    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
-      ([message]) => {
-        return message === "Reduced oversized agent event for Axiom";
-      },
-    );
-    expect(reductionLogs).toHaveLength(2);
-    const assistantFields = reductionLogs[0]?.[1];
-    expect(assistantFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: assistantEvent.sequenceNumber,
-        eventType: assistantEvent.type,
-        originalBytes: assistantOriginalBytes,
-        deliveredBytes: assistantDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    const resultFields = reductionLogs[1]?.[1];
-    expect(resultFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: resultEvent.sequenceNumber,
-        eventType: resultEvent.type,
-        originalBytes: resultOriginalBytes,
-        deliveredBytes: resultDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    for (const fields of [assistantFields, resultFields]) {
-      expect(fields).not.toHaveProperty("eventData");
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedAssistantContent.slice(0, 64),
-      );
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedResultContent.slice(0, 64),
-      );
+    const reductionMessage = "Reduced oversized agent event for Axiom";
+    for (const calls of [
+      context.mocks.axiomLogging.debug.mock.calls,
+      context.mocks.axiomLogging.info.mock.calls,
+      context.mocks.axiomLogging.warn.mock.calls,
+      context.mocks.axiomLogging.error.mock.calls,
+    ]) {
+      expect(
+        calls.some(([message]) => {
+          return message === reductionMessage;
+        }),
+      ).toBeFalsy();
     }
   });
 
