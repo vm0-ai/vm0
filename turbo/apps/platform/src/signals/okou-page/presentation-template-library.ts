@@ -61,11 +61,40 @@ const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 
-const refreshPresentationTemplatesFromRealtime$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+const reconcileDeletedPresentationTemplateIds$ = command(
+  ({ get, set }, templates: readonly PresentationTemplateSummary[]): void => {
+    const deletedTemplateIds = get(deletedPresentationTemplateIds$);
+    if (deletedTemplateIds.size === 0) {
+      return;
+    }
+    const catalogTemplateIds = new Set(
+      templates.map((template) => {
+        return template.id;
+      }),
+    );
+    const pendingDeletedTemplateIds = new Set(
+      [...deletedTemplateIds].filter((templateId) => {
+        return catalogTemplateIds.has(templateId);
+      }),
+    );
+    if (pendingDeletedTemplateIds.size !== deletedTemplateIds.size) {
+      set(deletedPresentationTemplateIds$, pendingDeletedTemplateIds);
+    }
+  },
+);
+
+const refreshAndReconcilePresentationTemplates$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
     set(refreshPresentationTemplates$);
-    await get(importedPresentationTemplateCatalog$);
+    const catalog = await get(importedPresentationTemplateCatalog$);
     signal.throwIfAborted();
+    set(reconcileDeletedPresentationTemplateIds$, catalog.templates);
+  },
+);
+
+const refreshPresentationTemplatesFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    await set(refreshAndReconcilePresentationTemplates$, signal);
     return false;
   },
 );
@@ -77,8 +106,8 @@ const refreshPresentationTemplatesFromRealtime$ = command(
  * the analysis.
  */
 export const subscribePresentationTemplatesChanged$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    await Promise.all([
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const subscriptions = [
       set(
         setAblyLoop$,
         {
@@ -88,17 +117,25 @@ export const subscribePresentationTemplatesChanged$ = command(
         },
         signal,
       ),
-      set(
-        setAblyLoop$,
-        {
-          scope: "org",
-          topic: "presentationTemplatesChanged",
-          loopCommand$: refreshPresentationTemplatesFromRealtime$,
-          options: { runOnForegroundCatchUp: false },
-        },
-        signal,
-      ),
-    ]);
+    ];
+    // The workspace channel belongs to a non-GA feature. Keeping it behind the
+    // same switch means a new app never attaches that channel to an older
+    // user-only token for users who cannot use presentation templates.
+    if (get(presentationTemplateImportEnabled$)) {
+      subscriptions.push(
+        set(
+          setAblyLoop$,
+          {
+            scope: "org",
+            topic: "presentationTemplatesChanged",
+            loopCommand$: refreshPresentationTemplatesFromRealtime$,
+            options: { runOnForegroundCatchUp: false },
+          },
+          signal,
+        ),
+      );
+    }
+    await Promise.all(subscriptions);
   },
 );
 
@@ -189,19 +226,17 @@ function createImportedPresentationTemplateUrlRefreshSignals(
         return;
       }
       set(internalRequestedAtMs$, requestedAt);
-      set(refreshPresentationTemplates$);
+      await set(refreshAndReconcilePresentationTemplates$, signal);
     },
   );
   const refreshImportedPresentationTemplateUrlsAfterPickerOpen$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       // Let the picker mount the last resolved catalog before catch-up makes
       // the catalog pending, so a suspended tab still opens without a blank
       // first frame.
       await delay(0, { signal });
       set(internalRequestedAtMs$, now());
-      set(refreshPresentationTemplates$);
-      await get(catalog$);
-      signal.throwIfAborted();
+      await set(refreshAndReconcilePresentationTemplates$, signal);
     },
   );
   const importedPresentationTemplateUrlRefreshLifecycleRef$ = onRef(
@@ -378,7 +413,7 @@ export function createImportedPresentationTemplateSignals() {
       set(internalPreviewSlideIndex$, 0);
       set(internalRequestedTemplateId$, null);
       set(internalCardHover$, null);
-      set(refreshPresentationTemplates$);
+      await set(refreshAndReconcilePresentationTemplates$, signal);
     },
   );
 

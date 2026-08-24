@@ -48,7 +48,6 @@ type AuthCallback = NonNullable<AuthOptions["authCallback"]>;
 export function createAblyAuthCallback(
   client: RealtimeTokenClient,
   signal: AbortSignal,
-  onCapability?: (capability: string) => void,
 ): AuthCallback {
   return (_params, callback) => {
     const spanId = createConnectionDiagnosticSpanId();
@@ -73,7 +72,6 @@ export function createAblyAuthCallback(
             phase: "finish",
             spanId,
           });
-          onCapability?.(res.body.capability);
           callback(null, res.body);
         } catch (error) {
           // Re-throw aborts so detach silences them at the boundary —

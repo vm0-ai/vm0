@@ -27,6 +27,7 @@ import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-si
 import { testContext } from "./test-helpers.ts";
 import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 import { now } from "../../lib/time.ts";
+import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentation-template-library.ts";
 
 const context = testContext();
 
@@ -163,45 +164,29 @@ describe("realtime signals", () => {
     expect(runs).toBe(1);
   });
 
-  it("keeps user realtime available with a legacy user-only token", async () => {
+  it("keeps workspace template realtime off while its feature switch is disabled", async () => {
     mockSignedInUser();
-    context.mocks.api(platformRealtimeTokenContract.create, ({ respond }) => {
-      return respond(200, {
-        keyName: "mock-key",
-        clientId: "test-user-123",
-        timestamp: now(),
-        capability: '{"user:test-user-123":["subscribe"]}',
-        nonce: "mock-nonce",
-        mac: "mock-mac",
-      });
-    });
     const subscriber = testSubscriber();
-    const orgTopic = "test:legacy-org-capability";
-    const userTopic = "test:legacy-user-capability";
-    const orgLoopPromise = context.store.set(
-      setAblyLoop$,
-      { scope: "org", topic: orgTopic, loopCommand$: keepAliveLoop$ },
+    const subscriptionPromise = context.store.set(
+      subscribePresentationTemplatesChanged$,
       subscriber.signal,
     );
-    const userLoopPromise = context.store.set(
-      setAblyLoop$,
-      { topic: userTopic, loopCommand$: keepAliveLoop$ },
-      subscriber.signal,
-    );
-    context.track(orgLoopPromise);
-    context.track(userLoopPromise);
+    context.track(subscriptionPromise);
 
     await setupAuthAndRealtime();
     await waitFor(() => {
       expect(
         context.mocks.ably.hasSubscriptionOnChannel(
           "user:test-user-123",
-          userTopic,
+          "presentationTemplatesChanged",
         ),
       ).toBeTruthy();
     });
     expect(
-      context.mocks.ably.hasSubscriptionOnChannel("org:test-org-123", orgTopic),
+      context.mocks.ably.hasSubscriptionOnChannel(
+        "org:test-org-123",
+        "presentationTemplatesChanged",
+      ),
     ).toBeFalsy();
   });
 

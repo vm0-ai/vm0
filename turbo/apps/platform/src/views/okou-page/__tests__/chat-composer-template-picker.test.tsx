@@ -4141,9 +4141,29 @@ describe("chat composer templates", () => {
       expect(catalogRequestCount).toBe(3);
       expect(
         dialog.querySelector(
+          `[data-imported-presentation-template="${deletedTemplate.id}"]`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        dialog.querySelector(
           `[data-imported-presentation-template="${remainingTemplate.id}"]`,
         ),
       ).toBe(remainingCard);
+    });
+
+    // Once a successful catalog response confirms the deletion, its local
+    // tombstone is retired. A later authoritative response therefore wins
+    // instead of being hidden for the rest of the app session.
+    holdCatalogRefresh = false;
+    catalog = [deletedTemplate, remainingTemplate];
+    context.mocks.ably.trigger("presentationTemplatesChanged");
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(4);
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${deletedTemplate.id}"]`,
+        ),
+      ).toBeInTheDocument();
     });
   });
 

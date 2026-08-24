@@ -26,7 +26,6 @@ import {
 } from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
-  jsonParseOr,
   onDomEventFn,
   onRejection,
   resetSignal,
@@ -886,7 +885,7 @@ async function replaceStableRealtimeChannel(
 }
 
 function createStableRealtimeChannel(
-  initialChannel: RealtimeChannel | null,
+  initialChannel: RealtimeChannel,
 ): StableRealtimeChannel {
   const state: StableRealtimeChannelState = {
     currentChannel: initialChannel,
@@ -934,44 +933,17 @@ function createStableRealtimeChannel(
 
 interface ConnectedRealtimeChannels {
   readonly user: RealtimeChannel;
-  readonly org: RealtimeChannel | null;
-}
-
-function capabilityAllowsSubscribe(
-  capability: string | null,
-  channelName: string,
-): boolean {
-  if (capability === null) {
-    return false;
-  }
-  const parsed = jsonParseOr<unknown>(capability, null);
-  if (typeof parsed !== "object" || parsed === null) {
-    return false;
-  }
-  const allowsSubscribe = (value: unknown): boolean => {
-    return (
-      Array.isArray(value) &&
-      (value.includes("subscribe") || value.includes("*"))
-    );
-  };
-  return (
-    allowsSubscribe(Reflect.get(parsed, channelName)) ||
-    allowsSubscribe(Reflect.get(parsed, "*"))
-  );
+  readonly org: RealtimeChannel;
 }
 
 function connectedRealtimeChannels(
   ably: Realtime,
   userId: string,
   orgId: string,
-  capability: string | null,
 ): ConnectedRealtimeChannels {
-  const orgChannelName = `org:${orgId}`;
   return {
     user: ably.channels.get(`user:${userId}`),
-    org: capabilityAllowsSubscribe(capability, orgChannelName)
-      ? ably.channels.get(orgChannelName)
-      : null,
+    org: ably.channels.get(`org:${orgId}`),
   };
 }
 
@@ -988,10 +960,10 @@ function observeRealtimeChannels(
     });
   };
   channels.user.on(handleStateChange);
-  channels.org?.on(handleStateChange);
+  channels.org.on(handleStateChange);
   return () => {
     channels.user.off(handleStateChange);
-    channels.org?.off(handleStateChange);
+    channels.org.off(handleStateChange);
   };
 }
 
@@ -1010,13 +982,10 @@ const connectRealtimeClient$ = command(
     signal.throwIfAborted();
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
-    let capability: string | null = null;
     const ably = new Realtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
-      authCallback: createAblyAuthCallback(client, signal, (nextCapability) => {
-        capability = nextCapability;
-      }),
+      authCallback: createAblyAuthCallback(client, signal),
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
@@ -1109,7 +1078,6 @@ const connectRealtimeClient$ = command(
       ably,
       identity.userId,
       identity.orgId,
-      capability,
     );
     const stopObservingChannels = observeRealtimeChannels(channels, () => {
       set(realtimeStateRevision$, (revision) => {
@@ -1246,9 +1214,7 @@ const foregroundRealtimeCatchUp$ = command(
         onRejection(
           Promise.all([
             session.channels.user.replace(connected.channels.user),
-            connected.channels.org
-              ? session.channels.org.replace(connected.channels.org)
-              : Promise.resolve(session.channels.org.suspend()),
+            session.channels.org.replace(connected.channels.org),
           ]),
           () => {
             connected.close();
