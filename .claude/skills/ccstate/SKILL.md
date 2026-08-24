@@ -751,7 +751,7 @@ Each factory call returns fresh `state()`/`computed()`/`command()` instances, so
 
 ```typescript
 // chat-message.ts
-const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+const internalLocalMessages$ = state<ChatEvent[]>([]);
 export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
@@ -810,7 +810,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef } from "../utils.ts";
 
 export interface ChatThreadSignals {
-  messages$: Computed<Promise<ZeroChatMessage[]>>;
+  messages$: Computed<Promise<ChatEvent[]>>;
   allFinished$: Computed<Promise<boolean>>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -822,7 +822,7 @@ export interface ChatThreadSignals {
 
 ```typescript
 function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
-  const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+  const internalLocalMessages$ = state<ChatEvent[]>([]);
 
   const messages$ = computed(async (get) => {
     const serverMsgs = (await get(threadData$))?.chatMessages ?? [];
