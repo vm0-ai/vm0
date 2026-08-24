@@ -342,6 +342,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_launch_source: SessionHistoryLaunchSource,
+    claude_append_system_prompt_file: Cow<'a, str>,
     pi_session_id: Cow<'a, str>,
     pi_launch_config: Cow<'a, str>,
     pi_launch_payload_file: Cow<'a, str>,
@@ -420,6 +421,9 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_launch_source: SessionHistoryLaunchSource::for_config(config),
+            claude_append_system_prompt_file: Cow::Borrowed(
+                paths.claude_append_system_prompt_file(),
+            ),
             pi_session_id: Cow::Borrowed(&config.pi_session_id),
             pi_launch_config: Cow::Borrowed(&config.pi_launch_config),
             pi_launch_payload_file: Cow::Borrowed(paths.pi_launch_payload_file()),
@@ -528,6 +532,19 @@ fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), Ag
     let path = runtime.pi_launch_payload_file.as_ref();
     paths::ensure_parent_dir(path)?;
     paths::write_private(path, serde_json::to_vec(&payload)?)?;
+    Ok(())
+}
+
+fn write_claude_append_system_prompt_file(
+    runtime: &CliRuntimeConfig<'_>,
+) -> Result<(), AgentError> {
+    if runtime.append_system_prompt.is_empty() {
+        return Ok(());
+    }
+
+    let path = runtime.claude_append_system_prompt_file.as_ref();
+    paths::ensure_parent_dir(path)?;
+    paths::write_private(path, runtime.append_system_prompt.as_bytes())?;
     Ok(())
 }
 
@@ -944,6 +961,10 @@ async fn execute_cli_inner(
         "Starting {} execution...",
         runtime.framework.agent_type()
     );
+
+    if matches!(runtime.framework, env::Framework::ClaudeCode) {
+        write_claude_append_system_prompt_file(runtime)?;
+    }
 
     let cmd = if matches!(runtime.framework, env::Framework::Pi) {
         build_pi_command_for_runtime(runtime)?
@@ -2111,6 +2132,7 @@ mod tests {
                 },
                 env::Framework::Pi => SessionHistoryLaunchSource::Pi,
             },
+            claude_append_system_prompt_file: Cow::Borrowed("/tmp/claude-append-system-prompt"),
             pi_session_id: Cow::Borrowed(""),
             pi_launch_config: Cow::Borrowed(""),
             pi_launch_payload_file: Cow::Borrowed("/tmp/pi-launch-payload/payload.json"),

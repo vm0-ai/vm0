@@ -44,6 +44,9 @@
 //!                               happy path
 //!   @write-env-json:<path>    - Write current process env as JSON to path,
 //!                               emit result, and exit(0)
+//!   @append-prompt-transport:<json>
+//!                             - Capture argv and verify file-backed appended
+//!                               prompt transport plus broad pkill isolation
 //!   @parallel-shell-tool-oom  - Run two Bash tools concurrently and verify
 //!                               a group OOM leaves the unrelated tool alive
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
