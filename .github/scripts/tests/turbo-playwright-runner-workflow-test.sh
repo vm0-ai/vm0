@@ -81,7 +81,6 @@ account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
 pnpm_setup_action =
   "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86"
 pnpm_version = "10.33.4"
-pnpm_setup_steps = {}
 {
   "runner E2E preparation" => account_prepare,
   "runner E2E shards" => runner,
@@ -114,7 +113,6 @@ pnpm_setup_steps = {}
       "cd e2e && pnpm install --frozen-lockfile"
     raise "#{job_name} must keep the frozen E2E dependency install"
   end
-  pnpm_setup_steps[job_name] = pnpm_setup_step
 end
 
 playwright_step_names = playwright.fetch("steps").map { |step| step["name"] }
@@ -616,7 +614,9 @@ unless retain_step &&
   raise "failed runner work must retain reusable accounts explicitly"
 end
 
-cleanup_pnpm_setup_step = pnpm_setup_steps.fetch("runner E2E cleanup")
+cleanup_pnpm_setup_step = cleanup_steps.find do |step|
+  step["uses"] == pnpm_setup_action
+end
 cleanup_node_setup_step = cleanup_steps.find do |step|
   step.fetch("uses", "").start_with?("actions/setup-node@")
 end
