@@ -308,13 +308,6 @@ describe("GET /api/test/teams-state", () => {
       name: "e2e-teams-agent",
       orgId: fixture.orgId,
     });
-    expect(body.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-teams-agent",
-    });
-    expect(body.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
-    });
   });
 });
 

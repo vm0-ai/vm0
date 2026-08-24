@@ -1497,7 +1497,7 @@ async function persistAgentPhoneChatMessage(
     conversationId: args.event.conversationId,
     userId: args.userLink.userId,
     orgId: args.userLink.orgId,
-    agentComposeId: args.agent.composeId,
+    agentId: args.agent.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
     serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,

@@ -153,6 +153,10 @@ function registerCleanup(
 describe("GET /api/billing/usage-pack-credits", () => {
   it("keeps member usage pack credits behind UsagePackPlans", async () => {
     const actor = fixture();
+    registerCleanup(actor);
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
     authenticate(actor);
 
     const response = await accept(

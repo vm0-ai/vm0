@@ -89,7 +89,7 @@ const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
 const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
 const TEAMS_AGENT_PICKER_ACTION = "switch_agent";
 const TEAMS_MODEL_PICKER_ACTION = "switch_model";
-const TEAMS_AGENT_PICKER_INPUT_ID = "selectedComposeId";
+const TEAMS_AGENT_PICKER_INPUT_ID = "selectedAgentId";
 const TEAMS_MODEL_PICKER_INPUT_ID = "selectedModel";
 const TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
@@ -855,7 +855,7 @@ async function getVisibleAgentPickerOptions(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly defaultComposeId: string | null;
+  readonly defaultAgentId: string | null;
 }): Promise<readonly TeamsAgentPickerOption[]> {
   const rows = await args.db
     .select({
@@ -874,7 +874,7 @@ async function getVisibleAgentPickerOptions(args: {
 
   return rows
     .filter((agent) => {
-      return agent.composeId !== args.defaultComposeId;
+      return agent.composeId !== args.defaultAgentId;
     })
     .slice(0, TEAMS_AGENT_PICKER_MAX_OPTIONS);
 }
@@ -901,13 +901,13 @@ async function resolveEffectiveCompose(args: {
     }
   }
 
-  const defaultComposeId = await resolveDefaultComposeId(args.db, args.orgId);
-  if (!defaultComposeId) {
+  const defaultAgentId = await resolveDefaultComposeId(args.db, args.orgId);
+  if (!defaultAgentId) {
     return { status: "not_configured" };
   }
   const configuredDefaultAgent = await getWorkspaceAgent(
     args.db,
-    defaultComposeId,
+    defaultAgentId,
     args.orgId,
   );
   if (!configuredDefaultAgent) {
@@ -915,7 +915,7 @@ async function resolveEffectiveCompose(args: {
   }
   const visibleDefaultAgent = await getVisibleWorkspaceAgent({
     db: args.db,
-    composeId: defaultComposeId,
+    composeId: defaultAgentId,
     orgId: args.orgId,
     userId: args.userId,
   });
@@ -924,7 +924,7 @@ async function resolveEffectiveCompose(args: {
   }
   return {
     status: "resolved",
-    composeId: defaultComposeId,
+    composeId: defaultAgentId,
     agent: visibleDefaultAgent,
   };
 }
@@ -1662,7 +1662,7 @@ async function persistTeamsChatMessage(
     threadId,
     userId: args.connection.userId,
     orgId: args.installation.orgId,
-    agentComposeId: args.composeId,
+    agentId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
     serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
@@ -1987,7 +1987,7 @@ const connectedCommandBeforeCompose$ = command(
         return disconnectedNotice();
       }
       case "switch": {
-        const defaultComposeId = await resolveDefaultComposeId(
+        const defaultAgentId = await resolveDefaultComposeId(
           args.db,
           args.installation.orgId,
         );
@@ -1996,13 +1996,13 @@ const connectedCommandBeforeCompose$ = command(
           db: args.db,
           orgId: args.installation.orgId,
           userId: args.connection.userId,
-          defaultComposeId,
+          defaultAgentId,
         });
         signal.throwIfAborted();
-        const visibleDefaultAgent = defaultComposeId
+        const visibleDefaultAgent = defaultAgentId
           ? await getVisibleWorkspaceAgent({
               db: args.db,
-              composeId: defaultComposeId,
+              composeId: defaultAgentId,
               orgId: args.installation.orgId,
               userId: args.connection.userId,
             })
@@ -2095,15 +2095,15 @@ const connectedTeamsCardAction$ = command(
       }
 
       if (selected === TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE) {
-        const defaultComposeId = await resolveDefaultComposeId(
+        const defaultAgentId = await resolveDefaultComposeId(
           args.db,
           args.installation.orgId,
         );
         signal.throwIfAborted();
-        const visibleDefaultAgent = defaultComposeId
+        const visibleDefaultAgent = defaultAgentId
           ? await getVisibleWorkspaceAgent({
               db: args.db,
-              composeId: defaultComposeId,
+              composeId: defaultAgentId,
               orgId: args.installation.orgId,
               userId: args.connection.userId,
             })

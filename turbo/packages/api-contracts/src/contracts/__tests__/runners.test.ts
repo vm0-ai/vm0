@@ -125,24 +125,7 @@ describe("runner claim response contract", () => {
       reuseKey: "thread:00000000-0000-4000-8000-000000020986",
       modelUsageProvider: "fixture-model",
     });
-    expect(context).not.toHaveProperty("agentComposeVersionId");
     expect(context).not.toHaveProperty("experimentalProfile");
-  });
-
-  it("normalizes the retired version field out of queued contexts", () => {
-    const context = compatibleStoredExecutionContextSchema.parse({
-      storageMounts: [],
-      connectorRuntimeTargets: [],
-      environment: null,
-      secretValueEnvironmentKeys: null,
-      resumeSession: null,
-      encryptedSecrets: null,
-      cliAgentType: "claude-code",
-      agentComposeVersionId:
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    });
-
-    expect(context).not.toHaveProperty("agentComposeVersionId");
   });
 
   it("does not expose the API-only connector permission baseline", () => {

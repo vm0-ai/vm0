@@ -357,7 +357,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -366,7 +365,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: mentionedAgentAvatarUrl,
-        headVersionId: "version_2",
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
@@ -463,7 +461,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -472,7 +469,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: sourceAgentAvatarUrl,
-        headVersionId: "version_2",
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
@@ -545,7 +541,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -554,7 +549,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: "https://example.com/source-agent-avatar.png",
-        headVersionId: "version_2",
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
@@ -636,7 +630,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
       {
@@ -645,7 +638,6 @@ describe("user messages", () => {
         description: null,
         sound: null,
         avatarUrl: "https://example.com/source-agent-avatar.png",
-        headVersionId: "version_2",
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);

@@ -30,7 +30,7 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../../lib/time";
-import { userConfiguredAgentEnvironmentRequirements } from "./agent-compose-content";
+import { userConfiguredAgentEnvironmentRequirements } from "./agent-execution-config";
 import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
 

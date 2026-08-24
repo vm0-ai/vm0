@@ -182,9 +182,11 @@ function mockCatalogItem({
   });
 }
 
-async function openMakePage(): Promise<void> {
+async function openMakePage(
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding" });
+  detachedSetupPage({ context, path: "/onboarding", featureSwitches });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -1168,7 +1170,7 @@ describe("onboarding flow", () => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage();
+    await openMakePage({ [FeatureSwitchKey.UsagePackPlans]: false });
     chooseMakeOption("Video production");
 
     await expect(

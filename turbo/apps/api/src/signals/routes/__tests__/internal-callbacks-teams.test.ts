@@ -540,7 +540,7 @@ async function switchTeamsAgent(args: {
       entities: [],
       value: {
         zeroTeamsAction: "switch_agent",
-        selectedComposeId: args.agentId,
+        selectedAgentId: args.agentId,
       },
     }),
   });

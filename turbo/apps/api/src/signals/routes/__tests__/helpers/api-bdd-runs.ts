@@ -9,7 +9,6 @@ import {
 } from "@okouai/api-contracts/contracts/cli-auth";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
@@ -52,10 +51,11 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
-import { createHistoricalAgentComposeFixture } from "../../../../test-fixtures/historical-agent-composes";
 import {
+  createDirectAgentExecutionFixture,
   createDirectRunFixture,
   listAgentRunsFixture,
+  type DirectAgentExecutionConfig,
   type DirectRunFixtureRequest,
 } from "../../../../test-fixtures/agent-runs";
 import {
@@ -102,7 +102,6 @@ type RunnerConnectorRuntimeSyncRequest = z.input<
 >;
 type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
-type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof modelPoliciesMainContract.update)["body"]
 >;
@@ -761,33 +760,17 @@ export function createRunsApi(context: TestContext) {
       });
     },
 
-    /**
-     * Constructs legacy Compose/version content that the current Agent API
-     * cannot express. Tests needing only a current Agent use createAgent().
-     */
-    async createHistoricalCompose(
+    async createDirectAgent(
       actor: ApiTestUser,
-      content: ComposeContent,
-      options?: { readonly composeOnly?: boolean },
-    ): Promise<{
-      readonly composeId: string;
-      readonly name: string;
-      readonly versionId: string;
-    }> {
+      content: DirectAgentExecutionConfig,
+    ): Promise<{ readonly agentId: string; readonly name: string }> {
       if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
+        throw new Error("Direct Agent fixtures require an org-scoped actor");
       }
-      return await createHistoricalAgentComposeFixture({
-        actor: { userId: actor.userId, orgId: actor.orgId },
+      return await createDirectAgentExecutionFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
         content,
-        ...(options?.composeOnly === true
-          ? {}
-          : {
-              canonicalAgent: {
-                displayName: "Historical run fixture",
-                visibility: "private" as const,
-              },
-            }),
         signal: context.signal,
       });
     },

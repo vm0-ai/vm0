@@ -253,7 +253,7 @@ describe("okou web-search route", () => {
     const pricing = await setupConfiguredWebSearchPricing();
     configureProvider();
     const name = `web-search-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [name]: {
@@ -263,7 +263,7 @@ describe("okou web-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "Find current public information",
     });
     const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
