@@ -5,8 +5,11 @@ mod common;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
+const AGENT_LOG_WARNING: &str = "Agent log write failed; continuing without local transcript";
+const FILE_SIZE_LIMIT: usize = 4 * 1024;
+
 #[tokio::test]
-async fn first_agent_log_write_failure_keeps_codex_run_successful()
+async fn buffered_agent_log_write_failure_keeps_codex_run_successful()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
@@ -18,7 +21,7 @@ async fn first_agent_log_write_failure_keeps_codex_run_successful()
             common::CodexAppServerEnvConfig {
                 run_id: "codex-agent-log-persistence-failure-test",
                 prompt: "fail the first local event write",
-                scenario: Some("runtime-turn-complete-without-thread-started"),
+                scenario: Some("runtime-event-flood"),
                 resume_session_id: None,
             },
         )?;
@@ -38,7 +41,9 @@ async fn first_agent_log_write_failure_keeps_codex_run_successful()
         ready = gate.wait_until_ready(Duration::from_secs(5)) => ready?,
     }
 
-    let limit_guard = common::set_soft_file_size_limit(0)?;
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log = common::SystemLogOverrideGuard::set(&system_log_path);
+    let limit_guard = common::set_soft_file_size_limit(u64::try_from(FILE_SIZE_LIMIT)?)?;
     gate.release()?;
     let outcome = tokio::time::timeout(Duration::from_secs(5), &mut execution)
         .await
@@ -49,7 +54,12 @@ async fn first_agent_log_write_failure_keeps_codex_run_successful()
     assert_eq!(execution.exit_code, common::CLEAN_EXIT);
     assert!(execution.control_error.is_none());
     assert!(execution.cli_termination.is_none());
-    assert_eq!(std::fs::metadata(runtime.paths.agent_log_file())?.len(), 0);
+    assert_eq!(
+        std::fs::metadata(runtime.paths.agent_log_file())?.len(),
+        u64::try_from(FILE_SIZE_LIMIT)?
+    );
+    let system_log = std::fs::read_to_string(system_log_path)?;
+    assert_eq!(system_log.matches(AGENT_LOG_WARNING).count(), 1);
 
     Ok(())
 }

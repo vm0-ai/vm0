@@ -71,12 +71,13 @@ use std::time::{Duration, Instant};
 use termination::{
     CliTerminationRuntime, ControlTerminationLog, PostResultCleanupPolicy, TerminationReason,
 };
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::oneshot;
 use tokio::time::Sleep;
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const AGENT_LOG_BUFFER_BYTES: usize = 8 * 1024;
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
@@ -616,14 +617,17 @@ enum ParsedEventAction {
 }
 
 struct BestEffortAgentLog {
-    file: Option<tokio::fs::File>,
+    file: Option<BufWriter<tokio::fs::File>>,
 }
 
 impl BestEffortAgentLog {
     fn open(path: &str) -> Self {
         match guest_contracts::runtime_paths::create_private(path) {
             Ok(file) => Self {
-                file: Some(tokio::fs::File::from_std(file)),
+                file: Some(BufWriter::with_capacity(
+                    AGENT_LOG_BUFFER_BYTES,
+                    tokio::fs::File::from_std(file),
+                )),
             },
             Err(error) => {
                 Self::warn_failure("open", &error);
