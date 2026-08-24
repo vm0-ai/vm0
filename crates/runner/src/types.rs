@@ -139,26 +139,16 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-    /// Schema-v2 Pi launch config marker. Runtime resources are discovered from
-    /// Pi's canonical filesystem locations by the official loader.
+    /// Raw Pi launch config retained so additive API fields survive forwarding
+    /// through a draining older runner.
     #[serde(default)]
     pub pi_launch_config: Option<serde_json::Value>,
-    /// Non-secret model metadata for the Pi Sandbox runtime.
+    /// Raw non-secret Pi model config retained for the same rollout boundary.
     #[serde(default)]
-    pub pi_model_config: Option<PiModelConfig>,
+    pub pi_model_config: Option<serde_json::Value>,
     /// Chat Thread id used as Pi's official JSONL session id.
     #[serde(default)]
     pub pi_session_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PiModelConfig {
-    pub provider: String,
-    pub base_url: String,
-    pub model: String,
-    pub api_key_env: String,
-    pub credential_secret_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1874,7 +1864,7 @@ mod tests {
             context
                 .pi_model_config
                 .as_ref()
-                .map(|config| config.model.as_str()),
+                .and_then(|config| config["model"].as_str()),
             Some("deepseek-v4-flash")
         );
     }
