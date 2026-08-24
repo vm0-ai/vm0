@@ -25,6 +25,7 @@ const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_re
 const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
+const TRANSCRIPT_FENCE_PADDING_BYTES: usize = 16 * 1024;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const TOOL_OOM_PARENT_HEADROOM_BYTES: u64 = 192 * 1024 * 1024;
 const TOOL_OOM_READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -165,9 +166,18 @@ fn emit_termination_ready_fence() {
 }
 
 fn emit_stream_event_fence(event_type: &str) {
+    // These mock-only events are consumption fences for integration tests.
+    // Keep each record larger than guest-agent's transcript buffer so seeing
+    // the marker on disk proves that all preceding events were ingested.
     println!(
         "{}",
-        json!({"type": "stream_event", "event": {"type": event_type}})
+        json!({
+            "type": "stream_event",
+            "event": {
+                "type": event_type,
+                "padding": "x".repeat(TRANSCRIPT_FENCE_PADDING_BYTES),
+            }
+        })
     );
     let _ = std::io::stdout().flush();
 }
