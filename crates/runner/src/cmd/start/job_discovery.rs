@@ -1348,13 +1348,23 @@ async fn rollback_exact_speculation_outcome(
                     destroy_job,
                     reason,
                     error,
+                    expected_capacity_rejection,
                 } => {
-                    warn!(
-                        run_id = %run_id,
-                        reason,
-                        error,
-                        "speculative exact-reuse rollback could not restore idle ownership"
-                    );
+                    if expected_capacity_rejection {
+                        info!(
+                            run_id = %run_id,
+                            reason,
+                            error,
+                            "speculative exact-reuse rollback rejected by idle capacity admission"
+                        );
+                    } else {
+                        warn!(
+                            run_id = %run_id,
+                            reason,
+                            error,
+                            "speculative exact-reuse rollback could not restore idle ownership"
+                        );
+                    }
                     Some(destroy_job)
                 }
             }
