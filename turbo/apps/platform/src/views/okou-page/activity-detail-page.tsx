@@ -6,6 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import type { ReactNode } from "react";
 import { Search, Loader2, Download, ChartLine } from "lucide-react";
 import {
   Button,
@@ -67,7 +68,11 @@ import {
 } from "../../signals/activity-page/activity-network-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { setActivityDetailScrollContainer$ } from "../../signals/activity-page/activity-detail-scroll.ts";
-import { ContextContent } from "./components/context-content.tsx";
+import {
+  ContextContent,
+  KeyValueTable,
+  SectionHeader,
+} from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/no-permission-illustration.tsx";
@@ -571,17 +576,44 @@ function ActivityStepsContent({
   );
 }
 
-function ActivityContextTab({ detailId }: { detailId: string }) {
+function ActivityContextTab({ detail }: { detail: LogDetail }) {
   const { t } = useTranslation();
   const contextLoadable = useLastLoadable(zeroActivityContext$);
+  const modelRoute =
+    detail.modelRuntimeProvider && detail.modelRuntimeModel ? (
+      <section className="mb-6">
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.context.modelRoute;
+          })}
+        />
+        <KeyValueTable
+          data={{
+            [t(($) => {
+              return $.activity.context.selectedModel;
+            })]: detail.selectedModel ?? "—",
+            [t(($) => {
+              return $.activity.context.modelProvider;
+            })]: detail.modelProvider ?? "—",
+            [t(($) => {
+              return $.activity.context.runtimeProvider;
+            })]: detail.modelRuntimeProvider,
+            [t(($) => {
+              return $.activity.context.runtimeModel;
+            })]: detail.modelRuntimeModel,
+          }}
+        />
+      </section>
+    ) : null;
 
+  let contextContent: ReactNode;
   if (
     contextLoadable.state === "loading" ||
     contextLoadable.state === "hasError" ||
     (contextLoadable.state === "hasData" &&
-      contextLoadable.data?.runId !== detailId)
+      contextLoadable.data?.runId !== detail.id)
   ) {
-    return (
+    contextContent = (
       <div className="flex flex-col gap-2 py-4">
         {["prompt", "system-prompt", "environment"].map((section) => {
           return (
@@ -593,11 +625,11 @@ function ActivityContextTab({ detailId }: { detailId: string }) {
         })}
       </div>
     );
-  }
-
-  const context = contextLoadable.data?.context ?? null;
-  if (!context) {
-    return (
+  } else {
+    const context = contextLoadable.data?.context ?? null;
+    contextContent = context ? (
+      <ContextContent context={context} />
+    ) : (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
@@ -613,7 +645,12 @@ function ActivityContextTab({ detailId }: { detailId: string }) {
     );
   }
 
-  return <ContextContent context={context} />;
+  return (
+    <>
+      {modelRoute}
+      {contextContent}
+    </>
+  );
 }
 
 type RunnerStartupPath = "sandbox" | "workspace" | "cold" | "unknown";
@@ -936,7 +973,7 @@ function ActivityTabContent({
     return <ActivityStepsContent detail={detail} features={features} />;
   }
   if (activeTab === "context") {
-    return <ActivityContextTab detailId={detail.id} />;
+    return <ActivityContextTab detail={detail} />;
   }
   if (activeTab === "runner") {
     return <ActivityRunnerTab detailId={detail.id} />;
@@ -1252,6 +1289,8 @@ function downloadJson(
       triggerSource: detail.triggerSource,
       modelProvider: detail.modelProvider,
       selectedModel: detail.selectedModel,
+      modelRuntimeProvider: detail.modelRuntimeProvider,
+      modelRuntimeModel: detail.modelRuntimeModel,
       framework: runtimeFramework ?? detail.framework,
       prompt: detail.prompt,
       appendSystemPrompt: detail.appendSystemPrompt,

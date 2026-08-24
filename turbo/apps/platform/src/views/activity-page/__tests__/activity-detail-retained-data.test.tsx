@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   runAgentEventsContract,
   runContextContract,
@@ -19,6 +20,9 @@ import type {
 const context = testContext();
 
 const RUN_ID = "a0000000-0000-4000-a000-000000000399";
+const SELECTED_MODEL = "gpt-5.6-luna";
+const RUNTIME_PROVIDER = "openrouter-codex";
+const RUNTIME_MODEL = "openai/gpt-5.6-luna";
 
 function logDetail(): LogDetail {
   return {
@@ -38,6 +42,16 @@ function logDetail(): LogDetail {
     startedAt: "2026-03-10T14:56:01Z",
     completedAt: "2026-03-10T14:56:10Z",
     artifact: { name: null, version: null },
+  };
+}
+
+function managedLogDetail(): LogDetail {
+  return {
+    ...logDetail(),
+    modelProvider: "vm0",
+    selectedModel: SELECTED_MODEL,
+    modelRuntimeProvider: RUNTIME_PROVIDER,
+    modelRuntimeModel: RUNTIME_MODEL,
   };
 }
 
@@ -103,7 +117,7 @@ describe("activity retained diagnostic data", () => {
   it("downloads events with metadata, context, and network data", async () => {
     const downloads = context.mocks.browser.blobDownload();
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, logDetail());
+      return respond(200, managedLogDetail());
     });
     context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
       return respond(200, {
@@ -153,6 +167,10 @@ describe("activity retained diagnostic data", () => {
       id: RUN_ID,
       displayName: "Checkout Export",
       framework: "codex",
+      modelProvider: "vm0",
+      selectedModel: SELECTED_MODEL,
+      modelRuntimeProvider: RUNTIME_PROVIDER,
+      modelRuntimeModel: RUNTIME_MODEL,
     });
     expect(downloaded.context).toMatchObject({ runId: RUN_ID });
     expect(downloaded.networkLogs).toStrictEqual([networkLog()]);
@@ -161,7 +179,7 @@ describe("activity retained diagnostic data", () => {
   it("keeps downloads available when context is unavailable", async () => {
     const downloads = context.mocks.browser.blobDownload();
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, logDetail());
+      return respond(200, managedLogDetail());
     });
     context.mocks.api(runContextContract.getContext, ({ respond }) => {
       return respond(404, {
@@ -172,12 +190,24 @@ describe("activity retained diagnostic data", () => {
       return respond(200, { networkLogs: [], hasMore: false });
     });
 
-    detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/activities/${RUN_ID}?tab=context`,
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    });
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Checkout Export" }),
       ).toBeInTheDocument();
     });
+    await expect(
+      screen.findByRole("heading", { name: "Model Route" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText(RUNTIME_PROVIDER)).toBeInTheDocument();
+    expect(screen.getByText(RUNTIME_MODEL)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Context not available" }),
+    ).toBeInTheDocument();
 
     click(screen.getByLabelText("Download raw data"));
     await waitFor(() => {

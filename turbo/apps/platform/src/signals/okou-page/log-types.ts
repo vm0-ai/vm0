@@ -102,6 +102,8 @@ export interface LogDetail {
   framework: string | null;
   modelProvider: string | null;
   selectedModel: string | null;
+  modelRuntimeProvider?: string | null;
+  modelRuntimeModel?: string | null;
   triggerSource: TriggerSource | null;
   status: LogStatus;
   prompt: string;

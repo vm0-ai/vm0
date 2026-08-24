@@ -120,6 +120,8 @@ const logDetailSchema = z.object({
   framework: z.string().nullable(),
   modelProvider: z.string().nullable(),
   selectedModel: z.string().nullable(),
+  modelRuntimeProvider: z.string().nullable().optional(),
+  modelRuntimeModel: z.string().nullable().optional(),
   triggerSource: triggerSourceSchema.nullable(),
   status: logStatusSchema,
   prompt: z.string(),
