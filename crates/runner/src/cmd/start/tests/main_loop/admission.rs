@@ -830,7 +830,7 @@ async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("finalizing fallback should activate fresh VM before destroy completes");
+        .expect("finalizing fallback should activate fresh sandbox before destroy completes");
     assert_eq!(budget.allocated(), (2, 4096, 1));
     assert_eq!(env.idle_pool.lock().await.len(), 0);
 
@@ -931,7 +931,7 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
     wait_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("finalizing fallback should start after the active VM becomes idle");
+        .expect("finalizing fallback should start after the active sandbox becomes idle");
     assert_eq!(budget.allocated(), (2, 4096, 1));
     assert_eq!(env.idle_pool.lock().await.len(), 0);
 
@@ -1181,7 +1181,7 @@ async fn ordinary_and_finalizing_pressure_admission_do_not_double_spend_idle_cap
     destroy_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("ordinary and finalizing admission should each retire one idle VM");
+        .expect("ordinary and finalizing admission should each retire one idle sandbox");
     wait_gate
         .wait_entered(2, Duration::from_secs(5))
         .await

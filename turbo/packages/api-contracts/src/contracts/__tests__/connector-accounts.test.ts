@@ -175,6 +175,22 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
+  it("requires an exact target for one account read", () => {
+    expect(
+      connectorAccountsContract.connection.query.parse({
+        kind: "builtin",
+        connectorSlug: "github",
+      }),
+    ).toStrictEqual({ kind: "builtin", connectorSlug: "github" });
+    expect(
+      connectorAccountsContract.connection.query.safeParse({
+        kind: "builtin",
+        connectorSlug: "github",
+        customConnectorId,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only an exact target for account deletion", () => {
     expect(
       connectorAccountsContract.delete.body.parse({

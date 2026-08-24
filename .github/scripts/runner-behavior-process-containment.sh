@@ -359,7 +359,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt "$VERIFY_PROMPT" \
-  || fail "Turn 2 failed; VM was not safely reused"
+  || fail "Turn 2 failed; sandbox was not safely reused"
 
 echo "--- Turn 3: prove healthy Turn 2 cleanup was also reusable ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
@@ -370,7 +370,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   || fail "Turn 3 failed; healthy cleanup did not re-enter reuse"
 
 echo "--- Pressure: sustain CPU saturation with live process control ---"
-# Continue the prepared conversation so the pressure turn must reuse the VM
+# Continue the prepared conversation so the pressure turn must reuse the sandbox
 # whose containment state and cleanup were verified above. Keep the provider
 # session independent so active input starts with a fresh stream.
 PRESSURE_CHAT_THREAD_ID="$CHAT_THREAD_ID"
@@ -553,7 +553,7 @@ workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
 control = guest_agent_control_cgroup()
 marker_dir = pathlib.Path("/tmp/vm0-process-containment")
 if not marker_dir.is_dir():
-    raise RuntimeError("memory pressure did not reuse the prepared VM")
+    raise RuntimeError("memory pressure did not reuse the prepared sandbox")
 guest_memory_bytes = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
 legacy_memory_max = guest_memory_bytes - CONTROL_MEMORY_MIN
 configured_memory_max = read_int(workload / "memory.max")
@@ -700,7 +700,7 @@ echo "--- Pressure: group-kill only the high-memory Bash tool ---"
 # The mock CLI launches two Bash children directly from the managed runtime.
 # The launcher places them in distinct tool cgroups before either shell runs.
 # One tool drives the existing workload limit to OOM while the other remains alive.
-# Use a fresh VM so the preceding extreme balloon-reclaim scenario cannot
+# Use a fresh sandbox so the preceding extreme balloon-reclaim scenario cannot
 # delay Guest Agent startup and obscure the tool-isolation assertion.
 MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 MEMORY_SESSION_ID="e2e-process-containment-memory"
@@ -730,13 +730,13 @@ sudo grep -E -q 'memory_oom_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
 sudo grep -E -q 'memory_oom_group_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
   || fail "memory-pressure diagnostics omitted the group OOM event"
 
-echo "--- Pressure: prove tool-group OOM preserved VM reuse ---"
+echo "--- Pressure: prove tool-group OOM preserved sandbox reuse ---"
 MEMORY_REUSE_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'true') \
-  || fail "memory-pressure recovery did not preserve safe VM reuse"
+  || fail "memory-pressure recovery did not preserve safe sandbox reuse"
 printf '%s\n' "$MEMORY_REUSE_RESULT"
 MEMORY_REUSE_RESULT_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_REUSE_RESULT")
 MEMORY_REUSE_RUN_ID=$(jq -r '.run_id // empty' <<<"$MEMORY_REUSE_RESULT_JSON")
@@ -818,13 +818,13 @@ sudo grep -F -q 'pid-pressure-complete children=' "$PID_STREAM_LOG" \
 sudo grep -E -q 'pids_max=[1-9][0-9]*' "$PID_STREAM_LOG" \
   || fail "PID-pressure diagnostics omitted the pids.max event"
 
-echo "--- Pressure: prove PID-exhaustion cleanup preserved VM reuse ---"
+echo "--- Pressure: prove PID-exhaustion cleanup preserved sandbox reuse ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$PID_CHAT_THREAD_ID" \
   --session-id "$PID_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test -f /tmp/vm0-process-containment/pid-pressure-vm' \
-  || fail "PID-pressure cleanup did not preserve safe VM reuse"
+  || fail "PID-pressure cleanup did not preserve safe sandbox reuse"
 
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"

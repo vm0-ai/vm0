@@ -2125,9 +2125,9 @@ describe("GET /api/integrations/telegram/auth-callback", () => {
   });
 });
 
-describe("GET /api/okou/integrations/telegram/download-file", () => {
+describe("GET /api/integrations/telegram/download-file", () => {
   const fixtures: TelegramFixture[] = [];
-  const downloadPath = "/api/okou/integrations/telegram/download-file";
+  const downloadPath = "/api/integrations/telegram/download-file";
 
   beforeEach(() => {
     configureOfficialBotEnv();

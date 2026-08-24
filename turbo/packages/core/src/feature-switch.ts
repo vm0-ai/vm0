@@ -373,6 +373,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
   },
+  [FeatureSwitchKey.ComposerImageAnnotation]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
+    enabled: false,
+    // Scoped to the maintainer rather than the whole staff org while the
+    // flatten and two-file send are still unexercised outside tests.
+    enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
+  },
   [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -384,6 +393,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Validate restored composer attachments against the current account, remove unavailable references, and show a warning.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.ComposerNoteEditableIsolation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the feedback note's wrapper elements outside the editable flow, with the note content opting back in as its own editing host, so WebKit's editing machinery can neither restructure the wrappers during an IME composition nor land the caret between them.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
@@ -469,7 +485,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple credential accounts per built-in or custom connector.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConcurrencyMemberUsage]: {
     maintainer: "ethan@vm0.ai",

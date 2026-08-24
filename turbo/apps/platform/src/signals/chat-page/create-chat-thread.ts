@@ -167,6 +167,7 @@ import {
 } from "./agent-reference-signals.ts";
 import { createConnectorCardSignalsRegistry } from "./connector-action-block.ts";
 import { createPermissionCardSignalsRegistry } from "./permission-card-signals.ts";
+import { createBankingCardSignalsRegistry } from "./banking-action-block.ts";
 import { createComputerUseAuthorizationCardSignalsRegistry } from "./computer-use-authorization-block.ts";
 import { createPlanUpgradeCardSignalsRegistry } from "./plan-upgrade-block.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
@@ -1780,6 +1781,9 @@ interface EventTreeRegistries {
   readonly permissionCardSignals: ReturnType<
     typeof createPermissionCardSignalsRegistry
   >;
+  readonly bankingCardSignals: ReturnType<
+    typeof createBankingCardSignalsRegistry
+  >;
   readonly computerUseAuthorizationCardSignals: ReturnType<
     typeof createComputerUseAuthorizationCardSignalsRegistry
   >;
@@ -1794,33 +1798,18 @@ interface EventTreeRegistries {
   readonly imageLoads: ImageLoadRegistry;
 }
 
-function createEventTreeSignals({
+function createCardRefRegistrar({
   chatActionContext,
   artifactCardSignals,
   connectorCardSignals,
   permissionCardSignals,
+  bankingCardSignals,
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
   mailDraftCardSignals,
   browserSessionSignals,
-  mermaidDiagrams,
-  imageLoads,
-}: EventTreeRegistries) {
-  interface EventTree {
-    readonly content: string;
-    readonly tree: Root;
-  }
-
-  const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
-  const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
-    const trees = new Map<string, Root>();
-    for (const [eventId, entry] of get(internalEventTrees$)) {
-      trees.set(eventId, entry.tree);
-    }
-    return trees;
-  });
-
-  const registerCardRef$ = command(
+}: EventTreeRegistries): Command<MarkdownCardRef, [CardDescriptorBlock]> {
+  return command(
     ({ set }, descriptor: CardDescriptorBlock): MarkdownCardRef => {
       switch (descriptor.type) {
         case "artifact": {
@@ -1843,6 +1832,12 @@ function createEventTreeSignals({
               permissionCardSignals.register$,
               descriptor.descriptor,
             ),
+          };
+        }
+        case "banking-action": {
+          return {
+            kind: descriptor.type,
+            signals: set(bankingCardSignals.register$, descriptor.descriptor),
           };
         }
         case "unavailable-action": {
@@ -1880,6 +1875,25 @@ function createEventTreeSignals({
       return exhaustive;
     },
   );
+}
+
+function createEventTreeSignals(registries: EventTreeRegistries) {
+  const { chatActionContext, mermaidDiagrams, imageLoads } = registries;
+  interface EventTree {
+    readonly content: string;
+    readonly tree: Root;
+  }
+
+  const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
+  const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
+    const trees = new Map<string, Root>();
+    for (const [eventId, entry] of get(internalEventTrees$)) {
+      trees.set(eventId, entry.tree);
+    }
+    return trees;
+  });
+
+  const registerCardRef$ = createCardRefRegistrar(registries);
 
   /**
    * Parses the markdown tree of every listed event that has none yet, or whose
@@ -1952,6 +1966,7 @@ function createPagedEventResources(
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const permissionCardSignals = createPermissionCardSignalsRegistry();
+  const bankingCardSignals = createBankingCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
     createComputerUseAuthorizationCardSignalsRegistry();
   const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
@@ -1979,6 +1994,7 @@ function createPagedEventResources(
     artifactCardSignals,
     connectorCardSignals,
     permissionCardSignals,
+    bankingCardSignals,
     computerUseAuthorizationCardSignals,
     planUpgradeCardSignals,
     mailDraftCardSignals,

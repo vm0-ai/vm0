@@ -220,7 +220,7 @@ fn production_env_script_remains_until_operation_cleanup() {
     assert_eq!(script_metadata.permissions().mode() & 0o777, 0o440);
     let script = fs::read_to_string(&script_path)
         .unwrap_or_else(|error| panic!("read active env script {script_path:?}: {error}"));
-    assert!(script.contains("export VM0_ENV_SCRIPT_READY='ready'"));
+    assert!(script.contains("export OKOU_TEST_ENV_SCRIPT_READY='ready'"));
 
     send_exec_cancel(&mut stream, 3);
     let result = read_message(&mut stream);
@@ -307,8 +307,8 @@ fn send_supervised_env_exec(stream: &mut UnixStream, sequence: u32) {
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
         timeout: ExecTimeoutPolicy::None,
-        command: "printf '%s' \"$VM0_ENV_SCRIPT_READY\"; sleep 60",
-        env: &[("VM0_ENV_SCRIPT_READY", "ready")],
+        command: "printf '%s' \"$OKOU_TEST_ENV_SCRIPT_READY\"; sleep 60",
+        env: &[("OKOU_TEST_ENV_SCRIPT_READY", "ready")],
         sudo: false,
         label: "production-env-script-cleanup",
         stdout: ExecOutputPolicy::Stream {

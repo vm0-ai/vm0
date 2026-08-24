@@ -489,6 +489,27 @@
       "zoomIn": "Vergrößern",
       "zoomOut": "Herauszoomen"
     },
+    "annotation": {
+      "attach": "Markierungen anhängen",
+      "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "open": "Markieren",
+      "redo": "Wiederholen",
+      "removeMark": "Markierung entfernen",
+      "subtitle_one": "{{count}} Markierung",
+      "subtitle_other": "{{count}} Markierungen",
+      "tools": {
+        "arrow": "Pfeil",
+        "box": "Rechteck",
+        "crop": "Zuschneiden",
+        "highlight": "Hervorheben",
+        "pen": "Zeichnen",
+        "redact": "Schwärzen",
+        "select": "Auswählen",
+        "text": "Text"
+      },
+      "undo": "Rückgängig"
+    },
     "attachments": {
       "cancelUpload": "Hochladen abbrechen {{filename}}",
       "download": "{{filename}} herunterladen",
@@ -1015,12 +1036,24 @@
       "signIn": "Anmelden",
       "signUp": "Registrieren"
     },
+    "homeLink": "Zur {{brandName}}-Startseite",
     "loading": "Authentifizierung wird geladen",
+    "theme": {
+      "darkEnabled": "Dunkles Design aktiviert",
+      "lightEnabled": "Helles Design aktiviert"
+    },
     "toggleTheme": "Design wechseln",
     "v2": {
-      "continueToSignIn": "Weiter zur Anmeldung",
-      "continueToSignUp": "Weiter zur Registrierung",
-      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+      "signIn": {
+        "action": "Aktuelle Anmeldung verwenden",
+        "description": "Die neue Anmeldeoberfläche ist noch nicht verfügbar.",
+        "title": "Bei {{brandName}} anmelden"
+      },
+      "signUp": {
+        "action": "Aktuelle Registrierung verwenden",
+        "description": "Die neue Registrierungsoberfläche ist noch nicht verfügbar.",
+        "title": "Ihr {{brandName}}-Konto erstellen"
+      }
     }
   },
   "authorization": {
@@ -1666,6 +1699,37 @@
       "weeklyAt": "Jede Woche um {{time}}",
       "weeklyOnAt": "Jede Woche am {{days}} um {{time}}"
     },
+    "banking": {
+      "accountFallback": "Bankkonto",
+      "actionFailed": "Die Banking-Aktion ist fehlgeschlagen",
+      "active_one": "Zugriff für {{count}} Konto aktiv",
+      "active_other": "Zugriff für {{count}} Konten aktiv",
+      "automationOff": "Schreibgeschützter Zugriff ist für Automatisierungsläufe nicht verfügbar.",
+      "cancel": "Abbrechen",
+      "change": "Ändern",
+      "connect": "Bank verbinden",
+      "continue": "Fortfahren",
+      "duration": "Zugriffsdauer",
+      "expiresAt": "Läuft am {{time}} ab",
+      "grant": "Zugriff gewähren",
+      "institutionFallback": "Finanzinstitut",
+      "loadFailed": "Banking-Zugriff konnte nicht geladen werden",
+      "noAccounts": "Keine aktiven Konten verfügbar. Verbinden Sie das Institut erneut oder reparieren Sie die Verbindung.",
+      "oneDay": "24 Stunden",
+      "oneHour": "1 Stunde",
+      "popupBlocked": "Erlauben Sie Pop-ups für Zero und versuchen Sie es erneut.",
+      "readOnly": "Konten, Salden und Transaktionen · schreibgeschützt",
+      "repair": "Reparieren",
+      "repairRequired": "{{institution}} muss repariert werden",
+      "retry": "Erneut versuchen",
+      "revoke": "Widerrufen",
+      "revokeConfirm": "Banking-Zugriff dieses Agenten widerrufen?",
+      "selectAccounts": "Konten auswählen",
+      "sevenDays": "7 Tage",
+      "thirtyDays": "30 Tage",
+      "title": "Banking-Zugriffsanfrage",
+      "waiting": "Warten auf Mastercard Data Connect. Schließen Sie den Vorgang dort ab und kehren Sie dann zum Chat zurück."
+    },
     "billing": {
       "addCreditsToContinue": "Fügen Sie Credits hinzu, um weiterhin mit {{assistantName}} zu chatten.",
       "askAdminCredits": "Bitten Sie einen Arbeitsbereichsadministrator, Credits hinzuzufügen, damit Sie weiterhin mit {{assistantName}} chatten können.",
@@ -2136,6 +2200,43 @@
       "search": "Finden Sie Agenten",
       "title": "Verwalten Sie den {{connector}}-Zugriff",
       "unnamedAgent": "Unbenannt"
+    },
+    "accounts": {
+      "accountName": "Kontoname",
+      "accountsUnavailable": "Konten sind für diesen Connector nicht verfügbar.",
+      "actions": "Kontoaktionen",
+      "add": "Hinzufügen",
+      "addAccount": "Konto hinzufügen",
+      "connected": "Verbunden",
+      "default": "Standard",
+      "deleteAccount": "Konto löschen",
+      "deleteDescription": "Threads, die dieses Konto verwenden, kehren zur Standardvererbung zurück.",
+      "deleteDescriptionWithCount": "{{value}} Threads kehren zur Standardvererbung zurück.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} löschen?",
+      "find": "Konten suchen",
+      "loading": "Konten werden geladen…",
+      "loadingMore": "Wird geladen…",
+      "loadMore": "Mehr laden",
+      "makeDefault": "Als Standard festlegen",
+      "manage": "Verwalten",
+      "managerTitle": "{{connector}}-Konten verwalten",
+      "noAccounts": "Keine Konten",
+      "noAccountsFound": "Keine Konten gefunden",
+      "reconnectRequired": "Erneute Verbindung erforderlich",
+      "rename": "Umbenennen",
+      "summaryMany": "{{value}} Konten",
+      "summaryMany_one": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} Konto",
+      "summaryOne_one": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Arbeitskonto"
     },
     "actions": {
       "apply": "Anwenden",

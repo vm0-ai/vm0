@@ -22,6 +22,8 @@ export const ROUTES = {
   ideas: "/ideas",
   connectors: "/connectors",
   computerUseAuthorize: "/computer-use/authorize/:requestToken",
+  bankingConnectReturn: "/banking/connect/return",
+  bankingConnectReturnResult: "/banking/connect/return/:bankingConnectStatus",
   feishuOAuthCallback: "/connectors/feishu/callback",
   connectorCallback: "/connectors/:connectorSlug/callback",
   connectorCallbackResult: "/connectors/:connectorSlug/callback/:status",

@@ -489,6 +489,27 @@
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out"
     },
+    "annotation": {
+      "attach": "Attach marks",
+      "draftOnly": "Marks stay in the draft — you can change them until you send",
+      "notePlaceholder": "Say what should change here",
+      "open": "Annotate",
+      "redo": "Redo",
+      "removeMark": "Remove mark",
+      "subtitle_one": "{{count}} mark",
+      "subtitle_other": "{{count}} marks",
+      "tools": {
+        "arrow": "Arrow",
+        "box": "Box",
+        "crop": "Crop",
+        "highlight": "Highlight",
+        "pen": "Draw",
+        "redact": "Redact",
+        "select": "Select",
+        "text": "Text"
+      },
+      "undo": "Undo"
+    },
     "attachments": {
       "cancelUpload": "Cancel upload {{filename}}",
       "download": "Download {{filename}}",
@@ -1015,12 +1036,24 @@
       "signIn": "Sign in",
       "signUp": "Sign up"
     },
+    "homeLink": "Go to {{brandName}} home",
     "loading": "Loading authentication",
+    "theme": {
+      "darkEnabled": "Dark theme enabled",
+      "lightEnabled": "Light theme enabled"
+    },
     "toggleTheme": "Toggle theme",
     "v2": {
-      "continueToSignIn": "Continue to sign in",
-      "continueToSignUp": "Continue to sign up",
-      "unavailable": "The new authentication experience is not ready yet."
+      "signIn": {
+        "action": "Use current sign-in",
+        "description": "The new sign-in experience is not ready yet.",
+        "title": "Sign in to {{brandName}}"
+      },
+      "signUp": {
+        "action": "Use current sign-up",
+        "description": "The new sign-up experience is not ready yet.",
+        "title": "Create your {{brandName}} account"
+      }
     }
   },
   "authorization": {
@@ -1666,6 +1699,37 @@
       "weeklyAt": "Every week at {{time}}",
       "weeklyOnAt": "Every week on {{days}} at {{time}}"
     },
+    "banking": {
+      "accountFallback": "Bank account",
+      "actionFailed": "Banking action failed",
+      "active_one": "Access active for {{count}} account",
+      "active_other": "Access active for {{count}} accounts",
+      "automationOff": "Read-only access is unavailable to automation runs.",
+      "cancel": "Cancel",
+      "change": "Change",
+      "connect": "Connect a bank",
+      "continue": "Continue",
+      "duration": "Access duration",
+      "expiresAt": "Expires {{time}}",
+      "grant": "Grant access",
+      "institutionFallback": "Bank institution",
+      "loadFailed": "Couldn't load banking access",
+      "noAccounts": "No healthy accounts are available. Reconnect or repair the institution first.",
+      "oneDay": "24 hours",
+      "oneHour": "1 hour",
+      "popupBlocked": "Allow popups for Zero, then try again.",
+      "readOnly": "Accounts, balances, and transactions · read only",
+      "repair": "Repair",
+      "repairRequired": "{{institution}} needs repair",
+      "retry": "Retry",
+      "revoke": "Revoke",
+      "revokeConfirm": "Revoke this Agent's banking access?",
+      "selectAccounts": "Select accounts",
+      "sevenDays": "7 days",
+      "thirtyDays": "30 days",
+      "title": "Banking access request",
+      "waiting": "Waiting for Mastercard Data Connect. Finish there, then return to Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Add credits to keep chatting with {{assistantName}}.",
       "askAdminCredits": "Ask a workspace admin to add credits so you can keep chatting with {{assistantName}}.",
@@ -2136,6 +2200,35 @@
       "search": "Find agents",
       "title": "Manage {{connector}} access",
       "unnamedAgent": "Unnamed"
+    },
+    "accounts": {
+      "accountName": "Account name",
+      "accountsUnavailable": "Accounts are unavailable for this connector.",
+      "actions": "Account actions",
+      "add": "Add",
+      "addAccount": "Add account",
+      "connected": "Connected",
+      "default": "Default",
+      "deleteAccount": "Delete account",
+      "deleteDescription": "Threads using this account will return to default inheritance.",
+      "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
+      "deleteTitle": "Delete {{account}}?",
+      "find": "Find accounts",
+      "loading": "Loading accounts…",
+      "loadingMore": "Loading…",
+      "loadMore": "Load more",
+      "makeDefault": "Make default",
+      "manage": "Manage",
+      "managerTitle": "Manage {{connector}} accounts",
+      "noAccounts": "No accounts",
+      "noAccountsFound": "No accounts found",
+      "reconnectRequired": "Reconnect required",
+      "rename": "Rename",
+      "summaryMany": "{{value}} accounts",
+      "summaryOne": "{{value}} account",
+      "summaryWithAttention": "{{summary}} · {{value}} need attention",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Work account"
     },
     "actions": {
       "apply": "Apply",

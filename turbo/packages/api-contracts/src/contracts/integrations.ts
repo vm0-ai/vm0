@@ -583,6 +583,37 @@ export type IntegrationsTelegramBotListContract =
   typeof integrationsTelegramBotListContract;
 
 /**
+ * Integration Slack file download contract.
+ * Requires `slack:write` because Slack's file APIs are reached through the
+ * org bot token that also posts messages.
+ */
+export const integrationsSlackDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/integrations/slack/download-file",
+    headers: authHeadersSchema,
+    query: z.object({
+      file_id: z.string().optional(),
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download a Slack file via org bot token",
+  },
+});
+
+export type IntegrationsSlackDownloadFileContract =
+  typeof integrationsSlackDownloadFileContract;
+
+/**
  * Integration Slack file upload — init contract
  * POST /api/integrations/slack/upload-file/init
  *
@@ -700,6 +731,39 @@ export const integrationsSlackUploadMaterializeContract = c.router({
 });
 
 /**
+ * Integration Telegram file download contract.
+ * Requires `telegram:read`: the bot token it resolves belongs to the org
+ * installation named by `bot_id`.
+ */
+export const integrationsTelegramDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/integrations/telegram/download-file",
+    headers: authHeadersSchema,
+    query: z.object({
+      file_id: z.string().min(1),
+      bot_id: z.string().min(1),
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download a Telegram file via org bot token",
+  },
+});
+
+export type IntegrationsTelegramDownloadFileContract =
+  typeof integrationsTelegramDownloadFileContract;
+
+/**
  * Integration Telegram file upload — init contract
  * POST /api/integrations/telegram/upload-file/init
  *
@@ -747,6 +811,38 @@ export const integrationsTelegramUploadInitContract = c.router({
     summary: "Get a pre-signed upload URL for Telegram file delivery",
   },
 });
+
+/**
+ * Integration Microsoft Teams file download contract.
+ * Requires `teams:write` because Teams currently uses one capability for
+ * bot-backed messaging and file access.
+ */
+export const integrationsTeamsDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/integrations/teams/download-file",
+    headers: authHeadersSchema,
+    query: z.object({
+      file_id: z.string().optional(),
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download a Microsoft Teams file from a signed file id",
+  },
+});
+
+export type IntegrationsTeamsDownloadFileContract =
+  typeof integrationsTeamsDownloadFileContract;
 
 /**
  * Integration Microsoft Teams file upload — init contract
@@ -899,6 +995,39 @@ export const integrationsTeamsUploadCompleteContract = c.router({
       "Finalize Microsoft Teams file upload and send it to a conversation",
   },
 });
+
+/**
+ * Integration GitHub file download contract.
+ * Requires `github:read`: the URL is fetched anonymously, so the capability
+ * gates who may ask the API to reach a GitHub attachment host at all.
+ */
+export const integrationsGithubDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/integrations/github/download-file",
+    headers: authHeadersSchema,
+    query: z.object({
+      url: z.string().url("url must be a GitHub file URL"),
+      filename: z.string().min(1).max(255).optional(),
+    }),
+    responses: {
+      200: c.otherResponse({
+        contentType: "application/octet-stream",
+        body: z.unknown(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download a GitHub context file URL",
+  },
+});
+
+export type IntegrationsGithubDownloadFileContract =
+  typeof integrationsGithubDownloadFileContract;
 
 /**
  * Integration GitHub file upload — init contract

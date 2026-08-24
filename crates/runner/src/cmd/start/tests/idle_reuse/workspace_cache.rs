@@ -503,7 +503,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert_eq!(
         env.idle_pool.lock().await.len(),
         0,
-        "soft-drained parking gate should prevent VM parking",
+        "soft-drained parking gate should prevent sandbox parking",
     );
 
     assert!(
@@ -566,7 +566,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates() {
+async fn workspace_promotion_mismatch_destroys_stale_idle_sandbox_and_fresh_creates() {
     let (mut config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -622,7 +622,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert!(
         workspace_cache.held_workspace_states().await.is_empty(),
-        "mismatched stale idle VM must be destroyed without publishing its workspace image"
+        "mismatched stale idle sandbox must be destroyed without publishing its workspace image"
     );
 
     shutdown(&env, run_handle).await;
