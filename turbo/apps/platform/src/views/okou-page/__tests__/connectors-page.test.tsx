@@ -1685,6 +1685,7 @@ describe("connectors page", () => {
       createdAt: connector.createdAt,
       updatedAt: connector.updatedAt,
     };
+    const renamedDisplayNames: (string | null)[] = [];
     context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
       return respond(200, {
         summaries: account
@@ -1713,6 +1714,7 @@ describe("connectors page", () => {
             error: { message: "Account not found", code: "NOT_FOUND" },
           });
         }
+        renamedDisplayNames.push(body.displayName);
         account = { ...account, displayName: body.displayName };
         return respond(200, account);
       },
@@ -1760,6 +1762,15 @@ describe("connectors page", () => {
       expect(within(dialog).getByText("Personal")).toBeInTheDocument();
     });
     click(within(dialog).getByLabelText("Account actions"));
+    click(menuItemByText("Rename"));
+    await fill(within(dialog).getByLabelText("Account name"), " ");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+    await waitFor(() => {
+      expect(renamedDisplayNames).toStrictEqual(["Personal", null]);
+      expect(within(dialog).getAllByText("octocat")).toHaveLength(2);
+    });
+    click(within(dialog).getByLabelText("Account actions"));
     click(menuItemByText("Delete"));
     await waitFor(() => {
       expect(
@@ -1776,17 +1787,21 @@ describe("connectors page", () => {
     });
   });
 
-  it("confirms a non-default OAuth reconnect through the exact account read", async () => {
+  it("confirms a non-default OAuth reconnect independently of the default projection", async () => {
     const [defaultConnector] = mockConnectors([
-      { connectorSlug: "openai", externalUsername: "work" },
+      {
+        connectorSlug: "stripe",
+        authMethod: "api-token",
+        externalUsername: "work",
+      },
     ]);
     if (!defaultConnector) {
-      throw new Error("Expected OpenAI fixture connector");
+      throw new Error("Expected Stripe fixture connector");
     }
     const defaultAccount = {
       id: defaultConnector.id,
-      target: { kind: "builtin" as const, connectorSlug: "openai" },
-      authMethod: "oauth",
+      target: { kind: "builtin" as const, connectorSlug: "stripe" },
+      authMethod: "api-token",
       displayName: "Work",
       isDefault: true,
       externalId: null,
@@ -1802,6 +1817,7 @@ describe("connectors page", () => {
     let personalAccount: ConnectorAccountConnection = {
       ...defaultAccount,
       id: crypto.randomUUID(),
+      authMethod: "oauth",
       displayName: "Personal",
       isDefault: false,
       externalUsername: "personal",
@@ -1841,7 +1857,7 @@ describe("connectors page", () => {
         accountListRequestCount += 1;
         expect(query).toMatchObject({
           kind: "builtin",
-          connectorSlug: "openai",
+          connectorSlug: "stripe",
         });
         return respond(200, {
           connections: [defaultAccount, personalAccount],
@@ -1855,7 +1871,7 @@ describe("connectors page", () => {
       ({ body, respond }) => {
         submittedAccount = body.account;
         return respond(200, {
-          authorizationUrl: "https://oauth.test/openai/authorize",
+          authorizationUrl: "https://oauth.test/stripe/authorize",
         });
       },
     );
@@ -1868,11 +1884,11 @@ describe("connectors page", () => {
     });
 
     const card = await waitFor(() => {
-      return connectorCardByLabel("OpenAI");
+      return connectorCardByLabel("Stripe");
     });
     click(buttonByText("Manage", card));
     const manager = await screen.findByRole("dialog", {
-      name: "Manage OpenAI accounts",
+      name: "Manage Stripe accounts",
     });
     const actions = await waitFor(() => {
       expect(accountListRequestCount).toBeGreaterThan(0);
@@ -1886,12 +1902,12 @@ describe("connectors page", () => {
     click(menuItemByText("Reconnect"));
 
     const connectDialog = await screen.findByRole("dialog", {
-      name: "OpenAI",
+      name: "Stripe",
     });
     click(buttonByText("Reconnect", connectDialog));
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "https://oauth.test/openai/authorize",
+        "https://oauth.test/stripe/authorize",
       );
       expect(
         context.mocks.ably.hasSubscription("connector:changed"),
@@ -1904,11 +1920,11 @@ describe("connectors page", () => {
       updatedAt: "2026-01-01T00:00:01.000Z",
     };
     context.mocks.ably.trigger("connector:changed", {
-      connectorSlug: "openai",
+      connectorSlug: "stripe",
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "OpenAI" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Stripe" })).toBeNull();
     });
     expect(submittedAccount).toStrictEqual({
       intent: "reconnect",

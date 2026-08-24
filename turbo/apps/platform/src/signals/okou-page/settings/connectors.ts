@@ -2145,6 +2145,21 @@ function createConnectorOAuthAuthCodeChangedCommand(
   });
 }
 
+const defaultConnectorProjectionMatchesAuthMethod$ = command(
+  async (
+    { get },
+    connectorSlug: ConnectorSlug,
+    authMethod: ConnectorAuthMethodId,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const { connectors } = await get(connectors$);
+    signal.throwIfAborted();
+    return connectors.some((connector) => {
+      return connectorMatchesAuthMethod(connector, connectorSlug, authMethod);
+    });
+  },
+);
+
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get, set },
@@ -2294,6 +2309,7 @@ export const connectConnectorOAuthAuthCode$ = command(
     }
 
     const flow = createConnectorConnectFlowState(connectorSlug);
+    const account = options.account ?? singleAccountConnectorMutation;
     set(internalConnectFlowState$, flow);
     set(internalPollingOAuthAuthCodeConnectorSlug$, connectorSlug);
 
@@ -2307,7 +2323,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           connectorSlug,
           method.id,
           options.agentId,
-          options.account ?? singleAccountConnectorMutation,
+          account,
         );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
@@ -2317,7 +2333,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             connectorLabel: options.connectorLabel ?? connectorSlug,
             connectorIcon: options.connectorIcon,
             agentId: options.agentId,
-            account: options.account ?? singleAccountConnectorMutation,
+            account,
             authorizeAgent: shouldAuthorizeAgent(options),
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
@@ -2378,16 +2394,20 @@ export const connectConnectorOAuthAuthCode$ = command(
           }
         }
 
-        // Refresh the connectors$ cache so UI picks up the latest state.
+        // Refresh the default projection for the rest of the UI. Account-aware
+        // completion was already proven by the summary or exact account read;
+        // a non-default account may use a different auth method than the
+        // default projection and must not be rejected by that projection.
         set(reloadConnectors$);
-        const { connectors } = await get(connectors$);
-        signal.throwIfAborted();
-
-        // Mark as optimistically connected before clearing polling so the UI
-        // transitions directly from "Connecting…" to "Connected" without flash.
-        const isConnected = connectors.some((c) => {
-          return connectorMatchesAuthMethod(c, connectorSlug, method.id);
-        });
+        let isConnected = true;
+        if (account.intent === "single-account") {
+          isConnected = await set(
+            defaultConnectorProjectionMatchesAuthMethod$,
+            connectorSlug,
+            method.id,
+            signal,
+          );
+        }
         if (isConnected) {
           await set(
             finishConnectorConnection$,

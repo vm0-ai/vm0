@@ -250,17 +250,14 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
   const draft = useGet(connectorAccountRenameDraft$);
   const setValue = useSet(setConnectorAccountRenameValue$);
   const clear = useSet(clearConnectorAccountRename$);
-  const [, rename] = useLoadableSet(renameConnectorAccount$);
+  const [renameLoadable, rename] = useLoadableSet(renameConnectorAccount$);
   const signal = useGet(pageSignal$);
   if (!draft) {
     return null;
   }
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const displayName = draft.displayName.trim();
-    if (!displayName) {
-      return;
-    }
+    const displayName = draft.displayName.trim() || null;
     detach(
       (async () => {
         await rename(
@@ -288,7 +285,7 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
           }}
           maxLength={255}
         />
-        <Button type="submit" disabled={!draft.displayName.trim()}>
+        <Button type="submit" disabled={renameLoadable.state === "loading"}>
           {t(($) => {
             return $.connectors.actions.save;
           })}
