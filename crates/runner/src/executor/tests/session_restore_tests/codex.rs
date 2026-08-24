@@ -26,6 +26,36 @@ fn restore_session_writes_codex_session() {
 }
 
 #[test]
+fn restore_session_keeps_agent_environment_out_of_codex_cleanup() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = codex_context();
+    ctx.environment = Some(std::collections::HashMap::from([
+        (
+            "OKOU_CODEX_RESTORE_SESSION_ID".to_string(),
+            "user-session-id".to_string(),
+        ),
+        (
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
+            "user-filename-key".to_string(),
+        ),
+        (
+            "OKOU_CODEX_RESTORE_SESSION_PATH".to_string(),
+            "/tmp/user-restore-path".to_string(),
+        ),
+        (
+            "OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET".to_string(),
+            "1".to_string(),
+        ),
+        ("USER_ENV_MARKER".to_string(), "user-value".to_string()),
+    ]));
+    let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
+
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+}
+
+#[test]
 fn restore_session_writes_codex_session_at_existing_logical_path() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult::new(

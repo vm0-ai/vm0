@@ -147,9 +147,9 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert_eq!(
         exec_calls[0].env_keys,
         [
-            "VM0_CODEX_RESTORE_SESSION_ID".to_string(),
-            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
-            "VM0_CODEX_RESTORE_SESSION_PATH".to_string()
+            "OKOU_CODEX_RESTORE_SESSION_ID".to_string(),
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
+            "OKOU_CODEX_RESTORE_SESSION_PATH".to_string()
         ]
     );
     assert_eq!(exec_calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
@@ -194,7 +194,7 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(
         exec_calls[0]
             .cmd
-            .contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY")
+            .contains("OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY")
     );
     assert!(!exec_calls[0].cmd.contains("tr -d"));
     assert!(!exec_calls[0].cmd.contains("-delete"));
