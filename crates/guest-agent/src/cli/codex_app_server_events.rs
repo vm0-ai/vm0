@@ -20,7 +20,7 @@
 //! normalization. Unknown completed types use a bounded, shallow, and lossy
 //! projection: names become snake case, scalar values and scalar members of
 //! shallow collections are retained, deeper collections are dropped, and
-//! collections beyond fixed limits are omitted.
+//! top-level fields and collections beyond fixed limits are omitted.
 //!
 //! Statuses, file-change patch kinds, and error fields are normalized into the
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
@@ -55,6 +55,7 @@ pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
 
 const MAX_GENERIC_COLLECTION_ITEMS: usize = 16;
 const MAX_GENERIC_OBJECT_FIELDS: usize = 24;
+const MAX_GENERIC_OPTIONAL_FIELDS: usize = 24;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CodexOutputItemKind {
@@ -595,13 +596,23 @@ fn normalize_generic_completed_item(
         );
     }
 
+    let mut projected_fields = 0;
     for (key, value) in item {
+        if projected_fields == MAX_GENERIC_OPTIONAL_FIELDS {
+            break;
+        }
         if key == "id" || key == "type" || key == "status" {
             continue;
         }
-        if let Some(value) = shallow_generic_value(value) {
-            normalized.insert(camel_to_snake(key), value);
+        let Some(value) = shallow_generic_value(value) else {
+            continue;
+        };
+        let normalized_key = camel_to_snake(key);
+        if normalized_key == "id" || normalized_key == "type" || normalized_key == "status" {
+            continue;
         }
+        normalized.insert(normalized_key, value);
+        projected_fields += 1;
     }
 
     Ok(Value::Object(normalized))
@@ -1730,6 +1741,53 @@ mod tests {
         assert_eq!(event["item"]["arguments"], json!({"query": "kept"}));
         assert!(event["item"].get("too_many_items").is_none());
         assert!(event["item"].get("too_many_fields").is_none());
+    }
+
+    #[test]
+    fn generic_completed_item_limits_top_level_fields_deterministically() {
+        let mut item = Map::new();
+        item.insert("id".to_string(), json!("tool-1"));
+        item.insert("type".to_string(), json!("dynamicToolCall"));
+        item.insert("status".to_string(), json!("completed"));
+        item.insert("Id".to_string(), json!("shadow-id"));
+        item.insert("Type".to_string(), json!("shadowType"));
+        item.insert("Status".to_string(), json!("failed"));
+
+        let unsupported_fields = (0..=MAX_GENERIC_OBJECT_FIELDS)
+            .map(|index| (format!("nested{index:02}"), json!(index)))
+            .collect();
+        item.insert(
+            "aaaUnsupported".to_string(),
+            Value::Object(unsupported_fields),
+        );
+        for index in 0..MAX_GENERIC_OPTIONAL_FIELDS + 2 {
+            item.insert(format!("field{index:02}"), json!(index));
+        }
+
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": item
+            }),
+        );
+        let normalized = event["item"]
+            .as_object()
+            .expect("mapped item should be an object");
+
+        assert_eq!(normalized.len(), MAX_GENERIC_OPTIONAL_FIELDS + 3);
+        assert_eq!(normalized["id"], "tool-1");
+        assert_eq!(normalized["type"], "dynamic_tool_call");
+        assert_eq!(normalized["status"], "completed");
+        for index in 0..MAX_GENERIC_OPTIONAL_FIELDS {
+            assert_eq!(normalized[&format!("field{index:02}")], index);
+        }
+        for index in MAX_GENERIC_OPTIONAL_FIELDS..MAX_GENERIC_OPTIONAL_FIELDS + 2 {
+            assert!(!normalized.contains_key(&format!("field{index:02}")));
+        }
+        assert!(!normalized.contains_key("aaa_unsupported"));
     }
 
     #[test]
