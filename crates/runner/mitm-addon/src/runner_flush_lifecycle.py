@@ -223,9 +223,25 @@ def _flush_usage_for_runner_request() -> None:
 def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
     """Admit billing work before retained diagnostic reports."""
     usage.flush_usage_events(trigger=trigger)
+    _retry_retained_diagnostic_reports()
+
+
+def _retry_retained_diagnostic_reports() -> None:
+    """Retry every retained diagnostic source in its established order."""
     anthropic_accounting.retry_all_pending()
     claude_output_timing.retry_all_pending()
     codex_output_timing.retry_all_pending()
+
+
+def drain_delivery_work_after_executor_shutdown() -> None:
+    """Synchronously drain work after the usage executor has been joined.
+
+    The caller must first shut down and join the executor so completed delivery
+    callbacks cannot retain new billing work after the usage drain observes an
+    empty state. New admissions then use webhook delivery's synchronous fallback.
+    """
+    usage.drain_usage_events_after_executor_shutdown()
+    _retry_retained_diagnostic_reports()
 
 
 def _flush_jsonl_for_runner_request(request_path: Path, state_path: Path) -> None:

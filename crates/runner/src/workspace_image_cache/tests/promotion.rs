@@ -25,7 +25,7 @@ use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
 };
 
-const PERMISSIVE_UMASK_CHILD_ENV: &str = "VM0_RUN_WORKSPACE_CACHE_PERMISSIVE_UMASK_TEST";
+const PERMISSIVE_UMASK_CHILD_ENV: &str = "OKOU_RUN_WORKSPACE_CACHE_PERMISSIVE_UMASK_TEST";
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777

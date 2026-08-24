@@ -1,6 +1,6 @@
 {
-  "id": "43470047-9955-4e72-9c8e-6d16e3bcbb64",
-  "prevId": "bbaa8977-ae1c-4b6d-94a6-afe8e1c9e5dc",
+  "id": "90449c92-4397-47eb-8147-db843a15b526",
+  "prevId": "bff63962-bd84-4fba-8444-6520c56ba747",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5889,6 +5889,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
         },
         "conversation_context": {
           "name": "conversation_context",
@@ -19587,6 +19594,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
+        },
         "status": {
           "name": "status",
           "type": "varchar(16)",
@@ -19962,7 +19976,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'vm0'"
+          "default": "'okou'"
         },
         "created_at": {
           "name": "created_at",

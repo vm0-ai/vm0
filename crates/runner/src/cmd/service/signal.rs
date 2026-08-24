@@ -137,17 +137,17 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
 
-    const SCENARIO_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_SCENARIO";
-    const SIGNAL_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_NAME";
-    const INVOCATIONS_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_INVOCATIONS";
+    const SCENARIO_ENV: &str = "OKOU_RUN_SERVICE_SIGNAL_SCENARIO";
+    const SIGNAL_ENV: &str = "OKOU_RUN_SERVICE_SIGNAL_NAME";
+    const INVOCATIONS_ENV: &str = "OKOU_RUN_SERVICE_SIGNAL_INVOCATIONS";
     const CHILD_TEST: &str = "cmd::service::signal::tests::signal_service_main_systemctl_child";
     const BOUNDED_OUTCOME_SCENARIO_BUDGET: Duration = Duration::from_secs(5);
     const BOUNDED_TIMEOUT_SCENARIO_BUDGET: Duration = Duration::from_millis(100);
     const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
-printf '%s\n' "$*" >> "$VM0_RUN_SERVICE_SIGNAL_INVOCATIONS"
+printf '%s\n' "$*" >> "$OKOU_RUN_SERVICE_SIGNAL_INVOCATIONS"
 
 if [ "$1" = "kill" ]; then
-  case "$VM0_RUN_SERVICE_SIGNAL_SCENARIO" in
+  case "$OKOU_RUN_SERVICE_SIGNAL_SCENARIO" in
     success-*|bounded-success) exit 0 ;;
     bounded-timeout) while :; do :; done ;;
     absent|bounded-absent|live|recheck-failed)
@@ -158,7 +158,7 @@ if [ "$1" = "kill" ]; then
 fi
 
 if [ "$1" = "show" ]; then
-  case "$VM0_RUN_SERVICE_SIGNAL_SCENARIO" in
+  case "$OKOU_RUN_SERVICE_SIGNAL_SCENARIO" in
     absent|bounded-absent)
       printf '%s\n' 'LoadState=loaded' 'MainPID=0'
       exit 0

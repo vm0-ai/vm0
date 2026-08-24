@@ -44,9 +44,20 @@ pub struct ConfigArgs {
     /// vm0 API URL
     #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: String,
-    /// Runner authentication token
-    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
+    /// Runner authentication token (`OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
+    #[arg(
+        long,
+        env = crate::runner_token::clap_environment_name(),
+        hide_env_values = true
+    )]
     token: String,
+}
+
+#[cfg(test)]
+impl ConfigArgs {
+    pub(crate) fn token_for_test(&self) -> &str {
+        &self.token
+    }
 }
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {

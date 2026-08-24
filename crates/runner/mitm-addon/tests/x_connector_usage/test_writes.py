@@ -675,6 +675,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "Sharp S faß.de",
         "Fullwidth compatibility \uff26\uff2f\uff2f.com",
         "Fullwidth terminal example.\uff23\uff2f\uff2d",
+        "Repeated fullwidth compatibility \uff26\uff2f\uff2f.\uff26\uff2f\uff2f",
     ],
 )
 def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_flow, text):
@@ -818,12 +819,16 @@ def test_tweet_create_long_unicode_label_does_not_restart_candidate_search(
     assert p["quantity"] == 1
 
 
-def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create(
-    x_usage, tmp_path, real_flow
-):
-    """Near-limit Unicode labels avoid repeated IDNA work and remain non-link."""
-    text = "a." + (("é" * 20 + ".") * 1_400) + "notatld"
-    request_body = json.dumps({"text": text}, ensure_ascii=False).encode()
+def test_tweet_create_repeated_unicode_labels_reuse_classification(x_usage, tmp_path, real_flow):
+    """Repeated Unicode labels reuse IDNA work and remain non-link."""
+    text = "a." + (("é" * 20 + ".") * 1_189) + "notatld"
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(text) == 24_978
+    assert len(request_body) == 48_769
     assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
     flow = x_usage.make_flow(
         real_flow,
@@ -837,8 +842,22 @@ def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create
     flow.request.method = "POST"
     flow.request.content = request_body
 
-    p = x_usage.call_and_get_single_billing(flow)
+    with (
+        patch.object(
+            x_billing,
+            "normalize_idna_label",
+            wraps=x_billing.normalize_idna_label,
+        ) as normalize_idna_label,
+        patch.object(
+            x_billing,
+            "_label_has_tld_prefix_before_unicode",
+            wraps=x_billing._label_has_tld_prefix_before_unicode,
+        ) as label_has_tld_prefix_before_unicode,
+    ):
+        p = x_usage.call_and_get_single_billing(flow)
 
+    assert normalize_idna_label.call_count == 3
+    assert label_has_tld_prefix_before_unicode.call_count == 2
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
 

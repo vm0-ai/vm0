@@ -1202,8 +1202,22 @@
     {
       "idx": 979,
       "version": "7",
-      "when": 1787566028789,
-      "tag": "0979_daffy_arclight",
+      "when": 1787563682443,
+      "tag": "0979_expand_built_in_model_candidate_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 980,
+      "version": "7",
+      "when": 1787563692115,
+      "tag": "0980_backfill_built_in_model_candidate_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 981,
+      "version": "7",
+      "when": 1787569227143,
+      "tag": "0981_premium_nebula",
       "breakpoints": true
     }
   ]

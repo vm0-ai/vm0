@@ -146,6 +146,7 @@ export async function setVm0ManagedCandidateCooldownFixture(
   selectedModel: string,
   route: ManagedModelRuntimeRouteFixture,
   unavailableUntil: Date,
+  cooldownStorage: "legacy" | "built-in" | "both" = "both",
 ): Promise<void> {
   await postAction(context, {
     action: "set-vm0-managed-candidate-cooldown",
@@ -153,8 +154,22 @@ export async function setVm0ManagedCandidateCooldownFixture(
     provider_type: route.provider_type,
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
+    cooldown_storage: cooldownStorage,
   });
   registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+}
+
+export async function deleteVm0ManagedCandidateCooldownFixture(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-vm0-managed-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+  });
 }
 
 export function registerVm0ManagedCandidateCooldownCleanup(
@@ -163,12 +178,11 @@ export function registerVm0ManagedCandidateCooldownCleanup(
   route: ManagedModelRuntimeRouteFixture,
 ): void {
   onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-candidate-cooldown",
-      selected_model: selectedModel,
-      provider_type: route.provider_type,
-      upstream_model: route.upstream_model,
-    });
+    await deleteVm0ManagedCandidateCooldownFixture(
+      context,
+      selectedModel,
+      route,
+    );
   });
 }
 
